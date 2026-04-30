@@ -40,6 +40,7 @@ MIN_MID_PRICE             = 0.05    # Ignore options trading < $0.05
 DTE_CREDIT_MIN, DTE_CREDIT_MAX  = 21, 50   # Credit spreads: 21–50 DTE sweet spot
 DTE_DEBIT_MIN, DTE_DEBIT_MAX    = 20, 40   # Debit spreads: 20–40 DTE
 DTE_STRADDLE_MIN, DTE_STRADDLE_MAX = 14, 35
+DTE_COVERED_MIN,  DTE_COVERED_MAX  = 21, 45   # Covered calls/puts: standard monthly income window
 
 # Exit plan parameters
 CREDIT_PROFIT_TARGET_PCT  = 50     # Close credit at 50% of max profit
@@ -240,6 +241,10 @@ def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
         "Bear Call Spread": (not BULLISH and SELL_REGIME, SELL_REGIME, not BULLISH),
         "Iron Condor":      (NEUTRAL and SELL_REGIME, SELL_REGIME, NEUTRAL),
         "Long Straddle":    (NEUTRAL and BUY_REGIME, BUY_REGIME, NEUTRAL),
+        "Covered Call":     (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
+        "Covered Put":      (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
+        "Short Put":        (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
+        "Short Call":       (not BULLISH and SELL_REGIME, SELL_REGIME, not BULLISH),
     }
 
     checks = alignment_map.get(strategy, (False, False, False))
@@ -331,7 +336,7 @@ def score_iv_fit(signals: MarketSignals, strategy: str) -> int:
     iv_rank = signals.iv_rank
     iv_vs_hv = signals.iv_vs_hv
 
-    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread"}
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Covered Put", "Short Put", "Short Call"}
     BUYING_STRATS  = {"Long Call", "Long Put", "Bull Call Spread", "Bear Put Spread", "Long Straddle"}
 
     if strategy in SELLING_STRATS:
@@ -360,7 +365,7 @@ def generate_exit_plan(strategy: str, max_profit: float, net_credit: float,
     profit_close_at = round(net_credit * CREDIT_PROFIT_TARGET_PCT / 100, 2) if net_credit > 0 else round(max_profit * DEBIT_PROFIT_TARGET_PCT / 100, 2)
     stop_loss_at = round(net_credit * CREDIT_STOP_LOSS_MULT, 2) if net_credit > 0 else None
 
-    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread"}
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Short Put", "Short Call"}
 
     if strategy in SELLING_STRATS:
         return (
@@ -742,6 +747,249 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
     )
 
 
+def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> Optional[dict]:
+    """
+    Short Put (Naked / Margin): Sell an OTM put to collect premium.
+    No stock ownership or cash-collateral framing — requires a margin account.
+    Profit if stock stays above the strike; maximum loss if stock falls to 0.
+    Best in: elevated IV, neutral-to-bullish signal, 21–45 DTE.
+    """
+    price = signals.current_price
+    row = find_strike_by_delta(puts, TARGET_SHORT_DELTA_CREDIT, price, "PUT")
+    if row is None:
+        return None
+
+    leg = build_option_leg(row, "SELL", "PUT", expiry)
+    net_credit = leg.mid_price
+    if net_credit < MIN_MID_PRICE:
+        return None
+
+    strike = leg.strike
+    max_profit = round(net_credit, 2)           # put expires worthless — keep full premium
+    # Display max_loss: practical 12% stock decline through strike, net of premium
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
+    rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
+    rop = round(1 - abs(leg.delta), 2)          # prob put expires OTM
+    # EV via practical option-stop model (2× credit = disciplined stop)
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
+    be = round(strike - net_credit, 2)          # breakeven at expiry
+    yield_pct = round(net_credit / price * 100, 2)
+
+    return dict(
+        strategy="Short Put", bias="Neutral/Bullish",
+        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        net_credit=net_credit, spread_width=0,
+        max_profit=max_profit, max_loss=max_loss,
+        risk_reward_ratio=rr,
+        credit_pct_of_width=yield_pct,         # yield on stock price for checklist display
+        breakeven_lower=be, breakeven_upper=999,
+        short_leg_delta=abs(leg.delta), prob_of_profit=rop,
+        prob_of_max_loss=round(1 - rop, 2),
+        expected_value=ev,
+        passes_rr_filter=True,                 # single-leg income trade — R:R not primary metric
+        passes_credit_filter=yield_pct >= 0.50,
+        passes_liquidity_filter=True,
+        rationale=(
+            f"⚠️ Requires a margin account (naked put — no stock or cash collateral required beyond margin). "
+            f"Sell {expiry} ${strike:.0f} put — collect ${net_credit:.2f}/share ({yield_pct:.2f}% of stock price). "
+            f"Short put delta {leg.delta:.2f} → {int(rop*100)}% probability the put expires worthless — you keep premium. "
+            f"Breakeven at expiry: ${be:.2f}. Max loss: stock assigned at ${strike:.0f} then falls further. "
+            f"IV rank {signals.iv_rank:.0f}% — {'elevated; rich premium makes short put compelling.' if signals.iv_rank >= 50 else 'moderate IV; premium is thinner.'} "
+            f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
+        ),
+        exit_plan=(
+            f"✅ Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
+            f"🛑 Stop loss: Close immediately if the put doubles in value (loss = credit received = ${net_credit:.2f}/share). "
+            f"📉 If near assignment: roll down and out (lower strike, later expiry) for a net credit, OR close and accept assignment if you want the stock at ${strike:.0f}. "
+            f"⏰ Time exit: Close or roll at 21 DTE — gamma risk rises sharply in the final 3 weeks."
+        ),
+    )
+
+
+def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -> Optional[dict]:
+    """
+    Short Call (Naked / Margin): Sell an OTM call to collect premium.
+    Bearish-to-neutral income trade. Requires a margin account.
+    ⚠️  Carries UNLIMITED upside risk if the stock rallies above the strike.
+    Best in: elevated IV, bearish or neutral signal, 21–45 DTE.
+    """
+    price = signals.current_price
+    row = find_strike_by_delta(calls, TARGET_SHORT_DELTA_CREDIT, price, "CALL")
+    if row is None:
+        return None
+
+    leg = build_option_leg(row, "SELL", "CALL", expiry)
+    net_credit = leg.mid_price
+    if net_credit < MIN_MID_PRICE:
+        return None
+
+    strike = leg.strike
+    max_profit = round(net_credit, 2)           # call expires worthless — keep full premium
+    # Display max_loss: practical 12% adverse move above the strike, net of premium
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
+    rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
+    rop = round(1 - abs(leg.delta), 2)          # prob call expires OTM
+    # EV via practical option-stop model (2× credit = disciplined stop)
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
+    be = round(strike + net_credit, 2)          # upside breakeven at expiry
+    yield_pct = round(net_credit / price * 100, 2)
+
+    return dict(
+        strategy="Short Call", bias="Neutral/Bearish",
+        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        net_credit=net_credit, spread_width=0,
+        max_profit=max_profit, max_loss=max_loss,
+        risk_reward_ratio=rr,
+        credit_pct_of_width=yield_pct,         # yield on stock price for checklist display
+        breakeven_lower=0, breakeven_upper=be,
+        short_leg_delta=abs(leg.delta), prob_of_profit=rop,
+        prob_of_max_loss=round(1 - rop, 2),
+        expected_value=ev,
+        passes_rr_filter=True,                 # single-leg income trade — R:R not primary metric
+        passes_credit_filter=yield_pct >= 0.50,
+        passes_liquidity_filter=True,
+        rationale=(
+            f"⚠️ Requires margin — SHORT CALL CARRIES UNLIMITED UPSIDE RISK. "
+            f"Sell {expiry} ${strike:.0f} call — collect ${net_credit:.2f}/share ({yield_pct:.2f}% of stock price). "
+            f"Short call delta {leg.delta:.2f} → {int(rop*100)}% probability the call expires worthless — you keep premium. "
+            f"Upside breakeven: ${be:.2f}. If stock rallies sharply above ${strike:.0f}, losses are theoretically unlimited. "
+            f"IV rank {signals.iv_rank:.0f}% — {'elevated; rich premium offsets the risk, but active management is essential.' if signals.iv_rank >= 50 else 'moderate IV; thin premium with uncapped risk — consider a Bear Call Spread instead.'} "
+            f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
+        ),
+        exit_plan=(
+            f"✅ Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
+            f"🛑 Stop loss: Close IMMEDIATELY if the call doubles in value (loss = credit received = ${net_credit:.2f}/share). "
+            f"For naked calls, never let a loss run — the risk is theoretically unlimited. "
+            f"📈 If stock approaches the strike: roll up and out (higher strike, later expiry) for a net credit, or close outright. "
+            f"⏰ Time exit: Close or roll at 21 DTE — short OTM calls gain gamma risk rapidly in the final 3 weeks."
+        ),
+    )
+
+
+def _build_covered_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -> Optional[dict]:
+    """
+    Covered Call: Assumes the trader already owns 100 shares.
+    Sell an OTM call to collect income; stock gains are capped at the strike.
+    Best in: neutral-to-mildly-bullish market, elevated IV (rich premium), 21–45 DTE.
+    """
+    price = signals.current_price
+    row = find_strike_by_delta(calls, TARGET_SHORT_DELTA_CREDIT, price, "CALL")
+    if row is None:
+        return None
+
+    leg = build_option_leg(row, "SELL", "CALL", expiry)
+    net_credit = leg.mid_price          # premium collected per share
+    if net_credit < MIN_MID_PRICE:
+        return None
+
+    strike = leg.strike
+    # Max profit: premium collected + stock appreciation up to strike (if called away)
+    upside = max(0.0, round(strike - price, 2))
+    max_profit = round(net_credit + upside, 2)
+    # max_loss (display): practical 12% adverse stock move offset by premium received
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
+    rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
+    rop = round(1 - abs(leg.delta), 2)  # prob call expires OTM (you keep premium + stock)
+    # EV: use option-stop model (lose 2× credit if forced to close) — not the full stock-risk model.
+    # Covered strategies are income trades; the 12% stock decline figure is informational, not an EV input.
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
+    be = round(price - net_credit, 2)   # downside breakeven (premium as buffer)
+    yield_pct = round(net_credit / price * 100, 2)  # income yield on stock position
+
+    return dict(
+        strategy="Covered Call", bias="Neutral/Bullish",
+        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        net_credit=net_credit, spread_width=0,
+        max_profit=max_profit, max_loss=max_loss,
+        risk_reward_ratio=rr,
+        credit_pct_of_width=yield_pct,   # repurposed as income yield %
+        breakeven_lower=be, breakeven_upper=999,
+        short_leg_delta=abs(leg.delta), prob_of_profit=rop,
+        prob_of_max_loss=round(1 - rop, 2),
+        expected_value=ev,
+        passes_rr_filter=True,           # income strategy — R:R metric not primary
+        passes_credit_filter=yield_pct >= 0.80,   # minimum 0.80% yield on stock price
+        passes_liquidity_filter=True,
+        rationale=(
+            f"Requires owning 100 shares at ~${price:.2f}. "
+            f"Sell {expiry} ${strike:.0f} call — collect ${net_credit:.2f}/share ({yield_pct:.1f}% yield on position). "
+            f"If called away, total return = ${max_profit:.2f}/share (premium ${net_credit:.2f} + appreciation ${upside:.2f}). "
+            f"Short call delta {leg.delta:.2f} → {int(rop*100)}% probability the call expires worthless — you keep premium and stock. "
+            f"Downside breakeven: ${be:.2f} — premium provides a {yield_pct:.1f}% cushion below current price. "
+            f"IV rank {signals.iv_rank:.0f}% — {'elevated IV inflates premium collected; ideal for covered call.' if signals.iv_rank >= 50 else 'moderate IV; premium is smaller than in high-IV regimes.'}"
+        ),
+        exit_plan=(
+            f"✅ Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free stock for further upside. "
+            f"Or let it expire worthless to keep the full ${net_credit:.2f}/share. "
+            f"📈 If called away at ${strike:.0f}: total option return is ${max_profit:.2f}/share — "
+            f"accept assignment or roll the call up and out (higher strike, later expiry) before expiry. "
+            f"🛑 Stop loss: Close position if the call is deep ITM and rolling up no longer makes sense. "
+            f"⏰ Time exit: Roll or close at 21 DTE to avoid gamma acceleration on the short call."
+        ),
+    )
+
+
+def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> Optional[dict]:
+    """
+    Cash-Secured Put (Covered Put): Sell an OTM put, hold cash equal to (strike × 100) as collateral.
+    Neutral-to-bullish income strategy — you collect premium and are willing to own the stock
+    at an effective cost of (strike − premium) if assigned.
+    Best in: elevated IV, not in a strong downtrend, 21–45 DTE.
+    """
+    price = signals.current_price
+    row = find_strike_by_delta(puts, TARGET_SHORT_DELTA_CREDIT, price, "PUT")
+    if row is None:
+        return None
+
+    leg = build_option_leg(row, "SELL", "PUT", expiry)
+    net_credit = leg.mid_price
+    if net_credit < MIN_MID_PRICE:
+        return None
+
+    strike = leg.strike
+    max_profit = round(net_credit, 2)    # put expires OTM — keep full premium
+    # max_loss (display): 12% stock decline through the strike, net of premium received
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
+    rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
+    rop = round(1 - abs(leg.delta), 2)  # prob put expires OTM (full premium retained)
+    # EV: use practical option-stop model (lose 2× credit to close) — not the full stock-assignment risk.
+    # The 12% stock decline figure is informational for the user, not the EV driver for an income strategy.
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
+    be = round(strike - net_credit, 2)   # effective stock cost if assigned
+    yield_pct = round(net_credit / strike * 100, 2)  # income yield on cash collateral
+
+    return dict(
+        strategy="Covered Put", bias="Neutral/Bullish",
+        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        net_credit=net_credit, spread_width=0,
+        max_profit=max_profit, max_loss=max_loss,
+        risk_reward_ratio=rr,
+        credit_pct_of_width=yield_pct,   # repurposed as income yield on collateral
+        breakeven_lower=be, breakeven_upper=999,
+        short_leg_delta=abs(leg.delta), prob_of_profit=rop,
+        prob_of_max_loss=round(1 - rop, 2),
+        expected_value=ev,
+        passes_rr_filter=True,           # income strategy — R:R metric not primary
+        passes_credit_filter=yield_pct >= 0.60,   # minimum 0.60% yield on cash collateral
+        passes_liquidity_filter=True,
+        rationale=(
+            f"Cash-secured put: reserve ${strike*100:.0f} cash per contract as collateral. "
+            f"Sell {expiry} ${strike:.0f} put — collect ${net_credit:.2f}/share ({yield_pct:.1f}% yield on collateral). "
+            f"If assigned, you own 100 shares at effective cost ${be:.2f} "
+            f"(${round(price-be,2):.2f} discount to today's price of ${price:.2f}). "
+            f"Short put delta {leg.delta:.2f} → {int(rop*100)}% probability put expires worthless — you keep the premium. "
+            f"IV rank {signals.iv_rank:.0f}% — {'elevated; premium is rich for cash-secured put.' if signals.iv_rank >= 50 else 'moderate IV; verify the yield justifies tying up capital.'}"
+        ),
+        exit_plan=(
+            f"✅ Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free up capital. "
+            f"📉 If assigned: you own shares at ${be:.2f} effective cost — "
+            f"immediately consider selling a covered call (the 'wheel' strategy) to continue collecting income. "
+            f"🛑 Stop loss: Buy back the put if it triples in value (loss ≈ 2× credit = ${round(net_credit*2,2):.2f}/share). "
+            f"⏰ Time exit: Close or roll at 21 DTE if the put is near the money and you prefer not to be assigned."
+        ),
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # MAIN RECOMMENDATION ENGINE
 # ─────────────────────────────────────────────────────────────
@@ -867,6 +1115,39 @@ def run_engine(
         if t:
             candidates_raw.append(t)
 
+    # Covered options: income/yield strategies — require elevated IV + not strongly bearish.
+    # Covered Call: stock ownership assumed; sell OTM call to collect premium (neutral-bullish).
+    # Covered Put (cash-secured): reserve cash collateral; sell OTM put to collect premium.
+    # Only included in 'all' and 'credit_only' modes (they are premium-selling strategies).
+    exp_covered = pick_expiry_by_dte(option_dates, DTE_COVERED_MIN - 7, DTE_COVERED_MAX + 7)
+    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+        c, p = get_chain(exp_covered)
+        t = _build_covered_call(signals, c, exp_covered)
+        if t:
+            candidates_raw.append(t)
+
+    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+        c, p = get_chain(exp_covered)
+        t = _build_covered_put(signals, p, exp_covered)
+        if t:
+            candidates_raw.append(t)
+
+    # Standalone short options (naked single-leg sells, margin required).
+    # Short Put: neutral-bullish + HIGH_IV — sell OTM put, profit if stock holds.
+    # Short Call: neutral-bearish + HIGH_IV — sell OTM call, profit if stock stays flat/falls.
+    # ⚠️  Short Call has unlimited risk; a strong bearish signal is required.
+    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+        c, p = get_chain(exp_covered)
+        t = _build_short_put(signals, p, exp_covered)
+        if t:
+            candidates_raw.append(t)
+
+    if exp_covered and BUILD_CREDIT and BEARISH and CREDIT_IV_OK:
+        c, p = get_chain(exp_covered)
+        t = _build_short_call(signals, c, exp_covered)
+        if t:
+            candidates_raw.append(t)
+
     # ── FILTER PASS ──────────────────────────────────────────
     filtered = []
     for t in candidates_raw:
@@ -883,7 +1164,10 @@ def run_engine(
 
         # Credit filter
         if not t["passes_credit_filter"]:
-            warnings_list.append(f"Credit is only {t['credit_pct_of_width']:.1f}% of spread width (min {MIN_CREDIT_PCT_OF_WIDTH}%)")
+            if t["strategy"] in ("Covered Call", "Covered Put", "Short Put", "Short Call"):
+                warnings_list.append(f"Income yield is only {t['credit_pct_of_width']:.2f}% — below minimum threshold for the capital required.")
+            else:
+                warnings_list.append(f"Credit is only {t['credit_pct_of_width']:.1f}% of spread width (min {MIN_CREDIT_PCT_OF_WIDTH}%)")
 
         # Hard reject: both liquidity AND credit fail → skip
         if not t["passes_liquidity_filter"] and not t["passes_credit_filter"]:

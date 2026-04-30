@@ -28,10 +28,14 @@ export type Verdict = 'GO' | 'CAUTION' | 'NO GO'
 
 export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   const items: CheckItem[] = []
-  const isCredit  = rec.net_credit > 0
-  const isBullish = rec.bias.toUpperCase().includes('BULLISH')
-  const isBearish = rec.bias.toUpperCase().includes('BEARISH')
-  const isNeutral = !isBullish && !isBearish
+  const isCredit    = rec.net_credit > 0
+  const isCovered   = rec.strategy === 'Covered Call' || rec.strategy === 'Covered Put'
+  const isNakedSell = rec.strategy === 'Short Put'    || rec.strategy === 'Short Call'
+  // Income-sell: covered or naked single-leg sells — use yield-based checks instead of EV/R:R
+  const isIncomeSell = isCovered || isNakedSell
+  const isBullish   = rec.bias.toUpperCase().includes('BULLISH')
+  const isBearish   = rec.bias.toUpperCase().includes('BEARISH')
+  const isNeutral   = !isBullish && !isBearish
 
   // ── 1. IV Environment ────────────────────────────────────────────────────
   // Credit: want rich premium → favor high IV, penalize very low IV
@@ -109,16 +113,19 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // Debit/long strategies need the trend squarely behind them.
   if (isBullish) {
     if (isCredit) {
-      // Bull Put: stock just needs to stay above the short put. Above MA50 = enough.
+      // Bull Put / Covered / Short Put: stock just needs to stay above the short strike. Above MA50 = enough.
+      const stratLabel  = isIncomeSell ? `${rec.strategy} position` : 'Bull put spread'
+      const strikeLabel = rec.strategy === 'Covered Call' || rec.strategy === 'Short Call'
+        ? 'short call strike' : 'short put strike'
       if (sig.above_ma50)
         items.push({ label: 'Trend Alignment', status: 'pass', hard: false, category: 'Directional Bias',
-          detail: 'Price above MA50 — stock is holding above key support. Bull put spread has a comfortable cushion.' })
+          detail: `Price above MA50 — stock is holding above key support. ${stratLabel} has a comfortable cushion.` })
       else if (sig.ma50_slope > 0)
         items.push({ label: 'Trend Alignment', status: 'warn', hard: false, category: 'Directional Bias',
-          detail: 'Price dipped below MA50 but slope is still rising. Monitor closely — short put is at more risk.' })
+          detail: `Price dipped below MA50 but slope is still rising. Monitor closely — ${strikeLabel} is at more risk.` })
       else
         items.push({ label: 'Trend Alignment', status: 'fail', hard: false, category: 'Directional Bias',
-          detail: 'Price below declining MA50 — downtrend increases probability of testing the short put strike.' })
+          detail: `Price below declining MA50 — downtrend increases probability of testing the ${strikeLabel}.` })
     } else {
       // Long call / bull call spread: need real trend support
       if (sig.above_ma50 && sig.ma50_slope > 0)
@@ -329,10 +336,27 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   })
 
   // ── 8. Risk / Reward ──────────────────────────────────────────────────────
-  const rr = rec.passes_rr_filter
-  const cr = rec.passes_credit_filter
-  if (isCredit) {
-    // Credit: both R/R and minimum credit % matter
+  const rr  = rec.passes_rr_filter
+  const cr  = rec.passes_credit_filter
+  const pop = rec.prob_of_profit   // also used in sections 8 & 10
+  if (isIncomeSell) {
+    // Income-sell strategies: key metric is premium yield, not spread credit %
+    const collateralLabel = rec.strategy === 'Covered Call'
+      ? 'stock position'
+      : rec.strategy === 'Covered Put'
+      ? 'cash collateral'
+      : 'stock price'           // Short Put / Short Call — yield vs stock price
+    const minYield = rec.strategy === 'Covered Call' ? 0.80
+      : rec.strategy === 'Covered Put' ? 0.60
+      : 0.50                    // Short Put / Short Call: 0.50% minimum yield
+    if (cr)
+      items.push({ label: 'Income Yield', status: 'pass', hard: false, category: 'Structure',
+        detail: `${rec.credit_pct_of_width.toFixed(2)}% yield on ${collateralLabel} — meets the minimum ${minYield.toFixed(2)}% income threshold. PoP ${(pop * 100).toFixed(0)}%.` })
+    else
+      items.push({ label: 'Income Yield', status: 'fail', hard: false, category: 'Structure',
+        detail: `${rec.credit_pct_of_width.toFixed(2)}% yield on ${collateralLabel} — below minimum ${minYield.toFixed(2)}% threshold. Premium too thin to justify the capital requirement.` })
+  } else if (isCredit) {
+    // Standard credit spread: both R/R and minimum credit % matter
     if (rr && cr)
       items.push({ label: 'Trade Structure', status: 'pass', hard: false, category: 'Structure',
         detail: `Credit ${rec.credit_pct_of_width.toFixed(0)}% of spread width — passes minimum 25% threshold. Risk/Reward: ${rec.risk_reward_ratio.toFixed(1)}x.` })
@@ -353,8 +377,27 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   }
 
   // ── 9. Expected Value ─────────────────────────────────────────────────────
+  // For covered strategies, EV is modeled on the option-stop scenario (2× credit = practical stop).
+  // The primary edge metric for income strategies is income yield, not speculative EV.
   const ev = rec.expected_value
-  if (ev > 0.04)
+  if (isIncomeSell) {
+    // Income-sell strategies: evaluate on yield vs. capital, not speculative EV
+    const yield_pct = rec.credit_pct_of_width   // yield % stored here for income-sell strategies
+    const collLabel = rec.strategy === 'Covered Call'
+      ? 'stock position'
+      : rec.strategy === 'Covered Put'
+      ? 'cash collateral'
+      : 'stock price'           // Short Put / Short Call
+    if (yield_pct >= 1.0)
+      items.push({ label: 'Income Edge', status: 'pass', hard: false, category: 'Structure',
+        detail: `${yield_pct.toFixed(2)}% yield on ${collLabel} — solid income; EV positive after option-stop model. Premium well compensates for the risk of assignment.` })
+    else if (yield_pct >= 0.60)
+      items.push({ label: 'Income Edge', status: 'warn', hard: false, category: 'Structure',
+        detail: `${yield_pct.toFixed(2)}% yield on ${collLabel} — thin premium. Verify that the income justifies the capital tied up and the assignment risk.` })
+    else
+      items.push({ label: 'Income Edge', status: 'fail', hard: false, category: 'Structure',
+        detail: `${yield_pct.toFixed(2)}% yield on ${collLabel} — premium is too small. Low IV or wrong strike selection; the income does not compensate for risk.` })
+  } else if (ev > 0.04)
     items.push({ label: 'Expected Value', status: 'pass', hard: false, category: 'Structure',
       detail: `EV +$${(ev * 100).toFixed(2)}/contract — meaningful positive edge after probability weighting.` })
   else if (ev > 0)
@@ -368,17 +411,20 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // Credit spreads are DESIGNED to have high PoP (60–75%) — that's the trade-off
   // for capped upside. Long options naturally have lower PoP (40–55%) but with
   // asymmetric reward potential that justifies the lower probability.
-  const pop = rec.prob_of_profit
   if (isCredit) {
-    if (pop >= 0.62)
+    // Income-sell strategies (covered + naked) need ≥65% PoP — higher bar for single-leg premium sellers
+    const passThreshold = isIncomeSell ? 0.65 : 0.62
+    const warnThreshold = isIncomeSell ? 0.55 : 0.52
+    const stratDesc     = isIncomeSell ? 'income-sell strategy' : 'credit spread'
+    if (pop >= passThreshold)
       items.push({ label: 'Prob of Profit', status: 'pass', hard: false, category: 'Structure',
-        detail: `${(pop * 100).toFixed(0)}% PoP — strong probability for a credit spread. Time and statistics are on your side.` })
-    else if (pop >= 0.52)
+        detail: `${(pop * 100).toFixed(0)}% PoP — strong probability for a ${stratDesc}. Time and statistics are on your side.` })
+    else if (pop >= warnThreshold)
       items.push({ label: 'Prob of Profit', status: 'warn', hard: false, category: 'Structure',
-        detail: `${(pop * 100).toFixed(0)}% PoP — below the typical 60%+ target for credit spreads. The edge is thin.` })
+        detail: `${(pop * 100).toFixed(0)}% PoP — below the typical ${(passThreshold*100).toFixed(0)}%+ target for a ${stratDesc}. The edge is thin.` })
     else
       items.push({ label: 'Prob of Profit', status: 'fail', hard: false, category: 'Structure',
-        detail: `${(pop * 100).toFixed(0)}% PoP — too low for a credit spread. You are taking directional risk without directional reward.` })
+        detail: `${(pop * 100).toFixed(0)}% PoP — too low for a ${stratDesc}. You are taking directional risk without directional reward.` })
   } else {
     if (pop >= 0.45)
       items.push({ label: 'Prob of Profit', status: 'pass', hard: false, category: 'Structure',
@@ -526,7 +572,32 @@ export default function PreTradeChecklist({ rec, signals }: Props) {
           <div className="p-2.5 bg-gray-800/60 border border-gray-700 rounded-lg">
             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Exit Rules Before Entry</div>
             <div className="text-xs text-gray-400 space-y-0.5">
-              {rec.net_credit > 0 ? (
+              {rec.strategy === 'Short Put' ? (
+                <>
+                  <div>• <span className="text-emerald-400">Profit target:</span> Buy back the put at 50% of credit (~${(rec.net_credit * 100 * 0.5).toFixed(0)}/contract) to lock in gains early.</div>
+                  <div>• <span className="text-red-400">Stop loss:</span> Close immediately if the put doubles in value (loss = ${(rec.net_credit * 100).toFixed(0)}/contract) — never let a naked put run against you.</div>
+                  <div>• <span className="text-amber-400">Time stop:</span> Close or roll at 21 DTE — gamma risk spikes on naked short options.</div>
+                </>
+              ) : rec.strategy === 'Short Call' ? (
+                <>
+                  <div>• <span className="text-emerald-400">Profit target:</span> Buy back the call at 50% of credit (~${(rec.net_credit * 100 * 0.5).toFixed(0)}/contract).</div>
+                  <div>• <span className="text-red-400">Stop loss:</span> Close IMMEDIATELY if the call doubles in value — unlimited upside risk makes delay dangerous.</div>
+                  <div>• <span className="text-amber-400">Time stop:</span> Close or roll at 21 DTE. Never hold a naked short call into expiry week.</div>
+                </>
+              ) : rec.strategy === 'Covered Call' ? (
+                <>
+                  <div>• <span className="text-emerald-400">Profit target:</span> Buy back the call at 50% of credit (~${(rec.net_credit * 100 * 0.5).toFixed(0)}/contract) to free the stock for further upside.</div>
+                  <div>• <span className="text-violet-400">If called away:</span> You sell shares at ${rec.legs[0]?.strike ?? '—'} — total option return ${(rec.max_profit * 100).toFixed(0)}/contract. Accept or roll up-and-out.</div>
+                  <div>• <span className="text-amber-400">Time stop:</span> Roll or close at 21 DTE to avoid gamma acceleration on the short call.</div>
+                </>
+              ) : rec.strategy === 'Covered Put' ? (
+                <>
+                  <div>• <span className="text-emerald-400">Profit target:</span> Buy back the put at 50% of credit (~${(rec.net_credit * 100 * 0.5).toFixed(0)}/contract) to free up capital early.</div>
+                  <div>• <span className="text-violet-400">If assigned:</span> You own shares at effective cost ${(rec.breakeven_lower).toFixed(2)} — immediately consider selling a covered call ("wheel").</div>
+                  <div>• <span className="text-red-400">Stop loss:</span> Close if put triples in value (≈ 2× credit debit = ${(rec.net_credit * 100 * 2).toFixed(0)}/contract).</div>
+                  <div>• <span className="text-amber-400">Time stop:</span> Close or roll at 21 DTE if near-the-money — gamma risk spikes.</div>
+                </>
+              ) : rec.net_credit > 0 ? (
                 <>
                   <div>• <span className="text-emerald-400">Profit target:</span> Close at 50% of max credit (${(rec.net_credit * 100 * 0.5).toFixed(0)}/contract collected).</div>
                   <div>• <span className="text-red-400">Stop loss:</span> Close if spread value doubles against you (2× credit = ${(rec.net_credit * 100 * 2).toFixed(0)}/contract debit).</div>
