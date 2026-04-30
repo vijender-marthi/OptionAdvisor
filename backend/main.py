@@ -15,6 +15,9 @@ import smtplib
 import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,

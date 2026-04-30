@@ -174,6 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sentAlertKeysRef = useRef<Set<string>>(new Set(load<string[]>('oa_sent_alert_keys', [])))
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
   const [userDataLoaded, setUserDataLoaded] = useState(false)
+  const loginRefreshEmailRef = useRef<string | null>(null)
 
   // Keep refs so interval/async closures always see current values
   const watchlistRef = useRef(watchlist)
@@ -229,14 +230,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setWatchlist(data.watchlist)
         setPortfolio(data.portfolio)
+        setUserDataLoaded(true)
       } catch (e) {
         console.warn('[user-data] load failed:', e)
         if (!cancelled) {
           setWatchlist([])
           setPortfolio([])
+          setUserDataLoaded(false)
         }
-      } finally {
-        if (!cancelled) setUserDataLoaded(true)
       }
     }
 
@@ -266,6 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.trim()
     if (!cleanEmail || !password.trim()) return false
     const displayName = name.trim() || cleanEmail.split('@')[0] || 'User'
+    loginRefreshEmailRef.current = null
     setWatchlist([])
     setPortfolio([])
     setUserDataLoaded(false)
@@ -274,6 +276,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
+    loginRefreshEmailRef.current = null
     setUser(null)
     setWatchlist([])
     setPortfolio([])
@@ -476,12 +479,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [scanCachedTickerForGoAlerts])
 
   const refreshWatchlistForAlerts = useCallback(async (force = true) => {
-    const cachedTickers = watchlistRef.current
+    const watchedTickers = watchlistRef.current
       .map(w => w.ticker)
-      .filter(ticker => !!tickerCacheRef.current[ticker])
-    const tickersToRefresh = cachedTickers.filter(ticker => {
+      .filter(Boolean)
+    const tickersToRefresh = watchedTickers.filter(ticker => {
+        if (force) return true
         const entry = tickerCacheRef.current[ticker]
-        return force || !isCacheFresh(entry)
+        return entry && !isCacheFresh(entry)
       })
 
     for (let i = 0; i < tickersToRefresh.length; i++) {
@@ -493,6 +497,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await scanCachedWatchlistForGoAlerts()
     setLastBgRefresh(Date.now())
   }, [refreshTicker, scanCachedWatchlistForGoAlerts])
+
+  // After a saved watchlist loads for this signed-in email, refresh it once for
+  // the current browser session so new sessions do not depend on local cache.
+  useEffect(() => {
+    if (!user?.email || !userDataLoaded || watchlist.length === 0) return
+    if (loginRefreshEmailRef.current === user.email) return
+
+    loginRefreshEmailRef.current = user.email
+    refreshWatchlistForAlerts(true)
+  }, [refreshWatchlistForAlerts, user?.email, userDataLoaded, watchlist.length])
 
   // ── fetchAllWeeks: fetch 2,3,4,6,8 week expiries and store in multiWeekData ──
   const fetchAllWeeks = useCallback(async (ticker: string) => {
@@ -536,17 +550,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Background refresh: every 15 minutes, sweep stale watched tickers ────────
   // Only fires during market hours: 6:00 AM – 4:00 PM PST, weekdays only.
+  // Note: watchlist is read via watchlistRef.current inside refreshWatchlistForAlerts,
+  // so we do NOT add watchlist.length here — that would cause unwanted sweeps on
+  // every add/remove and flood the API during market hours.
   useEffect(() => {
     const sweep = async () => {
-      // Gate on PST market hours
       if (!isMarketHoursNow()) return
       await refreshWatchlistForAlerts(false)
     }
 
-    sweep()
     const id = setInterval(sweep, CACHE_TTL_MS)
     return () => clearInterval(id)
-  }, [refreshWatchlistForAlerts, watchlist.length])
+  }, [refreshWatchlistForAlerts])
 
   const unreadAlertCount = alerts.filter(a => !a.dismissed).length
 
