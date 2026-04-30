@@ -180,8 +180,8 @@ function StockCard({ stock }: { stock: StockEntry }) {
       <div className="flex gap-2 pt-1">
         <button
           onClick={handleAnalyze}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gray-700 hover:bg-gray-600
-                     text-gray-100 text-xs font-semibold rounded-xl border border-gray-600 hover:border-gray-500 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-violet-600/20 hover:bg-violet-600/30
+                     text-violet-300 text-xs font-semibold rounded-xl border border-violet-700 hover:border-violet-500 transition-colors"
         >
           <TrendingUp size={12} /> Analyze
         </button>

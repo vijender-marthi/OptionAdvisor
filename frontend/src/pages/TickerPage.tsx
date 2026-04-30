@@ -95,7 +95,8 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
   const goCount = slots.filter(s => s.verdict === 'GO').length
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center gap-4 flex-wrap">
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3">
+      <div className="flex items-center gap-4 flex-wrap">
       <div className="flex items-center gap-1.5 shrink-0">
         <Layers size={14} className="text-violet-400" />
         <span className="text-xs font-semibold text-gray-300">Week Filter</span>
@@ -106,42 +107,55 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
         )}
       </div>
 
-      <div className="flex items-center gap-3 flex-1 flex-wrap">
+      <div className="flex items-center gap-2 flex-1 flex-wrap">
         {slots.map(slot => {
           const active = selectedWeeksOut === slot.weeksOut
+          const dotColor = slot.verdict
+            ? VERDICT_DOT[slot.verdict]
+            : slot.hasData ? 'bg-gray-500' : 'bg-gray-700'
           return (
-          <button
-            key={slot.label}
-            type="button"
-            onClick={() => onSelect(slot.weeksOut)}
-            className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-2 transition-colors ${
-              active
-                ? 'bg-violet-600/20 border-violet-700/60'
-                : 'bg-gray-800/60 border-gray-700 hover:border-gray-600'
-            }`}
-          >
-            <div className="flex items-center gap-1">
-              {slot.verdict
-                ? <div className={`w-2.5 h-2.5 rounded-full ${VERDICT_DOT[slot.verdict]}`} />
-                : <div className={`w-2.5 h-2.5 rounded-full ${slot.hasData ? 'bg-gray-500' : 'bg-gray-700'}`} />
-              }
-              <span className={`text-[10px] font-mono ${active ? 'text-violet-300' : 'text-gray-500'}`}>{slot.label}</span>
-            </div>
-            {slot.verdict ? (
-              <div className={`flex items-center gap-0.5 text-[9px] font-bold ${VERDICT_TEXT[slot.verdict]}`}>
-                {VERDICT_ICON[slot.verdict]}
-                {slot.verdict === 'GO' ? 'GO' : slot.verdict === 'CAUTION' ? 'CAU' : 'NG'}
+            <button
+              key={slot.label}
+              type="button"
+              onClick={() => slot.hasData && onSelect(slot.weeksOut)}
+              disabled={!slot.hasData}
+              title={!slot.hasData ? 'Click "Fetch All Weeks" to load this expiry window' : undefined}
+              className={`flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[10px] font-bold transition-all ${
+                active
+                  ? 'bg-violet-600/20 border-violet-500 text-violet-300'
+                  : slot.hasData
+                  ? 'bg-gray-800/60 border-gray-700 hover:border-gray-500 hover:bg-gray-800 cursor-pointer'
+                  : 'bg-gray-800/20 border-gray-800 opacity-40 cursor-not-allowed'
+              }`}
+            >
+              {/* dot + week label + actual DTE */}
+              <div className="flex items-center gap-1">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                <span className={active ? 'text-violet-300' : 'text-gray-300'}>{slot.label}</span>
+                {slot.dte !== null && (
+                  <span className="text-gray-600 font-normal">· {slot.dte}d</span>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-0.5 text-[9px] text-gray-700">
-                <Clock size={9} /> {slot.hasData ? 'NO TRADES' : '—'}
-              </div>
-            )}
-            {slot.recCount > 0 && (
-              <span className="text-[8px] text-gray-700">{slot.recCount}t</span>
-            )}
-          </button>
-        )})}
+              {/* verdict / status */}
+              {slot.hasData ? (
+                slot.verdict ? (
+                  <div className={`flex items-center gap-0.5 mt-0.5 ${VERDICT_TEXT[slot.verdict]}`}>
+                    {VERDICT_ICON[slot.verdict]}
+                    {slot.verdict}
+                  </div>
+                ) : (
+                  <span className="text-gray-600 mt-0.5">no trades</span>
+                )
+              ) : (
+                <span className="text-gray-700 mt-0.5">not loaded</span>
+              )}
+              {/* trade count */}
+              {slot.recCount > 0 && (
+                <span className="text-gray-600 font-normal">{slot.recCount} trade{slot.recCount !== 1 ? 's' : ''}</span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <button
@@ -154,6 +168,13 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
         <Layers size={11} className={fetching ? 'animate-pulse text-violet-400' : ''} />
         {fetching ? 'Fetching 2–8 weeks…' : hasFetched ? 'Re-fetch All Weeks' : 'Fetch All Weeks'}
       </button>
+      </div>
+      {!hasFetched && (
+        <p className="text-[10px] text-gray-600 mt-2 pl-0.5">
+          Only the primary expiry is loaded. Click <span className="text-gray-400 font-semibold">Fetch All Weeks</span> to
+          scan 2w · 3w · 4w · 6w · 8w windows — each gets independent verdicts.
+        </p>
+      )}
     </div>
   )
 }
@@ -334,11 +355,24 @@ export default function TickerPage() {
               )}
 
               {/* Strategy mode badge */}
-              {lastMode !== 'all' && (
+              {lastMode !== 'all' ? (
                 <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
                                 bg-violet-900/20 border-violet-800 text-violet-400">
                   {lastMode === 'long_only' ? '📈 Long Options Only' : '💰 Credit Spreads Only'}
                 </div>
+              ) : (
+                /* In "All" mode + HIGH IV: show why Long Calls/Puts are suppressed */
+                displayData.signals.iv_rank >= 50 && (
+                  displayData.signals.directional_bias.toLowerCase().includes('bullish') ||
+                  displayData.signals.directional_bias.toLowerCase().includes('bearish')
+                ) && (
+                  <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
+                                  bg-amber-900/20 border-amber-800/60 text-amber-400/90"
+                    title="In All Strategies mode, naked Long Calls/Puts are suppressed when IV Rank ≥ 50 to prevent buying expensive premium that can be crushed post-catalyst. Switch to Long Options mode to override.">
+                    ⚠️ IV Rank {displayData.signals.iv_rank.toFixed(0)}% — Long Call/Put suppressed
+                    <span className="text-amber-600 ml-1">· use Long Options mode to unlock</span>
+                  </div>
+                )
               )}
 
               <div className="flex items-center gap-2">
@@ -372,9 +406,7 @@ export default function TickerPage() {
               signals={displayData.signals}
             />
 
-            <SignalPanel signals={displayData.signals} />
-
-            {/* Global week selector */}
+            {/* Week selector — above signals so changing week updates both signals + recommendations */}
             {cacheEntry && (
               <WeekSelector
                 entry={cacheEntry}
@@ -384,6 +416,8 @@ export default function TickerPage() {
                 fetching={fetchingAllWeeks.has(data.ticker)}
               />
             )}
+
+            <SignalPanel signals={displayData.signals} />
 
             {/* Recommendations */}
             <div className="space-y-3">

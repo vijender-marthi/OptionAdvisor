@@ -8,6 +8,7 @@ import PortfolioPage from './pages/PortfolioPage'
 import HelpPage from './pages/HelpPage'
 import AIStocksPage from './pages/AIStocksPage'
 import TradeSignalsPage from './pages/TradeSignalsPage'
+import AlertsPage from './pages/AlertsPage'
 
 // ── Inner router (has access to context) ────────────────────────────────────
 function Router() {
@@ -22,12 +23,13 @@ function Router() {
 
   return (
     <AppLayout>
-      {page === 'ticker'     && <TickerPage />}
-      {page === 'watchlist'  && <WatchlistPage />}
-      {page === 'portfolio'  && <PortfolioPage />}
-      {page === 'help'       && <HelpPage />}
+      {page === 'ticker'        && <TickerPage />}
+      {page === 'watchlist'     && <WatchlistPage />}
+      {page === 'portfolio'     && <PortfolioPage />}
+      {page === 'help'          && <HelpPage />}
       {page === 'ai-stocks'     && <AIStocksPage />}
       {page === 'trade-signals' && <TradeSignalsPage />}
+      {page === 'alerts'        && <AlertsPage />}
     </AppLayout>
   )
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight,
-  User, BarChart2, HelpCircle, Brain, ShieldCheck,
+  User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell,
 } from 'lucide-react'
 import type { Page } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -20,7 +20,7 @@ interface NavGroup {
 }
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, watchlist, portfolio } = useApp()
+  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount } = useApp()
   const [collapsed, setCollapsed] = useState(false)
 
   const openPositions = portfolio.filter(p => p.status === 'open').length
@@ -44,6 +44,7 @@ export default function Sidebar() {
       items: [
         { id: 'watchlist', label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
         { id: 'portfolio', label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
+        { id: 'alerts',    label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
       ],
     },
   ]
@@ -147,6 +148,17 @@ export default function Sidebar() {
             )}
           </div>
         )}
+
+        {/* Market hours indicator */}
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl ${collapsed ? 'justify-center' : ''}`}
+          title={isMarketHours ? 'Market live — auto-refresh active (6 AM–4 PM PST)' : 'Market closed — auto-refresh paused'}>
+          <Activity size={12} className={isMarketHours ? 'text-emerald-400 animate-pulse' : 'text-gray-700'} />
+          {!collapsed && (
+            <span className={`text-[11px] font-medium ${isMarketHours ? 'text-emerald-400' : 'text-gray-700'}`}>
+              {isMarketHours ? 'Market Live' : 'Market Closed'}
+            </span>
+          )}
+        </div>
 
         {/* Collapse toggle */}
         <button

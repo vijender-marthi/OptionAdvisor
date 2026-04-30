@@ -12,6 +12,29 @@ class AnalyzeRequest(BaseModel):
     strategy_mode: str = 'all'           # 'all' | 'long_only' | 'credit_only'
 
 
+class AlertItem(BaseModel):
+    """A single GO-trade alert to include in the email."""
+    ticker: str
+    company_name: str
+    strategy: str
+    bias: str
+    expiry: str
+    dte: int
+    weeks_out: int
+    score: int
+    max_profit: float
+    max_loss: float
+    net_credit: float
+    pop: float          # probability of profit 0-1
+    ev: float           # expected value per share
+    time_window: str    # "9:30 AM – 9:45 AM PST"
+
+
+class AlertEmailRequest(BaseModel):
+    email: str
+    alerts: list[AlertItem]
+
+
 class UserDataRequest(BaseModel):
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]

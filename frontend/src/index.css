@@ -246,3 +246,80 @@ html.light textarea::placeholder {
 html.light ::-webkit-scrollbar-track { background: #d1d5db; }
 html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
 html.light ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+/* Help page needs document-style light surfaces instead of dark card colors. */
+html.light .help-page .bg-gray-900 { background-color: #f8fafc; }
+html.light .help-page .bg-gray-800 { background-color: #eef2f7; }
+html.light .help-page .bg-gray-700 { background-color: #dbe3ee; }
+html.light .help-page .bg-gray-900\/60 { background-color: rgba(248,250,252,0.95); }
+html.light .help-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.9); }
+html.light .help-page .bg-gray-800\/60 { background-color: rgba(241,245,249,0.96); }
+html.light .help-page .bg-gray-800\/50 { background-color: rgba(241,245,249,0.9); }
+html.light .help-page .bg-gray-800\/40 { background-color: rgba(241,245,249,0.82); }
+html.light .help-page .border-gray-800 { border-color: #cbd5e1; }
+html.light .help-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.45); }
+html.light .help-page .border-gray-700,
+html.light .help-page .border-gray-700\/50 { border-color: rgba(148,163,184,0.55); }
+html.light .help-page .hover\:bg-gray-800\/40:hover { background-color: rgba(226,232,240,0.72); }
+html.light .help-page .text-gray-700 { color: #475569; }
+html.light .help-page .text-gray-600 { color: #475569; }
+html.light .help-page .text-gray-500 { color: #334155; }
+html.light .help-page .text-gray-400 { color: #334155; }
+html.light .help-page .text-gray-300 { color: #1f2937; }
+html.light .help-page .text-yellow-400 { color: #a16207; }
+html.light .help-page .text-amber-300,
+html.light .help-page .text-amber-400 { color: #92400e; }
+html.light .help-page .bg-amber-900\/40,
+html.light .help-page .bg-amber-900\/30,
+html.light .help-page .bg-amber-900\/20 { background-color: #fef3c7; }
+html.light .help-page .border-amber-700,
+html.light .help-page .border-amber-800,
+html.light .help-page .border-amber-800\/50 { border-color: #d97706; }
+html.light .help-page .bg-blue-950\/40 { background-color: #dbeafe; }
+html.light .help-page .border-blue-800\/50 { border-color: #60a5fa; }
+html.light .help-page .bg-violet-950\/40 { background-color: #ede9fe; }
+
+/* Alerts page light mode: high-contrast cards and readable alert badges. */
+html.light .alerts-page .bg-gray-900 { background-color: #f8fafc; }
+html.light .alerts-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
+html.light .alerts-page .bg-gray-800 { background-color: #eef2f7; }
+html.light .alerts-page .bg-gray-800\/60 { background-color: rgba(241,245,249,0.94); }
+html.light .alerts-page .bg-gray-700 { background-color: #dbe3ee; }
+html.light .alerts-page .border-gray-800 { border-color: #cbd5e1; }
+html.light .alerts-page .border-gray-700 { border-color: #94a3b8; }
+html.light .alerts-page .border-emerald-800\/50 { border-color: rgba(16,185,129,0.55); }
+html.light .alerts-page .shadow-emerald-900\/20 { box-shadow: 0 1px 8px rgba(16,185,129,0.16); }
+html.light .alerts-page .text-gray-700 { color: #475569; }
+html.light .alerts-page .text-gray-600 { color: #475569; }
+html.light .alerts-page .text-gray-500 { color: #334155; }
+html.light .alerts-page .text-gray-400 { color: #334155; }
+html.light .alerts-page .text-gray-300 { color: #1f2937; }
+html.light .alerts-page .text-white { color: #0f172a; }
+html.light .alerts-page .bg-emerald-900\/50,
+html.light .alerts-page .bg-emerald-900\/30,
+html.light .alerts-page .bg-emerald-900\/20 { background-color: #d1fae5; }
+html.light .alerts-page .border-emerald-700,
+html.light .alerts-page .border-emerald-800 { border-color: #10b981; }
+html.light .alerts-page .text-emerald-300,
+html.light .alerts-page .text-emerald-400,
+html.light .alerts-page .text-emerald-600 { color: #047857; }
+html.light .alerts-page .bg-red-900\/30 { background-color: #fee2e2; }
+html.light .alerts-page .border-red-800,
+html.light .alerts-page .hover\:border-red-700:hover { border-color: #ef4444; }
+html.light .alerts-page .text-red-300,
+html.light .alerts-page .text-red-400,
+html.light .alerts-page .hover\:text-red-400:hover { color: #b91c1c; }
+html.light .alerts-page .bg-amber-900\/30 { background-color: #fef3c7; }
+html.light .alerts-page .border-amber-800 { border-color: #d97706; }
+html.light .alerts-page .text-amber-300,
+html.light .alerts-page .text-amber-400 { color: #92400e; }
+html.light .alerts-page .bg-blue-950\/30 { background-color: #dbeafe; }
+html.light .alerts-page .border-blue-900\/50 { border-color: #60a5fa; }
+html.light .alerts-page .text-blue-300\/80,
+html.light .alerts-page .text-blue-400 { color: #1d4ed8; }
+html.light .alerts-page .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
+html.light .alerts-page .bg-violet-600\/30,
+html.light .alerts-page .hover\:bg-violet-600\/30:hover { background-color: rgba(196,181,253,0.72); }
+html.light .alerts-page .border-violet-700 { border-color: #8b5cf6; }
+html.light .alerts-page .text-violet-300,
+html.light .alerts-page .text-violet-400 { color: #6d28d9; }

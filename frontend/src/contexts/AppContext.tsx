@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
-import type { Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
+import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
-import { analyzeOptions, getUserData, saveUserData } from '../api/client'
+import { analyzeOptions, getUserData, saveUserData, sendAlertEmail } from '../api/client'
+import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 
 // ─── Router ────────────────────────────────────────────────────────────────────
 function getHashPage(): Page {
@@ -13,7 +14,67 @@ function getHashPage(): Page {
   if (h === 'login') return 'login'
   if (h === 'ai-stocks') return 'ai-stocks'
   if (h === 'trade-signals') return 'trade-signals'
+  if (h === 'alerts') return 'alerts'
   return 'ticker'
+}
+
+// ─── Alert time-window helper ───────────────────────────────────────────────────
+// Returns a PST "HH:MM AM – HH:MM AM PST" label for a 15-min bucket
+function get15MinWindow(ts: number): string {
+  const pacific = getPacificDateParts(ts)
+  if (!pacific) return new Date(ts).toLocaleTimeString()
+
+  const bucketStart = Math.floor(pacific.minute / 15) * 15
+  const bucketEnd = bucketStart + 15
+  const fmtTime = (hh: number, mm: number) => {
+    const ampm = hh >= 12 ? 'PM' : 'AM'
+    const h12 = hh % 12 || 12
+    return `${h12}:${String(mm).padStart(2, '0')} ${ampm}`
+  }
+  const endH = bucketEnd === 60 ? pacific.hour + 1 : pacific.hour
+  const endM = bucketEnd === 60 ? 0 : bucketEnd
+  return `${fmtTime(pacific.hour, bucketStart)} – ${fmtTime(endH, endM)} PT`
+}
+
+// ─── Market hours helper ────────────────────────────────────────────────────────
+// Returns true if "now" is a weekday between 6:00 AM and 4:00 PM America/Los_Angeles
+function isMarketHoursNow(): boolean {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date())
+    const value = (type: string) => parts.find(part => part.type === type)?.value ?? ''
+    const weekday = value('weekday')
+    if (weekday === 'Sat' || weekday === 'Sun') return false
+    const hour = Number(value('hour'))
+    const minute = Number(value('minute'))
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false
+    const mins = hour * 60 + minute
+    return mins >= 6 * 60 && mins < 16 * 60  // 6:00 AM – 4:00 PM Pacific
+  } catch {
+    return false
+  }
+}
+
+function getPacificDateParts(ts: number): { hour: number; minute: number } | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date(ts))
+    const hour = Number(parts.find(part => part.type === 'hour')?.value)
+    const minute = Number(parts.find(part => part.type === 'minute')?.value)
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+    return { hour, minute }
+  } catch {
+    return null
+  }
 }
 
 // ─── Context shape ──────────────────────────────────────────────────────────────
@@ -53,9 +114,17 @@ interface AppContextValue {
   refreshingTickers: Set<string>
   refreshTicker: (ticker: string) => Promise<void>
   lastBgRefresh: number | null   // timestamp of last background sweep
+  isMarketHours: boolean         // true when within 6 AM–4 PM PST weekdays
+  refreshWatchlistForAlerts: () => Promise<void>
   // Multi-week scan (2,3,4,6,8 weeks) — stored inside the cache entry's multiWeekData
   fetchAllWeeks: (ticker: string) => Promise<void>
   fetchingAllWeeks: Set<string>
+
+  // Alerts
+  alerts: AlertEntry[]
+  unreadAlertCount: number
+  dismissAlert: (id: string) => void
+  clearAlerts: () => void
 
   // Theme
   theme: 'dark' | 'light'
@@ -63,6 +132,7 @@ interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
+const ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 
 // ─── Persistence helpers ────────────────────────────────────────────────────────
 function load<T>(key: string, fallback: T): T {
@@ -73,6 +143,10 @@ function load<T>(key: string, fallback: T): T {
 }
 function save<T>(key: string, val: T) {
   try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
+}
+
+function activeAlertsOnly(alerts: AlertEntry[], now = Date.now()): AlertEntry[] {
+  return alerts.filter(alert => now - alert.detectedAt < ALERT_RETENTION_MS)
 }
 
 function getInitialTheme(): 'dark' | 'light' {
@@ -94,12 +168,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [refreshingTickers, setRefreshingTickers]   = useState<Set<string>>(new Set())
   const [fetchingAllWeeks, setFetchingAllWeeks]     = useState<Set<string>>(new Set())
   const [lastBgRefresh, setLastBgRefresh]           = useState<number | null>(null)
+  const [isMarketHours, setIsMarketHours]           = useState<boolean>(isMarketHoursNow)
+  const [alerts, setAlerts]                         = useState<AlertEntry[]>(() => activeAlertsOnly(load<AlertEntry[]>('oa_alerts', [])))
+  // Dedup: once an alert fires for (ticker-strategy-expiry), never fire again this session
+  const sentAlertKeysRef = useRef<Set<string>>(new Set(load<string[]>('oa_sent_alert_keys', [])))
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
   const [userDataLoaded, setUserDataLoaded] = useState(false)
 
-  // Keep a ref to watchlist so the interval closure always sees current value
+  // Keep refs so interval/async closures always see current values
   const watchlistRef = useRef(watchlist)
   useEffect(() => { watchlistRef.current = watchlist }, [watchlist])
+  const userRef = useRef(user)
+  useEffect(() => { userRef.current = user }, [user])
   const tickerCacheRef = useRef(tickerCache)
   useEffect(() => { tickerCacheRef.current = tickerCache }, [tickerCache])
 
@@ -118,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Persist
   useEffect(() => { save('oa_user', user) }, [user])
   useEffect(() => { save('oa_cache', tickerCache) }, [tickerCache])
+  useEffect(() => { save('oa_alerts', activeAlertsOnly(alerts)) }, [alerts])
   useEffect(() => {
     save('oa_theme', theme)
     const html = document.documentElement
@@ -279,6 +360,93 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme(t => t === 'dark' ? 'light' : 'dark')
   }, [])
 
+  // ── Alert actions ───────────────────────────────────────────────────────────
+  const dismissAlert = useCallback((id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, dismissed: true } : a))
+  }, [])
+
+  const clearAlerts = useCallback(() => {
+    setAlerts([])
+    sentAlertKeysRef.current.clear()
+    save('oa_alerts', [])
+    save('oa_sent_alert_keys', [])
+  }, [])
+
+  // ── scanForGoAlerts: consumes cached AnalyzeResponse data — ZERO API calls ───
+  const scanForGoAlerts = useCallback(async (
+    ticker: string,
+    data: AnalyzeResponse,
+    companyName: string,
+  ) => {
+    const newAlerts: AlertEntry[] = []
+    const now = Date.now()
+    const timeWindow = get15MinWindow(now)
+
+    for (const rec of data.recommendations) {
+      const dedupKey = `${ticker}-${rec.strategy}-${rec.expiry}`
+      if (sentAlertKeysRef.current.has(dedupKey)) continue  // already alerted
+
+      const verdict = deriveVerdict(buildChecklist(rec, data.signals))
+      if (verdict !== 'GO') continue
+
+      sentAlertKeysRef.current.add(dedupKey)
+      newAlerts.push({
+        id: dedupKey,
+        ticker,
+        companyName,
+        strategy: rec.strategy,
+        bias: rec.bias,
+        expiry: rec.expiry,
+        dte: rec.dte,
+        weeksOut: Math.round(rec.dte / 7),
+        score: rec.scores.total_score,
+        maxProfit: rec.max_profit,
+        maxLoss: rec.max_loss,
+        netCredit: rec.net_credit,
+        pop: rec.prob_of_profit,
+        ev: rec.expected_value,
+        detectedAt: now,
+        timeWindow,
+        emailSent: false,
+        dismissed: false,
+      })
+    }
+
+    if (newAlerts.length === 0) return
+    save('oa_sent_alert_keys', Array.from(sentAlertKeysRef.current))
+
+    // Add to alerts page
+    setAlerts(prev => activeAlertsOnly([...newAlerts, ...prev]))
+
+    // Send email if user is logged in — use ref to get current user without stale closure
+    const currentUser = userRef.current
+    if (currentUser?.email) {
+      try {
+        const result = await sendAlertEmail(currentUser.email, newAlerts)
+        if (result.sent) {
+          setAlerts(prev => prev.map(a =>
+            newAlerts.some(n => n.id === a.id) ? { ...a, emailSent: true } : a
+          ))
+        }
+      } catch {
+        // Email failure is non-fatal — alert still shows in app
+      }
+    }
+  }, [])
+
+  const scanCachedTickerForGoAlerts = useCallback(async (ticker: string) => {
+    const entry = tickerCacheRef.current[ticker]
+    if (!entry) return
+    await scanForGoAlerts(entry.ticker, entry.data, entry.data.company_name)
+  }, [scanForGoAlerts])
+
+  const scanCachedWatchlistForGoAlerts = useCallback(async () => {
+    const tickers = watchlistRef.current.map(w => w.ticker)
+    for (const ticker of tickers) {
+      await scanCachedTickerForGoAlerts(ticker)
+    }
+  }, [scanCachedTickerForGoAlerts])
+
   // ── refreshTicker: re-fetch one ticker and update cache ─────────────────────
   const refreshTicker = useCallback(async (ticker: string) => {
     const existing = tickerCacheRef.current[ticker]
@@ -288,20 +456,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setRefreshingTickers(prev => new Set(prev).add(ticker))
     try {
+      // ONE Yahoo API fetch — used for both cache update AND alert scanning
       const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
       const entry: TickerCacheEntry = { ticker, data, timestamp: Date.now(), weeksOut, spreadWidth, strategyMode }
+      tickerCacheRef.current = { ...tickerCacheRef.current, [ticker]: entry }
       setTickerCache(prev => ({ ...prev, [ticker]: entry }))
       setWatchlist(prev => prev.map(w =>
         w.ticker === ticker
           ? { ...w, lastPrice: data.signals.current_price, companyName: data.company_name, sector: data.sector }
           : w
       ))
+      // Alert processing reads the cache entry, not a second API calculation.
+      scanCachedTickerForGoAlerts(ticker)
     } catch (e) {
       console.warn(`[cache] refresh failed for ${ticker}:`, e)
     } finally {
       setRefreshingTickers(prev => { const n = new Set(prev); n.delete(ticker); return n })
     }
-  }, [])
+  }, [scanCachedTickerForGoAlerts])
+
+  const refreshWatchlistForAlerts = useCallback(async (force = true) => {
+    const cachedTickers = watchlistRef.current
+      .map(w => w.ticker)
+      .filter(ticker => !!tickerCacheRef.current[ticker])
+    const tickersToRefresh = cachedTickers.filter(ticker => {
+        const entry = tickerCacheRef.current[ticker]
+        return force || !isCacheFresh(entry)
+      })
+
+    for (let i = 0; i < tickersToRefresh.length; i++) {
+      const ticker = tickersToRefresh[i]
+      await new Promise(r => setTimeout(r, i * 2000))
+      await refreshTicker(ticker)
+    }
+
+    await scanCachedWatchlistForGoAlerts()
+    setLastBgRefresh(Date.now())
+  }, [refreshTicker, scanCachedWatchlistForGoAlerts])
 
   // ── fetchAllWeeks: fetch 2,3,4,6,8 week expiries and store in multiWeekData ──
   const fetchAllWeeks = useCallback(async (ticker: string) => {
@@ -330,31 +521,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFetchingAllWeeks(prev => { const n = new Set(prev); n.delete(ticker); return n })
   }, [fetchingAllWeeks])
 
-  // ── Background refresh: every 15 minutes, sweep all watched tickers ─────────
+  // ── Keep isMarketHours current (re-check every minute) ──────────────────────
+  useEffect(() => {
+    const id = setInterval(() => setIsMarketHours(isMarketHoursNow()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    const prune = () => setAlerts(prev => activeAlertsOnly(prev))
+    prune()
+    const id = setInterval(prune, 60 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // ── Background refresh: every 15 minutes, sweep stale watched tickers ────────
+  // Only fires during market hours: 6:00 AM – 4:00 PM PST, weekdays only.
   useEffect(() => {
     const sweep = async () => {
-      const tickers = watchlistRef.current.map(w => w.ticker)
-      if (tickers.length === 0) return
-
-      setLastBgRefresh(Date.now())
-      // Stagger: 2 s between each call to avoid flooding the API
-      for (let i = 0; i < tickers.length; i++) {
-        const t = tickers[i]
-        // Only refresh if we have cached data (don't auto-fetch tickers never analyzed)
-        if (!tickerCacheRef.current[t]) continue
-        // Skip if already refreshing or recently refreshed (< 14 min old)
-        const entry = tickerCacheRef.current[t]
-        if (entry && isCacheFresh(entry)) continue
-        await new Promise(r => setTimeout(r, i * 2000))
-        // Re-check after delay (user may have navigated away or manual refresh ran)
-        if (tickerCacheRef.current[t] && isCacheFresh(tickerCacheRef.current[t])) continue
-        refreshTicker(t)
-      }
+      // Gate on PST market hours
+      if (!isMarketHoursNow()) return
+      await refreshWatchlistForAlerts(false)
     }
 
+    sweep()
     const id = setInterval(sweep, CACHE_TTL_MS)
     return () => clearInterval(id)
-  }, [refreshTicker])
+  }, [refreshWatchlistForAlerts, watchlist.length])
+
+  const unreadAlertCount = alerts.filter(a => !a.dismissed).length
 
   return (
     <AppContext.Provider value={{
@@ -364,8 +558,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
       portfolio, addToPortfolio, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
-      refreshingTickers, refreshTicker, lastBgRefresh,
+      refreshingTickers, refreshTicker, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
       fetchAllWeeks, fetchingAllWeeks,
+      alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,
     }}>
       {children}

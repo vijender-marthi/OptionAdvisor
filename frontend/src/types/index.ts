@@ -135,7 +135,47 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'trade-signals' | 'login'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'trade-signals' | 'alerts' | 'login'
+
+// ─── Alert system ───────────────────────────────────────────
+
+export interface AlertEntry {
+  id: string                 // dedup key: ticker-strategy-expiry
+  ticker: string
+  companyName: string
+  strategy: string
+  bias: string
+  expiry: string
+  dte: number
+  weeksOut: number
+  score: number
+  maxProfit: number          // per-share
+  maxLoss: number            // per-share
+  netCredit: number          // per-share (negative = debit)
+  pop: number                // probability of profit 0-1
+  ev: number                 // expected value per share
+  detectedAt: number         // Date.now() timestamp
+  timeWindow: string         // e.g. "9:30 AM – 9:45 AM PST"
+  emailSent: boolean
+  dismissed: boolean
+}
+
+export interface AlertEmailItem {
+  ticker: string
+  company_name: string
+  strategy: string
+  bias: string
+  expiry: string
+  dte: number
+  weeks_out: number
+  score: number
+  max_profit: number
+  max_loss: number
+  net_credit: number
+  pop: number
+  ev: number
+  time_window: string
+}
 
 export interface User {
   name: string

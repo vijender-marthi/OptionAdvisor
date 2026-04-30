@@ -257,7 +257,7 @@ function TickerRow({
 export default function WatchlistPage() {
   const {
     watchlist, removeFromWatchlist, addToWatchlist,
-    requestAnalysis, getCached, refreshTicker, refreshingTickers, lastBgRefresh,
+    requestAnalysis, getCached, refreshTicker, refreshingTickers, lastBgRefresh, refreshWatchlistForAlerts,
   } = useApp()
 
   const [search,    setSearch]    = useState('')
@@ -359,7 +359,7 @@ export default function WatchlistPage() {
   const anyRefreshing = refreshingTickers.size > 0
 
   const refreshAll = () => {
-    watchlist.forEach(w => refreshTicker(w.ticker))
+    refreshWatchlistForAlerts()
   }
 
   return (

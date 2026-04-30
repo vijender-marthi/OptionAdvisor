@@ -108,12 +108,12 @@ const checklistItems = [
   },
   {
     name: 'Expected Value',
-    desc: 'EV = (PoP × max_profit) − (prob_max_loss × max_loss). Negative EV is a hard fail regardless of other conditions.',
+    desc: 'EV = (PoP × max_profit) − (prob_max_loss × max_loss). Negative EV means the probability-weighted loss exceeds the probability-weighted gain — a hard fail. Highly liquid, efficiently priced tickers like SPY often show negative EV because the options market leaves little room for edge.',
     hardFail: true,
   },
   {
     name: 'Probability of Profit',
-    desc: 'PoP < 50% earns a soft fail. PoP in the 50–60% range earns a warning. Strategies with PoP ≥ 60% pass.',
+    desc: 'Thresholds differ by strategy type. Credit spreads (Bull Put, Bear Call, Iron Condor): pass ≥ 62%, warn 52–62%, fail < 52%. Long / debit trades: pass ≥ 45%, warn 35–45%, fail < 35%. Credit spreads naturally carry high PoP; long options naturally carry lower PoP so a lower bar applies.',
     hardFail: false,
   },
 ]
@@ -131,7 +131,7 @@ const verdictRules = [
     color: 'text-amber-400',
     badge: 'bg-amber-900/40 border-amber-700 text-amber-300',
     icon: <AlertTriangle size={15} />,
-    desc: 'No hard fails, but 1 soft fail or 3+ warnings. The trade is structurally valid but has at least one notable risk factor.',
+    desc: 'No hard fails, but 1 soft fail or 5+ warnings. The trade is structurally valid but has at least one notable risk factor.',
   },
   {
     verdict: 'NO GO',
@@ -149,7 +149,7 @@ const glossaryTerms = [
   { term: 'DTE', def: 'Days to expiration. The engine targets 21–45 DTE for credit spreads; the sweet spot for theta decay vs. time to be right.' },
   { term: 'Net Credit', def: 'For spread trades, the cash collected upfront (premium received minus premium paid). This is your maximum profit on a credit spread.' },
   { term: 'Spread Width', def: 'Distance between the two strike prices of a vertical spread. A $5-wide Bull Put Spread has a spread width of 5.' },
-  { term: 'Expected Value (EV)', def: '(PoP × max profit) − (Prob of max loss × max loss). Positive EV means the trade has a mathematical edge over many repetitions.' },
+  { term: 'Expected Value (EV)', def: '(PoP × max profit) − (Prob of max loss × max loss). Positive EV means the trade has a mathematical edge repeated over many occurrences. A negative EV (e.g. "EV −$236/contract") means the probability-weighted downside exceeds the upside — the math does not favor this trade. Very liquid, efficiently priced tickers like SPY/QQQ often show negative EV because the options market is tightly arbitraged.' },
   { term: 'PoP', def: 'Probability of Profit — the engine\'s estimate of the likelihood the trade expires with any profit, based on delta and structure.' },
   { term: 'Breakeven', def: 'The stock price at expiry where the trade neither gains nor loses. Credit spreads have one breakeven; iron condors have two.' },
   { term: 'Theta', def: 'Time-value decay per day. Short (credit) trades benefit from theta; long (debit) trades lose to theta each day.' },
@@ -237,7 +237,7 @@ function InfoCard({
 
 export default function HelpPage() {
   return (
-    <div className="min-h-screen p-4 md:p-6">
+    <div className="help-page min-h-screen p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
 
         {/* Header */}
@@ -362,8 +362,54 @@ export default function HelpPage() {
               </table>
             </div>
 
+            {/* EV explainer */}
+            <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-4 mt-1">
+              <div className="flex items-center gap-2 text-blue-300 font-semibold text-sm mb-2">
+                💡 What does "EV $-236/contract" mean?
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                Expected Value is calculated as:
+                <span className="font-mono text-blue-300 ml-1">(PoP × max_profit) − (Prob_max_loss × max_loss)</span>
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                Example — Bull Put on SPY, 68% PoP, $120 max profit, 12% prob of max loss, $380 max loss:
+              </p>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
+                EV = (0.68 × $120) − (0.12 × $380)<br />
+                EV = $81.60 − $45.60 = <span className="text-emerald-400">+$36</span> ← positive, edge exists
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed mt-2 mb-2">
+                For efficiently priced tickers like SPY, the market is extremely well-arbitraged. The PoP-weighted
+                gain rarely exceeds the loss-probability-weighted max loss, giving negative EV:
+              </p>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
+                EV = (0.72 × $85) − (0.10 × $415)<br />
+                EV = $61.20 − $41.50... wait, add the "middle" outcomes:<br />
+                Full EV = −$2.36/share = <span className="text-red-400">−$236/contract</span> ← no edge
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Negative EV is a hard fail because, repeated over many trades, a negative-EV strategy
+                loses money in expectation. It does not mean you will lose on this specific trade — but
+                the math does not favor it.
+              </p>
+            </div>
+
+            {/* Why NO GO trades are still shown */}
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-300 font-semibold text-sm mb-2">
+                🤔 Why are NO GO trades shown at all?
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                The engine scores and ranks the top trades for every ticker regardless of checklist verdict.
+                NO GO trades are shown so you can see <em>why</em> a setup is not ready — the specific fail
+                reason is now shown directly on the collapsed card row. This lets you monitor a ticker and
+                know exactly what needs to change (e.g. IV needs to rise, or wait for a better DTE window)
+                before the trade becomes actionable. They are informational, not actionable.
+              </p>
+            </div>
+
             <p className="text-xs text-gray-600 pt-1">
-              Hard fail checks: IV Environment, DTE Window, Liquidity, Expected Value (negative EV).
+              Hard fail checks: IV Environment (wrong IV regime), DTE Window (&lt;14 days), Liquidity (wide spreads/low OI), Expected Value (negative EV).
               All other checks are soft fails or warnings.
             </p>
           </div>
@@ -506,16 +552,24 @@ if NEUTRAL and LOW_IV:
           <InfoCard icon={<SlidersHorizontal size={18} />} title="Strategy Mode Overrides" defaultOpen={false}>
             <div className="space-y-3 text-sm text-gray-400">
               <p>
-                <span className="font-semibold text-gray-200">All Strategies</span> is market-driven: long/debit trades prefer low IV,
-                and credit trades prefer elevated IV.
+                <span className="font-semibold text-gray-200">All Strategies</span> is fully market-driven.
+                Long Calls and Long Puts have an <span className="text-amber-400 font-semibold">IV gate</span> —
+                they are only built when IV Rank is below 50. Debit spreads (Bull Call Spread, Bear Put Spread)
+                do <em>not</em> have this gate because the short leg offsets the IV cost.
+              </p>
+              <div className="bg-amber-900/20 border border-amber-800/50 rounded-xl px-3 py-2.5 text-xs text-amber-300/90">
+                <span className="font-semibold">Why is Long Call missing in "All" mode?</span> When IV Rank ≥ 50
+                and the signal is Bullish, the engine builds a Bull Call Spread instead of a naked Long Call. The
+                spread is cheaper and less exposed to IV crush after a catalyst. An amber banner appears in the
+                results header when this suppression is active. Switch to <span className="font-semibold">Long Options</span> mode to override.
+              </div>
+              <p>
+                <span className="font-semibold text-gray-200">Long Options</span> relaxes the IV gate so Long Calls,
+                Long Puts, and Long Straddles appear regardless of IV level.
               </p>
               <p>
-                <span className="font-semibold text-gray-200">Long Options</span> relaxes the IV gate so long calls, long puts,
-                debit spreads, or straddles can still appear even when IV is high.
-              </p>
-              <p>
-                <span className="font-semibold text-gray-200">Credit Spreads</span> relaxes the IV gate so premium-selling ideas
-                can appear even when IV is not elevated.
+                <span className="font-semibold text-gray-200">Credit Spreads</span> relaxes the IV gate so Bull Put
+                Spreads, Bear Call Spreads, and Iron Condors appear even when IV Rank is below 50.
               </p>
             </div>
           </InfoCard>

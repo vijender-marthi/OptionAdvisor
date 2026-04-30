@@ -80,7 +80,12 @@ export default function RecommendationCard({
     setContractPickerOpen(true)
   }
 
-  const verdict      = deriveVerdict(buildChecklist(rec, signals))
+  const checkItems      = buildChecklist(rec, signals)
+  const verdict         = deriveVerdict(checkItems)
+  const hardFailReasons = checkItems.filter(i => i.status === 'fail' && i.hard).map(i => i.label)
+  const softFailReasons = checkItems.filter(i => i.status === 'fail' && !i.hard).map(i => i.label)
+  const blockingReasons = [...hardFailReasons, ...softFailReasons].slice(0, 3)
+
   const verdictBadge = verdict === 'GO'
     ? 'bg-emerald-900/50 text-emerald-400 border-emerald-700'
     : verdict === 'CAUTION'
@@ -142,8 +147,13 @@ export default function RecommendationCard({
 
       {!open && (
         <div className="flex items-center justify-between gap-3 px-4 pb-3 -mt-1 flex-wrap">
-          <div className="text-xs text-gray-500">
-            Add this trade idea to your portfolio tracker with contract sizing.
+          <div className="text-xs">
+            {verdict === 'NO GO' && blockingReasons.length > 0
+              ? <span className="text-red-400/80">🚫 Blocked: {blockingReasons.join(' · ')}</span>
+              : verdict === 'CAUTION' && blockingReasons.length > 0
+              ? <span className="text-amber-400/80">⚠️ Caution: {blockingReasons.join(' · ')}</span>
+              : <span className="text-gray-500">Add this trade idea to your portfolio tracker with contract sizing.</span>
+            }
           </div>
           {!inPortfolio ? (
             <button

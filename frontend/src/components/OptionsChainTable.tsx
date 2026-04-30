@@ -20,7 +20,7 @@ function Table({ rows, currentPrice, type }: { rows: OptionRow[]; currentPrice: 
             <th className="text-right py-2 pr-4">Volume</th>
             <th className="text-right py-2 pr-4">OI</th>
             <th className="text-right py-2 pr-4">IV</th>
-            {rows[0]?.delta !== undefined && <th className="text-right py-2">Delta</th>}
+            <th className="text-right py-2">Delta</th>
           </tr>
         </thead>
         <tbody>
@@ -40,9 +40,7 @@ function Table({ rows, currentPrice, type }: { rows: OptionRow[]; currentPrice: 
                 <td className="text-right py-1.5 pr-4 text-gray-400">{row.volume.toLocaleString()}</td>
                 <td className="text-right py-1.5 pr-4 text-gray-400">{row.open_interest.toLocaleString()}</td>
                 <td className="text-right py-1.5 pr-4 text-amber-400">{row.implied_volatility}</td>
-                {row.delta !== undefined && (
-                  <td className="text-right py-1.5 text-blue-400">{row.delta?.toFixed(3)}</td>
-                )}
+                <td className="text-right py-1.5 text-blue-400">{row.delta != null ? row.delta.toFixed(3) : '—'}</td>
               </tr>
             )
           })}

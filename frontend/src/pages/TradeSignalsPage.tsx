@@ -390,12 +390,6 @@ export default function TradeSignalsPage() {
       .filter((result): result is TickerResult => result !== null)
   }, [results, selectedWeek])
 
-  useEffect(() => {
-    if (selectedWeek !== 'All' && !weekOptions.some(option => option.weeksOut === selectedWeek && option.count > 0)) {
-      setSelectedWeek('All')
-    }
-  }, [selectedWeek, weekOptions])
-
   const goCount    = weekFilteredResults.filter(r => r.topVerdict === 'GO').length
   const cauCount   = weekFilteredResults.filter(r => r.topVerdict === 'CAUTION').length
   const nogoCount  = weekFilteredResults.filter(r => r.topVerdict === 'NO GO').length
@@ -411,7 +405,9 @@ export default function TradeSignalsPage() {
   const handleRefreshAll = async () => {
     setRefreshingAll(true)
     for (const w of watchlist) {
-      if (tickerCache[w.ticker]) await refreshTicker(w.ticker)
+      if (!tickerCache[w.ticker]) continue
+      if (selectedWeek === 'All') await refreshTicker(w.ticker)
+      await fetchAllWeeks(w.ticker)
     }
     setRefreshingAll(false)
   }
@@ -459,7 +455,7 @@ export default function TradeSignalsPage() {
               <button onClick={handleRefreshAll} disabled={refreshingAll}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-400 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50">
-                <RefreshCw size={12} className={refreshingAll ? 'animate-spin' : ''} /> Refresh All
+                <RefreshCw size={12} className={refreshingAll ? 'animate-spin' : ''} /> Refresh Trades
               </button>
             </div>
           </div>
@@ -468,7 +464,7 @@ export default function TradeSignalsPage() {
             <Layers size={13} className="text-violet-400 mt-0.5 shrink-0" />
             <p className="text-[11px] text-gray-500 leading-relaxed">
               <span className="text-gray-300 font-semibold">How multi-week works:</span> Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting).
-              Click <span className="text-violet-300 font-semibold">Fetch All Weeks</span> on a card to fetch expiries at 2, 3, 4, 6, and 8 weeks — the colored dots show which windows have been scanned.
+              Use the week dropdown to focus the page on one DTE window. Click <span className="text-violet-300 font-semibold">Refresh Trades</span> to fetch 2, 3, 4, 6, and 8 week scans for all analyzed tickers.
               Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched.
             </p>
           </div>
@@ -480,9 +476,31 @@ export default function TradeSignalsPage() {
             <div>
               <div className="text-xs font-semibold text-gray-300">Global DTE Window Filter</div>
               <div className="text-[11px] text-gray-600">
-                Select a 2w to 8w window to show only trades from that expiry range across all tickers.
+                Select a 2w to 8w window, then refresh trades to populate and show that range across all analyzed tickers.
               </div>
             </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={selectedWeek}
+              onChange={e => setSelectedWeek(e.target.value === 'All' ? 'All' : Number(e.target.value))}
+              className="min-w-[180px] rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-semibold text-gray-200 outline-none transition-colors focus:border-violet-500"
+            >
+              <option value="All">All Windows ({results.length})</option>
+              {weekOptions.map(option => (
+                <option key={option.weeksOut} value={option.weeksOut}>
+                  {option.weeksOut} weeks ({option.count} trades)
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleRefreshAll}
+              disabled={refreshingAll || results.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-700 bg-violet-600/20 px-3 py-2 text-xs font-semibold text-violet-300 transition-colors hover:bg-violet-600/30 hover:text-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={refreshingAll ? 'animate-spin' : ''} />
+              {refreshingAll ? 'Refreshing trades…' : selectedWeek === 'All' ? 'Refresh All Trades' : `Refresh ${selectedWeek}w Trades`}
+            </button>
             {selectedWeek !== 'All' && (
               <button
                 onClick={() => setSelectedWeek('All')}
@@ -491,40 +509,6 @@ export default function TradeSignalsPage() {
                 Clear window
               </button>
             )}
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setSelectedWeek('All')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                selectedWeek === 'All'
-                  ? 'bg-violet-600 border-violet-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'
-              }`}
-            >
-              All Windows
-              <span className={`font-mono ${selectedWeek === 'All' ? 'opacity-80' : 'text-gray-600'}`}>{results.length}</span>
-            </button>
-            {weekOptions.map(option => {
-              const active = selectedWeek === option.weeksOut
-              const disabled = option.count === 0
-              return (
-                <button
-                  key={option.weeksOut}
-                  onClick={() => setSelectedWeek(option.weeksOut)}
-                  disabled={disabled}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                    active
-                      ? 'bg-emerald-700 border-emerald-600 text-white'
-                      : disabled
-                      ? 'bg-gray-900 border-gray-800 text-gray-700 cursor-not-allowed'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'
-                  }`}
-                >
-                  {option.weeksOut}w
-                  <span className={`font-mono ${active ? 'opacity-80' : 'text-gray-600'}`}>{option.count}</span>
-                </button>
-              )
-            })}
           </div>
         </div>
 
