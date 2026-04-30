@@ -34,10 +34,6 @@ function groupByWindow(alerts: AlertEntry[]): { window: string; ts: number; item
     .sort((a, b) => b.ts - a.ts)  // newest window first
 }
 
-const biasColor = (b: string) =>
-  b.toLowerCase().includes('bull') ? 'text-green-400' :
-  b.toLowerCase().includes('bear') ? 'text-red-400' : 'text-amber-400'
-
 const biasBg = (b: string) =>
   b.toLowerCase().includes('bull') ? 'bg-green-900/30 border-green-800 text-green-300' :
   b.toLowerCase().includes('bear') ? 'bg-red-900/30 border-red-800 text-red-300' :

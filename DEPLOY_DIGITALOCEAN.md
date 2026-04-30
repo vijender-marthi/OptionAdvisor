@@ -4,7 +4,7 @@ This guide deploys the React frontend with Nginx and the FastAPI backend with sy
 
 ## 1. Create Droplet and Volume
 
-Create an Ubuntu LTS Droplet, then create and attach a DigitalOcean Volume.
+Create an Ubuntu LTS Droplet, then create and attach a DigitalOcean Volume. This guide assumes the Linux user on the Droplet is `fluxtrade` and the app domain is `optionadvisor.zetayuai.com`.
 
 Example volume mount point:
 
@@ -21,11 +21,12 @@ df -h
 
 If DigitalOcean did not auto-mount it, follow the mount commands shown in the DigitalOcean volume page, then persist it in `/etc/fstab`.
 
-Create the app data directory:
+Confirm the `fluxtrade` user exists, then create the app data directory:
 
 ```bash
+id fluxtrade
 sudo mkdir -p /mnt/optionadvisor-data
-sudo chown -R www-data:www-data /mnt/optionadvisor-data
+sudo chown -R fluxtrade:fluxtrade /mnt/optionadvisor-data
 sudo chmod 750 /mnt/optionadvisor-data
 ```
 
@@ -54,8 +55,8 @@ Example:
 
 ```bash
 sudo mkdir -p /opt/optionadvisor
-sudo chown -R $USER:$USER /opt/optionadvisor
-git clone <your-repo-url> /opt/optionadvisor
+sudo chown -R fluxtrade:fluxtrade /opt/optionadvisor
+git clone https://github.com/vijender-marthi/OptionAdvisor.git /opt/optionadvisor
 ```
 
 ## 4. Backend Setup
@@ -92,8 +93,8 @@ Description=OptionAdvisor FastAPI backend
 After=network.target
 
 [Service]
-User=www-data
-Group=www-data
+User=fluxtrade
+Group=fluxtrade
 WorkingDirectory=/opt/optionadvisor/backend
 EnvironmentFile=/etc/optionadvisor.env
 ExecStart=/opt/optionadvisor/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 9000
@@ -108,8 +109,8 @@ EOF
 Set ownership:
 
 ```bash
-sudo chown -R www-data:www-data /opt/optionadvisor/backend
-sudo chown -R www-data:www-data /mnt/optionadvisor-data
+sudo chown -R fluxtrade:fluxtrade /opt/optionadvisor/backend
+sudo chown -R fluxtrade:fluxtrade /mnt/optionadvisor-data
 sudo systemctl daemon-reload
 sudo systemctl enable --now optionadvisor
 sudo systemctl status optionadvisor
@@ -128,18 +129,16 @@ Deploy frontend files:
 ```bash
 sudo mkdir -p /var/www/optionadvisor
 sudo rsync -a --delete dist/ /var/www/optionadvisor/
-sudo chown -R www-data:www-data /var/www/optionadvisor
+sudo chown -R fluxtrade:fluxtrade /var/www/optionadvisor
 ```
 
 ## 7. Nginx
-
-Replace `your-domain.com` with your domain or Droplet IP.
 
 ```bash
 sudo tee /etc/nginx/sites-available/optionadvisor >/dev/null <<'EOF'
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name optionadvisor.zetayuai.com;
 
     root /var/www/optionadvisor;
     index index.html;
@@ -172,7 +171,7 @@ sudo systemctl reload nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
+sudo certbot --nginx -d optionadvisor.zetayuai.com
 ```
 
 ## 9. Verify
