@@ -1,0 +1,248 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Default (dark) theme ───────────────────────────────────── */
+body {
+  background-color: #030712;
+  color: #f1f5f9;
+  font-family: 'Inter', system-ui, sans-serif;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.font-mono { font-family: 'Fira Code', 'Cascadia Code', monospace; }
+
+html.dark { color-scheme: dark; }
+html.light { color-scheme: light; }
+
+/* ── Dark theme surface tuning ──────────────────────────────── */
+html.dark body {
+  background-color: #020617;
+  color: #f1f5f9;
+}
+
+html.dark .bg-gray-950 { background-color: #020617; }
+html.dark .bg-gray-900 { background-color: #08111f; }
+html.dark .bg-gray-800 { background-color: #111c2e; }
+html.dark .bg-gray-700 { background-color: #1e2b3f; }
+html.dark .bg-gray-600 { background-color: #334155; }
+
+html.dark .bg-gray-800\/60 { background-color: rgba(17,28,46,0.72); }
+html.dark .bg-gray-800\/50 { background-color: rgba(17,28,46,0.62); }
+html.dark .bg-gray-800\/40 { background-color: rgba(17,28,46,0.52); }
+html.dark .bg-gray-800\/30 { background-color: rgba(17,28,46,0.42); }
+html.dark .bg-gray-900\/50 { background-color: rgba(8,17,31,0.72); }
+html.dark .bg-gray-900\/40 { background-color: rgba(8,17,31,0.62); }
+html.dark .bg-gray-900\/30 { background-color: rgba(8,17,31,0.52); }
+html.dark .bg-gray-900\/20 { background-color: rgba(8,17,31,0.42); }
+
+html.dark .border-gray-800 { border-color: #162235; }
+html.dark .border-gray-700 { border-color: #26364d; }
+html.dark .border-gray-800\/50 { border-color: rgba(22,34,53,0.72); }
+html.dark .border-gray-700\/50 { border-color: rgba(38,54,77,0.72); }
+
+html.dark .hover\:bg-gray-800:hover { background-color: #132238; }
+html.dark .hover\:bg-gray-700:hover { background-color: #23344e; }
+
+/* ── Light mode overrides ───────────────────────────────────── */
+/* Applied when <html class="light"> is set via AppContext      */
+/* Specificity (0,2,0) beats Tailwind's (0,1,0) — no !important needed */
+
+html.light body {
+  background-color: #d1d5db;
+  color: #0f172a;
+}
+
+/* Page/card/surface backgrounds */
+html.light .bg-gray-950  { background-color: #d1d5db; }
+html.light .bg-gray-900  { background-color: #e5e7eb; }
+html.light .bg-gray-800  { background-color: #d6d9de; }
+html.light .bg-gray-700  { background-color: #c4c9d1; }
+html.light .bg-gray-600  { background-color: #8f98a6; }
+
+/* Alpha-modifier variants */
+html.light .bg-gray-800\/60 { background-color: rgba(214,217,222,0.95); }
+html.light .bg-gray-800\/50 { background-color: rgba(214,217,222,0.9); }
+html.light .bg-gray-800\/40 { background-color: rgba(214,217,222,0.8); }
+html.light .bg-gray-800\/30 { background-color: rgba(214,217,222,0.7); }
+html.light .bg-gray-900\/50 { background-color: rgba(229,231,235,0.9); }
+html.light .bg-gray-900\/40 { background-color: rgba(229,231,235,0.82); }
+html.light .bg-gray-900\/30 { background-color: rgba(229,231,235,0.72); }
+html.light .bg-gray-900\/20 { background-color: rgba(229,231,235,0.62); }
+
+/* Gradient branding panel */
+html.light .from-gray-900 {
+  --tw-gradient-from: #e5e7eb var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(229 231 235 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+html.light .via-violet-950\/30 {
+  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.75) var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+html.light .to-gray-900 {
+  --tw-gradient-to: #d1d5db var(--tw-gradient-to-position);
+}
+
+/* Borders */
+html.light .border-gray-800  { border-color: #e2e8f0; }
+html.light .border-gray-700  { border-color: #cbd5e1; }
+html.light .border-gray-800\/50 { border-color: rgba(226,232,240,0.75); }
+html.light .border-gray-700\/50 { border-color: rgba(203,213,225,0.75); }
+
+/* Text */
+html.light .text-white    { color: #0f172a; }
+html.light .text-gray-100 { color: #111827; }
+html.light .text-gray-200 { color: #1f2937; }
+html.light .text-gray-300 { color: #334155; }
+html.light .text-gray-400 { color: #475569; }
+html.light .text-gray-500 { color: #64748b; }
+html.light .text-gray-600 { color: #64748b; }
+
+/* Accent text needs darker tones on light surfaces than the dark-theme palette. */
+html.light .text-violet-300 { color: #6d28d9; }
+html.light .text-violet-400 { color: #7c3aed; }
+html.light .text-indigo-300 { color: #4f46e5; }
+html.light .text-indigo-400 { color: #4f46e5; }
+html.light .text-blue-300 { color: #2563eb; }
+html.light .text-blue-400 { color: #2563eb; }
+html.light .text-sky-300 { color: #0369a1; }
+html.light .text-sky-400 { color: #0284c7; }
+html.light .text-cyan-300 { color: #0e7490; }
+html.light .text-cyan-400 { color: #0891b2; }
+html.light .text-teal-300 { color: #0f766e; }
+html.light .text-teal-400 { color: #0d9488; }
+html.light .text-emerald-300 { color: #065f46; }
+html.light .text-emerald-400 { color: #047857; }
+html.light .text-emerald-500 { color: #047857; }
+html.light .text-green-300 { color: #166534; }
+html.light .text-green-400 { color: #15803d; }
+html.light .text-amber-300 { color: #b45309; }
+html.light .text-amber-400 { color: #d97706; }
+html.light .text-orange-300 { color: #c2410c; }
+html.light .text-orange-400 { color: #ea580c; }
+html.light .text-rose-300 { color: #be123c; }
+html.light .text-rose-400 { color: #e11d48; }
+html.light .text-red-300 { color: #b91c1c; }
+html.light .text-red-400 { color: #dc2626; }
+
+/* Keep high-contrast text on saturated action surfaces. */
+html.light .bg-violet-600.text-white,
+html.light .bg-violet-600 .text-white,
+html.light .bg-violet-700 .text-white,
+html.light .bg-violet-800 .text-white {
+  color: #ffffff;
+}
+
+/* Light-theme violet badges, including portfolio strategy labels. */
+html.light .bg-violet-900\/60 { background-color: rgba(237,233,254,0.66); }
+html.light .bg-violet-900\/50 { background-color: rgba(237,233,254,0.58); }
+html.light .bg-violet-900\/40 { background-color: rgba(237,233,254,0.5); }
+html.light .bg-violet-900\/30 { background-color: rgba(237,233,254,0.42); }
+html.light .bg-violet-900\/20 { background-color: rgba(237,233,254,0.34); }
+html.light .border-violet-700 { border-color: #a78bfa; }
+html.light .border-violet-700\/50 { border-color: rgba(167,139,250,0.65); }
+
+/* Light-theme success states: avoid dark-theme green on gray labels. */
+html.light .bg-green-900\/60 { background-color: rgba(187,247,208,0.62); }
+html.light .bg-green-900\/50 { background-color: rgba(187,247,208,0.54); }
+html.light .bg-green-900\/40 { background-color: rgba(187,247,208,0.48); }
+html.light .bg-green-900\/30 { background-color: rgba(187,247,208,0.4); }
+html.light .bg-emerald-950\/60 { background-color: rgba(209,250,229,0.72); }
+html.light .bg-emerald-950\/50 { background-color: rgba(209,250,229,0.62); }
+html.light .bg-emerald-950\/40 { background-color: rgba(209,250,229,0.52); }
+html.light .bg-emerald-900\/60 { background-color: rgba(167,243,208,0.58); }
+html.light .bg-emerald-900\/50 { background-color: rgba(167,243,208,0.5); }
+html.light .bg-emerald-900\/40 { background-color: rgba(167,243,208,0.46); }
+html.light .bg-emerald-900\/30 { background-color: rgba(167,243,208,0.42); }
+html.light .bg-emerald-900\/20 { background-color: rgba(167,243,208,0.34); }
+html.light .bg-emerald-900\/15 { background-color: rgba(167,243,208,0.28); }
+html.light .bg-emerald-900\/10 { background-color: rgba(167,243,208,0.22); }
+
+html.light .border-green-700 { border-color: #86efac; }
+html.light .border-green-800 { border-color: #86efac; }
+html.light .border-emerald-700 { border-color: #34d399; }
+html.light .border-emerald-800 { border-color: #6ee7b7; }
+html.light .border-emerald-900\/40 { border-color: rgba(52,211,153,0.55); }
+html.light .border-emerald-900\/30 { border-color: rgba(52,211,153,0.45); }
+
+/* Light-theme warning/info states for bias cards and IV environment banners. */
+html.light .bg-amber-950\/60 { background-color: rgba(254,243,199,0.76); }
+html.light .bg-amber-950\/50 { background-color: rgba(254,243,199,0.68); }
+html.light .bg-amber-950\/40 { background-color: rgba(254,243,199,0.58); }
+html.light .bg-amber-900\/60 { background-color: rgba(254,243,199,0.78); }
+html.light .bg-amber-900\/50 { background-color: rgba(254,243,199,0.72); }
+html.light .bg-amber-900\/40 { background-color: rgba(254,243,199,0.64); }
+html.light .bg-amber-900\/30 { background-color: rgba(254,243,199,0.56); }
+html.light .bg-amber-900\/20 { background-color: rgba(254,243,199,0.44); }
+html.light .border-amber-700 { border-color: #f59e0b; }
+html.light .border-amber-800 { border-color: #fbbf24; }
+
+html.light .bg-blue-900\/30 { background-color: rgba(219,234,254,0.62); }
+html.light .bg-blue-900\/20 { background-color: rgba(219,234,254,0.5); }
+html.light .bg-blue-900\/40 { background-color: rgba(219,234,254,0.72); }
+html.light .border-blue-700 { border-color: #60a5fa; }
+html.light .border-blue-800 { border-color: #93c5fd; }
+
+html.light .bg-sky-900\/40 { background-color: rgba(224,242,254,0.72); }
+html.light .border-sky-800 { border-color: #7dd3fc; }
+
+html.light .bg-cyan-900\/40 { background-color: rgba(207,250,254,0.72); }
+html.light .border-cyan-800 { border-color: #67e8f9; }
+
+html.light .bg-indigo-950\/40 { background-color: rgba(224,231,255,0.74); }
+html.light .bg-indigo-950\/30 { background-color: rgba(224,231,255,0.62); }
+html.light .bg-indigo-900\/40 { background-color: rgba(224,231,255,0.72); }
+html.light .border-indigo-900 { border-color: #a5b4fc; }
+html.light .border-indigo-800 { border-color: #a5b4fc; }
+html.light .text-indigo-200 { color: #3730a3; }
+
+html.light .bg-orange-900\/40 { background-color: rgba(255,237,213,0.72); }
+html.light .border-orange-800 { border-color: #fdba74; }
+
+html.light .bg-rose-900\/40 { background-color: rgba(255,228,230,0.72); }
+html.light .border-rose-800 { border-color: #fda4af; }
+
+html.light .bg-teal-900\/40 { background-color: rgba(204,251,241,0.72); }
+html.light .border-teal-800 { border-color: #5eead4; }
+
+html.light .bg-red-950\/60 { background-color: rgba(254,226,226,0.74); }
+html.light .bg-red-950\/50 { background-color: rgba(254,226,226,0.66); }
+html.light .bg-red-950\/40 { background-color: rgba(254,226,226,0.56); }
+html.light .bg-red-900\/60 { background-color: rgba(254,226,226,0.72); }
+html.light .bg-red-900\/50 { background-color: rgba(254,226,226,0.66); }
+html.light .bg-red-900\/40 { background-color: rgba(254,226,226,0.58); }
+html.light .bg-red-900\/30 { background-color: rgba(254,226,226,0.5); }
+html.light .bg-red-900\/20 { background-color: rgba(254,226,226,0.42); }
+html.light .border-red-700 { border-color: #f87171; }
+html.light .border-red-800 { border-color: #fca5a5; }
+html.light .border-red-900 { border-color: #fca5a5; }
+
+/* Hover states */
+html.light .hover\:bg-gray-800:hover { background-color: #cfd4dc; }
+html.light .hover\:bg-gray-700:hover { background-color: #bcc3cd; }
+html.light .hover\:bg-gray-600:hover { background-color: #8f98a6; }
+html.light .hover\:text-white:hover  { color: #0f172a; }
+html.light .hover\:text-gray-200:hover { color: #334155; }
+html.light .hover\:text-gray-300:hover { color: #475569; }
+
+/* Form controls */
+html.light input,
+html.light select,
+html.light textarea {
+  background-color: #dadde3;
+  color: #0f172a;
+  border-color: #aeb7c5;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #64748b;
+}
+
+/* Scrollbar in light mode */
+html.light ::-webkit-scrollbar-track { background: #d1d5db; }
+html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #6b7280; }

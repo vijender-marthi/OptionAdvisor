@@ -1,0 +1,7 @@
+backend/*.sqlite3
+backend/*.sqlite3-*
+__pycache__/
+backend/__pycache__/
+frontend/dist/
+frontend/node_modules/
+.venv/
