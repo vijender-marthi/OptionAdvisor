@@ -60,7 +60,7 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <div>
-            <div className="text-sm font-semibold text-white leading-tight tracking-tight">OptionAdvisor</div>
+            <div className="text-sm font-semibold text-white leading-tight">OptionAdvisor</div>
             <div className="text-[11px] text-gray-500 leading-tight">Systematic Engine v2</div>
           </div>
         )}
@@ -85,7 +85,7 @@ export default function Sidebar() {
                     key={item.id}
                     onClick={() => navigate(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold tracking-tight transition-all
+                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
                       ${active
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
@@ -118,7 +118,7 @@ export default function Sidebar() {
         <button
           onClick={() => navigate('settings')}
           title={collapsed ? 'Settings' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold tracking-tight transition-all
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
             ${page === 'settings'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -131,7 +131,7 @@ export default function Sidebar() {
         <button
           onClick={() => navigate('help')}
           title={collapsed ? 'Help' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold tracking-tight transition-all
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
             ${page === 'help'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -150,7 +150,7 @@ export default function Sidebar() {
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-200 truncate tracking-tight">{user.name}</div>
+                <div className="text-sm font-medium text-gray-200 truncate">{user.name}</div>
                 <div className="text-[11px] text-gray-500 truncate">{user.email}</div>
               </div>
             )}

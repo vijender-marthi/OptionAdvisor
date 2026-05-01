@@ -151,7 +151,7 @@ export default function RecommendationCard({
             {verdict === 'NO GO' && blockingReasons.length > 0
               ? <span className="text-red-400/80">🚫 Blocked: {blockingReasons.join(' · ')}</span>
               : verdict === 'CAUTION' && blockingReasons.length > 0
-              ? <span className="text-amber-400/80">⚠️ Caution: {blockingReasons.join(' · ')}</span>
+              ? <span className="recommendation-caution-reason text-amber-400/80">⚠️ Caution: {blockingReasons.join(' · ')}</span>
               : <span className="text-gray-500">Add this trade idea to your portfolio tracker with contract sizing.</span>
             }
           </div>
