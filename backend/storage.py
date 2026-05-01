@@ -25,16 +25,30 @@ def normalize_email(email: str) -> str:
 
 def init_db() -> None:
     with _connect() as conn:
-      conn.execute(
-          """
-          CREATE TABLE IF NOT EXISTS user_state (
-              email TEXT PRIMARY KEY,
-              watchlist_json TEXT NOT NULL DEFAULT '[]',
-              portfolio_json TEXT NOT NULL DEFAULT '[]',
-              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-          )
-          """
-      )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_state (
+                email TEXT PRIMARY KEY,
+                watchlist_json TEXT NOT NULL DEFAULT '[]',
+                portfolio_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_alerts (
+                email TEXT NOT NULL,
+                alert_id TEXT NOT NULL,
+                alert_json TEXT NOT NULL,
+                detected_at INTEGER NOT NULL,
+                dismissed INTEGER NOT NULL DEFAULT 0,
+                email_sent INTEGER NOT NULL DEFAULT 0,
+                email_message TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (email, alert_id)
+            )
+            """
+        )
 
 
 def get_user_state(email: str) -> dict[str, Any]:
@@ -62,6 +76,26 @@ def get_user_state(email: str) -> dict[str, Any]:
     }
 
 
+def list_user_states() -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT email, watchlist_json, portfolio_json
+            FROM user_state
+            ORDER BY updated_at DESC
+            """
+        ).fetchall()
+
+    return [
+        {
+            "email": row["email"],
+            "watchlist": json.loads(row["watchlist_json"]),
+            "portfolio": json.loads(row["portfolio_json"]),
+        }
+        for row in rows
+    ]
+
+
 def save_user_state(email: str, watchlist: list[dict[str, Any]], portfolio: list[dict[str, Any]]) -> dict[str, Any]:
     normalized = normalize_email(email)
     with _connect() as conn:
@@ -78,3 +112,82 @@ def save_user_state(email: str, watchlist: list[dict[str, Any]], portfolio: list
         )
 
     return get_user_state(normalized)
+
+
+def add_user_alert(email: str, alert: dict[str, Any], email_sent: bool, email_message: str = "") -> bool:
+    normalized = normalize_email(email)
+    alert_id = str(alert["id"])
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO user_alerts (
+                email, alert_id, alert_json, detected_at, dismissed, email_sent, email_message
+            )
+            VALUES (?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                normalized,
+                alert_id,
+                json.dumps(alert),
+                int(alert["detectedAt"]),
+                1 if email_sent else 0,
+                email_message,
+            ),
+        )
+        return cur.rowcount > 0
+
+
+def update_user_alert_email(email: str, alert_id: str, email_sent: bool, email_message: str = "") -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE user_alerts
+            SET email_sent = ?, email_message = ?
+            WHERE email = ? AND alert_id = ?
+            """,
+            (1 if email_sent else 0, email_message, normalized, alert_id),
+        )
+
+
+def get_user_alerts(email: str, retention_ms: int, now_ms: int) -> list[dict[str, Any]]:
+    normalized = normalize_email(email)
+    cutoff = now_ms - retention_ms
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM user_alerts WHERE email = ? AND detected_at < ?",
+            (normalized, cutoff),
+        )
+        rows = conn.execute(
+            """
+            SELECT alert_json, dismissed, email_sent, email_message
+            FROM user_alerts
+            WHERE email = ?
+            ORDER BY detected_at DESC
+            """,
+            (normalized,),
+        ).fetchall()
+
+    alerts: list[dict[str, Any]] = []
+    for row in rows:
+        alert = json.loads(row["alert_json"])
+        alert["dismissed"] = bool(row["dismissed"])
+        alert["emailSent"] = bool(row["email_sent"])
+        alert["emailMessage"] = row["email_message"]
+        alerts.append(alert)
+    return alerts
+
+
+def dismiss_user_alert(email: str, alert_id: str) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE user_alerts SET dismissed = 1 WHERE email = ? AND alert_id = ?",
+            (normalized, alert_id),
+        )
+
+
+def clear_user_alerts(email: str) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute("DELETE FROM user_alerts WHERE email = ?", (normalized,))

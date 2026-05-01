@@ -131,6 +131,10 @@ function AlertCard({ alert, onDismiss, onNavigate }: {
               <span className="flex items-center gap-1 text-xs text-emerald-600">
                 <MailCheck size={10} /> Email sent
               </span>
+            ) : alert.emailMessage ? (
+              <span className="flex items-center gap-1 text-xs text-red-500" title={alert.emailMessage}>
+                <Mail size={10} /> Email failed
+              </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-gray-700">
                 <Mail size={10} /> Email pending

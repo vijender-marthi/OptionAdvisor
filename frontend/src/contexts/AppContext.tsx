@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import type { ReactNode } from 'react'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
-import { analyzeOptions, getUserData, saveUserData, sendAlertEmail } from '../api/client'
+import { analyzeOptions, clearBackendAlerts, dismissBackendAlert, getAlerts, getUserData, saveUserData, scanBackendAlerts } from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 
 // ─── Router ────────────────────────────────────────────────────────────────────
@@ -15,6 +15,7 @@ function getHashPage(): Page {
   if (h === 'ai-stocks') return 'ai-stocks'
   if (h === 'trade-signals') return 'trade-signals'
   if (h === 'alerts') return 'alerts'
+  if (h === 'settings') return 'settings'
   return 'ticker'
 }
 
@@ -129,6 +130,10 @@ interface AppContextValue {
   // Theme
   theme: 'dark' | 'light'
   toggleTheme: () => void
+
+  // Settings
+  alertEmailEnabled: boolean
+  setAlertEmailEnabled: (enabled: boolean) => void
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -173,6 +178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Dedup: once an alert fires for (ticker-strategy-expiry), never fire again this session
   const sentAlertKeysRef = useRef<Set<string>>(new Set(load<string[]>('oa_sent_alert_keys', [])))
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
+  const [alertEmailEnabled, setAlertEmailEnabledState] = useState<boolean>(() => load<boolean>('oa_alert_email_enabled', true))
   const [userDataLoaded, setUserDataLoaded] = useState(false)
   const loginRefreshEmailRef = useRef<string | null>(null)
 
@@ -252,6 +258,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.warn('[user-data] save failed:', e)
     })
   }, [portfolio, user?.email, userDataLoaded, watchlist])
+
+  // Alerts are produced by the backend scanner, independent of browser sessions.
+  useEffect(() => {
+    if (!user?.email) {
+      setAlerts([])
+      return
+    }
+
+    let cancelled = false
+    const loadBackendAlerts = async () => {
+      try {
+        const backendAlerts = await getAlerts(user.email)
+        if (!cancelled) setAlerts(activeAlertsOnly(backendAlerts))
+      } catch (e) {
+        console.warn('[alerts] load failed:', e)
+      }
+    }
+
+    loadBackendAlerts()
+    const id = setInterval(loadBackendAlerts, 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [user?.email])
 
   // ── Router ──────────────────────────────────────────────────────────────────
   const navigate = useCallback((p: Page) => setPage(p), [])
@@ -363,9 +394,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme(t => t === 'dark' ? 'light' : 'dark')
   }, [])
 
+  const setAlertEmailEnabled = useCallback((enabled: boolean) => {
+    setAlertEmailEnabledState(enabled)
+    save('oa_alert_email_enabled', enabled)
+  }, [])
+
+  // Keep alertEmailEnabled accessible in async closures without stale capture
+  const alertEmailEnabledRef = useRef(alertEmailEnabled)
+  useEffect(() => { alertEmailEnabledRef.current = alertEmailEnabled }, [alertEmailEnabled])
+
   // ── Alert actions ───────────────────────────────────────────────────────────
   const dismissAlert = useCallback((id: string) => {
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, dismissed: true } : a))
+    const currentUser = userRef.current
+    if (currentUser?.email) {
+      dismissBackendAlert(currentUser.email, id).catch(e => {
+        console.warn('[alerts] dismiss failed:', e)
+      })
+    }
   }, [])
 
   const clearAlerts = useCallback(() => {
@@ -373,6 +419,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sentAlertKeysRef.current.clear()
     save('oa_alerts', [])
     save('oa_sent_alert_keys', [])
+    const currentUser = userRef.current
+    if (currentUser?.email) {
+      clearBackendAlerts(currentUser.email).catch(e => {
+        console.warn('[alerts] clear failed:', e)
+      })
+    }
   }, [])
 
   // ── scanForGoAlerts: consumes cached AnalyzeResponse data — ZERO API calls ───
@@ -421,20 +473,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Add to alerts page
     setAlerts(prev => activeAlertsOnly([...newAlerts, ...prev]))
 
-    // Send email if user is logged in — use ref to get current user without stale closure
-    const currentUser = userRef.current
-    if (currentUser?.email) {
-      try {
-        const result = await sendAlertEmail(currentUser.email, newAlerts)
-        if (result.sent) {
-          setAlerts(prev => prev.map(a =>
-            newAlerts.some(n => n.id === a.id) ? { ...a, emailSent: true } : a
-          ))
-        }
-      } catch {
-        // Email failure is non-fatal — alert still shows in app
-      }
-    }
+    // Email delivery is handled by the backend scanner. This browser-side path
+    // only keeps any legacy cached alerts visible until the next backend poll.
   }, [])
 
   const scanCachedTickerForGoAlerts = useCallback(async (ticker: string) => {
@@ -469,8 +509,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? { ...w, lastPrice: data.signals.current_price, companyName: data.company_name, sector: data.sector }
           : w
       ))
-      // Alert processing reads the cache entry, not a second API calculation.
-      scanCachedTickerForGoAlerts(ticker)
     } catch (e) {
       console.warn(`[cache] refresh failed for ${ticker}:`, e)
     } finally {
@@ -479,6 +517,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [scanCachedTickerForGoAlerts])
 
   const refreshWatchlistForAlerts = useCallback(async (force = true) => {
+    const currentUser = userRef.current
     const watchedTickers = watchlistRef.current
       .map(w => w.ticker)
       .filter(Boolean)
@@ -494,9 +533,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await refreshTicker(ticker)
     }
 
-    await scanCachedWatchlistForGoAlerts()
+    if (currentUser?.email) {
+      try {
+        const backendAlerts = await scanBackendAlerts(currentUser.email)
+        setAlerts(activeAlertsOnly(backendAlerts))
+      } catch (e) {
+        console.warn('[alerts] backend scan failed:', e)
+      }
+    }
     setLastBgRefresh(Date.now())
-  }, [refreshTicker, scanCachedWatchlistForGoAlerts])
+  }, [refreshTicker])
 
   // After a saved watchlist loads for this signed-in email, refresh it once for
   // the current browser session so new sessions do not depend on local cache.
@@ -577,6 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       fetchAllWeeks, fetchingAllWeeks,
       alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,
+      alertEmailEnabled, setAlertEmailEnabled,
     }}>
       {children}
     </AppContext.Provider>

@@ -13,8 +13,13 @@ from math import erf, log, sqrt
 from dataclasses import asdict
 import smtplib
 import os
+import threading
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,11 +27,16 @@ load_dotenv()
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown,
-    UserDataRequest, UserDataResponse, AlertEmailRequest,
+    UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
+    AlertDismissRequest, AlertClearRequest,
 )
 from analysis import generate_signals
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
-from storage import get_user_state, init_db, save_user_state
+from storage import (
+    add_user_alert, clear_user_alerts, dismiss_user_alert, get_user_alerts,
+    get_user_state, init_db, list_user_states, save_user_state,
+    update_user_alert_email,
+)
 
 # ── SMTP config from environment (optional — email silently skipped if absent) ─
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -34,6 +44,10 @@ SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER     = os.getenv("SMTP_USER", "")      # your Gmail address
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # Gmail App Password
 SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)
+ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
+ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
+ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
+ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 
 app = FastAPI(title="Options Trade Advisor API", version="2.0")
 init_db()
@@ -123,8 +137,33 @@ def root():
     return {"status": "ok", "message": "Options Trade Advisor API v2.0"}
 
 
-def _build_alert_html(email: str, alerts: list) -> str:
+def _is_market_hours_now() -> bool:
+    if not ALERT_SCAN_MARKET_HOURS_ONLY:
+        return True
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.weekday() >= 5:
+        return False
+    minutes = now.hour * 60 + now.minute
+    return 6 * 60 <= minutes < 16 * 60
+
+
+def _get_15_min_window(ts_ms: int) -> str:
+    dt = datetime.fromtimestamp(ts_ms / 1000, ZoneInfo("America/Los_Angeles"))
+    bucket_start = (dt.minute // 15) * 15
+    end_hour = dt.hour + 1 if bucket_start + 15 == 60 else dt.hour
+    end_min = 0 if bucket_start + 15 == 60 else bucket_start + 15
+
+    def fmt(hour: int, minute: int) -> str:
+        ampm = "PM" if hour >= 12 else "AM"
+        h12 = hour % 12 or 12
+        return f"{h12}:{minute:02d} {ampm}"
+
+    return f"{fmt(dt.hour, bucket_start)} – {fmt(end_hour, end_min)} PT"
+
+
+def _build_alert_html(email: str, alerts: list, user_name: str | None = None) -> str:
     """Render a clean HTML email for GO-trade alerts."""
+    display_name = (user_name or "").strip() or email
     rows_html = ""
     for a in alerts:
         pop_pct  = f"{round(a.pop * 100)}%"
@@ -173,7 +212,8 @@ def _build_alert_html(email: str, alerts: list) -> str:
     <!-- Body -->
     <div style="padding:24px 28px;">
       <p style="color:#94a3b8;font-size:13px;margin:0 0 20px;">
-        The systematic engine found <strong style="color:#e2e8f0;">{count} GO {plural}</strong> across your watchlist
+        Hi <strong style="color:#e2e8f0;">{display_name}</strong>, the systematic engine found
+        <strong style="color:#e2e8f0;">{count} GO {plural}</strong> across your watchlist
         in the <strong style="color:#a78bfa;">{window_label}</strong> scan window.
         These passed all 10 pre-trade checks — no hard fails, no soft fails.
       </p>
@@ -210,7 +250,7 @@ def _build_alert_html(email: str, alerts: list) -> str:
     <!-- Footer -->
     <div style="background:#12121e;padding:14px 28px;display:flex;justify-content:space-between;align-items:center;">
       <span style="color:#334155;font-size:11px;">OptionAdvisor Systematic Engine v2</span>
-      <span style="color:#334155;font-size:11px;">Alerts sent to {email}</span>
+      <span style="color:#334155;font-size:11px;">Alerts sent to {display_name} &lt;{email}&gt;</span>
     </div>
   </div>
 </body>
@@ -223,34 +263,40 @@ def send_alert(req: AlertEmailRequest):
     Send a GO-trade alert email.
     Silently skips if SMTP is not configured — frontend alert page still works.
     """
+    return _send_alert_email(req.email, req.alerts, req.user_name)
+
+
+def _send_alert_email(email: str, alerts: list, user_name: str | None = None) -> dict:
     if not SMTP_USER or not SMTP_PASSWORD:
         return {"sent": False, "message": "SMTP not configured — alert shown in app only"}
 
-    if not req.alerts:
+    if not alerts:
         return {"sent": False, "message": "No alerts to send"}
 
     try:
-        html_body = _build_alert_html(req.email, req.alerts)
-        count = len(req.alerts)
+        html_body = _build_alert_html(email, alerts, user_name)
+        count = len(alerts)
         plural = "trade" if count == 1 else "trades"
+        display_name = (user_name or "").strip()
+        recipient = formataddr((display_name, email)) if display_name else email
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"🟢 OptionAdvisor: {count} GO {plural} detected — {req.alerts[0].time_window}"
+        msg["Subject"] = f"🟢 OptionAdvisor: {count} GO {plural} detected — {alerts[0].time_window}"
         msg["From"]    = SMTP_FROM
-        msg["To"]      = req.email
+        msg["To"]      = recipient
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=25) as server:
             server.ehlo()
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM, req.email, msg.as_string())
+            server.sendmail(SMTP_FROM, email, msg.as_string())
 
-        return {"sent": True, "message": f"Alert email sent to {req.email}"}
+        return {"sent": True, "message": f"Alert email sent to {email}"}
 
     except Exception as e:
         # Don't crash the app — email is optional
-        print(f"[alert-email] send failed: {e}")
+        print(f"[alert-email] send failed: {e}", flush=True)
         return {"sent": False, "message": f"Email failed: {str(e)}"}
 
 
@@ -267,9 +313,13 @@ def save_user_data(email: str, payload: UserDataRequest):
     return save_user_state(normalized_email, payload.watchlist, payload.portfolio)
 
 
-@app.post("/api/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest):
-    ticker = req.ticker.upper().strip()
+def _analyze_ticker(
+    ticker: str,
+    weeks_out: int = 4,
+    spread_width: int | None = None,
+    strategy_mode: str = "all",
+) -> AnalyzeResponse:
+    ticker = ticker.upper().strip()
 
     try:
         stock = yf.Ticker(ticker)
@@ -332,9 +382,9 @@ def analyze(req: AnalyzeRequest):
     # Run engine
     try:
         trades = run_engine(signals, calls_f, puts_f, list(opt_dates),
-                            spread_width_override=req.spread_width,
-                            weeks_out=req.weeks_out,
-                            strategy_mode=req.strategy_mode)
+                            spread_width_override=spread_width,
+                            weeks_out=weeks_out,
+                            strategy_mode=strategy_mode)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Trade engine failed: {str(e)}")
 
@@ -453,10 +503,266 @@ def analyze(req: AnalyzeRequest):
         filters_applied={
             "min_credit_pct_of_width": MIN_CREDIT_PCT_OF_WIDTH,
             "short_delta_range": list(TARGET_SHORT_DELTA_CREDIT),
-            "target_dte": f"{req.weeks_out}w ({req.weeks_out * 7}d ±7)",
+            "target_dte": f"{weeks_out}w ({weeks_out * 7}d ±7)",
             "max_bid_ask_spread_pct": 15,
             "min_open_interest": 50,
-            "spread_width": req.spread_width if req.spread_width else "auto",
-            "strategy_mode": req.strategy_mode,
+            "spread_width": spread_width if spread_width else "auto",
+            "strategy_mode": strategy_mode,
         }
     )
+
+
+@app.post("/api/analyze", response_model=AnalyzeResponse)
+def analyze(req: AnalyzeRequest):
+    return _analyze_ticker(
+        req.ticker,
+        weeks_out=req.weeks_out,
+        spread_width=req.spread_width,
+        strategy_mode=req.strategy_mode,
+    )
+
+
+def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:
+    hard_fails = 0
+    soft_fails = 0
+    warnings = 0
+
+    def add(status: str, hard: bool = False) -> None:
+        nonlocal hard_fails, soft_fails, warnings
+        if status == "warn":
+            warnings += 1
+        elif status == "fail" and hard:
+            hard_fails += 1
+        elif status == "fail":
+            soft_fails += 1
+
+    is_credit = rec.net_credit > 0
+    is_income_sell = rec.strategy in {"Covered Call", "Covered Put", "Short Put", "Short Call"}
+    bias = rec.bias.upper()
+    is_bullish = "BULLISH" in bias
+    is_bearish = "BEARISH" in bias
+    is_neutral = not is_bullish and not is_bearish
+
+    # IV regime.
+    if is_credit:
+        add("pass" if sig.iv_rank >= 45 else "warn" if sig.iv_rank >= 20 else "fail")
+    else:
+        add("pass" if sig.iv_rank <= 40 else "warn" if sig.iv_rank <= 60 else "fail")
+
+    # Bias/range conviction.
+    conf = sig.bias_confidence * 100
+    if is_neutral and is_credit:
+        slope_flat = abs(sig.ma50_slope) < 0.002
+        rsi_mid = 38 <= sig.rsi <= 62
+        add("pass" if slope_flat and rsi_mid else "warn" if slope_flat or rsi_mid else "fail")
+    elif is_credit:
+        add("pass" if conf >= 40 else "warn" if conf >= 25 else "fail")
+    else:
+        add("pass" if conf >= 55 else "warn" if conf >= 35 else "fail")
+
+    # Trend alignment.
+    if is_bullish:
+        if is_credit:
+            add("pass" if sig.above_ma50 else "warn" if sig.ma50_slope > 0 else "fail")
+        else:
+            add("pass" if sig.above_ma50 and sig.ma50_slope > 0 else "warn" if sig.above_ma50 or sig.ma50_slope > 0 else "fail")
+    elif is_bearish:
+        if is_credit:
+            add("pass" if not sig.above_ma50 else "warn" if sig.ma50_slope < 0 else "fail")
+        else:
+            add("pass" if not sig.above_ma50 and sig.ma50_slope < 0 else "warn" if not sig.above_ma50 or sig.ma50_slope < 0 else "fail")
+    else:
+        add("pass" if abs(sig.ma50_slope) < 0.002 else "warn")
+
+    # RSI.
+    if is_credit:
+        if is_bullish:
+            add("fail" if sig.rsi < 28 else "warn" if sig.rsi < 38 else "pass")
+        elif is_bearish:
+            add("fail" if sig.rsi > 72 else "warn" if sig.rsi > 62 else "pass")
+        else:
+            add("warn" if sig.rsi > 70 or sig.rsi < 30 else "pass")
+    else:
+        if is_bullish and sig.rsi > 75:
+            add("fail")
+        elif is_bullish and sig.rsi > 68:
+            add("warn")
+        elif is_bearish and sig.rsi < 25:
+            add("fail")
+        elif is_bearish and sig.rsi < 32:
+            add("warn")
+        elif is_neutral and (sig.rsi > 68 or sig.rsi < 32):
+            add("warn")
+        else:
+            add("pass")
+
+    # MACD.
+    hist = sig.macd_histogram
+    if is_credit:
+        if is_bullish:
+            add("warn" if hist < -0.5 and sig.macd < sig.macd_signal_line else "pass")
+        elif is_bearish:
+            add("warn" if hist > 0.5 and sig.macd > sig.macd_signal_line else "pass")
+        else:
+            add("warn" if abs(hist) > 0.5 else "pass")
+    else:
+        if is_bullish:
+            add("pass" if hist > 0 and sig.macd > sig.macd_signal_line else "warn" if hist > 0 or sig.macd > sig.macd_signal_line else "fail")
+        elif is_bearish:
+            add("pass" if hist < 0 and sig.macd < sig.macd_signal_line else "warn" if hist < 0 or sig.macd < sig.macd_signal_line else "fail")
+        else:
+            add("pass" if abs(hist) < 0.5 else "warn")
+
+    # DTE.
+    if is_credit:
+        add("pass" if 21 <= rec.dte <= 50 else "warn" if 14 <= rec.dte < 21 or 50 < rec.dte <= 65 else "fail", hard=rec.dte < 14)
+    else:
+        add("pass" if 21 <= rec.dte <= 70 else "warn" if rec.dte >= 14 else "fail", hard=rec.dte < 14)
+
+    # Liquidity and structure.
+    add("pass" if rec.passes_liquidity_filter else "fail", hard=not rec.passes_liquidity_filter)
+    if is_income_sell:
+        add("pass" if rec.passes_credit_filter else "fail")
+        yield_pct = rec.credit_pct_of_width
+        add("pass" if yield_pct >= 1.0 else "warn" if yield_pct >= 0.60 else "fail")
+    elif is_credit:
+        add("pass" if rec.passes_rr_filter and rec.passes_credit_filter else "warn" if rec.passes_rr_filter or rec.passes_credit_filter else "fail")
+    else:
+        add("pass" if rec.passes_rr_filter else "warn")
+
+    # Expected value / probability.
+    if not is_income_sell:
+        add("pass" if rec.expected_value > 0.04 else "warn" if rec.expected_value > 0 else "fail", hard=rec.expected_value <= 0)
+
+    if is_credit:
+        pass_threshold = 0.65 if is_income_sell else 0.62
+        warn_threshold = 0.55 if is_income_sell else 0.52
+        add("pass" if rec.prob_of_profit >= pass_threshold else "warn" if rec.prob_of_profit >= warn_threshold else "fail")
+    else:
+        add("pass" if rec.prob_of_profit >= 0.45 else "warn" if rec.prob_of_profit >= 0.35 else "fail")
+
+    return hard_fails == 0 and soft_fails == 0 and warnings < 5
+
+
+def _alert_item_from_dict(alert: dict) -> AlertItem:
+    return AlertItem(
+        ticker=alert["ticker"],
+        company_name=alert["companyName"],
+        strategy=alert["strategy"],
+        bias=alert["bias"],
+        expiry=alert["expiry"],
+        dte=alert["dte"],
+        weeks_out=alert["weeksOut"],
+        score=alert["score"],
+        max_profit=alert["maxProfit"],
+        max_loss=alert["maxLoss"],
+        net_credit=alert["netCredit"],
+        pop=alert["pop"],
+        ev=alert["ev"],
+        time_window=alert["timeWindow"],
+    )
+
+
+def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
+    email = user_state.get("email", "").strip().lower()
+    if not email:
+        return
+
+    user_name = email.split("@")[0] or email
+    tickers = []
+    for item in user_state.get("watchlist", []):
+        ticker = str(item.get("ticker", "")).strip().upper()
+        if ticker and ticker not in tickers:
+            tickers.append(ticker)
+
+    for ticker in tickers:
+        try:
+            data = _analyze_ticker(ticker, weeks_out=4, spread_width=5, strategy_mode="all")
+        except Exception as exc:
+            print(f"[alert-scan] {email} {ticker} failed: {exc}", flush=True)
+            continue
+
+        now_ms = int(time.time() * 1000)
+        time_window = _get_15_min_window(now_ms)
+        for rec in data.recommendations:
+            if not _backend_verdict_is_go(rec, data.signals):
+                continue
+
+            alert_id = f"{ticker}-{rec.strategy}-{rec.expiry}"
+            alert = {
+                "id": alert_id,
+                "ticker": ticker,
+                "companyName": data.company_name,
+                "strategy": rec.strategy,
+                "bias": rec.bias,
+                "expiry": rec.expiry,
+                "dte": rec.dte,
+                "weeksOut": round(rec.dte / 7),
+                "score": rec.scores.total_score,
+                "maxProfit": rec.max_profit,
+                "maxLoss": rec.max_loss,
+                "netCredit": rec.net_credit,
+                "pop": rec.prob_of_profit,
+                "ev": rec.expected_value,
+                "detectedAt": now_ms,
+                "timeWindow": time_window,
+                "emailSent": False,
+                "dismissed": False,
+            }
+
+            inserted = add_user_alert(email, alert, email_sent=False)
+            if not inserted:
+                continue
+
+            result = _send_alert_email(email, [_alert_item_from_dict(alert)], user_name)
+            update_user_alert_email(email, alert_id, bool(result.get("sent")), str(result.get("message", "")))
+
+
+def _alert_scan_loop() -> None:
+    time.sleep(ALERT_SCAN_START_DELAY_SECONDS)
+    while True:
+        try:
+            if _is_market_hours_now():
+                users = list_user_states()
+                for idx, user_state in enumerate(users):
+                    if idx:
+                        time.sleep(2)
+                    _scan_user_watchlist_for_alerts(user_state)
+        except Exception as exc:
+            print(f"[alert-scan] sweep failed: {exc}", flush=True)
+        time.sleep(ALERT_SCAN_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+def start_alert_scanner() -> None:
+    thread = threading.Thread(target=_alert_scan_loop, name="alert-scan-loop", daemon=True)
+    thread.start()
+
+
+@app.get("/api/alerts/{email}")
+def list_alerts(email: str):
+    return {
+        "email": email.strip().lower(),
+        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
+    }
+
+
+@app.post("/api/alerts/dismiss")
+def dismiss_alert(req: AlertDismissRequest):
+    dismiss_user_alert(req.email, req.alert_id)
+    return {"ok": True}
+
+
+@app.post("/api/alerts/clear")
+def clear_alerts(req: AlertClearRequest):
+    clear_user_alerts(req.email)
+    return {"ok": True}
+
+
+@app.post("/api/alerts/scan/{email}")
+def scan_alerts_now(email: str):
+    _scan_user_watchlist_for_alerts(get_user_state(email))
+    return {
+        "email": email.strip().lower(),
+        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
+    }

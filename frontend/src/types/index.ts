@@ -135,7 +135,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'trade-signals' | 'alerts' | 'login'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'trade-signals' | 'alerts' | 'settings' | 'login'
 
 // ─── Alert system ───────────────────────────────────────────
 
@@ -157,6 +157,7 @@ export interface AlertEntry {
   detectedAt: number         // Date.now() timestamp
   timeWindow: string         // e.g. "9:30 AM – 9:45 AM PST"
   emailSent: boolean
+  emailMessage?: string
   dismissed: boolean
 }
 
