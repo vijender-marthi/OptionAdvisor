@@ -323,99 +323,57 @@ export default function RecommendationCard({
         </table>
       </div>
 
-      {/* Risk/Reward metrics */}
-      <div className="px-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-gray-800 rounded-xl p-3">
-          <div className="text-xs text-gray-500 mb-1">Max Profit</div>
-          <div className="text-green-400 font-bold font-mono text-lg">${fmt(c(rec.max_profit))}</div>
-          <div className="text-xs text-gray-500">per contract</div>
-          <div className="text-xs text-gray-600">${rec.max_profit.toFixed(2)}/share</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-3">
-          <div className="text-xs text-gray-500 mb-1">Max Loss</div>
-          <div className="text-red-400 font-bold font-mono text-lg">${fmt(c(rec.max_loss))}</div>
-          <div className="text-xs text-gray-500">per contract</div>
-          <div className="text-xs text-gray-600">${rec.max_loss.toFixed(2)}/share</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-3">
-          <div className="text-xs text-gray-500 mb-1">Breakeven</div>
-          <div className="text-white font-bold font-mono text-sm">
-            {rec.breakeven_upper < 990
-              ? `$${rec.breakeven_lower.toFixed(2)} – $${rec.breakeven_upper.toFixed(2)}`
-              : `$${rec.breakeven_lower.toFixed(2)}`}
-          </div>
-          <div className="text-xs text-gray-500">stock price</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-3">
-          <div className="text-xs text-gray-500 mb-1">Expiry</div>
-          <div className="text-white font-bold text-sm">{rec.expiry}</div>
-          <div className="text-xs text-gray-500">{rec.dte} days</div>
-        </div>
-      </div>
-
-      {/* Probability & EV */}
-      <div className="px-4 pb-3 grid grid-cols-3 gap-3">
-        <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">Prob of Profit</div>
-          <div className="text-white font-bold font-mono text-xl">{(rec.prob_of_profit * 100).toFixed(0)}%</div>
-        </div>
-        <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">Prob Max Loss</div>
-          <div className="text-red-400 font-bold font-mono text-xl">{(rec.prob_of_max_loss * 100).toFixed(1)}%</div>
-        </div>
-        <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">Expected Value</div>
-          <div className={`font-bold font-mono text-xl ${evColor}`}>
-            {rec.expected_value > 0 ? '+' : ''}${fmt(c(rec.expected_value))}
-          </div>
-          <div className="text-xs text-gray-500">per contract</div>
-          <div className="text-xs text-gray-600">${rec.expected_value.toFixed(2)}/share</div>
-        </div>
-      </div>
-
-      {/* R:R visual + credit % */}
-      <div className="px-4 pb-3">
+      {/* Compact risk/reward + score summary */}
+      <div className="px-4 pb-3 grid gap-3 lg:grid-cols-[1.45fr_1fr]">
         <div className="bg-gray-800/60 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">Risk / Reward (per contract)</span>
-            <span className={`text-sm font-mono font-bold ${rrColor}`}>
-              Risk ${fmt(c(rec.max_loss))} to make ${fmt(c(rec.max_profit))} &nbsp;(1:{(rec.max_profit / rec.max_loss).toFixed(1)})
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-semibold text-gray-400">Risk / Reward</span>
+            <span className={`text-xs font-mono font-bold ${rrColor}`}>
+              1:{(rec.max_profit / rec.max_loss).toFixed(1)}
             </span>
           </div>
-          {/* R:R bar */}
-          <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
-            <div
-              className="h-full bg-green-500 rounded-l-full"
-              style={{ width: `${Math.min((rec.max_profit / (rec.max_profit + rec.max_loss)) * 100, 85)}%` }}
-            />
-            <div className="h-full bg-red-500 flex-1" />
-          </div>
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>Profit zone</span><span>Loss zone</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div>
+              <div className="text-gray-500">Max Profit</div>
+              <div className="text-emerald-400 font-bold font-mono">${fmt(c(rec.max_profit))}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Max Loss</div>
+              <div className="text-red-400 font-bold font-mono">${fmt(c(rec.max_loss))}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">PoP / EV</div>
+              <div className="font-mono text-gray-200">
+                {(rec.prob_of_profit * 100).toFixed(0)}% · <span className={evColor}>{rec.expected_value > 0 ? '+' : ''}${fmt(c(rec.expected_value))}</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-500">Breakeven</div>
+              <div className="font-mono text-gray-200 truncate">
+                {rec.breakeven_upper < 990
+                  ? `$${rec.breakeven_lower.toFixed(2)}–$${rec.breakeven_upper.toFixed(2)}`
+                  : `$${rec.breakeven_lower.toFixed(2)}`}
+              </div>
+            </div>
           </div>
           {isCredit && (
-            <div className={`mt-2 text-xs font-mono ${rec.passes_credit_filter ? 'text-green-400' : 'text-amber-400'}`}>
-              {rec.passes_credit_filter ? '✅' : '⚠️'} Credit collected: ${fmt(c(rec.net_credit))}/contract (${rec.net_credit.toFixed(2)}/share)
-              &nbsp;= {rec.credit_pct_of_width.toFixed(0)}% of ${rec.spread_width.toFixed(0)} spread width
-              {!rec.passes_credit_filter && ' — below 25% minimum'}
+            <div className={`mt-2 border-t border-gray-700/60 pt-2 text-xs font-mono ${rec.passes_credit_filter ? 'text-green-400' : 'text-amber-400'}`}>
+              {rec.passes_credit_filter ? '✅' : '⚠️'} ${fmt(c(rec.net_credit))} credit · {rec.credit_pct_of_width.toFixed(0)}% of ${rec.spread_width.toFixed(0)} width
+              {!rec.passes_credit_filter && ' · below 25% minimum'}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Score breakdown */}
-      <div className="px-4 pb-3">
         <div className="bg-gray-800/40 rounded-xl p-3">
-          <div className="text-xs text-gray-400 mb-2">Score Breakdown</div>
-          <div className="space-y-1.5">
-            <ScoreBar label="Signal fit" value={rec.scores.signal_score} max={40} color="#8b5cf6" />
-            <ScoreBar label="Structure" value={rec.scores.structure_score} max={30} color="#3b82f6" />
-            <ScoreBar label="Liquidity" value={rec.scores.liquidity_score} max={20} color="#22c55e" />
-            <ScoreBar label="IV fit" value={rec.scores.iv_fit_score} max={10} color="#f59e0b" />
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-semibold text-gray-400">Score Breakdown</span>
+            <span className={`font-mono text-sm font-bold ${scoreColor(rec.scores.total_score)}`}>{rec.scores.total_score}/100</span>
           </div>
-          <div className="mt-2 pt-2 border-t border-gray-700 flex justify-between text-xs">
-            <span className="text-gray-400">Total</span>
-            <span className={`font-mono font-bold ${scoreColor(rec.scores.total_score)}`}>{rec.scores.total_score}/100</span>
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="rounded-lg bg-gray-900/50 px-2 py-1 flex justify-between"><span className="text-gray-500">Signal</span><span className="font-mono text-violet-300">{rec.scores.signal_score}/40</span></div>
+            <div className="rounded-lg bg-gray-900/50 px-2 py-1 flex justify-between"><span className="text-gray-500">Structure</span><span className="font-mono text-blue-300">{rec.scores.structure_score}/30</span></div>
+            <div className="rounded-lg bg-gray-900/50 px-2 py-1 flex justify-between"><span className="text-gray-500">Liquidity</span><span className="font-mono text-emerald-300">{rec.scores.liquidity_score}/20</span></div>
+            <div className="rounded-lg bg-gray-900/50 px-2 py-1 flex justify-between"><span className="text-gray-500">IV</span><span className="font-mono text-amber-300">{rec.scores.iv_fit_score}/10</span></div>
           </div>
         </div>
       </div>
