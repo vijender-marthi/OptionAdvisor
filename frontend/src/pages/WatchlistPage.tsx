@@ -113,7 +113,7 @@ function TickerRow({
 
         {/* Ticker + company */}
         <div className="w-28 shrink-0">
-          <div className="font-bold text-white font-mono text-sm">{item.ticker}</div>
+          <div className="font-semibold text-white font-mono text-sm">{item.ticker}</div>
           <div className="text-xs text-gray-500 truncate max-w-[110px]">
             {item.companyName ?? entry?.data.company_name ?? '—'}
           </div>
@@ -123,7 +123,7 @@ function TickerRow({
         <div className="w-24 shrink-0">
           {sig ? (
             <>
-              <div className="text-sm font-bold font-mono text-white">${sig.current_price.toFixed(2)}</div>
+              <div className="text-sm font-semibold font-mono text-white">${sig.current_price.toFixed(2)}</div>
               <div className={`text-xs font-mono ${priceColor}`}>
                 {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePct.toFixed(1)}%)
               </div>
@@ -137,7 +137,7 @@ function TickerRow({
         <div className="w-20 shrink-0 hidden sm:block">
           {sig ? (
             <>
-              <div className={`text-sm font-bold font-mono ${ivColor}`}>{sig.iv_rank.toFixed(0)}%</div>
+              <div className={`text-sm font-semibold font-mono ${ivColor}`}>{sig.iv_rank.toFixed(0)}%</div>
               <div className="text-xs text-gray-500">IV Rank</div>
             </>
           ) : <div className="text-xs text-gray-600">—</div>}
@@ -369,7 +369,7 @@ export default function WatchlistPage() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
               <Star className="text-amber-400" size={22} />
               Watchlist
             </h1>
@@ -500,7 +500,7 @@ export default function WatchlistPage() {
             return (
               <section key={group.cat} className="space-y-2">
                 <div className="flex items-center gap-2 px-1">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${catBadge}`}>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${catBadge}`}>
                     {group.cat}
                   </span>
                   <span className="text-[10px] font-mono text-gray-600 bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5">

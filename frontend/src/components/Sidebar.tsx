@@ -97,7 +97,7 @@ export default function Sidebar() {
                       <>
                         <span className="flex-1 text-left">{item.label}</span>
                         {item.badge !== undefined && (
-                          <span className="bg-violet-700 text-violet-100 text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none">
+                          <span className="bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none">
                             {item.badge}
                           </span>
                         )}
