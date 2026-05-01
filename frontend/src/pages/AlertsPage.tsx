@@ -166,7 +166,7 @@ export default function AlertsPage() {
 
   return (
     <div className="alerts-page min-h-screen p-4 md:p-6">
-      <div className="max-w-4xl mx-auto space-y-5">
+      <div className="max-w-6xl mx-auto space-y-5">
 
         {/* Header */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">

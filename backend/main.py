@@ -20,15 +20,17 @@ from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_PATH = Path(__file__).with_name(".env")
+load_dotenv(ENV_PATH)
 
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
-    AlertDismissRequest, AlertClearRequest,
+    AlertDismissRequest, AlertClearRequest, TestEmailRequest,
 )
 from analysis import generate_signals
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
@@ -38,12 +40,33 @@ from storage import (
     update_user_alert_email,
 )
 
-# ── SMTP config from environment (optional — email silently skipped if absent) ─
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER     = os.getenv("SMTP_USER", "")      # your Gmail address
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # Gmail App Password
-SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)
+# ── SMTP config from environment (optional — email skipped if absent) ─────────
+def _smtp_config() -> dict:
+    # Reload local .env on each send/test so local credential edits are testable
+    # without restarting uvicorn. Existing systemd EnvironmentFile values remain.
+    load_dotenv(ENV_PATH, override=True)
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    raw_password = os.getenv("SMTP_PASSWORD", "").strip()
+    password = raw_password.replace(" ", "")
+    if "gmail.com" in host.lower():
+        password = password.replace("-", "")
+    user = os.getenv("SMTP_USER", "").strip()
+    return {
+        "host": host,
+        "port": int(os.getenv("SMTP_PORT", "587")),
+        "user": user,
+        "password": password,
+        "from_addr": os.getenv("SMTP_FROM", user).strip() or user,
+        "missing": [
+            key for key, value in {
+                "SMTP_USER": user,
+                "SMTP_PASSWORD": password,
+            }.items()
+            if not value
+        ],
+    }
+
+
 ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
@@ -285,8 +308,9 @@ def send_alert(req: AlertEmailRequest):
 
 
 def _send_alert_email(email: str, alerts: list, user_name: str | None = None) -> dict:
-    if not SMTP_USER or not SMTP_PASSWORD:
-        return {"sent": False, "message": "SMTP not configured — alert shown in app only"}
+    smtp = _smtp_config()
+    if smtp["missing"]:
+        return {"sent": False, "message": f"SMTP missing: {', '.join(smtp['missing'])}"}
 
     if not alerts:
         return {"sent": False, "message": "No alerts to send"}
@@ -300,15 +324,15 @@ def _send_alert_email(email: str, alerts: list, user_name: str | None = None) ->
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"🟢 OptionAdvisor: {count} GO {plural} detected — {alerts[0].time_window}"
-        msg["From"]    = SMTP_FROM
+        msg["From"]    = smtp["from_addr"]
         msg["To"]      = recipient
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=25) as server:
+        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=25) as server:
             server.ehlo()
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM, email, msg.as_string())
+            server.login(smtp["user"], smtp["password"])
+            server.sendmail(smtp["from_addr"], email, msg.as_string())
 
         return {"sent": True, "message": f"Alert email sent to {email}"}
 
@@ -316,6 +340,64 @@ def _send_alert_email(email: str, alerts: list, user_name: str | None = None) ->
         # Don't crash the app — email is optional
         print(f"[alert-email] send failed: {e}", flush=True)
         return {"sent": False, "message": f"Email failed: {str(e)}"}
+
+
+@app.post("/api/test-email")
+def send_test_email(req: TestEmailRequest):
+    """
+    Send a simple SMTP test email to the signed-in user.
+    This verifies SMTP credentials without waiting for a GO alert.
+    """
+    email = req.email.strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    smtp = _smtp_config()
+    if smtp["missing"]:
+        return {"sent": False, "message": f"SMTP missing: {', '.join(smtp['missing'])}"}
+
+    try:
+        display_name = (req.user_name or "").strip()
+        recipient = formataddr((display_name, email)) if display_name else email
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "OptionAdvisor SMTP test"
+        msg["From"] = smtp["from_addr"]
+        msg["To"] = recipient
+        msg.attach(MIMEText(
+            f"""
+            <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a;">
+              <h2>OptionAdvisor email test</h2>
+              <p>This confirms your SMTP settings can send email from the OptionAdvisor backend.</p>
+              <p style="color:#475569;font-size:12px;">Sent to {email}</p>
+            </div>
+            """,
+            "html",
+        ))
+
+        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=25) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp["user"], smtp["password"])
+            server.sendmail(smtp["from_addr"], email, msg.as_string())
+
+        return {"sent": True, "message": f"Test email sent to {email}"}
+    except Exception as e:
+        print(f"[test-email] send failed: {e}", flush=True)
+        return {"sent": False, "message": f"Email failed: {str(e)}"}
+
+
+@app.get("/api/email-status")
+def email_status():
+    smtp = _smtp_config()
+    return {
+        "configured": len(smtp["missing"]) == 0,
+        "missing": smtp["missing"],
+        "host": smtp["host"],
+        "port": smtp["port"],
+        "from": smtp["from_addr"] if smtp["from_addr"] else "",
+        "envFile": str(ENV_PATH),
+        "envFileExists": ENV_PATH.exists(),
+    }
 
 
 @app.get("/api/user-data/{email}", response_model=UserDataResponse)
@@ -412,6 +494,16 @@ def _analyze_ticker(
         info.get("currentPrice") or info.get("regularMarketPrice") or 0
     )
     price_approx = live_price if live_price > 0 else hist_close
+
+    # Extended-hours price (pre-market or after-hours)
+    pre_price  = safe_float(info.get("preMarketPrice")  or 0)
+    post_price = safe_float(info.get("postMarketPrice") or 0)
+    # Only one will be non-zero at a given time; post-market takes precedence
+    _ext_price = post_price if post_price > 0 else pre_price
+    _ext_type  = "post" if post_price > 0 else ("pre" if pre_price > 0 else "")
+    _ref_price = price_approx if price_approx > 0 else hist_close
+    _ext_change     = round(_ext_price - _ref_price, 2)     if _ext_price > 0 else 0.0
+    _ext_change_pct = round((_ext_change / _ref_price) * 100, 2) if _ref_price > 0 and _ext_price > 0 else 0.0
     calls_f = calls_raw[
         (calls_raw["strike"] >= price_approx * 0.75) &
         (calls_raw["strike"] <= price_approx * 1.30)
@@ -519,6 +611,10 @@ def _analyze_ticker(
         directional_bias=signals.directional_bias,
         bias_confidence=signals.bias_confidence,
         volatility_regime=signals.volatility_regime,
+        ext_market_price=_ext_price,
+        ext_market_change=_ext_change,
+        ext_market_change_pct=_ext_change_pct,
+        ext_market_type=_ext_type,
     )
 
     # Price history

@@ -17,9 +17,10 @@ const WIDTH_OPTIONS: { label: string; value: number | null }[] = [
 ]
 
 const STRATEGY_MODES: { label: string; sub: string; value: StrategyMode }[] = [
-  { label: 'All Strategies', sub: 'Engine picks best fit',         value: 'all'          },
-  { label: 'Long Options',   sub: 'Long calls, puts, spreads',     value: 'long_only'    },
-  { label: 'Credit Spreads', sub: 'Sell premium, defined risk',    value: 'credit_only'  },
+  { label: 'All Strategies',  sub: 'Engine picks best fit',           value: 'all'               },
+  { label: 'Long Options',    sub: 'Long calls, puts, spreads',       value: 'long_only'         },
+  { label: 'Credit Spreads',  sub: 'Defined-risk spreads only',       value: 'credit_only'       },
+  { label: 'Short / Covered', sub: 'Naked short & covered plays',     value: 'short_or_covered'  },
 ]
 
 export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: Props) {

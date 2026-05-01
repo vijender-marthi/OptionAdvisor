@@ -86,6 +86,12 @@ export interface Signals {
   directional_bias: string
   bias_confidence: number
   volatility_regime: string
+
+  // Extended-hours (pre-market / after-hours) — absent or 0 when market is regular
+  ext_market_price?: number       // e.g. 187.45
+  ext_market_change?: number      // vs regular close, e.g. +1.23
+  ext_market_change_pct?: number  // e.g. +0.66
+  ext_market_type?: string        // "pre" | "post" | ""
 }
 
 export interface OptionRow {
@@ -111,7 +117,7 @@ export interface PricePoint {
 
 // ─── Strategy mode ──────────────────────────────────────────
 
-export type StrategyMode = 'all' | 'long_only' | 'credit_only'
+export type StrategyMode = 'all' | 'long_only' | 'credit_only' | 'short_or_covered'
 
 // ─── Ticker cache ───────────────────────────────────────────
 
@@ -139,7 +145,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'trade-signals' | 'alerts' | 'settings' | 'login'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login'
 
 // ─── Alert system ───────────────────────────────────────────
 
@@ -219,9 +225,10 @@ export interface PortfolioPosition {
   addedAt: string          // ISO date string
   entryPrice: number       // stock price when added
   status: 'open' | 'closed'
+  source?: 'recommendation' | 'manual'  // how it was added
   pnlPct?: number          // user-entered close P&L %
   exitDate?: string        // ISO date string when closed
-  notes?: string
+  notes?: string           // free-form notes (e.g. "mistaken entry")
 }
 
 export interface UserDataState {

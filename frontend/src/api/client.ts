@@ -48,6 +48,27 @@ export const sendAlertEmail = async (
   return data
 }
 
+export const sendTestEmail = async (
+  email: string,
+  userName?: string,
+): Promise<{ sent: boolean; message: string }> => {
+  const { data } = await api.post('/test-email', { email, user_name: userName })
+  return data
+}
+
+export const getEmailStatus = async (): Promise<{
+  configured: boolean
+  missing: string[]
+  host: string
+  port: number
+  from: string
+  envFile: string
+  envFileExists: boolean
+}> => {
+  const { data } = await api.get('/email-status')
+  return data
+}
+
 export const getAlerts = async (email: string): Promise<AlertEntry[]> => {
   const { data } = await api.get<{ email: string; alerts: AlertEntry[] }>(`/alerts/${encodeURIComponent(email)}`)
   return data.alerts

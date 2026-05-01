@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight,
-  User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings,
+  User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
 } from 'lucide-react'
 import type { Page } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -29,7 +29,8 @@ export default function Sidebar() {
     {
       label: 'Discover',
       items: [
-        { id: 'ai-stocks', label: 'AI Radar', icon: <Brain size={18} /> },
+        { id: 'ai-stocks', label: 'AI Radar',  icon: <Brain size={18} /> },
+        { id: 'q-radar',   label: 'Q Radar',   icon: <Atom  size={18} /> },
       ],
     },
     {
@@ -85,7 +86,7 @@ export default function Sidebar() {
                     key={item.id}
                     onClick={() => navigate(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
                       ${active
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
@@ -118,7 +119,7 @@ export default function Sidebar() {
         <button
           onClick={() => navigate('settings')}
           title={collapsed ? 'Settings' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
             ${page === 'settings'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -131,7 +132,7 @@ export default function Sidebar() {
         <button
           onClick={() => navigate('help')}
           title={collapsed ? 'Help' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
             ${page === 'help'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -150,8 +151,8 @@ export default function Sidebar() {
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-200 truncate">{user.name}</div>
-                <div className="text-[11px] text-gray-500 truncate">{user.email}</div>
+                <div className="text-sm font-semibold text-gray-200 truncate">{user.name}</div>
+                <div className="text-[11px] font-medium text-gray-500 truncate">{user.email}</div>
               </div>
             )}
             {!collapsed && (
@@ -167,7 +168,7 @@ export default function Sidebar() {
           title={isMarketHours ? 'Market live — auto-refresh active (6 AM–4 PM PST)' : 'Market closed — auto-refresh paused'}>
           <Activity size={12} className={isMarketHours ? 'text-emerald-400 animate-pulse' : 'text-gray-700'} />
           {!collapsed && (
-            <span className={`text-[11px] font-medium ${isMarketHours ? 'text-emerald-400' : 'text-gray-700'}`}>
+            <span className={`text-[11px] font-semibold ${isMarketHours ? 'text-emerald-400' : 'text-gray-700'}`}>
               {isMarketHours ? 'Market Live' : 'Market Closed'}
             </span>
           )}
@@ -176,7 +177,7 @@ export default function Sidebar() {
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(c => !c)}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-gray-600 hover:text-gray-400 transition-colors ${collapsed ? 'justify-center' : ''}`}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:text-gray-400 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           {collapsed ? <ChevronRight size={14} /> : <><ChevronLeft size={14} /><span>Collapse</span></>}
         </button>

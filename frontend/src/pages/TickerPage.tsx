@@ -307,7 +307,7 @@ export default function TickerPage() {
   const displayData = selectedData ?? data
 
   return (
-    <div className="min-h-screen p-4 md:p-6">
+    <div className="ticker-page min-h-screen p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4">
 
         <TickerInput onAnalyze={handleAnalyzeWithCache} loading={loading} initialTicker={inputTicker} />
@@ -360,7 +360,10 @@ export default function TickerPage() {
               {lastMode !== 'all' ? (
                 <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
                                 bg-violet-900/20 border-violet-800 text-violet-400">
-                  {lastMode === 'long_only' ? '📈 Long Options Only' : '💰 Credit Spreads Only'}
+                  {lastMode === 'long_only'         ? '📈 Long Options Only'
+                   : lastMode === 'credit_only'      ? '💰 Credit Spreads Only'
+                   : lastMode === 'short_or_covered' ? '🎯 Short / Covered Only'
+                   : '💰 Credit Spreads Only'}
                 </div>
               ) : (
                 /* In "All" mode + HIGH IV: show why Long Calls/Puts are suppressed */
