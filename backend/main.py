@@ -48,6 +48,10 @@ ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
+ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
+
+analysis_cache_lock = threading.Lock()
+analysis_cache: dict[str, tuple[float, AnalyzeResponse]] = {}
 
 app = FastAPI(title="Options Trade Advisor API", version="2.0")
 init_db()
@@ -512,9 +516,41 @@ def _analyze_ticker(
     )
 
 
+def _cache_key(ticker: str, weeks_out: int, spread_width: int | None, strategy_mode: str) -> str:
+    width_key = "auto" if spread_width is None else str(spread_width)
+    return f"{ticker.upper().strip()}|{weeks_out}|{width_key}|{strategy_mode}"
+
+
+def _get_analysis_with_cache(
+    ticker: str,
+    weeks_out: int = 4,
+    spread_width: int | None = None,
+    strategy_mode: str = "all",
+    force_refresh: bool = False,
+) -> AnalyzeResponse:
+    key = _cache_key(ticker, weeks_out, spread_width, strategy_mode)
+    now = time.time()
+
+    if not force_refresh:
+        with analysis_cache_lock:
+            cached = analysis_cache.get(key)
+            if cached and now - cached[0] < ALERT_ANALYSIS_CACHE_TTL_SECONDS:
+                return cached[1]
+
+    data = _analyze_ticker(
+        ticker,
+        weeks_out=weeks_out,
+        spread_width=spread_width,
+        strategy_mode=strategy_mode,
+    )
+    with analysis_cache_lock:
+        analysis_cache[key] = (time.time(), data)
+    return data
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
-    return _analyze_ticker(
+    return _get_analysis_with_cache(
         req.ticker,
         weeks_out=req.weeks_out,
         spread_width=req.spread_width,
@@ -677,7 +713,10 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
 
     for ticker in tickers:
         try:
-            data = _analyze_ticker(ticker, weeks_out=4, spread_width=5, strategy_mode="all")
+            # Alert scans only run for tickers saved in the user's watchlist.
+            # Reuse fresh backend analysis data; if absent/stale, this refreshes
+            # Yahoo/options data once and stores the result for the scan window.
+            data = _get_analysis_with_cache(ticker, weeks_out=4, spread_width=5, strategy_mode="all")
         except Exception as exc:
             print(f"[alert-scan] {email} {ticker} failed: {exc}", flush=True)
             continue
