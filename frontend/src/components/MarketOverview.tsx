@@ -50,12 +50,36 @@ export default function MarketOverview({ ticker, companyName, sector, marketCap,
             <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{sector}</span>
             <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{marketCap}</span>
           </div>
+          {/* Regular session price + day change */}
           <div className="flex items-baseline gap-3 mt-1">
             <span className="text-4xl font-bold font-mono">${signals.current_price.toFixed(2)}</span>
             <span className={`text-lg font-semibold ${up ? 'text-green-400' : 'text-red-400'}`}>
               {up ? '▲' : '▼'} {Math.abs(signals.price_change).toFixed(2)} ({signals.price_change_pct > 0 ? '+' : ''}{signals.price_change_pct.toFixed(2)}%)
             </span>
           </div>
+
+          {/* Extended-hours price — only shown when market is closed / pre/post */}
+          {!!signals.ext_market_price && signals.ext_market_price > 0 && (
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${
+                signals.ext_market_type === 'pre'
+                  ? 'bg-blue-900/40 text-blue-300 border-blue-700'
+                  : 'bg-purple-900/40 text-purple-300 border-purple-700'
+              }`}>
+                {signals.ext_market_type === 'pre' ? 'Pre-Market' : 'After Hours'}
+              </span>
+              <span className="text-xl font-bold font-mono text-white">
+                ${signals.ext_market_price.toFixed(2)}
+              </span>
+              {!!signals.ext_market_change && signals.ext_market_change !== 0 && (
+                <span className={`text-sm font-semibold ${signals.ext_market_change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {signals.ext_market_change >= 0 ? '▲' : '▼'}{' '}
+                  {Math.abs(signals.ext_market_change).toFixed(2)}{' '}
+                  ({(signals.ext_market_change_pct ?? 0) >= 0 ? '+' : ''}{(signals.ext_market_change_pct ?? 0).toFixed(2)}%)
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Bias badge */}

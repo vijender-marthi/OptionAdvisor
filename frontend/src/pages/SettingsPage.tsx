@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
-import { Bell, Mail, ShieldCheck, Info } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
+import { getEmailStatus, sendTestEmail } from '../api/client'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
 interface ToggleRowProps {
@@ -64,6 +66,39 @@ function SettingsCard({ title, children }: { title: string; children: ReactNode 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { alertEmailEnabled, setAlertEmailEnabled, user } = useApp()
+  const [testingEmail, setTestingEmail] = useState(false)
+  const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
+  const [emailStatus, setEmailStatus] = useState<{
+    configured: boolean
+    missing: string[]
+    host: string
+    port: number
+    from: string
+    envFileExists: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    getEmailStatus()
+      .then(setEmailStatus)
+      .catch(() => setEmailStatus(null))
+  }, [])
+
+  const handleTestEmail = async () => {
+    if (!user?.email || testingEmail) return
+    setTestingEmail(true)
+    setTestResult(null)
+    try {
+      setTestResult(await sendTestEmail(user.email, user.name))
+      getEmailStatus().then(setEmailStatus).catch(() => undefined)
+    } catch (e) {
+      setTestResult({
+        sent: false,
+        message: e instanceof Error ? e.message : 'Email test failed',
+      })
+    } finally {
+      setTestingEmail(false)
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
@@ -88,6 +123,38 @@ export default function SettingsPage() {
           badge={alertEmailEnabled ? 'ON' : 'OFF'}
           badgeColor={alertEmailEnabled ? 'bg-emerald-600' : 'bg-gray-600'}
         />
+        <div className="py-4 flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-100 tracking-tight">SMTP Test</div>
+            <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+              Send a test email to your login address to verify the backend SMTP settings.
+            </p>
+            {testResult && (
+              <div className={`mt-2 flex items-center gap-1.5 text-xs ${testResult.sent ? 'text-emerald-400' : 'text-red-400'}`}>
+                {testResult.sent ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                <span>{testResult.message}</span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleTestEmail}
+            disabled={!user?.email || testingEmail}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                       text-gray-300 hover:text-violet-300 hover:border-violet-600 text-xs font-semibold rounded-xl
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={13} className={testingEmail ? 'animate-pulse' : ''} />
+            {testingEmail ? 'Sending...' : 'Send Test'}
+          </button>
+        </div>
+        {emailStatus && (
+          <div className={`py-3 text-xs border-t border-gray-800 ${emailStatus.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
+            SMTP status: {emailStatus.configured
+              ? `Configured (${emailStatus.host}:${emailStatus.port})`
+              : `Missing ${emailStatus.missing.join(', ')}${emailStatus.envFileExists ? '' : ' and backend/.env was not found'}`
+            }
+          </div>
+        )}
       </SettingsCard>
 
       {/* How alerts work */}
@@ -95,7 +162,7 @@ export default function SettingsPage() {
         <div className="py-4 space-y-3 text-sm text-gray-400 leading-relaxed">
           <div className="flex gap-3">
             <Bell size={15} className="text-violet-400 mt-0.5 shrink-0" />
-            <p>Alerts are scanned every <span className="text-gray-200 font-medium">5 minutes</span> during market hours (6 AM–4 PM PST, weekdays). Each GO signal fires at most once per ticker/strategy/expiry combination per session.</p>
+            <p>Alerts are scanned every <span className="text-gray-200 font-medium">15 minutes</span> during market hours (6 AM–4 PM PST, weekdays). Each GO signal fires at most once per ticker/strategy/expiry combination per session.</p>
           </div>
           <div className="flex gap-3">
             <ShieldCheck size={15} className="text-violet-400 mt-0.5 shrink-0" />

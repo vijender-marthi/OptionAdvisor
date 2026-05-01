@@ -7,6 +7,7 @@ import WatchlistPage from './pages/WatchlistPage'
 import PortfolioPage from './pages/PortfolioPage'
 import HelpPage from './pages/HelpPage'
 import AIStocksPage from './pages/AIStocksPage'
+import QRadarPage from './pages/QRadarPage'
 import TradeSignalsPage from './pages/TradeSignalsPage'
 import AlertsPage from './pages/AlertsPage'
 import SettingsPage from './pages/SettingsPage'
@@ -29,6 +30,7 @@ function Router() {
       {page === 'portfolio'     && <PortfolioPage />}
       {page === 'help'          && <HelpPage />}
       {page === 'ai-stocks'     && <AIStocksPage />}
+      {page === 'q-radar'       && <QRadarPage />}
       {page === 'trade-signals' && <TradeSignalsPage />}
       {page === 'alerts'        && <AlertsPage />}
       {page === 'settings'      && <SettingsPage />}

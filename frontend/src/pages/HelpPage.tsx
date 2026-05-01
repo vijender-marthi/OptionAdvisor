@@ -258,7 +258,7 @@ const workflowSteps = [
     title: 'Add to Portfolio',
     icon: <Briefcase size={16} />,
     color: 'text-indigo-400',
-    desc: 'Click "Add to Portfolio" on any recommendation, enter contracts and entry price. Portfolio tracks all open and closed positions, calculates P&L, and shows aggregate stats. Mark positions closed with a P&L % when you exit.',
+    desc: 'Click "Add to Portfolio" on any recommendation, enter contracts and entry price. Portfolio tracks open and closed positions, refreshes current values, estimates P&L, and exports XLSX/PDF reports.',
   },
 ]
 
@@ -516,7 +516,7 @@ export default function HelpPage() {
           <div className="space-y-3 text-sm text-gray-400">
             <p>
               The Portfolio page tracks every position you add from a recommendation. Each entry records the full
-              trade structure — strategy, legs, expiry, max profit/loss, PoP, and the stock price when you added it.
+              trade structure — strategy, legs, expiry, max profit/loss, PoP, contracts, and the stock price when you added it.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               {[
@@ -530,11 +530,23 @@ export default function HelpPage() {
                 },
                 {
                   title: 'P&L tracking',
-                  desc: 'The summary bar shows total open positions, total max risk deployed, and average PoP across open trades. These are theoretical max figures — actual P&L depends on your exit timing.',
+                  desc: 'Open positions show an estimated P&L using the latest cached stock price and the option payoff at expiry. This is an at-expiry estimate, not brokerage mark-to-market option pricing.',
+                },
+                {
+                  title: 'Refresh values',
+                  desc: 'Use "Refresh Values" to re-analyze every unique open-position ticker. This updates cached stock prices, exit suggestions, and the Portfolio P&L estimate for each open trade.',
                 },
                 {
                   title: 'Position sizing',
                   desc: 'One contract controls 100 shares. A $5-wide put spread sold for $1.50 credit has max profit = $150 and max loss = $350 per contract. Scale contracts conservatively relative to account size.',
+                },
+                {
+                  title: 'Exit suggestions',
+                  desc: 'Open positions can show HOLD, MANAGE, ROLL, TAKE PROFIT, EXIT NOW, or EXPIRED suggestions based on DTE, estimated profit capture, loss pressure, and gamma/assignment risk.',
+                },
+                {
+                  title: 'Export reports',
+                  desc: 'Use Export to download the current Portfolio view as XLSX or PDF. XLSX includes tabular columns for ticker, contracts, purchased date, expiry/current P&L, warnings, max profit/loss, strategy type, and separate leg action/strike/value columns.',
                 },
               ].map(item => (
                 <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
@@ -543,6 +555,9 @@ export default function HelpPage() {
                 </div>
               ))}
             </div>
+            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
+              Tip: refresh the Portfolio before exporting when you want current stock prices and current P&L estimates in the report.
+            </p>
           </div>
         </InfoCard>
 

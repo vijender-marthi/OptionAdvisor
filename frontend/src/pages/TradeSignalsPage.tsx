@@ -201,9 +201,9 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
 
   return (
     <div className={`bg-gray-900 border border-gray-800 border-l-4 ${cfg.border} rounded-2xl overflow-hidden`}>
-      {/* Header */}
-      <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3 flex-wrap">
-        <div>
+      {/* Compact summary row */}
+      <div className="p-3 grid grid-cols-1 xl:grid-cols-[minmax(220px,1.05fr)_minmax(320px,1.35fr)_auto] gap-3 items-start">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-base font-bold text-white font-mono">{result.ticker}</span>
             <span className={`text-xs font-mono ${priceUp ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -213,26 +213,14 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${catBadge}`}>{aiCat}</span>
             )}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">{result.companyName}</div>
+          <div className="text-xs text-gray-500 mt-0.5 truncate">{result.companyName}</div>
+          <div className="text-[10px] text-gray-600 mt-1 truncate">{result.sector}</div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {goCount  > 0 && <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full">{goCount} GO</span>}
-          {cauCount > 0 && <span className="text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded-full">{cauCount} CAUTION</span>}
-          {noCount  > 0 && <span className="text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">{noCount} NO GO</span>}
-          <span className="text-[10px] text-gray-600 flex items-center gap-1"><Clock size={9} />{result.ageMin}m</span>
-        </div>
-      </div>
 
-      {/* Week coverage dots */}
-      <div className="px-4 pb-2">
-        <WeekCoverageDots buckets={result.buckets} hasFetched={result.hasFetchedAllWeeks} />
-      </div>
-
-      {/* Week tabs + recs */}
-      {result.buckets.length > 0 && (
-        <div className="px-4 pb-2">
-          {/* Tab pills for each DTE window */}
-          <div className="flex gap-1.5 mb-2 flex-wrap">
+        <div className="min-w-0 space-y-2">
+          <WeekCoverageDots buckets={result.buckets} hasFetched={result.hasFetchedAllWeeks} />
+          {result.buckets.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
             {result.buckets.map(b => {
               const active = expandedWeek === b.dte
               const vcfg = VERDICT_CFG[b.bestVerdict]
@@ -254,8 +242,40 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
               )
             })}
           </div>
+          )}
+        </div>
 
-          {/* Active week's recommendations */}
+        <div className="flex flex-col items-start xl:items-end gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap xl:justify-end">
+            {goCount  > 0 && <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full">{goCount} GO</span>}
+            {cauCount > 0 && <span className="text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded-full">{cauCount} CAUTION</span>}
+            {noCount  > 0 && <span className="text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">{noCount} NO GO</span>}
+            <span className="text-[10px] text-gray-600 flex items-center gap-1"><Clock size={9} />{result.ageMin}m</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap xl:justify-end">
+            <button
+              onClick={onFetchAllWeeks}
+              disabled={fetching}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                         hover:border-violet-600 text-gray-400 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
+            >
+              <Layers size={11} className={fetching ? 'animate-pulse' : ''} />
+              {fetching ? 'Fetching…' : 'Fetch Weeks'}
+            </button>
+            <button
+              onClick={onAnalyze}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                         text-gray-400 hover:text-gray-200 text-xs font-semibold rounded-xl transition-colors"
+            >
+              <TrendingUp size={11} /> Analyze <ChevronRight size={11} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Active week's recommendations */}
+      {result.buckets.length > 0 && (
+        <div className="px-3 pb-2">
           {result.buckets.map(b => (
             b.dte === expandedWeek && (
               <div key={b.dte}>
@@ -270,27 +290,6 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
           ))}
         </div>
       )}
-
-      {/* Footer */}
-      <div className="px-4 pb-3 pt-1 border-t border-gray-800 flex items-center gap-2 flex-wrap">
-        <button
-          onClick={onFetchAllWeeks}
-          disabled={fetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                     hover:border-violet-600 text-gray-400 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
-        >
-          <Layers size={11} className={fetching ? 'animate-pulse' : ''} />
-          {fetching ? 'Fetching 2–8 weeks…' : 'Fetch All Weeks'}
-        </button>
-        <button
-          onClick={onAnalyze}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                     text-gray-400 text-xs font-semibold rounded-xl transition-colors"
-        >
-          <TrendingUp size={11} /> Full Analysis <ChevronRight size={11} />
-        </button>
-        <span className="text-[10px] text-gray-600 ml-auto">{result.sector}</span>
-      </div>
     </div>
   )
 }
@@ -414,10 +413,10 @@ export default function TradeSignalsPage() {
 
   return (
     <div className="min-h-screen p-4 md:p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
+      <div className="max-w-6xl mx-auto space-y-4">
 
         {/* Header */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <div className="flex items-center gap-2.5 mb-1">
@@ -431,7 +430,7 @@ export default function TradeSignalsPage() {
                 card to scan the 2w · 3w · 4w · 6w · 8w expiry windows — each window gets its own set of verdicts.
               </p>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end">
               <div className="bg-emerald-950/60 border border-emerald-800 rounded-xl px-3 py-2 text-center min-w-[56px]">
                 <div className="text-xl font-bold text-emerald-400 font-mono">{goCount}</div>
                 <div className="text-[10px] text-gray-500">Tickers Ready</div>
@@ -470,15 +469,13 @@ export default function TradeSignalsPage() {
           </div>
         </div>
 
-        {/* Global DTE window filter */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3">
-          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-            <div>
+        {/* Controls */}
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-[240px]">
               <div className="text-xs font-semibold text-gray-300">Global DTE Window Filter</div>
               <div className="text-[11px] text-gray-600">
                 Select a 2w to 8w window, then refresh trades to populate and show that range across all analyzed tickers.
               </div>
-            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <select
@@ -556,7 +553,7 @@ export default function TradeSignalsPage() {
 
         {/* Analyzed ticker cards */}
         {(filter !== 'Not Analyzed') && (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filtered.length === 0 && results.length > 0 && (
               <div className="text-center py-8 text-gray-600 text-sm">
                 No tickers match "{filter}" for {selectedWeek === 'All' ? 'all windows' : `${selectedWeek}w`}.

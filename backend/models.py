@@ -9,7 +9,7 @@ class AnalyzeRequest(BaseModel):
     ticker: str
     weeks_out: int = 4
     spread_width: Optional[int] = None   # 5, 10, or None (auto)
-    strategy_mode: str = 'all'           # 'all' | 'long_only' | 'credit_only'
+    strategy_mode: str = 'all'           # 'all' | 'long_only' | 'credit_only' | 'short_or_covered'
 
 
 class AlertItem(BaseModel):
@@ -34,6 +34,11 @@ class AlertEmailRequest(BaseModel):
     email: str
     user_name: Optional[str] = None
     alerts: list[AlertItem]
+
+
+class TestEmailRequest(BaseModel):
+    email: str
+    user_name: Optional[str] = None
 
 
 class AlertDismissRequest(BaseModel):
@@ -174,6 +179,12 @@ class SignalsOut(BaseModel):
     directional_bias: str
     bias_confidence: int
     volatility_regime: str
+
+    # Extended-hours price (pre-market or after-hours); 0.0 when not available
+    ext_market_price: float = 0.0       # the extended-hours quote
+    ext_market_change: float = 0.0      # vs regular-session close
+    ext_market_change_pct: float = 0.0  # % vs regular-session close
+    ext_market_type: str = ""           # "pre" | "post" | ""
 
 
 class AnalyzeResponse(BaseModel):

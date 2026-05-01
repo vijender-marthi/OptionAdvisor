@@ -1147,7 +1147,8 @@ def run_engine(
     spread_width_override: if 5 or 10, pins credit-spread buy legs to that fixed width.
     weeks_out: user-selected expiry target in weeks — drives pick_expiry_by_dte windows.
     strategy_mode: 'all' = market-driven (default), 'long_only' = long/debit only,
-                   'credit_only' = credit/short premium only.
+                   'credit_only' = defined-risk credit spreads only (no naked/covered),
+                   'short_or_covered' = naked short / covered strategies only (no spreads).
     """
     price = signals.current_price
     bias  = signals.directional_bias
@@ -1160,12 +1161,14 @@ def run_engine(
     LOW_IV  = signals.iv_rank < 50
 
     # Strategy mode gates: control which trade families to build
-    BUILD_LONG   = strategy_mode in ('all', 'long_only')
-    BUILD_CREDIT = strategy_mode in ('all', 'credit_only')
+    BUILD_LONG          = strategy_mode in ('all', 'long_only')
+    # Defined-risk credit spreads (Bull Put, Bear Call, Iron Condor)
+    BUILD_SPREADS       = strategy_mode in ('all', 'credit_only')
+    # Naked / covered single-leg sells (Short Put, Short Call, Covered Call, Covered Put)
+    BUILD_SHORT_COVERED = strategy_mode in ('all', 'short_or_covered')
     # In dedicated modes, relax IV gates so users always see their preferred type
-    # e.g. 'long_only' user should see long options even in high-IV envs
     LONG_IV_OK   = LOW_IV  or strategy_mode == 'long_only'
-    CREDIT_IV_OK = HIGH_IV or strategy_mode == 'credit_only'
+    CREDIT_IV_OK = HIGH_IV or strategy_mode in ('credit_only', 'short_or_covered')
 
     # Filter options chain to tradeable range (75%–130% of price)
     calls_f = calls[
@@ -1225,22 +1228,28 @@ def run_engine(
         if t:
             candidates_raw.append(t)
 
-    # Credit spreads: require elevated IV in 'all' mode; always build in 'credit_only'
-    if BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+    # Credit spreads (defined-risk): require elevated IV in 'all' mode; always build in 'credit_only'
+    # Track whether a spread was built per direction — used below to suppress redundant naked plays
+    bull_spread_built = False
+    bear_spread_built = False
+
+    if BUILD_SPREADS and not BEARISH and CREDIT_IV_OK:
         c, p = get_chain(exp_credit)
         t = _build_credit_spread(signals, c, p, "PUT", "Bull Put Spread", "Bullish/Neutral", exp_credit, price,
                                   spread_width_override=spread_width_override)
         if t:
             candidates_raw.append(t)
+            bull_spread_built = True
 
-    if BUILD_CREDIT and not BULLISH and CREDIT_IV_OK:
+    if BUILD_SPREADS and not BULLISH and CREDIT_IV_OK:
         c, p = get_chain(exp_credit)
         t = _build_credit_spread(signals, c, p, "CALL", "Bear Call Spread", "Bearish/Neutral", exp_credit, price,
                                   spread_width_override=spread_width_override)
         if t:
             candidates_raw.append(t)
+            bear_spread_built = True
 
-    if BUILD_CREDIT and NEUTRAL and CREDIT_IV_OK:
+    if BUILD_SPREADS and NEUTRAL and CREDIT_IV_OK:
         c, p = get_chain(exp_credit)
         t = _build_iron_condor(signals, c, p, exp_credit, spread_width_override=spread_width_override)
         if t:
@@ -1253,18 +1262,29 @@ def run_engine(
         if t:
             candidates_raw.append(t)
 
-    # Covered options: income/yield strategies — require elevated IV + not strongly bearish.
+    # Covered / naked short options — only in 'all' or 'short_or_covered' mode.
+    # In 'all' mode we also deduplicate: if a defined-risk spread already covers the same
+    # directional thesis, suppress the naked/covered equivalent so the list stays focused.
+    # (Bull Put Spread and Short Put are both bull/neutral credit plays — show the safer one.)
+    #
     # Covered Call: stock ownership assumed; sell OTM call to collect premium (neutral-bullish).
-    # Covered Put (cash-secured): reserve cash collateral; sell OTM put to collect premium.
-    # Only included in 'all' and 'credit_only' modes (they are premium-selling strategies).
-    exp_covered = pick_expiry_by_dte(option_dates, DTE_COVERED_MIN - 7, DTE_COVERED_MAX + 7)
-    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+    # Covered Put (cash-secured): reserve cash; sell OTM put to collect premium (neutral-bullish).
+    # Floor at 14 DTE for covered strategies — sub-2-week income is too gamma-heavy.
+    exp_covered = exp_credit if days_to_expiry(exp_credit) >= 14 else \
+        pick_expiry_by_dte(option_dates, 14, dte_hi + 14) or exp_credit
+
+    # In 'all' mode suppress naked/covered if a spread already covers that directional thesis.
+    # In 'short_or_covered' mode always build them (no spreads were built above).
+    _suppress_bull_naked = bull_spread_built and strategy_mode == 'all'
+    _suppress_bear_naked = bear_spread_built and strategy_mode == 'all'
+
+    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:
         c, p = get_chain(exp_covered)
         t = _build_covered_call(signals, c, exp_covered)
         if t:
             candidates_raw.append(t)
 
-    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
+    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:
         c, p = get_chain(exp_covered)
         t = _build_covered_put(signals, p, exp_covered)
         if t:
@@ -1274,15 +1294,16 @@ def run_engine(
     # Short Put: neutral-bullish + HIGH_IV — sell OTM put, profit if stock holds.
     # Short Call: neutral-bearish + HIGH_IV — sell OTM call, profit if stock stays flat/falls.
     # ⚠️  Short Call has unlimited risk; a strong bearish signal is required.
-    if exp_covered and BUILD_CREDIT and not BEARISH and CREDIT_IV_OK:
-        c, p = get_chain(exp_covered)
-        t = _build_short_put(signals, p, exp_covered)
+    # NOTE: these use exp_credit (weeks_out-anchored) NOT exp_covered.
+    if exp_credit and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:
+        c, p = get_chain(exp_credit)
+        t = _build_short_put(signals, p, exp_credit)
         if t:
             candidates_raw.append(t)
 
-    if exp_covered and BUILD_CREDIT and BEARISH and CREDIT_IV_OK:
-        c, p = get_chain(exp_covered)
-        t = _build_short_call(signals, c, exp_covered)
+    if exp_credit and BUILD_SHORT_COVERED and BEARISH and CREDIT_IV_OK and not _suppress_bear_naked:
+        c, p = get_chain(exp_credit)
+        t = _build_short_call(signals, c, exp_credit)
         if t:
             candidates_raw.append(t)
 

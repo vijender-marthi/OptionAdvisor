@@ -13,6 +13,7 @@ function getHashPage(): Page {
   if (h === 'help') return 'help'
   if (h === 'login') return 'login'
   if (h === 'ai-stocks') return 'ai-stocks'
+  if (h === 'q-radar') return 'q-radar'
   if (h === 'trade-signals') return 'trade-signals'
   if (h === 'alerts') return 'alerts'
   if (h === 'settings') return 'settings'
@@ -103,6 +104,7 @@ interface AppContextValue {
   // Portfolio
   portfolio: PortfolioPosition[]
   addToPortfolio: (rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number) => void
+  addManualPosition: (pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   removeFromPortfolio: (id: string) => void
   closePosition: (id: string, pnlPct: number) => void
   isInPortfolio: (ticker: string, strategy: string, expiry: string) => boolean
@@ -355,6 +357,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addedAt: new Date().toISOString(), entryPrice, status: 'open' as const,
       }, ...prev]
     })
+  }, [])
+
+  const addManualPosition = useCallback((pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
+    setPortfolio(prev => [{
+      ...pos,
+      id: `manual-${pos.ticker}-${Date.now()}`,
+      addedAt: new Date().toISOString(),
+      status: 'open' as const,
+      source: 'manual' as const,
+    }, ...prev])
   }, [])
 
   const removeFromPortfolio = useCallback((id: string) => {
@@ -656,7 +668,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingTicker, requestAnalysis, clearPendingTicker,
       user, login, logout,
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
-      portfolio, addToPortfolio, removeFromPortfolio, closePosition, isInPortfolio,
+      portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
       refreshingTickers, refreshTicker, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
       fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
