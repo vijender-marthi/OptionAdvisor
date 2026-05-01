@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Sidebar from '../components/Sidebar'
 import CopyrightFooter from '../components/CopyrightFooter'
+import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {children}
         <CopyrightFooter />
       </main>
+      <FirstLoginHelpModal />
     </div>
   )
 }

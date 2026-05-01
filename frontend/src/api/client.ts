@@ -25,6 +25,7 @@ export const getUserData = async (email: string): Promise<UserDataState> => {
 
 export const sendAlertEmail = async (
   email: string,
+  userName: string,
   alerts: AlertEntry[],
 ): Promise<{ sent: boolean; message: string }> => {
   const payload: AlertEmailItem[] = alerts.map(alert => ({
@@ -43,8 +44,26 @@ export const sendAlertEmail = async (
     ev: alert.ev,
     time_window: alert.timeWindow,
   }))
-  const { data } = await api.post('/send-alert', { email, alerts: payload })
+  const { data } = await api.post('/send-alert', { email, user_name: userName, alerts: payload })
   return data
+}
+
+export const getAlerts = async (email: string): Promise<AlertEntry[]> => {
+  const { data } = await api.get<{ email: string; alerts: AlertEntry[] }>(`/alerts/${encodeURIComponent(email)}`)
+  return data.alerts
+}
+
+export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
+  const { data } = await api.post<{ email: string; alerts: AlertEntry[] }>(`/alerts/scan/${encodeURIComponent(email)}`)
+  return data.alerts
+}
+
+export const dismissBackendAlert = async (email: string, alertId: string): Promise<void> => {
+  await api.post('/alerts/dismiss', { email, alert_id: alertId })
+}
+
+export const clearBackendAlerts = async (email: string): Promise<void> => {
+  await api.post('/alerts/clear', { email })
 }
 
 export const saveUserData = async (

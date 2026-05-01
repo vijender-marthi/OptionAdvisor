@@ -1,5 +1,7 @@
 backend/*.sqlite3
 backend/*.sqlite3-*
+backend/.env
+.env
 __pycache__/
 backend/__pycache__/
 frontend/dist/

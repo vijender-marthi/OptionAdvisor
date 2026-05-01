@@ -39,6 +39,26 @@ const strategyRules = [
     built: 'Long Straddle',
     why: 'Buy both sides when the signal is neutral but premium is cheap enough to buy volatility.',
   },
+  {
+    condition: 'HIGH_IV + not BEARISH',
+    built: 'Covered Call',
+    why: 'Sell an OTM call against 100 shares already owned. Collects income in elevated IV; stock gains are capped at the short strike.',
+  },
+  {
+    condition: 'HIGH_IV + not BEARISH',
+    built: 'Covered Put (Cash-Secured Put)',
+    why: 'Sell an OTM put with cash collateral. Collects income in elevated IV; if assigned you buy the stock at an effective discount.',
+  },
+  {
+    condition: 'HIGH_IV + not BEARISH',
+    built: 'Short Put (naked)',
+    why: 'Sell an OTM put for premium without cash-securing. Requires a margin account. Profit if stock stays above the strike.',
+  },
+  {
+    condition: 'HIGH_IV + BEARISH',
+    built: 'Short Call (naked)',
+    why: 'Sell an OTM call when bearish and IV is elevated. ⚠️ Unlimited upside risk — requires active management and margin.',
+  },
 ]
 
 const signalFlags = [
@@ -112,8 +132,13 @@ const checklistItems = [
     hardFail: true,
   },
   {
+    name: 'Income Edge (Covered strategies only)',
+    desc: 'Replaces the EV check for Covered Calls and Covered Puts. Evaluates income yield: pass ≥ 1.0% of stock/collateral value, warn 0.6–1.0%, fail < 0.6%. Not a hard fail — income strategies are judged on yield, not speculative EV.',
+    hardFail: false,
+  },
+  {
     name: 'Probability of Profit',
-    desc: 'Thresholds differ by strategy type. Credit spreads (Bull Put, Bear Call, Iron Condor): pass ≥ 62%, warn 52–62%, fail < 52%. Long / debit trades: pass ≥ 45%, warn 35–45%, fail < 35%. Credit spreads naturally carry high PoP; long options naturally carry lower PoP so a lower bar applies.',
+    desc: 'Thresholds differ by strategy type. Credit spreads (Bull Put, Bear Call, Iron Condor): pass ≥ 62%, warn 52–62%, fail < 52%. Covered Call / Covered Put: pass ≥ 65%, warn 55–65%, fail < 55% — higher bar because the whole thesis is "stock stays away from the strike." Long / debit trades: pass ≥ 45%, warn 35–45%, fail < 35%.',
     hardFail: false,
   },
 ]
@@ -157,6 +182,12 @@ const glossaryTerms = [
   { term: 'IV Skew', def: 'Difference in IV between equidistant puts and calls. Negative skew means puts are more expensive, signaling fear; positive skew is rare.' },
   { term: 'Open Interest', def: 'Number of outstanding option contracts for a given strike/expiry. Higher OI means better liquidity and tighter spreads.' },
   { term: 'Bid/Ask Spread %', def: '(Ask − Bid) / Mid. Below 5% is acceptable; above 10% means the market maker friction will eat into your edge.' },
+  { term: 'Covered Call', def: 'You own 100 shares and sell an OTM call against them. You collect premium income upfront. If the stock closes above the strike at expiry, your shares are "called away" at the strike price — you keep the premium plus any appreciation up to the strike. Your downside is still the stock dropping, partially cushioned by the premium received.' },
+  { term: 'Covered Put (Cash-Secured Put)', def: 'You sell an OTM put and hold cash equal to (strike × 100) as collateral. You collect premium income. If the stock stays above the strike, the put expires worthless and you keep the premium. If it falls below the strike, you are assigned 100 shares at the strike price — your effective cost basis is (strike − premium received), which is a discount to where the stock was when you sold the put.' },
+  { term: 'The Wheel Strategy', def: 'A compound income strategy: (1) Sell a cash-secured put. If assigned, you now own the stock. (2) Sell a covered call against those shares. If called away, you no longer own the stock — return to step 1. Each cycle collects premium and resets. Works best in high-IV environments on stocks you are comfortable owning.' },
+  { term: 'Income Yield', def: 'For covered strategies, the checklist replaces EV with income yield: (net premium collected ÷ position value). Covered Call yield = premium ÷ stock price. Covered Put yield = premium ÷ cash collateral (the strike price). A 1%+ monthly yield is typically the target.' },
+  { term: 'Short Put (Naked)', def: 'Sell a put option with no stock or cash collateral (unlike a cash-secured put). You collect the full premium but require a margin account. Profit if the stock stays above the strike. Maximum loss if the stock goes to zero. Requires active management — a disciplined stop at 2× the premium received is standard.' },
+  { term: 'Short Call (Naked)', def: 'Sell a call option without owning the underlying shares (unlike a covered call). You collect premium but face theoretically unlimited loss if the stock rallies above the strike. Requires margin. Best reserved for bearish/neutral setups in elevated IV, with a hard stop at 2× the credit received. Never hold into expiry week without a clear exit plan.' },
 ]
 
 const workflowSteps = [
@@ -541,36 +572,169 @@ if NEUTRAL and HIGH_IV:
   build Iron Condor
 
 if NEUTRAL and LOW_IV:
-  build Long Straddle`}</pre>
+  build Long Straddle
+
+if HIGH_IV and not BEARISH:
+  build Covered Call          # assumes 100 shares owned
+  build Covered Put           # cash-secured: reserve (strike × 100) cash
+  build Short Put             # naked/margin — no stock or cash requirement
+
+if HIGH_IV and BEARISH:
+  build Short Call            # naked/margin — ⚠️ unlimited upside risk`}</pre>
           </div>
           <p className="text-sm text-gray-400 mt-3">
             After these candidates are built, the engine filters weak trades and ranks the survivors by score.
           </p>
         </InfoCard>
 
+        {/* ── Covered Strategies deep-dive ── */}
+        <InfoCard icon={<Briefcase size={18} />} title="Covered Call & Covered Put — Income Strategies" defaultOpen={false}>
+          <div className="space-y-4 text-sm text-gray-400">
+
+            <p>
+              Covered options are <span className="text-white font-semibold">income strategies</span>, not speculative bets.
+              You collect premium upfront and let time decay work in your favor.
+              They appear in <em>All Strategies</em> and <em>Credit Spreads</em> mode when IV Rank ≥ 50 and the signal is not bearish.
+            </p>
+
+            {/* Covered Call */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 space-y-2">
+              <div className="font-bold text-white text-base">📞 Covered Call</div>
+              <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Requires: own 100 shares</div>
+              <p className="text-sm">
+                Sell an OTM call (delta ~0.25–0.32) against shares you already own. You collect the call premium as
+                income immediately. Your upside is <span className="text-emerald-400 font-semibold">capped at the strike price</span> —
+                if the stock is called away at expiry, you keep the premium plus any appreciation up to the strike.
+                Your downside risk is still the stock dropping; the premium provides a small buffer.
+              </p>
+              <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Max Profit</div>
+                  <div className="text-emerald-400 font-semibold">Premium + (Strike − Entry)</div>
+                </div>
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Max Loss</div>
+                  <div className="text-red-400 font-semibold">Stock drops to 0 − premium received</div>
+                </div>
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Breakeven</div>
+                  <div className="text-white font-semibold">Stock Price − Premium</div>
+                </div>
+              </div>
+              <div className="text-xs text-amber-300/80 bg-amber-900/20 border border-amber-800/40 rounded-lg px-3 py-2 mt-1">
+                <span className="font-semibold">Management:</span> Buy back the call at 50% of max credit to lock in gains and free up the stock for further upside.
+                If the stock rallies through the strike, consider <span className="font-semibold">rolling up and out</span> — buying back the current call and selling a higher strike / later expiry call for a net credit.
+              </div>
+            </div>
+
+            {/* Covered Put */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 space-y-2">
+              <div className="font-bold text-white text-base">🛡️ Covered Put (Cash-Secured Put)</div>
+              <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Requires: cash equal to strike × 100 as collateral</div>
+              <p className="text-sm">
+                Sell an OTM put (delta ~0.25–0.32) below the current price, backed by cash.
+                You collect the put premium as income. If the stock stays above the strike,
+                the put expires worthless — you keep the premium and repeat.
+                If the stock falls below the strike and you are <span className="text-violet-400 font-semibold">assigned</span>,
+                you buy 100 shares at the strike price — your effective cost basis is
+                <span className="text-white font-semibold"> (strike − premium received)</span>, a discount to the original price.
+              </p>
+              <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Max Profit</div>
+                  <div className="text-emerald-400 font-semibold">Premium collected</div>
+                </div>
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Max Loss</div>
+                  <div className="text-red-400 font-semibold">Stock drops to 0 from strike − premium</div>
+                </div>
+                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">Breakeven</div>
+                  <div className="text-white font-semibold">Strike − Premium</div>
+                </div>
+              </div>
+              <div className="text-xs text-blue-300/80 bg-blue-950/30 border border-blue-900/40 rounded-lg px-3 py-2 mt-1">
+                <span className="font-semibold">Management:</span> Close at 50% of credit to free up capital early.
+                If assigned, immediately sell a covered call on the acquired shares — this is the first step in the
+                <span className="font-semibold"> Wheel Strategy</span>, which continuously harvests premium income.
+              </div>
+            </div>
+
+            {/* Short Put / Short Call */}
+            <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-4 space-y-2">
+              <div className="font-bold text-white text-base flex items-center gap-2">
+                ⚡ Short Put & Short Call — Naked Selling (Margin Required)
+              </div>
+              <div className="text-xs text-red-300/80 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+                <span className="font-semibold">Risk Warning:</span> Naked (uncovered) options require a margin account.
+                Short Put has risk down to zero if the stock collapses.
+                <span className="font-bold text-red-300"> Short Call has unlimited loss</span> if the stock rallies — always keep a hard stop at 2× the premium received.
+              </div>
+              <div className="text-sm space-y-1.5">
+                <p>
+                  <span className="text-white font-semibold">Short Put</span> — sell an OTM put for premium without requiring
+                  the full cash collateral of a cash-secured put. Same payoff as Covered Put but uses margin.
+                  Appears when signal is <em>not bearish</em> and IV Rank ≥ 50.
+                </p>
+                <p>
+                  <span className="text-white font-semibold">Short Call</span> — sell an OTM call for premium without owning the
+                  underlying shares. Opposite of a covered call: no stock provides the ceiling.
+                  Appears only when the signal is <em>bearish</em> and IV Rank ≥ 50.
+                  Consider using a <em>Bear Call Spread</em> instead to cap the risk.
+                </p>
+              </div>
+              <div className="text-xs text-gray-400 bg-gray-700/30 rounded-lg px-3 py-2">
+                <span className="font-semibold text-white">Checklist handling:</span> Both strategies use yield-based Income Edge check
+                (pass ≥ 1.0%), PoP ≥ 65%, and option-stop EV model (2× credit = disciplined stop). The R:R filter is bypassed — like all
+                income-sell strategies, the edge comes from high PoP and premium decay, not asymmetric payoff structure.
+              </div>
+            </div>
+
+            {/* Checklist differences */}
+            <div className="bg-violet-950/30 border border-violet-800/40 rounded-xl px-4 py-3">
+              <div className="text-xs font-bold text-violet-400 uppercase tracking-wide mb-2">How the Pre-Trade Checklist differs for covered strategies</div>
+              <div className="space-y-1.5 text-xs text-gray-400">
+                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">Income Edge</span> replaces Expected Value — evaluates yield % on position value (pass ≥ 1.0%, warn 0.6–1.0%). Not a hard fail.</span></div>
+                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">PoP threshold is 65%</span> (vs. 62% for credit spreads) — income strategies need a higher probability cushion to justify the capital tied up.</span></div>
+                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">R:R filter is bypassed</span> — the R:R ratio is unfavorable by design (small premium vs. stock risk); the edge comes from high PoP + premium income, not asymmetric payoff.</span></div>
+                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">Trend alignment</span> checks that the stock is above its 50-day MA — for covered call you need the stock to hold up; for covered put you want it near a support level.</span></div>
+              </div>
+            </div>
+
+          </div>
+        </InfoCard>
+
         <div className="grid gap-5 lg:grid-cols-2">
           <InfoCard icon={<SlidersHorizontal size={18} />} title="Strategy Mode Overrides" defaultOpen={false}>
-            <div className="space-y-3 text-sm text-gray-400">
+            <div className="strategy-mode-overrides space-y-3 text-sm text-gray-400">
               <p>
-                <span className="font-semibold text-gray-200">All Strategies</span> is fully market-driven.
-                Long Calls and Long Puts have an <span className="text-amber-400 font-semibold">IV gate</span> —
+                <span className="strategy-mode-label font-semibold text-gray-200">All Strategies</span> is fully market-driven.
+                Long Calls and Long Puts have an <span className="strategy-mode-gate text-amber-400 font-semibold">IV gate</span> —
                 they are only built when IV Rank is below 50. Debit spreads (Bull Call Spread, Bear Put Spread)
                 do <em>not</em> have this gate because the short leg offsets the IV cost.
               </p>
-              <div className="bg-amber-900/20 border border-amber-800/50 rounded-xl px-3 py-2.5 text-xs text-amber-300/90">
+              <div className="strategy-mode-note bg-amber-900/20 border border-amber-800/50 rounded-xl px-3 py-2.5 text-xs text-amber-300/90">
                 <span className="font-semibold">Why is Long Call missing in "All" mode?</span> When IV Rank ≥ 50
                 and the signal is Bullish, the engine builds a Bull Call Spread instead of a naked Long Call. The
                 spread is cheaper and less exposed to IV crush after a catalyst. An amber banner appears in the
                 results header when this suppression is active. Switch to <span className="font-semibold">Long Options</span> mode to override.
               </div>
               <p>
-                <span className="font-semibold text-gray-200">Long Options</span> relaxes the IV gate so Long Calls,
+                <span className="strategy-mode-label font-semibold text-gray-200">Long Options</span> relaxes the IV gate so Long Calls,
                 Long Puts, and Long Straddles appear regardless of IV level.
               </p>
               <p>
-                <span className="font-semibold text-gray-200">Credit Spreads</span> relaxes the IV gate so Bull Put
-                Spreads, Bear Call Spreads, and Iron Condors appear even when IV Rank is below 50.
+                <span className="strategy-mode-label font-semibold text-gray-200">Credit Spreads</span> relaxes the IV gate so Bull Put
+                Spreads, Bear Call Spreads, Iron Condors, Covered Calls, and Covered Puts (cash-secured) appear
+                even when IV Rank is below 50.
               </p>
+              <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl px-3 py-2.5 text-xs text-blue-300/90">
+                <span className="font-semibold">Covered Call and Covered Put</span> appear in <em>All Strategies</em> and
+                <em> Credit Spreads</em> modes when IV Rank ≥ 50 and the signal is not bearish.
+                They are <span className="font-semibold">income strategies</span>, not speculative directional bets —
+                the checklist uses income yield instead of EV, and PoP thresholds are higher (≥ 65%).
+                These strategies assume stock ownership (Covered Call) or willingness to buy at a discount (Covered Put / cash-secured).
+              </div>
             </div>
           </InfoCard>
 

@@ -32,7 +32,17 @@ class AlertItem(BaseModel):
 
 class AlertEmailRequest(BaseModel):
     email: str
+    user_name: Optional[str] = None
     alerts: list[AlertItem]
+
+
+class AlertDismissRequest(BaseModel):
+    email: str
+    alert_id: str
+
+
+class AlertClearRequest(BaseModel):
+    email: str
 
 
 class UserDataRequest(BaseModel):
