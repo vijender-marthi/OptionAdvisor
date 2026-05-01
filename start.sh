@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Starting OptionAdvisor..."
 echo "Backend:  http://127.0.0.1:9000"
-echo "Frontend: http://localhost:5173"
+echo "Frontend: http://localhost:4200"
 echo
 
 "$ROOT_DIR/backend/start.sh" &
@@ -22,4 +22,16 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-wait -n "$BACKEND_PID" "$FRONTEND_PID"
+while true; do
+  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    wait "$BACKEND_PID" || true
+    exit 1
+  fi
+
+  if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+    wait "$FRONTEND_PID" || true
+    exit 1
+  fi
+
+  sleep 1
+done

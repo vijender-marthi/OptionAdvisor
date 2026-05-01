@@ -9,5 +9,5 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-echo "Starting Vite frontend on http://localhost:5173"
-exec npm run dev -- --host 0.0.0.0
+echo "Starting Vite frontend on http://localhost:4200"
+exec npm run dev -- --host 127.0.0.1

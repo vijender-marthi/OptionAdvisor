@@ -32,6 +32,35 @@ textarea {
 
 .font-mono { font-family: var(--app-font-mono); }
 
+/* App page typography: keep primary product screens visually aligned with Watchlist. */
+.portfolio-page,
+.alerts-page,
+.trade-signals-page,
+.ticker-page,
+.ai-radar-page,
+.q-radar-page {
+  font-family: var(--app-font-sans);
+}
+
+.portfolio-page .font-mono,
+.alerts-page .font-mono,
+.trade-signals-page .font-mono,
+.ticker-page .font-mono,
+.ai-radar-page .font-mono,
+.q-radar-page .font-mono {
+  font-family: var(--app-font-sans);
+  letter-spacing: -0.01em;
+}
+
+.portfolio-page .font-bold,
+.alerts-page .font-bold,
+.trade-signals-page .font-bold,
+.ticker-page .font-bold,
+.ai-radar-page .font-bold,
+.q-radar-page .font-bold {
+  font-weight: 600;
+}
+
 html.dark { color-scheme: dark; }
 html.light { color-scheme: light; }
 

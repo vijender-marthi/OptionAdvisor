@@ -934,7 +934,7 @@ export default function PortfolioPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-6">
+    <div className="portfolio-page min-h-screen p-4 md:p-6">
       {closing && (
         <CloseModal pos={closing} onClose={() => setClosing(null)} onConfirm={pnl => { closePosition(closing.id, pnl); setClosing(null) }} />
       )}

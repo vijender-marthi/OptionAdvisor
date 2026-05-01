@@ -53,7 +53,7 @@ export default function Sidebar() {
   const w = collapsed ? 'w-16' : 'w-56'
 
   return (
-    <aside className={`${w} h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
+    <aside className={`${w} font-sans h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
       {/* Logo */}
       <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
@@ -73,7 +73,7 @@ export default function Sidebar() {
           <div key={group.label}>
             {/* Group label — hidden when collapsed */}
             {!collapsed && (
-              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-600">
+              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-600">
                 {group.label}
               </div>
             )}

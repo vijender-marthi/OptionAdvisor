@@ -412,7 +412,7 @@ export default function TradeSignalsPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-6">
+    <div className="trade-signals-page min-h-screen p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4">
 
         {/* Header */}

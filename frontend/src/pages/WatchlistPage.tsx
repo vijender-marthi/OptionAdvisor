@@ -113,7 +113,7 @@ function TickerRow({
 
         {/* Ticker + company */}
         <div className="w-28 shrink-0">
-          <div className="font-semibold text-white font-mono text-sm">{item.ticker}</div>
+          <div className="font-semibold text-white text-sm tracking-tight">{item.ticker}</div>
           <div className="text-xs text-gray-500 truncate max-w-[110px]">
             {item.companyName ?? entry?.data.company_name ?? '—'}
           </div>
@@ -123,8 +123,8 @@ function TickerRow({
         <div className="w-24 shrink-0">
           {sig ? (
             <>
-              <div className="text-sm font-semibold font-mono text-white">${sig.current_price.toFixed(2)}</div>
-              <div className={`text-xs font-mono ${priceColor}`}>
+              <div className="text-sm font-semibold text-white">${sig.current_price.toFixed(2)}</div>
+              <div className={`text-xs font-medium ${priceColor}`}>
                 {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePct.toFixed(1)}%)
               </div>
             </>
@@ -137,7 +137,7 @@ function TickerRow({
         <div className="w-20 shrink-0 hidden sm:block">
           {sig ? (
             <>
-              <div className={`text-sm font-semibold font-mono ${ivColor}`}>{sig.iv_rank.toFixed(0)}%</div>
+              <div className={`text-sm font-semibold ${ivColor}`}>{sig.iv_rank.toFixed(0)}%</div>
               <div className="text-xs text-gray-500">IV Rank</div>
             </>
           ) : <div className="text-xs text-gray-600">—</div>}
@@ -239,8 +239,8 @@ function TickerRow({
                 <div key={rec.rank} className="flex items-center justify-between bg-gray-800 rounded-xl px-3 py-2 text-xs">
                   <span className="text-violet-300 font-semibold w-36 truncate">{rec.strategy}</span>
                   <span className="text-gray-400 hidden sm:block">{rec.expiry} · {rec.dte}d</span>
-                  <span className="text-emerald-400 font-mono">+${(rec.max_profit * 100).toFixed(0)}</span>
-                  <span className="text-red-400 font-mono hidden md:block">-${(rec.max_loss * 100).toFixed(0)}</span>
+                  <span className="text-emerald-400 font-medium">+${(rec.max_profit * 100).toFixed(0)}</span>
+                  <span className="text-red-400 font-medium hidden md:block">-${(rec.max_loss * 100).toFixed(0)}</span>
                   <span className="text-gray-300">{(rec.prob_of_profit * 100).toFixed(0)}% PoP</span>
                   <span className="text-gray-500">Score {rec.scores.total_score}</span>
                 </div>
@@ -503,7 +503,7 @@ export default function WatchlistPage() {
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${catBadge}`}>
                     {group.cat}
                   </span>
-                  <span className="text-[10px] font-mono text-gray-600 bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5">
+                  <span className="text-[10px] font-medium text-gray-600 bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5">
                     {group.items.length}
                   </span>
                   <div className="h-px flex-1 bg-gray-800/70" />
