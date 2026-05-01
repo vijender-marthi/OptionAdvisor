@@ -308,7 +308,17 @@ export default function RecommendationCard({
                 <td className="pr-3 py-1 text-right text-white">${leg.strike.toFixed(1)}</td>
                 <td className="pr-3 py-1 text-right text-gray-300">{leg.expiry}</td>
                 <td className="pr-3 py-1 text-right text-gray-300">{leg.delta !== 0 ? leg.delta.toFixed(3) : '—'}</td>
-                <td className="pr-3 py-1 text-right text-gray-400">${leg.mid_price.toFixed(2)}</td>
+                <td className="pr-3 py-1 text-right text-gray-400">
+                  ${leg.mid_price.toFixed(2)}
+                  {leg.data_quality === 'MODEL' && (
+                    <span
+                      title={leg.data_quality_reason || 'Using IV-based model mark because the Yahoo quote looked stale'}
+                      className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold uppercase bg-blue-900/60 text-blue-300 border border-blue-700 cursor-help"
+                    >
+                      Model
+                    </span>
+                  )}
+                </td>
                 <td className={`pr-3 py-1 text-right font-bold ${leg.action === 'BUY' ? 'text-red-300' : 'text-green-300'}`}>
                   {leg.action === 'BUY' ? '-' : '+'}${fmt(c(leg.mid_price))}
                 </td>

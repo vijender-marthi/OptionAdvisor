@@ -50,6 +50,16 @@ ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS",
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 
+# User-facing analyze endpoint cache TTL:
+#   90 seconds during market hours (fast refresh for live trading)
+#   10 minutes outside market hours (pre/post market data changes slowly)
+ANALYZE_CACHE_TTL_MARKET_HOURS   = int(os.getenv("ANALYZE_CACHE_TTL_MARKET_HOURS",   "90"))
+ANALYZE_CACHE_TTL_OFF_HOURS      = int(os.getenv("ANALYZE_CACHE_TTL_OFF_HOURS",      "600"))
+
+# Separate in-memory cache for user-facing /api/analyze requests
+analyze_user_cache: dict[str, tuple[float, "AnalyzeResponse"]] = {}
+analyze_user_cache_lock = threading.Lock()
+
 analysis_cache_lock = threading.Lock()
 analysis_cache: dict[str, tuple[float, AnalyzeResponse]] = {}
 
@@ -120,9 +130,11 @@ def estimate_delta(row: pd.Series, current_price: float, expiry: str, option_typ
 
 
 def chain_to_output(df: pd.DataFrame, current_price: float, expiry: str, option_type: str) -> list[OptionRowOut]:
+    from engine import validate_option_quote
     rows = []
     for _, row in df.iterrows():
         iv_raw = safe_float(row.get("impliedVolatility", 0))
+        quality, quality_reason = validate_option_quote(row, current_price, option_type)
         rows.append(OptionRowOut(
             strike=safe_float(row["strike"]),
             last_price=safe_float(row.get("lastPrice", 0)),
@@ -132,6 +144,8 @@ def chain_to_output(df: pd.DataFrame, current_price: float, expiry: str, option_
             open_interest=safe_int(row.get("openInterest", 0)),
             implied_volatility=f"{round(iv_raw * 100, 1)}%",
             delta=estimate_delta(row, current_price, expiry, option_type),
+            data_quality=quality,
+            data_quality_reason=quality_reason,
         ))
     return rows
 
@@ -326,6 +340,14 @@ def _analyze_ticker(
     ticker = ticker.upper().strip()
 
     try:
+        # yfinance's history() goes through cache_get() which is an in-process LRU cache.
+        # Clearing it forces a fresh HTTP fetch so we never serve yesterday's close as today's price.
+        try:
+            from yfinance.data import YfData
+            YfData.cache_get.cache_clear()
+        except Exception:
+            pass  # not critical — carry on if internals change in a future yfinance version
+
         stock = yf.Ticker(ticker)
         hist = stock.history(period="1y")
     except Exception as e:
@@ -346,8 +368,22 @@ def _analyze_ticker(
     if not opt_dates:
         raise HTTPException(status_code=404, detail=f"No options available for '{ticker}'")
 
-    # Use first available near-term expiry for chain analysis
-    target_expiry = opt_dates[min(2, len(opt_dates) - 1)]
+    # Select the expiry that matches the user's weeks_out target — the same DTE
+    # window the engine uses internally so chain pricing, Greeks, and recommendations
+    # all refer to the same expiry.  Mirror the engine's pick_expiry_by_dte math:
+    #   target_dte = weeks_out * 7,  window = ±7 days
+    from engine import pick_expiry_by_dte as _pick_expiry
+    target_dte = weeks_out * 7
+    dte_lo = max(7, target_dte - 7)
+    dte_hi = target_dte + 7
+    target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
+    if target_expiry is None:
+        # Fallback: pick the nearest available expiry beyond dte_lo
+        target_expiry = next(
+            (d for d in opt_dates if (datetime.strptime(d, "%Y-%m-%d") - datetime.today()).days >= dte_lo - 3),
+            opt_dates[min(2, len(opt_dates) - 1)]
+        )
+
     try:
         chain = stock.option_chain(target_expiry)
         calls_raw = chain.calls.copy()
@@ -362,12 +398,20 @@ def _analyze_ticker(
         sector = info.get("sector", "N/A")
         market_cap = format_market_cap(float(info.get("marketCap", 0) or 0))
     except:
+        info = {}
         company_name = ticker
         sector = "N/A"
         market_cap = "N/A"
 
-    # Filter to tradeable range
-    price_approx = float(hist["Close"].iloc[-1])
+    # Current price: prefer live regularMarketPrice from info over yesterday's hist close.
+    # hist["Close"].iloc[-1] is always the *previous session's* close — if the stock has
+    # moved significantly pre/intraday, using it causes the intrinsic value check to
+    # incorrectly flag live ITM options as stale (or miss stale OTM quotes).
+    hist_close = float(hist["Close"].iloc[-1])
+    live_price = safe_float(
+        info.get("currentPrice") or info.get("regularMarketPrice") or 0
+    )
+    price_approx = live_price if live_price > 0 else hist_close
     calls_f = calls_raw[
         (calls_raw["strike"] >= price_approx * 0.75) &
         (calls_raw["strike"] <= price_approx * 1.30)
@@ -409,6 +453,8 @@ def _analyze_ticker(
                 oi=leg.oi,
                 volume=leg.volume,
                 bid_ask_spread_pct=leg.bid_ask_spread_pct,
+                data_quality=leg.data_quality,
+                data_quality_reason=leg.data_quality_reason,
             )
             for leg in trade.legs
         ]
@@ -505,6 +551,7 @@ def _analyze_ticker(
         puts_chain=chain_to_output(ntm_puts, price_approx, target_expiry, "PUT"),
         price_history=price_history_out,
         filters_applied={
+            "chain_expiry": target_expiry,
             "min_credit_pct_of_width": MIN_CREDIT_PCT_OF_WIDTH,
             "short_delta_range": list(TARGET_SHORT_DELTA_CREDIT),
             "target_dte": f"{weeks_out}w ({weeks_out * 7}d ±7)",
@@ -548,14 +595,42 @@ def _get_analysis_with_cache(
     return data
 
 
+def _user_analyze_ttl() -> int:
+    """Return the appropriate cache TTL for user-facing requests based on market hours."""
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.weekday() >= 5:
+        return ANALYZE_CACHE_TTL_OFF_HOURS
+    minutes = now.hour * 60 + now.minute
+    # Market hours: 6:30 AM – 1:00 PM PT (regular) + pre-market from 4 AM
+    in_market = 4 * 60 <= minutes < 13 * 60
+    return ANALYZE_CACHE_TTL_MARKET_HOURS if in_market else ANALYZE_CACHE_TTL_OFF_HOURS
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
-    return _get_analysis_with_cache(
+    """
+    User-facing analyze endpoint. Uses a short TTL cache (90s during market hours)
+    so the chain and signals are always close to real-time. The alert scanner uses
+    a separate longer-TTL cache (_get_analysis_with_cache) so the two don't interfere.
+    """
+    key = _cache_key(req.ticker, req.weeks_out, req.spread_width, req.strategy_mode)
+    now = time.time()
+    ttl = _user_analyze_ttl()
+
+    with analyze_user_cache_lock:
+        cached = analyze_user_cache.get(key)
+        if cached and now - cached[0] < ttl:
+            return cached[1]
+
+    data = _analyze_ticker(
         req.ticker,
         weeks_out=req.weeks_out,
         spread_width=req.spread_width,
         strategy_mode=req.strategy_mode,
     )
+    with analyze_user_cache_lock:
+        analyze_user_cache[key] = (time.time(), data)
+    return data
 
 
 def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:

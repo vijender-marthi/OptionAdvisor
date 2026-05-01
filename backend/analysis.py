@@ -83,6 +83,8 @@ class OptionLeg:
     oi: int
     volume: int
     bid_ask_spread_pct: float   # (ask - bid) / mid * 100
+    data_quality: str = "OK"    # "OK" | "MODEL" | "STALE" | "UNRELIABLE"
+    data_quality_reason: str = ""
 
 
 @dataclass
