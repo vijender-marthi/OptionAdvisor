@@ -11,6 +11,8 @@ export interface OptionLeg {
   oi: number
   volume: number
   bid_ask_spread_pct: number
+  data_quality?: string        // "OK" | "MODEL" | "STALE" | "UNRELIABLE"
+  data_quality_reason?: string
 }
 
 export interface ScoreBreakdown {
@@ -95,6 +97,8 @@ export interface OptionRow {
   open_interest: number
   implied_volatility: string
   delta?: number
+  data_quality?: string        // "OK" | "MODEL" | "STALE" | "UNRELIABLE"
+  data_quality_reason?: string
 }
 
 export interface PricePoint {

@@ -190,6 +190,33 @@ const glossaryTerms = [
   { term: 'Short Call (Naked)', def: 'Sell a call option without owning the underlying shares (unlike a covered call). You collect premium but face theoretically unlimited loss if the stock rallies above the strike. Requires margin. Best reserved for bearish/neutral setups in elevated IV, with a hard stop at 2× the credit received. Never hold into expiry week without a clear exit plan.' },
 ]
 
+const optionReference = [
+  {
+    position: 'Buy a CALL',
+    formalName: 'Long Call',
+    action: 'You pay to have the right to buy stock.',
+    outlook: 'Bullish: You want the price to go UP.',
+  },
+  {
+    position: 'Sell a CALL',
+    formalName: 'Short Call',
+    action: 'You write a contract and must sell stock if assigned.',
+    outlook: 'Bearish: You want the price to stay DOWN.',
+  },
+  {
+    position: 'Buy a PUT',
+    formalName: 'Long Put',
+    action: 'You pay to have the right to sell stock.',
+    outlook: 'Bearish: You want the price to go DOWN.',
+  },
+  {
+    position: 'Sell a PUT',
+    formalName: 'Short Put',
+    action: 'You write a contract and must buy stock if assigned.',
+    outlook: 'Bullish: You want the price to stay UP.',
+  },
+]
+
 const workflowSteps = [
   {
     step: '1',
@@ -782,6 +809,38 @@ if HIGH_IV and BEARISH:
             </div>
           </InfoCard>
         </div>
+
+        {/* Option Reference */}
+        <InfoCard icon={<BookOpen size={18} />} title="Option Reference" defaultOpen={false}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400">
+              A quick primer for the four basic option positions. Buying options means paying premium for a right;
+              selling options means collecting premium while taking on an obligation.
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-gray-800">
+                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-4 py-3">Position</th>
+                    <th className="px-4 py-3">Formal Name</th>
+                    <th className="px-4 py-3">Your Action</th>
+                    <th className="px-4 py-3">Your Outlook</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optionReference.map(item => (
+                    <tr key={item.position} className="border-t border-gray-700/50">
+                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{item.position}</td>
+                      <td className="px-4 py-3 font-semibold text-violet-300 whitespace-nowrap">{item.formalName}</td>
+                      <td className="px-4 py-3 text-gray-400">{item.action}</td>
+                      <td className="px-4 py-3 text-gray-400">{item.outlook}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </InfoCard>
 
         {/* Glossary */}
         <InfoCard icon={<BookOpen size={18} />} title="Options Glossary" defaultOpen={false}>

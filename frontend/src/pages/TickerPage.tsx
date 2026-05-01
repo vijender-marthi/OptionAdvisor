@@ -83,12 +83,13 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
   })
 }
 
-function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: {
+function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, loadingWeeks }: {
   entry: TickerCacheEntry
   selectedWeeksOut: number
   onSelect: (weeksOut: number) => void
   onFetch: () => void
   fetching: boolean
+  loadingWeeks: Set<number>   // weeks currently being fetched individually
 }) {
   const slots = buildWeekSlots(entry)
   const hasFetched = !!entry.multiWeekData
@@ -110,22 +111,27 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
       <div className="flex items-center gap-2 flex-1 flex-wrap">
         {slots.map(slot => {
           const active = selectedWeeksOut === slot.weeksOut
-          const dotColor = slot.verdict
+          const isLoading = loadingWeeks.has(slot.weeksOut)
+          const dotColor = isLoading
+            ? 'bg-violet-400 animate-pulse'
+            : slot.verdict
             ? VERDICT_DOT[slot.verdict]
-            : slot.hasData ? 'bg-gray-500' : 'bg-gray-700'
+            : slot.hasData ? 'bg-gray-500' : 'bg-gray-600'
           return (
             <button
               key={slot.label}
               type="button"
-              onClick={() => slot.hasData && onSelect(slot.weeksOut)}
-              disabled={!slot.hasData}
-              title={!slot.hasData ? 'Click "Fetch All Weeks" to load this expiry window' : undefined}
+              onClick={() => onSelect(slot.weeksOut)}
+              disabled={isLoading}
+              title={isLoading ? 'Loading…' : !slot.hasData ? 'Click to load this expiry window' : undefined}
               className={`flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[10px] font-bold transition-all ${
                 active
                   ? 'bg-violet-600/20 border-violet-500 text-violet-300'
+                  : isLoading
+                  ? 'bg-violet-900/10 border-violet-800 opacity-70 cursor-wait'
                   : slot.hasData
                   ? 'bg-gray-800/60 border-gray-700 hover:border-gray-500 hover:bg-gray-800 cursor-pointer'
-                  : 'bg-gray-800/20 border-gray-800 opacity-40 cursor-not-allowed'
+                  : 'bg-gray-800/40 border-gray-700 hover:border-violet-700 hover:bg-gray-800 cursor-pointer'
               }`}
             >
               {/* dot + week label + actual DTE */}
@@ -137,7 +143,9 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
                 )}
               </div>
               {/* verdict / status */}
-              {slot.hasData ? (
+              {isLoading ? (
+                <span className="text-violet-400 mt-0.5">loading…</span>
+              ) : slot.hasData ? (
                 slot.verdict ? (
                   <div className={`flex items-center gap-0.5 mt-0.5 ${VERDICT_TEXT[slot.verdict]}`}>
                     {VERDICT_ICON[slot.verdict]}
@@ -147,7 +155,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
                   <span className="text-gray-600 mt-0.5">no trades</span>
                 )
               ) : (
-                <span className="text-gray-700 mt-0.5">not loaded</span>
+                <span className="text-gray-500 mt-0.5">tap to load</span>
               )}
               {/* trade count */}
               {slot.recCount > 0 && (
@@ -166,15 +174,9 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching }: 
                    transition-colors disabled:opacity-50 shrink-0"
       >
         <Layers size={11} className={fetching ? 'animate-pulse text-violet-400' : ''} />
-        {fetching ? 'Fetching 2–8 weeks…' : hasFetched ? 'Re-fetch All Weeks' : 'Fetch All Weeks'}
+        {fetching ? 'Fetching all weeks…' : hasFetched ? 'Re-fetch All' : 'Load All Weeks'}
       </button>
       </div>
-      {!hasFetched && (
-        <p className="text-[10px] text-gray-600 mt-2 pl-0.5">
-          Only the primary expiry is loaded. Click <span className="text-gray-400 font-semibold">Fetch All Weeks</span> to
-          scan 2w · 3w · 4w · 6w · 8w windows — each gets independent verdicts.
-        </p>
-      )}
     </div>
   )
 }
@@ -184,7 +186,7 @@ export default function TickerPage() {
     addToWatchlist, removeFromWatchlist, isWatched,
     pendingTicker, clearPendingTicker,
     getCached, setCached, tickerCache,
-    fetchAllWeeks, fetchingAllWeeks,
+    fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
   } = useApp()
 
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
@@ -406,14 +408,21 @@ export default function TickerPage() {
               signals={displayData.signals}
             />
 
-            {/* Week selector — above signals so changing week updates both signals + recommendations */}
+            {/* Week selector — clicking any tab auto-fetches that week if not loaded */}
             {cacheEntry && (
               <WeekSelector
                 entry={cacheEntry}
                 selectedWeeksOut={selectedWeeksOut}
-                onSelect={setSelectedWeeksOut}
+                onSelect={(w) => {
+                  setSelectedWeeksOut(w)
+                  // If this week has no data yet, fetch it on demand
+                  const hasData = !!cacheEntry.multiWeekData?.[w] ||
+                    cacheEntry.weeksOut === w
+                  if (!hasData) fetchSingleWeek(data.ticker, w)
+                }}
                 onFetch={() => fetchAllWeeks(data.ticker)}
                 fetching={fetchingAllWeeks.has(data.ticker)}
+                loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
               />
             )}
 
@@ -490,6 +499,7 @@ export default function TickerPage() {
                     calls={displayData.calls_chain}
                     puts={displayData.puts_chain}
                     currentPrice={displayData.signals.current_price}
+                    expiry={displayData.filters_applied?.chain_expiry as string | undefined}
                   />
                 )}
               </div>

@@ -15,6 +15,7 @@ Only trades that pass ALL hard filters are returned.
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+from math import erf, log, sqrt
 from typing import Optional
 from analysis import MarketSignals, OptionLeg, TradeCandidate
 
@@ -90,6 +91,126 @@ def get_mid(row) -> float:
     if ask == 0:
         return bid * 1.1
     return (bid + ask) / 2
+
+
+def normal_cdf(value: float) -> float:
+    return 0.5 * (1.0 + erf(value / sqrt(2.0)))
+
+
+def years_to_expiry(expiry: str) -> float:
+    try:
+        dte = max((datetime.strptime(expiry, "%Y-%m-%d") - datetime.today()).days, 1)
+        return max(dte / 365.0, 1 / 365.0)
+    except Exception:
+        return 30 / 365.0
+
+
+def model_option_price(row: pd.Series, current_price: float, option_type: str, expiry: str) -> float | None:
+    """Black-Scholes style sanity mark using Yahoo IV when market bid/ask looks stale."""
+    strike = float(row.get("strike", 0) or 0)
+    iv = float(row.get("impliedVolatility", 0) or 0)
+    if current_price <= 0 or strike <= 0 or iv <= 0:
+        return None
+
+    try:
+        years = years_to_expiry(expiry)
+        vol_sqrt_t = iv * sqrt(years)
+        if vol_sqrt_t <= 0:
+            return None
+        d1 = (log(current_price / strike) + 0.5 * iv * iv * years) / vol_sqrt_t
+        d2 = d1 - vol_sqrt_t
+        if option_type == "CALL":
+            price = current_price * normal_cdf(d1) - strike * normal_cdf(d2)
+        else:
+            price = strike * normal_cdf(-d2) - current_price * normal_cdf(-d1)
+        return round(max(price, 0.0), 2)
+    except Exception:
+        return None
+
+
+def estimate_delta(row: pd.Series, current_price: float, option_type: str, expiry: str) -> float:
+    raw_delta = row.get("delta", None)
+    if raw_delta is not None and not pd.isna(raw_delta):
+        return round(float(raw_delta), 3)
+
+    strike = float(row.get("strike", 0) or 0)
+    iv = float(row.get("impliedVolatility", 0) or 0)
+    if current_price <= 0 or strike <= 0 or iv <= 0:
+        return 0.0
+
+    try:
+        years = years_to_expiry(expiry)
+        d1 = (log(current_price / strike) + 0.5 * iv * iv * years) / (iv * sqrt(years))
+        call_delta = normal_cdf(d1)
+        delta = call_delta if option_type == "CALL" else call_delta - 1
+        return round(delta, 3)
+    except Exception:
+        return 0.0
+
+
+def quote_mark(row: pd.Series, current_price: float, option_type: str, expiry: str) -> tuple[float, str, str]:
+    market_mid = get_mid(row)
+    quality, reason = validate_option_quote(row, current_price, option_type)
+    model_mid = model_option_price(row, current_price, option_type, expiry)
+    if not model_mid or market_mid <= 0:
+        return market_mid, quality, reason
+
+    strike = float(row.get("strike", 0) or 0)
+    iv = float(row.get("impliedVolatility", 0) or 0)
+    years = years_to_expiry(expiry)
+    expected_move = iv * sqrt(years)
+    moneyness = abs(log(current_price / strike)) if current_price > 0 and strike > 0 else 999
+    near_atm = expected_move > 0 and moneyness <= expected_move * 1.5
+
+    if quality == "OK" and near_atm and model_mid >= max(market_mid * 2.0, market_mid + 1.0):
+        return (
+            model_mid,
+            "MODEL",
+            f"Yahoo bid/ask midpoint ${market_mid:.2f} is far below IV-implied mark ${model_mid:.2f}; using model mark. Verify with broker.",
+        )
+
+    return market_mid, quality, reason
+
+
+def validate_option_quote(row: pd.Series, current_price: float, option_type: str) -> tuple[str, str]:
+    """
+    Check whether an option quote is reliable.
+
+    Returns (data_quality, reason) where data_quality is one of:
+      "OK"          — live bid/ask present and price makes economic sense
+      "STALE"       — bid=0 & ask=0, falling back to lastPrice (could be days old)
+      "UNRELIABLE"  — mid price is below intrinsic value (mathematically impossible
+                      for a live quote), meaning the data is definitively wrong
+
+    This catches the case where yfinance returns a cached lastPrice from a prior
+    session while the underlying has moved significantly.
+    """
+    bid = float(row["bid"]) if not pd.isna(row.get("bid", float("nan"))) else 0
+    ask = float(row["ask"]) if not pd.isna(row.get("ask", float("nan"))) else 0
+    strike = float(row.get("strike", 0))
+    mid = get_mid(row)
+
+    # No live market: only lastPrice available
+    if bid == 0 and ask == 0:
+        return "STALE", "bid=0 and ask=0; using lastPrice which may be stale"
+
+    # Intrinsic value floor: a live option price can never be below intrinsic value
+    if current_price > 0 and strike > 0:
+        if option_type == "CALL":
+            intrinsic = max(current_price - strike, 0.0)
+        else:
+            intrinsic = max(strike - current_price, 0.0)
+
+        # Allow a small tolerance (2%) for wide spreads and rounding
+        tolerance = max(intrinsic * 0.02, 0.05)
+        if intrinsic > 0 and mid < (intrinsic - tolerance):
+            return (
+                "UNRELIABLE",
+                f"mid ${mid:.2f} is below intrinsic value ${intrinsic:.2f} "
+                f"(underlying=${current_price:.2f}, strike=${strike:.2f}) — quote is stale",
+            )
+
+    return "OK", ""
 
 
 def bid_ask_spread_pct(row) -> float:
@@ -174,12 +295,13 @@ def _delta_to_otm_pct(delta: float, df: pd.DataFrame, price: float, option_type:
     return round(float(np.clip(otm_pct, 1, 25)), 1)
 
 
-def build_option_leg(row: pd.Series, action: str, option_type: str, expiry: str) -> OptionLeg:
-    mid = get_mid(row)
+def build_option_leg(row: pd.Series, action: str, option_type: str, expiry: str,
+                     current_price: float = 0.0) -> OptionLeg:
+    mid, quality, quality_reason = quote_mark(row, current_price, option_type, expiry)
     bid = float(row["bid"]) if not pd.isna(row["bid"]) else 0
     ask = float(row["ask"]) if not pd.isna(row["ask"]) else 0
     iv = float(row["impliedVolatility"]) * 100 if not pd.isna(row.get("impliedVolatility", np.nan)) else 0
-    delta_val = float(row["delta"]) if "delta" in row and not pd.isna(row.get("delta", np.nan)) else 0
+    delta_val = estimate_delta(row, current_price, option_type, expiry)
     oi = int(row["openInterest"]) if not pd.isna(row.get("openInterest", np.nan)) else 0
     vol = int(row["volume"]) if not pd.isna(row.get("volume", np.nan)) else 0
 
@@ -196,11 +318,27 @@ def build_option_leg(row: pd.Series, action: str, option_type: str, expiry: str)
         oi=oi,
         volume=vol,
         bid_ask_spread_pct=bid_ask_spread_pct(row),
+        data_quality=quality,
+        data_quality_reason=quality_reason,
     )
 
 
 def check_leg_liquidity(leg: OptionLeg) -> tuple[bool, list[str]]:
     issues = []
+
+    # Reject legs with stale or unreliable quote data immediately — no point scoring them
+    if leg.data_quality == "UNRELIABLE":
+        issues.append(
+            f"{leg.option_type} ${leg.strike} quote is UNRELIABLE: {leg.data_quality_reason}"
+        )
+        return False, issues
+    if leg.data_quality == "STALE":
+        issues.append(
+            f"{leg.option_type} ${leg.strike} quote is STALE (bid=ask=0, using lastPrice): "
+            f"verify price before trading"
+        )
+        return False, issues
+
     if leg.bid_ask_spread_pct > MAX_BID_ASK_SPREAD_PCT:
         issues.append(f"{leg.option_type} ${leg.strike} bid-ask spread is {leg.bid_ask_spread_pct:.1f}% (max {MAX_BID_ASK_SPREAD_PCT}%)")
     if leg.oi < MIN_OPEN_INTEREST and leg.volume < MIN_VOLUME:
@@ -394,7 +532,7 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
     row = find_strike_by_delta(calls, TARGET_LONG_DELTA_DEBIT, price, "CALL")
     if row is None:
         return None
-    leg = build_option_leg(row, "BUY", "CALL", expiry)
+    leg = build_option_leg(row, "BUY", "CALL", expiry, price)
     cost = leg.mid_price
     if cost < MIN_MID_PRICE:
         return None
@@ -436,7 +574,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
     row = find_strike_by_delta(puts, TARGET_LONG_DELTA_DEBIT, price, "PUT")
     if row is None:
         return None
-    leg = build_option_leg(row, "BUY", "PUT", expiry)
+    leg = build_option_leg(row, "BUY", "PUT", expiry, price)
     cost = leg.mid_price
     if cost < MIN_MID_PRICE:
         return None
@@ -479,8 +617,8 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     if buy_row is None or sell_row is None:
         return None
 
-    buy_leg = build_option_leg(buy_row, "BUY", option_type, expiry)
-    sell_leg = build_option_leg(sell_row, "SELL", option_type, expiry)
+    buy_leg = build_option_leg(buy_row, "BUY", option_type, expiry, price)
+    sell_leg = build_option_leg(sell_row, "SELL", option_type, expiry, price)
 
     # Validate leg ordering
     if option_type == "CALL":
@@ -541,7 +679,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         sell_row = find_strike_by_delta(puts, TARGET_SHORT_DELTA_CREDIT, price, "PUT")
         if sell_row is None:
             return None
-        sell_leg = build_option_leg(sell_row, "SELL", "PUT", expiry)
+        sell_leg = build_option_leg(sell_row, "SELL", "PUT", expiry, price)
         # Buy leg: fixed width if specified, otherwise match OTM distance
         if spread_width_override:
             buy_target = sell_leg.strike - spread_width_override
@@ -551,7 +689,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         buy_row = puts.iloc[(puts["strike"] - buy_target).abs().argsort()[:1]].iloc[0]
         if buy_row["strike"] >= sell_leg.strike:
             return None
-        buy_leg = build_option_leg(buy_row, "BUY", "PUT", expiry)
+        buy_leg = build_option_leg(buy_row, "BUY", "PUT", expiry, price)
 
         net_credit = round(sell_leg.mid_price - buy_leg.mid_price, 2)
         spread_width = round(sell_leg.strike - buy_leg.strike, 2)
@@ -560,7 +698,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         sell_row = find_strike_by_delta(calls, TARGET_SHORT_DELTA_CREDIT, price, "CALL")
         if sell_row is None:
             return None
-        sell_leg = build_option_leg(sell_row, "SELL", "CALL", expiry)
+        sell_leg = build_option_leg(sell_row, "SELL", "CALL", expiry, price)
         if spread_width_override:
             buy_target = sell_leg.strike + spread_width_override
         else:
@@ -569,7 +707,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         buy_row = calls.iloc[(calls["strike"] - buy_target).abs().argsort()[:1]].iloc[0]
         if buy_row["strike"] <= sell_leg.strike:
             return None
-        buy_leg = build_option_leg(buy_row, "BUY", "CALL", expiry)
+        buy_leg = build_option_leg(buy_row, "BUY", "CALL", expiry, price)
 
         net_credit = round(sell_leg.mid_price - buy_leg.mid_price, 2)
         spread_width = round(buy_leg.strike - sell_leg.strike, 2)
@@ -632,8 +770,8 @@ def _build_iron_condor(signals: MarketSignals, calls: pd.DataFrame,
     if put_sell_row is None or call_sell_row is None:
         return None
 
-    put_sell_leg = build_option_leg(put_sell_row, "SELL", "PUT", expiry)
-    call_sell_leg = build_option_leg(call_sell_row, "SELL", "CALL", expiry)
+    put_sell_leg = build_option_leg(put_sell_row, "SELL", "PUT", expiry, price)
+    call_sell_leg = build_option_leg(call_sell_row, "SELL", "CALL", expiry, price)
 
     # Buy wings: fixed width if specified, otherwise use OTM distance
     if spread_width_override:
@@ -651,8 +789,8 @@ def _build_iron_condor(signals: MarketSignals, calls: pd.DataFrame,
     if pb_row["strike"] >= put_sell_leg.strike or cb_row["strike"] <= call_sell_leg.strike:
         return None
 
-    put_buy_leg  = build_option_leg(pb_row, "BUY", "PUT", expiry)
-    call_buy_leg = build_option_leg(cb_row, "BUY", "CALL", expiry)
+    put_buy_leg  = build_option_leg(pb_row, "BUY", "PUT", expiry, price)
+    call_buy_leg = build_option_leg(cb_row, "BUY", "CALL", expiry, price)
 
     net_credit = round(
         put_sell_leg.mid_price - put_buy_leg.mid_price +
@@ -712,8 +850,8 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
     atm_call_row = calls.iloc[(calls["strike"] - price).abs().argsort()[:1]].iloc[0]
     atm_put_row  = puts.iloc[(puts["strike"] - price).abs().argsort()[:1]].iloc[0]
 
-    call_leg = build_option_leg(atm_call_row, "BUY", "CALL", expiry)
-    put_leg  = build_option_leg(atm_put_row,  "BUY", "PUT",  expiry)
+    call_leg = build_option_leg(atm_call_row, "BUY", "CALL", expiry, price)
+    put_leg  = build_option_leg(atm_put_row,  "BUY", "PUT",  expiry, price)
 
     total_cost = round(call_leg.mid_price + put_leg.mid_price, 2)
     if total_cost < MIN_MID_PRICE:
@@ -759,7 +897,7 @@ def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) ->
     if row is None:
         return None
 
-    leg = build_option_leg(row, "SELL", "PUT", expiry)
+    leg = build_option_leg(row, "SELL", "PUT", expiry, price)
     net_credit = leg.mid_price
     if net_credit < MIN_MID_PRICE:
         return None
@@ -818,7 +956,7 @@ def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) 
     if row is None:
         return None
 
-    leg = build_option_leg(row, "SELL", "CALL", expiry)
+    leg = build_option_leg(row, "SELL", "CALL", expiry, price)
     net_credit = leg.mid_price
     if net_credit < MIN_MID_PRICE:
         return None
@@ -877,7 +1015,7 @@ def _build_covered_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str
     if row is None:
         return None
 
-    leg = build_option_leg(row, "SELL", "CALL", expiry)
+    leg = build_option_leg(row, "SELL", "CALL", expiry, price)
     net_credit = leg.mid_price          # premium collected per share
     if net_credit < MIN_MID_PRICE:
         return None
@@ -941,7 +1079,7 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
     if row is None:
         return None
 
-    leg = build_option_leg(row, "SELL", "PUT", expiry)
+    leg = build_option_leg(row, "SELL", "PUT", expiry, price)
     net_credit = leg.mid_price
     if net_credit < MIN_MID_PRICE:
         return None

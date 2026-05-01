@@ -119,7 +119,9 @@ interface AppContextValue {
   refreshWatchlistForAlerts: () => Promise<void>
   // Multi-week scan (2,3,4,6,8 weeks) — stored inside the cache entry's multiWeekData
   fetchAllWeeks: (ticker: string) => Promise<void>
+  fetchSingleWeek: (ticker: string, weeksOut: number) => Promise<void>
   fetchingAllWeeks: Set<string>
+  fetchingWeeks: Map<string, Set<number>>   // ticker → set of weeks currently loading
 
   // Alerts
   alerts: AlertEntry[]
@@ -172,6 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
   const [refreshingTickers, setRefreshingTickers]   = useState<Set<string>>(new Set())
   const [fetchingAllWeeks, setFetchingAllWeeks]     = useState<Set<string>>(new Set())
+  const [fetchingWeeks, setFetchingWeeks]           = useState<Map<string, Set<number>>>(new Map())
   const [lastBgRefresh, setLastBgRefresh]           = useState<number | null>(null)
   const [isMarketHours, setIsMarketHours]           = useState<boolean>(isMarketHoursNow)
   const [alerts, setAlerts]                         = useState<AlertEntry[]>(() => activeAlertsOnly(load<AlertEntry[]>('oa_alerts', [])))
@@ -581,6 +584,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFetchingAllWeeks(prev => { const n = new Set(prev); n.delete(ticker); return n })
   }, [fetchingAllWeeks])
 
+  // ── fetchSingleWeek: fetch one specific week on demand (triggered by tab click) ──
+  const fetchSingleWeek = useCallback(async (ticker: string, weeksOut: number) => {
+    // Skip if already loading this week
+    setFetchingWeeks(prev => {
+      const next = new Map(prev)
+      const weeks = new Set(next.get(ticker) ?? [])
+      if (weeks.has(weeksOut)) return prev   // already in flight
+      weeks.add(weeksOut)
+      next.set(ticker, weeks)
+      return next
+    })
+    const existing = tickerCacheRef.current[ticker]
+    const spreadWidth  = existing?.spreadWidth  ?? null
+    const strategyMode = (existing?.strategyMode ?? 'all') as StrategyMode
+    try {
+      const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
+      setTickerCache(prev => {
+        const entry = prev[ticker]
+        if (!entry) return prev
+        const multiWeekData = { ...(entry.multiWeekData ?? {}), [weeksOut]: data }
+        return { ...prev, [ticker]: { ...entry, multiWeekData, multiWeekTimestamp: Date.now() } }
+      })
+    } catch (e) {
+      console.warn(`[single-week] week ${weeksOut} failed for ${ticker}:`, e)
+    } finally {
+      setFetchingWeeks(prev => {
+        const next = new Map(prev)
+        const weeks = new Set(next.get(ticker) ?? [])
+        weeks.delete(weeksOut)
+        if (weeks.size === 0) next.delete(ticker)
+        else next.set(ticker, weeks)
+        return next
+      })
+    }
+  }, [])
+
   // ── Keep isMarketHours current (re-check every minute) ──────────────────────
   useEffect(() => {
     const id = setInterval(() => setIsMarketHours(isMarketHoursNow()), 60_000)
@@ -620,7 +659,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       portfolio, addToPortfolio, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
       refreshingTickers, refreshTicker, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
-      fetchAllWeeks, fetchingAllWeeks,
+      fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
       alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,
       alertEmailEnabled, setAlertEmailEnabled,

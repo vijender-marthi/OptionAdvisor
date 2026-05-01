@@ -69,6 +69,8 @@ class OptionLegOut(BaseModel):
     oi: int
     volume: int
     bid_ask_spread_pct: float
+    data_quality: str = "OK"          # "OK" | "MODEL" | "STALE" | "UNRELIABLE"
+    data_quality_reason: str = ""
 
 
 class ScoreBreakdown(BaseModel):
@@ -120,6 +122,8 @@ class OptionRowOut(BaseModel):
     open_interest: int
     implied_volatility: str
     delta: Optional[float] = None
+    data_quality: str = "OK"          # "OK" | "MODEL" | "STALE" | "UNRELIABLE"
+    data_quality_reason: str = ""
 
 
 class PricePoint(BaseModel):
