@@ -362,8 +362,9 @@ export default function TickerPage() {
                                 bg-violet-900/20 border-violet-800 text-violet-400">
                   {lastMode === 'long_only'         ? '📈 Long Options Only'
                    : lastMode === 'credit_only'      ? '💰 Credit Spreads Only'
+                   : lastMode === 'straddle_only'    ? '⚡ Straddles Only'
                    : lastMode === 'short_or_covered' ? '🎯 Short / Covered Only'
-                   : '💰 Credit Spreads Only'}
+                   : 'Strategy filter'}
                 </div>
               ) : (
                 /* In "All" mode + HIGH IV: show why Long Calls/Puts are suppressed */

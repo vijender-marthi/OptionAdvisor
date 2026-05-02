@@ -66,14 +66,14 @@ const EXIT_LABELS: Record<string, string> = {
 
 // ─── Stat card ───────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color = 'text-white' }: {
+function StatCard({ label, value, sub, color = 'text-gray-200' }: {
   label: string; value: string; sub?: string; color?: string
 }) {
   return (
-    <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-2.5 sm:p-3 min-h-[4.25rem] sm:min-h-0">
-      <div className="text-[10px] sm:text-xs text-gray-500 mb-1 line-clamp-2 sm:line-clamp-none">{label}</div>
-      <div className={`text-base sm:text-lg font-bold font-mono ${color} break-words`}>{value}</div>
-      {sub && <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 line-clamp-2 sm:line-clamp-none">{sub}</div>}
+    <div className="bg-gray-800 rounded-xl px-3 py-2">
+      <div className="text-gray-500 mb-0.5 text-xs">{label}</div>
+      <div className={`font-semibold font-mono text-sm sm:text-base ${color} break-words`}>{value}</div>
+      {sub && <div className="text-gray-600 text-xs mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -208,6 +208,10 @@ function EntryCard({
 
   const outcomeColor = entry.outcome ? OUTCOME_COLORS[entry.outcome] ?? 'text-gray-400' : ''
 
+  const biasColor =
+    (entry.bias || '').includes('Bullish') ? 'text-emerald-400' :
+    (entry.bias || '').includes('Bearish') ? 'text-red-400' : 'text-amber-400'
+
   return (
     <>
       {showClose && (
@@ -221,111 +225,112 @@ function EntryCard({
         />
       )}
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        {/* Header row */}
+      <div className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-2xl overflow-hidden transition-colors">
+        {/* Header row — grid/flex aligned with Watchlist ticker rows */}
         <button
+          type="button"
           onClick={() => setExpanded(o => !o)}
-          className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 text-left hover:bg-gray-800/30 active:bg-gray-800/40 transition-colors flex-wrap touch-manipulation"
+          className="w-full text-left touch-manipulation transition-colors hover:bg-gray-800/30 active:bg-gray-800/40"
         >
-          {/* Ticker + company */}
-          <div className="shrink-0">
-            <span className="font-bold text-white text-sm">{entry.ticker}</span>
-            <span className="text-gray-500 text-xs ml-1.5 hidden sm:inline">{entry.company_name}</span>
+          <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
+            <div className="min-w-0 sm:w-28 sm:shrink-0">
+              <div className="font-semibold text-white text-sm tracking-tight">{entry.ticker}</div>
+              <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">
+                {entry.company_name || '—'}
+              </div>
+            </div>
+
+            <div className="min-w-0 text-right sm:text-left sm:w-24 sm:shrink-0">
+              <div className={`text-sm font-semibold font-mono ${pnlColor}`}>{fmt$(pnlContract)}</div>
+              <div className="text-xs text-gray-500">{pnlLabel}</div>
+            </div>
+
+            <div className="flex items-center sm:hidden">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+                {entry.status}
+              </span>
+            </div>
+
+            <div className="text-right sm:hidden">
+              <div className="text-xs text-gray-400">{entry.expiry}</div>
+              <div className="text-xs text-gray-500">{dteLabel(entry.expiry)}</div>
+            </div>
+
+            <div className="w-20 shrink-0 hidden sm:block">
+              <div className="text-sm font-semibold text-gray-300">{dteLabel(entry.expiry) || '—'}</div>
+              <div className="text-xs text-gray-500">DTE</div>
+            </div>
+
+            <div className="w-24 shrink-0 hidden md:block">
+              <div className={`text-xs font-semibold ${biasColor} truncate`}>{entry.bias}</div>
+              <div className="text-xs text-gray-500">Bias</div>
+            </div>
+
+            <div className="flex-1 hidden lg:block min-w-0">
+              <div className="text-xs">
+                <span className="text-violet-300 font-semibold truncate block" title={entry.strategy}>{entry.strategy}</span>
+                <span className="text-gray-500">
+                  +${(entry.max_profit * 100).toFixed(0)} max · {(entry.prob_of_profit * 100).toFixed(0)}% PoP
+                </span>
+              </div>
+            </div>
+
+            <div className="w-28 shrink-0 hidden sm:flex flex-col items-end gap-0.5 justify-center">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+                {entry.status}
+              </span>
+              {(isClosed || isExpired) && entry.outcome && (
+                <span className={`text-[10px] font-bold ${outcomeColor}`}>
+                  {entry.outcome === 'WIN' ? '✓ WIN' : entry.outcome === 'LOSS' ? '✗ LOSS' : '≈ BE'}
+                </span>
+              )}
+            </div>
+
+            <div className="col-span-2 flex justify-end sm:justify-center sm:w-10 sm:shrink-0">
+              <span className="p-1.5 text-gray-400 rounded-xl border border-transparent">
+                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </span>
+            </div>
           </div>
-
-          {/* Strategy */}
-          <span className="text-xs text-gray-300 bg-gray-800 border border-gray-700 px-2 py-0.5 rounded-full shrink-0 max-w-[9.5rem] sm:max-w-[13rem] truncate" title={entry.strategy}>
-            {entry.strategy}
-          </span>
-
-          {/* Bias */}
-          <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full border font-semibold shrink-0 max-w-[9rem] sm:max-w-none truncate sm:whitespace-normal ${
-            entry.bias.includes('Bullish') ? 'bg-green-900/50 text-green-400 border-green-700' :
-            entry.bias.includes('Bearish') ? 'bg-red-900/50 text-red-400 border-red-700' :
-            'bg-amber-900/50 text-amber-400 border-amber-700'
-          }`}>
-            {entry.bias.includes('Bullish') ? '↑' : entry.bias.includes('Bearish') ? '↓' : '↔'} {entry.bias}
-          </span>
-
-          {/* Status */}
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
-            {entry.status}
-          </span>
-
-          {/* Expiry / DTE */}
-          <span className="text-[10px] sm:text-xs text-gray-500 shrink-0 whitespace-nowrap">{entry.expiry} · {dteLabel(entry.expiry)}</span>
-
-          {/* Spacer */}
-          <span className="hidden sm:block flex-1" />
-
-          {/* P&L */}
-          <span className={`font-bold text-sm font-mono shrink-0 ${pnlColor}`}>
-            {fmt$(pnlContract)}
-            <span className="text-xs font-normal text-gray-500 ml-1">/{pnlLabel}</span>
-          </span>
-
-          {/* Outcome for closed */}
-          {(isClosed || isExpired) && entry.outcome && (
-            <span className={`text-xs font-bold shrink-0 ml-1 ${outcomeColor}`}>
-              {entry.outcome === 'WIN' ? '✓ WIN' : entry.outcome === 'LOSS' ? '✗ LOSS' : '≈ BE'}
-            </span>
-          )}
-
-          <span className="text-gray-500 shrink-0 ml-1">
-            {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </span>
         </button>
 
         {/* Expanded detail */}
         {expanded && (
-          <div className="border-t border-gray-800">
-            {/* Metrics grid */}
-            <div className="px-3 sm:px-4 pt-3 pb-2 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3">
-              <div>
-                <div className="text-xs text-gray-500">Entry Date</div>
-                <div className="text-sm font-semibold text-gray-200">{fmtDate(entry.entry_date)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Entry Price</div>
-                <div className="text-sm font-mono text-gray-200">${entry.underlying_entry?.toFixed(2) ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Net Credit/Debit</div>
-                <div className={`text-sm font-mono font-bold ${entry.net_credit > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {entry.net_credit > 0 ? '+' : ''}${(entry.net_credit * 100).toFixed(0)}/contract
+          <div className="border-t border-gray-800 px-4 py-3 bg-gray-800/30">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3 text-xs">
+              {[
+                { label: 'Entry Date', value: fmtDate(entry.entry_date), note: '' },
+                { label: 'Entry Price', value: `$${entry.underlying_entry?.toFixed(2) ?? '—'}`, note: '' },
+                {
+                  label: 'Net / contract',
+                  value: `${entry.net_credit > 0 ? '+' : ''}$${(entry.net_credit * 100).toFixed(0)}`,
+                  note: entry.net_credit > 0 ? 'Credit' : 'Debit',
+                },
+                {
+                  label: 'Score',
+                  value: `${entry.total_score}/100`,
+                  note: entry.total_score >= 75 ? 'Strong' : entry.total_score >= 55 ? 'OK' : 'Weak',
+                },
+                { label: 'Max Profit', value: `+$${(entry.max_profit * 100).toFixed(0)}`, note: '' },
+                { label: 'Max Loss', value: `−$${(entry.max_loss * 100).toFixed(0)}`, note: '' },
+                { label: 'PoP', value: `${(entry.prob_of_profit * 100).toFixed(0)}%`, note: '' },
+                {
+                  label: 'EV',
+                  value: `${entry.expected_value > 0 ? '+' : ''}$${(entry.expected_value * 100).toFixed(0)}`,
+                  note: '',
+                },
+              ].map(m => (
+                <div key={m.label} className="bg-gray-800 rounded-xl px-3 py-2">
+                  <div className="text-gray-500 mb-0.5">{m.label}</div>
+                  <div className="text-gray-200 font-semibold font-mono">{m.value}</div>
+                  {m.note ? <div className="text-gray-600">{m.note}</div> : null}
                 </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Score</div>
-                <div className={`text-sm font-mono font-bold ${
-                  entry.total_score >= 75 ? 'text-green-400' : entry.total_score >= 55 ? 'text-amber-400' : 'text-red-400'
-                }`}>
-                  {entry.total_score}/100
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Max Profit</div>
-                <div className="text-sm font-mono text-emerald-400">+${(entry.max_profit * 100).toFixed(0)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Max Loss</div>
-                <div className="text-sm font-mono text-red-400">−${(entry.max_loss * 100).toFixed(0)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">PoP</div>
-                <div className="text-sm font-mono text-gray-200">{(entry.prob_of_profit * 100).toFixed(0)}%</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">EV</div>
-                <div className={`text-sm font-mono ${entry.expected_value > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {entry.expected_value > 0 ? '+' : ''}${(entry.expected_value * 100).toFixed(0)}
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Current / exit price info */}
             {isOpen && entry.current_price > 0 && (
-              <div className="mx-3 sm:mx-4 mb-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs">
+              <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs">
                 <span className="text-blue-400 font-semibold">Live · </span>
                 <span className="text-gray-300">
                   {entry.ticker} @ <span className="font-mono">${entry.current_price.toFixed(2)}</span>
@@ -335,7 +340,7 @@ function EntryCard({
             )}
 
             {(isClosed || isExpired) && (
-              <div className="mx-3 sm:mx-4 mb-3 p-2.5 bg-gray-800/60 border border-gray-700 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-3">
+              <div className="mt-3 p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-3">
                 <span className="text-gray-500">
                   Closed: <span className="text-gray-300">{fmtDate(entry.exit_date)}</span>
                 </span>
@@ -355,7 +360,7 @@ function EntryCard({
 
             {/* Legs table */}
             {entry.legs && entry.legs.length > 0 && (
-              <div className="mx-3 sm:mx-4 mb-3 bg-gray-800/60 rounded-xl p-2 sm:p-3 font-mono text-[10px] sm:text-xs overflow-x-auto touch-pan-x">
+              <div className="mt-3 bg-gray-800 rounded-xl p-2 sm:p-3 font-mono text-[10px] sm:text-xs overflow-x-auto touch-pan-x">
                 <table className="w-full min-w-[20rem] sm:min-w-[30rem]">
                   <thead>
                     <tr className="text-gray-500 border-b border-gray-700">
@@ -384,7 +389,7 @@ function EntryCard({
             )}
 
             {/* Notes section */}
-            <div className="mx-3 sm:mx-4 mb-3">
+            <div className="mt-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs text-gray-500 font-semibold">Notes</span>
                 {!editingNotes && (
@@ -434,20 +439,22 @@ function EntryCard({
             </div>
 
             {/* Action buttons */}
-            <div className="px-3 sm:px-4 pb-4 flex gap-2 flex-wrap">
+            <div className="mt-3 flex gap-1.5 flex-wrap">
               {isOpen && (
                 <button
-                  onClick={() => setShowClose(true)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all min-h-[44px] sm:min-h-0 touch-manipulation
-                             bg-gray-800 border-gray-700 text-gray-400 hover:border-emerald-600 hover:text-emerald-400"
+                  type="button"
+                  onClick={e => { e.stopPropagation(); setShowClose(true) }}
+                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-violet-600/20 hover:bg-violet-600/40
+                             border border-violet-700/50 text-violet-300 text-xs font-semibold rounded-xl transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
                 >
-                  <CheckSquare size={12} /> Close Trade
+                  <CheckSquare size={11} /> Close Trade
                 </button>
               )}
               <button
-                onClick={() => onDeleteConfirm(entry.id)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all min-h-[44px] sm:min-h-0 touch-manipulation
-                           bg-gray-800 border-gray-700 text-gray-400 hover:border-red-600 hover:text-red-400"
+                type="button"
+                onClick={e => { e.stopPropagation(); onDeleteConfirm(entry.id) }}
+                className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-gray-800 hover:bg-red-900/30 border border-gray-700
+                           text-gray-500 hover:text-red-400 text-xs font-semibold rounded-xl transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
               >
                 <Trash2 size={12} /> Delete
               </button>
@@ -569,8 +576,8 @@ export default function JournalPage() {
   ]
 
   return (
-    <div className="journal-page min-h-screen">
-      <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-12 sm:pb-10">
+    <div className="journal-page min-h-screen p-4 md:p-6">
+      <div className="max-w-6xl mx-auto space-y-5">
       {/* Delete confirm modal */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -602,37 +609,41 @@ export default function JournalPage() {
       )}
 
       {/* Page header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5 sm:mb-6">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-700/50 flex items-center justify-center shrink-0">
-            <BookOpen size={18} className="text-violet-400" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-white leading-tight">Trade Journal</h1>
-            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">Track your real trades with live P&L monitoring</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+            <BookOpen className="text-violet-400" size={22} />
+            Trade Journal
+          </h1>
+          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <span className="text-sm text-gray-500">
+              {entries.length} entr{entries.length !== 1 ? 'ies' : 'y'}
+            </span>
+            <span className="text-xs text-gray-600">Live P&L · filters · notes</span>
           </div>
         </div>
         <button
+          type="button"
           onClick={handleRefresh}
           disabled={refreshing || loading}
-          className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2 rounded-xl text-sm font-semibold border transition-all
-                     bg-gray-800 border-gray-700 text-gray-300 hover:border-violet-600 hover:text-violet-300
-                     disabled:opacity-50 w-full sm:w-auto shrink-0 min-h-[44px] sm:min-h-0"
+          className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 border border-gray-700
+                     text-gray-400 hover:text-gray-200 hover:border-gray-600 text-sm rounded-xl
+                     transition-colors disabled:opacity-50 w-full sm:w-auto justify-center min-h-[44px] sm:min-h-0"
         >
-          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
           {refreshing ? 'Refreshing P&L…' : 'Refresh P&L'}
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-xl text-sm text-red-400 flex items-center gap-2">
+        <div className="p-3 bg-red-900/20 border border-red-800 rounded-xl text-sm text-red-400 flex items-center gap-2">
           <AlertTriangle size={14} className="shrink-0" />
           {error}
         </div>
       )}
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5 sm:mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           label="Open Trades"
           value={String(stats.openCount)}
@@ -659,7 +670,7 @@ export default function JournalPage() {
       </div>
 
       {/* Status filter tabs */}
-      <div className="flex items-stretch gap-2 mb-4 border-b border-gray-800 pb-3 -mx-1 px-1">
+      <div className="flex items-stretch gap-2 border-b border-gray-800 pb-3">
         <Filter size={14} className="text-gray-600 self-center shrink-0" />
         <div className="mobile-tab-scroll flex items-center gap-2 overflow-x-auto min-w-0 flex-1 pb-0.5">
         {STATUS_TABS.map(tab => (
@@ -698,7 +709,7 @@ export default function JournalPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {sorted.map(entry => (
             <EntryCard
               key={entry.id}

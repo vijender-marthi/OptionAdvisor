@@ -1149,6 +1149,7 @@ def run_engine(
     strategy_mode: 'all' = market-driven (default), 'long_only' = long/debit only,
                    'credit_only' = defined-risk credit spreads only (no naked/covered),
                    'short_or_covered' = naked short / covered strategies only (no spreads).
+                   'straddle_only' = Long Straddles only (buy vol, any bias / IV environment).
     """
     price = signals.current_price
     bias  = signals.directional_bias
@@ -1166,8 +1167,9 @@ def run_engine(
     BUILD_SPREADS       = strategy_mode in ('all', 'credit_only')
     # Naked / covered single-leg sells (Short Put, Short Call, Covered Call, Covered Put)
     BUILD_SHORT_COVERED = strategy_mode in ('all', 'short_or_covered')
+    BUILD_STRADDLE_ONLY = strategy_mode == 'straddle_only'
     # In dedicated modes, relax IV gates so users always see their preferred type
-    LONG_IV_OK   = LOW_IV  or strategy_mode == 'long_only'
+    LONG_IV_OK   = LOW_IV  or strategy_mode in ('long_only', 'straddle_only')
     CREDIT_IV_OK = HIGH_IV or strategy_mode in ('credit_only', 'short_or_covered')
 
     # Filter options chain to tradeable range (75%–130% of price)
@@ -1256,7 +1258,8 @@ def run_engine(
             candidates_raw.append(t)
 
     # Long straddle: neutral bias + cheap premium (relaxed in long_only mode)
-    if BUILD_LONG and NEUTRAL and LONG_IV_OK:
+    # In straddle_only mode: always build regardless of bias or IV — user is explicitly requesting vol plays
+    if (BUILD_LONG and NEUTRAL and LONG_IV_OK) or BUILD_STRADDLE_ONLY:
         c, p = get_chain(exp_straddle or exp_debit)
         t = _build_long_straddle(signals, c, p, exp_straddle or exp_debit, price)
         if t:

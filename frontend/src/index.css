@@ -32,14 +32,17 @@ textarea {
 
 .mobile-nav-scroll,
 .mobile-tab-scroll,
-.mobile-week-scroll {
+.mobile-week-scroll,
+.desktop-sidebar-nav {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  overscroll-behavior: contain;
 }
 
 .mobile-nav-scroll::-webkit-scrollbar,
 .mobile-tab-scroll::-webkit-scrollbar,
-.mobile-week-scroll::-webkit-scrollbar {
+.mobile-week-scroll::-webkit-scrollbar,
+.desktop-sidebar-nav::-webkit-scrollbar {
   display: none;
 }
 
@@ -235,7 +238,8 @@ html.dark { color-scheme: dark; }
 html.light {
   color-scheme: light;
   /* Layered light UI: blue-slate canvas + tinted cards (readable, not stark white). */
-  --light-app-canvas: #e0e5ef;
+  /* Page canvas: match AppLayout bg-gray-950 in light so Radar and main are seamless. */
+  --light-app-canvas: #d1d5db;
   --light-surface-1: #eef1f8;
   --light-surface-2: #e4e9f3;
   --light-surface-3: #d2d9e8;
@@ -292,7 +296,7 @@ html.light body {
 }
 
 /* Page/card/surface backgrounds */
-html.light .bg-gray-950  { background-color: #d1d5db; }
+html.light .bg-gray-950  { background-color: var(--light-app-canvas); }
 html.light .bg-gray-900  { background-color: #e5e7eb; }
 html.light .bg-gray-800  { background-color: #d6d9de; }
 html.light .bg-gray-700  { background-color: #c4c9d1; }
@@ -1008,14 +1012,18 @@ html.light .alerts-page .border-violet-700 { border-color: #8b5cf6; }
 html.light .alerts-page .text-violet-300,
 html.light .alerts-page .text-violet-400 { color: #6d28d9; }
 
-/* Light theme: tinted page canvas + layered cards (product pages). */
+/* Light theme: page roots use same canvas as AI Radar / AppLayout (see --light-app-canvas). */
 html.light .alerts-page,
 html.light .watchlist-page,
 html.light .trade-signals-page,
 html.light .portfolio-page,
 html.light .journal-page,
 html.light .ticker-page,
-html.light .backtest-page {
+html.light .backtest-page,
+html.light .help-page,
+html.light .settings-page,
+html.light .ai-radar-page,
+html.light .q-radar-page {
   background-color: var(--light-app-canvas);
 }
 

@@ -41,7 +41,7 @@ export default function Sidebar() {
       label: 'Analyze',
       items: [
         { id: 'ticker',        label: 'Option Advisory', icon: <TrendingUp size={18} /> },
-        { id: 'trade-signals', label: 'Trade Signals',   icon: <ShieldCheck size={18} /> },
+        { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={18} /> },
       ],
     },
     {
@@ -84,29 +84,29 @@ export default function Sidebar() {
     <>
     <aside className={`${w} hidden xl:flex font-sans h-[100dvh] bg-gray-900 border-r border-gray-800 flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
       {/* Logo */}
-      <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
+      <div className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
           <BarChart2 size={16} className="text-white" />
         </div>
         {!collapsed && (
           <div>
             <div className="text-sm font-semibold text-white leading-tight">OptionAdvisor</div>
-            <div className="text-[11px] text-gray-500 leading-tight">Systematic Engine v2</div>
+            <div className="text-[10px] text-gray-500 leading-tight">Systematic Engine v2</div>
           </div>
         )}
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-2 space-y-4">
+      {/* Nav items — compact layout; overscroll contained so wheel doesn’t scroll the main column */}
+      <nav className="desktop-sidebar-nav flex-1 min-h-0 overflow-y-auto py-2 px-1.5 space-y-2">
         {navGroups.map(group => (
           <div key={group.label}>
             {/* Group label — hidden when collapsed */}
             {!collapsed && (
-              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-600">
+              <div className="px-3 pb-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-600">
                 {group.label}
               </div>
             )}
-            {collapsed && <div className="border-t border-gray-800 my-1" />}
+            {collapsed && <div className="border-t border-gray-800 my-0.5" />}
             <div className="space-y-0.5">
               {group.items.map(item => {
                 const active = page === item.id
@@ -116,7 +116,7 @@ export default function Sidebar() {
                     key={item.id}
                     onClick={() => navigate(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+                    className={`relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
                       ${active
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
@@ -150,11 +150,11 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom: settings + user */}
-      <div className="border-t border-gray-800 p-2 space-y-1 shrink-0">
+      <div className="border-t border-gray-800 p-1.5 space-y-0.5 shrink-0">
         <button
           onClick={() => navigate('settings')}
           title={collapsed ? 'Settings' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
             ${page === 'settings'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -167,7 +167,7 @@ export default function Sidebar() {
         <button
           onClick={() => navigate('help')}
           title={collapsed ? 'Help' : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
             ${page === 'help'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
               : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
@@ -177,10 +177,10 @@ export default function Sidebar() {
           {!collapsed && <span>Help</span>}
         </button>
 
-        <ThemeToggle collapsed={collapsed} className="w-full" />
+        <ThemeToggle collapsed={collapsed} className="w-full !py-2" />
 
         {user && (
-          <div className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-gray-800/60 ${collapsed ? 'justify-center' : ''}`}>
+          <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gray-800/60 ${collapsed ? 'justify-center' : ''}`}>
             <div className="w-7 h-7 rounded-full bg-violet-700 flex items-center justify-center shrink-0">
               <User size={13} className="text-white" />
             </div>
@@ -199,11 +199,11 @@ export default function Sidebar() {
         )}
 
         {/* Market hours indicator */}
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl ${collapsed ? 'justify-center' : ''}`}
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${collapsed ? 'justify-center' : ''}`}
           title={isMarketHours ? 'Market live — auto-refresh active (6 AM–4 PM PST)' : 'Market closed — auto-refresh paused'}>
-          <Activity size={12} className={isMarketHours ? 'text-emerald-400 animate-pulse' : 'text-gray-700'} />
+          <Activity size={11} className={isMarketHours ? 'text-emerald-400 animate-pulse' : 'text-gray-700'} />
           {!collapsed && (
-            <span className={`text-[11px] font-semibold ${isMarketHours ? 'text-emerald-400' : 'text-gray-700'}`}>
+            <span className={`text-[10px] font-semibold ${isMarketHours ? 'text-emerald-400' : 'text-gray-700'}`}>
               {isMarketHours ? 'Market Live' : 'Market Closed'}
             </span>
           )}
@@ -212,7 +212,7 @@ export default function Sidebar() {
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(c => !c)}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:text-gray-400 transition-colors ${collapsed ? 'justify-center' : ''}`}
+          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-gray-600 hover:text-gray-400 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           {collapsed ? <ChevronRight size={14} /> : <><ChevronLeft size={14} /><span>Collapse</span></>}
         </button>

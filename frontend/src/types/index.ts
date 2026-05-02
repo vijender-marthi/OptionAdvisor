@@ -117,7 +117,7 @@ export interface PricePoint {
 
 // ─── Strategy mode ──────────────────────────────────────────
 
-export type StrategyMode = 'all' | 'long_only' | 'credit_only' | 'short_or_covered'
+export type StrategyMode = 'all' | 'long_only' | 'credit_only' | 'short_or_covered' | 'straddle_only'
 
 // ─── Ticker cache ───────────────────────────────────────────
 

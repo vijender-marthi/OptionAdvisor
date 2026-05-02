@@ -422,7 +422,7 @@ export default function TradeSignalsPage() {
                 <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-700 flex items-center justify-center">
                   <ShieldCheck size={18} className="text-emerald-400" />
                 </div>
-                <h1 className="text-2xl font-bold text-white">Trade Signals</h1>
+                <h1 className="text-2xl font-bold text-white">Signals</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
                 10-point pre-trade checklist across all watchlist tickers. Click <strong className="text-gray-300">Fetch All Weeks</strong> on any

@@ -20,6 +20,7 @@ const STRATEGY_MODES: { label: string; sub: string; value: StrategyMode }[] = [
   { label: 'All Strategies',  sub: 'Engine picks best fit',           value: 'all'               },
   { label: 'Long Options',    sub: 'Long calls, puts, spreads',       value: 'long_only'         },
   { label: 'Credit Spreads',  sub: 'Defined-risk spreads only',       value: 'credit_only'       },
+  { label: 'Straddles',       sub: 'Buy vol · ATM call + put',        value: 'straddle_only'     },
   { label: 'Short / Covered', sub: 'Naked short & covered plays',     value: 'short_or_covered'  },
 ]
 
@@ -96,7 +97,7 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
       {/* Strategy mode selector */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 mt-4">
         <span className="text-xs text-gray-500 font-semibold sm:mt-2 shrink-0">Strategy mode:</span>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:grid lg:grid-cols-4 xl:flex">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:grid lg:grid-cols-5 xl:flex">
           {STRATEGY_MODES.map(opt => (
             <button
               key={opt.value}

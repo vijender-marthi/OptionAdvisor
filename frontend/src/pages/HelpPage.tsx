@@ -863,6 +863,10 @@ if HIGH_IV and BEARISH:
                 Spreads, Bear Call Spreads, Iron Condors, Covered Calls, and Covered Puts (cash-secured) appear
                 even when IV Rank is below 50.
               </p>
+              <p>
+                <span className="strategy-mode-label font-semibold text-gray-200">Straddles</span> limits results to{' '}
+                <em>Long Straddle</em> ideas only (long ATM call and put), regardless of directional bias or IV — use when you want the engine to focus on volatility trades.
+              </p>
               <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl px-3 py-2.5 text-xs text-blue-300/90">
                 <span className="font-semibold">Covered Call and Covered Put</span> appear in <em>All Strategies</em> and
                 <em> Credit Spreads</em> modes when IV Rank ≥ 50 and the signal is not bearish.
