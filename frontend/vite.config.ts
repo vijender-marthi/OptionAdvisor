@@ -11,5 +11,19 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('react-dom') || id.includes('/react/')) return 'react-vendor'
+          if (id.includes('recharts')) return 'recharts'
+          if (id.includes('jspdf')) return 'jspdf'
+          if (id.includes('xlsx')) return 'xlsx'
+          if (id.includes('lucide-react')) return 'lucide'
+        },
+      },
+    },
+  },
 })
