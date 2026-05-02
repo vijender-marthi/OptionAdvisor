@@ -980,8 +980,8 @@ def scan_alerts_now(email: str):
 
 # ── BACKTESTING ───────────────────────────────────────────────────────────────
 
-@app.post("/api/backtest")
-def backtest_strategy(request: BacktestRequest):
+
+def _run_backtest_endpoint(request: BacktestRequest):
     """Walk-forward backtest using Black-Scholes synthetic option pricing."""
     from backtest import run_backtest
     ticker = request.ticker.strip().upper()
@@ -998,6 +998,17 @@ def backtest_strategy(request: BacktestRequest):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@app.post("/api/backtest")
+def backtest_strategy(request: BacktestRequest):
+    return _run_backtest_endpoint(request)
+
+
+# Alias for nginx configs that strip the /api prefix (proxy_pass .../ without /api).
+@app.post("/backtest")
+def backtest_strategy_proxy_alias(request: BacktestRequest):
+    return _run_backtest_endpoint(request)
 
 
 # ── TRADE JOURNAL ──────────────────────────────────────────────────────────────
