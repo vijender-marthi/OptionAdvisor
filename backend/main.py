@@ -30,7 +30,7 @@ from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
-    AlertDismissRequest, AlertClearRequest, TestEmailRequest,
+    AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
 )
 from analysis import generate_signals
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
@@ -976,3 +976,236 @@ def scan_alerts_now(email: str):
         "email": email.strip().lower(),
         "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
     }
+
+
+# ── BACKTESTING ───────────────────────────────────────────────────────────────
+
+@app.post("/api/backtest")
+def backtest_strategy(request: BacktestRequest):
+    """Walk-forward backtest using Black-Scholes synthetic option pricing."""
+    from backtest import run_backtest
+    ticker = request.ticker.strip().upper()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="ticker is required")
+    result = run_backtest(
+        ticker=ticker,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        strategy_mode=request.strategy_mode,
+        weeks_out=request.weeks_out,
+        spread_width=request.spread_width,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ── TRADE JOURNAL ──────────────────────────────────────────────────────────────
+
+from storage import (
+    init_journal_db, save_journal_entry, get_journal_entries,
+    get_journal_entry, update_journal_entry, delete_journal_entry,
+)
+from pydantic import BaseModel as _BM
+
+init_journal_db()
+
+
+class JournalSaveRequest(_BM):
+    ticker: str
+    company_name: str = ""
+    strategy: str
+    bias: str = ""
+    legs: list[dict] = []
+    expiry: str
+    entry_date: str
+    dte_at_entry: int = 0
+    net_credit: float = 0.0
+    max_profit: float = 0.0
+    max_loss: float = 0.0
+    underlying_entry: float = 0.0
+    prob_of_profit: float = 0.0
+    expected_value: float = 0.0
+    total_score: int = 0
+    notes: str = ""
+
+
+class JournalCloseRequest(_BM):
+    exit_reason: str = "MANUAL"
+    notes: str = ""
+
+
+class JournalNotesRequest(_BM):
+    notes: str
+
+
+def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:
+    """
+    Mark-to-market P&L per share using Black-Scholes.
+    Uses each leg's stored IV (as decimal, e.g. 0.30 = 30%) for pricing.
+    Falls back to HV-20 proxy if IV is missing/zero.
+    """
+    from backtest import bs_price, RISK_FREE_RATE
+    pnl = 0.0
+    for leg in legs:
+        iv = float(leg.get("iv", 0) or 0)
+        if iv <= 0.005:
+            iv = 0.25  # fallback
+        strike     = float(leg.get("strike", 0))
+        entry_p    = float(leg.get("mid_price", 0))
+        opt_type   = str(leg.get("option_type", "CALL")).upper()
+        action     = str(leg.get("action", "BUY")).upper()
+        current_p  = bs_price(S, strike, max(T_years, 0.0), RISK_FREE_RATE, iv, opt_type)
+        if action == "SELL":
+            pnl += entry_p - current_p
+        else:
+            pnl += current_p - entry_p
+    return pnl
+
+
+def _refresh_entry(entry: dict) -> dict:
+    """Fetch current price and recompute P&L for one journal entry. Mutates entry."""
+    import time
+    today = pd.Timestamp.today().normalize()
+    expiry_dt = pd.Timestamp(entry["expiry"])
+    ticker_str = entry["ticker"]
+
+    try:
+        tkr = yf.Ticker(ticker_str)
+
+        if today > expiry_dt:
+            # Expired: compute intrinsic P&L from closing price on/after expiry date
+            hist = tkr.history(
+                start=entry["expiry"],
+                end=(expiry_dt + pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
+                auto_adjust=True,
+            )
+            if not hist.empty:
+                S_exit = float(hist["Close"].iloc[0])
+                pnl = _compute_mtm_pnl(entry["legs"], S_exit, 0.0)
+                pnl_dollar = round(pnl * 100, 2)
+                outcome = "WIN" if pnl > 0.005 else ("LOSS" if pnl < -0.005 else "BREAKEVEN")
+                update_journal_entry(
+                    entry["email"], entry["id"],
+                    status="EXPIRED",
+                    exit_date=hist.index[0].strftime("%Y-%m-%d"),
+                    underlying_exit=round(S_exit, 2),
+                    realized_pnl=round(pnl, 4),
+                    exit_reason="EXPIRY",
+                    outcome=outcome,
+                    current_price=round(S_exit, 2),
+                    current_pnl=round(pnl_dollar, 2),
+                    last_refreshed=int(time.time() * 1000),
+                )
+                entry.update(
+                    status="EXPIRED", exit_date=hist.index[0].strftime("%Y-%m-%d"),
+                    underlying_exit=round(S_exit, 2), realized_pnl=round(pnl, 4),
+                    exit_reason="EXPIRY", outcome=outcome,
+                    current_price=round(S_exit, 2), current_pnl=round(pnl_dollar, 2),
+                )
+        else:
+            # Still open: mark-to-market
+            info = tkr.info
+            S = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+            if S <= 0:
+                hist = tkr.history(period="5d", auto_adjust=True)
+                S = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
+            if S > 0:
+                dte_remain = (expiry_dt - today).days
+                T_years = max(dte_remain / 365.0, 0.0)
+                pnl = _compute_mtm_pnl(entry["legs"], S, T_years)
+                pnl_dollar = round(pnl * 100, 2)
+                update_journal_entry(
+                    entry["email"], entry["id"],
+                    current_price=round(S, 2),
+                    current_pnl=round(pnl_dollar, 2),
+                    last_refreshed=int(time.time() * 1000),
+                )
+                entry.update(current_price=round(S, 2), current_pnl=round(pnl_dollar, 2))
+    except Exception:
+        pass
+
+    return entry
+
+
+@app.post("/api/journal/save")
+def journal_save(email: str, req: JournalSaveRequest):
+    """Save a recommendation to the trade journal."""
+    normalized = email.strip().lower()
+    import datetime
+    entry_dict = req.dict()
+    entry_dict.setdefault("entry_date", datetime.date.today().isoformat())
+    entry_id = save_journal_entry(normalized, entry_dict)
+    return {"id": entry_id, "ok": True}
+
+
+@app.get("/api/journal/{email}")
+def journal_list(email: str, status: str = ""):
+    """List all journal entries for a user (optionally filtered by status)."""
+    normalized = email.strip().lower()
+    entries = get_journal_entries(normalized, status or None)
+    # Inject email for _refresh_entry
+    for e in entries:
+        e["email"] = normalized
+    return {"entries": entries}
+
+
+@app.post("/api/journal/refresh/{email}")
+def journal_refresh(email: str):
+    """Recompute current P&L for all OPEN entries; settle EXPIRED ones."""
+    normalized = email.strip().lower()
+    entries = get_journal_entries(normalized, status="OPEN")
+    for e in entries:
+        e["email"] = normalized
+        _refresh_entry(e)
+    # Return all entries (now updated)
+    all_entries = get_journal_entries(normalized)
+    for e in all_entries:
+        e["email"] = normalized
+    return {"entries": all_entries}
+
+
+@app.patch("/api/journal/{email}/{entry_id}/close")
+def journal_close(email: str, entry_id: str, req: JournalCloseRequest):
+    """Manually close a journal trade (user marks it as closed)."""
+    import time
+    import datetime
+    normalized = email.strip().lower()
+    entry = get_journal_entry(normalized, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    entry["email"] = normalized
+    _refresh_entry(entry)  # get current price first
+    S_exit = entry.get("current_price", 0.0)
+    pnl_ps = _compute_mtm_pnl(entry["legs"], S_exit, 0.0) if S_exit > 0 else 0.0
+    outcome = "WIN" if pnl_ps > 0.005 else ("LOSS" if pnl_ps < -0.005 else "BREAKEVEN")
+    notes = req.notes or entry.get("notes", "")
+    update_journal_entry(
+        normalized, entry_id,
+        status="CLOSED",
+        exit_date=datetime.date.today().isoformat(),
+        underlying_exit=round(S_exit, 2),
+        realized_pnl=round(pnl_ps, 4),
+        exit_reason=req.exit_reason,
+        outcome=outcome,
+        current_pnl=round(pnl_ps * 100, 2),
+        notes=notes,
+        last_refreshed=int(time.time() * 1000),
+    )
+    return {"ok": True, "outcome": outcome, "realized_pnl": round(pnl_ps * 100, 2)}
+
+
+@app.patch("/api/journal/{email}/{entry_id}/notes")
+def journal_notes(email: str, entry_id: str, req: JournalNotesRequest):
+    """Update notes on a journal entry."""
+    normalized = email.strip().lower()
+    update_journal_entry(normalized, entry_id, notes=req.notes)
+    return {"ok": True}
+
+
+@app.delete("/api/journal/{email}/{entry_id}")
+def journal_delete(email: str, entry_id: str):
+    """Delete a journal entry."""
+    normalized = email.strip().lower()
+    delete_journal_entry(normalized, entry_id)
+    return {"ok": True}

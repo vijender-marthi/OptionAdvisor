@@ -191,3 +191,149 @@ def clear_user_alerts(email: str) -> None:
     normalized = normalize_email(email)
     with _connect() as conn:
         conn.execute("DELETE FROM user_alerts WHERE email = ?", (normalized,))
+
+
+# ─────────────────────────────────────────────────────────────
+# TRADE JOURNAL
+# ─────────────────────────────────────────────────────────────
+
+def init_journal_db() -> None:
+    """Create the trade_journal table (idempotent)."""
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trade_journal (
+                id              TEXT NOT NULL,
+                email           TEXT NOT NULL,
+                ticker          TEXT NOT NULL,
+                company_name    TEXT NOT NULL DEFAULT '',
+                strategy        TEXT NOT NULL,
+                bias            TEXT NOT NULL DEFAULT '',
+                legs_json       TEXT NOT NULL DEFAULT '[]',
+                expiry          TEXT NOT NULL,
+                entry_date      TEXT NOT NULL,
+                dte_at_entry    INTEGER NOT NULL DEFAULT 0,
+                net_credit      REAL NOT NULL DEFAULT 0,
+                max_profit      REAL NOT NULL DEFAULT 0,
+                max_loss        REAL NOT NULL DEFAULT 0,
+                underlying_entry REAL NOT NULL DEFAULT 0,
+                prob_of_profit  REAL NOT NULL DEFAULT 0,
+                expected_value  REAL NOT NULL DEFAULT 0,
+                total_score     INTEGER NOT NULL DEFAULT 0,
+                status          TEXT NOT NULL DEFAULT 'OPEN',
+                exit_date       TEXT NOT NULL DEFAULT '',
+                underlying_exit REAL NOT NULL DEFAULT 0,
+                realized_pnl    REAL NOT NULL DEFAULT 0,
+                exit_reason     TEXT NOT NULL DEFAULT '',
+                outcome         TEXT NOT NULL DEFAULT '',
+                current_price   REAL NOT NULL DEFAULT 0,
+                current_pnl     REAL NOT NULL DEFAULT 0,
+                last_refreshed  INTEGER NOT NULL DEFAULT 0,
+                notes           TEXT NOT NULL DEFAULT '',
+                created_at      INTEGER NOT NULL,
+                PRIMARY KEY (email, id)
+            )
+            """
+        )
+
+
+def save_journal_entry(email: str, entry: dict[str, Any]) -> str:
+    """Insert a new journal entry. Returns the entry id."""
+    import uuid, time
+    normalized = normalize_email(email)
+    entry_id = str(uuid.uuid4())[:8]
+    now_ms = int(time.time() * 1000)
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO trade_journal (
+                id, email, ticker, company_name, strategy, bias,
+                legs_json, expiry, entry_date, dte_at_entry,
+                net_credit, max_profit, max_loss, underlying_entry,
+                prob_of_profit, expected_value, total_score,
+                status, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+            """,
+            (
+                entry_id, normalized,
+                entry.get("ticker", ""),
+                entry.get("company_name", ""),
+                entry.get("strategy", ""),
+                entry.get("bias", ""),
+                json.dumps(entry.get("legs", [])),
+                entry.get("expiry", ""),
+                entry.get("entry_date", ""),
+                int(entry.get("dte_at_entry", 0)),
+                float(entry.get("net_credit", 0)),
+                float(entry.get("max_profit", 0)),
+                float(entry.get("max_loss", 0)),
+                float(entry.get("underlying_entry", 0)),
+                float(entry.get("prob_of_profit", 0)),
+                float(entry.get("expected_value", 0)),
+                int(entry.get("total_score", 0)),
+                entry.get("notes", ""),
+                now_ms,
+            ),
+        )
+    return entry_id
+
+
+def get_journal_entries(email: str, status: str | None = None) -> list[dict[str, Any]]:
+    """Return all journal entries for a user, newest first."""
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM trade_journal WHERE email = ? AND status = ? ORDER BY created_at DESC",
+                (normalized, status),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM trade_journal WHERE email = ? ORDER BY created_at DESC",
+                (normalized,),
+            ).fetchall()
+    return [_row_to_entry(r) for r in rows]
+
+
+def get_journal_entry(email: str, entry_id: str) -> dict[str, Any] | None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM trade_journal WHERE email = ? AND id = ?",
+            (normalized, entry_id),
+        ).fetchone()
+    return _row_to_entry(row) if row else None
+
+
+def update_journal_entry(email: str, entry_id: str, **fields) -> None:
+    """Update arbitrary fields on a journal entry."""
+    normalized = normalize_email(email)
+    allowed = {
+        "status", "exit_date", "underlying_exit", "realized_pnl",
+        "exit_reason", "outcome", "current_price", "current_pnl",
+        "last_refreshed", "notes",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE trade_journal SET {set_clause} WHERE email = ? AND id = ?",
+            (*updates.values(), normalized, entry_id),
+        )
+
+
+def delete_journal_entry(email: str, entry_id: str) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM trade_journal WHERE email = ? AND id = ?",
+            (normalized, entry_id),
+        )
+
+
+def _row_to_entry(row) -> dict[str, Any]:
+    d = dict(row)
+    d["legs"] = json.loads(d.pop("legs_json", "[]"))
+    return d

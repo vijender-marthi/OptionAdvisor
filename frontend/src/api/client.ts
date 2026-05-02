@@ -98,3 +98,56 @@ export const saveUserData = async (
   })
   return data
 }
+
+export const runBacktest = async (params: {
+  ticker: string
+  start_date: string
+  end_date: string
+  strategy_mode: string
+  weeks_out: number
+  spread_width: number | null
+}): Promise<import('../types').BacktestResult> => {
+  const { data } = await api.post('/backtest', params)
+  return data
+}
+
+// ─── Trade Journal ─────────────────────────────────────────────────────────
+
+export const saveToJournal = async (email: string, payload: {
+  ticker: string; company_name: string; strategy: string; bias: string
+  legs: object[]; expiry: string; entry_date: string; dte_at_entry: number
+  net_credit: number; max_profit: number; max_loss: number
+  underlying_entry: number; prob_of_profit: number; expected_value: number
+  total_score: number; notes?: string
+}): Promise<{ id: string }> => {
+  const { data } = await api.post(`/journal/save?email=${encodeURIComponent(email)}`, payload)
+  return data
+}
+
+export const getJournal = async (email: string, status = ''): Promise<{ entries: object[] }> => {
+  const { data } = await api.get(`/journal/${encodeURIComponent(email)}`, { params: status ? { status } : {} })
+  return data
+}
+
+export const refreshJournal = async (email: string): Promise<{ entries: object[] }> => {
+  const { data } = await api.post(`/journal/refresh/${encodeURIComponent(email)}`)
+  return data
+}
+
+export const closeJournalEntry = async (
+  email: string, id: string, exit_reason = 'MANUAL', notes = ''
+): Promise<{ outcome: string; realized_pnl: number }> => {
+  const { data } = await api.patch(
+    `/journal/${encodeURIComponent(email)}/${id}/close`,
+    { exit_reason, notes }
+  )
+  return data
+}
+
+export const updateJournalNotes = async (email: string, id: string, notes: string): Promise<void> => {
+  await api.patch(`/journal/${encodeURIComponent(email)}/${id}/notes`, { notes })
+}
+
+export const deleteJournalEntry = async (email: string, id: string): Promise<void> => {
+  await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
+}

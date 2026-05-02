@@ -198,3 +198,12 @@ class AnalyzeResponse(BaseModel):
     puts_chain: list[OptionRowOut]
     price_history: list[PricePoint]
     filters_applied: dict
+
+
+class BacktestRequest(BaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    strategy_mode: str = 'all'
+    weeks_out: int = 4
+    spread_width: Optional[float] = None

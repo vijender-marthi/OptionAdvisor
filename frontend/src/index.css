@@ -45,7 +45,7 @@ textarea {
 
 /* Mobile/iPad bottom navigation light mode: keep icons and popup readable. */
 html.light .mobile-bottom-nav {
-  background-color: rgba(248, 250, 252, 0.96);
+  background-color: var(--light-surface-1-a96);
   border-color: rgba(148, 163, 184, 0.5);
   box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
 }
@@ -67,7 +67,7 @@ html.light .mobile-nav-item.border-violet-700\/50 {
 }
 
 html.light .mobile-more-menu {
-  background-color: #f8fafc;
+  background-color: var(--light-surface-1);
   border-color: rgba(148, 163, 184, 0.55);
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
 }
@@ -85,7 +85,7 @@ html.light .mobile-more-menu .text-gray-500 {
 }
 
 html.light .mobile-more-item {
-  background-color: #eef2f7;
+  background-color: var(--light-surface-2);
   border-color: #cbd5e1;
   color: #1f2937;
 }
@@ -117,6 +117,8 @@ html.light .mobile-floating-menu-button {
 .trade-signals-page,
 .watchlist-page,
 .ticker-page,
+.backtest-page,
+.journal-page,
 .ai-radar-page,
 .q-radar-page {
   font-family: var(--app-font-sans);
@@ -127,6 +129,8 @@ html.light .mobile-floating-menu-button {
 .trade-signals-page .font-mono,
 .watchlist-page .font-mono,
 .ticker-page .font-mono,
+.backtest-page .font-mono,
+.journal-page .font-mono,
 .ai-radar-page .font-mono,
 .q-radar-page .font-mono {
   font-family: var(--app-font-sans);
@@ -138,6 +142,8 @@ html.light .mobile-floating-menu-button {
 .trade-signals-page .font-bold,
 .watchlist-page .font-bold,
 .ticker-page .font-bold,
+.backtest-page .font-bold,
+.journal-page .font-bold,
 .ai-radar-page .font-bold,
 .q-radar-page .font-bold {
   font-weight: 600;
@@ -182,7 +188,7 @@ html.light .login-page .text-gray-600 {
 }
 
 html.light .login-page .bg-gray-800 {
-  background-color: #f1f5f9;
+  background-color: var(--light-surface-2);
 }
 
 html.light .login-page .border-gray-700 {
@@ -190,7 +196,7 @@ html.light .login-page .border-gray-700 {
 }
 
 html.light .login-page input {
-  background-color: #f8fafc;
+  background-color: var(--light-surface-1);
   border-color: #cbd5e1;
   color: #0f172a;
   box-shadow: 0 1px 0 rgba(15,23,42,0.04);
@@ -226,7 +232,26 @@ html.light .login-page .text-red-400 {
 }
 
 html.dark { color-scheme: dark; }
-html.light { color-scheme: light; }
+html.light {
+  color-scheme: light;
+  /* Layered light UI: blue-slate canvas + tinted cards (readable, not stark white). */
+  --light-app-canvas: #e0e5ef;
+  --light-surface-1: #eef1f8;
+  --light-surface-2: #e4e9f3;
+  --light-surface-3: #d2d9e8;
+  --light-input-bg: #dce3f0;
+  --light-surface-1-a96: rgba(238, 241, 248, 0.96);
+  --light-surface-1-a95: rgba(238, 241, 248, 0.95);
+  --light-surface-1-a92: rgba(238, 241, 248, 0.92);
+  --light-surface-1-a90: rgba(238, 241, 248, 0.9);
+  --light-surface-1-a82: rgba(238, 241, 248, 0.82);
+  --light-surface-2-a96: rgba(228, 233, 243, 0.96);
+  --light-surface-2-a94: rgba(228, 233, 243, 0.94);
+  --light-surface-2-a90: rgba(228, 233, 243, 0.9);
+  --light-surface-2-a82: rgba(228, 233, 243, 0.82);
+  --light-surface-2-a72: rgba(228, 233, 243, 0.72);
+  --light-surface-2-a58: rgba(228, 233, 243, 0.58);
+}
 
 /* ── Dark theme surface tuning ──────────────────────────────── */
 html.dark body {
@@ -262,7 +287,7 @@ html.dark .hover\:bg-gray-700:hover { background-color: #23344e; }
 /* Specificity (0,2,0) beats Tailwind's (0,1,0) — no !important needed */
 
 html.light body {
-  background-color: #d1d5db;
+  background-color: var(--light-app-canvas);
   color: #0f172a;
 }
 
@@ -469,10 +494,10 @@ html.light .recommendation-caution-reason {
 }
 
 /* AI Radar light mode: clearer card text and softer category surfaces. */
-html.light .ai-radar-page .bg-gray-900 { background-color: #f8fafc; }
-html.light .ai-radar-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.9); }
-html.light .ai-radar-page .bg-gray-800 { background-color: #eef2f7; }
-html.light .ai-radar-page .bg-gray-800\/60 { background-color: rgba(241,245,249,0.94); }
+html.light .ai-radar-page .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light .ai-radar-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a90); }
+html.light .ai-radar-page .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light .ai-radar-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
 html.light .ai-radar-page .border-gray-800,
 html.light .ai-radar-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
 html.light .ai-radar-page .border-gray-700 { border-color: rgba(148,163,184,0.62); }
@@ -485,7 +510,7 @@ html.light .ai-radar-page .text-gray-400 { color: #334155; }
 html.light .ai-radar-page .text-gray-300,
 html.light .ai-radar-page .hover\:text-gray-200:hover { color: #1f2937; }
 html.light .ai-radar-page input {
-  background-color: #f1f5f9;
+  background-color: var(--light-input-bg);
   border-color: #cbd5e1;
   color: #0f172a;
 }
@@ -588,7 +613,7 @@ html.light .q-radar-page .text-gray-600 { color: #475569; }
 html.light .q-radar-page .text-gray-500,
 html.light .q-radar-page .text-gray-400 { color: #334155; }
 html.light .q-radar-page input {
-  background-color: #f1f5f9;
+  background-color: var(--light-input-bg);
   border-color: #cbd5e1;
   color: #0f172a;
 }
@@ -597,7 +622,7 @@ html.light .q-radar-page input:focus {
   box-shadow: 0 0 0 1px rgba(8,145,178,0.35);
 }
 
-/* Option Analyzer light mode: readable analyzer panels without changing dark mode. */
+/* Option Advisory / analyzer light mode: same page + card stack as Alerts. */
 html.light .ticker-page {
   color: #0f172a;
 }
@@ -607,23 +632,24 @@ html.light .ticker-page h3 {
   color: #0f172a;
   letter-spacing: -0.01em;
 }
-html.light .ticker-page .bg-gray-900 { background-color: #f8fafc; }
-html.light .ticker-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
-html.light .ticker-page .bg-gray-800 { background-color: #eef2f7; }
+html.light .ticker-page .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light .ticker-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light .ticker-page .bg-gray-800 { background-color: var(--light-surface-2); }
 html.light .ticker-page .bg-gray-800\/60,
 html.light .ticker-page .bg-gray-800\/50,
 html.light .ticker-page .bg-gray-800\/40,
-html.light .ticker-page .bg-gray-800\/30 { background-color: rgba(241,245,249,0.94); }
-html.light .ticker-page .bg-gray-700 { background-color: #dbe3ee; }
-html.light .ticker-page .border-gray-800,
-html.light .ticker-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.42); }
+html.light .ticker-page .bg-gray-800\/30 { background-color: var(--light-surface-2-a94); }
+html.light .ticker-page .bg-gray-700 { background-color: var(--light-surface-3); }
+html.light .ticker-page .border-gray-800 { border-color: #cbd5e1; }
+html.light .ticker-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
 html.light .ticker-page .border-gray-700,
 html.light .ticker-page .border-gray-700\/50,
-html.light .ticker-page .border-gray-700\/60 { border-color: rgba(148,163,184,0.62); }
+html.light .ticker-page .border-gray-700\/60 { border-color: #94a3b8; }
 html.light .ticker-page .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
 html.light .ticker-page .hover\:border-gray-600:hover,
 html.light .ticker-page .hover\:border-gray-500:hover { border-color: #94a3b8; }
 html.light .ticker-page .text-white { color: #0f172a; }
+html.light .ticker-page .text-gray-700 { color: #475569; }
 html.light .ticker-page .text-gray-600 { color: #475569; }
 html.light .ticker-page .text-gray-500 { color: #334155; }
 html.light .ticker-page .text-gray-400 { color: #334155; }
@@ -647,7 +673,7 @@ html.light .ticker-page .font-mono {
 }
 html.light .ticker-page input,
 html.light .ticker-page select {
-  background-color: #f1f5f9;
+  background-color: var(--light-input-bg);
   border-color: #cbd5e1;
   color: #0f172a;
 }
@@ -671,13 +697,13 @@ html.light .ticker-page .rounded-2xl {
 }
 html.light .ticker-page .bg-violet-600\/20,
 html.light .ticker-page .bg-violet-900\/20,
-html.light .ticker-page .bg-violet-900\/10 { background-color: rgba(237,233,254,0.78); }
+html.light .ticker-page .bg-violet-900\/10 { background-color: rgba(221,214,254,0.78); }
 html.light .ticker-page .hover\:bg-violet-600\/20:hover,
 html.light .ticker-page .hover\:bg-violet-600\/25:hover,
-html.light .ticker-page .hover\:bg-violet-600\/30:hover { background-color: rgba(221,214,254,0.85); }
+html.light .ticker-page .hover\:bg-violet-600\/30:hover { background-color: rgba(196,181,253,0.72); }
 html.light .ticker-page .border-violet-800,
 html.light .ticker-page .border-violet-700,
-html.light .ticker-page .border-violet-700\/60 { border-color: #a78bfa; }
+html.light .ticker-page .border-violet-700\/60 { border-color: #8b5cf6; }
 html.light .ticker-page .hover\:border-violet-600:hover,
 html.light .ticker-page .hover\:border-violet-500:hover { border-color: #8b5cf6; }
 html.light .ticker-page .text-violet-200 { color: #5b21b6; }
@@ -693,7 +719,7 @@ html.light .ticker-page .disabled\:bg-violet-800:disabled {
 }
 html.light .ticker-page .bg-blue-900\/20,
 html.light .ticker-page .bg-blue-900\/30,
-html.light .ticker-page .bg-blue-900\/60 { background-color: rgba(219,234,254,0.72); }
+html.light .ticker-page .bg-blue-900\/60 { background-color: #dbeafe; }
 html.light .ticker-page .border-blue-700,
 html.light .ticker-page .border-blue-800 { border-color: #60a5fa; }
 html.light .ticker-page .text-blue-300,
@@ -701,10 +727,10 @@ html.light .ticker-page .text-blue-400 { color: #1d4ed8; }
 html.light .ticker-page .bg-amber-900\/20,
 html.light .ticker-page .bg-amber-900\/30,
 html.light .ticker-page .bg-amber-900\/40,
-html.light .ticker-page .bg-amber-950\/50 { background-color: rgba(254,243,199,0.74); }
+html.light .ticker-page .bg-amber-950\/50 { background-color: #fef3c7; }
 html.light .ticker-page .border-amber-700,
 html.light .ticker-page .border-amber-800,
-html.light .ticker-page .border-amber-800\/60 { border-color: #f59e0b; }
+html.light .ticker-page .border-amber-800\/60 { border-color: #d97706; }
 html.light .ticker-page .text-amber-300,
 html.light .ticker-page .text-amber-300\/70,
 html.light .ticker-page .text-amber-400,
@@ -715,10 +741,10 @@ html.light .ticker-page .bg-green-900\/30,
 html.light .ticker-page .bg-green-900\/40,
 html.light .ticker-page .bg-green-900\/60,
 html.light .ticker-page .bg-emerald-900\/20,
-html.light .ticker-page .bg-emerald-900\/50 { background-color: rgba(209,250,229,0.7); }
+html.light .ticker-page .bg-emerald-900\/50 { background-color: #d1fae5; }
 html.light .ticker-page .border-green-700,
 html.light .ticker-page .border-green-800,
-html.light .ticker-page .border-emerald-800 { border-color: #34d399; }
+html.light .ticker-page .border-emerald-800 { border-color: #10b981; }
 html.light .ticker-page .text-green-300,
 html.light .ticker-page .text-green-400,
 html.light .ticker-page .text-emerald-300,
@@ -726,9 +752,9 @@ html.light .ticker-page .text-emerald-400 { color: #047857; }
 html.light .ticker-page .bg-red-900\/20,
 html.light .ticker-page .bg-red-900\/30,
 html.light .ticker-page .bg-red-900\/40,
-html.light .ticker-page .bg-red-950\/50 { background-color: rgba(254,226,226,0.72); }
+html.light .ticker-page .bg-red-950\/50 { background-color: #fee2e2; }
 html.light .ticker-page .border-red-700,
-html.light .ticker-page .border-red-800 { border-color: #f87171; }
+html.light .ticker-page .border-red-800 { border-color: #ef4444; }
 html.light .ticker-page .text-red-300,
 html.light .ticker-page .text-red-400,
 html.light .ticker-page .text-red-400\/80,
@@ -740,78 +766,149 @@ html.light .ticker-page .recharts-wrapper text {
   fill: #475569;
 }
 
-/* Portfolio light mode: match analyzer/radar readable card pattern. */
-html.light .portfolio-page .bg-gray-900 { background-color: #f8fafc; }
-html.light .portfolio-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
-html.light .portfolio-page .bg-gray-800 { background-color: #eef2f7; }
-html.light .portfolio-page .bg-gray-800\/60,
-html.light .portfolio-page .bg-gray-800\/40 { background-color: rgba(241,245,249,0.94); }
-html.light .portfolio-page .bg-gray-700 { background-color: #dbe3ee; }
-html.light .portfolio-page .border-gray-800,
-html.light .portfolio-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.42); }
-html.light .portfolio-page .border-gray-700 { border-color: rgba(148,163,184,0.62); }
-html.light .portfolio-page .hover\:bg-gray-700:hover,
-html.light .portfolio-page .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
-html.light .portfolio-page .text-white { color: #0f172a; }
-html.light .portfolio-page .text-gray-600 { color: #475569; }
-html.light .portfolio-page .text-gray-500 { color: #334155; }
-html.light .portfolio-page .text-gray-400 { color: #334155; }
-html.light .portfolio-page .text-gray-300,
-html.light .portfolio-page .text-gray-200,
-html.light .portfolio-page .hover\:text-gray-200:hover,
-html.light .portfolio-page .hover\:text-gray-300:hover { color: #1f2937; }
-html.light .portfolio-page input {
-  background-color: #f1f5f9;
+/* Backtest Lab — equity chart SVG (dark defaults; light tuned below). */
+.backtest-equity-grid,
+.backtest-equity-axis { stroke: #374151; }
+.backtest-equity-tick { stroke: #4b5563; }
+.backtest-equity-label { fill: #9ca3af; }
+.backtest-equity-dot-ring { stroke: #111827; }
+
+/* Backtest Lab light mode: Alerts-style surfaces + readable chart chrome. */
+html.light .backtest-page {
+  color: #0f172a;
+}
+html.light .backtest-page .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light .backtest-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light .backtest-page .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
+html.light .backtest-page .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light .backtest-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
+html.light .backtest-page .bg-gray-800\/40 { background-color: var(--light-surface-2-a72); }
+html.light .backtest-page .bg-gray-800\/30 { background-color: var(--light-surface-2-a58); }
+html.light .backtest-page .bg-gray-700 { background-color: var(--light-surface-3); }
+html.light .backtest-page .border-gray-800 { border-color: #cbd5e1; }
+html.light .backtest-page .border-gray-800\/60 { border-color: rgba(148,163,184,0.42); }
+html.light .backtest-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
+html.light .backtest-page .border-gray-700,
+html.light .backtest-page .border-gray-700\/60 { border-color: #94a3b8; }
+html.light .backtest-page .text-white { color: #0f172a; }
+html.light .backtest-page .text-gray-700 { color: #475569; }
+html.light .backtest-page .text-gray-600 { color: #475569; }
+html.light .backtest-page .text-gray-500 { color: #334155; }
+html.light .backtest-page .text-gray-400 { color: #334155; }
+html.light .backtest-page .text-gray-300 { color: #1f2937; }
+html.light .backtest-page .hover\:text-gray-300:hover { color: #1f2937; }
+html.light .backtest-page .hover\:text-white:hover { color: #0f172a; }
+html.light .backtest-page .hover\:text-violet-300:hover { color: #6d28d9; }
+html.light .backtest-page input,
+html.light .backtest-page select {
+  background-color: var(--light-input-bg);
   border-color: #cbd5e1;
   color: #0f172a;
 }
-html.light .portfolio-page input::placeholder { color: #64748b; }
-html.light .portfolio-page .bg-violet-900\/50,
-html.light .portfolio-page .bg-violet-900\/30,
-html.light .portfolio-page .bg-violet-900\/20 { background-color: rgba(237,233,254,0.78); }
-html.light .portfolio-page .border-violet-700 { border-color: #a78bfa; }
-html.light .portfolio-page .text-violet-300,
-html.light .portfolio-page .text-violet-400 { color: #6d28d9; }
-html.light .portfolio-page .bg-violet-600.text-white,
-html.light .portfolio-page .bg-violet-600 .text-white,
-html.light .portfolio-page .hover\:bg-violet-500:hover,
-html.light .portfolio-page .disabled\:bg-gray-700:disabled {
+html.light .backtest-page input::placeholder { color: #64748b; }
+html.light .backtest-page .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
+html.light .backtest-page .border-violet-700 { border-color: #8b5cf6; }
+html.light .backtest-page .border-violet-600 { border-color: #7c3aed; }
+html.light .backtest-page .text-violet-300,
+html.light .backtest-page .text-violet-400 { color: #6d28d9; }
+html.light .backtest-page .text-violet-700 { color: #5b21b6; }
+html.light .backtest-page .bg-violet-600.text-white,
+html.light .backtest-page .bg-violet-600:hover { color: #ffffff; }
+html.light .backtest-page .bg-red-950\/40 { background-color: rgba(254,226,226,0.56); }
+html.light .backtest-page .border-red-800 { border-color: #ef4444; }
+html.light .backtest-page .text-red-300,
+html.light .backtest-page .text-red-400 { color: #b91c1c; }
+html.light .backtest-page .bg-emerald-900\/40 { background-color: #d1fae5; }
+html.light .backtest-page .border-emerald-700 { border-color: #10b981; }
+html.light .backtest-page .text-emerald-300,
+html.light .backtest-page .text-emerald-400 { color: #047857; }
+html.light .backtest-page .hover\:border-gray-600:hover,
+html.light .backtest-page .hover\:border-gray-500:hover { border-color: #94a3b8; }
+html.light .backtest-page .backtest-equity-grid,
+html.light .backtest-page .backtest-equity-axis { stroke: #cbd5e1; }
+html.light .backtest-page .backtest-equity-tick { stroke: #94a3b8; }
+html.light .backtest-page .backtest-equity-label { fill: #64748b; }
+html.light .backtest-page .backtest-equity-dot-ring { stroke: #e2e8f0; }
+
+/* Portfolio & Journal light mode: layered surfaces (shared tokens). */
+html.light :is(.portfolio-page, .journal-page) .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light :is(.portfolio-page, .journal-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light :is(.portfolio-page, .journal-page) .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light :is(.portfolio-page, .journal-page) .bg-gray-800\/60,
+html.light :is(.portfolio-page, .journal-page) .bg-gray-800\/40 { background-color: var(--light-surface-2-a94); }
+html.light :is(.portfolio-page, .journal-page) .bg-gray-700 { background-color: var(--light-surface-3); }
+html.light :is(.portfolio-page, .journal-page) .border-gray-800,
+html.light :is(.portfolio-page, .journal-page) .border-gray-800\/50 { border-color: rgba(148,163,184,0.42); }
+html.light :is(.portfolio-page, .journal-page) .border-gray-700 { border-color: rgba(148,163,184,0.62); }
+html.light :is(.portfolio-page, .journal-page) .hover\:bg-gray-700:hover,
+html.light :is(.portfolio-page, .journal-page) .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
+html.light :is(.portfolio-page, .journal-page) .text-white { color: #0f172a; }
+html.light :is(.portfolio-page, .journal-page) .text-gray-700 { color: #475569; }
+html.light :is(.portfolio-page, .journal-page) .text-gray-600 { color: #475569; }
+html.light :is(.portfolio-page, .journal-page) .text-gray-500 { color: #334155; }
+html.light :is(.portfolio-page, .journal-page) .text-gray-400 { color: #334155; }
+html.light :is(.portfolio-page, .journal-page) .text-gray-300,
+html.light :is(.portfolio-page, .journal-page) .text-gray-200,
+html.light :is(.portfolio-page, .journal-page) .hover\:text-gray-200:hover,
+html.light :is(.portfolio-page, .journal-page) .hover\:text-gray-300:hover { color: #1f2937; }
+html.light :is(.portfolio-page, .journal-page) input {
+  background-color: var(--light-input-bg);
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+html.light :is(.portfolio-page, .journal-page) input::placeholder { color: #64748b; }
+html.light :is(.portfolio-page, .journal-page) textarea {
+  background-color: var(--light-input-bg);
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+html.light :is(.portfolio-page, .journal-page) textarea::placeholder { color: #64748b; }
+html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/50,
+html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/30,
+html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/20 { background-color: rgba(237,233,254,0.78); }
+html.light :is(.portfolio-page, .journal-page) .border-violet-700 { border-color: #a78bfa; }
+html.light :is(.portfolio-page, .journal-page) .text-violet-300,
+html.light :is(.portfolio-page, .journal-page) .text-violet-400 { color: #6d28d9; }
+html.light :is(.portfolio-page, .journal-page) .bg-violet-600.text-white,
+html.light :is(.portfolio-page, .journal-page) .bg-violet-600 .text-white,
+html.light :is(.portfolio-page, .journal-page) .hover\:bg-violet-500:hover,
+html.light :is(.portfolio-page, .journal-page) .disabled\:bg-gray-700:disabled {
   color: #ffffff;
 }
-html.light .portfolio-page .bg-emerald-900\/30,
-html.light .portfolio-page .bg-emerald-900\/20,
-html.light .portfolio-page .bg-emerald-900\/15 { background-color: rgba(209,250,229,0.56); }
-html.light .portfolio-page .hover\:bg-emerald-900\/40:hover { background-color: rgba(167,243,208,0.58); }
-html.light .portfolio-page .border-emerald-800,
-html.light .portfolio-page .border-emerald-900\/40 { border-color: #34d399; }
-html.light .portfolio-page .text-emerald-300,
-html.light .portfolio-page .text-emerald-400 { color: #047857; }
-html.light .portfolio-page .bg-amber-900\/30 { background-color: rgba(254,243,199,0.76); }
-html.light .portfolio-page .border-amber-800 { border-color: #f59e0b; }
-html.light .portfolio-page .text-amber-400,
-html.light .portfolio-page .text-amber-400\/80 { color: #92400e; }
-html.light .portfolio-page .bg-red-900\/20,
-html.light .portfolio-page .bg-red-900\/15 { background-color: rgba(254,226,226,0.56); }
-html.light .portfolio-page .hover\:bg-red-900\/20:hover { background-color: rgba(254,202,202,0.58); }
-html.light .portfolio-page .border-red-800,
-html.light .portfolio-page .border-red-900\/40 { border-color: #f87171; }
-html.light .portfolio-page .text-red-300,
-html.light .portfolio-page .text-red-400,
-html.light .portfolio-page .hover\:text-red-400:hover { color: #b91c1c; }
+html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/30,
+html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/20,
+html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/15 { background-color: rgba(209,250,229,0.56); }
+html.light :is(.portfolio-page, .journal-page) .hover\:bg-emerald-900\/40:hover { background-color: rgba(167,243,208,0.58); }
+html.light :is(.portfolio-page, .journal-page) .border-emerald-800,
+html.light :is(.portfolio-page, .journal-page) .border-emerald-900\/40 { border-color: #34d399; }
+html.light :is(.portfolio-page, .journal-page) .text-emerald-300,
+html.light :is(.portfolio-page, .journal-page) .text-emerald-400 { color: #047857; }
+html.light :is(.portfolio-page, .journal-page) .bg-amber-900\/30 { background-color: rgba(254,243,199,0.76); }
+html.light :is(.portfolio-page, .journal-page) .border-amber-800 { border-color: #f59e0b; }
+html.light :is(.portfolio-page, .journal-page) .text-amber-400,
+html.light :is(.portfolio-page, .journal-page) .text-amber-400\/80 { color: #92400e; }
+html.light :is(.portfolio-page, .journal-page) .bg-red-900\/20,
+html.light :is(.portfolio-page, .journal-page) .bg-red-900\/15 { background-color: rgba(254,226,226,0.56); }
+html.light :is(.portfolio-page, .journal-page) .hover\:bg-red-900\/20:hover { background-color: rgba(254,202,202,0.58); }
+html.light :is(.portfolio-page, .journal-page) .border-red-800,
+html.light :is(.portfolio-page, .journal-page) .border-red-900\/40 { border-color: #f87171; }
+html.light :is(.portfolio-page, .journal-page) .text-red-300,
+html.light :is(.portfolio-page, .journal-page) .text-red-400,
+html.light :is(.portfolio-page, .journal-page) .hover\:text-red-400:hover { color: #b91c1c; }
 /* Scrollbar in light mode */
-html.light ::-webkit-scrollbar-track { background: #d1d5db; }
+html.light ::-webkit-scrollbar-track { background: #c8cedc; }
 html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
 html.light ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
 
 /* Help page needs document-style light surfaces instead of dark card colors. */
-html.light .help-page .bg-gray-900 { background-color: #f8fafc; }
-html.light .help-page .bg-gray-800 { background-color: #eef2f7; }
-html.light .help-page .bg-gray-700 { background-color: #dbe3ee; }
-html.light .help-page .bg-gray-900\/60 { background-color: rgba(248,250,252,0.95); }
-html.light .help-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.9); }
-html.light .help-page .bg-gray-800\/60 { background-color: rgba(241,245,249,0.96); }
-html.light .help-page .bg-gray-800\/50 { background-color: rgba(241,245,249,0.9); }
-html.light .help-page .bg-gray-800\/40 { background-color: rgba(241,245,249,0.82); }
+html.light .help-page .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light .help-page .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light .help-page .bg-gray-700 { background-color: var(--light-surface-3); }
+html.light .help-page .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
+html.light .help-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a90); }
+html.light .help-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a96); }
+html.light .help-page .bg-gray-800\/50 { background-color: var(--light-surface-2-a90); }
+html.light .help-page .bg-gray-800\/40 { background-color: var(--light-surface-2-a82); }
 html.light .help-page .border-gray-800 { border-color: #cbd5e1; }
 html.light .help-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.45); }
 html.light .help-page .border-gray-700,
@@ -860,11 +957,11 @@ html.light .help-page .strategy-mode-overrides .strategy-mode-note .font-semibol
 }
 
 /* Alerts page light mode: high-contrast cards and readable alert badges. */
-html.light .alerts-page .bg-gray-900 { background-color: #f8fafc; }
-html.light .alerts-page .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
-html.light .alerts-page .bg-gray-800 { background-color: #eef2f7; }
-html.light .alerts-page .bg-gray-800\/60 { background-color: rgba(241,245,249,0.94); }
-html.light .alerts-page .bg-gray-700 { background-color: #dbe3ee; }
+html.light .alerts-page .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light .alerts-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light .alerts-page .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light .alerts-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
+html.light .alerts-page .bg-gray-700 { background-color: var(--light-surface-3); }
 html.light .alerts-page .border-gray-800 { border-color: #cbd5e1; }
 html.light .alerts-page .border-gray-700 { border-color: #94a3b8; }
 html.light .alerts-page .border-emerald-800\/50 { border-color: rgba(16,185,129,0.55); }
@@ -876,7 +973,7 @@ html.light .alerts-page .text-gray-400 { color: #334155; }
 html.light .alerts-page .text-gray-300 { color: #1f2937; }
 html.light .alerts-page .text-white { color: #0f172a; }
 html.light .alerts-page .alert-item-row {
-  background-color: #f1f5f9;
+  background-color: var(--light-surface-2);
   border-color: #cbd5e1;
 }
 html.light .alerts-page .alert-item-row:hover {
@@ -911,20 +1008,23 @@ html.light .alerts-page .border-violet-700 { border-color: #8b5cf6; }
 html.light .alerts-page .text-violet-300,
 html.light .alerts-page .text-violet-400 { color: #6d28d9; }
 
-/* Light theme: white page canvas + Alerts-style cards on Watchlist & Trade Signals (Portfolio & Alerts included for consistency). */
+/* Light theme: tinted page canvas + layered cards (product pages). */
 html.light .alerts-page,
 html.light .watchlist-page,
 html.light .trade-signals-page,
-html.light .portfolio-page {
-  background-color: #ffffff;
+html.light .portfolio-page,
+html.light .journal-page,
+html.light .ticker-page,
+html.light .backtest-page {
+  background-color: var(--light-app-canvas);
 }
 
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900 { background-color: #f8fafc; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800 { background-color: #eef2f7; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/60 { background-color: rgba(241,245,249,0.94); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/30 { background-color: rgba(241,245,249,0.72); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-700 { background-color: #dbe3ee; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900 { background-color: var(--light-surface-1); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/30 { background-color: var(--light-surface-2-a72); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-700 { background-color: var(--light-surface-3); }
 html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600 { background-color: #8f98a6; }
 html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800 { border-color: #cbd5e1; }
 html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
@@ -943,7 +1043,7 @@ html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-600:hov
 html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-700:hover { border-color: #94a3b8; }
 html.light :is(.watchlist-page, .trade-signals-page) input,
 html.light :is(.watchlist-page, .trade-signals-page) select {
-  background-color: #f1f5f9;
+  background-color: var(--light-input-bg);
   border-color: #cbd5e1;
   color: #0f172a;
 }

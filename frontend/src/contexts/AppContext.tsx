@@ -14,9 +14,11 @@ function getHashPage(): Page {
   if (h === 'login') return 'login'
   if (h === 'ai-stocks') return 'ai-stocks'
   if (h === 'q-radar') return 'q-radar'
+  if (h === 'backtest') return 'backtest'
   if (h === 'trade-signals') return 'trade-signals'
   if (h === 'alerts') return 'alerts'
   if (h === 'settings') return 'settings'
+  if (h === 'journal') return 'journal'
   return 'ticker'
 }
 

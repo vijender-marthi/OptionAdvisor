@@ -181,12 +181,12 @@ function getExitSuggestion(pos: PortfolioPosition, currentPrice: number | null):
     action: 'Close to lock in gains and free up buying power. Remaining edge is minimal vs remaining risk.',
   }
   if (lossPct != null && lossPct >= 200) return {
-    level: 'EXIT_NOW', title: `🚨 2× Loss — Stop Out`,
+    level: 'EXIT_NOW', title: `2× Loss — Stop Out`,
     reason: `Position is at ${lossPct.toFixed(0)}% of max loss. Standard stop-loss trigger for spreads is 2× credit received.`,
     action: 'Exit now. Cutting the loss frees capital to recover elsewhere.',
   }
   if (lossPct != null && lossPct >= 100) return {
-    level: 'EXIT_NOW', title: `🚨 Max Loss Reached`,
+    level: 'EXIT_NOW', title: `Max Loss Reached`,
     reason: `At current price, holding to expiry results in maximum loss.`,
     action: 'Close immediately. No remaining edge. Capital recovery takes priority.',
   }

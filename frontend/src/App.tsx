@@ -8,9 +8,11 @@ import PortfolioPage from './pages/PortfolioPage'
 import HelpPage from './pages/HelpPage'
 import AIStocksPage from './pages/AIStocksPage'
 import QRadarPage from './pages/QRadarPage'
+import BacktestPage from './pages/BacktestPage'
 import TradeSignalsPage from './pages/TradeSignalsPage'
 import AlertsPage from './pages/AlertsPage'
 import SettingsPage from './pages/SettingsPage'
+import JournalPage from './pages/JournalPage'
 
 // ── Inner router (has access to context) ────────────────────────────────────
 function Router() {
@@ -31,9 +33,11 @@ function Router() {
       {page === 'help'          && <HelpPage />}
       {page === 'ai-stocks'     && <AIStocksPage />}
       {page === 'q-radar'       && <QRadarPage />}
+      {page === 'backtest'      && <BacktestPage />}
       {page === 'trade-signals' && <TradeSignalsPage />}
       {page === 'alerts'        && <AlertsPage />}
       {page === 'settings'      && <SettingsPage />}
+      {page === 'journal'       && <JournalPage />}
     </AppLayout>
   )
 }

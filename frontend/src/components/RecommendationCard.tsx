@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 import { useApp } from '../contexts/AppContext'
 import PreTradeChecklist, { buildChecklist, deriveVerdict } from './PreTradeChecklist'
+import { saveToJournal } from '../api/client'
 
 interface Props {
   rec: Recommendation
@@ -49,11 +50,13 @@ const CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
 }: Props) {
-  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate } = useApp()
+  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user } = useApp()
   const [open, setOpen]                       = useState(false)
   const [exitOpen, setExitOpen]               = useState(false)
   const [addedPort, setAddedPort]             = useState(false)
   const [addedWatch, setAddedWatch]           = useState(false)
+  const [savedJournal, setSavedJournal]       = useState(false)
+  const [savingJournal, setSavingJournal]     = useState(false)
   const [contractPickerOpen, setContractPickerOpen] = useState(false)
   const [selectedContracts, setSelectedContracts]   = useState(1)
 
@@ -70,6 +73,37 @@ export default function RecommendationCard({
   const handleAddWatchlist = () => {
     addToWatchlist({ ticker, companyName, lastPrice: currentPrice })
     setAddedWatch(true)
+  }
+
+  const handleSaveJournal = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!user?.email || savedJournal || savingJournal) return
+    setSavingJournal(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      await saveToJournal(user.email, {
+        ticker,
+        company_name: companyName,
+        strategy: rec.strategy,
+        bias: rec.bias,
+        legs: rec.legs as object[],
+        expiry: rec.expiry,
+        entry_date: today,
+        dte_at_entry: rec.dte,
+        net_credit: rec.net_credit,
+        max_profit: rec.max_profit,
+        max_loss: rec.max_loss,
+        underlying_entry: currentPrice,
+        prob_of_profit: rec.prob_of_profit,
+        expected_value: rec.expected_value,
+        total_score: rec.scores.total_score,
+      })
+      setSavedJournal(true)
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setSavingJournal(false)
+    }
   }
 
   const openPortfolioPicker = () => {
@@ -216,6 +250,23 @@ export default function RecommendationCard({
                                  bg-violet-900/30 border-violet-700 text-violet-300">
                   <Check size={11} /> Added
                 </span>
+              )}
+              {/* Save to Journal */}
+              {savedJournal ? (
+                <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
+                                 bg-emerald-900/20 border-emerald-800 text-emerald-400">
+                  <Check size={11} /> Journaled
+                </span>
+              ) : (
+                <button
+                  onClick={handleSaveJournal}
+                  disabled={savingJournal}
+                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                             bg-gray-800 border-gray-700 text-gray-400 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50"
+                >
+                  <BookOpen size={11} className={savingJournal ? 'animate-pulse' : ''} />
+                  {savingJournal ? 'Saving…' : 'Journal'}
+                </button>
               )}
             </div>
           </div>

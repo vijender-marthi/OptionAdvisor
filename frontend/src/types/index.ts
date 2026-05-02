@@ -145,7 +145,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal'
 
 // ─── Alert system ───────────────────────────────────────────
 
@@ -248,4 +248,111 @@ export interface AnalyzeResponse {
   puts_chain: OptionRow[]
   price_history: PricePoint[]
   filters_applied: Record<string, unknown>
+}
+
+// ─── Backtesting ────────────────────────────────────────────
+
+export interface BacktestLeg {
+  action: string
+  option_type: string
+  strike: number
+  entry_price: number
+  delta: number
+}
+
+export interface BacktestTrade {
+  strategy: string
+  bias: string
+  is_credit: boolean
+  entry_date: string
+  exit_date: string
+  exit_reason: string
+  expiry_date: string
+  dte_at_entry: number
+  underlying_entry: number
+  underlying_exit: number
+  entry_net: number
+  max_profit: number
+  max_loss: number
+  pnl_per_share: number
+  pnl_dollar: number
+  pnl_pct_of_max: number
+  outcome: string
+  directional_bias: string
+  bias_confidence: number
+  iv_rank: number
+  volatility_regime: string
+  iv_environment: string
+  legs: BacktestLeg[]
+}
+
+export interface BacktestStrategyStats {
+  count: number
+  wins: number
+  losses: number
+  total_pnl: number
+  win_rate: number
+  avg_pnl: number
+}
+
+export interface BacktestEquityPoint {
+  date: string
+  cumulative_pnl: number
+  trade_pnl: number
+  strategy: string
+}
+
+export interface BacktestResult {
+  ticker: string
+  start_date: string
+  end_date: string
+  strategy_mode: string
+  weeks_out: number
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  win_rate: number
+  total_pnl: number
+  avg_pnl_per_trade: number
+  avg_pnl_winners: number
+  avg_pnl_losers: number
+  profit_factor: number
+  max_drawdown: number
+  sharpe_ratio: number
+  by_strategy: Record<string, BacktestStrategyStats>
+  equity_curve: BacktestEquityPoint[]
+  trades: BacktestTrade[]
+}
+
+// ─── Trade Journal ───────────────────────────────────────────
+
+export interface JournalEntry {
+  id: string
+  email: string
+  ticker: string
+  company_name: string
+  strategy: string
+  bias: string
+  legs: OptionLeg[]
+  expiry: string
+  entry_date: string
+  dte_at_entry: number
+  net_credit: number
+  max_profit: number
+  max_loss: number
+  underlying_entry: number
+  prob_of_profit: number
+  expected_value: number
+  total_score: number
+  status: 'OPEN' | 'CLOSED' | 'EXPIRED'
+  exit_date: string
+  underlying_exit: number
+  realized_pnl: number
+  exit_reason: string
+  outcome: string
+  current_price: number
+  current_pnl: number
+  last_refreshed: number
+  notes: string
+  created_at: number
 }
