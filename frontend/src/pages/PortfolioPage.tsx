@@ -518,16 +518,12 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
   const suggestion = !isClosed ? getExitSuggestion(pos, currentPrice) : null
   const sStyle     = suggestion ? SUGGESTION_STYLE[suggestion.level] : null
 
-  const biasColor =
-    pos.bias.includes('Bullish') ? 'border-l-emerald-500' :
-    pos.bias.includes('Bearish') ? 'border-l-red-500' : 'border-l-amber-500'
-
   const dte = Math.ceil((new Date(pos.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
 
   const isMistake = !!(pos.notes?.toLowerCase().includes('mistake') || pos.notes?.toLowerCase().includes('accidental') || pos.notes?.toLowerCase().includes('error'))
 
   return (
-    <div className={`bg-gray-900 border border-gray-800 border-l-4 ${biasColor} rounded-2xl overflow-hidden ${isClosed ? 'opacity-60' : ''}`}>
+    <div className={`bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden ${isClosed ? 'opacity-60' : ''}`}>
       {/* ── Suggestion banner (open positions only) ─────────────── */}
       {!isClosed && suggestion && sStyle && (
         <div className={`${sStyle.bg} border-b ${sStyle.border} px-4 py-2.5 flex items-start gap-2`}>

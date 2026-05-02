@@ -411,6 +411,8 @@ export default function TickerPage() {
               signals={displayData.signals}
             />
 
+            <SignalPanel signals={displayData.signals} />
+
             {/* Week selector — clicking any tab auto-fetches that week if not loaded */}
             {cacheEntry && (
               <WeekSelector
@@ -428,8 +430,6 @@ export default function TickerPage() {
                 loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
               />
             )}
-
-            <SignalPanel signals={displayData.signals} />
 
             {/* Recommendations */}
             <div className="space-y-3">

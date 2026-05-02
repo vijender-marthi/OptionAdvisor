@@ -115,6 +115,7 @@ html.light .mobile-floating-menu-button {
 .portfolio-page,
 .alerts-page,
 .trade-signals-page,
+.watchlist-page,
 .ticker-page,
 .ai-radar-page,
 .q-radar-page {
@@ -124,6 +125,7 @@ html.light .mobile-floating-menu-button {
 .portfolio-page .font-mono,
 .alerts-page .font-mono,
 .trade-signals-page .font-mono,
+.watchlist-page .font-mono,
 .ticker-page .font-mono,
 .ai-radar-page .font-mono,
 .q-radar-page .font-mono {
@@ -134,6 +136,7 @@ html.light .mobile-floating-menu-button {
 .portfolio-page .font-bold,
 .alerts-page .font-bold,
 .trade-signals-page .font-bold,
+.watchlist-page .font-bold,
 .ticker-page .font-bold,
 .ai-radar-page .font-bold,
 .q-radar-page .font-bold {
@@ -795,10 +798,6 @@ html.light .portfolio-page .border-red-900\/40 { border-color: #f87171; }
 html.light .portfolio-page .text-red-300,
 html.light .portfolio-page .text-red-400,
 html.light .portfolio-page .hover\:text-red-400:hover { color: #b91c1c; }
-html.light .portfolio-page .border-l-emerald-500 { border-left-color: #10b981; }
-html.light .portfolio-page .border-l-red-500 { border-left-color: #ef4444; }
-html.light .portfolio-page .border-l-amber-500 { border-left-color: #f59e0b; }
-
 /* Scrollbar in light mode */
 html.light ::-webkit-scrollbar-track { background: #d1d5db; }
 html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
@@ -911,3 +910,83 @@ html.light .alerts-page .hover\:bg-violet-600\/30:hover { background-color: rgba
 html.light .alerts-page .border-violet-700 { border-color: #8b5cf6; }
 html.light .alerts-page .text-violet-300,
 html.light .alerts-page .text-violet-400 { color: #6d28d9; }
+
+/* Light theme: white page canvas + Alerts-style cards on Watchlist & Trade Signals (Portfolio & Alerts included for consistency). */
+html.light .alerts-page,
+html.light .watchlist-page,
+html.light .trade-signals-page,
+html.light .portfolio-page {
+  background-color: #ffffff;
+}
+
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900 { background-color: #f8fafc; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900\/50 { background-color: rgba(248,250,252,0.92); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800 { background-color: #eef2f7; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/60 { background-color: rgba(241,245,249,0.94); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/30 { background-color: rgba(241,245,249,0.72); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-700 { background-color: #dbe3ee; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600 { background-color: #8f98a6; }
+html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800 { border-color: #cbd5e1; }
+html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
+html.light :is(.watchlist-page, .trade-signals-page) .border-gray-700 { border-color: #94a3b8; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-700 { color: #475569; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-600 { color: #475569; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-500 { color: #334155; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-400 { color: #334155; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-300 { color: #1f2937; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-gray-200 { color: #1f2937; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-white { color: #0f172a; }
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-600:hover { background-color: #8f98a6; }
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-700:hover,
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-600:hover,
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-700:hover { border-color: #94a3b8; }
+html.light :is(.watchlist-page, .trade-signals-page) input,
+html.light :is(.watchlist-page, .trade-signals-page) select {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+html.light :is(.watchlist-page, .trade-signals-page) input::placeholder { color: #64748b; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/50,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/60,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/60,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/50,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/40,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/30,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/20 { background-color: #d1fae5; }
+html.light :is(.watchlist-page, .trade-signals-page) .border-emerald-700,
+html.light :is(.watchlist-page, .trade-signals-page) .border-emerald-800 { border-color: #10b981; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-300,
+html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-400,
+html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-500 { color: #047857; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-red-900\/30,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/60,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/50,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/40 { background-color: #fee2e2; }
+html.light :is(.watchlist-page, .trade-signals-page) .border-red-800,
+html.light :is(.watchlist-page, .trade-signals-page) .border-red-900,
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-red-700:hover { border-color: #ef4444; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-red-300,
+html.light :is(.watchlist-page, .trade-signals-page) .text-red-400 { color: #b91c1c; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-900\/30,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/60,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/50,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/40 { background-color: #fef3c7; }
+html.light :is(.watchlist-page, .trade-signals-page) .border-amber-800,
+html.light :is(.watchlist-page, .trade-signals-page) .border-amber-700 { border-color: #d97706; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-amber-300,
+html.light :is(.watchlist-page, .trade-signals-page) .text-amber-400 { color: #92400e; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600\/30,
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-violet-600\/30:hover,
+html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-violet-600\/40:hover { background-color: rgba(196,181,253,0.72); }
+html.light :is(.watchlist-page, .trade-signals-page) .border-violet-700 { border-color: #8b5cf6; }
+html.light :is(.watchlist-page, .trade-signals-page) .text-violet-300,
+html.light :is(.watchlist-page, .trade-signals-page) .text-violet-400 { color: #6d28d9; }
+html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600.text-white,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600 .text-white,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-700.text-white,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-700.text-white,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-red-700.text-white,
+html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600.text-white { color: #ffffff; }

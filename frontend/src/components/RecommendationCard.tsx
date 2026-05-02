@@ -14,9 +14,6 @@ interface Props {
   fetchingAllWeeks?: boolean
 }
 
-const biasColor = (b: string) =>
-  b.includes('Bullish') ? 'border-l-green-500' :
-  b.includes('Bearish') ? 'border-l-red-500' : 'border-l-amber-500'
 
 const biasBadgeClass = (b: string) =>
   b.includes('Bullish') ? 'bg-green-900/50 text-green-400 border-green-700' :
@@ -101,7 +98,7 @@ export default function RecommendationCard({
   const evColor = rec.expected_value > 0 ? 'text-green-400' : 'text-red-400'
 
   return (
-    <div className={`bg-gray-900 border border-gray-800 rounded-2xl border-l-4 ${biasColor(rec.bias)} overflow-hidden`}>
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
 
       {/* ── Collapsed summary row (always visible) ── */}
       <button

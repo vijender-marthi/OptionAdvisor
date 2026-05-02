@@ -23,12 +23,12 @@ function dteBucket(dte: number): string {
 type VerdictOrNone = Verdict | 'NONE'
 
 const VERDICT_CFG: Record<VerdictOrNone, {
-  border: string; bg: string; text: string; badge: string; icon: React.ReactNode; label: string
+  text: string; badge: string; icon: React.ReactNode; label: string
 }> = {
-  'GO':      { border: 'border-l-emerald-600', bg: '', text: 'text-emerald-400', badge: 'bg-emerald-900/60 border-emerald-700 text-emerald-300', icon: <CheckCircle2 size={12} />, label: 'Ready to Trade' },
-  'CAUTION': { border: 'border-l-amber-500',   bg: '', text: 'text-amber-400',   badge: 'bg-amber-900/60 border-amber-700 text-amber-300',       icon: <AlertTriangle size={12} />, label: 'Proceed with Caution' },
-  'NO GO':   { border: 'border-l-red-700',     bg: '', text: 'text-red-400',     badge: 'bg-red-900/60 border-red-800 text-red-300',             icon: <XCircle size={12} />, label: 'Do Not Trade' },
-  'NONE':    { border: 'border-l-gray-700',    bg: '', text: 'text-gray-500',    badge: 'bg-gray-800 border-gray-700 text-gray-500',             icon: <Clock size={12} />, label: 'Not Analyzed' },
+  'GO':      { text: 'text-emerald-400', badge: 'bg-emerald-900/60 border-emerald-700 text-emerald-300', icon: <CheckCircle2 size={12} />, label: 'Ready to Trade' },
+  'CAUTION': { text: 'text-amber-400',   badge: 'bg-amber-900/60 border-amber-700 text-amber-300',       icon: <AlertTriangle size={12} />, label: 'Proceed with Caution' },
+  'NO GO':   { text: 'text-red-400',     badge: 'bg-red-900/60 border-red-800 text-red-300',             icon: <XCircle size={12} />, label: 'Do Not Trade' },
+  'NONE':    { text: 'text-gray-500',    badge: 'bg-gray-800 border-gray-700 text-gray-500',             icon: <Clock size={12} />, label: 'Not Analyzed' },
 }
 
 function VerdictPill({ v }: { v: VerdictOrNone }) {
@@ -183,7 +183,6 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
   fetching: boolean
 }) {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(result.buckets[0]?.dte ?? null)
-  const cfg = VERDICT_CFG[result.topVerdict]
   const priceUp = result.priceChangePct >= 0
   const aiCat = TICKER_CATEGORY_MAP[result.ticker]
   const catBadge = aiCat ? CATEGORY_BADGE[aiCat] : 'bg-gray-800 text-gray-400 border-gray-700'
@@ -200,7 +199,7 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
   }, [expandedWeek, result.buckets])
 
   return (
-    <div className={`bg-gray-900 border border-gray-800 border-l-4 ${cfg.border} rounded-2xl overflow-hidden`}>
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
       {/* Compact summary row */}
       <div className="p-3 grid grid-cols-1 xl:grid-cols-[minmax(220px,1.05fr)_minmax(320px,1.35fr)_auto] gap-3 items-start">
         <div className="min-w-0">
@@ -301,7 +300,7 @@ function UnanalyzedCard({ ticker, companyName, onAnalyze }: {
   const aiCat = TICKER_CATEGORY_MAP[ticker]
   const catBadge = aiCat ? CATEGORY_BADGE[aiCat] : undefined
   return (
-    <div className="bg-gray-900 border border-gray-800 border-l-4 border-l-gray-700 rounded-2xl px-4 py-3
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3
                     flex items-center justify-between gap-3">
       <div>
         <div className="flex items-center gap-2">
