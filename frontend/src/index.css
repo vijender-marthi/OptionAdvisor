@@ -43,6 +43,72 @@ textarea {
   display: none;
 }
 
+/* Mobile/iPad bottom navigation light mode: keep icons and popup readable. */
+html.light .mobile-bottom-nav {
+  background-color: rgba(248, 250, 252, 0.96);
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
+}
+
+html.light .mobile-nav-item {
+  color: #334155;
+}
+
+html.light .mobile-nav-item:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+html.light .mobile-nav-item.bg-violet-600\/20,
+html.light .mobile-nav-item.border-violet-700\/50 {
+  background-color: #ede9fe;
+  border-color: #8b5cf6;
+  color: #5b21b6;
+}
+
+html.light .mobile-more-menu {
+  background-color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.55);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+}
+
+html.light .mobile-more-menu .border-gray-800 {
+  border-color: #cbd5e1;
+}
+
+html.light .mobile-more-menu .text-white {
+  color: #0f172a;
+}
+
+html.light .mobile-more-menu .text-gray-500 {
+  color: #475569;
+}
+
+html.light .mobile-more-item {
+  background-color: #eef2f7;
+  border-color: #cbd5e1;
+  color: #1f2937;
+}
+
+html.light .mobile-more-item:hover {
+  background-color: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+html.light .mobile-more-item.bg-violet-600\/20 {
+  background-color: #ede9fe;
+  border-color: #8b5cf6;
+  color: #5b21b6;
+}
+
+html.light .mobile-floating-menu-button {
+  background-color: #7c3aed;
+  border-color: #6d28d9;
+  color: #ffffff;
+  box-shadow: 0 16px 32px rgba(91, 33, 182, 0.22);
+}
+
 .font-mono { font-family: var(--app-font-mono); }
 
 /* App page typography: keep primary product screens visually aligned with Watchlist. */

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
+  MoreHorizontal, Moon, Sun, Menu,
 } from 'lucide-react'
 import type { Page } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -20,8 +21,10 @@ interface NavGroup {
 }
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount } = useApp()
+  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme } = useApp()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
 
   const openPositions = portfolio.filter(p => p.status === 'open').length
 
@@ -51,11 +54,27 @@ export default function Sidebar() {
   ]
 
   const w = collapsed ? 'w-16' : 'w-56'
-  const mobileItems: NavItem[] = [
-    ...navGroups.flatMap(group => group.items),
-    { id: 'settings' as Page, label: 'Settings', icon: <Settings size={18} /> },
-    { id: 'help' as Page, label: 'Help', icon: <HelpCircle size={18} /> },
+  const mobilePrimaryItems: NavItem[] = [
+    { id: 'ticker',        label: 'Advisor', icon: <TrendingUp size={18} /> },
+    { id: 'trade-signals', label: 'Signals', icon: <ShieldCheck size={18} /> },
+    { id: 'watchlist',     label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
+    { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
+    { id: 'alerts',        label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
   ]
+  const mobileMoreItems: NavItem[] = [
+    { id: 'ai-stocks', label: 'AI Radar', icon: <Brain size={18} /> },
+    { id: 'q-radar',   label: 'Q Radar',  icon: <Atom size={18} /> },
+    { id: 'settings',  label: 'Settings', icon: <Settings size={18} /> },
+    { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
+  ]
+  const mobileMoreActive = mobileMoreItems.some(item => item.id === page)
+  const isLight = theme === 'light'
+
+  const handleMobileNavigate = (target: Page) => {
+    navigate(target)
+    setMobileMoreOpen(false)
+    setPhoneMenuOpen(false)
+  }
 
   return (
     <>
@@ -87,6 +106,7 @@ export default function Sidebar() {
             <div className="space-y-0.5">
               {group.items.map(item => {
                 const active = page === item.id
+                const isTradeSignals = item.id === 'trade-signals'
                 return (
                   <button
                     key={item.id}
@@ -102,6 +122,11 @@ export default function Sidebar() {
                     {!collapsed && (
                       <>
                         <span className="flex-1 text-left">{item.label}</span>
+                        {isTradeSignals && (
+                          <span className="bg-violet-700/30 text-violet-300 border border-violet-700/50 text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
+                            Live
+                          </span>
+                        )}
                         {item.badge !== undefined && (
                           <span className="bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none">
                             {item.badge}
@@ -109,8 +134,8 @@ export default function Sidebar() {
                         )}
                       </>
                     )}
-                    {collapsed && item.badge !== undefined && (
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-violet-500 rounded-full" />
+                    {collapsed && (item.badge !== undefined || isTradeSignals) && (
+                      <span className={`absolute top-1 right-1 rounded-full ${isTradeSignals ? 'w-2 h-2 bg-violet-400' : 'w-2 h-2 bg-violet-500'}`} />
                     )}
                   </button>
                 )
@@ -190,17 +215,164 @@ export default function Sidebar() {
       </div>
     </aside>
 
-    {/* Mobile bottom navigation keeps page content full-width on phones. */}
-    <nav className="xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85">
-      <div className="mobile-nav-scroll flex items-center gap-2 overflow-x-auto px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {mobileItems.map(item => {
+    {/* Phone-only floating menu maximizes vertical screen space on small devices. */}
+    <div className="sm:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50">
+      {phoneMenuOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="fixed inset-0 -z-10 bg-black/20"
+            onClick={() => setPhoneMenuOpen(false)}
+          />
+          <div className="mobile-more-menu absolute bottom-full right-0 mb-3 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/40">
+            <div className="border-b border-gray-800 px-4 py-3">
+              <div className="text-sm font-semibold text-white">Menu</div>
+              <div className="text-xs text-gray-500">Navigate, theme, and account</div>
+            </div>
+            <div className="max-h-[70dvh] overflow-y-auto p-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[...mobilePrimaryItems, ...mobileMoreItems].map(item => {
+                  const active = page === item.id
+                  const isTradeSignals = item.id === 'trade-signals'
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleMobileNavigate(item.id)}
+                      className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                        active
+                          ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
+                          : 'border-gray-800 bg-gray-800/60 text-gray-300 hover:border-gray-700 hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="shrink-0">{item.icon}</span>
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      {isTradeSignals && (
+                        <span className="ml-auto rounded-full border border-violet-700/50 bg-violet-700/30 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-violet-300">
+                          Live
+                        </span>
+                      )}
+                      {item.badge !== undefined && (
+                        <span className="ml-auto min-w-[1.15rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100">
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleTheme()
+                    setPhoneMenuOpen(false)
+                  }}
+                  className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800"
+                >
+                  {isLight ? <Moon size={18} className="shrink-0" /> : <Sun size={18} className="shrink-0" />}
+                  <span>{isLight ? 'Dark theme' : 'Light theme'}</span>
+                </button>
+                {user && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout()
+                      setPhoneMenuOpen(false)
+                    }}
+                    className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-red-800 hover:bg-red-900/20 hover:text-red-300"
+                  >
+                    <LogOut size={18} className="shrink-0" />
+                    <span>Sign out</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => setPhoneMenuOpen(open => !open)}
+        aria-expanded={phoneMenuOpen}
+        className="mobile-floating-menu-button flex h-14 min-w-14 items-center justify-center gap-2 rounded-full border border-violet-700/60 bg-violet-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-violet-950/30"
+      >
+        <Menu size={20} />
+        <span>Menu</span>
+      </button>
+    </div>
+
+    {/* Tablet bottom navigation stays visible and centered. */}
+    <nav className="mobile-bottom-nav hidden sm:block xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85">
+      {mobileMoreOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="fixed inset-0 -z-10 bg-black/20"
+            onClick={() => setMobileMoreOpen(false)}
+          />
+          <div className="mobile-more-menu absolute bottom-full right-2 sm:right-1/2 sm:translate-x-1/2 mb-2 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/40">
+            <div className="border-b border-gray-800 px-4 py-3">
+              <div className="text-sm font-semibold text-white">More</div>
+              <div className="text-xs text-gray-500">Radar, settings, theme, and account</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              {mobileMoreItems.map(item => {
+                const active = page === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleMobileNavigate(item.id)}
+                    className={`mobile-more-item flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                      active
+                        ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
+                        : 'border-gray-800 bg-gray-800/60 text-gray-300 hover:border-gray-700 hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="shrink-0">{item.icon}</span>
+                    <span className="min-w-0 truncate">{item.label}</span>
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  toggleTheme()
+                  setMobileMoreOpen(false)
+                }}
+                className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800"
+              >
+                {isLight ? <Moon size={18} className="shrink-0" /> : <Sun size={18} className="shrink-0" />}
+                <span>{isLight ? 'Dark theme' : 'Light theme'}</span>
+              </button>
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout()
+                    setMobileMoreOpen(false)
+                  }}
+                  className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-red-800 hover:bg-red-900/20 hover:text-red-300"
+                >
+                  <LogOut size={18} className="shrink-0" />
+                  <span>Sign out</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+      <div className="mobile-nav-scroll flex items-center gap-2 overflow-x-auto px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:justify-center">
+        {mobilePrimaryItems.map(item => {
           const active = page === item.id
+          const isTradeSignals = item.id === 'trade-signals'
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => navigate(item.id)}
-              className={`min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
+              onClick={() => handleMobileNavigate(item.id)}
+              className={`mobile-nav-item min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
                 active
                   ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'
                   : 'text-gray-400 border-transparent hover:bg-gray-800 hover:text-gray-200'
@@ -208,6 +380,11 @@ export default function Sidebar() {
             >
               <span className="relative">
                 {item.icon}
+                {isTradeSignals && (
+                  <span className="absolute -right-4 -top-2 rounded-full border border-violet-700/50 bg-violet-700/30 px-1 text-[8px] font-semibold leading-3 text-violet-300">
+                    Live
+                  </span>
+                )}
                 {item.badge !== undefined && (
                   <span className="absolute -right-2 -top-1 min-w-[1rem] rounded-full bg-violet-700 px-1 text-[9px] leading-4 text-violet-100">
                     {item.badge}
@@ -218,17 +395,19 @@ export default function Sidebar() {
             </button>
           )
         })}
-        <ThemeToggle collapsed className="h-[3.4rem] min-w-[3.4rem] px-0 py-0 shrink-0" />
-        {user && (
-          <button
-            type="button"
-            onClick={logout}
-            title={`Sign out ${user.email}`}
-            className="min-w-[3.4rem] h-[3.4rem] flex items-center justify-center rounded-xl border border-gray-700 bg-gray-800 text-gray-400 hover:text-red-400"
-          >
-            <LogOut size={18} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setMobileMoreOpen(open => !open)}
+          aria-expanded={mobileMoreOpen}
+          className={`mobile-nav-item min-w-[4.25rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
+            mobileMoreOpen || mobileMoreActive
+              ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'
+              : 'text-gray-400 border-transparent hover:bg-gray-800 hover:text-gray-200'
+          }`}
+        >
+          <MoreHorizontal size={18} />
+          <span>More</span>
+        </button>
       </div>
     </nav>
     </>
