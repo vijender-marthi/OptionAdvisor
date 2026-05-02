@@ -109,18 +109,18 @@ function TickerRow({
       ${refreshing ? 'border-blue-800/50' : 'border-gray-800 hover:border-gray-700'}`}>
 
       {/* Main row */}
-      <div className="flex items-center gap-3 px-4 py-3 flex-wrap">
+      <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
 
         {/* Ticker + company */}
-        <div className="w-28 shrink-0">
+        <div className="min-w-0 sm:w-28 sm:shrink-0">
           <div className="font-semibold text-white text-sm tracking-tight">{item.ticker}</div>
-          <div className="text-xs text-gray-500 truncate max-w-[110px]">
+          <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">
             {item.companyName ?? entry?.data.company_name ?? '—'}
           </div>
         </div>
 
         {/* Price */}
-        <div className="w-24 shrink-0">
+        <div className="min-w-0 text-right sm:text-left sm:w-24 sm:shrink-0">
           {sig ? (
             <>
               <div className="text-sm font-semibold text-white">${sig.current_price.toFixed(2)}</div>
@@ -131,6 +131,21 @@ function TickerRow({
           ) : (
             <div className="text-xs text-gray-600">—</div>
           )}
+        </div>
+
+        {/* Freshness on phone */}
+        <div className="flex items-center sm:hidden">
+          <FreshnessBadge entry={entry} refreshing={refreshing} />
+        </div>
+
+        {/* Bias on phone */}
+        <div className="text-right sm:hidden">
+          {sig ? (
+            <>
+              <div className={`text-xs font-semibold ${biasColor}`}>{sig.directional_bias}</div>
+              <div className="text-xs text-gray-500">{sig.bias_confidence}% conf.</div>
+            </>
+          ) : <div className="text-xs text-gray-600">Not analyzed</div>}
         </div>
 
         {/* IV Rank */}
@@ -173,10 +188,10 @@ function TickerRow({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="col-span-2 grid grid-cols-[1fr_auto_auto_auto] gap-1.5 sm:flex sm:items-center sm:shrink-0">
           <button
             onClick={onAnalyze}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-violet-600/20 hover:bg-violet-600/40
+            className="justify-center flex items-center gap-1 px-2.5 py-1.5 bg-violet-600/20 hover:bg-violet-600/40
                        border border-violet-700/50 text-violet-300 text-xs font-semibold rounded-xl transition-colors"
           >
             <TrendingUp size={11} /> Analyze
