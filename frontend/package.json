@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "test:backend": "../backend/test.sh",
+    "test": "npm run test:backend && tsc --noEmit",
+    "build": "npm run test:backend && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

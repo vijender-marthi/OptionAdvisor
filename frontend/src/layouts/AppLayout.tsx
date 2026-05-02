@@ -5,9 +5,9 @@ import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="font-sans flex h-screen overflow-hidden bg-gray-950 text-gray-100">
+    <div className="font-sans flex h-[100dvh] overflow-hidden bg-gray-950 text-gray-100">
       <Sidebar />
-      <main className="h-screen flex-1 overflow-y-auto">
+      <main className="h-[100dvh] flex-1 overflow-y-auto pb-24 xl:pb-0">
         {children}
         <CopyrightFooter />
       </main>

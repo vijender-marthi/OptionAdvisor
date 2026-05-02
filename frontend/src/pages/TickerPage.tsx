@@ -96,8 +96,8 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
   const goCount = slots.filter(s => s.verdict === 'GO').length
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3">
-      <div className="flex items-center gap-4 flex-wrap">
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-3 sm:px-4 py-3">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 sm:gap-4">
       <div className="flex items-center gap-1.5 shrink-0">
         <Layers size={14} className="text-violet-400" />
         <span className="text-xs font-semibold text-gray-300">Week Filter</span>
@@ -108,7 +108,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
         )}
       </div>
 
-      <div className="flex items-center gap-2 flex-1 flex-wrap">
+      <div className="flex lg:items-center gap-2 flex-1 overflow-x-auto lg:overflow-visible lg:flex-wrap mobile-week-scroll -mx-1 px-1">
         {slots.map(slot => {
           const active = selectedWeeksOut === slot.weeksOut
           const isLoading = loadingWeeks.has(slot.weeksOut)
@@ -124,7 +124,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
               onClick={() => onSelect(slot.weeksOut)}
               disabled={isLoading}
               title={isLoading ? 'Loading…' : !slot.hasData ? 'Click to load this expiry window' : undefined}
-              className={`flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[10px] font-bold transition-all ${
+              className={`min-w-[5.25rem] lg:min-w-0 flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[10px] font-bold transition-all ${
                 active
                   ? 'bg-violet-600/20 border-violet-500 text-violet-300'
                   : isLoading
@@ -169,7 +169,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
       <button
         onClick={onFetch}
         disabled={fetching}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-violet-600/20 border border-gray-700
+        className="w-full lg:w-auto justify-center flex items-center gap-1.5 px-3 py-2 lg:py-1.5 bg-gray-800 hover:bg-violet-600/20 border border-gray-700
                    hover:border-violet-600 text-gray-400 hover:text-violet-300 text-xs font-semibold rounded-xl
                    transition-colors disabled:opacity-50 shrink-0"
       >
@@ -307,7 +307,7 @@ export default function TickerPage() {
   const displayData = selectedData ?? data
 
   return (
-    <div className="ticker-page min-h-screen p-4 md:p-6">
+    <div className="ticker-page min-h-screen p-3 sm:p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4">
 
         <TickerInput onAnalyze={handleAnalyzeWithCache} loading={loading} initialTicker={inputTicker} />
@@ -339,7 +339,7 @@ export default function TickerPage() {
         {!loading && data && displayData && (
           <>
             {/* Header bar: cache badge + watchlist + refresh */}
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               {fromCache ? (
                 <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
                                 bg-blue-900/20 border-blue-800 text-blue-400">
@@ -380,17 +380,17 @@ export default function TickerPage() {
                 )
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
                 <button
                   onClick={handleRefresh}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700
+                  className="justify-center flex items-center gap-1.5 px-3 py-2 sm:py-1.5 bg-gray-800 border border-gray-700
                              text-gray-400 hover:text-gray-200 hover:border-gray-600 text-xs rounded-xl transition-colors"
                 >
                   <RefreshCw size={12} /> Refresh
                 </button>
                 <button
                   onClick={toggleWatchlist}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  className={`justify-center flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
                     watched
                       ? 'bg-amber-900/30 border-amber-700 text-amber-400 hover:bg-red-900/20 hover:border-red-700 hover:text-red-400'
                       : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-amber-600 hover:text-amber-400'
@@ -433,9 +433,9 @@ export default function TickerPage() {
 
             {/* Recommendations */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-violet-400">🎯 Trade Recommendations · {selectedWeeksOut}w</h2>
-                <span className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-violet-400">🎯 Trade Recommendations · {selectedWeeksOut}w</h2>
+                <span className="w-fit text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
                   {selectedData?.recommendations.length ?? 0} trades passed all filters
                 </span>
               </div>
@@ -480,16 +480,16 @@ export default function TickerPage() {
 
             {/* Chart / Calculator / Chain tabs */}
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="flex border-b border-gray-800">
+              <div className="flex border-b border-gray-800 overflow-x-auto mobile-tab-scroll">
                 {(['chart', 'calculator', 'chain'] as const).map(t => (
                   <button key={t} onClick={() => setActiveTab(t)}
-                    className={`flex-1 py-3 text-sm font-semibold capitalize transition-colors
+                    className={`min-w-[8.5rem] sm:min-w-0 sm:flex-1 px-3 py-3 text-xs sm:text-sm font-semibold capitalize transition-colors
                       ${activeTab === t ? 'text-white border-b-2 border-violet-500 bg-gray-800/40' : 'text-gray-400 hover:text-white'}`}>
                     {t === 'chart' ? '📉 Price Chart' : t === 'calculator' ? '📈 P&L Calculator' : '📋 Options Chain'}
                   </button>
                 ))}
               </div>
-              <div className="p-4">
+              <div className="p-3 sm:p-4">
                 {activeTab === 'chart' ? (
                   <PriceChart history={displayData.price_history} />
                 ) : activeTab === 'calculator' ? (
@@ -511,11 +511,11 @@ export default function TickerPage() {
             {/* Filters */}
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <div className="text-xs font-semibold text-gray-400 mb-2">⚙️ Engine Filters Applied</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {Object.entries(displayData.filters_applied).map(([k, v]) => (
-                  <div key={k} className="flex justify-between text-xs bg-gray-800 rounded-lg px-3 py-1.5">
+                  <div key={k} className="flex justify-between gap-3 text-xs bg-gray-800 rounded-lg px-3 py-1.5">
                     <span className="text-gray-500">{k.replace(/_/g, ' ')}</span>
-                    <span className="text-gray-300 font-mono">{Array.isArray(v) ? v.join('–') : String(v)}</span>
+                    <span className="text-gray-300 font-mono text-right break-words">{Array.isArray(v) ? v.join('–') : String(v)}</span>
                   </div>
                 ))}
               </div>
@@ -533,7 +533,7 @@ export default function TickerPage() {
               runs multi-signal analysis, and recommends specific trades with exact strikes,
               delta-based selection, R:R filtering, and expected value scoring.
             </div>
-            <div className="flex justify-center gap-4 pt-2 text-xs text-gray-600">
+            <div className="flex justify-center gap-2 sm:gap-4 pt-2 text-xs text-gray-600 flex-wrap">
               <span>✓ Delta-based strike selection</span>
               <span>✓ R:R &amp; credit % filters</span>
               <span>✓ Expected Value scoring</span>

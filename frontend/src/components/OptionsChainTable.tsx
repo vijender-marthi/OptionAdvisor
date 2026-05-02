@@ -54,7 +54,7 @@ function Table({ rows, currentPrice, type }: { rows: OptionRow[]; currentPrice: 
           <span>{staleCount} row{staleCount > 1 ? 's' : ''} have stale or unreliable quotes — verify on your broker before trading.</span>
         </div>
       )}
-      <table className="w-full text-sm font-mono">
+      <table className="w-full min-w-[42rem] text-sm font-mono">
         <thead>
           <tr className="text-gray-500 border-b border-gray-700 text-xs">
             <th className="text-right py-2 pr-4">Strike</th>
@@ -108,8 +108,8 @@ export default function OptionsChainTable({ calls, puts, currentPrice, expiry }:
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
       {/* Expiry date header */}
       {expiry && (
-        <div className="flex items-center justify-between px-4 pt-3 pb-1 border-b border-gray-800/60">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pt-3 pb-2 border-b border-gray-800/60">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Expiry</span>
             <span className="text-xs font-bold text-white">{formatExpiry(expiry)}</span>
           </div>
@@ -134,7 +134,7 @@ export default function OptionsChainTable({ calls, puts, currentPrice, expiry }:
           </button>
         ))}
       </div>
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <Table rows={tab === 'calls' ? calls : puts} currentPrice={currentPrice} type={tab === 'calls' ? 'call' : 'put'} />
       </div>
     </div>

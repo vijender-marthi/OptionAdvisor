@@ -30,6 +30,19 @@ textarea {
   font: inherit;
 }
 
+.mobile-nav-scroll,
+.mobile-tab-scroll,
+.mobile-week-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mobile-nav-scroll::-webkit-scrollbar,
+.mobile-tab-scroll::-webkit-scrollbar,
+.mobile-week-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .font-mono { font-family: var(--app-font-mono); }
 
 /* App page typography: keep primary product screens visually aligned with Watchlist. */
@@ -59,6 +72,88 @@ textarea {
 .ai-radar-page .font-bold,
 .q-radar-page .font-bold {
   font-weight: 600;
+}
+
+/* Login light mode: polished split-screen contrast without changing dark mode. */
+html.light .login-page {
+  background: linear-gradient(135deg, #d1d5db 0%, #e5e7eb 48%, #d7dbe2 100%);
+  color: #0f172a;
+}
+
+html.light .login-page .from-gray-900,
+html.light .login-page .to-gray-900 {
+  --tw-gradient-from: #e9ecf2 var(--tw-gradient-from-position);
+  --tw-gradient-to: #dde2ea var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+html.light .login-page .via-violet-950\/30 {
+  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.76) var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+html.light .login-page .border-r.border-gray-800 {
+  border-color: rgba(148,163,184,0.42);
+}
+
+html.light .login-page .text-white,
+html.light .login-page .text-gray-100,
+html.light .login-page .text-gray-200 {
+  color: #0f172a;
+}
+
+html.light .login-page .text-gray-300,
+html.light .login-page .text-gray-400 {
+  color: #334155;
+}
+
+html.light .login-page .text-gray-500,
+html.light .login-page .text-gray-600 {
+  color: #64748b;
+}
+
+html.light .login-page .bg-gray-800 {
+  background-color: #f1f5f9;
+}
+
+html.light .login-page .border-gray-700 {
+  border-color: #cbd5e1;
+}
+
+html.light .login-page input {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.04);
+}
+
+html.light .login-page input::placeholder {
+  color: #94a3b8;
+}
+
+html.light .login-page input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 1px rgba(139,92,246,0.25), 0 8px 18px rgba(15,23,42,0.06);
+}
+
+html.light .login-page .bg-violet-900\/60 {
+  background-color: rgba(237,233,254,0.82);
+}
+
+html.light .login-page .border-violet-700\/50 {
+  border-color: rgba(139,92,246,0.35);
+}
+
+html.light .login-page .bg-red-900\/20 {
+  background-color: rgba(254,226,226,0.72);
+}
+
+html.light .login-page .border-red-800 {
+  border-color: #fca5a5;
+}
+
+html.light .login-page .text-red-400 {
+  color: #b91c1c;
 }
 
 html.dark { color-scheme: dark; }
@@ -715,6 +810,13 @@ html.light .alerts-page .text-gray-500 { color: #334155; }
 html.light .alerts-page .text-gray-400 { color: #334155; }
 html.light .alerts-page .text-gray-300 { color: #1f2937; }
 html.light .alerts-page .text-white { color: #0f172a; }
+html.light .alerts-page .alert-item-row {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+html.light .alerts-page .alert-item-row:hover {
+  border-color: #94a3b8;
+}
 html.light .alerts-page .bg-emerald-900\/50,
 html.light .alerts-page .bg-emerald-900\/30,
 html.light .alerts-page .bg-emerald-900\/20 { background-color: #d1fae5; }

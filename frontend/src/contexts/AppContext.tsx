@@ -340,7 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number,
   ) => {
     setPortfolio(prev => {
-      if (prev.some(p => p.ticker === ticker && p.strategy === rec.strategy && p.expiry === rec.expiry))
+      if (prev.some(p => p.status === 'open' && p.ticker === ticker && p.strategy === rec.strategy && p.expiry === rec.expiry))
         return prev
       return [{
         id: `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}`,
@@ -380,7 +380,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const isInPortfolio = useCallback((ticker: string, strategy: string, expiry: string) =>
-    portfolio.some(p => p.ticker === ticker && p.strategy === strategy && p.expiry === expiry),
+    portfolio.some(p => p.status === 'open' && p.ticker === ticker && p.strategy === strategy && p.expiry === expiry),
     [portfolio])
 
   // ── Cache ───────────────────────────────────────────────────────────────────

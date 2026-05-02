@@ -50,25 +50,26 @@ function AlertCard({ alert, onDismiss, onNavigate }: {
   const evColor   = alert.ev > 0 ? 'text-green-400' : 'text-red-400'
 
   return (
-    <div className={`relative bg-gray-900 border rounded-xl p-4 transition-all ${
-      alert.dismissed ? 'opacity-40 border-gray-800' : 'border-emerald-800/50 shadow-sm shadow-emerald-900/20'
+    <div className={`alert-item-row relative bg-gray-900 border rounded-2xl overflow-hidden transition-colors ${
+      alert.dismissed ? 'opacity-40 border-gray-800' : 'border-gray-800 hover:border-gray-700'
     }`}>
       {/* dismiss button */}
       <button
         onClick={() => onDismiss(alert.id)}
-        className="absolute top-3 right-3 text-gray-600 hover:text-gray-400 transition-colors"
+        className="absolute top-3 right-3 p-1.5 bg-gray-800 hover:bg-red-900/30 border border-gray-700
+                   text-gray-500 hover:text-red-400 rounded-xl transition-colors"
         title="Dismiss"
       >
-        <X size={14} />
+        <X size={12} />
       </button>
 
-      <div className="flex items-start gap-3 pr-6">
+      <div className="flex items-start gap-3 px-4 py-3 pr-14 flex-wrap">
         {/* GO badge */}
-        <div className="flex flex-col items-center gap-1 shrink-0">
-          <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded-full">
-            ✅ GO
+        <div className="w-16 shrink-0">
+          <span className="inline-flex items-center text-[10px] font-semibold bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded-full">
+            GO
           </span>
-          <span className="text-[10px] text-gray-500 font-mono">{alert.score}/100</span>
+          <div className="text-xs text-gray-500 mt-1">Score {alert.score}</div>
         </div>
 
         {/* Main info */}
@@ -76,7 +77,7 @@ function AlertCard({ alert, onDismiss, onNavigate }: {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => onNavigate(alert.ticker)}
-              className="text-base font-bold text-white hover:text-violet-300 transition-colors"
+              className="text-sm font-semibold text-white tracking-tight hover:text-violet-300 transition-colors"
             >
               {alert.ticker}
             </button>
@@ -169,69 +170,61 @@ export default function AlertsPage() {
       <div className="max-w-6xl mx-auto space-y-5">
 
         {/* Header */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-violet-700 flex items-center justify-center shrink-0">
-                <Bell size={18} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                  Trade Alerts
-                  {unreadAlertCount > 0 && (
-                    <span className="text-sm font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded-full">
-                      {unreadAlertCount} new
-                    </span>
-                  )}
-                </h1>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  GO trades detected by the 15-min background scan · retained for 24 hours
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Market hours status */}
-              <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border ${
-                isMarketHours
-                  ? 'bg-emerald-900/20 border-emerald-800 text-emerald-400'
-                  : 'bg-gray-800/60 border-gray-700 text-gray-500'
-              }`}>
-                <RefreshCw size={11} className={isMarketHours ? 'animate-spin' : ''} />
-                {isMarketHours ? 'Live scan active' : 'Scan paused (market closed)'}
-              </div>
-
-              {alerts.length > 0 && (
-                <button
-                  onClick={clearAlerts}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                             bg-gray-800 border-gray-700 text-gray-400 hover:border-red-700 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={11} /> Clear all
-                </button>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+              <Bell className="text-violet-400" size={22} />
+              Trade Alerts
+              {unreadAlertCount > 0 && (
+                <span className="text-sm font-semibold bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded-full">
+                  {unreadAlertCount} new
+                </span>
               )}
-              <button
-                onClick={() => refreshWatchlistForAlerts()}
-                disabled={scanning}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                           bg-violet-600/20 border-violet-700 text-violet-300 hover:bg-violet-600/30
-                           transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={11} className={scanning ? 'animate-spin' : ''} />
-                Scan Watchlist
-              </button>
+            </h1>
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              <span className="text-sm text-gray-500">{totalCount} active GO alert{totalCount !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-gray-600">· retained for 24 hours</span>
+              {lastBgRefresh && (
+                <span className="flex items-center gap-1 text-xs text-gray-600">
+                  <Clock size={10} />
+                  Auto-refresh: {new Date(lastBgRefresh).toLocaleTimeString()}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Last refresh info */}
-          {lastBgRefresh && (
-            <div className="mt-3 pt-3 border-t border-gray-800 flex items-center gap-2 text-xs text-gray-600">
-              <Clock size={11} />
-              Last background scan: {relativeTime(lastBgRefresh)}
-              <span className="text-gray-700">·</span>
-              <span>Next scan in ~{Math.max(0, 15 - Math.floor((Date.now() - lastBgRefresh) / 60_000))}m</span>
+          <div className="flex items-center gap-2">
+            {/* Market hours status */}
+            <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm ${
+              isMarketHours
+                ? 'bg-emerald-900/20 border-emerald-800 text-emerald-400'
+                : 'bg-gray-800/60 border-gray-700 text-gray-500'
+            }`}>
+              <RefreshCw size={13} className={isMarketHours ? 'animate-spin' : ''} />
+              {isMarketHours ? 'Live scan active' : 'Scan paused'}
             </div>
-          )}
+
+            {alerts.length > 0 && (
+              <button
+                onClick={clearAlerts}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 border border-gray-700
+                           text-gray-400 hover:text-red-400 hover:border-red-700 text-sm rounded-xl
+                           transition-colors"
+              >
+                <Trash2 size={13} /> Clear all
+              </button>
+            )}
+            <button
+              onClick={() => refreshWatchlistForAlerts()}
+              disabled={scanning}
+              className="flex items-center gap-1.5 px-3 py-2 bg-violet-600/20 border border-violet-700
+                         text-violet-300 hover:bg-violet-600/30 text-sm font-semibold rounded-xl
+                         transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={scanning ? 'animate-spin' : ''} />
+              Scan Watchlist
+            </button>
+          </div>
         </div>
 
         {/* How it works info bar */}
@@ -266,16 +259,16 @@ export default function AlertsPage() {
         {groupedActive.map(group => (
           <div key={group.window} className="space-y-2">
             {/* Window header */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-400">
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-400 bg-gray-800 border border-gray-700 rounded px-2 py-0.5">
                 <Clock size={12} />
                 {group.window}
               </div>
-              <span className="text-xs text-gray-600">
+              <span className="text-[10px] font-medium text-gray-600 bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5">
                 {group.items.length} GO trade{group.items.length !== 1 ? 's' : ''}
               </span>
-              <div className="flex-1 h-px bg-gray-800" />
-              <span className="text-xs text-gray-600">{relativeTime(group.ts)}</span>
+              <div className="h-px flex-1 bg-gray-800/70" />
+              <span className="text-[10px] text-gray-600">{relativeTime(group.ts)}</span>
             </div>
 
             {/* Cards */}

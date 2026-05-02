@@ -106,7 +106,7 @@ export default function RecommendationCard({
       {/* ── Collapsed summary row (always visible) ── */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-800/40 transition-colors"
+        className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 text-left hover:bg-gray-800/40 transition-colors flex-wrap sm:flex-nowrap"
       >
         {/* Rank badge */}
         <span className="bg-violet-900/60 text-violet-300 text-xs font-bold px-2 py-0.5 rounded-full border border-violet-700 shrink-0">
@@ -114,7 +114,7 @@ export default function RecommendationCard({
         </span>
 
         {/* Strategy + bias */}
-        <span className="font-bold text-white text-sm">{rec.strategy}</span>
+        <span className="font-bold text-white text-sm min-w-0 break-words">{rec.strategy}</span>
         <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold shrink-0 ${biasBadgeClass(rec.bias)}`}>
           {rec.bias.includes('Bullish') ? '↑' : rec.bias.includes('Bearish') ? '↓' : '↔'} {rec.bias}
         </span>
@@ -133,7 +133,7 @@ export default function RecommendationCard({
         )}
 
         {/* Spacer + verdict + score + chevron */}
-        <span className="flex-1" />
+        <span className="hidden sm:block flex-1" />
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${verdictBadge}`}>
           {verdictLabel}
         </span>
@@ -146,8 +146,8 @@ export default function RecommendationCard({
       </button>
 
       {!open && (
-        <div className="flex items-center justify-between gap-3 px-4 pb-3 -mt-1 flex-wrap">
-          <div className="text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 sm:px-4 pb-3 -mt-1">
+          <div className="text-xs min-w-0">
             {verdict === 'NO GO' && blockingReasons.length > 0
               ? <span className="text-red-400/80">🚫 Blocked: {blockingReasons.join(' · ')}</span>
               : verdict === 'CAUTION' && blockingReasons.length > 0
@@ -159,13 +159,13 @@ export default function RecommendationCard({
             <button
               type="button"
               onClick={openPortfolioPicker}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+              className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
                          bg-violet-600/15 border-violet-700/60 text-violet-300 hover:bg-violet-600/25 hover:border-violet-500"
             >
               <Briefcase size={11} /> Add to Portfolio
             </button>
           ) : (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
+            <span className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
                              bg-violet-900/30 border-violet-700 text-violet-300">
               <Check size={11} /> Added to Portfolio
             </span>
@@ -177,18 +177,18 @@ export default function RecommendationCard({
       {open && (
         <div>
           {/* Filter badges + action buttons */}
-          <div className="flex items-center justify-between gap-2 px-4 pb-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pb-3">
             <div className="flex gap-2 flex-wrap">
               <FilterBadge label="R:R Filter" pass={rec.passes_rr_filter} />
               {isCredit && <FilterBadge label={`Credit ≥25% (${rec.credit_pct_of_width.toFixed(0)}%)`} pass={rec.passes_credit_filter} />}
               <FilterBadge label="Liquidity OK" pass={rec.passes_liquidity_filter} />
             </div>
-            <div className="flex gap-2 shrink-0">
+            <div className="grid grid-cols-2 sm:flex gap-2 sm:shrink-0">
               {onFetchAllWeeks && (
                 <button
                   onClick={e => { e.stopPropagation(); onFetchAllWeeks() }}
                   disabled={fetchingAllWeeks}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400 disabled:opacity-50"
                 >
                   <Layers size={11} className={fetchingAllWeeks ? 'animate-pulse' : ''} />
@@ -198,7 +198,7 @@ export default function RecommendationCard({
               <button
                 onClick={e => { e.stopPropagation(); handleAddWatchlist() }}
                 disabled={watched}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                className={`justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                   watched
                     ? 'bg-amber-900/20 border-amber-800 text-amber-400 cursor-default'
                     : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-amber-600 hover:text-amber-400'
@@ -209,13 +209,13 @@ export default function RecommendationCard({
               {!inPortfolio ? (
                 <button
                   onClick={e => { e.stopPropagation(); setContractPickerOpen(o => !o) }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400"
                 >
                   <Briefcase size={11} /> Portfolio
                 </button>
               ) : (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
+                <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
                                  bg-violet-900/30 border-violet-700 text-violet-300">
                   <Check size={11} /> Added
                 </span>
@@ -226,12 +226,12 @@ export default function RecommendationCard({
           {/* Contract picker — shown when Portfolio button clicked */}
           {contractPickerOpen && !inPortfolio && (
             <div
-              className="mx-4 mb-3 p-3 bg-violet-950/40 border border-violet-800 rounded-xl"
+              className="mx-3 sm:mx-4 mb-3 p-3 bg-violet-950/40 border border-violet-800 rounded-xl"
               onClick={e => e.stopPropagation()}
             >
               <div className="text-xs text-violet-300 font-semibold mb-2">
                 How many contracts?
-                <span className="text-violet-500 font-normal ml-1.5">1 contract = 100 shares · ${(rec.max_profit * 100).toFixed(0)} max profit each</span>
+                <span className="block sm:inline text-violet-500 font-normal sm:ml-1.5 mt-1 sm:mt-0">1 contract = 100 shares · ${(rec.max_profit * 100).toFixed(0)} max profit each</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {CONTRACT_OPTIONS.map(n => (
@@ -254,7 +254,7 @@ export default function RecommendationCard({
                   <span> max loss</span>
                 </div>
               </div>
-              <div className="flex gap-2 mt-3">
+              <div className="grid grid-cols-1 sm:flex gap-2 mt-3">
                 <button
                   onClick={() => setContractPickerOpen(false)}
                   className="px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-lg hover:bg-gray-700 transition-colors"
@@ -283,9 +283,9 @@ export default function RecommendationCard({
           )}
 
       {/* Legs */}
-      <div className="mx-4 bg-gray-800/60 rounded-xl p-3 font-mono text-xs mb-3 overflow-x-auto">
+      <div className="mx-3 sm:mx-4 bg-gray-800/60 rounded-xl p-3 font-mono text-xs mb-3 overflow-x-auto">
         <div className="text-gray-500 text-xs mb-1.5">1 contract = 100 shares</div>
-        <table className="w-full">
+        <table className="w-full min-w-[46rem]">
           <thead>
             <tr className="text-gray-500 border-b border-gray-700">
               <th className="text-left pb-1.5 pr-3">Action</th>
@@ -334,7 +334,7 @@ export default function RecommendationCard({
       </div>
 
       {/* Compact risk/reward + score summary */}
-      <div className="px-4 pb-3 grid gap-3 lg:grid-cols-[1.45fr_1fr]">
+      <div className="px-3 sm:px-4 pb-3 grid gap-3 lg:grid-cols-[1.45fr_1fr]">
         <div className="bg-gray-800/60 rounded-xl p-3">
           <div className="flex items-center justify-between gap-3 mb-2">
             <span className="text-xs font-semibold text-gray-400">Risk / Reward</span>

@@ -40,20 +40,20 @@ export default function MarketOverview({ ticker, companyName, sector, marketCap,
   const evColor = signals.iv_vs_hv > 0 ? 'text-red-400' : 'text-green-400'
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5 space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-2">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-2xl font-bold font-mono text-white">{ticker}</span>
-            <span className="text-gray-400 text-sm">{companyName}</span>
+            <span className="text-xl sm:text-2xl font-bold font-mono text-white">{ticker}</span>
+            <span className="text-gray-400 text-sm min-w-0 break-words">{companyName}</span>
             <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{sector}</span>
             <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{marketCap}</span>
           </div>
           {/* Regular session price + day change */}
-          <div className="flex items-baseline gap-3 mt-1">
-            <span className="text-4xl font-bold font-mono">${signals.current_price.toFixed(2)}</span>
-            <span className={`text-lg font-semibold ${up ? 'text-green-400' : 'text-red-400'}`}>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
+            <span className="text-3xl sm:text-4xl font-bold font-mono">${signals.current_price.toFixed(2)}</span>
+            <span className={`text-base sm:text-lg font-semibold ${up ? 'text-green-400' : 'text-red-400'}`}>
               {up ? '▲' : '▼'} {Math.abs(signals.price_change).toFixed(2)} ({signals.price_change_pct > 0 ? '+' : ''}{signals.price_change_pct.toFixed(2)}%)
             </span>
           </div>
@@ -83,7 +83,7 @@ export default function MarketOverview({ ticker, companyName, sector, marketCap,
         </div>
 
         {/* Bias badge */}
-        <div className={`rounded-xl p-3 border text-center min-w-28 ${trendBg(signals.directional_bias)}`}>
+        <div className={`w-full sm:w-auto rounded-xl p-3 border text-center sm:min-w-28 ${trendBg(signals.directional_bias)}`}>
           <div className="text-xs text-gray-400 mb-1">Overall Bias</div>
           <div className={`font-bold text-lg ${trendColor(signals.directional_bias)}`}>{signals.directional_bias}</div>
           <div className="text-xs text-gray-400">{signals.bias_confidence}% confidence</div>

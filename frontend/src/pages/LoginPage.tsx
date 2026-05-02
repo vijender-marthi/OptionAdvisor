@@ -35,7 +35,7 @@ export default function LoginPage() {
   ]
 
   return (
-    <div className="relative min-h-screen bg-gray-950 flex">
+    <div className="login-page relative min-h-screen bg-gray-950 flex">
       <ThemeToggle className="absolute right-6 top-6 z-10" />
 
       {/* Left branding panel */}

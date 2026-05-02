@@ -43,18 +43,18 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-      <div className="flex items-center gap-3 mb-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <TrendingUp className="text-violet-400" size={22} />
-        <h1 className="text-xl font-bold text-white">Options Trade Advisor</h1>
-        <span className="ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-full">
+        <h1 className="text-lg sm:text-xl font-bold text-white">Options Trade Advisor</h1>
+        <span className="sm:ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-full">
           Systematic Engine v2
         </span>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_auto_auto]">
         <input
-          className="flex-1 min-w-48 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
+          className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
                      text-white placeholder-gray-500 focus:outline-none focus:border-violet-500
                      focus:ring-1 focus:ring-violet-500 font-mono text-lg uppercase"
           placeholder="AAPL, TSLA, SPY..."
@@ -63,7 +63,7 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
           onKeyDown={onKey}
         />
         <select
-          className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white
+          className="w-full sm:w-auto bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white
                      focus:outline-none focus:border-violet-500"
           value={weeks}
           onChange={e => setWeeks(Number(e.target.value))}
@@ -75,7 +75,7 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
         <button
           onClick={handle}
           disabled={loading || !ticker.trim()}
-          className="bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed
+          className="w-full sm:w-auto justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed
                      text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2
                      transition-colors duration-150"
         >
@@ -94,14 +94,14 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
       </div>
 
       {/* Strategy mode selector */}
-      <div className="flex items-start gap-3 mt-4 flex-wrap">
-        <span className="text-xs text-gray-500 font-semibold mt-2 shrink-0">Strategy mode:</span>
-        <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 mt-4">
+        <span className="text-xs text-gray-500 font-semibold sm:mt-2 shrink-0">Strategy mode:</span>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:grid lg:grid-cols-4 xl:flex">
           {STRATEGY_MODES.map(opt => (
             <button
               key={opt.value}
               onClick={() => setStrategyMode(opt.value)}
-              className={`flex flex-col items-start px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              className={`min-w-0 flex flex-col items-start px-3 py-2 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                 strategyMode === opt.value
                   ? 'bg-violet-600 border-violet-500 text-white'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
@@ -117,7 +117,7 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
       </div>
 
       {/* Spread width selector */}
-      <div className="flex items-center gap-3 mt-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mt-3">
         <span className="text-xs text-gray-500 font-semibold">Spread width:</span>
         <div className="flex gap-1">
           {WIDTH_OPTIONS.map(opt => (
@@ -134,7 +134,7 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-600">
+        <span className="text-xs text-gray-600 leading-relaxed">
           {spreadWidth === null
             ? 'Engine picks width based on OTM distance'
             : spreadWidth === 5

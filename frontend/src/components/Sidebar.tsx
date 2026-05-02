@@ -51,9 +51,15 @@ export default function Sidebar() {
   ]
 
   const w = collapsed ? 'w-16' : 'w-56'
+  const mobileItems: NavItem[] = [
+    ...navGroups.flatMap(group => group.items),
+    { id: 'settings' as Page, label: 'Settings', icon: <Settings size={18} /> },
+    { id: 'help' as Page, label: 'Help', icon: <HelpCircle size={18} /> },
+  ]
 
   return (
-    <aside className={`${w} font-sans h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
+    <>
+    <aside className={`${w} hidden xl:flex font-sans h-[100dvh] bg-gray-900 border-r border-gray-800 flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
       {/* Logo */}
       <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
@@ -183,5 +189,48 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+
+    {/* Mobile bottom navigation keeps page content full-width on phones. */}
+    <nav className="xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85">
+      <div className="mobile-nav-scroll flex items-center gap-2 overflow-x-auto px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {mobileItems.map(item => {
+          const active = page === item.id
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => navigate(item.id)}
+              className={`min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
+                active
+                  ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'
+                  : 'text-gray-400 border-transparent hover:bg-gray-800 hover:text-gray-200'
+              }`}
+            >
+              <span className="relative">
+                {item.icon}
+                {item.badge !== undefined && (
+                  <span className="absolute -right-2 -top-1 min-w-[1rem] rounded-full bg-violet-700 px-1 text-[9px] leading-4 text-violet-100">
+                    {item.badge}
+                  </span>
+                )}
+              </span>
+              <span className="max-w-[4.25rem] truncate">{item.label}</span>
+            </button>
+          )
+        })}
+        <ThemeToggle collapsed className="h-[3.4rem] min-w-[3.4rem] px-0 py-0 shrink-0" />
+        {user && (
+          <button
+            type="button"
+            onClick={logout}
+            title={`Sign out ${user.email}`}
+            className="min-w-[3.4rem] h-[3.4rem] flex items-center justify-center rounded-xl border border-gray-700 bg-gray-800 text-gray-400 hover:text-red-400"
+          >
+            <LogOut size={18} />
+          </button>
+        )}
+      </div>
+    </nav>
+    </>
   )
 }

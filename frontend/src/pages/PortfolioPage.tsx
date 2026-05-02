@@ -1084,7 +1084,14 @@ export default function PortfolioPage() {
         </div>
 
         {shown.length === 0 && portfolio.length > 0 && (
-          <div className="text-center py-10 text-gray-500 text-sm">No {filter} positions.</div>
+          <div className="text-center py-10 text-gray-500 text-sm">
+            No {filter} positions.
+            {filter === 'open' && closed.length > 0 && (
+              <span className="block mt-1 text-xs">
+                You have {closed.length} closed position{closed.length === 1 ? '' : 's'} in the Closed tab.
+              </span>
+            )}
+          </div>
         )}
 
         {/* Disclaimer */}
