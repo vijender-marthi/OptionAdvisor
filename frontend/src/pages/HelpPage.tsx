@@ -548,8 +548,8 @@ export default function HelpPage() {
                   desc: 'Open positions show an estimated P&L using the latest cached stock price and the option payoff at expiry. This is an at-expiry estimate, not brokerage mark-to-market option pricing.',
                 },
                 {
-                  title: 'Refresh values',
-                  desc: 'Use "Refresh Values" to re-analyze every unique open-position ticker. This updates cached stock prices, exit suggestions, and the Portfolio P&L estimate for each open trade.',
+                  title: 'Refresh prices',
+                  desc: 'Use the refresh (circular arrows) button on Portfolio to re-analyze every unique open-position ticker. This updates cached stock prices, exit suggestions, and the Portfolio P&L estimate for each open trade.',
                 },
                 {
                   title: 'Position sizing',
@@ -561,7 +561,7 @@ export default function HelpPage() {
                 },
                 {
                   title: 'Export reports',
-                  desc: 'Use Export to download the current Portfolio view as XLSX or PDF. XLSX includes tabular columns for ticker, contracts, purchased date, expiry/current P&L, warnings, max profit/loss, strategy type, and separate leg action/strike/value columns.',
+                  desc: 'Use the download button on Portfolio to export the current view as XLSX or PDF. XLSX includes tabular columns for ticker, contracts, purchased date, expiry/current P&L, warnings, max profit/loss, strategy type, and separate leg action/strike/value columns.',
                 },
               ].map(item => (
                 <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
@@ -631,7 +631,7 @@ export default function HelpPage() {
                 },
                 {
                   title: 'Refresh P&L',
-                  desc: 'Refetches marks for open entries so MTM updates without reloading the whole page. Closed trades keep stored realized P&L.',
+                  desc: 'Use the circular refresh control in the journal header to refetch marks for open entries so MTM updates without reloading the whole page. Closed trades keep stored realized P&L.',
                 },
                 {
                   title: 'Notes & filters',

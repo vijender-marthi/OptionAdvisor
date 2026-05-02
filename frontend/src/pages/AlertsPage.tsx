@@ -206,23 +206,28 @@ export default function AlertsPage() {
 
             {alerts.length > 0 && (
               <button
+                type="button"
                 onClick={clearAlerts}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 border border-gray-700
-                           text-gray-400 hover:text-red-400 hover:border-red-700 text-sm rounded-xl
-                           transition-colors"
+                aria-label="Clear all alerts"
+                title="Clear all alerts"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
+                           text-gray-400 hover:text-red-400 hover:border-red-700 rounded-xl
+                           transition-colors shrink-0"
               >
-                <Trash2 size={13} /> Clear all
+                <Trash2 size={18} />
               </button>
             )}
             <button
+              type="button"
               onClick={() => refreshWatchlistForAlerts()}
               disabled={scanning}
-              className="flex items-center gap-1.5 px-3 py-2 bg-violet-600/20 border border-violet-700
-                         text-violet-300 hover:bg-violet-600/30 text-sm font-semibold rounded-xl
-                         transition-colors disabled:opacity-50"
+              aria-label="Scan watchlist for alerts"
+              title="Scan watchlist now"
+              className="inline-flex h-10 w-10 items-center justify-center bg-violet-600/20 border border-violet-700
+                         text-violet-300 hover:bg-violet-600/30 rounded-xl
+                         transition-colors disabled:opacity-50 shrink-0"
             >
-              <RefreshCw size={13} className={scanning ? 'animate-spin' : ''} />
-              Scan Watchlist
+              <RefreshCw size={18} className={scanning ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>

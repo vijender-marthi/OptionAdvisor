@@ -179,22 +179,27 @@ function StockCard({ stock }: { stock: StockEntry }) {
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
+          type="button"
           onClick={handleAnalyze}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-violet-600/20 hover:bg-violet-600/30
-                     text-violet-300 text-xs font-semibold rounded-xl border border-violet-700 hover:border-violet-500 transition-colors"
+          aria-label={`Analyze ${stock.ticker}`}
+          title="Analyze options"
+          className="flex-1 inline-flex h-10 items-center justify-center bg-violet-600/20 hover:bg-violet-600/30
+                     text-violet-300 rounded-xl border border-violet-700 hover:border-violet-500 transition-colors"
         >
-          <TrendingUp size={12} /> Analyze
+          <TrendingUp size={18} />
         </button>
         <button
+          type="button"
           onClick={handleWatch}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+          aria-label={watched ? `Remove ${stock.ticker} from watchlist` : `Add ${stock.ticker} to watchlist`}
+          title={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-all ${
             watched
               ? 'bg-amber-900/30 border-amber-700 text-amber-400 hover:bg-red-900/20 hover:border-red-700 hover:text-red-400'
               : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-amber-600 hover:text-amber-400'
           }`}
         >
-          {watched ? <Check size={12} /> : <Star size={12} />}
-          {watched ? 'Watching' : 'Watch'}
+          {watched ? <Check size={18} /> : <Star size={18} />}
         </button>
       </div>
     </div>

@@ -50,7 +50,7 @@ const CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
 }: Props) {
-  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user } = useApp()
+  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user, refreshJournalCount } = useApp()
   const [open, setOpen]                       = useState(false)
   const [exitOpen, setExitOpen]               = useState(false)
   const [addedPort, setAddedPort]             = useState(false)
@@ -99,6 +99,7 @@ export default function RecommendationCard({
         total_score: rec.scores.total_score,
       })
       setSavedJournal(true)
+      void refreshJournalCount()
     } catch {
       // silently fail — user can retry
     } finally {
@@ -190,10 +191,12 @@ export default function RecommendationCard({
             <button
               type="button"
               onClick={openPortfolioPicker}
-              className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+              aria-label="Add to portfolio"
+              title="Add to portfolio"
+              className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                          bg-violet-600/15 border-violet-700/60 text-violet-300 hover:bg-violet-600/25 hover:border-violet-500"
             >
-              <Briefcase size={11} /> Add to Portfolio
+              <Briefcase size={18} />
             </button>
           ) : (
             <span className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
@@ -217,33 +220,41 @@ export default function RecommendationCard({
             <div className="grid grid-cols-2 sm:flex gap-2 sm:shrink-0">
               {onFetchAllWeeks && (
                 <button
+                  type="button"
                   onClick={e => { e.stopPropagation(); onFetchAllWeeks() }}
                   disabled={fetchingAllWeeks}
-                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  aria-label={fetchingAllWeeks ? 'Fetching all weeks' : 'Fetch all expiry weeks'}
+                  title={fetchingAllWeeks ? 'Fetching…' : 'Fetch all weeks (2w–8w)'}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400 disabled:opacity-50"
                 >
-                  <Layers size={11} className={fetchingAllWeeks ? 'animate-pulse' : ''} />
-                  {fetchingAllWeeks ? 'Fetching…' : 'All Weeks'}
+                  <Layers size={16} className={fetchingAllWeeks ? 'animate-pulse' : ''} />
                 </button>
               )}
               <button
+                type="button"
                 onClick={e => { e.stopPropagation(); handleAddWatchlist() }}
                 disabled={watched}
-                className={`justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                aria-label={watched ? 'On watchlist' : 'Add to watchlist'}
+                title={watched ? 'On watchlist' : 'Add to watchlist'}
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all ${
                   watched
                     ? 'bg-amber-900/20 border-amber-800 text-amber-400 cursor-default'
                     : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-amber-600 hover:text-amber-400'
                 }`}
               >
-                {watched ? <><Check size={11} /> Watched</> : <><Star size={11} /> Watchlist</>}
+                {watched ? <Check size={16} /> : <Star size={16} />}
               </button>
               {!inPortfolio ? (
                 <button
+                  type="button"
                   onClick={e => { e.stopPropagation(); setContractPickerOpen(o => !o) }}
-                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  aria-label="Add to portfolio"
+                  title="Add to portfolio"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400"
                 >
-                  <Briefcase size={11} /> Portfolio
+                  <Briefcase size={16} />
                 </button>
               ) : (
                 <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
@@ -259,13 +270,15 @@ export default function RecommendationCard({
                 </span>
               ) : (
                 <button
+                  type="button"
                   onClick={handleSaveJournal}
                   disabled={savingJournal}
-                  className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  aria-label={savingJournal ? 'Saving to journal' : 'Save to journal'}
+                  title={savingJournal ? 'Saving…' : 'Save to journal'}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50"
                 >
-                  <BookOpen size={11} className={savingJournal ? 'animate-pulse' : ''} />
-                  {savingJournal ? 'Saving…' : 'Journal'}
+                  <BookOpen size={16} className={savingJournal ? 'animate-pulse' : ''} />
                 </button>
               )}
             </div>
@@ -310,10 +323,13 @@ export default function RecommendationCard({
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleConfirmPortfolio}
-                  className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg transition-colors"
+                  aria-label={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
+                  title={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
+                  className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
                 >
-                  Add {selectedContracts} Contract{selectedContracts > 1 ? 's' : ''} to Portfolio
+                  <Briefcase size={18} />
                 </button>
               </div>
             </div>

@@ -85,7 +85,7 @@ export default function FirstLoginHelpModal() {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/75 px-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-950/75 px-4 backdrop-blur-sm">
       <div className="w-full max-w-xl rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
         <div className="flex items-start justify-between border-b border-gray-800 px-6 py-5">
           <div>

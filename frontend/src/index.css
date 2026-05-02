@@ -17,10 +17,23 @@ body,
   text-rendering: optimizeLegibility;
 }
 
+/* iOS Safari: single scroll surface — outer page must not bounce independently of main */
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
+  height: 100%;
+  overflow: hidden;
   background-color: #030712;
   color: #f1f5f9;
   transition: background-color 150ms ease, color 150ms ease;
+}
+
+#root {
+  height: 100%;
+  min-height: 0;
 }
 
 button,

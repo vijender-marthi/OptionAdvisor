@@ -591,11 +591,14 @@ export default function BacktestPage() {
                 {Object.keys(result.by_strategy).length} strategy types
               </div>
               <button
+                type="button"
                 onClick={handleRun}
                 disabled={loading}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50 shrink-0 w-full sm:w-auto min-h-[44px] sm:min-h-0"
+                aria-label={loading ? 'Re-running backtest' : 'Re-run backtest with same settings'}
+                title={loading ? 'Running…' : 'Re-run backtest'}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 bg-gray-800 border border-gray-700 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50"
               >
-                <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Re-run
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
 

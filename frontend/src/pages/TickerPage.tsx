@@ -167,14 +167,16 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
       </div>
 
       <button
+        type="button"
         onClick={onFetch}
         disabled={fetching}
-        className="w-full lg:w-auto justify-center flex items-center gap-1.5 px-3 py-2 lg:py-1.5 bg-gray-800 hover:bg-violet-600/20 border border-gray-700
-                   hover:border-violet-600 text-gray-400 hover:text-violet-300 text-xs font-semibold rounded-xl
+        aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
+        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–8w)'}
+        className="inline-flex h-10 w-full lg:w-10 items-center justify-center bg-gray-800 hover:bg-violet-600/20 border border-gray-700
+                   hover:border-violet-600 text-gray-400 hover:text-violet-300 rounded-xl
                    transition-colors disabled:opacity-50 shrink-0"
       >
-        <Layers size={11} className={fetching ? 'animate-pulse text-violet-400' : ''} />
-        {fetching ? 'Fetching all weeks…' : hasFetched ? 'Re-fetch All' : 'Load All Weeks'}
+        <Layers size={18} className={fetching ? 'animate-pulse text-violet-400' : ''} />
       </button>
       </div>
     </div>
@@ -383,23 +385,28 @@ export default function TickerPage() {
 
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
                 <button
+                  type="button"
                   onClick={handleRefresh}
-                  className="justify-center flex items-center gap-1.5 px-3 py-2 sm:py-1.5 bg-gray-800 border border-gray-700
-                             text-gray-400 hover:text-gray-200 hover:border-gray-600 text-xs rounded-xl transition-colors"
+                  disabled={loading}
+                  aria-label="Refresh analysis"
+                  title="Refresh analysis"
+                  className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
+                             text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl transition-colors justify-self-center sm:justify-self-auto disabled:opacity-50"
                 >
-                  <RefreshCw size={12} /> Refresh
+                  <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                 </button>
                 <button
+                  type="button"
                   onClick={toggleWatchlist}
-                  className={`justify-center flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+                  title={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-all justify-self-center sm:justify-self-auto ${
                     watched
                       ? 'bg-amber-900/30 border-amber-700 text-amber-400 hover:bg-red-900/20 hover:border-red-700 hover:text-red-400'
                       : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-amber-600 hover:text-amber-400'
                   }`}
                 >
-                  {watched
-                    ? <><StarOff size={14} /> Remove from Watchlist</>
-                    : <><Star size={14} /> Add to Watchlist</>}
+                  {watched ? <StarOff size={18} /> : <Star size={18} />}
                 </button>
               </div>
             </div>

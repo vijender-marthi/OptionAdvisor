@@ -420,11 +420,14 @@ function EntryCard({
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={handleSaveNotes}
                       disabled={savingNotes}
-                      className="px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-60"
+                      aria-label={savingNotes ? 'Saving notes' : 'Save notes'}
+                      title={savingNotes ? 'Saving…' : 'Save notes'}
+                      className="inline-flex h-9 w-9 items-center justify-center bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors disabled:opacity-60"
                     >
-                      {savingNotes ? 'Saving…' : <><Check size={11} className="inline mr-1" />Save</>}
+                      {savingNotes ? <RefreshCw size={14} className="animate-spin" /> : <Check size={16} />}
                     </button>
                   </div>
                 </div>
@@ -444,19 +447,23 @@ function EntryCard({
                 <button
                   type="button"
                   onClick={e => { e.stopPropagation(); setShowClose(true) }}
-                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-violet-600/20 hover:bg-violet-600/40
-                             border border-violet-700/50 text-violet-300 text-xs font-semibold rounded-xl transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
+                  title="Close trade"
+                  aria-label="Close trade"
+                  className="inline-flex h-10 w-10 items-center justify-center bg-violet-600/20 hover:bg-violet-600/40
+                             border border-violet-700/50 text-violet-300 rounded-xl transition-colors touch-manipulation shrink-0"
                 >
-                  <CheckSquare size={11} /> Close Trade
+                  <CheckSquare size={16} />
                 </button>
               )}
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); onDeleteConfirm(entry.id) }}
-                className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-gray-800 hover:bg-red-900/30 border border-gray-700
-                           text-gray-500 hover:text-red-400 text-xs font-semibold rounded-xl transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
+                title="Delete entry"
+                aria-label="Delete journal entry"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-red-900/30 border border-gray-700
+                           text-gray-500 hover:text-red-400 rounded-xl transition-colors touch-manipulation shrink-0"
               >
-                <Trash2 size={12} /> Delete
+                <Trash2 size={16} />
               </button>
             </div>
           </div>
@@ -471,7 +478,7 @@ function EntryCard({
 type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'EXPIRED'
 
 export default function JournalPage() {
-  const { user } = useApp()
+  const { user, syncJournalEntryCount } = useApp()
   const email = user?.email ?? ''
 
   const [entries, setEntries]         = useState<JournalEntry[]>([])
@@ -488,13 +495,15 @@ export default function JournalPage() {
     setError(null)
     try {
       const data = await getJournal(email)
-      setEntries((data.entries as JournalEntry[]) ?? [])
+      const list = (data.entries as JournalEntry[]) ?? []
+      setEntries(list)
+      syncJournalEntryCount(list.length)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load journal')
     } finally {
       setLoading(false)
     }
-  }, [email])
+  }, [email, syncJournalEntryCount])
 
   useEffect(() => { load() }, [load])
 
@@ -504,7 +513,9 @@ export default function JournalPage() {
     setError(null)
     try {
       const data = await refreshJournal(email)
-      setEntries((data.entries as JournalEntry[]) ?? [])
+      const list = (data.entries as JournalEntry[]) ?? []
+      setEntries(list)
+      syncJournalEntryCount(list.length)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Refresh failed')
     } finally {
@@ -525,7 +536,9 @@ export default function JournalPage() {
     setDeleting(true)
     try {
       await deleteJournalEntry(email, deleteTarget)
+      const nextLen = entries.filter(e => e.id !== deleteTarget).length
       setEntries(prev => prev.filter(e => e.id !== deleteTarget))
+      syncJournalEntryCount(nextLen)
       setDeleteTarget(null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Delete failed')
@@ -626,12 +639,13 @@ export default function JournalPage() {
           type="button"
           onClick={handleRefresh}
           disabled={refreshing || loading}
-          className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 border border-gray-700
-                     text-gray-400 hover:text-gray-200 hover:border-gray-600 text-sm rounded-xl
-                     transition-colors disabled:opacity-50 w-full sm:w-auto justify-center min-h-[44px] sm:min-h-0"
+          aria-label={refreshing ? 'Refreshing P&L' : 'Refresh journal P&L'}
+          title="Refresh journal P&L from market data"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center bg-gray-800 border border-gray-700
+                     text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
+                     transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Refreshing P&L…' : 'Refresh P&L'}
+          <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
         </button>
       </div>
 

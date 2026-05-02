@@ -416,11 +416,14 @@ function ManualEntryModal({ onClose, onAdd }: {
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleAdd}
             disabled={!canSubmit}
-            className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+            aria-label="Add to portfolio"
+            title="Add to portfolio"
+            className="inline-flex flex-1 min-h-[44px] items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
           >
-            Add to Portfolio
+            <Briefcase size={20} />
           </button>
         </div>
       </div>
@@ -810,7 +813,7 @@ export default function PortfolioPage() {
       const currentPnl = pos.status === 'closed' ? realizedPnl : expiryPnl
       const suggestion = pos.status === 'open' ? getExitSuggestion(pos, currentPrice) : null
       const warnings = [
-        pos.status === 'open' && currentPrice == null ? 'No current price cache. Click Refresh Values before export.' : '',
+        pos.status === 'open' && currentPrice == null ? 'No current price cache. Refresh before export.' : '',
         pos.status === 'open' && currentPrice != null ? 'Current P&L is estimated from current stock price and expiry payoff; not live option mark-to-market.' : '',
         suggestion && suggestion.level !== 'HOLD' ? `${suggestion.title}: ${suggestion.reason}` : '',
         pos.notes ? `Notes: ${pos.notes}` : '',
@@ -943,9 +946,9 @@ export default function PortfolioPage() {
 
       <div className="max-w-6xl mx-auto space-y-5">
 
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
+        {/* Header — column on mobile so actions stay right-aligned; row + space-between from sm */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Briefcase className="text-violet-400" size={22} /> Portfolio
             </h1>
@@ -954,27 +957,39 @@ export default function PortfolioPage() {
               {urgentCount > 0 && <span className="text-red-400 font-semibold">{urgentCount} need immediate attention</span>}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setExportOpen(open => !open)}
                 disabled={shown.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                           text-gray-300 hover:text-emerald-300 hover:border-emerald-700 text-sm font-semibold rounded-xl
-                           transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Export the current portfolio view"
+                aria-label="Export portfolio"
+                aria-expanded={exportOpen}
+                aria-haspopup="menu"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
+                           text-gray-300 hover:text-emerald-300 hover:border-emerald-700 rounded-xl
+                           transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                title="Export the current portfolio view (XLSX or PDF)"
               >
-                <Download size={14} /> Export <ChevronDown size={13} />
+                <Download size={18} />
               </button>
               {exportOpen && (
-                <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-xl">
+                <div
+                  role="menu"
+                  className="absolute left-full top-1/2 z-20 ml-2 w-44 -translate-y-1/2 overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-xl
+                             max-[420px]:left-auto max-[420px]:right-0 max-[420px]:top-full max-[420px]:ml-0 max-[420px]:mt-2 max-[420px]:translate-y-0"
+                >
                   <button
+                    type="button"
+                    role="menuitem"
                     onClick={handleExportXlsx}
                     className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-emerald-300"
                   >
                     Export XLSX
                   </button>
                   <button
+                    type="button"
+                    role="menuitem"
                     onClick={handleExportPdf}
                     className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-amber-300"
                   >
@@ -984,21 +999,25 @@ export default function PortfolioPage() {
               )}
             </div>
             <button
+              type="button"
               onClick={handleRefreshPortfolio}
               disabled={openTickers.length === 0 || portfolioRefreshActive}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                         text-gray-300 hover:text-cyan-300 hover:border-cyan-700 text-sm font-semibold rounded-xl
-                         transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Refresh latest prices for open positions"
+              className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
+                         text-gray-300 hover:text-cyan-300 hover:border-cyan-700 rounded-xl
+                         transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               title="Refresh latest prices for open portfolio positions"
             >
-              <RefreshCw size={14} className={portfolioRefreshActive ? 'animate-spin' : ''} />
-              Refresh Values
+              <RefreshCw size={18} className={portfolioRefreshActive ? 'animate-spin' : ''} />
             </button>
             <button
+              type="button"
               onClick={() => setAddingNew(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 text-sm font-semibold rounded-xl transition-colors"
+              aria-label="Add trade manually"
+              className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 rounded-xl transition-colors shrink-0"
+              title="Add trade manually"
             >
-              <Plus size={14} /> Add Trade
+              <Plus size={20} strokeWidth={2.5} />
             </button>
             <button
               onClick={() => navigate('ticker')}
@@ -1060,9 +1079,14 @@ export default function PortfolioPage() {
               Add trades manually or run an analysis and add a recommendation directly to the portfolio.
             </div>
             <div className="flex items-center justify-center gap-3 mt-4">
-              <button onClick={() => setAddingNew(true)}
-                className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-semibold rounded-xl transition-colors flex items-center gap-2">
-                <Plus size={14} /> Add Trade Manually
+              <button
+                type="button"
+                onClick={() => setAddingNew(true)}
+                aria-label="Add trade manually"
+                title="Add trade manually"
+                className="inline-flex h-11 w-11 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded-xl transition-colors"
+              >
+                <Plus size={22} strokeWidth={2.5} />
               </button>
               <button onClick={() => navigate('ticker')}
                 className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors">

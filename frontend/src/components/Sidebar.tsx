@@ -21,7 +21,7 @@ interface NavGroup {
 }
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme } = useApp()
+  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
@@ -49,7 +49,7 @@ export default function Sidebar() {
       items: [
         { id: 'watchlist', label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
         { id: 'portfolio', label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'journal',   label: 'Journal',   icon: <BookOpen size={18} /> },
+        { id: 'journal',   label: 'Journal',   icon: <BookOpen size={18} />,      badge: journalEntryCount || undefined },
         { id: 'alerts',    label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
       ],
     },
@@ -67,7 +67,7 @@ export default function Sidebar() {
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },
-    { id: 'journal',   label: 'Journal',  icon: <BookOpen      size={18} /> },
+    { id: 'journal',   label: 'Journal',  icon: <BookOpen      size={18} />, badge: journalEntryCount || undefined },
     { id: 'settings',  label: 'Settings', icon: <Settings      size={18} /> },
     { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
   ]
@@ -82,7 +82,7 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside className={`${w} hidden xl:flex font-sans h-[100dvh] bg-gray-900 border-r border-gray-800 flex-col transition-all duration-200 shrink-0 overflow-hidden`}>
+    <aside className={`${w} hidden xl:flex font-sans h-full min-h-0 shrink-0 bg-gray-900 border-r border-gray-800 flex-col transition-all duration-200 overflow-hidden`}>
       {/* Logo */}
       <div className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
@@ -111,12 +111,13 @@ export default function Sidebar() {
               {group.items.map(item => {
                 const active = page === item.id
                 const isTradeSignals = item.id === 'trade-signals'
+                const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                 return (
                   <button
                     key={item.id}
                     onClick={() => navigate(item.id)}
                     title={collapsed ? item.label : undefined}
-                    className={`relative w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
+                    className={`relative isolate w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all touch-manipulation
                       ${active
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
@@ -125,20 +126,20 @@ export default function Sidebar() {
                     <span className="shrink-0">{item.icon}</span>
                     {!collapsed && (
                       <>
-                        <span className="flex-1 text-left">{item.label}</span>
+                        <span className="min-w-0 flex-1 text-left truncate">{item.label}</span>
                         {isTradeSignals && (
-                          <span className="bg-violet-700/30 text-violet-300 border border-violet-700/50 text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
+                          <span className="shrink-0 bg-violet-700/30 text-violet-300 border border-violet-700/50 text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
                             Live
                           </span>
                         )}
-                        {item.badge !== undefined && (
-                          <span className="bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none">
-                            {item.badge}
+                        {countBadge !== null && (
+                          <span className="shrink-0 bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none tabular-nums">
+                            {countBadge}
                           </span>
                         )}
                       </>
                     )}
-                    {collapsed && (item.badge !== undefined || isTradeSignals) && (
+                    {collapsed && (countBadge !== null || isTradeSignals) && (
                       <span className={`absolute top-1 right-1 rounded-full ${isTradeSignals ? 'w-2 h-2 bg-violet-400' : 'w-2 h-2 bg-violet-500'}`} />
                     )}
                   </button>
@@ -219,32 +220,34 @@ export default function Sidebar() {
       </div>
     </aside>
 
-    {/* Phone-only floating menu maximizes vertical screen space on small devices. */}
-    <div className="sm:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50">
+    {/* Phone: backdrop as sibling — negative z inside fixed ancestors breaks tap/stacking on Safari */}
+    {phoneMenuOpen && (
+      <button
+        type="button"
+        aria-label="Close menu"
+        className="fixed inset-0 z-[60] bg-black/25 sm:hidden"
+        onClick={() => setPhoneMenuOpen(false)}
+      />
+    )}
+    <div className="sm:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[70]">
       {phoneMenuOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="fixed inset-0 -z-10 bg-black/20"
-            onClick={() => setPhoneMenuOpen(false)}
-          />
           <div className="mobile-more-menu absolute bottom-full right-0 mb-3 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/40">
             <div className="border-b border-gray-800 px-4 py-3">
               <div className="text-sm font-semibold text-white">Menu</div>
               <div className="text-xs text-gray-500">Navigate, theme, and account</div>
             </div>
-            <div className="max-h-[70dvh] overflow-y-auto p-3">
+            <div className="max-h-[70svh] overflow-y-auto overscroll-contain p-3">
               <div className="grid grid-cols-2 gap-2">
                 {[...mobilePrimaryItems, ...mobileMoreItems].map(item => {
                   const active = page === item.id
                   const isTradeSignals = item.id === 'trade-signals'
+                  const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => handleMobileNavigate(item.id)}
-                      className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                      className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors touch-manipulation ${
                         active
                           ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
                           : 'border-gray-800 bg-gray-800/60 text-gray-300 hover:border-gray-700 hover:bg-gray-800'
@@ -253,13 +256,13 @@ export default function Sidebar() {
                       <span className="shrink-0">{item.icon}</span>
                       <span className="min-w-0 truncate">{item.label}</span>
                       {isTradeSignals && (
-                        <span className="ml-auto rounded-full border border-violet-700/50 bg-violet-700/30 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-violet-300">
+                        <span className="shrink-0 ml-auto rounded-full border border-violet-700/50 bg-violet-700/30 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-violet-300">
                           Live
                         </span>
                       )}
-                      {item.badge !== undefined && (
-                        <span className="ml-auto min-w-[1.15rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100">
-                          {item.badge}
+                      {countBadge !== null && (
+                        <span className="shrink-0 ml-auto min-w-[1.15rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100 tabular-nums">
+                          {countBadge}
                         </span>
                       )}
                     </button>
@@ -292,7 +295,6 @@ export default function Sidebar() {
               </div>
             </div>
           </div>
-        </>
       )}
       <button
         type="button"
@@ -306,16 +308,17 @@ export default function Sidebar() {
     </div>
 
     {/* Tablet bottom navigation stays visible and centered. */}
-    <nav className="mobile-bottom-nav hidden sm:block xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85">
+    <nav className="mobile-bottom-nav hidden sm:block xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85 pb-[env(safe-area-inset-bottom)]">
       {mobileMoreOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="fixed inset-0 -z-10 bg-black/20"
-            onClick={() => setMobileMoreOpen(false)}
-          />
-          <div className="mobile-more-menu absolute bottom-full right-2 sm:right-1/2 sm:translate-x-1/2 mb-2 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/40">
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="fixed inset-0 z-[35] bg-black/25 sm:block xl:hidden"
+          onClick={() => setMobileMoreOpen(false)}
+        />
+      )}
+      {mobileMoreOpen && (
+          <div className="mobile-more-menu absolute bottom-full right-2 z-50 sm:right-1/2 sm:translate-x-1/2 mb-2 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/40">
             <div className="border-b border-gray-800 px-4 py-3">
               <div className="text-sm font-semibold text-white">More</div>
               <div className="text-xs text-gray-500">Radar, settings, theme, and account</div>
@@ -323,12 +326,13 @@ export default function Sidebar() {
             <div className="grid grid-cols-2 gap-2 p-3">
               {mobileMoreItems.map(item => {
                 const active = page === item.id
+                const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => handleMobileNavigate(item.id)}
-                    className={`mobile-more-item flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                    className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors touch-manipulation ${
                       active
                         ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
                         : 'border-gray-800 bg-gray-800/60 text-gray-300 hover:border-gray-700 hover:bg-gray-800'
@@ -336,6 +340,11 @@ export default function Sidebar() {
                   >
                     <span className="shrink-0">{item.icon}</span>
                     <span className="min-w-0 truncate">{item.label}</span>
+                    {countBadge !== null && (
+                      <span className="shrink-0 ml-auto min-w-[1.15rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100 tabular-nums">
+                        {countBadge}
+                      </span>
+                    )}
                   </button>
                 )
               })}
@@ -365,33 +374,33 @@ export default function Sidebar() {
               )}
             </div>
           </div>
-        </>
       )}
       <div className="mobile-nav-scroll flex items-center gap-2 overflow-x-auto px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:justify-center">
         {mobilePrimaryItems.map(item => {
           const active = page === item.id
           const isTradeSignals = item.id === 'trade-signals'
+          const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
           return (
             <button
               key={item.id}
               type="button"
               onClick={() => handleMobileNavigate(item.id)}
-              className={`mobile-nav-item min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
+              className={`mobile-nav-item min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors touch-manipulation ${
                 active
                   ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'
                   : 'text-gray-400 border-transparent hover:bg-gray-800 hover:text-gray-200'
               }`}
             >
-              <span className="relative">
+              <span className="relative inline-flex">
                 {item.icon}
                 {isTradeSignals && (
                   <span className="absolute -right-4 -top-2 rounded-full border border-violet-700/50 bg-violet-700/30 px-1 text-[8px] font-semibold leading-3 text-violet-300">
                     Live
                   </span>
                 )}
-                {item.badge !== undefined && (
-                  <span className="absolute -right-2 -top-1 min-w-[1rem] rounded-full bg-violet-700 px-1 text-[9px] leading-4 text-violet-100">
-                    {item.badge}
+                {countBadge !== null && (
+                  <span className="absolute -right-2 -top-1 min-w-[1rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100 tabular-nums">
+                    {countBadge}
                   </span>
                 )}
               </span>

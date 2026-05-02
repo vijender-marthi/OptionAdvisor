@@ -402,26 +402,29 @@ def build_trades(signals: dict, analysis_date: pd.Timestamp,
     # ── CREDIT SPREADS ─────────────────────────────────────────
     if BUILD_CREDIT and dte >= 14:
 
-        # Bull Put Spread (bullish or neutral)
-        if bias in ('Bullish', 'Neutral'):
-            res = _credit_spread(S, T, sigma, 'PUT', TARGET_DELTA_CREDIT, 0.10, width)
+        # Bull Put Spread (bullish or neutral + sell-premium vol regime)
+        # Must match engine: requires SELL_REGIME (vol_regime == "Sell Premium")
+        if bias in ('Bullish', 'Neutral') and vol_reg == 'Sell Premium':
+            res = _credit_spread(S, T, sigma, 'PUT', TARGET_DELTA_CREDIT, 0.25, width)
             if res:
                 legs, net, mp, ml = res
                 trades.append(SimTrade(
                     strategy='Bull Put Spread', bias='Bullish', is_credit=True,
                     legs=legs, entry_net=net, max_profit=mp, max_loss=ml, **common))
 
-        # Bear Call Spread (bearish or neutral)
-        if bias in ('Bearish', 'Neutral'):
-            res = _credit_spread(S, T, sigma, 'CALL', TARGET_DELTA_CREDIT, 0.10, width)
+        # Bear Call Spread (bearish or neutral + sell-premium vol regime)
+        # Must match engine: requires SELL_REGIME
+        if bias in ('Bearish', 'Neutral') and vol_reg == 'Sell Premium':
+            res = _credit_spread(S, T, sigma, 'CALL', TARGET_DELTA_CREDIT, 0.25, width)
             if res:
                 legs, net, mp, ml = res
                 trades.append(SimTrade(
                     strategy='Bear Call Spread', bias='Bearish', is_credit=True,
                     legs=legs, entry_net=net, max_profit=mp, max_loss=ml, **common))
 
-        # Iron Condor (neutral + elevated IV)
-        if bias == 'Neutral' and iv_rank >= 35 and dte >= 21:
+        # Iron Condor (neutral bias + sell-premium regime + iv_rank ≥ 50)
+        # Engine: NEUTRAL and SELL_REGIME; credit filter ≥ 25% of width
+        if bias == 'Neutral' and vol_reg == 'Sell Premium' and iv_rank >= 50 and dte >= 21:
             put_short  = find_strike_by_delta(S, TARGET_DELTA_CONDOR, T, sigma, 'PUT')
             put_long   = put_short - width
             call_short = find_strike_by_delta(S, TARGET_DELTA_CONDOR, T, sigma, 'CALL')
@@ -435,7 +438,7 @@ def build_trades(signals: dict, analysis_date: pd.Timestamp,
             net = (ps_p - pl_p) + (cs_p - cl_p)
             if net >= 0.05:
                 ml = width - net
-                if ml > 0 and net / width >= 0.12:
+                if ml > 0 and net / width >= 0.25:   # matches engine MIN_CREDIT_PCT_OF_WIDTH = 25%
                     legs = [
                         SimLeg('SELL', 'PUT',  put_short,  ps_p, bs_delta(S, put_short,  T, r, sigma, 'PUT')),
                         SimLeg('BUY',  'PUT',  put_long,   pl_p, bs_delta(S, put_long,   T, r, sigma, 'PUT')),
@@ -467,8 +470,9 @@ def build_trades(signals: dict, analysis_date: pd.Timestamp,
                     strategy='Bear Put Spread', bias='Bearish', is_credit=False,
                     legs=legs, entry_net=net, max_profit=mp, max_loss=ml, **common))
 
-        # Long Straddle (vol breakout expected)
-        if vol_reg == 'Buy Premium' and dte >= 21:
+        # Long Straddle (neutral bias + buy-premium vol regime)
+        # Must match engine: NEUTRAL and BUY_REGIME — not for directional days
+        if bias == 'Neutral' and vol_reg == 'Buy Premium' and dte >= 21:
             atm_k    = round_to_strike(S, S)
             call_p   = bs_price(S, atm_k, T, r, sigma, 'CALL')
             put_p    = bs_price(S, atm_k, T, r, sigma, 'PUT')
@@ -509,8 +513,9 @@ def build_trades(signals: dict, analysis_date: pd.Timestamp,
     # ── NAKED / COVERED ────────────────────────────────────────
     if BUILD_NAKED and dte >= 14:
 
-        # Short Put (bullish)
-        if bias == 'Bullish':
+        # Short Put (bullish + sell-premium regime)
+        # Must match engine: not BEARISH and SELL_REGIME
+        if bias == 'Bullish' and vol_reg == 'Sell Premium':
             k     = find_strike_by_delta(S, TARGET_DELTA_CREDIT, T, sigma, 'PUT')
             price = bs_price(S, k, T, r, sigma, 'PUT')
             if price >= 0.10:
@@ -520,8 +525,9 @@ def build_trades(signals: dict, analysis_date: pd.Timestamp,
                     legs=legs, entry_net=price, max_profit=price,
                     max_loss=k - price, **common))
 
-        # Covered Call (neutral/bullish)
-        if bias in ('Bullish', 'Neutral'):
+        # Covered Call (neutral/bullish + sell-premium regime)
+        # Must match engine: not BEARISH and SELL_REGIME
+        if bias in ('Bullish', 'Neutral') and vol_reg == 'Sell Premium':
             k     = find_strike_by_delta(S, TARGET_DELTA_CREDIT, T, sigma, 'CALL')
             price = bs_price(S, k, T, r, sigma, 'CALL')
             if price >= 0.10:

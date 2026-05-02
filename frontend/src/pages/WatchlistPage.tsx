@@ -190,20 +190,25 @@ function TickerRow({
         {/* Actions */}
         <div className="col-span-2 grid grid-cols-[1fr_auto_auto_auto] gap-1.5 sm:flex sm:items-center sm:shrink-0">
           <button
+            type="button"
             onClick={onAnalyze}
-            className="justify-center flex items-center gap-1 px-2.5 py-1.5 bg-violet-600/20 hover:bg-violet-600/40
-                       border border-violet-700/50 text-violet-300 text-xs font-semibold rounded-xl transition-colors"
+            aria-label={`Analyze ${item.ticker}`}
+            title="Analyze ticker"
+            className="inline-flex h-9 w-9 items-center justify-center bg-violet-600/20 hover:bg-violet-600/40
+                       border border-violet-700/50 text-violet-300 rounded-xl transition-colors shrink-0"
           >
-            <TrendingUp size={11} /> Analyze
+            <TrendingUp size={16} />
           </button>
           <button
+            type="button"
             onClick={onRefresh}
             disabled={refreshing}
+            aria-label="Refresh ticker data"
             title="Refresh"
-            className="p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400
-                       hover:text-gray-200 rounded-xl transition-colors disabled:opacity-40"
+            className="inline-flex h-9 w-9 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400
+                       hover:text-gray-200 rounded-xl transition-colors disabled:opacity-40 shrink-0"
           >
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
           {entry && (
             <button
@@ -410,22 +415,27 @@ export default function WatchlistPage() {
           <div className="flex items-center gap-2">
             {cachedCount > 0 && (
               <button
+                type="button"
                 onClick={refreshAll}
                 disabled={anyRefreshing}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 border border-gray-700
-                           text-gray-400 hover:text-gray-200 hover:border-gray-600 text-sm rounded-xl
-                           transition-colors disabled:opacity-50"
+                aria-label="Refresh all cached watchlist tickers"
+                title="Refresh all cached tickers"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
+                           text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
+                           transition-colors disabled:opacity-50 shrink-0"
               >
-                <RefreshCw size={13} className={anyRefreshing ? 'animate-spin' : ''} />
-                Refresh All
+                <RefreshCw size={18} className={anyRefreshing ? 'animate-spin' : ''} />
               </button>
             )}
             <button
+              type="button"
               onClick={() => setShowAdd(s => !s)}
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500
-                         text-white text-sm font-semibold rounded-xl transition-colors"
+              aria-label={showAdd ? 'Close add ticker form' : 'Add ticker to watchlist'}
+              title={showAdd ? 'Close' : 'Add ticker'}
+              className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
+                         text-white rounded-xl transition-colors shrink-0"
             >
-              <Plus size={14} /> Add Ticker
+              <Plus size={20} strokeWidth={2.5} />
             </button>
           </div>
         </div>
@@ -450,9 +460,14 @@ export default function WatchlistPage() {
                 className="flex-1 min-w-40 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white
                            text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500"
               />
-              <button onClick={handleAdd}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors">
-                Add
+              <button
+                type="button"
+                onClick={handleAdd}
+                aria-label="Add ticker to watchlist"
+                title="Add to watchlist"
+                className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors shrink-0"
+              >
+                <Plus size={20} strokeWidth={2.5} />
               </button>
               <button onClick={() => setShowAdd(false)}
                 className="px-4 py-2 bg-gray-800 text-gray-400 text-sm rounded-xl hover:bg-gray-700 transition-colors">

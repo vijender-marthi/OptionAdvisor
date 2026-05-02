@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import type { ReactNode } from 'react'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
-import { analyzeOptions, clearBackendAlerts, dismissBackendAlert, getAlerts, getUserData, saveUserData, scanBackendAlerts } from '../api/client'
+import { analyzeOptions, clearBackendAlerts, dismissBackendAlert, getAlerts, getJournal, getUserData, saveUserData, scanBackendAlerts } from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 
 // ─── Router ────────────────────────────────────────────────────────────────────
@@ -140,6 +140,12 @@ interface AppContextValue {
   // Settings
   alertEmailEnabled: boolean
   setAlertEmailEnabled: (enabled: boolean) => void
+
+  /** Total saved journal entries (server); refreshes after save/delete and on login. */
+  journalEntryCount: number
+  refreshJournalCount: () => Promise<void>
+  /** Set badge count from a known list length (e.g. after Journal page fetch) without re-querying. */
+  syncJournalEntryCount: (n: number) => void
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -187,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
   const [alertEmailEnabled, setAlertEmailEnabledState] = useState<boolean>(() => load<boolean>('oa_alert_email_enabled', true))
   const [userDataLoaded, setUserDataLoaded] = useState(false)
+  const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
 
   // Keep refs so interval/async closures always see current values
@@ -291,6 +298,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.email])
 
+  // Journal entries count (for sidebar badge)
+  const refreshJournalCount = useCallback(async () => {
+    const email = userRef.current?.email
+    if (!email) {
+      setJournalEntryCount(0)
+      return
+    }
+    try {
+      const data = await getJournal(email)
+      const n = Array.isArray(data.entries) ? data.entries.length : 0
+      setJournalEntryCount(n)
+    } catch (e) {
+      console.warn('[journal] count refresh failed:', e)
+    }
+  }, [])
+
+  const syncJournalEntryCount = useCallback((n: number) => {
+    setJournalEntryCount(Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0)
+  }, [])
+
+  useEffect(() => {
+    if (!user?.email) {
+      setJournalEntryCount(0)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await getJournal(user.email)
+        if (cancelled) return
+        const n = Array.isArray(data.entries) ? data.entries.length : 0
+        setJournalEntryCount(n)
+      } catch {
+        if (!cancelled) setJournalEntryCount(0)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user?.email])
+
   // ── Router ──────────────────────────────────────────────────────────────────
   const navigate = useCallback((p: Page) => setPage(p), [])
 
@@ -319,6 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWatchlist([])
     setPortfolio([])
     setUserDataLoaded(false)
+    setJournalEntryCount(0)
     setPage('login')
   }, [])
 
@@ -677,6 +724,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,
       alertEmailEnabled, setAlertEmailEnabled,
+      journalEntryCount, refreshJournalCount, syncJournalEntryCount,
     }}>
       {children}
     </AppContext.Provider>
