@@ -55,7 +55,7 @@ export default function Sidebar() {
 
   const w = collapsed ? 'w-16' : 'w-56'
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'ticker',        label: 'Advisor', icon: <TrendingUp size={18} /> },
+    { id: 'ticker',        label: 'Home', icon: <TrendingUp size={18} /> },
     { id: 'trade-signals', label: 'Signals', icon: <ShieldCheck size={18} /> },
     { id: 'watchlist',     label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
     { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
