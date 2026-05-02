@@ -4,6 +4,7 @@ import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
+  FlaskConical, NotebookPen,
 } from 'lucide-react'
 
 // ─── Section data ────────────────────────────────────────────────────────────
@@ -259,6 +260,20 @@ const workflowSteps = [
     icon: <Briefcase size={16} />,
     color: 'text-indigo-400',
     desc: 'Click "Add to Portfolio" on any recommendation, enter contracts and entry price. Portfolio tracks open and closed positions, refreshes current values, estimates P&L, and exports XLSX/PDF reports.',
+  },
+  {
+    step: '7',
+    title: 'Backtest Lab',
+    icon: <FlaskConical size={16} />,
+    color: 'text-violet-400',
+    desc: 'Run walk-forward backtests on historical signals: synthetic Black–Scholes pricing with HV-20×1.15 as an IV proxy, standard exit rules (credit/debit), equity curve, trade log, and stats. For research — not live execution.',
+  },
+  {
+    step: '8',
+    title: 'Trade Journal',
+    icon: <NotebookPen size={16} />,
+    color: 'text-sky-400',
+    desc: 'Save real trades from an expanded recommendation via "Save to Journal". Track open MTM P&L, refresh quotes, add notes, close with exit reason, or delete. Filter by All / Open / Closed / Expired.',
   },
 ]
 
@@ -557,6 +572,84 @@ export default function HelpPage() {
             </div>
             <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
               Tip: refresh the Portfolio before exporting when you want current stock prices and current P&L estimates in the report.
+            </p>
+          </div>
+        </InfoCard>
+
+        {/* Backtest Lab */}
+        <InfoCard icon={<FlaskConical size={18} />} title="Backtest Lab" defaultOpen={false}>
+          <div className="space-y-3 text-sm text-gray-400">
+            <p>
+              Backtest Lab runs a <span className="text-gray-200 font-semibold">historical simulation</span> on past engine
+              trade signals for a ticker and date range. It helps you see how the strategy rules would have behaved in the past — it is
+              <span className="text-amber-400 font-semibold"> not</span> a guarantee of future results.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {[
+                {
+                  title: 'Pricing model',
+                  desc: 'Options are valued with Black–Scholes using historical volatility (HV-20) scaled by 1.15 as a simple IV stand-in. Liquidity, borrow, dividends, and real intraday IV are not modeled.',
+                },
+                {
+                  title: 'Exits',
+                  desc: 'Credit trades: take profit at ~50% of max credit, stop at ~2× credit loss, or exit at 21 DTE. Debit trades: ~100% gain target, ~50% loss stop, or 5 DTE. Each fill assumes 1 contract (100 shares) per signal.',
+                },
+                {
+                  title: 'Controls',
+                  desc: 'Choose ticker, date range (with presets), strategy mode (all / credit / long / short-or-covered), target weeks out, optional spread width, then Run Backtest. Results include win rate, P&L, Sharpe, drawdown, profit factor, equity curve, and a sortable trade log.',
+                },
+                {
+                  title: 'Backend',
+                  desc: 'The browser calls POST /api/backtest (same-origin; production may mount the app under a path prefix). The server walks saved signals and returns aggregate stats and trade rows — no brokerage connection.',
+                },
+              ].map(item => (
+                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
+                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
+                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
+              Treat outputs as <em>indicative</em>: real fills, slippage, assignment, and IV paths will differ. Past simulation performance is not indicative of future results.
+            </p>
+          </div>
+        </InfoCard>
+
+        {/* Trade Journal */}
+        <InfoCard icon={<NotebookPen size={18} />} title="Trade Journal" defaultOpen={false}>
+          <div className="space-y-3 text-sm text-gray-400">
+            <p>
+              The Trade Journal is for <span className="text-gray-200 font-semibold">trades you actually place</span>. You must be signed in.
+              From Option Advisory, expand a recommendation and use <span className="text-violet-300 font-semibold">Save to Journal</span> to
+              snapshot the setup (ticker, strategy, legs, scores, bias, etc.).
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {[
+                {
+                  title: 'Open vs closed',
+                  desc: 'Open rows show live or last-refreshed stock price and MTM P&L per contract. After you close in real life, use Close Trade in the journal to record exit date, reason, and optional notes.',
+                },
+                {
+                  title: 'Refresh P&L',
+                  desc: 'Refetches marks for open entries so MTM updates without reloading the whole page. Closed trades keep stored realized P&L.',
+                },
+                {
+                  title: 'Notes & filters',
+                  desc: 'Each entry supports editable notes. Filter tabs: All, Open, Closed, Expired — to focus on what you still manage vs history.',
+                },
+                {
+                  title: 'Backend',
+                  desc: 'Journal data is stored per user on the server (e.g. save, list, refresh marks, close, patch notes, delete) under authenticated API routes. Deleting an entry is permanent.',
+                },
+              ].map(item => (
+                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
+                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
+                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
+              The journal is separate from Backtest Lab: journal = your real trades; backtest = historical simulation on signals.
             </p>
           </div>
         </InfoCard>

@@ -208,9 +208,19 @@ sudo systemctl restart optionadvisor
 
 cd ../frontend
 npm install
-npm run build
+# On small droplets, `npm run build` can fail with "JavaScript heap out of memory" during Vite.
+# Raise the Node heap limit (adjust 4096 if you still see OOM):
+NODE_OPTIONS='--max-old-space-size=4096' npm run build
 sudo rsync -a --delete dist/ /var/www/optionadvisor/
 sudo systemctl reload nginx
 ```
+
+If the web root is owned by your deploy user (e.g. `chown -R fluxtrade:fluxtrade /var/www/optionadvisor`), you can publish the build **without** `sudo`:
+
+```bash
+rsync -a --delete dist/ /var/www/optionadvisor/
+```
+
+You still need `sudo` for `systemctl restart optionadvisor` (and typically for `systemctl reload nginx`) unless configured otherwise.
 
 The database remains on `/mnt/optionadvisor-data`, outside the app directory.
