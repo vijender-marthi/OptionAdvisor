@@ -153,3 +153,80 @@ export const updateJournalNotes = async (email: string, id: string, notes: strin
 export const deleteJournalEntry = async (email: string, id: string): Promise<void> => {
   await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
 }
+
+// ─── Alpaca Paper Trading (admin only) ──────────────────────────────────────
+
+export interface AlpacaAccount {
+  status: string
+  equity: number
+  cash: number
+  buying_power: number
+  day_trade_count: number
+  options_approved_level: number
+  pattern_day_trader: boolean
+  currency: string
+}
+
+export interface AlpacaPosition {
+  symbol: string
+  qty: number
+  side: string
+  avg_entry: number
+  current_price: number
+  market_value: number
+  unrealized_pl: number
+  unrealized_plpc: number
+  asset_class: string
+}
+
+export interface AlpacaOrder {
+  id: string
+  client_order_id: string
+  symbol: string
+  status: string
+  side: string
+  qty: string
+  filled_qty: string
+  order_type: string
+  filled_avg_price: string | null
+  submitted_at: string
+  filled_at: string | null
+  legs: object[]
+  strategy: string
+}
+
+export const getTradingStatus = async (email: string): Promise<{
+  configured: boolean
+  message?: string
+  account?: AlpacaAccount
+  /** Present when keys are set but Alpaca API returned an error (401, wrong endpoint, etc.) */
+  alpaca_error?: string
+}> => {
+  const { data } = await api.get('/trading/status', { params: { email } })
+  return data
+}
+
+export const getTradingPositions = async (email: string): Promise<AlpacaPosition[]> => {
+  const { data } = await api.get('/trading/positions', { params: { email } })
+  return data.positions ?? []
+}
+
+export const getTradingOrders = async (email: string, status = 'all'): Promise<AlpacaOrder[]> => {
+  const { data } = await api.get('/trading/orders', { params: { email, status } })
+  return data.orders ?? []
+}
+
+export const executeTrade = async (params: {
+  email: string; ticker: string; strategy: string; legs: object[]; contracts: number
+}): Promise<{ ok: boolean; order_id: string; status: string; symbol: string }> => {
+  const { data } = await api.post('/trading/execute', params)
+  return data
+}
+
+export const cancelTradingOrder = async (email: string, order_id: string): Promise<void> => {
+  await api.post('/trading/cancel', { email, order_id })
+}
+
+export const closeTradingPosition = async (email: string, symbol: string): Promise<void> => {
+  await api.post('/trading/close', { email, symbol })
+}

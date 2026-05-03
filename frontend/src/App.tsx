@@ -15,6 +15,7 @@ const TradeSignalsPage = lazy(() => import('./pages/TradeSignalsPage'))
 const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
+const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 
 function RouteFallback() {
   return (
@@ -59,6 +60,7 @@ function Router() {
         {renderPage === 'alerts'        && <AlertsPage />}
         {renderPage === 'settings'      && <SettingsPage />}
         {renderPage === 'journal'       && <JournalPage />}
+        {renderPage === 'auto-trade'    && <AutoTradePage />}
       </Suspense>
     </AppLayout>
   )

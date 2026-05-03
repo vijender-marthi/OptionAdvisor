@@ -4,7 +4,7 @@ import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
-  FlaskConical, NotebookPen,
+  FlaskConical, NotebookPen, Scale, Sigma,
 } from 'lucide-react'
 
 // ─── Section data ────────────────────────────────────────────────────────────
@@ -83,6 +83,8 @@ const filters = [
   'Credit spreads target roughly 25 delta short legs; iron condors target roughly 20 delta short legs.',
   'Credit trades warn when collected premium is below 25% of spread width.',
   'Trades with both failed liquidity and failed credit checks are rejected before ranking.',
+  'Any trade with EV ≤ 0 is hard-rejected — negative expected value is mathematically indefensible.',
+  'Trades with EV/risk < 2% pass but receive a "Thin edge" warning — model error may erase the edge.',
   'The final list is sorted by total score and capped to the top six recommendations.',
 ]
 
@@ -187,6 +189,11 @@ const glossaryTerms = [
   { term: 'Covered Put (Cash-Secured Put)', def: 'You sell an OTM put and hold cash equal to (strike × 100) as collateral. You collect premium income. If the stock stays above the strike, the put expires worthless and you keep the premium. If it falls below the strike, you are assigned 100 shares at the strike price — your effective cost basis is (strike − premium received), which is a discount to where the stock was when you sold the put.' },
   { term: 'The Wheel Strategy', def: 'A compound income strategy: (1) Sell a cash-secured put. If assigned, you now own the stock. (2) Sell a covered call against those shares. If called away, you no longer own the stock — return to step 1. Each cycle collects premium and resets. Works best in high-IV environments on stocks you are comfortable owning.' },
   { term: 'Income Yield', def: 'For covered strategies, the checklist replaces EV with income yield: (net premium collected ÷ position value). Covered Call yield = premium ÷ stock price. Covered Put yield = premium ÷ cash collateral (the strike price). A 1%+ monthly yield is typically the target.' },
+  { term: 'Kelly Criterion', def: 'A mathematical formula that calculates the optimal fraction of capital to risk on a trade: Kelly% = EV ÷ max_loss. The system uses Half-Kelly (÷2, capped at 20%) for safety. Example: EV=$0.20, max_loss=$3.90 → Kelly=5.1%, Half-Kelly=2.55% of capital.' },
+  { term: 'Half-Kelly', def: 'The recommended position size — half of the raw Kelly fraction, capped at 20% per trade. Halving protects against estimation error in the probability inputs. Practitioners widely prefer Half-Kelly over Full-Kelly to reduce drawdowns.' },
+  { term: 'Edge Ratio', def: 'EV ÷ max_loss expressed as a percentage. Measures the quality of the mathematical edge. Below 2% = "thin edge" warning (model error may erase it). Above 5% = solid edge. This is more useful than raw EV dollar amount because it normalizes across different position sizes.' },
+  { term: 'Capital at Risk', def: 'The actual maximum dollar loss for your position: contracts × max_loss × 100. Shown as a % of account size in the contract picker. Turns amber above 10% and red above 20% — Kelly math says concentrating more than 20% on one trade is outside the optimal range.' },
+  { term: 'EV Hard Gate', def: 'Any trade with EV ≤ 0 is automatically rejected by the engine before it reaches you. A negative-EV trade loses money in expectation over many repetitions — no amount of good signal alignment can fix negative expected value.' },
   { term: 'Short Put (Naked)', def: 'Sell a put option with no stock or cash collateral (unlike a cash-secured put). You collect the full premium but require a margin account. Profit if the stock stays above the strike. Maximum loss if the stock goes to zero. Requires active management — a disciplined stop at 2× the premium received is standard.' },
   { term: 'Short Call (Naked)', def: 'Sell a call option without owning the underlying shares (unlike a covered call). You collect premium but face theoretically unlimited loss if the stock rallies above the strike. Requires margin. Best reserved for bearish/neutral setups in elevated IV, with a hard stop at 2× the credit received. Never hold into expiry week without a clear exit plan.' },
 ]
@@ -259,7 +266,7 @@ const workflowSteps = [
     title: 'Add to Portfolio',
     icon: <Briefcase size={16} />,
     color: 'text-indigo-400',
-    desc: 'Click "Add to Portfolio" on any recommendation, enter contracts and entry price. Portfolio tracks open and closed positions, refreshes current values, estimates P&L, and exports XLSX/PDF reports.',
+    desc: 'Click "Add to Portfolio" on any recommendation. The contract picker shows Kelly Criterion sizing — how many contracts are mathematically optimal for your account size. Kelly data (edge ratio, Half-Kelly %, capital at risk) is saved with the position so you can review your sizing discipline later.',
   },
   {
     step: '7',
@@ -484,6 +491,152 @@ export default function HelpPage() {
             <p className="text-xs text-gray-600 pt-1">
               Hard fail checks: IV Environment (wrong IV regime), DTE Window (&lt;14 days), Liquidity (wide spreads/low OI), Expected Value (negative EV).
               All other checks are soft fails or warnings.
+            </p>
+          </div>
+        </InfoCard>
+
+        {/* Position Sizing & Capital Risk */}
+        <InfoCard icon={<Scale size={18} />} title="Position Sizing & Capital Risk — Kelly Criterion">
+          <div className="space-y-4 text-sm text-gray-400">
+
+            <p>
+              The engine uses the <span className="text-white font-semibold">Kelly Criterion</span> — a mathematical
+              formula from Operations Research — to answer the most important question in trading:
+              <span className="text-violet-300 font-semibold"> how much of your capital should you put into this trade?</span>
+            </p>
+
+            {/* Core formula */}
+            <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
+              <div className="text-violet-300 font-semibold text-sm mb-3">📐 The Formula</div>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
+                <div><span className="text-violet-400">Kelly %</span>    = EV ÷ max_loss</div>
+                <div><span className="text-violet-400">Half-Kelly %</span> = Kelly % × 0.5   <span className="text-gray-500">← recommended (capped at 20%)</span></div>
+                <div><span className="text-violet-400">Capital to risk</span>  = account_size × Half-Kelly %</div>
+                <div><span className="text-violet-400">Contracts</span>   = floor(capital_to_risk ÷ (max_loss × 100))</div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Half-Kelly is standard practice — halving protects against estimation error in the PoP inputs.
+                The 20% cap ensures no single trade can ever exceed one-fifth of your account.
+              </p>
+            </div>
+
+            {/* Worked example — WDC */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+              <div className="text-white font-semibold text-sm mb-3">
+                📋 Worked Example — WDC Bull Put Spread
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 text-xs mb-3">
+                {[
+                  ['Max Profit', '$110 / contract'],
+                  ['Max Loss', '$390 / contract'],
+                  ['Prob of Profit (PoP)', '82%'],
+                  ['EV', '(0.82 × $1.10) − (0.18 × $3.90) = +$0.20/share = +$20/contract'],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-gray-900/60 rounded-lg px-3 py-2">
+                    <div className="text-gray-500 mb-0.5">{k}</div>
+                    <div className="text-gray-200 font-mono">{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1.5">
+                <div><span className="text-violet-400">Edge Ratio</span>  = $0.20 ÷ $3.90 = <span className="text-emerald-400">5.1%</span>  <span className="text-gray-600">← passes 2% minimum</span></div>
+                <div><span className="text-violet-400">Kelly %</span>     = 5.1% of capital</div>
+                <div><span className="text-violet-400">Half-Kelly</span>  = 2.55% of capital</div>
+                <div className="border-t border-gray-700 pt-1.5 mt-1.5">
+                  <span className="text-gray-400">On a </span><span className="text-white">$25,000</span><span className="text-gray-400"> account:</span>
+                </div>
+                <div>  Capital to risk = $25,000 × 2.55% = <span className="text-amber-400">$637</span></div>
+                <div>  Max loss per contract = $390</div>
+                <div>  Recommended contracts = floor($637 ÷ $390) = <span className="text-white font-bold">1 contract</span></div>
+                <div className="border-t border-gray-700 pt-1.5 mt-1.5 text-gray-500">
+                  Actual capital at risk = 1 × $390 = $390 = <span className="text-emerald-400">1.6%</span> of account ✓
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Kelly is telling you: <em>this is a thin-edge trade — stay small</em>. One contract max.
+                The 82% PoP looks attractive but the 1:0.3 R:R means one loss erases 3–4 winners. Size conservatively.
+              </p>
+            </div>
+
+            {/* Thin edge vs solid edge */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-3">
+                <div className="text-amber-400 font-semibold text-sm mb-2">⚠ Thin Edge Warning</div>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  When <span className="font-mono text-amber-300">Edge Ratio &lt; 2%</span>, the engine warns that
+                  estimation error in the PoP calculation could wipe out the edge entirely. The trade is not rejected —
+                  but you see the warning badge and should size conservatively (1 contract or less).
+                </p>
+                <div className="mt-2 font-mono text-xs bg-gray-900/50 rounded-lg p-2 text-gray-400">
+                  EV = $0.05/share → Edge = $0.05/$3.90 = 1.3% ← thin
+                </div>
+              </div>
+              <div className="bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-3">
+                <div className="text-emerald-400 font-semibold text-sm mb-2">✅ Solid Edge</div>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  When <span className="font-mono text-emerald-300">Edge Ratio ≥ 5%</span>, the math supports a
+                  meaningful position. Kelly recommends a larger allocation. Even here, Half-Kelly discipline
+                  keeps you from over-concentrating in any single trade.
+                </p>
+                <div className="mt-2 font-mono text-xs bg-gray-900/50 rounded-lg p-2 text-gray-400">
+                  EV = $0.40/share → Edge = $0.40/$1.20 = 33% ← strong
+                </div>
+              </div>
+            </div>
+
+            {/* EV hard gate */}
+            <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-4">
+              <div className="text-red-400 font-semibold text-sm mb-2">🚫 EV Hard Gate — Negative EV Trades Are Rejected</div>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                Any trade where <span className="font-mono text-red-300">EV ≤ 0</span> is rejected by the engine
+                before it ever reaches you. This is non-negotiable — a negative-EV trade loses money in expectation
+                over many repetitions regardless of how good the setup looks qualitatively.
+              </p>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
+                EV = (0.72 × $0.85) − (0.28 × $4.15) = $0.612 − $1.162 = <span className="text-red-400">−$0.55/share</span> → REJECTED
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                This commonly filters out trades on tightly arbitraged tickers (SPY, QQQ) where the options market
+                leaves little room for edge. It is not a bug — the market is simply efficient on those names.
+              </p>
+            </div>
+
+            {/* Capital at risk color coding */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+              <div className="text-white font-semibold text-sm mb-3">🎨 Capital at Risk — Color Thresholds in Contract Picker</div>
+              <div className="space-y-2 text-xs">
+                {[
+                  { color: 'text-gray-300', bg: 'bg-gray-700/40', label: '< 10% of account', meaning: 'Well within Kelly range. No warning.' },
+                  { color: 'text-amber-400', bg: 'bg-amber-900/20', label: '10–20% of account', meaning: 'Approaching the Kelly cap. Acceptable but watch total portfolio exposure.' },
+                  { color: 'text-red-400',   bg: 'bg-red-900/20',   label: '> 20% of account', meaning: 'Exceeds the Half-Kelly cap. A warning banner appears. Consider fewer contracts.' },
+                ].map(item => (
+                  <div key={item.label} className={`flex items-start gap-3 rounded-lg px-3 py-2 ${item.bg}`}>
+                    <span className={`font-mono font-bold shrink-0 w-36 ${item.color}`}>{item.label}</span>
+                    <span className="text-gray-400">{item.meaning}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Why captured in portfolio */}
+            <div className="bg-blue-950/30 border border-blue-800/50 rounded-xl p-4">
+              <div className="text-blue-300 font-semibold text-sm mb-2">💾 Kelly Data Is Saved to Your Portfolio</div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                When you add a trade to the Portfolio, the engine saves a snapshot of the Kelly fraction,
+                half-Kelly, edge ratio, actual capital at risk, and your account size at entry.
+                This lets you review later: <em>Did I size this correctly when I entered?
+                Was the edge as strong as I thought? Did I follow the Kelly recommendation?</em>
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed mt-2">
+                These values are point-in-time — they reflect market conditions at entry, not today.
+                The snapshot is permanent and survives page refreshes.
+              </p>
+            </div>
+
+            <p className="text-xs text-gray-600 border-t border-gray-800 pt-3">
+              Kelly Criterion was developed by John L. Kelly Jr. at Bell Labs (1956). It is the mathematically
+              optimal betting/investment fraction for a repeated game with known probabilities and payoffs.
+              In practice, Half-Kelly is used universally because PoP estimates always carry estimation error.
             </p>
           </div>
         </InfoCard>
@@ -720,6 +873,188 @@ if HIGH_IV and BEARISH:
           <p className="text-sm text-gray-400 mt-3">
             After these candidates are built, the engine filters weak trades and ranks the survivors by score.
           </p>
+        </InfoCard>
+
+        {/* ── EV Models ── */}
+        <InfoCard icon={<Sigma size={18} />} title="Expected Value Models — How EV is Calculated Per Strategy" defaultOpen={false}>
+          <div className="space-y-4 text-sm text-gray-400">
+
+            <p>
+              Different strategies have fundamentally different payoff shapes. The engine uses{' '}
+              <span className="text-white font-semibold">two distinct formulas</span> matched to the math
+              of each structure — not one formula applied everywhere.
+            </p>
+
+            {/* Two-formula overview */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
+                <div className="text-violet-300 font-semibold text-sm mb-2">📐 Formula 1 — Binary EV</div>
+                <div className="text-xs text-gray-400 mb-2">
+                  For <span className="text-white font-semibold">bounded payoff</span> strategies where the
+                  outcome at expiry is either max profit or max loss (or something in between, captured by PoP):
+                </div>
+                <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
+                  <div>EV = (PoP × max_profit)</div>
+                  <div className="pl-5">− ((1 − PoP) × max_loss)</div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  This is mathematically <em>exact</em> for capped strategies — the distribution has two outcomes and PoP from delta is an unbiased estimate.
+                </p>
+              </div>
+
+              <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-4">
+                <div className="text-blue-300 font-semibold text-sm mb-2">📐 Formula 2 — Black-Scholes EV</div>
+                <div className="text-xs text-gray-400 mb-2">
+                  For <span className="text-white font-semibold">unbounded payoff</span> strategies where upside is
+                  theoretically unlimited. A lognormal integral over the full price distribution is required:
+                </div>
+                <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
+                  <div><span className="text-blue-400">CALL:</span> S·e^(μT)·N(d1) − K·N(d2) − premium</div>
+                  <div><span className="text-blue-400">PUT:</span>  K·N(−d2) − S·e^(μT)·N(−d1) − premium</div>
+                  <div className="text-gray-500 mt-1">d1 = (ln(S/K) + (μ + ½σ²)T) / (σ√T)</div>
+                  <div className="text-gray-500">d2 = d1 − σ√T</div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  μ is a real-world drift based on the engine's directional bias signal (see below). Risk-neutral pricing uses μ=r; this engine uses a signal-adjusted drift for meaningful EV.
+                </p>
+              </div>
+            </div>
+
+            {/* Strategy → formula table */}
+            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
+              <table className="w-full min-w-[620px] text-xs">
+                <thead className="bg-gray-800">
+                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-4 py-3 w-44">Strategy</th>
+                    <th className="px-4 py-3 w-36">EV Formula</th>
+                    <th className="px-4 py-3">Why this formula is correct</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {
+                      strategy: 'Long Call',
+                      formula: 'Black-Scholes',
+                      color: 'text-blue-400',
+                      reason: 'Upside is unbounded — the stock can go to any price above the strike. Binary EV would need to assume a fixed "max profit" which is arbitrary. BS integrates over the full lognormal distribution.',
+                    },
+                    {
+                      strategy: 'Long Put',
+                      formula: 'Black-Scholes',
+                      color: 'text-blue-400',
+                      reason: 'Same logic as Long Call but inverted. The put payoff is max(K − S, 0); the full lognormal expectation is required to capture tail scenarios where the stock drops sharply.',
+                    },
+                    {
+                      strategy: 'Long Straddle',
+                      formula: 'BS Call + BS Put',
+                      color: 'text-blue-400',
+                      reason: 'A straddle profits from large moves in either direction. EV = BS_EV(call leg) + BS_EV(put leg) using the average ATM IV. Each leg is evaluated independently then summed.',
+                    },
+                    {
+                      strategy: 'Bull Call / Bear Put Spread',
+                      formula: 'Binary EV',
+                      color: 'text-violet-400',
+                      reason: 'Payoff is strictly capped at the spread width. Both max profit and max loss are defined at construction. PoP from the short-leg delta is an unbiased estimator — binary formula is exact.',
+                    },
+                    {
+                      strategy: 'Bull Put / Bear Call Spread',
+                      formula: 'Binary EV',
+                      color: 'text-violet-400',
+                      reason: 'Credit spread: collect premium upfront, max loss = spread width − credit. Payoff is fully bounded. Binary formula captures this exactly.',
+                    },
+                    {
+                      strategy: 'Iron Condor',
+                      formula: 'Binary EV',
+                      color: 'text-violet-400',
+                      reason: 'Two credit spreads combined. Net credit = max profit, max loss = wider spread − credit. Payoff is capped on all sides. Binary EV is exact.',
+                    },
+                    {
+                      strategy: 'Short Put / Short Call',
+                      formula: 'Binary EV (proxied)',
+                      color: 'text-amber-400',
+                      reason: 'True max loss is very large (stock to zero or infinity). The engine proxies max loss at 2× credit — a disciplined stop-loss model. Binary EV applied to this bounded stop captures realistic expected outcome.',
+                    },
+                    {
+                      strategy: 'Covered Call / Put',
+                      formula: 'Binary EV (proxied)',
+                      color: 'text-amber-400',
+                      reason: 'Stock component is not modeled (assumed already owned / cash committed). Premium income EV uses 2× credit as the practical stop proxy. Checklist uses income yield instead of EV as the primary gate.',
+                    },
+                  ].map(row => (
+                    <tr key={row.strategy} className="border-t border-gray-700/50">
+                      <td className="px-4 py-3 font-semibold text-white">{row.strategy}</td>
+                      <td className={`px-4 py-3 font-mono font-bold ${row.color}`}>{row.formula}</td>
+                      <td className="px-4 py-3 text-gray-400 leading-relaxed">{row.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Real-world drift */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+              <div className="text-white font-semibold text-sm mb-3">📡 Real-World Drift μ — Connecting Signals to BS Formula</div>
+              <p className="text-xs text-gray-400 mb-3 leading-relaxed">
+                Standard Black-Scholes uses risk-neutral drift (the risk-free rate), which makes EV = 0 for every
+                option — useless for ranking. The engine replaces it with a{' '}
+                <span className="text-white font-semibold">signal-adjusted real-world drift</span> derived from
+                the directional bias and confidence score, so EV reflects the engine's actual conviction:
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-gray-700/50">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-900">
+                    <tr className="text-left text-gray-500 uppercase tracking-wide">
+                      <th className="px-3 py-2">Signal</th>
+                      <th className="px-3 py-2">Drift μ formula</th>
+                      <th className="px-3 py-2">Example (confidence = 0.70)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { signal: 'Bullish', color: 'text-emerald-400', formula: 'μ = +0.15 × confidence', example: 'μ = +0.15 × 0.70 = +10.5% annualised' },
+                      { signal: 'Bearish', color: 'text-red-400',     formula: 'μ = −0.10 × confidence', example: 'μ = −0.10 × 0.70 = −7.0% annualised' },
+                      { signal: 'Neutral', color: 'text-gray-300',    formula: 'μ = +0.05 (flat)',       example: 'μ = +0.05 = +5.0% (equity risk premium)' },
+                    ].map(r => (
+                      <tr key={r.signal} className="border-t border-gray-700/50">
+                        <td className={`px-3 py-2 font-semibold ${r.color}`}>{r.signal}</td>
+                        <td className="px-3 py-2 font-mono text-gray-300">{r.formula}</td>
+                        <td className="px-3 py-2 text-gray-400">{r.example}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                A strongly bullish signal on a cheap-IV day produces meaningfully positive EV for a Long Call.
+                A bearish signal correctly gives a Long Call negative EV — and the EV Hard Gate then rejects it.
+                This is what "signals driving the EV model" means in practice.
+              </p>
+            </div>
+
+            {/* Why the 10x proxy was wrong */}
+            <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4">
+              <div className="text-amber-400 font-semibold text-sm mb-2">⚠ Why Simple "10× Premium" Proxies Are Wrong</div>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                An older approach estimated long option EV as{' '}
+                <span className="font-mono text-amber-300">PoP × (10 × premium)</span> — treating 10× cost as a
+                stand-in for "max profit". For a $18.35 AVGO call this produced{' '}
+                <span className="text-red-400 font-semibold">EV = +$8,459/contract</span>, a number that
+                looks exciting but is mathematically meaningless. The 10× cap is arbitrary and not derived
+                from any probability distribution.
+              </p>
+              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
+                <div className="text-red-400">❌ Old proxy:  EV = 0.51 × ($1,835 × 10) = +$9,359  ← inflated, arbitrary</div>
+                <div className="text-emerald-400">✅ Black-Scholes: integrates S·e^(μT)·N(d1) − K·N(d2) over lognormal dist.</div>
+                <div className="text-gray-500 mt-1">The BS result is bounded by the actual probability-weighted payoff surface.</div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                The same inflation problem affected Kelly sizing — a 461% edge ratio caused by the proxy would
+                hit the 20% Half-Kelly hard cap. The BS formula brings edge ratios down to realistic values
+                (typically 3–15% for quality setups), making Kelly sizing meaningful.
+              </p>
+            </div>
+
+          </div>
         </InfoCard>
 
         {/* ── Covered Strategies deep-dive ── */}

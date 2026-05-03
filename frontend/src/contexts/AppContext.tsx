@@ -25,6 +25,7 @@ function getHashPage(): Page {
   if (h === 'alerts') return 'alerts'
   if (h === 'settings') return 'settings'
   if (h === 'journal') return 'journal'
+  if (h === 'auto-trade') return 'auto-trade'
   return 'ticker'
 }
 
@@ -148,6 +149,9 @@ interface AppContextValue {
   // Settings
   alertEmailEnabled: boolean
   setAlertEmailEnabled: (enabled: boolean) => void
+  /** Trading account size in USD — used to compute Kelly-recommended contracts. */
+  accountSize: number
+  setAccountSize: (n: number) => void
 
   /** Total saved journal entries (server); refreshes after save/delete and on login. */
   journalEntryCount: number
@@ -200,6 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sentAlertKeysRef = useRef<Set<string>>(new Set(load<string[]>('oa_sent_alert_keys', [])))
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
   const [alertEmailEnabled, setAlertEmailEnabledState] = useState<boolean>(() => load<boolean>('oa_alert_email_enabled', true))
+  const [accountSize, setAccountSizeState] = useState<number>(() => load<number>('oa_account_size', 25000))
   const [userDataLoaded, setUserDataLoaded] = useState(false)
   const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
@@ -362,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   const login = useCallback((name: string, email: string, password: string): boolean => {
-    const cleanEmail = email.trim()
+    const cleanEmail = email.trim().toLowerCase()
     if (!cleanEmail || !password.trim()) return false
     const displayName = name.trim() || cleanEmail.split('@')[0] || 'User'
     loginRefreshEmailRef.current = null
@@ -405,6 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPortfolio(prev => {
       if (prev.some(p => p.status === 'open' && p.ticker === ticker && p.strategy === rec.strategy && p.expiry === rec.expiry))
         return prev
+      const acctSize = load<number>('oa_account_size', 25000)
       return [{
         id: `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}`,
         ticker, companyName,
@@ -418,6 +424,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         breakeven_lower: rec.breakeven_lower,
         breakeven_upper: rec.breakeven_upper,
         addedAt: new Date().toISOString(), entryPrice, status: 'open' as const,
+        // Kelly Criterion snapshot — locked at time of entry for later review
+        kelly_fraction: rec.kelly_fraction,
+        half_kelly_fraction: rec.half_kelly_fraction,
+        edge_ratio: rec.edge_ratio,
+        capital_at_risk: Math.round(rec.max_loss * 100 * contracts),
+        account_size_at_entry: acctSize,
       }, ...prev]
     })
   }, [])
@@ -475,6 +487,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setAlertEmailEnabled = useCallback((enabled: boolean) => {
     setAlertEmailEnabledState(enabled)
     save('oa_alert_email_enabled', enabled)
+  }, [])
+
+  const setAccountSize = useCallback((n: number) => {
+    const clamped = Math.max(1000, Math.round(n))
+    setAccountSizeState(clamped)
+    save('oa_account_size', clamped)
   }, [])
 
   // Keep alertEmailEnabled accessible in async closures without stale capture
@@ -743,6 +761,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,
       alertEmailEnabled, setAlertEmailEnabled,
+      accountSize, setAccountSize,
       journalEntryCount, refreshJournalCount, syncJournalEntryCount,
     }}>
       {children}

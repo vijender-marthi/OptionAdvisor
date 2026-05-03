@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen, Zap } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 import { useApp } from '../contexts/AppContext'
 import PreTradeChecklist, { buildChecklist, deriveVerdict } from './PreTradeChecklist'
-import { saveToJournal } from '../api/client'
+import { saveToJournal, executeTrade } from '../api/client'
 
 interface Props {
   rec: Recommendation
@@ -50,13 +50,16 @@ const CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
 }: Props) {
-  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user, refreshJournalCount } = useApp()
+  const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user, refreshJournalCount, accountSize, setAccountSize } = useApp()
   const [open, setOpen]                       = useState(false)
   const [exitOpen, setExitOpen]               = useState(false)
   const [addedPort, setAddedPort]             = useState(false)
   const [addedWatch, setAddedWatch]           = useState(false)
   const [savedJournal, setSavedJournal]       = useState(false)
   const [savingJournal, setSavingJournal]     = useState(false)
+  const [executedTrade, setExecutedTrade]     = useState(false)
+  const [executingTrade, setExecutingTrade]   = useState(false)
+  const [tradeError, setTradeError]           = useState<string | null>(null)
   const [contractPickerOpen, setContractPickerOpen] = useState(false)
   const [selectedContracts, setSelectedContracts]   = useState(1)
 
@@ -104,6 +107,30 @@ export default function RecommendationCard({
       // silently fail — user can retry
     } finally {
       setSavingJournal(false)
+    }
+  }
+
+  const handleExecuteTrade = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!user?.email || executedTrade || executingTrade) return
+    setExecutingTrade(true)
+    setTradeError(null)
+    try {
+      await executeTrade({
+        email:     user.email,
+        ticker,
+        strategy:  rec.strategy,
+        legs:      rec.legs as object[],
+        contracts: selectedContracts,
+      })
+      setExecutedTrade(true)
+      setTimeout(() => setExecutedTrade(false), 8000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Trade execution failed'
+      setTradeError(msg)
+      setTimeout(() => setTradeError(null), 6000)
+    } finally {
+      setExecutingTrade(false)
     }
   }
 
@@ -281,59 +308,196 @@ export default function RecommendationCard({
                   <BookOpen size={16} className={savingJournal ? 'animate-pulse' : ''} />
                 </button>
               )}
+              {/* Execute Paper Trade — admin only */}
+              {user?.role === 'admin' && (
+                tradeError ? (
+                  <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
+                                   bg-red-900/20 border-red-800 text-red-400"
+                        title={tradeError}>
+                    <XCircle size={11} /> Failed
+                  </span>
+                ) : executedTrade ? (
+                  <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
+                                   bg-amber-900/20 border-amber-800 text-amber-400">
+                    <Check size={11} /> Sent to Alpaca
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleExecuteTrade}
+                    disabled={executingTrade}
+                    aria-label={executingTrade ? 'Sending to Alpaca' : 'Execute paper trade'}
+                    title={executingTrade ? 'Sending…' : `Execute ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} on Alpaca paper`}
+                    className="inline-flex h-9 items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all
+                               bg-amber-900/20 border-amber-700/60 text-amber-400 hover:bg-amber-900/40 hover:border-amber-500 disabled:opacity-50"
+                  >
+                    <Zap size={13} className={executingTrade ? 'animate-pulse' : ''} />
+                    {executingTrade ? 'Sending…' : 'Paper Trade'}
+                  </button>
+                )
+              )}
             </div>
           </div>
 
           {/* Contract picker — shown when Portfolio button clicked */}
-          {contractPickerOpen && !inPortfolio && (
-            <div
-              className="mx-3 sm:mx-4 mb-3 p-3 bg-violet-950/40 border border-violet-800 rounded-xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="text-xs text-violet-300 font-semibold mb-2">
-                How many contracts?
-                <span className="block sm:inline text-violet-500 font-normal sm:ml-1.5 mt-1 sm:mt-0">1 contract = 100 shares · ${(rec.max_profit * 100).toFixed(0)} max profit each</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {CONTRACT_OPTIONS.map(n => (
-                  <button
-                    key={n}
-                    onClick={() => setSelectedContracts(n)}
-                    className={`w-10 h-10 rounded-lg text-sm font-bold border transition-all ${
-                      selectedContracts === n
-                        ? 'bg-violet-600 border-violet-500 text-white'
-                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-                <div className="ml-2 text-xs text-gray-400">
-                  <span className="text-emerald-400 font-mono">${(rec.max_profit * 100 * selectedContracts).toLocaleString()}</span>
-                  <span> max profit · </span>
-                  <span className="text-red-400 font-mono">${(rec.max_loss * 100 * selectedContracts).toLocaleString()}</span>
-                  <span> max loss</span>
+          {contractPickerOpen && !inPortfolio && (() => {
+            // ── Kelly Criterion position sizing ────────────────────────────────
+            // half_kelly_fraction = conservative (Kelly × 0.5), capped at 20%.
+            // capitalAtRisk = accountSize × half_kelly_fraction
+            // kellyContracts = floor(capitalAtRisk / max_loss_per_contract)
+            const maxLossPerContract  = rec.max_loss * 100
+            const capitalAtRisk       = accountSize * rec.half_kelly_fraction
+            const kellyContracts      = Math.max(1, Math.floor(capitalAtRisk / maxLossPerContract))
+            const clampedKelly        = Math.min(kellyContracts, 10)
+            const kellyPct            = (rec.half_kelly_fraction * 100).toFixed(1)
+            const fullKellyPct        = (rec.kelly_fraction * 100).toFixed(1)
+            const edgeRatioPct        = (rec.edge_ratio * 100).toFixed(1)
+            const isThinEdge          = rec.edge_ratio < 0.02
+            const capitalForSelected  = maxLossPerContract * selectedContracts
+            const capitalPct          = accountSize > 0 ? (capitalForSelected / accountSize * 100).toFixed(1) : '—'
+
+            return (
+              <div
+                className="mx-3 sm:mx-4 mb-3 bg-violet-950/40 border border-violet-800 rounded-xl overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* ── Kelly header ─────────────────────────────────────── */}
+                <div className="px-3 pt-3 pb-2 border-b border-violet-900/60">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs text-violet-300 font-semibold">
+                      📐 Kelly Criterion — Position Sizing
+                    </span>
+                    {isThinEdge && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/40 border border-amber-700 text-amber-400 font-semibold">
+                        ⚠ Thin edge
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Kelly stats row */}
+                  <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    <div className="bg-gray-900/60 rounded-lg px-2 py-1.5">
+                      <div className="text-gray-500 mb-0.5">Edge (EV/Risk)</div>
+                      <div className={`font-mono font-bold ${isThinEdge ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {edgeRatioPct}%
+                      </div>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg px-2 py-1.5">
+                      <div className="text-gray-500 mb-0.5">Full Kelly</div>
+                      <div className="font-mono font-bold text-violet-300">{fullKellyPct}% of capital</div>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg px-2 py-1.5">
+                      <div className="text-gray-500 mb-0.5">½ Kelly (recommended)</div>
+                      <div className="font-mono font-bold text-violet-400">{kellyPct}% of capital</div>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg px-2 py-1.5">
+                      <div className="text-gray-500 mb-0.5">Kelly contracts</div>
+                      <div className="font-mono font-bold text-white">
+                        {clampedKelly} @ ${accountSize.toLocaleString()} acct
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Account size input */}
+                  <div className="mt-2 flex items-center gap-2 text-[11px]">
+                    <span className="text-gray-500 shrink-0">Account size:</span>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={accountSize}
+                        onChange={e => setAccountSize(Number(e.target.value))}
+                        className="pl-5 pr-2 py-1 w-32 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-200
+                                   focus:outline-none focus:border-violet-500 font-mono"
+                      />
+                    </div>
+                    <span className="text-gray-600">· saved automatically</span>
+                  </div>
+                </div>
+
+                {/* ── Contract selector ────────────────────────────────── */}
+                <div className="px-3 pt-2.5 pb-3">
+                  <div className="text-xs text-violet-300 font-semibold mb-2">
+                    How many contracts?
+                    <span className="block sm:inline text-violet-500 font-normal sm:ml-1.5 mt-1 sm:mt-0">
+                      1 contract = 100 shares · ${(rec.max_profit * 100).toFixed(0)} max profit each
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {CONTRACT_OPTIONS.map(n => {
+                      const isKelly = n === clampedKelly
+                      return (
+                        <button
+                          key={n}
+                          onClick={() => setSelectedContracts(n)}
+                          title={isKelly ? `Kelly recommends ${n} contract${n > 1 ? 's' : ''} for your account size` : undefined}
+                          className={`relative w-10 h-10 rounded-lg text-sm font-bold border transition-all ${
+                            selectedContracts === n
+                              ? 'bg-violet-600 border-violet-500 text-white'
+                              : isKelly
+                              ? 'bg-violet-900/40 border-violet-500 text-violet-300 hover:bg-violet-600 hover:text-white'
+                              : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400'
+                          }`}
+                        >
+                          {n}
+                          {isKelly && (
+                            <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-violet-500
+                                             text-white text-[8px] flex items-center justify-center font-bold leading-none">
+                              K
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Capital impact for current selection */}
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                    <span>
+                      <span className="text-gray-500">Max profit: </span>
+                      <span className="text-emerald-400 font-mono">${(rec.max_profit * 100 * selectedContracts).toLocaleString()}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">Max loss: </span>
+                      <span className="text-red-400 font-mono">${(maxLossPerContract * selectedContracts).toLocaleString()}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">Capital at risk: </span>
+                      <span className={`font-mono font-semibold ${
+                        Number(capitalPct) > 20 ? 'text-red-400' :
+                        Number(capitalPct) > 10 ? 'text-amber-400' : 'text-gray-300'
+                      }`}>{capitalPct}% of account</span>
+                    </span>
+                  </div>
+                  {Number(capitalPct) > 20 && (
+                    <div className="mt-1.5 text-[10px] text-red-400/80">
+                      ⚠ {capitalPct}% of capital in one trade exceeds the Kelly-recommended {kellyPct}%. Consider fewer contracts.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:flex gap-2 mt-3">
+                    <button
+                      onClick={() => setContractPickerOpen(false)}
+                      className="px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmPortfolio}
+                      aria-label={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
+                      title={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
+                      className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
+                    >
+                      <Briefcase size={18} />
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:flex gap-2 mt-3">
-                <button
-                  onClick={() => setContractPickerOpen(false)}
-                  className="px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmPortfolio}
-                  aria-label={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
-                  title={`Add ${selectedContracts} contract${selectedContracts > 1 ? 's' : ''} to portfolio`}
-                  className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
-                >
-                  <Briefcase size={18} />
-                </button>
-              </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Warnings */}
           {rec.warnings.length > 0 && (

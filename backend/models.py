@@ -57,7 +57,7 @@ class UserDataRequest(BaseModel):
 
 class UserDataResponse(BaseModel):
     email: str
-    """Effective role: admin | user | finance (resolved from env allow-lists + stored value)."""
+    """Effective role: admin | user | finance (stored in SQLite; finance env list optional)."""
     role: str = "user"
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
@@ -118,6 +118,11 @@ class RecommendationOut(BaseModel):
     rationale: str
     exit_plan: str
     warnings: list[str]
+
+    # Kelly Criterion position sizing
+    kelly_fraction:      float = 0.0   # raw Kelly % as fraction of capital
+    half_kelly_fraction: float = 0.0   # Half-Kelly (recommended), capped at 20%
+    edge_ratio:          float = 0.0   # EV / max_loss — diagnostic edge quality
 
 
 class OptionRowOut(BaseModel):

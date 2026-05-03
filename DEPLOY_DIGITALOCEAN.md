@@ -74,8 +74,7 @@ Create backend environment file:
 ```bash
 sudo tee /etc/optionadvisor.env >/dev/null <<'EOF'
 OPTION_ADVISOR_DB_PATH=/mnt/optionadvisor-data/option_advisor.sqlite3
-# Optional: comma-separated emails → role overrides (finance = no AI/Q Radar pages; admin = full UI like user, label only for now)
-OPTION_ADVISOR_ADMIN_EMAILS=
+# Optional: comma-separated emails → promote default users to finance role (see storage.effective_user_role).
 OPTION_ADVISOR_FINANCE_EMAILS=
 # Email: SendGrid (preferred if set) or Gmail SMTP — see backend/.env.example
 SENDGRID_API_KEY=
@@ -86,10 +85,16 @@ SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
+
+# Alpaca Paper Trading (optional — admins only; see Auto Trade page)
+ALPACA_API_KEY=
+ALPACA_SECRET_KEY=
 EOF
 ```
 
 Fill **SendGrid** (`SENDGRID_API_KEY` + verified `SENDGRID_FROM_EMAIL`) or **SMTP** if GO-alert emails should be sent. If both are unset, in-app alerts still work.
+
+To grant **admin** (Auto Trade, paper execute): set `user_state.role = 'admin'` for that email in the SQLite DB (`OPTION_ADVISOR_DB_PATH`). Admin is not configured via environment variables.
 
 ## 5. Backend systemd Service
 

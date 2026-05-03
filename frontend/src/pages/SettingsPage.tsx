@@ -202,7 +202,7 @@ export default function SettingsPage() {
             </div>
             <p className="text-xs text-gray-600 leading-relaxed pt-1">
               {user.role === 'finance' && 'Discovery radars (AI & Q) are hidden. Admins assign roles via server env or database.'}
-              {user.role === 'admin' && 'Full access. Assign finance/admin lists in OPTION_ADVISOR_FINANCE_EMAILS / OPTION_ADVISOR_ADMIN_EMAILS on the server.'}
+              {user.role === 'admin' && 'Full access. Promote other accounts by setting user_state.role in the server database; finance-only accounts can use OPTION_ADVISOR_FINANCE_EMAILS.'}
               {user.role === 'user' && 'Standard access. Your organization can promote accounts to admin or finance on the server.'}
             </p>
           </div>

@@ -7,6 +7,8 @@ import sqlite3
 from typing import Any, Optional
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 DEFAULT_DB_PATH = Path(__file__).with_name("option_advisor.sqlite3")
 DB_PATH = Path(os.getenv("OPTION_ADVISOR_DB_PATH", str(DEFAULT_DB_PATH))).expanduser()
@@ -33,27 +35,31 @@ def _migrate_user_state_role_column(conn: sqlite3.Connection) -> None:
 
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
-    Resolve role: OPTION_ADVISOR_ADMIN_EMAILS / OPTION_ADVISOR_FINANCE_EMAILS (comma-separated)
-    override stored DB role; otherwise use stored value, default 'user'.
+    Resolve role from SQLite user_state.role (admin | finance | user).
+
+    Admin is database-only: set user_state.role = 'admin' for that user's email
+    (Auto Trade / Execute Paper Trade require admin).
+
+    OPTION_ADVISOR_FINANCE_EMAILS (comma-separated) may promote accounts from
+    default user → finance when DB role is still user (optional org-wide policy).
+    Finance env never overrides admin.
     """
+    load_dotenv(Path(__file__).with_name(".env"), override=True)
+    r = (stored_role or "user").strip().lower()
+    if r == "admin":
+        return "admin"
+    if r == "finance":
+        return "finance"
+    if r not in ("user", ""):
+        return "user"
     n = normalize_email(email)
-    admins = {
-        normalize_email(x.strip())
-        for x in os.getenv("OPTION_ADVISOR_ADMIN_EMAILS", "").split(",")
-        if x.strip()
-    }
     finance = {
         normalize_email(x.strip())
         for x in os.getenv("OPTION_ADVISOR_FINANCE_EMAILS", "").split(",")
         if x.strip()
     }
-    if n in admins:
-        return "admin"
     if n in finance:
         return "finance"
-    r = (stored_role or "user").strip().lower()
-    if r in ("admin", "finance", "user"):
-        return r
     return "user"
 
 

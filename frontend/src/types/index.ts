@@ -49,6 +49,10 @@ export interface Recommendation {
   rationale: string
   exit_plan: string
   warnings: string[]
+  // Kelly Criterion position sizing
+  kelly_fraction: number       // raw Kelly % as decimal (e.g. 0.125 = 12.5%)
+  half_kelly_fraction: number  // recommended: Kelly × 0.5, capped at 20%
+  edge_ratio: number           // EV / max_loss — edge quality measure
 }
 
 export interface Signals {
@@ -145,7 +149,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 
@@ -193,7 +197,7 @@ export interface AlertEmailItem {
 export interface User {
   name: string
   email: string
-  /** Resolved from backend (user-data + env role maps). */
+  /** Resolved from backend /api/user-data (SQLite user_state.role). */
   role: UserRole
   avatar?: string
 }
@@ -233,6 +237,13 @@ export interface PortfolioPosition {
   pnlPct?: number          // user-entered close P&L %
   exitDate?: string        // ISO date string when closed
   notes?: string           // free-form notes (e.g. "mistaken entry")
+
+  // Kelly Criterion snapshot at time of entry
+  kelly_fraction?: number        // raw Kelly % at entry (e.g. 0.051 = 5.1%)
+  half_kelly_fraction?: number   // half-Kelly recommendation at entry
+  edge_ratio?: number            // EV / max_loss at entry
+  capital_at_risk?: number       // contracts × max_loss × 100 (actual $ at risk)
+  account_size_at_entry?: number // account size when position was added
 }
 
 export interface UserDataState {

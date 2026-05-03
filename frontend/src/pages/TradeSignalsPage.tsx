@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
-  ShieldCheck, TrendingUp, RefreshCw, AlertTriangle, XCircle,
-  CheckCircle2, ChevronRight, Clock, BarChart2, Layers, X,
+  ShieldCheck, RefreshCw, AlertTriangle, XCircle,
+  CheckCircle2, Clock, BarChart2, Layers,
+  CalendarDays, Loader2, FilterX,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
@@ -140,6 +141,23 @@ function WeekCoverageDots({ buckets, hasFetched }: { buckets: WeekBucket[]; hasF
   )
 }
 
+// ─── Kelly capital badge ──────────────────────────────────────────────────────
+function KellyBadge({ halfKelly }: { halfKelly: number }) {
+  const pct = halfKelly * 100
+  if (pct <= 0) return null
+  const color = pct > 15
+    ? 'text-red-400 bg-red-900/20 border-red-800'
+    : pct > 8
+    ? 'text-amber-400 bg-amber-900/20 border-amber-800'
+    : 'text-emerald-400 bg-emerald-900/20 border-emerald-800'
+  return (
+    <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border shrink-0 ${color}`}
+      title={`Half-Kelly: deploy ${pct.toFixed(1)}% of capital on this trade`}>
+      K {pct.toFixed(1)}%
+    </span>
+  )
+}
+
 // ─── Rec row ─────────────────────────────────────────────────────────────────
 function RecRow({ rec, verdict }: { rec: Recommendation; verdict: Verdict }) {
   const isCredit = rec.net_credit > 0
@@ -159,6 +177,7 @@ function RecRow({ rec, verdict }: { rec: Recommendation; verdict: Verdict }) {
       <span className="ml-auto text-[10px] font-mono text-gray-500">{(rec.prob_of_profit * 100).toFixed(0)}% PoP</span>
       {isCredit && <span className="text-[10px] font-mono text-emerald-500">${(rec.net_credit * 100).toFixed(0)} cr</span>}
       <span className="text-[10px] font-mono text-gray-600">{rec.scores.total_score}/100</span>
+      <KellyBadge halfKelly={rec.half_kelly_fraction ?? 0} />
     </div>
   )
 }
@@ -174,13 +193,15 @@ interface TickerResult {
   buckets: WeekBucket[]
   topVerdict: VerdictOrNone
   hasFetchedAllWeeks: boolean
+  bestGoKelly: number   // Half-Kelly fraction of the top-scored GO recommendation across all buckets
 }
 
-function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
+function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize }: {
   result: TickerResult
   onAnalyze: () => void
   onFetchAllWeeks: () => void
   fetching: boolean
+  accountSize: number
 }) {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(result.buckets[0]?.dte ?? null)
   const priceUp = result.priceChangePct >= 0
@@ -226,6 +247,7 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
               return (
                 <button
                   key={b.dte}
+                  type="button"
                   onClick={() => setExpandedWeek(active ? null : b.dte)}
                   className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
                     active
@@ -233,9 +255,18 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
                       : 'bg-gray-800 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
                   }`}
                 >
-                  {formatExpiryDate(b.expiry)} · {b.dte}d
-                  <span className={`ml-0.5 ${active ? '' : vcfg.text}`}>
-                    {b.bestVerdict === 'GO' ? '✓' : b.bestVerdict === 'CAUTION' ? '⚠' : '✗'}
+                  <CalendarDays size={11} className="shrink-0 opacity-80" aria-hidden />
+                  <span>{formatExpiryDate(b.expiry)} · {b.dte}d</span>
+                  <span className="shrink-0">
+                    {b.bestVerdict === 'GO' ? (
+                      <CheckCircle2 size={11} className={active ? 'text-emerald-300' : 'text-emerald-500'} aria-hidden />
+                    ) : b.bestVerdict === 'CAUTION' ? (
+                      <AlertTriangle size={11} className={active ? 'text-amber-300' : 'text-amber-500'} aria-hidden />
+                    ) : b.bestVerdict === 'NO GO' ? (
+                      <XCircle size={11} className={active ? 'text-red-300' : 'text-red-500'} aria-hidden />
+                    ) : (
+                      <Clock size={11} className="text-gray-500" aria-hidden />
+                    )}
                   </span>
                 </button>
               )
@@ -249,24 +280,46 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching }: {
             {goCount  > 0 && <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full">{goCount} GO</span>}
             {cauCount > 0 && <span className="text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded-full">{cauCount} CAUTION</span>}
             {noCount  > 0 && <span className="text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">{noCount} NO GO</span>}
+            {result.bestGoKelly > 0 && (() => {
+              const pct = result.bestGoKelly * 100
+              const dollars = Math.round(accountSize * result.bestGoKelly)
+              const color = pct > 15 ? 'text-red-400 bg-red-900/20 border-red-800'
+                          : pct > 8  ? 'text-amber-400 bg-amber-900/20 border-amber-800'
+                          :            'text-emerald-400 bg-emerald-900/20 border-emerald-800'
+              return (
+                <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border ${color}`}
+                  title={`Deploy ~$${dollars.toLocaleString()} (${pct.toFixed(1)}% of $${accountSize.toLocaleString()} account) on the top GO trade`}>
+                  K {pct.toFixed(1)}%
+                </span>
+              )
+            })()}
             <span className="text-[10px] text-gray-600 flex items-center gap-1"><Clock size={9} />{result.ageMin}m</span>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap xl:justify-end">
+          <div className="flex items-center gap-1 flex-wrap xl:justify-end">
             <button
+              type="button"
               onClick={onFetchAllWeeks}
               disabled={fetching}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                         hover:border-violet-600 text-gray-400 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
+              aria-label={fetching ? 'Fetching multi-week windows' : `Fetch multi-week windows for ${result.ticker}`}
+              title={fetching ? 'Fetching…' : 'Fetch multi-week windows (2w–8w)'}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800
+                         text-gray-400 transition-colors hover:border-violet-600 hover:bg-gray-700 hover:text-violet-300 disabled:opacity-50"
             >
-              <Layers size={11} className={fetching ? 'animate-pulse' : ''} />
-              {fetching ? 'Fetching…' : 'Fetch Weeks'}
+              {fetching ? (
+                <Loader2 size={16} className="animate-spin text-violet-400" aria-hidden />
+              ) : (
+                <Layers size={16} aria-hidden />
+              )}
             </button>
             <button
+              type="button"
               onClick={onAnalyze}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
-                         text-gray-400 hover:text-gray-200 text-xs font-semibold rounded-xl transition-colors"
+              aria-label={`Analyze ${result.ticker}`}
+              title="Analyze"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800
+                         text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
             >
-              <TrendingUp size={11} /> Analyze <ChevronRight size={11} />
+              <BarChart2 size={16} aria-hidden />
             </button>
           </div>
         </div>
@@ -312,10 +365,15 @@ function UnanalyzedCard({ ticker, companyName, onAnalyze }: {
         {companyName && <div className="text-xs text-gray-600 mt-0.5">{companyName}</div>}
         <div className="text-[10px] text-gray-700 mt-1">Not yet analyzed — run analysis to see trade signals</div>
       </div>
-      <button onClick={onAnalyze}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-700
-                   text-violet-400 text-xs font-semibold rounded-xl transition-colors shrink-0">
-        <TrendingUp size={11} /> Analyze <ChevronRight size={11} />
+      <button
+        type="button"
+        onClick={onAnalyze}
+        aria-label={`Analyze ${ticker}`}
+        title="Analyze"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-700 bg-violet-600/20
+                   text-violet-400 transition-colors hover:bg-violet-600/30 hover:text-violet-300"
+      >
+        <BarChart2 size={16} aria-hidden />
       </button>
     </div>
   )
@@ -328,7 +386,7 @@ type WeekFilter = 'All' | number
 
 export default function TradeSignalsPage() {
   const { watchlist, tickerCache, requestAnalysis, refreshTicker,
-          refreshingTickers, fetchAllWeeks, fetchingAllWeeks } = useApp()
+          refreshingTickers, fetchAllWeeks, fetchingAllWeeks, accountSize } = useApp()
   const [filter, setFilter] = useState<Filter>('All')
   const [selectedWeek, setSelectedWeek] = useState<WeekFilter>('All')
   const [refreshingAll, setRefreshingAll] = useState(false)
@@ -340,6 +398,14 @@ export default function TradeSignalsPage() {
         if (!entry) return null
         const buckets = collectWeekBuckets(entry)
         const allVerdicts = buckets.flatMap(b => b.recommendations.map(r => r.verdict))
+
+        // Best GO recommendation across all buckets — for Kelly capital display
+        const goRecs = buckets
+          .flatMap(b => b.recommendations)
+          .filter(r => r.verdict === 'GO')
+          .sort((a, b) => b.rec.scores.total_score - a.rec.scores.total_score)
+        const bestGoKelly = goRecs[0]?.rec.half_kelly_fraction ?? 0
+
         return {
           ticker: w.ticker,
           companyName: entry.data.company_name,
@@ -350,6 +416,7 @@ export default function TradeSignalsPage() {
           buckets,
           topVerdict: bestVerdict(allVerdicts),
           hasFetchedAllWeeks: !!entry.multiWeekData,
+          bestGoKelly,
         } satisfies TickerResult
       })
       .filter((r): r is TickerResult => r !== null)
@@ -394,6 +461,17 @@ export default function TradeSignalsPage() {
   const allGoTrades = weekFilteredResults.reduce((n, r) =>
     n + r.buckets.reduce((m, b) => m + b.recommendations.filter(x => x.verdict === 'GO').length, 0), 0)
   const weeksTotal = weekFilteredResults.reduce((n, r) => n + r.buckets.length, 0)
+
+  // Portfolio capital: sum of Half-Kelly % across unique GO tickers (one trade per ticker)
+  const totalKellyPct = weekFilteredResults
+    .filter(r => r.bestGoKelly > 0)
+    .reduce((sum, r) => sum + r.bestGoKelly * 100, 0)
+  const totalCapitalDollars = Math.round(accountSize * (totalKellyPct / 100))
+  const kellyColor = totalKellyPct > 80
+    ? 'text-red-400'
+    : totalKellyPct > 50
+    ? 'text-amber-400'
+    : 'text-emerald-400'
 
   const filtered =
     filter === 'All'          ? weekFilteredResults :
@@ -450,16 +528,24 @@ export default function TradeSignalsPage() {
                 <div className="text-xl font-bold text-violet-400 font-mono">{weeksTotal}</div>
                 <div className="text-[10px] text-gray-500">DTE Windows</div>
               </div>
+              {totalKellyPct > 0 && (
+                <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center min-w-[72px]"
+                  title={`If you act on every GO signal: deploy ~$${totalCapitalDollars.toLocaleString()} across ${goCount} tickers (Half-Kelly sum)`}>
+                  <div className={`text-xl font-bold font-mono ${kellyColor}`}>{totalKellyPct.toFixed(0)}%</div>
+                  <div className="text-[10px] text-gray-500">Capital (K)</div>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleRefreshAll}
                 disabled={refreshingAll}
                 aria-label="Refresh trades — fetch multi-week scans for analyzed tickers"
                 title="Refresh trades (2w–8w scans)"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 px-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-400 rounded-xl transition-colors disabled:opacity-50"
               >
-                <RefreshCw size={16} className={refreshingAll ? 'animate-spin' : ''} />
+                <RefreshCw size={15} className={refreshingAll ? 'animate-spin' : ''} aria-hidden />
+                <span className="text-[11px] font-semibold hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
@@ -483,18 +569,21 @@ export default function TradeSignalsPage() {
               </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={selectedWeek}
-              onChange={e => setSelectedWeek(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-              className="min-w-[180px] rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-semibold text-gray-200 outline-none transition-colors focus:border-violet-500"
-            >
+            <div className="relative flex items-center min-w-[180px]">
+              <CalendarDays size={16} className="pointer-events-none absolute left-3 text-gray-500" aria-hidden />
+              <select
+                value={selectedWeek}
+                onChange={e => setSelectedWeek(e.target.value === 'All' ? 'All' : Number(e.target.value))}
+                className="w-full rounded-xl border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm font-semibold text-gray-200 outline-none transition-colors focus:border-violet-500 appearance-none cursor-pointer"
+              >
               <option value="All">All Windows ({results.length})</option>
               {weekOptions.map(option => (
                 <option key={option.weeksOut} value={option.weeksOut}>
                   {option.weeksOut} weeks ({option.count} trades)
                 </option>
               ))}
-            </select>
+              </select>
+            </div>
             <button
               type="button"
               onClick={handleRefreshAll}
@@ -511,9 +600,10 @@ export default function TradeSignalsPage() {
                   ? 'Refresh all DTE windows'
                   : `Refresh ${selectedWeek}w window`
               }
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-700 bg-violet-600/20 text-violet-300 transition-colors hover:bg-violet-600/30 hover:text-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-700 bg-violet-600/20 px-3 text-violet-300 transition-colors hover:bg-violet-600/30 hover:text-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw size={18} className={refreshingAll ? 'animate-spin' : ''} />
+              <RefreshCw size={16} className={refreshingAll ? 'animate-spin' : ''} aria-hidden />
+              <span className="text-xs font-semibold">Refresh</span>
             </button>
             {selectedWeek !== 'All' && (
               <button
@@ -521,9 +611,10 @@ export default function TradeSignalsPage() {
                 onClick={() => setSelectedWeek('All')}
                 aria-label="Clear DTE window filter — show all windows"
                 title="Clear window filter"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800 text-violet-400 hover:bg-gray-700 hover:text-violet-300 transition-colors"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800 px-3 text-violet-400 hover:bg-gray-700 hover:text-violet-300 transition-colors"
               >
-                <X size={18} />
+                <FilterX size={16} aria-hidden />
+                <span className="text-xs font-semibold hidden sm:inline">Clear</span>
               </button>
             )}
           </div>
@@ -586,6 +677,7 @@ export default function TradeSignalsPage() {
                 onAnalyze={() => requestAnalysis(result.ticker)}
                 onFetchAllWeeks={() => fetchAllWeeks(result.ticker)}
                 fetching={fetchingAllWeeks.has(result.ticker) || refreshingTickers.has(result.ticker)}
+                accountSize={accountSize}
               />
             ))}
           </div>

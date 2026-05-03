@@ -29,6 +29,10 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).with_name(".env")
 load_dotenv(ENV_PATH)
 
+# From-address fallback for SendGrid and SMTP (envelope + headers).
+# Override per deployment with OPTION_ADVISOR_DEFAULT_FROM_EMAIL or explicit SMTP_* / SENDGRID_FROM_*.
+DEFAULT_MAIL_FROM = os.getenv("OPTION_ADVISOR_DEFAULT_FROM_EMAIL", "adminzetayuai@gmail.com").strip()
+
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown,
@@ -54,12 +58,14 @@ def _smtp_config() -> dict:
     if "gmail.com" in host.lower():
         password = password.replace("-", "")
     user = os.getenv("SMTP_USER", "").strip()
+    from_explicit = os.getenv("SMTP_FROM", "").strip()
+    from_addr = from_explicit or user or DEFAULT_MAIL_FROM
     return {
         "host": host,
         "port": int(os.getenv("SMTP_PORT", "587")),
         "user": user,
         "password": password,
-        "from_addr": os.getenv("SMTP_FROM", user).strip() or user,
+        "from_addr": from_addr,
         "missing": [
             key for key, value in {
                 "SMTP_USER": user,
@@ -78,13 +84,14 @@ def _sendgrid_config() -> dict:
         os.getenv("SENDGRID_FROM_EMAIL", "").strip()
         or os.getenv("SMTP_FROM", "").strip()
         or os.getenv("SMTP_USER", "").strip()
+        or DEFAULT_MAIL_FROM
     )
     from_name = os.getenv("SENDGRID_FROM_NAME", "OptionAdvisor").strip() or "OptionAdvisor"
     missing: list[str] = []
     if not api_key:
         missing.append("SENDGRID_API_KEY")
     if not from_email:
-        missing.append("SENDGRID_FROM_EMAIL (or SMTP_FROM / SMTP_USER as fallback)")
+        missing.append("SENDGRID_FROM_EMAIL (no fallback; set SENDGRID_FROM_EMAIL or SMTP_FROM/SMTP_USER or DEFAULT_MAIL_FROM)")
     return {
         "api_key": api_key,
         "from_email": from_email,
@@ -660,6 +667,9 @@ def _analyze_ticker(
             rationale=trade.rationale,
             exit_plan=trade.exit_plan,
             warnings=trade.warnings,
+            kelly_fraction=round(trade.kelly_fraction, 4),
+            half_kelly_fraction=round(trade.half_kelly_fraction, 4),
+            edge_ratio=round(trade.edge_ratio, 4),
         ))
 
     # Signals output
@@ -1298,3 +1308,136 @@ def journal_delete(email: str, entry_id: str):
     normalized = email.strip().lower()
     delete_journal_entry(normalized, entry_id)
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════
+# ALPACA PAPER TRADING  (admin-only)
+# ═══════════════════════════════════════════════════════════════
+
+from alpaca_trader import (
+    is_configured as alpaca_is_configured,
+    get_account as alpaca_get_account,
+    get_positions as alpaca_get_positions,
+    get_orders as alpaca_get_orders,
+    execute_recommendation as alpaca_execute,
+    cancel_order as alpaca_cancel_order,
+    close_position as alpaca_close_position,
+)
+from storage import normalize_email as _norm_email
+
+
+class TradingExecuteRequest(_BM):
+    """Execute a recommendation as a paper trade via Alpaca."""
+    email: str          # caller's email — must resolve to admin role
+    ticker: str
+    strategy: str
+    legs: list[dict]    # list of {action, option_type, strike, expiry, ...}
+    contracts: int = 1
+
+
+class TradingCloseRequest(_BM):
+    email: str          # must be admin
+    symbol: str         # OCC symbol or underlying ticker
+
+
+class TradingCancelRequest(_BM):
+    email: str
+    order_id: str
+
+
+def _require_admin(email: str) -> None:
+    """Raise 403 if the email does not resolve to the admin role."""
+    normalized = _norm_email(email)
+    if not normalized:
+        raise HTTPException(status_code=403, detail="Admin access required for paper trading")
+    # Role comes from SQLite user_state.role (admin is DB-only; see storage.effective_user_role)
+    role = get_user_state(normalized).get("role", "user")
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required for paper trading")
+
+
+@app.get("/api/trading/status")
+def trading_status(email: str):
+    """Check if Alpaca is configured and return account summary."""
+    _require_admin(email)
+    configured = alpaca_is_configured()
+    if not configured:
+        return {
+            "configured": False,
+            "message": "Add ALPACA_API_KEY and ALPACA_SECRET_KEY to your .env file to enable paper trading.",
+        }
+    account = alpaca_get_account()
+    # Keys are set but Alpaca returned an error (wrong keys, live keys on paper URL, network, etc.)
+    if isinstance(account, dict) and account.get("error"):
+        return {
+            "configured": True,
+            "alpaca_error": account["error"],
+        }
+    return {"configured": True, "account": account}
+
+
+@app.get("/api/trading/positions")
+def trading_positions(email: str):
+    """Return all open Alpaca paper positions (admin only)."""
+    _require_admin(email)
+    if not alpaca_is_configured():
+        raise HTTPException(status_code=503, detail="Alpaca not configured")
+    positions = alpaca_get_positions()
+    if positions and isinstance(positions[0], dict) and positions[0].get("error"):
+        raise HTTPException(status_code=502, detail=positions[0]["error"])
+    return {"positions": positions}
+
+
+@app.get("/api/trading/orders")
+def trading_orders(email: str, status: str = "all"):
+    """Return recent Alpaca orders (admin only). status: open | closed | all"""
+    _require_admin(email)
+    if not alpaca_is_configured():
+        raise HTTPException(status_code=503, detail="Alpaca not configured")
+    orders = alpaca_get_orders(status)
+    if orders and isinstance(orders[0], dict) and orders[0].get("error"):
+        raise HTTPException(status_code=502, detail=orders[0]["error"])
+    return {"orders": orders}
+
+
+@app.post("/api/trading/execute")
+def trading_execute(req: TradingExecuteRequest):
+    """Place a multi-leg paper trade on Alpaca from an engine recommendation."""
+    _require_admin(req.email)
+    if not alpaca_is_configured():
+        raise HTTPException(status_code=503, detail="Alpaca not configured. Add ALPACA_API_KEY + ALPACA_SECRET_KEY to .env")
+    if not req.legs:
+        raise HTTPException(status_code=400, detail="No legs provided")
+    result = alpaca_execute(
+        ticker    = req.ticker.strip().upper(),
+        strategy  = req.strategy,
+        legs      = req.legs,
+        contracts = max(1, req.contracts),
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/trading/cancel")
+def trading_cancel(req: TradingCancelRequest):
+    """Cancel an open Alpaca order by order ID."""
+    _require_admin(req.email)
+    if not alpaca_is_configured():
+        raise HTTPException(status_code=503, detail="Alpaca not configured")
+    result = alpaca_cancel_order(req.order_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/trading/close")
+def trading_close_position(req: TradingCloseRequest):
+    """Liquidate an open paper position by OCC symbol."""
+    _require_admin(req.email)
+    if not alpaca_is_configured():
+        raise HTTPException(status_code=503, detail="Alpaca not configured")
+    result = alpaca_close_position(req.symbol)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

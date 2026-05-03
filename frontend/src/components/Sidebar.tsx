@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight, FlaskConical,
   User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
-  MoreHorizontal, Moon, Sun, Menu, BookOpen,
+  MoreHorizontal, Moon, Sun, Menu, BookOpen, Zap,
 } from 'lucide-react'
 import type { Page } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -49,8 +49,9 @@ export default function Sidebar() {
       items: [
         { id: 'watchlist', label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
         { id: 'portfolio', label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'journal',   label: 'Journal',   icon: <BookOpen size={18} />,      badge: journalEntryCount || undefined },
+        { id: 'journal',   label: 'Journal',   icon: <BookOpen size={18} />,  badge: journalEntryCount || undefined },
         { id: 'alerts',    label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
+        ...(canAccessPage('auto-trade') ? [{ id: 'auto-trade' as const, label: 'Auto Trade', icon: <Zap size={18} /> }] : []),
       ],
     },
   ]
@@ -67,8 +68,9 @@ export default function Sidebar() {
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },
-    { id: 'journal',   label: 'Journal',  icon: <BookOpen      size={18} />, badge: journalEntryCount || undefined },
-    { id: 'settings',  label: 'Settings', icon: <Settings      size={18} /> },
+    { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
+    { id: 'settings',  label: 'Settings',   icon: <Settings size={18} /> },
     { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
   ]
 

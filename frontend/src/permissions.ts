@@ -1,22 +1,26 @@
 import type { Page, UserRole } from './types'
 
-/** Roles assigned on the server (env lists + SQLite). Used for feature gating. */
+/** Roles assigned on the server (SQLite user_state.role; optional finance env list). */
 export function normalizeUserRole(raw: string | undefined | null): UserRole {
   const r = (raw ?? 'user').trim().toLowerCase()
   if (r === 'admin' || r === 'finance' || r === 'user') return r
   return 'user'
 }
 
-const FINANCE_NO_ACCESS: ReadonlySet<Page> = new Set(['ai-stocks', 'q-radar'])
+const FINANCE_NO_ACCESS: ReadonlySet<Page> = new Set(['ai-stocks', 'q-radar', 'auto-trade'])
+const ADMIN_ONLY: ReadonlySet<Page> = new Set(['auto-trade'])
 
 /**
  * Finance users get analysis, portfolio, journal, alerts, etc., but not stock-discovery radars.
- * Admin and standard users have full navigation.
+ * auto-trade is admin-only.
+ * Admin and standard users have full navigation (except admin-only pages).
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {
   const r = role ?? 'user'
   if (page === 'login') return true
-  if (r === 'admin' || r === 'user') return true
+  if (ADMIN_ONLY.has(page)) return r === 'admin'
+  if (r === 'admin') return true
+  if (r === 'user') return true
   if (r === 'finance') return !FINANCE_NO_ACCESS.has(page)
   return true
 }
