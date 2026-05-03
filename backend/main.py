@@ -13,8 +13,11 @@ from math import erf, log, sqrt
 from dataclasses import asdict
 import smtplib
 import os
+import json
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -65,6 +68,113 @@ def _smtp_config() -> dict:
             if not value
         ],
     }
+
+
+# ── SendGrid (Twilio) — Web API v3 — preferred when SENDGRID_API_KEY + from are set ──
+def _sendgrid_config() -> dict:
+    load_dotenv(ENV_PATH, override=True)
+    api_key = os.getenv("SENDGRID_API_KEY", "").strip()
+    from_email = (
+        os.getenv("SENDGRID_FROM_EMAIL", "").strip()
+        or os.getenv("SMTP_FROM", "").strip()
+        or os.getenv("SMTP_USER", "").strip()
+    )
+    from_name = os.getenv("SENDGRID_FROM_NAME", "OptionAdvisor").strip() or "OptionAdvisor"
+    missing: list[str] = []
+    if not api_key:
+        missing.append("SENDGRID_API_KEY")
+    if not from_email:
+        missing.append("SENDGRID_FROM_EMAIL (or SMTP_FROM / SMTP_USER as fallback)")
+    return {
+        "api_key": api_key,
+        "from_email": from_email,
+        "from_name": from_name,
+        "missing": missing,
+    }
+
+
+def _email_provider() -> str:
+    """'sendgrid' if API + from are set; else 'smtp' if SMTP complete; else 'none'."""
+    if len(_sendgrid_config()["missing"]) == 0:
+        return "sendgrid"
+    if len(_smtp_config()["missing"]) == 0:
+        return "smtp"
+    return "none"
+
+
+def _send_html_via_sendgrid(to_email: str, to_name: str | None, subject: str, html: str) -> None:
+    sg = _sendgrid_config()
+    if sg["missing"]:
+        raise ValueError(f"SendGrid incomplete: {', '.join(sg['missing'])}")
+    to_addr = to_email.strip()
+    to: dict[str, str] = {"email": to_addr}
+    if to_name and (nm := to_name.strip()):
+        to["name"] = nm
+    payload = {
+        "personalizations": [{"to": [to]}],
+        "from": {"email": sg["from_email"], "name": sg["from_name"]},
+        "subject": subject,
+        "content": [{"type": "text/html", "value": html}],
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.sendgrid.com/v3/mail/send",
+        data=raw,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {sg['api_key']}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            if code not in (200, 202):
+                body = resp.read().decode("utf-8", errors="replace")
+                raise RuntimeError(f"SendGrid unexpected status {code}: {body}")
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace") or str(e.reason)
+        raise RuntimeError(f"SendGrid HTTP {e.code}: {detail}") from e
+
+
+def _send_html_via_smtp(to_email: str, to_name: str | None, subject: str, html: str) -> None:
+    smtp = _smtp_config()
+    if smtp["missing"]:
+        raise ValueError(f"SMTP incomplete: {', '.join(smtp['missing'])}")
+    display_name = (to_name or "").strip()
+    recipient = formataddr((display_name, to_email)) if display_name else to_email
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp["from_addr"]
+    msg["To"] = recipient
+    msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP(smtp["host"], smtp["port"], timeout=25) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(smtp["user"], smtp["password"])
+        server.sendmail(smtp["from_addr"], to_email, msg.as_string())
+
+
+def _deliver_html_email(to_email: str, to_name: str | None, subject: str, html: str) -> str:
+    """
+    Send one HTML email using SendGrid (if configured) or SMTP.
+    Returns the provider label used ('sendgrid' or 'smtp').
+    """
+    provider = _email_provider()
+    if provider == "none":
+        sg_m = _sendgrid_config()["missing"]
+        sm_m = _smtp_config()["missing"]
+        raise ValueError(
+            "No email provider configured. SendGrid needs: "
+            + (", ".join(sg_m) if sg_m else "(complete)")
+            + ". SMTP needs: "
+            + (", ".join(sm_m) if sm_m else "(complete)")
+        )
+    if provider == "sendgrid":
+        _send_html_via_sendgrid(to_email, to_name, subject, html)
+        return "sendgrid"
+    _send_html_via_smtp(to_email, to_name, subject, html)
+    return "smtp"
 
 
 ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
@@ -302,16 +412,12 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
 def send_alert(req: AlertEmailRequest):
     """
     Send a GO-trade alert email.
-    Silently skips if SMTP is not configured — frontend alert page still works.
+    Skips if neither SendGrid nor SMTP is configured — alerts still appear in the app.
     """
     return _send_alert_email(req.email, req.alerts, req.user_name)
 
 
 def _send_alert_email(email: str, alerts: list, user_name: str | None = None) -> dict:
-    smtp = _smtp_config()
-    if smtp["missing"]:
-        return {"sent": False, "message": f"SMTP missing: {', '.join(smtp['missing'])}"}
-
     if not alerts:
         return {"sent": False, "message": "No alerts to send"}
 
@@ -319,22 +425,9 @@ def _send_alert_email(email: str, alerts: list, user_name: str | None = None) ->
         html_body = _build_alert_html(email, alerts, user_name)
         count = len(alerts)
         plural = "trade" if count == 1 else "trades"
-        display_name = (user_name or "").strip()
-        recipient = formataddr((display_name, email)) if display_name else email
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"🟢 OptionAdvisor: {count} GO {plural} detected — {alerts[0].time_window}"
-        msg["From"]    = smtp["from_addr"]
-        msg["To"]      = recipient
-        msg.attach(MIMEText(html_body, "html"))
-
-        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=25) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(smtp["user"], smtp["password"])
-            server.sendmail(smtp["from_addr"], email, msg.as_string())
-
-        return {"sent": True, "message": f"Alert email sent to {email}"}
+        subject = f"🟢 OptionAdvisor: {count} GO {plural} detected — {alerts[0].time_window}"
+        used = _deliver_html_email(email, user_name, subject, html_body)
+        return {"sent": True, "message": f"Alert email sent to {email} ({used})"}
 
     except Exception as e:
         # Don't crash the app — email is optional
@@ -345,42 +438,23 @@ def _send_alert_email(email: str, alerts: list, user_name: str | None = None) ->
 @app.post("/api/test-email")
 def send_test_email(req: TestEmailRequest):
     """
-    Send a simple SMTP test email to the signed-in user.
-    This verifies SMTP credentials without waiting for a GO alert.
+    Send a test message to verify SendGrid or SMTP from the OptionAdvisor backend.
     """
     email = req.email.strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
-    smtp = _smtp_config()
-    if smtp["missing"]:
-        return {"sent": False, "message": f"SMTP missing: {', '.join(smtp['missing'])}"}
 
     try:
-        display_name = (req.user_name or "").strip()
-        recipient = formataddr((display_name, email)) if display_name else email
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "OptionAdvisor SMTP test"
-        msg["From"] = smtp["from_addr"]
-        msg["To"] = recipient
-        msg.attach(MIMEText(
-            f"""
+        subject = "OptionAdvisor email test"
+        html = f"""
             <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a;">
               <h2>OptionAdvisor email test</h2>
-              <p>This confirms your SMTP settings can send email from the OptionAdvisor backend.</p>
+              <p>This confirms your email provider (SendGrid or SMTP) can send from the OptionAdvisor backend.</p>
               <p style="color:#475569;font-size:12px;">Sent to {email}</p>
             </div>
-            """,
-            "html",
-        ))
-
-        with smtplib.SMTP(smtp["host"], smtp["port"], timeout=25) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(smtp["user"], smtp["password"])
-            server.sendmail(smtp["from_addr"], email, msg.as_string())
-
-        return {"sent": True, "message": f"Test email sent to {email}"}
+            """
+        used = _deliver_html_email(email, req.user_name, subject, html)
+        return {"sent": True, "message": f"Test email sent to {email} ({used})"}
     except Exception as e:
         print(f"[test-email] send failed: {e}", flush=True)
         return {"sent": False, "message": f"Email failed: {str(e)}"}
@@ -388,13 +462,17 @@ def send_test_email(req: TestEmailRequest):
 
 @app.get("/api/email-status")
 def email_status():
+    provider = _email_provider()
     smtp = _smtp_config()
+    sg = _sendgrid_config()
     return {
-        "configured": len(smtp["missing"]) == 0,
-        "missing": smtp["missing"],
+        "configured": provider != "none",
+        "provider": provider,
+        "missing": [] if provider != "none" else [*sg["missing"], *smtp["missing"]],
         "host": smtp["host"],
         "port": smtp["port"],
-        "from": smtp["from_addr"] if smtp["from_addr"] else "",
+        "from": sg["from_email"] if provider == "sendgrid" else (smtp["from_addr"] if smtp["from_addr"] else ""),
+        "fromName": sg["from_name"] if provider == "sendgrid" else "",
         "envFile": str(ENV_PATH),
         "envFileExists": ENV_PATH.exists(),
     }

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
+import { canAccessPage } from './permissions'
 
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
@@ -35,22 +36,29 @@ function Router() {
     if (!user && page !== 'login') navigate('login')
   }, [user, page, navigate])
 
+  useEffect(() => {
+    if (!user) return
+    if (!canAccessPage(user.role, page)) navigate('ticker')
+  }, [user, page, navigate])
+
   if (!user || page === 'login') return <LoginPage />
+
+  const renderPage = canAccessPage(user.role, page) ? page : 'ticker'
 
   return (
     <AppLayout>
       <Suspense fallback={<RouteFallback />}>
-        {page === 'ticker'        && <TickerPage />}
-        {page === 'watchlist'     && <WatchlistPage />}
-        {page === 'portfolio'     && <PortfolioPage />}
-        {page === 'help'          && <HelpPage />}
-        {page === 'ai-stocks'     && <AIStocksPage />}
-        {page === 'q-radar'       && <QRadarPage />}
-        {page === 'backtest'      && <BacktestPage />}
-        {page === 'trade-signals' && <TradeSignalsPage />}
-        {page === 'alerts'        && <AlertsPage />}
-        {page === 'settings'      && <SettingsPage />}
-        {page === 'journal'       && <JournalPage />}
+        {renderPage === 'ticker'        && <TickerPage />}
+        {renderPage === 'watchlist'     && <WatchlistPage />}
+        {renderPage === 'portfolio'     && <PortfolioPage />}
+        {renderPage === 'help'          && <HelpPage />}
+        {renderPage === 'ai-stocks'     && <AIStocksPage />}
+        {renderPage === 'q-radar'       && <QRadarPage />}
+        {renderPage === 'backtest'      && <BacktestPage />}
+        {renderPage === 'trade-signals' && <TradeSignalsPage />}
+        {renderPage === 'alerts'        && <AlertsPage />}
+        {renderPage === 'settings'      && <SettingsPage />}
+        {renderPage === 'journal'       && <JournalPage />}
       </Suspense>
     </AppLayout>
   )

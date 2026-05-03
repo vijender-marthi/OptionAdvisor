@@ -74,6 +74,13 @@ Create backend environment file:
 ```bash
 sudo tee /etc/optionadvisor.env >/dev/null <<'EOF'
 OPTION_ADVISOR_DB_PATH=/mnt/optionadvisor-data/option_advisor.sqlite3
+# Optional: comma-separated emails → role overrides (finance = no AI/Q Radar pages; admin = full UI like user, label only for now)
+OPTION_ADVISOR_ADMIN_EMAILS=
+OPTION_ADVISOR_FINANCE_EMAILS=
+# Email: SendGrid (preferred if set) or Gmail SMTP — see backend/.env.example
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=
+SENDGRID_FROM_NAME=OptionAdvisor
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=
@@ -82,7 +89,7 @@ SMTP_FROM=
 EOF
 ```
 
-Fill SMTP values if email alerts should be sent. If blank, in-app alerts still work.
+Fill **SendGrid** (`SENDGRID_API_KEY` + verified `SENDGRID_FROM_EMAIL`) or **SMTP** if GO-alert emails should be sent. If both are unset, in-app alerts still work.
 
 ## 5. Backend systemd Service
 
@@ -190,7 +197,7 @@ curl -sS -X POST http://127.0.0.1:9000/api/backtest \
   -d '{"ticker":"SPY","start_date":"2024-01-02","end_date":"2024-06-01","strategy_mode":"all","weeks_out":4,"spread_width":5}'
 ```
 
-If you see **Not Found** on `/api/backtest` through the browser but analyze works, your `nginx` `proxy_pass` may be stripping the `/api` prefix — the app also accepts **`POST /backtest`**. Prefer fixing nginx to match section 7 (`proxy_pass …/api/;`). After any `main.py` change, run **`sudo systemctl restart optionadvisor`**.
+If you see **Not Found** on `/api/backtest` through the browser but analyze works, your `nginx` `proxy_pass` may be stripping the `/api` prefix — the app also accepts `**POST /backtest`**. Prefer fixing nginx to match section 7 (`proxy_pass …/api/;`). After any `main.py` change, run `**sudo systemctl restart optionadvisor**`.
 
 SQLite location:
 

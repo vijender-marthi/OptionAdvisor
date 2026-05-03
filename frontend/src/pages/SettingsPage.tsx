@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { getEmailStatus, sendTestEmail } from '../api/client'
+import { roleBadgeClass, roleLabel } from '../permissions'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
 interface ToggleRowProps {
@@ -70,10 +71,13 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
+    provider: 'sendgrid' | 'smtp' | 'none'
     missing: string[]
     host: string
     port: number
     from: string
+    fromName?: string
+    envFile: string
     envFileExists: boolean
   } | null>(null)
 
@@ -126,9 +130,9 @@ export default function SettingsPage() {
         />
         <div className="py-4 flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-gray-100 tracking-tight">SMTP Test</div>
+            <div className="text-sm font-semibold text-gray-100 tracking-tight">Test email</div>
             <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
-              Send a test email to your login address to verify the backend SMTP settings.
+              Sends a test message via SendGrid (if configured) or SMTP to verify backend email settings.
             </p>
             {testResult && (
               <div className={`mt-2 flex items-center gap-1.5 text-xs ${testResult.sent ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -150,9 +154,11 @@ export default function SettingsPage() {
         </div>
         {emailStatus && (
           <div className={`py-3 text-xs border-t border-gray-800 ${emailStatus.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
-            SMTP status: {emailStatus.configured
-              ? `Configured (${emailStatus.host}:${emailStatus.port})`
-              : `Missing ${emailStatus.missing.join(', ')}${emailStatus.envFileExists ? '' : ' and backend/.env was not found'}`
+            Email: {emailStatus.configured
+              ? emailStatus.provider === 'sendgrid'
+                ? `SendGrid — from ${emailStatus.from}${emailStatus.fromName ? ` (${emailStatus.fromName})` : ''}`
+                : `SMTP — ${emailStatus.host}:${emailStatus.port} · from ${emailStatus.from}`
+              : `Not configured — ${[...new Set(emailStatus.missing)].join(', ')}${emailStatus.envFileExists ? '' : ' · backend/.env not found'}`
             }
           </div>
         )}
@@ -186,8 +192,19 @@ export default function SettingsPage() {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-500">Email</span>
-              <span className="text-gray-200 font-medium">{user.email}</span>
+              <span className="text-gray-200 font-medium truncate ml-4">{user.email}</span>
             </div>
+            <div className="flex justify-between items-center gap-3">
+              <span className="text-gray-500">Role</span>
+              <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${roleBadgeClass(user.role)}`}>
+                {roleLabel(user.role)}
+              </span>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed pt-1">
+              {user.role === 'finance' && 'Discovery radars (AI & Q) are hidden. Admins assign roles via server env or database.'}
+              {user.role === 'admin' && 'Full access. Assign finance/admin lists in OPTION_ADVISOR_FINANCE_EMAILS / OPTION_ADVISOR_ADMIN_EMAILS on the server.'}
+              {user.role === 'user' && 'Standard access. Your organization can promote accounts to admin or finance on the server.'}
+            </p>
           </div>
         </SettingsCard>
       )}

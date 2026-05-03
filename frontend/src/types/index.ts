@@ -147,6 +147,8 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal'
 
+export type UserRole = 'admin' | 'user' | 'finance'
+
 // ─── Alert system ───────────────────────────────────────────
 
 export interface AlertEntry {
@@ -191,6 +193,8 @@ export interface AlertEmailItem {
 export interface User {
   name: string
   email: string
+  /** Resolved from backend (user-data + env role maps). */
+  role: UserRole
   avatar?: string
 }
 
@@ -233,6 +237,7 @@ export interface PortfolioPosition {
 
 export interface UserDataState {
   email: string
+  role: UserRole
   watchlist: WatchlistItem[]
   portfolio: PortfolioPosition[]
 }

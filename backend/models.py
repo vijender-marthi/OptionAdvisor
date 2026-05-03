@@ -57,6 +57,8 @@ class UserDataRequest(BaseModel):
 
 class UserDataResponse(BaseModel):
     email: str
+    """Effective role: admin | user | finance (resolved from env allow-lists + stored value)."""
+    role: str = "user"
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
 

@@ -4,6 +4,12 @@ import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommen
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
 import { analyzeOptions, clearBackendAlerts, dismissBackendAlert, getAlerts, getJournal, getUserData, saveUserData, scanBackendAlerts } from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
+import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
+
+function migrateStoredUser(raw: User | null): User | null {
+  if (!raw?.email) return raw
+  return { ...raw, role: normalizeUserRole(raw.role as string | undefined) }
+}
 
 // ─── Router ────────────────────────────────────────────────────────────────────
 function getHashPage(): Page {
@@ -96,6 +102,8 @@ interface AppContextValue {
   user: User | null
   login: (name: string, email: string, password: string) => boolean
   logout: () => void
+  /** Feature gating: finance users omit discovery radars; admin/user see all pages. */
+  canAccessPage: (p: Page) => boolean
 
   // Watchlist
   watchlist: WatchlistItem[]
@@ -175,7 +183,7 @@ function getInitialTheme(): 'dark' | 'light' {
 // ─── Provider ──────────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
   const [page, setPage]             = useState<Page>(getHashPage)
-  const [user, setUser]             = useState<User | null>(() => load<User | null>('oa_user', null))
+  const [user, setUser]             = useState<User | null>(() => migrateStoredUser(load<User | null>('oa_user', null)))
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
   const [portfolio, setPortfolio]   = useState<PortfolioPosition[]>([])
   const [pendingTicker, setPendingTicker] = useState<string | null>(null)
@@ -250,6 +258,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setWatchlist(data.watchlist)
         setPortfolio(data.portfolio)
+        setUser(prev => {
+          if (!prev) return prev
+          const em = prev.email.trim().toLowerCase()
+          if (em !== String(data.email).trim().toLowerCase()) return prev
+          return { ...prev, role: normalizeUserRole(data.role) }
+        })
         setUserDataLoaded(true)
       } catch (e) {
         console.warn('[user-data] load failed:', e)
@@ -355,7 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWatchlist([])
     setPortfolio([])
     setUserDataLoaded(false)
-    setUser({ name: displayName, email: cleanEmail })
+    setUser({ name: displayName, email: cleanEmail, role: 'user' })
     return true
   }, [])
 
@@ -711,11 +725,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const unreadAlertCount = alerts.filter(a => !a.dismissed).length
 
+  const canAccessPage = useCallback(
+    (p: Page) => roleCanAccessPage(user?.role, p),
+    [user?.role],
+  )
+
   return (
     <AppContext.Provider value={{
       page, navigate,
       pendingTicker, requestAnalysis, clearPendingTicker,
-      user, login, logout,
+      user, login, logout, canAccessPage,
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
       portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,

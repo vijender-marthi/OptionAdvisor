@@ -21,7 +21,7 @@ interface NavGroup {
 }
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount } = useApp()
+  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
@@ -71,7 +71,13 @@ export default function Sidebar() {
     { id: 'settings',  label: 'Settings', icon: <Settings      size={18} /> },
     { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
   ]
-  const mobileMoreActive = mobileMoreItems.some(item => item.id === page)
+
+  const visibleNavGroups = navGroups
+    .map(g => ({ ...g, items: g.items.filter(i => canAccessPage(i.id)) }))
+    .filter(g => g.items.length > 0)
+  const visibleMobilePrimaryItems = mobilePrimaryItems.filter(i => canAccessPage(i.id))
+  const visibleMobileMoreItems = mobileMoreItems.filter(i => canAccessPage(i.id))
+  const mobileMoreActive = visibleMobileMoreItems.some(item => item.id === page)
   const isLight = theme === 'light'
 
   const handleMobileNavigate = (target: Page) => {
@@ -98,7 +104,7 @@ export default function Sidebar() {
 
       {/* Nav items — compact layout; overscroll contained so wheel doesn’t scroll the main column */}
       <nav className="desktop-sidebar-nav flex-1 min-h-0 overflow-y-auto py-2 px-1.5 space-y-2">
-        {navGroups.map(group => (
+        {visibleNavGroups.map(group => (
           <div key={group.label}>
             {/* Group label — hidden when collapsed */}
             {!collapsed && (
@@ -238,7 +244,7 @@ export default function Sidebar() {
             </div>
             <div className="max-h-[70svh] overflow-y-auto overscroll-contain p-3">
               <div className="grid grid-cols-2 gap-2">
-                {[...mobilePrimaryItems, ...mobileMoreItems].map(item => {
+                {[...visibleMobilePrimaryItems, ...visibleMobileMoreItems].map(item => {
                   const active = page === item.id
                   const isTradeSignals = item.id === 'trade-signals'
                   const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
@@ -324,7 +330,7 @@ export default function Sidebar() {
               <div className="text-xs text-gray-500">Radar, settings, theme, and account</div>
             </div>
             <div className="grid grid-cols-2 gap-2 p-3">
-              {mobileMoreItems.map(item => {
+              {visibleMobileMoreItems.map(item => {
                 const active = page === item.id
                 const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                 return (
@@ -376,7 +382,7 @@ export default function Sidebar() {
           </div>
       )}
       <div className="mobile-nav-scroll flex items-center gap-2 overflow-x-auto px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:justify-center">
-        {mobilePrimaryItems.map(item => {
+        {visibleMobilePrimaryItems.map(item => {
           const active = page === item.id
           const isTradeSignals = item.id === 'trade-signals'
           const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null

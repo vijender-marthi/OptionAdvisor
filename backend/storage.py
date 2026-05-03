@@ -4,8 +4,8 @@ SQLite persistence for per-user watchlist and portfolio state.
 import json
 import os
 import sqlite3
+from typing import Any, Optional
 from pathlib import Path
-from typing import Any
 
 
 DEFAULT_DB_PATH = Path(__file__).with_name("option_advisor.sqlite3")
@@ -23,6 +23,40 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _migrate_user_state_role_column(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "role" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
+        )
+
+
+def effective_user_role(email: str, stored_role: Optional[str]) -> str:
+    """
+    Resolve role: OPTION_ADVISOR_ADMIN_EMAILS / OPTION_ADVISOR_FINANCE_EMAILS (comma-separated)
+    override stored DB role; otherwise use stored value, default 'user'.
+    """
+    n = normalize_email(email)
+    admins = {
+        normalize_email(x.strip())
+        for x in os.getenv("OPTION_ADVISOR_ADMIN_EMAILS", "").split(",")
+        if x.strip()
+    }
+    finance = {
+        normalize_email(x.strip())
+        for x in os.getenv("OPTION_ADVISOR_FINANCE_EMAILS", "").split(",")
+        if x.strip()
+    }
+    if n in admins:
+        return "admin"
+    if n in finance:
+        return "finance"
+    r = (stored_role or "user").strip().lower()
+    if r in ("admin", "finance", "user"):
+        return r
+    return "user"
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.execute(
@@ -31,10 +65,12 @@ def init_db() -> None:
                 email TEXT PRIMARY KEY,
                 watchlist_json TEXT NOT NULL DEFAULT '[]',
                 portfolio_json TEXT NOT NULL DEFAULT '[]',
+                role TEXT NOT NULL DEFAULT 'user',
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        _migrate_user_state_role_column(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -54,12 +90,12 @@ def init_db() -> None:
 def get_user_state(email: str) -> dict[str, Any]:
     normalized = normalize_email(email)
     if not normalized:
-        return {"email": "", "watchlist": [], "portfolio": []}
+        return {"email": "", "role": "user", "watchlist": [], "portfolio": []}
 
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT email, watchlist_json, portfolio_json
+            SELECT email, watchlist_json, portfolio_json, role
             FROM user_state
             WHERE email = ?
             """,
@@ -67,10 +103,17 @@ def get_user_state(email: str) -> dict[str, Any]:
         ).fetchone()
 
     if row is None:
-        return {"email": normalized, "watchlist": [], "portfolio": []}
+        return {
+            "email": normalized,
+            "role": effective_user_role(normalized, None),
+            "watchlist": [],
+            "portfolio": [],
+        }
 
+    stored_role = str(row["role"]) if row["role"] is not None else "user"
     return {
         "email": row["email"],
+        "role": effective_user_role(normalized, stored_role),
         "watchlist": json.loads(row["watchlist_json"]),
         "portfolio": json.loads(row["portfolio_json"]),
     }
@@ -80,7 +123,7 @@ def list_user_states() -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT email, watchlist_json, portfolio_json
+            SELECT email, watchlist_json, portfolio_json, role
             FROM user_state
             ORDER BY updated_at DESC
             """
@@ -89,6 +132,7 @@ def list_user_states() -> list[dict[str, Any]]:
     return [
         {
             "email": row["email"],
+            "role": effective_user_role(row["email"], str(row["role"]) if row["role"] is not None else None),
             "watchlist": json.loads(row["watchlist_json"]),
             "portfolio": json.loads(row["portfolio_json"]),
         }
@@ -101,8 +145,8 @@ def save_user_state(email: str, watchlist: list[dict[str, Any]], portfolio: list
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO user_state (email, watchlist_json, portfolio_json, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO user_state (email, watchlist_json, portfolio_json, role, updated_at)
+            VALUES (?, ?, ?, 'user', CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 watchlist_json = excluded.watchlist_json,
                 portfolio_json = excluded.portfolio_json,

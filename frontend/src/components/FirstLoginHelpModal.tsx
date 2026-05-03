@@ -37,7 +37,7 @@ export default function FirstLoginHelpModal() {
     {
       icon: <Bell size={22} />,
       title: 'Review GO alerts',
-      body: 'The Alerts page shows trades that pass the pre-trade checklist. Email alerts can be enabled with SMTP settings.',
+      body: 'The Alerts page shows trades that pass the pre-trade checklist. Email alerts can be enabled with SendGrid or SMTP in server settings.',
       action: 'View Alerts',
       page: 'alerts',
     },

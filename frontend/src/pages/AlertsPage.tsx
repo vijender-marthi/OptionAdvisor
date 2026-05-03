@@ -239,7 +239,7 @@ export default function AlertsPage() {
             Alerts fire automatically after each 15-minute background refresh (market hours only: 6 AM–4 PM PST).
             Each trade appears once — the same ticker, strategy, and expiry combo is not resent on later 15-minute refreshes.
             Alerts stay on this page for 24 hours, then clear automatically.
-            An email is sent to your account address when new GO trades are found (requires SMTP setup in <code className="text-blue-400">.env</code>).
+            An email is sent to your account address when new GO trades are found (requires SendGrid or SMTP in the backend <code className="text-blue-400">.env</code>).
           </p>
         </div>
 

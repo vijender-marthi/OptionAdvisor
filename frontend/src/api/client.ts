@@ -58,10 +58,12 @@ export const sendTestEmail = async (
 
 export const getEmailStatus = async (): Promise<{
   configured: boolean
+  provider: 'sendgrid' | 'smtp' | 'none'
   missing: string[]
   host: string
   port: number
   from: string
+  fromName?: string
   envFile: string
   envFileExists: boolean
 }> => {
