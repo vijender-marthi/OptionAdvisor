@@ -49,12 +49,6 @@ DEBIT_PROFIT_TARGET_PCT   = 100    # Close debit at 2x cost (100% gain)
 CREDIT_STOP_LOSS_MULT     = 2.0    # Stop if loss = 2x credit received
 CLOSE_AT_DTE              = 21     # Always close credit spreads at 21 DTE
 
-# ── Kelly Criterion / position-sizing constants ──────────────
-# Edge ratio = EV / max_loss.  Thin edge → warn; negative EV → hard reject.
-MIN_EDGE_RATIO        = 0.02   # 2% minimum EV/risk — below this the model error erases the edge
-KELLY_SAFETY_FACTOR   = 0.50   # Half-Kelly: halves the raw Kelly to stay in safe capital range
-MAX_KELLY_FRACTION    = 0.20   # Never recommend more than 20% of capital on one trade
-
 
 # ─────────────────────────────────────────────────────────────
 # HELPERS
@@ -101,32 +95,6 @@ def get_mid(row) -> float:
 
 def normal_cdf(value: float) -> float:
     return 0.5 * (1.0 + erf(value / sqrt(2.0)))
-
-
-def prob_above(
-    price: float,
-    target: float,
-    iv_pct: float,
-    expiry: str,
-    annual_drift: float = 0.0,
-) -> float:
-    """
-    Probability that the stock closes ABOVE `target` at `expiry`.
-
-    With annual_drift=0.0 this is the usual risk-neutral N(d2) approximation.
-    A non-zero annual_drift shifts the terminal distribution to match the
-    engine's directional thesis, which keeps PoP consistent with EV.
-
-    Used for expiry PoP where `target` = the breakeven price.
-      Bull Call Spread PoP = prob_above(price, breakeven, iv, expiry)
-      Bear Put  Spread PoP = 1 - prob_above(price, breakeven, iv, expiry)
-    """
-    T = years_to_expiry(expiry)
-    sigma = iv_pct / 100.0
-    if sigma <= 0 or T <= 0 or price <= 0 or target <= 0:
-        return 0.5
-    d2 = (log(price / target) + (annual_drift - 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
-    return round(normal_cdf(d2), 4)
 
 
 def years_to_expiry(expiry: str) -> float:
@@ -385,171 +353,6 @@ def compute_ev(max_profit: float, max_loss: float, prob_profit: float) -> float:
     return round((prob_profit * max_profit) - (prob_loss * max_loss), 4)
 
 
-def directional_drift(directional_bias: str, bias_confidence: int) -> float:
-    """Annualized drift used by the engine's real-world probability model."""
-    confidence = bias_confidence / 100.0
-    if directional_bias in ("Bullish", "Mildly Bullish"):
-        return 0.15 * confidence
-    if directional_bias in ("Bearish", "Mildly Bearish"):
-        return -0.10 * confidence
-    return 0.05
-
-
-def expected_option_payoff(
-    current_price: float,
-    strike: float,
-    iv_pct: float,
-    expiry: str,
-    option_type: str,
-    annual_drift: float,
-) -> float:
-    """
-    Expected expiry payoff E[max(±(S_T-K), 0)] under a lognormal stock model.
-    """
-    S = current_price
-    K = strike
-    sigma = iv_pct / 100.0
-    T = max(years_to_expiry(expiry), 1 / 365)
-
-    if sigma <= 0 or S <= 0 or K <= 0:
-        return 0.0
-
-    vol_sqrt_t = sigma * sqrt(T)
-    if vol_sqrt_t <= 0:
-        return 0.0
-
-    try:
-        d1 = (log(S / K) + (annual_drift + 0.5 * sigma ** 2) * T) / vol_sqrt_t
-        d2 = d1 - vol_sqrt_t
-
-        if option_type == "CALL":
-            payoff = S * np.exp(annual_drift * T) * normal_cdf(d1) - K * normal_cdf(d2)
-        else:
-            payoff = K * normal_cdf(-d2) - S * np.exp(annual_drift * T) * normal_cdf(-d1)
-        return max(float(payoff), 0.0)
-    except Exception:
-        return 0.0
-
-
-def compute_bs_ev_long(
-    current_price: float,
-    strike: float,
-    iv_pct: float,          # IV as a percentage, e.g. 35.0 for 35%
-    expiry: str,
-    premium: float,          # premium paid per share
-    option_type: str,        # "CALL" or "PUT"
-    directional_bias: str,   # from MarketSignals
-    bias_confidence: int,    # 0–100 from MarketSignals
-) -> float:
-    """
-    Black-Scholes expected profit for a long call or long put.
-
-    Replaces the simplistic (PoP × 10×premium) formula with a lognormal
-    expected payoff adjusted for the engine's real-world directional signal.
-
-    Why the old formula was wrong
-    ──────────────────────────────
-    Using max_profit = 10×premium assumes the stock will always move exactly
-    10× the premium.  For a $18 AVGO call that inflates EV to +$8,400/contract.
-    The correct approach integrates the full payoff distribution.
-
-    Real-world drift μ (annualised)
-    ────────────────────────────────
-    Bullish signal  →  up to +15% × confidence   (call benefits)
-    Bearish signal  →  up to −10% × confidence   (put benefits)
-    Neutral         →  +5%  (long-run equity risk premium)
-
-    Formula
-    ────────
-      d1 = [ln(S/K) + (μ + σ²/2)T] / (σ√T)
-      d2 = d1 − σ√T
-      CALL: E[payoff] = S·e^(μT)·N(d1) − K·N(d2)
-      PUT:  E[payoff] = K·N(−d2) − S·e^(μT)·N(−d1)
-      EV   = E[payoff] − premium_paid
-
-    The drift adjustment means a strongly-bullish long call has positive EV
-    because the real-world expected move exceeds the risk-neutral one. An
-    out-of-the-money call with weak signal will show near-zero or negative EV
-    and be rejected by the EV hard gate — the right outcome.
-    """
-    mu = directional_drift(directional_bias, bias_confidence)
-    expected_payoff = expected_option_payoff(
-        current_price=current_price,
-        strike=strike,
-        iv_pct=iv_pct,
-        expiry=expiry,
-        option_type=option_type,
-        annual_drift=mu,
-    )
-    return round(expected_payoff - premium, 4)
-
-
-def compute_bs_ev_credit_spread(
-    current_price: float,
-    short_strike: float,
-    long_strike: float,
-    short_iv_pct: float,
-    long_iv_pct: float,
-    expiry: str,
-    net_credit: float,
-    option_type: str,
-    directional_bias: str,
-    bias_confidence: int,
-) -> float:
-    """
-    Expected expiry profit for a vertical credit spread.
-
-    Profit = credit - short-option payoff + long-option payoff.
-    This captures the middle region between breakeven and max loss that the
-    old binary EV shortcut ignored.
-    """
-    mu = directional_drift(directional_bias, bias_confidence)
-    short_payoff = expected_option_payoff(
-        current_price=current_price,
-        strike=short_strike,
-        iv_pct=short_iv_pct,
-        expiry=expiry,
-        option_type=option_type,
-        annual_drift=mu,
-    )
-    long_payoff = expected_option_payoff(
-        current_price=current_price,
-        strike=long_strike,
-        iv_pct=long_iv_pct,
-        expiry=expiry,
-        option_type=option_type,
-        annual_drift=mu,
-    )
-    return round(net_credit - short_payoff + long_payoff, 4)
-
-
-def compute_kelly(ev: float, max_loss: float) -> tuple[float, float, float]:
-    """
-    Kelly Criterion for options position sizing.
-
-    For a binary-outcome trade (keep full profit OR lose max_loss):
-        Kelly % = EV / max_loss
-        (This is equivalent to the standard Kelly formula p - q/b when
-         simplified for a single-outcome bet.)
-
-    Returns (kelly_fraction, half_kelly_fraction, edge_ratio) where:
-      kelly_fraction      — raw Kelly as a fraction of capital (0–1, uncapped)
-      half_kelly_fraction — recommended allocation: Kelly × 0.5, capped at 20%
-      edge_ratio          — EV / max_loss (diagnostic; < MIN_EDGE_RATIO = thin edge)
-
-    Caller converts to recommended contracts:
-        capital_to_risk = account_size × half_kelly_fraction
-        contracts       = floor(capital_to_risk / (max_loss × 100))
-    """
-    if max_loss <= 0 or ev <= 0:
-        return 0.0, 0.0, round(ev / max(max_loss, 1e-9), 4)
-
-    edge_ratio   = ev / max_loss
-    kelly        = edge_ratio                                        # raw Kelly %
-    half_kelly   = min(kelly * KELLY_SAFETY_FACTOR, MAX_KELLY_FRACTION)
-    return round(kelly, 4), round(half_kelly, 4), round(edge_ratio, 4)
-
-
 def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
     """
     Score 0–40: how well the current market signals align with the strategy.
@@ -734,41 +537,22 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
     if cost < MIN_MID_PRICE:
         return None
     be = round(leg.strike + cost, 2)
-    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
-    # PoP = P(stock > breakeven at expiry) = N(d2) at breakeven.
-    # Using 1-delta overstates PoP because delta ≈ N(d1) > N(d2), and breakeven > strike.
-    # Use the same directional drift as the EV model so the statistics stay aligned.
-    rop = prob_above(price, be, leg.iv, expiry, annual_drift=mu)
+    rop = round(1 - leg.delta if leg.delta > 0 else 0.45, 2)  # approx PoP
+    max_profit = 999.0  # unlimited — cap for display at 10x cost
     max_loss = cost
-    prob_max_loss = round(1.0 - prob_above(price, leg.strike, leg.iv, expiry, annual_drift=mu), 4)
-
-    # Black-Scholes expected profit — replaces the inaccurate 10×premium proxy.
-    # Integrates the full lognormal payoff distribution with a real-world drift
-    # derived from the engine's directional signal.
-    ev = compute_bs_ev_long(
-        current_price=price,
-        strike=leg.strike,
-        iv_pct=leg.iv,
-        expiry=expiry,
-        premium=cost,
-        option_type="CALL",
-        directional_bias=signals.directional_bias,
-        bias_confidence=signals.bias_confidence,
-    )
-    ev_per_contract = round(ev * 100, 0)
+    rr = round(max_loss / (cost * 10), 2)  # display R:R vs 10x target
+    ev = compute_ev(cost * 10, max_loss, rop)
 
     return dict(
         strategy="Long Call", bias="Bullish",
         legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
         net_credit=-cost, spread_width=0,
-        # max_profit = 10× premium as a display reference for the unlimited upside target.
-        # EV is computed via Black-Scholes — do not derive EV from max_profit.
         max_profit=cost * 10, max_loss=cost,
         risk_reward_ratio=round(max_loss / (cost * 10), 2),
         credit_pct_of_width=0,
         breakeven_lower=be, breakeven_upper=999,
         short_leg_delta=leg.delta, prob_of_profit=rop,
-        prob_of_max_loss=prob_max_loss,
+        prob_of_max_loss=round(1 - rop, 2),
         expected_value=ev,
         passes_rr_filter=True,
         passes_credit_filter=True,
@@ -779,10 +563,7 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
             f"IV rank {signals.iv_rank:.0f}% ({signals.iv_environment}) — "
             f"{'options are relatively cheap for buying.' if signals.iv_rank < 45 else 'note: elevated IV increases cost.'} "
             f"Long call at ${leg.strike} breaks even at ${be}. "
-            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% chance of profit at expiry. "
-            f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
-            f"drift ({signals.bias_confidence}% confidence) — "
-            f"{'positive edge given current signal.' if ev > 0 else 'thin or negative edge; consider waiting for stronger conviction.'}"
+            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% chance of profit at expiry."
         ),
         exit_plan=generate_exit_plan("Long Call", cost * 10, -cost, expiry, days_to_expiry(expiry)),
     )
@@ -798,24 +579,8 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
     if cost < MIN_MID_PRICE:
         return None
     be = round(leg.strike - cost, 2)
-    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
-    # PoP = P(stock < breakeven at expiry) = 1 - N(d2) at breakeven.
-    # Using |delta| underestimates PoP because breakeven < strike and delta ≈ N(d1) not N(d2).
-    rop = round(1.0 - prob_above(price, be, leg.iv, expiry, annual_drift=mu), 4)
-    prob_max_loss = round(prob_above(price, leg.strike, leg.iv, expiry, annual_drift=mu), 4)
-
-    # Black-Scholes expected profit — replaces the 10×premium proxy.
-    ev = compute_bs_ev_long(
-        current_price=price,
-        strike=leg.strike,
-        iv_pct=leg.iv,
-        expiry=expiry,
-        premium=cost,
-        option_type="PUT",
-        directional_bias=signals.directional_bias,
-        bias_confidence=signals.bias_confidence,
-    )
-    ev_per_contract = round(ev * 100, 0)
+    rop = round(abs(leg.delta) if leg.delta < 0 else 0.45, 2)
+    ev = compute_ev(cost * 10, cost, rop)
 
     return dict(
         strategy="Long Put", bias="Bearish",
@@ -826,7 +591,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
         credit_pct_of_width=0,
         breakeven_lower=0, breakeven_upper=be,
         short_leg_delta=abs(leg.delta), prob_of_profit=rop,
-        prob_of_max_loss=prob_max_loss,
+        prob_of_max_loss=round(1 - rop, 2),
         expected_value=ev,
         passes_rr_filter=True, passes_credit_filter=True, passes_liquidity_filter=True,
         rationale=(
@@ -834,10 +599,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
             f"RSI {signals.rsi} ({signals.rsi_signal}). "
             f"MACD: {signals.macd_crossover} crossover. "
             f"Long put at ${leg.strike} — break even below ${be}. "
-            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% probability of profit. "
-            f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
-            f"drift ({signals.bias_confidence}% confidence) — "
-            f"{'positive edge given bearish signal.' if ev > 0 else 'thin or negative edge; signal conviction may be insufficient.'}"
+            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% probability of profit."
         ),
         exit_plan=generate_exit_plan("Long Put", cost * 10, -cost, expiry, days_to_expiry(expiry)),
     )
@@ -875,26 +637,15 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     max_loss = net_debit
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
     short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
+    rop = round(1 - short_delta, 2)
+    ev = compute_ev(max_profit, max_loss, rop)
 
-    # PoP = P(stock clears the breakeven at expiry), computed via N(d2) at breakeven.
-    # NOTE: 1 - short_delta = P(stock < short_strike), which is NOT the PoP for a debit
-    # spread — the breakeven is below the short strike by the full net debit.  Using the
-    # short-strike shortcut badly overstates PoP (e.g. 77% shown instead of ~60%).
-    avg_iv = (buy_leg.iv + sell_leg.iv) / 2
     if option_type == "CALL":
-        # Bull Call Spread: profit when stock > long_strike + net_debit
         be = round(buy_leg.strike + net_debit, 2)
         be_lower, be_upper = be, 999
-        rop = prob_above(price, be, avg_iv, expiry)
     else:
-        # Bear Put Spread: profit when stock < long_strike - net_debit
         be = round(buy_leg.strike - net_debit, 2)
-        # be_lower = actual breakeven; be_upper = 999 sentinel means "unlimited profit below"
-        # (previously be_lower=0 caused "$0.00 – $190.35" display — misleading)
         be_lower, be_upper = 0, be
-        rop = round(1.0 - prob_above(price, be, avg_iv, expiry), 4)
-
-    ev = compute_ev(max_profit, max_loss, rop)
 
     return dict(
         strategy=strategy_name, bias=bias,
@@ -969,32 +720,15 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
     max_loss = round(spread_width - net_credit, 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
     short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
-    avg_iv = (sell_leg.iv + buy_leg.iv) / 2
-    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
+    rop = round(1 - short_delta, 2)
+    ev = compute_ev(max_profit, max_loss, rop)
 
     if option_type == "PUT":
         be = round(sell_leg.strike - net_credit, 2)
         be_lower, be_upper = be, 999
-        rop = prob_above(price, be, avg_iv, expiry, annual_drift=mu)
-        prob_max_loss = round(1.0 - prob_above(price, buy_leg.strike, avg_iv, expiry, annual_drift=mu), 4)
     else:
         be = round(sell_leg.strike + net_credit, 2)
         be_lower, be_upper = 0, be
-        rop = round(1.0 - prob_above(price, be, avg_iv, expiry, annual_drift=mu), 4)
-        prob_max_loss = prob_above(price, buy_leg.strike, avg_iv, expiry, annual_drift=mu)
-
-    ev = compute_bs_ev_credit_spread(
-        current_price=price,
-        short_strike=sell_leg.strike,
-        long_strike=buy_leg.strike,
-        short_iv_pct=sell_leg.iv,
-        long_iv_pct=buy_leg.iv,
-        expiry=expiry,
-        net_credit=net_credit,
-        option_type=option_type,
-        directional_bias=signals.directional_bias,
-        bias_confidence=signals.bias_confidence,
-    )
 
     passes_credit = credit_pct >= MIN_CREDIT_PCT_OF_WIDTH
 
@@ -1007,7 +741,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         credit_pct_of_width=credit_pct,
         breakeven_lower=be_lower, breakeven_upper=be_upper,
         short_leg_delta=short_delta, prob_of_profit=rop,
-        prob_of_max_loss=prob_max_loss,
+        prob_of_max_loss=round(1 - rop, 2),
         expected_value=ev,
         passes_rr_filter=rr <= 5.0,
         passes_credit_filter=passes_credit,
@@ -1017,7 +751,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
             f"buy protection at ${buy_leg.strike}. "
             f"Collect ${net_credit:.2f}/share credit = {credit_pct:.0f}% of the ${spread_width} spread width. "
             f"{'✅ Meets minimum 25% credit threshold.' if passes_credit else '⚠️ Below 25% threshold — thin credit.'} "
-            f"~{int(rop*100)}% probability of any profit above breakeven ${be:.2f}. "
+            f"~{int(rop*100)}% probability of keeping full credit. "
             f"Risk/Reward: risk ${max_loss:.2f} to make ${max_profit:.2f}. "
             f"IV rank {signals.iv_rank:.0f}% — {'ideal for selling premium.' if signals.iv_rank >= 50 else 'marginal IV for credit selling.'}"
         ),
@@ -1125,33 +859,8 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
 
     be_upper = round(call_leg.strike + total_cost, 2)
     be_lower = round(put_leg.strike - total_cost, 2)
-
-    # Black-Scholes EV for straddle: sum call EV + put EV (both legs net of their share of premium).
-    # Use the average IV of the two ATM legs for the shared σ estimate.
-    avg_iv = (call_leg.iv + put_leg.iv) / 2
-    call_ev = compute_bs_ev_long(
-        current_price=price, strike=call_leg.strike, iv_pct=avg_iv,
-        expiry=expiry, premium=call_leg.mid_price, option_type="CALL",
-        directional_bias=signals.directional_bias,
-        bias_confidence=signals.bias_confidence,
-    )
-    put_ev = compute_bs_ev_long(
-        current_price=price, strike=put_leg.strike, iv_pct=avg_iv,
-        expiry=expiry, premium=put_leg.mid_price, option_type="PUT",
-        directional_bias=signals.directional_bias,
-        bias_confidence=signals.bias_confidence,
-    )
-    ev = round(call_ev + put_ev, 4)
-
-    # PoP: a straddle profits when the stock moves beyond either breakeven.
-    # P(|return| > move_needed) ≈ 2 × N(-z) where z = move_needed / (σ√T)
-    move_needed_pct = total_cost / price
-    dte_val = days_to_expiry(expiry)
-    T_val = max(dte_val, 1) / 365.0
-    sigma_sqrt_T = avg_iv / 100 * sqrt(T_val)
-    z = move_needed_pct / sigma_sqrt_T if sigma_sqrt_T > 0 else 2.0
-    rop = round(2 * (1.0 - normal_cdf(z)), 4)   # P(move > breakeven on either side)
-    rop = max(0.10, min(0.70, rop))              # clamp to sensible straddle range
+    rop = 0.40  # straddles typically have ~40% PoP due to cost
+    ev = compute_ev(total_cost * 3, total_cost, rop)
 
     return dict(
         strategy="Long Straddle", bias="Neutral (Volatile)",
@@ -1168,9 +877,9 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
         rationale=(
             f"Neutral bias but expecting a large move. IV rank {signals.iv_rank:.0f}% "
             f"({'options cheap — good time to buy vol.' if signals.iv_rank < 40 else 'note: elevated IV makes straddle expensive.'}) "
-            f"Costs ${total_cost:.2f}/share. Needs ≥{round(total_cost/price*100,1)}% move to break even. "
-            f"Profit zone outside ${be_lower}–${be_upper}. "
-            f"BS-adjusted EV ${ev:+.2f}/share (call ${call_ev:+.2f} + put ${put_ev:+.2f})."
+            f"Costs ${total_cost:.2f}/share. Needs a move {'larger' if signals.current_iv > 30 else 'of at least'} "
+            f"${total_cost:.2f} ({round(total_cost/price*100,1)}%) to be profitable by expiry. "
+            f"Profit zone outside ${be_lower} – ${be_upper}."
         ),
         exit_plan=generate_exit_plan("Long Straddle", total_cost * 10, -total_cost, expiry, days_to_expiry(expiry)),
     )
@@ -1195,16 +904,14 @@ def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) ->
 
     strike = leg.strike
     max_profit = round(net_credit, 2)           # put expires worthless — keep full premium
-    # max_loss = 2× credit: the disciplined stop-loss rule (close if position doubles in loss).
-    # This is the correct denominator for both EV and Kelly — they must use the same number.
-    # The 12% stock-decline scenario is referenced in rationale text as informational context.
-    max_loss = round(net_credit * 2, 2)
+    # Display max_loss: practical 12% stock decline through strike, net of premium
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
     rop = round(1 - abs(leg.delta), 2)          # prob put expires OTM
-    ev = compute_ev(net_credit, max_loss, rop)
+    # EV via practical option-stop model (2× credit = disciplined stop)
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
     be = round(strike - net_credit, 2)          # breakeven at expiry
     yield_pct = round(net_credit / price * 100, 2)
-    decline_loss = round(max(price * 0.12 - net_credit, 0), 2)   # informational only
 
     return dict(
         strategy="Short Put", bias="Neutral/Bullish",
@@ -1224,8 +931,7 @@ def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) ->
             f"⚠️ Requires a margin account (naked put — no stock or cash collateral required beyond margin). "
             f"Sell {expiry} ${strike:.0f} put — collect ${net_credit:.2f}/share ({yield_pct:.2f}% of stock price). "
             f"Short put delta {leg.delta:.2f} → {int(rop*100)}% probability the put expires worthless — you keep premium. "
-            f"Breakeven at expiry: ${be:.2f}. Max loss shown = 2× credit (${max_loss:.2f}/share) — the disciplined stop-loss level. "
-            f"Note: an unmanaged 12% stock decline through strike could cost ~${decline_loss:.2f}/share — always use the stop. "
+            f"Breakeven at expiry: ${be:.2f}. Max loss: stock assigned at ${strike:.0f} then falls further. "
             f"IV rank {signals.iv_rank:.0f}% — {'elevated; rich premium makes short put compelling.' if signals.iv_rank >= 50 else 'moderate IV; premium is thinner.'} "
             f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
         ),
@@ -1257,14 +963,14 @@ def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) 
 
     strike = leg.strike
     max_profit = round(net_credit, 2)           # call expires worthless — keep full premium
-    # max_loss = 2× credit: disciplined stop-loss rule, consistent with EV and Kelly.
-    max_loss = round(net_credit * 2, 2)
+    # Display max_loss: practical 12% adverse move above the strike, net of premium
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
     rop = round(1 - abs(leg.delta), 2)          # prob call expires OTM
-    ev = compute_ev(net_credit, max_loss, rop)
+    # EV via practical option-stop model (2× credit = disciplined stop)
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
     be = round(strike + net_credit, 2)          # upside breakeven at expiry
     yield_pct = round(net_credit / price * 100, 2)
-    rally_loss = round(max(price * 0.12 - net_credit, 0), 2)   # informational only
 
     return dict(
         strategy="Short Call", bias="Neutral/Bearish",
@@ -1284,8 +990,7 @@ def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) 
             f"⚠️ Requires margin — SHORT CALL CARRIES UNLIMITED UPSIDE RISK. "
             f"Sell {expiry} ${strike:.0f} call — collect ${net_credit:.2f}/share ({yield_pct:.2f}% of stock price). "
             f"Short call delta {leg.delta:.2f} → {int(rop*100)}% probability the call expires worthless — you keep premium. "
-            f"Upside breakeven: ${be:.2f}. Max loss shown = 2× credit (${max_loss:.2f}/share) — the hard stop level. "
-            f"An unmanaged 12% rally above the strike could cost ~${rally_loss:.2f}/share — losses beyond that are unlimited. "
+            f"Upside breakeven: ${be:.2f}. If stock rallies sharply above ${strike:.0f}, losses are theoretically unlimited. "
             f"IV rank {signals.iv_rank:.0f}% — {'elevated; rich premium offsets the risk, but active management is essential.' if signals.iv_rank >= 50 else 'moderate IV; thin premium with uncapped risk — consider a Bear Call Spread instead.'} "
             f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
         ),
@@ -1319,14 +1024,14 @@ def _build_covered_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str
     # Max profit: premium collected + stock appreciation up to strike (if called away)
     upside = max(0.0, round(strike - price, 2))
     max_profit = round(net_credit + upside, 2)
-    # max_loss = 2× credit: disciplined stop rule, consistent with EV and Kelly.
-    # (12% adverse stock move is informational context only — in the rationale string.)
-    max_loss = round(net_credit * 2, 2)
+    # max_loss (display): practical 12% adverse stock move offset by premium received
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
     rop = round(1 - abs(leg.delta), 2)  # prob call expires OTM (you keep premium + stock)
-    ev = compute_ev(net_credit, max_loss, rop)
+    # EV: use option-stop model (lose 2× credit if forced to close) — not the full stock-risk model.
+    # Covered strategies are income trades; the 12% stock decline figure is informational, not an EV input.
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
     be = round(price - net_credit, 2)   # downside breakeven (premium as buffer)
-    stock_decline_loss = round(max(price * 0.12 - net_credit, 0), 2)   # informational
     yield_pct = round(net_credit / price * 100, 2)  # income yield on stock position
 
     return dict(
@@ -1381,12 +1086,13 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
 
     strike = leg.strike
     max_profit = round(net_credit, 2)    # put expires OTM — keep full premium
-    # max_loss = 2× credit: disciplined stop rule, consistent with EV and Kelly.
-    max_loss = round(net_credit * 2, 2)
+    # max_loss (display): 12% stock decline through the strike, net of premium received
+    max_loss = round(max(price * 0.12 - net_credit, net_credit), 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 99
     rop = round(1 - abs(leg.delta), 2)  # prob put expires OTM (full premium retained)
-    ev = compute_ev(net_credit, max_loss, rop)
-    stock_decline_loss = round(max(price * 0.12 - net_credit, 0), 2)   # informational
+    # EV: use practical option-stop model (lose 2× credit to close) — not the full stock-assignment risk.
+    # The 12% stock decline figure is informational for the user, not the EV driver for an income strategy.
+    ev = compute_ev(net_credit, round(net_credit * 2, 4), rop)
     be = round(strike - net_credit, 2)   # effective stock cost if assigned
     yield_pct = round(net_credit / strike * 100, 2)  # income yield on cash collateral
 
@@ -1609,22 +1315,6 @@ def run_engine(
     for t in candidates_raw:
         warnings_list = []
 
-        # ── EV hard gate (Operations Research: negative-EV trades are mathematically
-        #    indefensible regardless of how good the setup looks qualitatively) ──────
-        ev = t.get("expected_value", 0)
-        if ev <= 0:
-            continue   # Hard reject — never recommend a trade where EV ≤ 0
-
-        # Thin-edge warning: EV/risk < MIN_EDGE_RATIO means model error could erase the edge
-        max_loss = t.get("max_loss", 0)
-        edge_ratio = ev / max_loss if max_loss > 0 else 0
-        if edge_ratio < MIN_EDGE_RATIO:
-            warnings_list.append(
-                f"Thin edge: EV/Risk = {edge_ratio*100:.1f}% "
-                f"(minimum recommended is {MIN_EDGE_RATIO*100:.0f}%). "
-                f"Probability estimate uncertainty may erase this edge — trade with caution."
-            )
-
         # Check liquidity per leg
         all_liquid = True
         for leg in t["legs"]:
@@ -1657,9 +1347,6 @@ def run_engine(
         iv_score   = score_iv_fit(signals, t["strategy"])
         total      = sig_score + str_score + liq_score + iv_score
 
-        # Kelly Criterion: compute position sizing recommendation
-        kelly_f, half_kelly_f, edge_r = compute_kelly(t["expected_value"], t["max_loss"])
-
         scored.append(TradeCandidate(
             strategy=t["strategy"],
             bias=t["bias"],
@@ -1689,9 +1376,6 @@ def run_engine(
             rationale=t["rationale"],
             exit_plan=t["exit_plan"],
             warnings=t.get("warnings", []),
-            kelly_fraction=kelly_f,
-            half_kelly_fraction=half_kelly_f,
-            edge_ratio=edge_r,
         ))
 
     scored.sort(key=lambda x: x.total_score, reverse=True)

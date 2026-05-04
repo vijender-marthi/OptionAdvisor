@@ -40,18 +40,6 @@ def _calls_chain() -> pd.DataFrame:
     ])
 
 
-def _debit_calls_chain() -> pd.DataFrame:
-    return pd.DataFrame([
-        _option_row(85, 15.8, 16.2, 0.28, 0.86),
-        _option_row(90, 11.8, 12.2, 0.28, 0.75),
-        _option_row(95, 6.8, 7.2, 0.28, 0.62),
-        _option_row(100, 1.9, 2.1, 0.28, 0.50),
-        _option_row(105, 0.9, 1.1, 0.28, 0.42),
-        _option_row(110, 0.4, 0.6, 0.28, 0.25),
-        _option_row(115, 0.15, 0.25, 0.28, 0.16),
-    ])
-
-
 def _puts_chain() -> pd.DataFrame:
     return pd.DataFrame([
         _option_row(80, 0.55, 0.65, 0.30, -0.10),
@@ -62,18 +50,6 @@ def _puts_chain() -> pd.DataFrame:
         _option_row(105, 8.4, 8.6, 0.30, -0.62),
         _option_row(110, 11.8, 12.2, 0.30, -0.75),
         _option_row(115, 15.8, 16.2, 0.30, -0.86),
-    ])
-
-
-def _debit_puts_chain() -> pd.DataFrame:
-    return pd.DataFrame([
-        _option_row(80, 0.15, 0.25, 0.30, -0.10),
-        _option_row(85, 0.4, 0.6, 0.30, -0.16),
-        _option_row(90, 0.9, 1.1, 0.30, -0.25),
-        _option_row(95, 1.9, 2.1, 0.30, -0.42),
-        _option_row(100, 1.9, 2.1, 0.30, -0.50),
-        _option_row(105, 6.8, 7.2, 0.30, -0.62),
-        _option_row(110, 11.8, 12.2, 0.30, -0.75),
     ])
 
 
@@ -123,17 +99,11 @@ def _signals(
     )
 
 
-def _strategies_for(
-    signals: MarketSignals,
-    strategy_mode: str,
-    *,
-    calls: pd.DataFrame | None = None,
-    puts: pd.DataFrame | None = None,
-) -> set[str]:
+def _strategies_for(signals: MarketSignals, strategy_mode: str) -> set[str]:
     trades = run_engine(
         signals,
-        calls if calls is not None else _calls_chain(),
-        puts if puts is not None else _puts_chain(),
+        _calls_chain(),
+        _puts_chain(),
         [_expiry()],
         spread_width_override=5,
         weeks_out=4,
@@ -153,8 +123,6 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
-            calls=_debit_calls_chain(),
-            puts=_debit_puts_chain(),
         )
 
         self.assertIn("Long Call", strategies)
@@ -170,8 +138,6 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
-            calls=_debit_calls_chain(),
-            puts=_debit_puts_chain(),
         )
 
         self.assertIn("Long Put", strategies)
@@ -187,8 +153,6 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
-            calls=_debit_calls_chain(),
-            puts=_debit_puts_chain(),
         )
 
         self.assertIn("Long Straddle", strategies)
