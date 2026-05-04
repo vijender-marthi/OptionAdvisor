@@ -588,9 +588,11 @@ export default function RecommendationCard({
             <div>
               <div className="text-gray-500">Breakeven</div>
               <div className="font-mono text-gray-200 truncate">
-                {rec.breakeven_upper < 990
+                {rec.breakeven_upper < 990 && rec.breakeven_lower > 0
                   ? `$${rec.breakeven_lower.toFixed(2)}–$${rec.breakeven_upper.toFixed(2)}`
-                  : `$${rec.breakeven_lower.toFixed(2)}`}
+                  : rec.breakeven_lower > 0
+                  ? `$${rec.breakeven_lower.toFixed(2)} ↑`
+                  : `$${rec.breakeven_upper.toFixed(2)} ↓`}
               </div>
             </div>
           </div>

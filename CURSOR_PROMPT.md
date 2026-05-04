@@ -9,6 +9,7 @@ The Python FastAPI backend is already running at `http://localhost:8000`.
 The main endpoint is `POST /api/analyze` — see the data shapes below.
 
 ## Tech Stack
+
 - React 18 + TypeScript + Vite
 - Tailwind CSS (dark theme throughout)
 - Recharts for all charts
@@ -177,14 +178,15 @@ export const analyzeOptions = async (
 ## App.tsx
 
 Single-page layout with dark theme (bg-gray-950). Structure:
+
 1. Top header bar with app name
 2. `<TickerInput>` — always visible at top
 3. When data is loaded: full dashboard below
-   - `<MarketOverview signals={data.signals} ticker={data.ticker} company={data.company_name} />`
-   - `<SignalPanel signals={data.signals} />` — collapsible
-   - `<RecommendationList recommendations={data.recommendations} currentPrice={data.signals.current_price} />`
-   - Tabs: "Options Chain" → `<OptionsChainTable>` | "Price Chart" → `<PriceChart>`
-   - `<FiltersPanel filters={data.filters_applied} />` — collapsible, shows what filters were applied
+  - `<MarketOverview signals={data.signals} ticker={data.ticker} company={data.company_name} />`
+  - `<SignalPanel signals={data.signals} />` — collapsible
+  - `<RecommendationList recommendations={data.recommendations} currentPrice={data.signals.current_price} />`
+  - Tabs: "Options Chain" → `<OptionsChainTable>` | "Price Chart" → `<PriceChart>`
+  - `<FiltersPanel filters={data.filters_applied} />` — collapsible, shows what filters were applied
 4. Footer disclaimer
 
 State: `{ data, loading, error }` using useState. No routing needed.
@@ -196,6 +198,7 @@ State: `{ data, loading, error }` using useState. No routing needed.
 Props: `onAnalyze: (ticker: string, weeksOut: number) => void`, `loading: boolean`
 
 Layout: horizontal row with:
+
 - Text input (uppercase, auto-trim) — placeholder "AAPL, TSLA, SPY..."
 - Dropdown: "2 weeks / 3 weeks / 4 weeks / 6 weeks / 8 weeks" (value = number)
 - "Analyze" button — violet/purple primary, shows spinner when loading
@@ -210,6 +213,7 @@ Style: bg-gray-900 card, rounded-xl, p-4
 Props: `signals: Signals`, `ticker: string`, `company: string`, `sector: string`, `marketCap: string`
 
 **Price header:**
+
 - Large ticker + company name
 - Current price in large bold text
 - Price change colored: green if positive, red if negative, with ▲/▼ arrow
@@ -217,21 +221,25 @@ Props: `signals: Signals`, `ticker: string`, `company: string`, `sector: string`
 **Metrics grid (6 columns):**
 Each metric is a small card (bg-gray-800, rounded-lg):
 
-| Metric | Value | Color Logic |
-|---|---|---|
-| Trend | signals.trend | green=Bullish, red=Bearish, amber=Neutral |
-| Trend Strength | signals.trend_strength | green=Strong, amber=Moderate, gray=Weak |
-| RSI | signals.rsi | red if ≥70, green if ≤30, gray otherwise |
-| IV Rank | signals.iv_rank + "%" | red if ≥65, amber if ≥50, green if <35 |
-| IV vs HV | signals.iv_vs_hv + "%" | red if positive (IV > HV), green if negative |
-| Directional Bias | signals.directional_bias | with confidence badge: "Bullish (72%)" |
+
+| Metric           | Value                    | Color Logic                                  |
+| ---------------- | ------------------------ | -------------------------------------------- |
+| Trend            | signals.trend            | green=Bullish, red=Bearish, amber=Neutral    |
+| Trend Strength   | signals.trend_strength   | green=Strong, amber=Moderate, gray=Weak      |
+| RSI              | signals.rsi              | red if ≥70, green if ≤30, gray otherwise     |
+| IV Rank          | signals.iv_rank + "%"    | red if ≥65, amber if ≥50, green if <35       |
+| IV vs HV         | signals.iv_vs_hv + "%"   | red if positive (IV > HV), green if negative |
+| Directional Bias | signals.directional_bias | with confidence badge: "Bullish (72%)"       |
+
 
 **Volatility regime banner** below metrics:
+
 - "Sell Premium" → amber warning banner with text explaining high IV environment
 - "Buy Premium" → green success banner explaining low IV
 - "Neutral" → blue info banner
 
 **Moving Average summary** (small pill badges):
+
 - "Above MA20" / "Below MA20" (green/red)
 - "Above MA50" / "Below MA50"
 - "Above MA200" / "Below MA200"
@@ -248,12 +256,14 @@ Title: "📡 Full Signal Breakdown" with expand/collapse toggle
 When expanded, show 4 sections in a 2-column grid:
 
 **Trend Signals:**
+
 - MA20: $xxx, MA50: $xxx, MA200: $xxx
 - MA50 slope: +0.3% (↑ rising) colored
 - MACD: value, Signal line: value, Histogram: value
 - MACD crossover badge: "Bullish Crossover" (green) / "Bearish Crossover" (red) / "None" (gray)
 
 **Momentum:**
+
 - RSI gauge (0-100 horizontal bar) colored:
   - 0-30: green zone (oversold)
   - 30-70: gray zone (neutral)
@@ -263,6 +273,7 @@ When expanded, show 4 sections in a 2-column grid:
 - MACD histogram bar (positive = green, negative = red)
 
 **Volatility:**
+
 - Current IV: xx%
 - HV 20-day: xx%, HV 60-day: xx%
 - IV vs HV: +x.x% (red) — this is the premium/discount of implied over realized
@@ -271,6 +282,7 @@ When expanded, show 4 sections in a 2-column grid:
 - IV Environment badge
 
 **Sentiment:**
+
 - Put/Call Ratio with colored badge (>1.2 = bearish, <0.8 = bullish)
 - PCR signal explanation
 - IV Skew: x.xx% — explanation (positive = fear, negative = greed)
@@ -300,6 +312,7 @@ This is the most important component. Make it comprehensive.
 **Background:** bg-gray-900, rounded-xl
 
 **Header row:**
+
 - Rank badge (#1, #2...) in violet
 - Strategy name (large, bold)
 - Bias badge (colored pill: ↑ BULLISH / ↓ BEARISH / ↔ NEUTRAL)
@@ -307,38 +320,47 @@ This is the most important component. Make it comprehensive.
 - Total score badge (e.g. "Score: 84/100") — color: green ≥75, amber ≥55, red <55
 
 **Filter badges row** (show pass/fail with icons):
+
 - ✅ / ❌ R:R Filter
 - ✅ / ❌ Credit ≥ 25% (only for credit spreads)
 - ✅ / ❌ Liquidity OK
 If any warnings exist, show them in a subtle amber warning box below.
 
 **Legs table** — monospace font, each leg on its own row:
+
 ```
 BUY  CALL  $185.00  exp 2025-05-16  Δ 0.45  mid $3.20  IV 28.5%  OI 1,205  BA-spread 4.2%
 SELL CALL  $195.00  exp 2025-05-16  Δ 0.22  mid $1.40  IV 26.1%  OI 890    BA-spread 5.1%
 ```
+
 BUY = green text, SELL = red text
 
 **Risk Metrics grid** (4 columns):
 
-| Max Profit | Max Loss | Breakeven | Expiry |
-|---|---|---|---|
+
+| Max Profit                 | Max Loss   | Breakeven   | Expiry     |
+| -------------------------- | ---------- | ----------- | ---------- |
 | $xxx/share ($xxx/contract) | $xxx/share | $xxx – $xxx | 2025-05-16 |
+
 
 **Probability & EV grid** (3 columns):
 
+
 | Prob of Profit | Prob Max Loss | Expected Value |
-|---|---|---|
-| 72% | 3.2% | +$0.18/share |
+| -------------- | ------------- | -------------- |
+| 72%            | 3.2%          | +$0.18/share   |
+
 
 Expected Value colored: green if positive, red if negative.
 
 **Risk/Reward display:**
+
 - For credit spreads: "Credit: $1.45 = 29% of $5 width ✅" or "⚠️ Only 18% of width"
 - Visual R:R bar: horizontal bar showing profit zone vs loss zone proportionally
 - Text: "Risk $3.55 to make $1.45 (1:2.4)" — color the ratio (≤2.5 green, ≤4 amber, >4 red)
 
 **Score Breakdown** — small horizontal bar chart (4 colored segments):
+
 - Signal fit: xx/40 (violet)
 - Structure: xx/30 (blue)
 - Liquidity: xx/20 (green)
@@ -346,9 +368,11 @@ Expected Value colored: green if positive, red if negative.
 - Total: xx/100
 
 **Rationale box** (bg-gray-800, rounded-lg):
+
 - 💡 icon + rationale text in muted color
 
 **Exit Plan box** (bg-indigo-950, rounded-lg):
+
 - 🚪 icon + exit plan text — collapsible, collapsed by default
 
 ---
@@ -372,6 +396,7 @@ Color the Strike column: calls > currentPrice = OTM (muted), calls ≤ currentPr
 Props: `history: PricePoint[]`
 
 Use recharts `ComposedChart`:
+
 - Area chart for Close price (fill with subtle gradient, stroke violet)
 - Line for MA20 (dashed, blue, thin)
 - Line for MA50 (dashed, amber, thin)
@@ -390,6 +415,7 @@ Props: `filters: Record<string, any>`
 
 Show a small collapsed panel at the bottom titled "⚙️ Engine Filters Applied".
 When expanded, display each filter as a labeled row:
+
 - Min credit % of width: 25%
 - Short leg delta target: 0.20 – 0.32
 - Credit DTE range: 21 – 50 days
@@ -399,6 +425,7 @@ When expanded, display each filter as a labeled row:
 ---
 
 ## Styling Rules
+
 - Background: bg-gray-950 (page), bg-gray-900 (cards), bg-gray-800 (inner sections)
 - Text: text-gray-100 (primary), text-gray-400 (muted), text-gray-500 (very muted)
 - Green: #22c55e (bullish, profit, buy, pass)
@@ -414,6 +441,7 @@ When expanded, display each filter as a labeled row:
 ---
 
 ## Error & Loading States
+
 - Loading: full-page centered spinner (animate-spin) with "Analyzing {ticker}..." text
 - Error: red bordered card with error message and retry button
 - Empty recommendations: amber card explaining no trades passed filters with the filter thresholds listed
@@ -421,6 +449,7 @@ When expanded, display each filter as a labeled row:
 ---
 
 ## package.json dependencies
+
 ```json
 {
   "dependencies": {
@@ -446,6 +475,7 @@ When expanded, display each filter as a labeled row:
 ---
 
 ## Important Notes
+
 - All components in separate files under src/components/
 - Use TypeScript strict mode — no `any` types except where genuinely needed
 - All financial values display 2 decimal places minimum
@@ -453,3 +483,4 @@ When expanded, display each filter as a labeled row:
 - Never show "Infinity" — cap at 999 or "Unlimited" string
 - Mobile responsive — stack columns on small screens
 - Add a sticky disclaimer footer: "For educational purposes only. Not financial advice."
+

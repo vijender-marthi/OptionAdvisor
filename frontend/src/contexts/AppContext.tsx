@@ -2,7 +2,22 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import type { ReactNode } from 'react'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
-import { analyzeOptions, clearBackendAlerts, dismissBackendAlert, getAlerts, getJournal, getUserData, saveUserData, scanBackendAlerts } from '../api/client'
+import {
+  analyzeOptions,
+  authGoogle,
+  authLogin,
+  authRegister,
+  clearBackendAlerts,
+  dismissBackendAlert,
+  getAccessToken,
+  getAlerts,
+  getJournal,
+  getUserData,
+  saveUserData,
+  scanBackendAlerts,
+  setAccessToken,
+  type AuthLoginResponse,
+} from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 
@@ -13,7 +28,9 @@ function migrateStoredUser(raw: User | null): User | null {
 
 // ─── Router ────────────────────────────────────────────────────────────────────
 function getHashPage(): Page {
-  const h = window.location.hash.replace('#', '')
+  const raw = window.location.hash.replace(/^#/, '')
+  const pathPart = raw.split('?')[0].trim()
+  const h = pathPart
   if (h === 'watchlist') return 'watchlist'
   if (h === 'portfolio') return 'portfolio'
   if (h === 'help') return 'help'
@@ -26,6 +43,9 @@ function getHashPage(): Page {
   if (h === 'settings') return 'settings'
   if (h === 'journal') return 'journal'
   if (h === 'auto-trade') return 'auto-trade'
+  if (h === 'forgot-password') return 'forgot-password'
+  if (h === 'reset-password') return 'reset-password'
+  if (h === 'activate') return 'activate'
   return 'ticker'
 }
 
@@ -101,7 +121,9 @@ interface AppContextValue {
 
   // Auth
   user: User | null
-  login: (name: string, email: string, password: string) => boolean
+  loginWithPassword: (email: string, password: string) => Promise<void>
+  registerWithPassword: (name: string, email: string, password: string) => Promise<{ needs_activation: boolean; message: string }>
+  loginWithGoogleCredential: (credential: string) => Promise<void>
   logout: () => void
   /** Feature gating: finance users omit discovery radars; admin/user see all pages. */
   canAccessPage: (p: Page) => boolean
@@ -209,6 +231,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
 
+  /** Drop stale client-only sessions now that APIs require a Bearer token. */
+  useEffect(() => {
+    const tok = getAccessToken()
+    const raw = load<User | null>('oa_user', null)
+    if (raw?.email && !tok) {
+      setUser(null)
+      save('oa_user', null)
+    }
+  }, [])
+
   // Keep refs so interval/async closures always see current values
   const watchlistRef = useRef(watchlist)
   useEffect(() => { watchlistRef.current = watchlist }, [watchlist])
@@ -217,9 +249,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const tickerCacheRef = useRef(tickerCache)
   useEffect(() => { tickerCacheRef.current = tickerCache }, [tickerCache])
 
-  // Sync hash
+  // Sync hash (preserve ?token= on activate / reset-password)
   useEffect(() => {
-    window.location.hash = page === 'ticker' ? '' : page
+    if (page === 'ticker') {
+      window.location.hash = ''
+      return
+    }
+    const seg = window.location.hash.replace(/^#/, '').split('?')[0]
+    if ((page === 'activate' || page === 'reset-password') && seg === page) {
+      return
+    }
+    window.location.hash = page
   }, [page])
 
   // Browser back/forward
@@ -366,26 +406,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearPendingTicker = useCallback(() => setPendingTicker(null), [])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
-  const login = useCallback((name: string, email: string, password: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase()
-    if (!cleanEmail || !password.trim()) return false
-    const displayName = name.trim() || cleanEmail.split('@')[0] || 'User'
+  const applyAuthSession = useCallback((session: AuthLoginResponse) => {
+    const cleanEmail = session.email.trim().toLowerCase()
+    const displayName = session.name.trim() || cleanEmail.split('@')[0] || 'User'
+    setAccessToken(session.access_token)
     loginRefreshEmailRef.current = null
     setWatchlist([])
     setPortfolio([])
     setUserDataLoaded(false)
-    setUser({ name: displayName, email: cleanEmail, role: 'user' })
-    return true
+    setUser({
+      name: displayName,
+      email: cleanEmail,
+      role: normalizeUserRole(session.role),
+    })
   }, [])
+
+  const loginWithPassword = useCallback(
+    async (email: string, password: string) => {
+      const session = await authLogin(email.trim().toLowerCase(), password)
+      applyAuthSession(session)
+    },
+    [applyAuthSession],
+  )
+
+  const registerWithPassword = useCallback(async (name: string, email: string, password: string) => {
+    const data = await authRegister({
+      email: email.trim().toLowerCase(),
+      password,
+      name: name.trim() || undefined,
+    })
+    return { needs_activation: data.needs_activation, message: data.message }
+  }, [])
+
+  const loginWithGoogleCredential = useCallback(
+    async (credential: string) => {
+      const session = await authGoogle(credential)
+      applyAuthSession(session)
+    },
+    [applyAuthSession],
+  )
 
   const logout = useCallback(() => {
     loginRefreshEmailRef.current = null
+    setAccessToken(null)
     setUser(null)
     setWatchlist([])
     setPortfolio([])
     setUserDataLoaded(false)
     setJournalEntryCount(0)
     setPage('login')
+  }, [])
+
+  const logoutRef = useRef(logout)
+  useEffect(() => {
+    logoutRef.current = logout
+  }, [logout])
+
+  useEffect(() => {
+    const onExpire = () => {
+      logoutRef.current()
+    }
+    window.addEventListener('oa-auth-expired', onExpire)
+    return () => window.removeEventListener('oa-auth-expired', onExpire)
   }, [])
 
   // ── Watchlist ───────────────────────────────────────────────────────────────
@@ -752,7 +834,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       page, navigate,
       pendingTicker, requestAnalysis, clearPendingTicker,
-      user, login, logout, canAccessPage,
+      user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
       portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,

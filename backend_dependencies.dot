@@ -1,0 +1,206 @@
+// OptionAdvisor Backend — Graphviz Dependency Graph
+// Render with:  dot -Tpng backend_dependencies.dot -o backend_dependencies.png
+// Or online:    https://dreampuf.github.io/GraphvizOnline/
+
+digraph OptionAdvisorBackend {
+
+  // ── Graph styling ──────────────────────────────────────────────
+  graph [
+    rankdir = "TB"
+    fontname = "Helvetica"
+    fontsize = 12
+    bgcolor  = "#0d1117"
+    pad      = 0.5
+    splines  = ortho
+  ]
+  node [
+    shape     = box
+    style     = "filled,rounded"
+    fontname  = "Helvetica"
+    fontsize  = 11
+    fontcolor = "#e6edf3"
+  ]
+  edge [
+    fontname  = "Helvetica"
+    fontsize  = 9
+    fontcolor = "#8b949e"
+    color     = "#30363d"
+    arrowsize = 0.7
+  ]
+
+  // ── External layers (rank grouping) ───────────────────────────
+  subgraph cluster_external {
+    label     = "External"
+    style     = "filled"
+    color     = "#21262d"
+    fontcolor = "#8b949e"
+    fontsize  = 10
+
+    yfinance  [label="yfinance\n(market data)",   fillcolor="#1f3a1f", color="#3fb950"]
+    fastapi   [label="FastAPI\n(HTTP framework)", fillcolor="#1a2a3a", color="#58a6ff"]
+    sqlite    [label="SQLite\n(users.db)",         fillcolor="#2a1a2a", color="#bc8cff"]
+    pydantic  [label="Pydantic\n(validation)",     fillcolor="#1a2a2a", color="#39d353"]
+    smtplib   [label="smtplib\n(email / SMTP)",    fillcolor="#2a2a1a", color="#e3b341"]
+  }
+
+  // ── Backend modules ────────────────────────────────────────────
+  subgraph cluster_backend {
+    label     = "Backend Modules  (backend/)"
+    style     = "filled"
+    color     = "#161b22"
+    fontcolor = "#e6edf3"
+    fontsize  = 11
+
+    analysis [
+      label     = <<B>analysis.py</B><BR/><FONT POINT-SIZE="9">455 lines</FONT><BR ALIGN="LEFT"/>
+<FONT POINT-SIZE="8">dataclasses: MarketSignals, OptionLeg, TradeCandidate<BR ALIGN="LEFT"/>
+funcs: generate_signals()<BR ALIGN="LEFT"/>
+       compute_rsi/macd/hv/iv_rank/skew/pcr/trend/bias</FONT>>
+      fillcolor = "#0d2a1a"
+      color     = "#3fb950"
+    ]
+
+    models [
+      label     = <<B>models.py</B><BR/><FONT POINT-SIZE="9">200 lines</FONT><BR ALIGN="LEFT"/>
+<FONT POINT-SIZE="8">Pydantic I/O: AnalyzeRequest, AnalyzeResponse<BR ALIGN="LEFT"/>
+RecommendationOut, OptionLegOut, SignalsOut<BR ALIGN="LEFT"/>
+ScoreBreakdown, OptionRowOut, PricePoint<BR ALIGN="LEFT"/>
+AlertItem, UserDataRequest/Response</FONT>>
+      fillcolor = "#1a1a2a"
+      color     = "#bc8cff"
+    ]
+
+    engine [
+      label     = <<B>engine.py</B><BR/><FONT POINT-SIZE="9">1379 lines</FONT><BR ALIGN="LEFT"/>
+<FONT POINT-SIZE="8">run_engine(signals, calls_df, puts_df, dates,<BR ALIGN="LEFT"/>
+           spread_width, weeks_out, strategy_mode)<BR ALIGN="LEFT"/>
+→ list[TradeCandidate]<BR ALIGN="LEFT"/>
+strategy gates: BUILD_LONG, BUILD_SPREADS,<BR ALIGN="LEFT"/>
+                BUILD_SHORT_COVERED<BR ALIGN="LEFT"/>
+builders: long call/put, vertical spreads,<BR ALIGN="LEFT"/>
+          credit spreads, iron condor,<BR ALIGN="LEFT"/>
+          straddle, short put/call,<BR ALIGN="LEFT"/>
+          covered call/put<BR ALIGN="LEFT"/>
+scoring: signal/structure/liquidity/iv_fit<BR ALIGN="LEFT"/>
+consts: TARGET_SHORT_DELTA_CREDIT=0.30<BR ALIGN="LEFT"/>
+        MIN_CREDIT_PCT_OF_WIDTH=0.20<BR ALIGN="LEFT"/>
+        DTE_CREDIT_MIN/MAX, CLOSE_AT_DTE</FONT>>
+      fillcolor = "#1a1a0d"
+      color     = "#e3b341"
+    ]
+
+    storage [
+      label     = <<B>storage.py</B><BR/><FONT POINT-SIZE="9">193 lines</FONT><BR ALIGN="LEFT"/>
+<FONT POINT-SIZE="8">DB_PATH = users.db (SQLite)<BR ALIGN="LEFT"/>
+init_db(), get/save_user_state()<BR ALIGN="LEFT"/>
+add/get/dismiss/clear_user_alerts()<BR ALIGN="LEFT"/>
+update_user_alert_email()</FONT>>
+      fillcolor = "#1a0d1a"
+      color     = "#bc8cff"
+    ]
+
+    main [
+      label     = <<B>main.py</B><BR/><FONT POINT-SIZE="9">978 lines — FastAPI app entry point</FONT><BR ALIGN="LEFT"/>
+<FONT POINT-SIZE="8">GET  /                           (health check)<BR ALIGN="LEFT"/>
+POST /api/analyze                 (main analysis)<BR ALIGN="LEFT"/>
+GET  /api/user-data/{email}<BR ALIGN="LEFT"/>
+PUT  /api/user-data/{email}<BR ALIGN="LEFT"/>
+GET  /api/alerts/{email}<BR ALIGN="LEFT"/>
+POST /api/alerts/dismiss<BR ALIGN="LEFT"/>
+POST /api/alerts/clear<BR ALIGN="LEFT"/>
+POST /api/alerts/scan/{email}<BR ALIGN="LEFT"/>
+POST /api/send-alert<BR ALIGN="LEFT"/>
+POST /api/test-email<BR ALIGN="LEFT"/>
+GET  /api/email-status<BR ALIGN="LEFT"/>
+background: _alert_scan_loop thread<BR ALIGN="LEFT"/>
+cache: ANALYZE_CACHE_TTL_MARKET_HOURS<BR ALIGN="LEFT"/>
+       ANALYZE_CACHE_TTL_OFF_HOURS</FONT>>
+      fillcolor = "#0d1a2a"
+      color     = "#58a6ff"
+    ]
+  }
+
+  // ── Frontend / API consumer ─────────────────────────────────────
+  frontend [
+    label     = <<B>Frontend (React/TS)</B><BR/>
+<FONT POINT-SIZE="8">api/client.ts → fetch()</FONT>>
+    fillcolor = "#1a0d2a"
+    color     = "#bc8cff"
+    shape     = box
+    style     = "filled,rounded,dashed"
+  ]
+
+  // ── Module dependency edges ─────────────────────────────────────
+
+  // analysis has NO local deps — pure computation leaf
+  analysis -> pydantic [style=invis]  // just to hint rank
+
+  // engine consumes analysis dataclasses
+  engine -> analysis [
+    label = "from analysis import\nMarketSignals, OptionLeg,\nTradeCandidate"
+    color = "#3fb950"
+    style = bold
+  ]
+
+  // models only uses pydantic
+  models -> pydantic [
+    label = "BaseModel"
+    color = "#bc8cff"
+  ]
+
+  // storage only uses sqlite3 (stdlib)
+  storage -> sqlite [
+    label = "sqlite3"
+    color = "#bc8cff"
+  ]
+
+  // main orchestrates everything
+  main -> analysis [
+    label = "generate_signals(hist, calls_df, puts_df)\n→ MarketSignals"
+    color = "#3fb950"
+    style = bold
+  ]
+  main -> engine [
+    label = "run_engine(signals, calls, puts,\n dates, spread_width, weeks_out, mode)\n→ list[TradeCandidate]"
+    color = "#e3b341"
+    style = bold
+  ]
+  main -> models [
+    label = "request/response\nPydantic models"
+    color = "#bc8cff"
+    style = bold
+  ]
+  main -> storage [
+    label = "user state +\nalerts CRUD"
+    color = "#bc8cff"
+    style = bold
+  ]
+  main -> yfinance [
+    label = "stock.history()\nstock.info\nstock.option_chain()"
+    color = "#3fb950"
+  ]
+  main -> fastapi [
+    label = "FastAPI app\n+ CORS"
+    color = "#58a6ff"
+  ]
+  main -> smtplib [
+    label = "send_alert_email()"
+    color = "#e3b341"
+  ]
+
+  // frontend calls main
+  frontend -> main [
+    label = "HTTP (localhost:8000)"
+    color = "#58a6ff"
+    style = dashed
+  ]
+
+  // ── Key data-flow annotation ────────────────────────────────────
+  // POST /api/analyze flow:
+  //   1. main._analyze_ticker(ticker, weeks_out, spread_width, strategy_mode)
+  //   2.   yfinance → hist_df, calls_df, puts_df, option_dates, stock.info
+  //   3.   analysis.generate_signals(hist_df, calls_df, puts_df) → MarketSignals
+  //   4.   engine.run_engine(MarketSignals, calls_df, puts_df, ...) → [TradeCandidate]
+  //   5.   chain_to_output(calls_df/puts_df) → [OptionRowOut]
+  //   6.   Build AnalyzeResponse (models.py) and return JSON
+}

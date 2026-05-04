@@ -4,6 +4,7 @@ SQLite persistence for per-user watchlist and portfolio state.
 import json
 import os
 import sqlite3
+import time
 from typing import Any, Optional
 from pathlib import Path
 
@@ -31,6 +32,31 @@ def _migrate_user_state_role_column(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE user_state ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
         )
+
+
+def _migrate_user_state_auth_columns(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    specs: list[tuple[str, str]] = [
+        ("password_hash", "TEXT"),
+        ("display_name", "TEXT"),
+        ("google_sub", "TEXT"),
+        ("email_verified", "INTEGER NOT NULL DEFAULT 0"),
+        ("activation_token", "TEXT"),
+        ("activation_expires_ms", "INTEGER"),
+        ("reset_token", "TEXT"),
+        ("reset_expires_ms", "INTEGER"),
+    ]
+    for name, decl in specs:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE user_state ADD COLUMN {name} {decl}")
+    # Pre-auth SQLite rows: no password / OAuth — treat as verified so JWT login can bind a password once.
+    conn.execute(
+        """
+        UPDATE user_state
+        SET email_verified = 1
+        WHERE password_hash IS NULL AND google_sub IS NULL AND IFNULL(email_verified, 0) = 0
+        """
+    )
 
 
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
@@ -77,6 +103,7 @@ def init_db() -> None:
             """
         )
         _migrate_user_state_role_column(conn)
+        _migrate_user_state_auth_columns(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -241,6 +268,203 @@ def clear_user_alerts(email: str) -> None:
     normalized = normalize_email(email)
     with _connect() as conn:
         conn.execute("DELETE FROM user_alerts WHERE email = ?", (normalized,))
+
+
+# ─────────────────────────────────────────────────────────────
+# AUTH (password hash, Google sub, activation / reset tokens)
+# ─────────────────────────────────────────────────────────────
+
+
+def get_user_auth_row(email: str) -> dict[str, Any] | None:
+    normalized = normalize_email(email)
+    if not normalized:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT email, password_hash, display_name, google_sub, email_verified,
+                   activation_token, activation_expires_ms, reset_token, reset_expires_ms
+            FROM user_state
+            WHERE email = ?
+            """,
+            (normalized,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def register_password_account(
+    email: str,
+    display_name: str,
+    password_hash: str,
+    *,
+    email_verified: bool,
+    activation_token: str | None,
+    activation_expires_ms: int | None,
+) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM user_state WHERE email = ?",
+            (normalized,),
+        ).fetchone()
+        if row and row["password_hash"]:
+            raise ValueError("already_registered")
+        ev = 1 if email_verified else 0
+        if row:
+            conn.execute(
+                """
+                UPDATE user_state SET
+                    password_hash = ?,
+                    display_name = ?,
+                    email_verified = ?,
+                    activation_token = ?,
+                    activation_expires_ms = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+                """,
+                (password_hash, display_name, ev, activation_token, activation_expires_ms, normalized),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO user_state (
+                    email, watchlist_json, portfolio_json, role,
+                    password_hash, display_name, email_verified,
+                    activation_token, activation_expires_ms, updated_at
+                ) VALUES (?, '[]', '[]', 'user', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (normalized, password_hash, display_name, ev, activation_token, activation_expires_ms),
+            )
+
+
+def set_password_hash(email: str, password_hash: str) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE user_state SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+            """,
+            (password_hash, normalized),
+        )
+
+
+def activate_with_token(token: str) -> str | None:
+    if not token.strip():
+        return None
+    now = int(time.time() * 1000)
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT email FROM user_state
+            WHERE activation_token = ?
+              AND (activation_expires_ms IS NULL OR activation_expires_ms > ?)
+            """,
+            (token.strip(), now),
+        ).fetchone()
+        if not row:
+            return None
+        em = str(row["email"])
+        conn.execute(
+            """
+            UPDATE user_state SET
+                email_verified = 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+            """,
+            (em,),
+        )
+        return em
+
+
+def upsert_google_user(email: str, google_sub: str, display_name: str) -> None:
+    normalized = normalize_email(email)
+    sub = google_sub.strip()
+    if not normalized or not sub:
+        raise ValueError("invalid_google_identity")
+    with _connect() as conn:
+        clash = conn.execute(
+            "SELECT email FROM user_state WHERE google_sub = ? AND email <> ?",
+            (sub, normalized),
+        ).fetchone()
+        if clash:
+            raise ValueError("google_sub_conflict")
+        row = conn.execute(
+            "SELECT google_sub FROM user_state WHERE email = ?",
+            (normalized,),
+        ).fetchone()
+        disp = display_name.strip() or None
+        if row:
+            existing_sub = row["google_sub"]
+            if existing_sub and existing_sub != sub:
+                raise ValueError("email_login_conflict")
+            conn.execute(
+                """
+                UPDATE user_state SET
+                    google_sub = ?,
+                    display_name = COALESCE(?, display_name),
+                    email_verified = 1,
+                    activation_token = NULL,
+                    activation_expires_ms = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+                """,
+                (sub, disp, normalized),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO user_state (
+                    email, watchlist_json, portfolio_json, role,
+                    google_sub, display_name, email_verified, updated_at
+                ) VALUES (?, '[]', '[]', 'user', ?, ?, 1, CURRENT_TIMESTAMP)
+                """,
+                (normalized, sub, (disp or "").strip() or normalized.split("@")[0]),
+            )
+
+
+def set_password_reset_token(email: str, token: str, expires_ms: int) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE user_state SET
+                reset_token = ?, reset_expires_ms = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+            """,
+            (token, expires_ms, normalized),
+        )
+
+
+def consume_password_reset(token: str, new_password_hash: str) -> str | None:
+    tok = token.strip()
+    if not tok:
+        return None
+    now = int(time.time() * 1000)
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT email FROM user_state
+            WHERE reset_token = ? AND reset_expires_ms IS NOT NULL AND reset_expires_ms > ?
+            """,
+            (tok, now),
+        ).fetchone()
+        if not row:
+            return None
+        em = str(row["email"])
+        conn.execute(
+            """
+            UPDATE user_state SET
+                password_hash = ?,
+                reset_token = NULL,
+                reset_expires_ms = NULL,
+                email_verified = 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE email = ?
+            """,
+            (new_password_hash, em),
+        )
+        return em
 
 
 # ─────────────────────────────────────────────────────────────

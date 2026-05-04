@@ -247,6 +247,29 @@ html.light .login-page .text-red-400 {
   color: #b91c1c;
 }
 
+/*
+ * Login segmented control + violet CTAs: `.login-page .text-white { color: #0f172a }` is meant for
+ * headlines on pale surfaces but beats `html.light .bg-violet-600.text-white`, hiding labels on purple.
+ */
+html.light .login-page .bg-violet-600.text-white,
+html.light .login-page .bg-violet-600 .text-white,
+html.light .login-page button.bg-violet-600.text-white {
+  color: #ffffff !important;
+}
+
+html.light .login-page .login-auth-tabs {
+  background-color: var(--light-surface-2);
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
+html.light .login-page .login-auth-tabs button.text-gray-400 {
+  color: #475569 !important;
+}
+
+html.light .login-page .login-auth-tabs button.hover\:text-gray-200:hover {
+  color: #0f172a !important;
+}
+
 html.dark { color-scheme: dark; }
 html.light {
   color-scheme: light;

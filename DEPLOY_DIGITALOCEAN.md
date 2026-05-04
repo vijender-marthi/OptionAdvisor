@@ -202,7 +202,7 @@ curl -sS -X POST http://127.0.0.1:9000/api/backtest \
   -d '{"ticker":"SPY","start_date":"2024-01-02","end_date":"2024-06-01","strategy_mode":"all","weeks_out":4,"spread_width":5}'
 ```
 
-If you see **Not Found** on `/api/backtest` through the browser but analyze works, your `nginx` `proxy_pass` may be stripping the `/api` prefix — the app also accepts `**POST /backtest`**. Prefer fixing nginx to match section 7 (`proxy_pass …/api/;`). After any `main.py` change, run `**sudo systemctl restart optionadvisor**`.
+If you see **Not Found** on `/api/backtest` through the browser but analyze works, your `nginx` `proxy_pass` may be stripping the `/api` prefix — the app also accepts `**POST /backtest`**. Prefer fixing nginx to match section 7 (`proxy_pass …/api/;`). After any `main.py` change, run `**sudo systemctl restart optionadvisor`**.
 
 SQLite location:
 

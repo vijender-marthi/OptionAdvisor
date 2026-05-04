@@ -149,7 +149,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'forgot-password' | 'reset-password' | 'activate'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 

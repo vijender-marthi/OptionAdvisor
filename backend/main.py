@@ -4,7 +4,7 @@ main.py — FastAPI Backend
 Run: uvicorn main:app --reload --port 9000
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
@@ -41,6 +41,7 @@ from models import (
 )
 from analysis import generate_signals
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
+from auth_routes import auth_router, ensure_same_user, require_access_email
 from storage import (
     add_user_alert, clear_user_alerts, dismiss_user_alert, get_user_alerts,
     get_user_state, init_db, list_user_states, save_user_state,
@@ -208,11 +209,20 @@ init_db()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://localhost:3000"],
+    allow_origins=[
+        o.strip()
+        for o in os.getenv(
+            "OPTION_ADVISOR_CORS_ORIGINS",
+            "http://localhost:4200,http://localhost:3000",
+        ).split(",")
+        if o.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router, prefix="/api/auth")
 
 
 def safe_float(val, default=0.0) -> float:
@@ -416,11 +426,8 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
 
 
 @app.post("/api/send-alert")
-def send_alert(req: AlertEmailRequest):
-    """
-    Send a GO-trade alert email.
-    Skips if neither SendGrid nor SMTP is configured — alerts still appear in the app.
-    """
+def send_alert(req: AlertEmailRequest, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, req.email)
     return _send_alert_email(req.email, req.alerts, req.user_name)
 
 
@@ -486,12 +493,14 @@ def email_status():
 
 
 @app.get("/api/user-data/{email}", response_model=UserDataResponse)
-def get_user_data(email: str):
+def get_user_data(email: str, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, email)
     return get_user_state(email)
 
 
 @app.put("/api/user-data/{email}", response_model=UserDataResponse)
-def save_user_data(email: str, payload: UserDataRequest):
+def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, email)
     normalized_email = email.strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -1038,7 +1047,8 @@ def start_alert_scanner() -> None:
 
 
 @app.get("/api/alerts/{email}")
-def list_alerts(email: str):
+def list_alerts(email: str, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, email)
     return {
         "email": email.strip().lower(),
         "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
@@ -1046,19 +1056,22 @@ def list_alerts(email: str):
 
 
 @app.post("/api/alerts/dismiss")
-def dismiss_alert(req: AlertDismissRequest):
+def dismiss_alert(req: AlertDismissRequest, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, req.email)
     dismiss_user_alert(req.email, req.alert_id)
     return {"ok": True}
 
 
 @app.post("/api/alerts/clear")
-def clear_alerts(req: AlertClearRequest):
+def clear_alerts(req: AlertClearRequest, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, req.email)
     clear_user_alerts(req.email)
     return {"ok": True}
 
 
 @app.post("/api/alerts/scan/{email}")
-def scan_alerts_now(email: str):
+def scan_alerts_now(email: str, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, email)
     _scan_user_watchlist_for_alerts(get_user_state(email))
     return {
         "email": email.strip().lower(),
@@ -1228,8 +1241,9 @@ def _refresh_entry(entry: dict) -> dict:
 
 
 @app.post("/api/journal/save")
-def journal_save(email: str, req: JournalSaveRequest):
+def journal_save(email: str, req: JournalSaveRequest, auth_email: str = Depends(require_access_email)):
     """Save a recommendation to the trade journal."""
+    ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     import datetime
     entry_dict = req.dict()
@@ -1239,8 +1253,9 @@ def journal_save(email: str, req: JournalSaveRequest):
 
 
 @app.get("/api/journal/{email}")
-def journal_list(email: str, status: str = ""):
+def journal_list(email: str, auth_email: str = Depends(require_access_email), status: str = ""):
     """List all journal entries for a user (optionally filtered by status)."""
+    ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     entries = get_journal_entries(normalized, status or None)
     # Inject email for _refresh_entry
@@ -1250,8 +1265,9 @@ def journal_list(email: str, status: str = ""):
 
 
 @app.post("/api/journal/refresh/{email}")
-def journal_refresh(email: str):
+def journal_refresh(email: str, auth_email: str = Depends(require_access_email)):
     """Recompute current P&L for all OPEN entries; settle EXPIRED ones."""
+    ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     entries = get_journal_entries(normalized, status="OPEN")
     for e in entries:
@@ -1265,8 +1281,9 @@ def journal_refresh(email: str):
 
 
 @app.patch("/api/journal/{email}/{entry_id}/close")
-def journal_close(email: str, entry_id: str, req: JournalCloseRequest):
+def journal_close(email: str, entry_id: str, req: JournalCloseRequest, auth_email: str = Depends(require_access_email)):
     """Manually close a journal trade (user marks it as closed)."""
+    ensure_same_user(auth_email, email)
     import time
     import datetime
     normalized = email.strip().lower()
@@ -1295,16 +1312,18 @@ def journal_close(email: str, entry_id: str, req: JournalCloseRequest):
 
 
 @app.patch("/api/journal/{email}/{entry_id}/notes")
-def journal_notes(email: str, entry_id: str, req: JournalNotesRequest):
+def journal_notes(email: str, entry_id: str, req: JournalNotesRequest, auth_email: str = Depends(require_access_email)):
     """Update notes on a journal entry."""
+    ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     update_journal_entry(normalized, entry_id, notes=req.notes)
     return {"ok": True}
 
 
 @app.delete("/api/journal/{email}/{entry_id}")
-def journal_delete(email: str, entry_id: str):
+def journal_delete(email: str, entry_id: str, auth_email: str = Depends(require_access_email)):
     """Delete a journal entry."""
+    ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     delete_journal_entry(normalized, entry_id)
     return {"ok": True}
@@ -1357,8 +1376,9 @@ def _require_admin(email: str) -> None:
 
 
 @app.get("/api/trading/status")
-def trading_status(email: str):
+def trading_status(email: str, auth_email: str = Depends(require_access_email)):
     """Check if Alpaca is configured and return account summary."""
+    ensure_same_user(auth_email, email)
     _require_admin(email)
     configured = alpaca_is_configured()
     if not configured:
@@ -1377,8 +1397,9 @@ def trading_status(email: str):
 
 
 @app.get("/api/trading/positions")
-def trading_positions(email: str):
+def trading_positions(email: str, auth_email: str = Depends(require_access_email)):
     """Return all open Alpaca paper positions (admin only)."""
+    ensure_same_user(auth_email, email)
     _require_admin(email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
@@ -1389,8 +1410,9 @@ def trading_positions(email: str):
 
 
 @app.get("/api/trading/orders")
-def trading_orders(email: str, status: str = "all"):
+def trading_orders(email: str, auth_email: str = Depends(require_access_email), status: str = "all"):
     """Return recent Alpaca orders (admin only). status: open | closed | all"""
+    ensure_same_user(auth_email, email)
     _require_admin(email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
@@ -1401,8 +1423,9 @@ def trading_orders(email: str, status: str = "all"):
 
 
 @app.post("/api/trading/execute")
-def trading_execute(req: TradingExecuteRequest):
+def trading_execute(req: TradingExecuteRequest, auth_email: str = Depends(require_access_email)):
     """Place a multi-leg paper trade on Alpaca from an engine recommendation."""
+    ensure_same_user(auth_email, req.email)
     _require_admin(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured. Add ALPACA_API_KEY + ALPACA_SECRET_KEY to .env")
@@ -1420,8 +1443,9 @@ def trading_execute(req: TradingExecuteRequest):
 
 
 @app.post("/api/trading/cancel")
-def trading_cancel(req: TradingCancelRequest):
+def trading_cancel(req: TradingCancelRequest, auth_email: str = Depends(require_access_email)):
     """Cancel an open Alpaca order by order ID."""
+    ensure_same_user(auth_email, req.email)
     _require_admin(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")
@@ -1432,8 +1456,9 @@ def trading_cancel(req: TradingCancelRequest):
 
 
 @app.post("/api/trading/close")
-def trading_close_position(req: TradingCloseRequest):
+def trading_close_position(req: TradingCloseRequest, auth_email: str = Depends(require_access_email)):
     """Liquidate an open paper position by OCC symbol."""
+    ensure_same_user(auth_email, req.email)
     _require_admin(req.email)
     if not alpaca_is_configured():
         raise HTTPException(status_code=503, detail="Alpaca not configured")

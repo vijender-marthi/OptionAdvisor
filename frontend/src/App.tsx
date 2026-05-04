@@ -1,8 +1,14 @@
 import { lazy, Suspense, useEffect } from 'react'
+import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+import ActivatePage from './pages/ActivatePage'
 import { canAccessPage } from './permissions'
+
+const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
@@ -17,6 +23,13 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 
+const GATEWAY_PAGES = new Set([
+  'login',
+  'forgot-password',
+  'reset-password',
+  'activate',
+])
+
 function RouteFallback() {
   return (
     <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">
@@ -28,13 +41,17 @@ function RouteFallback() {
   )
 }
 
-// ── Inner router (has access to context) ────────────────────────────────────
 function Router() {
   const { page, user, navigate } = useApp()
 
-  // Redirect unauthenticated users to login
   useEffect(() => {
-    if (!user && page !== 'login') navigate('login')
+    if (!user && !GATEWAY_PAGES.has(page)) navigate('login')
+  }, [user, page, navigate])
+
+  useEffect(() => {
+    if (user && (page === 'login' || page === 'forgot-password' || page === 'reset-password')) {
+      navigate('ticker')
+    }
   }, [user, page, navigate])
 
   useEffect(() => {
@@ -42,35 +59,46 @@ function Router() {
     if (!canAccessPage(user.role, page)) navigate('ticker')
   }, [user, page, navigate])
 
-  if (!user || page === 'login') return <LoginPage />
+  if (page === 'activate') return <ActivatePage />
+
+  if (!user) {
+    if (page === 'forgot-password') return <ForgotPasswordPage />
+    if (page === 'reset-password') return <ResetPasswordPage />
+    return <LoginPage />
+  }
+
+  if (page === 'login' || page === 'forgot-password' || page === 'reset-password') {
+    return <RouteFallback />
+  }
 
   const renderPage = canAccessPage(user.role, page) ? page : 'ticker'
 
   return (
     <AppLayout>
       <Suspense fallback={<RouteFallback />}>
-        {renderPage === 'ticker'        && <TickerPage />}
-        {renderPage === 'watchlist'     && <WatchlistPage />}
-        {renderPage === 'portfolio'     && <PortfolioPage />}
-        {renderPage === 'help'          && <HelpPage />}
-        {renderPage === 'ai-stocks'     && <AIStocksPage />}
-        {renderPage === 'q-radar'       && <QRadarPage />}
-        {renderPage === 'backtest'      && <BacktestPage />}
+        {renderPage === 'ticker' && <TickerPage />}
+        {renderPage === 'watchlist' && <WatchlistPage />}
+        {renderPage === 'portfolio' && <PortfolioPage />}
+        {renderPage === 'help' && <HelpPage />}
+        {renderPage === 'ai-stocks' && <AIStocksPage />}
+        {renderPage === 'q-radar' && <QRadarPage />}
+        {renderPage === 'backtest' && <BacktestPage />}
         {renderPage === 'trade-signals' && <TradeSignalsPage />}
-        {renderPage === 'alerts'        && <AlertsPage />}
-        {renderPage === 'settings'      && <SettingsPage />}
-        {renderPage === 'journal'       && <JournalPage />}
-        {renderPage === 'auto-trade'    && <AutoTradePage />}
+        {renderPage === 'alerts' && <AlertsPage />}
+        {renderPage === 'settings' && <SettingsPage />}
+        {renderPage === 'journal' && <JournalPage />}
+        {renderPage === 'auto-trade' && <AutoTradePage />}
       </Suspense>
     </AppLayout>
   )
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  return (
+  const inner = (
     <AppProvider>
       <Router />
     </AppProvider>
   )
+  if (!googleClientId) return inner
+  return <GoogleOAuthProvider clientId={googleClientId}>{inner}</GoogleOAuthProvider>
 }

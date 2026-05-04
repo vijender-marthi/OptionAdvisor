@@ -3,6 +3,94 @@ import type { AlertEmailItem, AlertEntry, AnalyzeResponse, PortfolioPosition, St
 
 const api = axios.create({ baseURL: '/api' })
 
+export const OA_ACCESS_TOKEN_KEY = 'oa_access_token'
+
+export function getAccessToken(): string | null {
+  try {
+    return localStorage.getItem(OA_ACCESS_TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setAccessToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(OA_ACCESS_TOKEN_KEY, token)
+    else localStorage.removeItem(OA_ACCESS_TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+api.interceptors.request.use(cfg => {
+  const t = getAccessToken()
+  if (t) {
+    cfg.headers.Authorization = `Bearer ${t}`
+  }
+  return cfg
+})
+
+api.interceptors.response.use(
+  r => r,
+  err => {
+    if (err.response?.status === 401) {
+      const had = getAccessToken()
+      setAccessToken(null)
+      if (had) window.dispatchEvent(new CustomEvent('oa-auth-expired'))
+    }
+    return Promise.reject(err)
+  },
+)
+
+export interface AuthLoginResponse {
+  access_token: string
+  token_type: string
+  email: string
+  name: string
+  role: string
+}
+
+export const authLogin = async (email: string, password: string): Promise<AuthLoginResponse> => {
+  const { data } = await api.post<AuthLoginResponse>('/auth/login', { email, password })
+  return data
+}
+
+export const authRegister = async (payload: {
+  email: string
+  password: string
+  name?: string
+}): Promise<{ ok: boolean; needs_activation: boolean; message: string }> => {
+  const { data } = await api.post('/auth/register', payload)
+  return data
+}
+
+export const authGoogle = async (credential: string): Promise<AuthLoginResponse> => {
+  const { data } = await api.post<AuthLoginResponse>('/auth/google', { credential })
+  return data
+}
+
+export const authActivate = async (
+  token: string,
+): Promise<{ ok: boolean; email: string; message: string }> => {
+  const { data } = await api.get('/auth/activate', { params: { token } })
+  return data
+}
+
+export const authForgotPassword = async (
+  email: string,
+): Promise<{ ok: boolean; message: string; dev_reset_token?: string }> => {
+  const { data } = await api.post('/auth/forgot-password', { email })
+  return data
+}
+
+export const authResetPassword = async (
+  token: string,
+  password: string,
+): Promise<{ ok: boolean; message: string }> => {
+  const { data } = await api.post('/auth/reset-password', { token, password })
+  return data
+}
+
 export const analyzeOptions = async (
   ticker: string,
   weeksOut: number,

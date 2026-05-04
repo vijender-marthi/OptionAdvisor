@@ -17,7 +17,14 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set(['auto-trade'])
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {
   const r = role ?? 'user'
-  if (page === 'login') return true
+  if (
+    page === 'login'
+    || page === 'forgot-password'
+    || page === 'reset-password'
+    || page === 'activate'
+  ) {
+    return true
+  }
   if (ADMIN_ONLY.has(page)) return r === 'admin'
   if (r === 'admin') return true
   if (r === 'user') return true
