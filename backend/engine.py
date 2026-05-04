@@ -350,8 +350,14 @@ def check_leg_liquidity(leg: OptionLeg) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
+def clamp_probability(value: float) -> float:
+    """Keep probability inputs in the legal [0, 1] range before EV math/display."""
+    return max(0.0, min(float(value), 1.0))
+
+
 def compute_ev(max_profit: float, max_loss: float, prob_profit: float) -> float:
-    prob_loss = 1 - prob_profit
+    prob_profit = clamp_probability(prob_profit)
+    prob_loss = 1.0 - prob_profit
     return round((prob_profit * max_profit) - (prob_loss * max_loss), 4)
 
 
@@ -1509,6 +1515,9 @@ def run_engine(
     # ── EV / KELLY PASS ──────────────────────────────────────
     ev_positive = []
     for t in filtered:
+        t["prob_of_profit"] = clamp_probability(t["prob_of_profit"])
+        t["prob_of_max_loss"] = clamp_probability(t["prob_of_max_loss"])
+
         if t["expected_value"] <= 0:
             continue
 

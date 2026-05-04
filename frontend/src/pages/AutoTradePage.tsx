@@ -48,11 +48,11 @@ function SetupBanner() {
       <div className="flex items-start gap-3">
         <Settings size={20} className="text-amber-400 shrink-0 mt-0.5" />
         <div>
-          <div className="font-bold text-amber-300 mb-1">Alpaca Paper Trading Not Configured</div>
+          <div className="font-semibold text-amber-300 mb-1">Alpaca Paper Trading Not Configured</div>
           <p className="text-sm text-amber-200/70 mb-3">
             Add your Alpaca Paper Trading API keys to the backend <code className="bg-amber-900/40 px-1 rounded text-xs">.env</code> file to enable automated trade execution.
           </p>
-          <div className="bg-gray-900/60 rounded-xl p-3 font-mono text-xs text-gray-300 space-y-1">
+          <div className="bg-gray-900/60 rounded-xl p-3 text-xs text-gray-300 space-y-1">
             <div><span className="text-violet-400">ALPACA_API_KEY</span>=your-paper-api-key-id</div>
             <div><span className="text-violet-400">ALPACA_SECRET_KEY</span>=your-paper-secret-key</div>
           </div>
@@ -80,7 +80,7 @@ function ConfirmModal({ title, body, confirmLabel, confirmClass, onConfirm, onCa
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
       <div className="w-full max-w-sm bg-gray-900 border border-gray-700 rounded-2xl p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="font-bold text-white">{title}</div>
+          <div className="font-semibold text-white">{title}</div>
           <button onClick={onCancel} className="text-gray-500 hover:text-gray-300"><X size={16} /></button>
         </div>
         <p className="text-sm text-gray-400 mb-4">{body}</p>
@@ -103,56 +103,72 @@ function PositionsTable({ positions, onClose }: {
 }) {
   if (positions.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-600 text-sm">
-        No open positions on the paper account.
+      <div className="text-center py-16 space-y-2">
+        <div className="text-4xl">⚡</div>
+        <div className="text-lg font-semibold text-gray-300">No open paper positions</div>
+        <div className="text-sm text-gray-500">Execute a recommendation from Option Advisory to see it here.</div>
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs min-w-[44rem]">
-        <thead>
-          <tr className="text-gray-500 border-b border-gray-800">
-            <th className="text-left pb-2 pr-3">Symbol</th>
-            <th className="text-right pb-2 pr-3">Qty</th>
-            <th className="text-right pb-2 pr-3">Avg Entry</th>
-            <th className="text-right pb-2 pr-3">Current</th>
-            <th className="text-right pb-2 pr-3">Mkt Value</th>
-            <th className="text-right pb-2 pr-3">Unreal. P&L</th>
-            <th className="text-right pb-2 pr-3">P&L %</th>
-            <th className="text-right pb-2">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {positions.map(p => {
-            const isOption = p.asset_class === 'us_option'
-            const plColor = p.unrealized_pl > 0 ? 'text-emerald-400' : p.unrealized_pl < 0 ? 'text-red-400' : 'text-gray-400'
-            return (
-              <tr key={p.symbol} className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/20">
-                <td className="py-2 pr-3">
-                  <div className="font-mono text-white text-[11px] break-all">{p.symbol}</div>
-                  <div className="text-gray-600 text-[10px] mt-0.5">{isOption ? 'Option' : 'Equity'} · {p.side}</div>
-                </td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{p.qty}</td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{fmt$(p.avg_entry)}</td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{fmt$(p.current_price)}</td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{fmt$(p.market_value)}</td>
-                <td className={`py-2 pr-3 text-right font-mono font-bold ${plColor}`}>{fmt$(p.unrealized_pl)}</td>
-                <td className={`py-2 pr-3 text-right font-mono ${plColor}`}>{fmtPct(p.unrealized_plpc)}</td>
-                <td className="py-2 text-right">
-                  <button
-                    onClick={() => onClose(p.symbol)}
-                    className="px-2 py-1 bg-red-900/30 border border-red-800 text-red-400 rounded-lg text-[10px] font-semibold hover:bg-red-900/50 transition-colors"
-                  >
-                    Close
-                  </button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      <div className="hidden sm:grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_1fr_1fr_0.7fr] gap-3 px-4 py-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+        <div>Symbol</div>
+        <div className="text-right">Qty</div>
+        <div className="text-right">Avg Entry</div>
+        <div className="text-right">Current</div>
+        <div className="text-right">Market Value</div>
+        <div className="text-right">P&amp;L</div>
+        <div className="text-right">Action</div>
+      </div>
+      {positions.map(p => {
+        const isOption = p.asset_class === 'us_option'
+        const plColor = p.unrealized_pl > 0 ? 'text-emerald-400' : p.unrealized_pl < 0 ? 'text-red-400' : 'text-gray-400'
+        return (
+          <div
+            key={p.symbol}
+            className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-2xl overflow-hidden transition-colors"
+          >
+            <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_1fr_1fr_0.7fr] sm:items-center">
+              <div className="min-w-0 col-span-2 sm:col-span-1">
+                <div className="font-semibold text-white text-sm tracking-tight break-all">{p.symbol}</div>
+                <div className="text-gray-600 text-[10px] mt-0.5">{isOption ? 'Option' : 'Equity'} · {p.side}</div>
+              </div>
+              <div className="text-xs sm:text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Qty</div>
+                <div className="font-semibold text-gray-300">{p.qty}</div>
+              </div>
+              <div className="text-xs text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Avg Entry</div>
+                <div className="font-semibold text-gray-300">{fmt$(p.avg_entry)}</div>
+              </div>
+              <div className="text-xs sm:text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Current</div>
+                <div className="font-semibold text-gray-300">{fmt$(p.current_price)}</div>
+              </div>
+              <div className="text-xs text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Market Value</div>
+                <div className="font-semibold text-gray-300">{fmt$(p.market_value)}</div>
+              </div>
+              <div className="text-xs sm:text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Unrealized</div>
+                <div className={`font-semibold ${plColor}`}>{fmt$(p.unrealized_pl)}</div>
+                <div className={`text-[10px] ${plColor}`}>{fmtPct(p.unrealized_plpc)}</div>
+              </div>
+              <div className="flex justify-end col-span-2 sm:col-span-1">
+                <button
+                  onClick={() => onClose(p.symbol)}
+                  className="inline-flex h-9 items-center justify-center px-3 bg-gray-800 hover:bg-red-900/30 border border-gray-700
+                             text-gray-400 hover:text-red-400 hover:border-red-800 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -164,57 +180,74 @@ function OrdersTable({ orders, onCancel }: {
   onCancel: (id: string) => void
 }) {
   if (orders.length === 0) {
-    return <div className="text-center py-8 text-gray-600 text-sm">No recent orders.</div>
+    return (
+      <div className="text-center py-16 space-y-2">
+        <div className="text-4xl">📄</div>
+        <div className="text-lg font-semibold text-gray-300">No recent orders</div>
+        <div className="text-sm text-gray-500">Submitted paper trades will appear here.</div>
+      </div>
+    )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs min-w-[48rem]">
-        <thead>
-          <tr className="text-gray-500 border-b border-gray-800">
-            <th className="text-left pb-2 pr-3">Symbol / Strategy</th>
-            <th className="text-left pb-2 pr-3">Status</th>
-            <th className="text-right pb-2 pr-3">Qty</th>
-            <th className="text-right pb-2 pr-3">Filled</th>
-            <th className="text-right pb-2 pr-3">Avg Fill</th>
-            <th className="text-right pb-2 pr-3">Submitted</th>
-            <th className="text-right pb-2">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map(o => {
-            const statusColor = ORDER_STATUS_COLORS[o.status] ?? 'text-gray-400'
-            const canCancel = ['new', 'accepted', 'pending_new', 'partially_filled'].includes(o.status)
-            return (
-              <tr key={o.id} className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/20">
-                <td className="py-2 pr-3">
-                  <div className="font-mono text-white text-[11px]">{o.symbol}</div>
-                  {o.strategy && <div className="text-gray-500 text-[10px] mt-0.5">{o.strategy}</div>}
-                </td>
-                <td className="py-2 pr-3">
-                  <span className={`font-semibold ${statusColor}`}>{o.status}</span>
-                </td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{o.qty}</td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-300">{o.filled_qty ?? '0'}</td>
-                <td className="py-2 pr-3 text-right font-mono text-gray-400">
-                  {o.filled_avg_price ? fmt$(parseFloat(o.filled_avg_price)) : '—'}
-                </td>
-                <td className="py-2 pr-3 text-right text-gray-500">{fmtDt(o.submitted_at)}</td>
-                <td className="py-2 text-right">
-                  {canCancel ? (
-                    <button
-                      onClick={() => onCancel(o.id)}
-                      className="px-2 py-1 bg-gray-800 border border-gray-700 text-gray-400 rounded-lg text-[10px] font-semibold hover:border-red-700 hover:text-red-400 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  ) : <span className="text-gray-700">—</span>}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      <div className="hidden sm:grid grid-cols-[1.5fr_0.9fr_0.6fr_0.7fr_0.9fr_1fr_0.7fr] gap-3 px-4 py-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+        <div>Symbol</div>
+        <div>Status</div>
+        <div className="text-right">Qty</div>
+        <div className="text-right">Filled</div>
+        <div className="text-right">Avg Fill</div>
+        <div className="text-right">Submitted</div>
+        <div className="text-right">Action</div>
+      </div>
+      {orders.map(o => {
+        const statusColor = ORDER_STATUS_COLORS[o.status] ?? 'text-gray-400'
+        const canCancel = ['new', 'accepted', 'pending_new', 'partially_filled'].includes(o.status)
+        return (
+          <div
+            key={o.id}
+            className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-2xl overflow-hidden transition-colors"
+          >
+            <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-[1.5fr_0.9fr_0.6fr_0.7fr_0.9fr_1fr_0.7fr] sm:items-center">
+              <div className="min-w-0 col-span-2 sm:col-span-1">
+                <div className="font-semibold text-white text-sm tracking-tight break-all">{o.symbol}</div>
+                {o.strategy && <div className="text-gray-500 text-[10px] mt-0.5 truncate">{o.strategy}</div>}
+              </div>
+              <div className="text-xs">
+                <div className="sm:hidden text-gray-600 mb-0.5">Status</div>
+                <span className={`font-semibold ${statusColor}`}>{o.status}</span>
+              </div>
+              <div className="text-xs text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Qty</div>
+                <div className="font-semibold text-gray-300">{o.qty}</div>
+              </div>
+              <div className="text-xs sm:text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Filled</div>
+                <div className="font-semibold text-gray-300">{o.filled_qty ?? '0'}</div>
+              </div>
+              <div className="text-xs text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Avg Fill</div>
+                <div className="font-semibold text-gray-400">{o.filled_avg_price ? fmt$(parseFloat(o.filled_avg_price)) : '—'}</div>
+              </div>
+              <div className="text-xs sm:text-right">
+                <div className="sm:hidden text-gray-600 mb-0.5">Submitted</div>
+                <div className="text-gray-500">{fmtDt(o.submitted_at)}</div>
+              </div>
+              <div className="flex justify-end col-span-2 sm:col-span-1">
+                {canCancel ? (
+                  <button
+                    onClick={() => onCancel(o.id)}
+                    className="inline-flex h-9 items-center justify-center px-3 bg-gray-800 border border-gray-700 text-gray-400
+                               hover:border-red-800 hover:text-red-400 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                ) : <span className="text-gray-700 text-xs">—</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -343,21 +376,32 @@ export default function AutoTradePage() {
       )}
 
       <div className="max-w-6xl mx-auto space-y-5">
-        {/* Header — matches Portfolio: column on mobile, row + actions from sm */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
               <Zap className="text-amber-400 shrink-0" size={22} />
               <span>Auto Trading</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-300 border-amber-700">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-300 border-amber-700">
                 PAPER MODE
               </span>
             </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Alpaca Paper Trading · Admin only · Live orders and positions from your paper account
-            </p>
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              <span className="text-sm text-gray-500">Alpaca Paper Trading</span>
+              {configured && account && (
+                <>
+                  <span className="text-xs text-gray-600">· {positions.length} position{positions.length !== 1 ? 's' : ''}</span>
+                  <span className="text-xs text-gray-600">· {openOrdersCount} open order{openOrdersCount !== 1 ? 's' : ''}</span>
+                </>
+              )}
+              {refreshing && (
+                <span className="flex items-center gap-1 text-xs text-blue-400">
+                  <RefreshCw size={10} className="animate-spin" /> Refreshing…
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => loadAll(true)}
@@ -365,7 +409,7 @@ export default function AutoTradePage() {
               aria-label={refreshing ? 'Refreshing trading data' : 'Refresh trading data'}
               title="Refresh account, positions, and orders"
               className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
-                         text-gray-300 hover:text-amber-300 hover:border-amber-700 rounded-xl
+                         text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
                          transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
@@ -373,9 +417,12 @@ export default function AutoTradePage() {
             <button
               type="button"
               onClick={() => navigate('ticker')}
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
+              aria-label="Open Option Advisory"
+              title="Open Option Advisory"
+              className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
+                         text-white rounded-xl transition-colors shrink-0"
             >
-              <TrendingUp size={14} /> Option Advisory
+              <TrendingUp size={18} />
             </button>
           </div>
         </div>
@@ -413,14 +460,14 @@ export default function AutoTradePage() {
                   <div className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
                     <DollarSign size={12} className="opacity-70 shrink-0" /> Equity
                   </div>
-                  <div className="text-xl font-bold font-mono text-white truncate">{fmt$(account.equity)}</div>
+                  <div className="text-xl font-semibold text-white truncate">{fmt$(account.equity)}</div>
                   <div className="text-xs text-gray-600 mt-1 truncate">{account.currency} · {account.status}</div>
                 </div>
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 min-w-0">
                   <div className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
                     <BarChart3 size={12} className="opacity-70 shrink-0" /> Options BP
                   </div>
-                  <div className="text-xl font-bold font-mono text-violet-400 truncate">{fmt$(account.buying_power)}</div>
+                  <div className="text-xl font-semibold text-violet-400 truncate">{fmt$(account.buying_power)}</div>
                   <div className="text-xs text-gray-600 mt-1">Available for options</div>
                 </div>
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 min-w-0">
@@ -432,7 +479,7 @@ export default function AutoTradePage() {
                     )}
                     Unrealized P&amp;L
                   </div>
-                  <div className={`text-xl font-bold font-mono truncate ${
+                  <div className={`text-xl font-semibold truncate ${
                     totalUnrealizedPL > 0 ? 'text-emerald-400' : totalUnrealizedPL < 0 ? 'text-red-400' : 'text-gray-400'
                   }`}>{fmt$(totalUnrealizedPL)}</div>
                   <div className="text-xs text-gray-600 mt-1">
@@ -443,7 +490,7 @@ export default function AutoTradePage() {
                   <div className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
                     <Clock size={12} className="opacity-70 shrink-0" /> Open orders
                   </div>
-                  <div className={`text-xl font-bold font-mono truncate ${openOrdersCount > 0 ? 'text-blue-400' : 'text-gray-400'}`}>
+                  <div className={`text-xl font-semibold truncate ${openOrdersCount > 0 ? 'text-blue-400' : 'text-gray-400'}`}>
                     {openOrdersCount}
                   </div>
                   <div className="text-xs text-gray-600 mt-1">{filledToday} filled today</div>
@@ -471,47 +518,41 @@ export default function AutoTradePage() {
               </p>
             </div>
 
-            {/* Tabs — Portfolio-style segmented control */}
-            <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit flex-wrap">
-              {([
-                ['positions', 'Positions', positions.length] as const,
-                ['orders', 'Orders', orders.length] as const,
-              ]).map(([key, label, count]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setTab(key)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                    tab === key
-                      ? 'bg-violet-600 text-white'
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  {label}{' '}
-                  <span className={`font-mono ${tab === key ? 'opacity-90' : 'text-gray-600'}`}>({count})</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="border-b border-gray-800 px-4 py-3 md:px-5">
-                <h2 className="text-sm font-semibold text-gray-300">
-                  {tab === 'positions' ? 'Paper positions' : 'Order history'}
-                </h2>
-                <p className="text-xs text-gray-600 mt-0.5">
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-3 px-1 flex-wrap">
+                <div className="flex items-center gap-2">
+                  {([
+                    ['positions', 'Positions', positions.length] as const,
+                    ['orders', 'Orders', orders.length] as const,
+                  ]).map(([key, label, count]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTab(key)}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors ${
+                        tab === key
+                          ? 'bg-violet-900/50 text-violet-300 border-violet-700'
+                          : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200'
+                      }`}
+                    >
+                      {label}
+                      <span className={`ml-1 ${tab === key ? 'text-violet-200' : 'text-gray-600'}`}>{count}</span>
+                    </button>
+                  ))}
+                  <div className="h-px flex-1 bg-gray-800/70" />
+                </div>
+                <span className="text-[10px] text-gray-600">
                   {tab === 'positions'
-                    ? 'Open contracts on your Alpaca paper account. Close sends a market liquidating order.'
-                    : 'Recent submissions including fills, cancellations, and rejections.'}
-                </p>
+                    ? 'Market close sends a paper liquidating order'
+                    : 'Recent fills, cancellations, and rejections'}
+                </span>
               </div>
-              <div className="p-4 md:p-5">
-                {tab === 'positions' ? (
-                  <PositionsTable positions={positions} onClose={handleClosePosition} />
-                ) : (
-                  <OrdersTable orders={orders} onCancel={handleCancelOrder} />
-                )}
-              </div>
-            </div>
+              {tab === 'positions' ? (
+                <PositionsTable positions={positions} onClose={handleClosePosition} />
+              ) : (
+                <OrdersTable orders={orders} onCancel={handleCancelOrder} />
+              )}
+            </section>
           </>
         ) : null}
 

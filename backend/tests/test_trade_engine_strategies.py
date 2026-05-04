@@ -145,6 +145,10 @@ def _strategies_for(
 
 
 class TradeEngineStrategyCoverageTest(unittest.TestCase):
+    def test_compute_ev_clamps_probability_inputs(self):
+        self.assertEqual(compute_ev(1.0, 3.0, 1.25), 1.0)
+        self.assertEqual(compute_ev(1.0, 3.0, -0.25), -3.0)
+
     def test_kelly_metrics_use_half_kelly_with_twenty_percent_cap(self):
         kelly, half_kelly, edge = compute_kelly_metrics(0.20, 3.90)
 
