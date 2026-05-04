@@ -833,6 +833,7 @@ def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:
     hard_fails = 0
     soft_fails = 0
     warnings = 0
+    has_thin_edge = False
 
     def add(status: str, hard: bool = False) -> None:
         nonlocal hard_fails, soft_fails, warnings
@@ -939,7 +940,14 @@ def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:
 
     # Expected value / probability.
     if not is_income_sell:
-        add("pass" if rec.expected_value > 0.04 else "warn" if rec.expected_value > 0 else "fail", hard=rec.expected_value <= 0)
+        edge_ratio = getattr(rec, "edge_ratio", 0.0) or 0.0
+        if rec.expected_value <= 0:
+            add("fail", hard=True)
+        elif edge_ratio < 0.05:
+            has_thin_edge = True
+            add("warn")
+        else:
+            add("pass" if rec.expected_value > 0.04 else "warn")
 
     if is_credit:
         pass_threshold = 0.65 if is_income_sell else 0.62
@@ -948,7 +956,7 @@ def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:
     else:
         add("pass" if rec.prob_of_profit >= 0.45 else "warn" if rec.prob_of_profit >= 0.35 else "fail")
 
-    return hard_fails == 0 and soft_fails == 0 and warnings < 5
+    return hard_fails == 0 and soft_fails == 0 and not has_thin_edge and warnings < 5
 
 
 def _alert_item_from_dict(alert: dict) -> AlertItem:

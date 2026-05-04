@@ -173,7 +173,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex gap-3">
             <ShieldCheck size={15} className="text-violet-400 mt-0.5 shrink-0" />
-            <p>Alerts use the same <span className="text-gray-200 font-medium">buildChecklist + deriveVerdict</span> logic as full analysis — the same checklist items, thresholds, and scoring. A GO signal means all hard gates pass and the score is ≥ 70.</p>
+            <p>Alerts use a backend mirror of the same checklist rules as full analysis (IV, bias, liquidity, EV hard gate, PoP, structure, etc.). A GO alert fires only when that mirror passes with <span className="text-gray-200 font-medium">zero hard fails, zero soft fails</span>, <span className="text-gray-200 font-medium">edge ratio ≥ 5%</span> (no thin-edge Kelly warning), and fewer than five warnings — matching a green GO verdict in the UI.</p>
           </div>
           <div className="flex gap-3">
             <Info size={15} className="text-violet-400 mt-0.5 shrink-0" />

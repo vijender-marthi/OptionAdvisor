@@ -351,7 +351,7 @@ export default function RecommendationCard({
             const kellyPct            = (rec.half_kelly_fraction * 100).toFixed(1)
             const fullKellyPct        = (rec.kelly_fraction * 100).toFixed(1)
             const edgeRatioPct        = (rec.edge_ratio * 100).toFixed(1)
-            const isThinEdge          = rec.edge_ratio < 0.02
+            const isThinEdge          = rec.edge_ratio < 0.05
             const capitalForSelected  = maxLossPerContract * selectedContracts
             const capitalPctNumber    = accountSize > 0 ? capitalForSelected / accountSize * 100 : 0
             const capitalPct          = accountSize > 0 ? capitalPctNumber.toFixed(1) : '—'

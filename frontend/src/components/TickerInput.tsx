@@ -6,6 +6,9 @@ interface Props {
   onAnalyze: (ticker: string, weeksOut: number, spreadWidth: number | null, strategyMode: StrategyMode) => void
   loading: boolean
   initialTicker?: string
+  initialWeeks?: number
+  initialSpreadWidth?: number | null
+  initialStrategyMode?: StrategyMode
 }
 
 const POPULAR = ['AAPL', 'TSLA', 'SPY', 'QQQ', 'NVDA', 'AMZN', 'MSFT']
@@ -24,7 +27,14 @@ const STRATEGY_MODES: { label: string; sub: string; value: StrategyMode }[] = [
   { label: 'Short / Covered', sub: 'Naked short & covered plays',     value: 'short_or_covered'  },
 ]
 
-export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: Props) {
+export default function TickerInput({
+  onAnalyze,
+  loading,
+  initialTicker = '',
+  initialWeeks = 4,
+  initialSpreadWidth = 5,
+  initialStrategyMode = 'all',
+}: Props) {
   const [ticker,       setTicker]       = useState('')
   const [weeks,        setWeeks]        = useState(4)
   const [spreadWidth,  setSpreadWidth]  = useState<number | null>(5)
@@ -33,6 +43,18 @@ export default function TickerInput({ onAnalyze, loading, initialTicker = '' }: 
   useEffect(() => {
     setTicker(initialTicker)
   }, [initialTicker])
+
+  useEffect(() => {
+    setWeeks(initialWeeks)
+  }, [initialWeeks])
+
+  useEffect(() => {
+    setSpreadWidth(initialSpreadWidth)
+  }, [initialSpreadWidth])
+
+  useEffect(() => {
+    setStrategyMode(initialStrategyMode)
+  }, [initialStrategyMode])
 
   const handle = () => {
     const t = ticker.trim().toUpperCase()

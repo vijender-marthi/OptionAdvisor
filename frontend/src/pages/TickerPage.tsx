@@ -15,6 +15,47 @@ import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 
+const LAST_ANALYSIS_KEY = 'oa_last_option_analysis'
+
+interface LastAnalysisRequest {
+  ticker: string
+  weeksOut: number
+  spreadWidth: number | null
+  strategyMode: StrategyMode
+}
+
+function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null {
+  if (!raw || typeof raw !== 'object') return null
+  const value = raw as Partial<LastAnalysisRequest>
+  const ticker = typeof value.ticker === 'string' ? value.ticker.trim().toUpperCase() : ''
+  const weeksOut = Number(value.weeksOut)
+  const strategyMode = value.strategyMode ?? 'all'
+  if (!ticker || !Number.isFinite(weeksOut) || ![2, 3, 4, 6, 8].includes(weeksOut)) return null
+  if (!['all', 'long_only', 'credit_only', 'short_or_covered', 'straddle_only'].includes(strategyMode)) return null
+  return {
+    ticker,
+    weeksOut,
+    spreadWidth: value.spreadWidth ?? null,
+    strategyMode,
+  }
+}
+
+function loadLastAnalysisRequest(): LastAnalysisRequest | null {
+  try {
+    return normalizeLastAnalysisRequest(JSON.parse(localStorage.getItem(LAST_ANALYSIS_KEY) ?? 'null'))
+  } catch {
+    return null
+  }
+}
+
+function saveLastAnalysisRequest(request: LastAnalysisRequest) {
+  try {
+    localStorage.setItem(LAST_ANALYSIS_KEY, JSON.stringify(request))
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
 // ─── Global week selector ─────────────────────────────────────────────────────
 
 function bestVerdict(vs: Verdict[]): Verdict | null {
@@ -203,6 +244,7 @@ export default function TickerPage() {
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
 
   const didRun = useRef(false)
+  const didRestoreLastAnalysis = useRef(false)
 
   // ── Core analysis function (always hits API) ──────────────────────────────
   const handleAnalyze = async (
@@ -219,6 +261,7 @@ export default function TickerPage() {
     setLastWidth(spreadWidth)
     setLastMode(strategyMode)
     setSelectedWeeksOut(weeksOut)
+    saveLastAnalysisRequest({ ticker: ticker.trim().toUpperCase(), weeksOut, spreadWidth, strategyMode })
     try {
       const result = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
       setData(result)
@@ -257,6 +300,7 @@ export default function TickerPage() {
       setLastWidth(spreadWidth)
       setLastMode(strategyMode)
       setSelectedWeeksOut(weeksOut)
+      saveLastAnalysisRequest({ ticker: ticker.trim().toUpperCase(), weeksOut, spreadWidth, strategyMode })
     } else {
       handleAnalyze(ticker, weeksOut, spreadWidth, strategyMode)
     }
@@ -283,6 +327,22 @@ export default function TickerPage() {
 
   useEffect(() => {
     if (!pendingTicker) didRun.current = false
+  }, [pendingTicker])
+
+  // ── Browser refresh restore: keep the ticker/form and fetch fresh data ─────
+  useEffect(() => {
+    if (pendingTicker || didRestoreLastAnalysis.current) return
+    const last = loadLastAnalysisRequest()
+    if (!last) return
+
+    didRestoreLastAnalysis.current = true
+    setInputTicker(last.ticker)
+    setLastWeeks(last.weeksOut)
+    setLastWidth(last.spreadWidth)
+    setLastMode(last.strategyMode)
+    setSelectedWeeksOut(last.weeksOut)
+    handleAnalyze(last.ticker, last.weeksOut, last.spreadWidth, last.strategyMode)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTicker])
 
   // ── Watchlist toggle ──────────────────────────────────────────────────────
@@ -320,7 +380,14 @@ export default function TickerPage() {
     <div className="ticker-page min-h-screen p-3 sm:p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4">
 
-        <TickerInput onAnalyze={handleAnalyzeWithCache} loading={loading} initialTicker={inputTicker} />
+        <TickerInput
+          onAnalyze={handleAnalyzeWithCache}
+          loading={loading}
+          initialTicker={inputTicker}
+          initialWeeks={lastWeeks}
+          initialSpreadWidth={lastWidth}
+          initialStrategyMode={lastMode}
+        />
 
         {/* Loading */}
         {loading && (

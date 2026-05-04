@@ -384,7 +384,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   if (ev <= 0)
     items.push({ label: 'Expected Value', status: 'fail', hard: true, category: 'Structure',
       detail: `EV $${(ev * 100).toFixed(2)}/contract — negative expected value. The probability math does not favor this trade.` })
-  else if (edge < 0.02)
+  else if (edge < 0.05)
     items.push({ label: 'Kelly Edge', status: 'warn', hard: false, category: 'Structure',
       detail: `EV +$${(ev * 100).toFixed(2)}/contract, but edge is only ${(edge * 100).toFixed(1)}% of max loss. Size conservatively; estimation error could erase it.` })
   else if (isIncomeSell) {
@@ -448,8 +448,9 @@ export function deriveVerdict(items: CheckItem[]): Verdict {
   const hardFails = items.filter(i => i.status === 'fail' && i.hard).length
   const softFails = items.filter(i => i.status === 'fail' && !i.hard).length
   const warns     = items.filter(i => i.status === 'warn').length
+  const hasThinEdge = items.some(i => i.label === 'Kelly Edge' && i.status === 'warn')
   if (hardFails > 0 || softFails >= 2) return 'NO GO'
-  if (softFails === 1 || warns >= 5)   return 'CAUTION'
+  if (softFails === 1 || hasThinEdge || warns >= 5) return 'CAUTION'
   return 'GO'
 }
 

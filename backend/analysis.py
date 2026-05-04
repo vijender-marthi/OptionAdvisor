@@ -135,7 +135,7 @@ class TradeCandidate:
     # kelly_fraction   : raw Kelly % (EV / max_loss). Uncapped.
     # half_kelly_fraction: conservative recommendation (Kelly × 0.5, capped at 20%).
     # edge_ratio       : EV / max_loss as a decimal.
-    #                    < 0.02 → thin-edge warning; ≤ 0 → hard-rejected before scoring.
+    #                    < 0.05 → thin-edge warning; ≤ 0 → hard-rejected before scoring.
     kelly_fraction:      float = 0.0
     half_kelly_fraction: float = 0.0
     edge_ratio:          float = 0.0

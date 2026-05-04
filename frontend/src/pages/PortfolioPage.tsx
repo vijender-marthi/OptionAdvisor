@@ -726,7 +726,7 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
                   <div>
                     <div className="text-gray-500">Edge</div>
-                    <div className={`font-mono font-bold ${(pos.edge_ratio ?? 0) < 0.02 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    <div className={`font-mono font-bold ${(pos.edge_ratio ?? 0) < 0.05 ? 'text-amber-400' : 'text-emerald-400'}`}>
                       {((pos.edge_ratio ?? 0) * 100).toFixed(1)}%
                     </div>
                   </div>

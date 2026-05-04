@@ -48,7 +48,7 @@ CREDIT_PROFIT_TARGET_PCT  = 50     # Close credit at 50% of max profit
 DEBIT_PROFIT_TARGET_PCT   = 100    # Close debit at 2x cost (100% gain)
 CREDIT_STOP_LOSS_MULT     = 2.0    # Stop if loss = 2x credit received
 CLOSE_AT_DTE              = 21     # Always close credit spreads at 21 DTE
-THIN_EDGE_RATIO           = 0.02    # EV/max_loss below this is vulnerable to PoP estimation error
+THIN_EDGE_RATIO           = 0.05    # EV/max_loss below this is vulnerable to PoP estimation error
 HALF_KELLY_CAP            = 0.20    # Never recommend risking more than 20% on one trade
 
 

@@ -84,7 +84,7 @@ const filters = [
   'Credit trades warn when collected premium is below 25% of spread width.',
   'Trades with both failed liquidity and failed credit checks are rejected before ranking.',
   'Any trade with EV ≤ 0 is hard-rejected — negative expected value is mathematically indefensible.',
-  'Trades with EV/risk < 2% pass but receive a "Thin edge" warning — model error may erase the edge.',
+  'Trades with EV/risk < 5% receive a "Thin edge" warning and are downgraded to CAUTION — model error may erase the edge.',
   'The final list is sorted by total score and capped to the top six recommendations.',
 ]
 
@@ -152,14 +152,14 @@ const verdictRules = [
     color: 'text-emerald-400',
     badge: 'bg-emerald-900/40 border-emerald-700 text-emerald-300',
     icon: <CheckCircle2 size={15} />,
-    desc: 'No hard fails, zero soft fails, and fewer than 3 warnings. This is the cleanest setup the engine can find.',
+    desc: 'No hard fails, zero soft fails, edge ratio ≥ 5% of max loss (no Kelly Edge thin-edge warning), and fewer than 5 warnings total. This is the cleanest actionable verdict.',
   },
   {
     verdict: 'CAUTION',
     color: 'text-amber-400',
     badge: 'bg-amber-900/40 border-amber-700 text-amber-300',
     icon: <AlertTriangle size={15} />,
-    desc: 'No hard fails, but 1 soft fail or 5+ warnings. The trade is structurally valid but has at least one notable risk factor.',
+    desc: 'No hard fails, but either a thin Kelly edge (EV ÷ max loss below 5%), one soft fail, or five or more warnings. The setup may still be tradeable — reduce size and review every checklist row.',
   },
   {
     verdict: 'NO GO',
@@ -191,7 +191,7 @@ const glossaryTerms = [
   { term: 'Income Yield', def: 'For covered strategies, the checklist replaces EV with income yield: (net premium collected ÷ position value). Covered Call yield = premium ÷ stock price. Covered Put yield = premium ÷ cash collateral (the strike price). A 1%+ monthly yield is typically the target.' },
   { term: 'Kelly Criterion', def: 'A mathematical formula that calculates the optimal fraction of capital to risk on a trade: Kelly% = EV ÷ max_loss. The system uses Half-Kelly (÷2, capped at 20%) for safety. Example: EV=$0.20, max_loss=$3.90 → Kelly=5.1%, Half-Kelly=2.55% of capital.' },
   { term: 'Half-Kelly', def: 'The recommended position size — half of the raw Kelly fraction, capped at 20% per trade. Halving protects against estimation error in the probability inputs. Practitioners widely prefer Half-Kelly over Full-Kelly to reduce drawdowns.' },
-  { term: 'Edge Ratio', def: 'EV ÷ max_loss expressed as a percentage. Measures the quality of the mathematical edge. Below 2% = "thin edge" warning (model error may erase it). Above 5% = solid edge. This is more useful than raw EV dollar amount because it normalizes across different position sizes.' },
+  { term: 'Edge Ratio', def: 'EV ÷ max_loss expressed as a percentage. Measures the quality of the mathematical edge. Below 5% = "thin edge" warning (model error may erase it). Above 5% = solid edge. This is more useful than raw EV dollar amount because it normalizes across different position sizes.' },
   { term: 'Capital at Risk', def: 'The actual maximum dollar loss for your position: contracts × max_loss × 100. Shown as a % of account size in the contract picker. Turns amber above 10% and red above 20% — Kelly math says concentrating more than 20% on one trade is outside the optimal range.' },
   { term: 'EV Hard Gate', def: 'Any trade with EV ≤ 0 is automatically rejected by the engine before it reaches you. A negative-EV trade loses money in expectation over many repetitions — no amount of good signal alignment can fix negative expected value.' },
   { term: 'Short Put (Naked)', def: 'Sell a put option with no stock or cash collateral (unlike a cash-secured put). You collect the full premium but require a margin account. Profit if the stock stays above the strike. Maximum loss if the stock goes to zero. Requires active management — a disciplined stop at 2× the premium received is standard.' },
@@ -222,6 +222,37 @@ const optionReference = [
     formalName: 'Short Put',
     action: 'You write a contract and must buy stock if assigned.',
     outlook: 'Bullish: You want the price to stay UP.',
+  },
+]
+
+const optionExamples = [
+  {
+    title: 'Long Call Example',
+    setup: 'Buy 1 call for $3.00 premium.',
+    profit: 'Profit starts above strike + $3.00. Upside is theoretically unlimited.',
+    risk: 'Maximum loss is the $300 premium paid.',
+    bestWhen: 'Best when you are bullish and IV is low enough that premium is not overpriced.',
+  },
+  {
+    title: 'Long Put Example',
+    setup: 'Buy 1 put for $2.50 premium.',
+    profit: 'Profit starts below strike − $2.50. Downside profit grows as the stock falls.',
+    risk: 'Maximum loss is the $250 premium paid.',
+    bestWhen: 'Best when you are bearish and want defined-risk downside exposure.',
+  },
+  {
+    title: 'Bull Put Spread Example',
+    setup: 'Sell a $100 put and buy a $95 put for $1.20 net credit.',
+    profit: 'Maximum profit is $120 if the stock stays above $100 at expiry.',
+    risk: 'Maximum loss is $380: $5 spread width − $1.20 credit, times 100.',
+    bestWhen: 'Best when IV is elevated and the stock is bullish or neutral.',
+  },
+  {
+    title: 'Covered Call Example',
+    setup: 'Own 100 shares and sell 1 OTM call for $1.50 premium.',
+    profit: 'You keep $150 premium; upside is capped if shares are called away.',
+    risk: 'You still carry stock downside risk, partly cushioned by the premium.',
+    bestWhen: 'Best when you own the stock, IV is high, and you are willing to sell at the strike.',
   },
 ]
 
@@ -355,6 +386,71 @@ export default function HelpPage() {
           </div>
         </InfoCard>
 
+        {/* Options Fundamentals */}
+        <InfoCard icon={<BookOpen size={18} />} title="Options Fundamentals — Definitions & Examples">
+          <div className="space-y-5">
+            <p className="text-sm text-gray-400">
+              Start here if you want the basics. Buying options means paying premium for a right;
+              selling options means collecting premium while taking on an obligation.
+              One option contract usually controls <span className="text-gray-200 font-semibold">100 shares</span>.
+            </p>
+
+            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-gray-800">
+                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-4 py-3">Position</th>
+                    <th className="px-4 py-3">Formal Name</th>
+                    <th className="px-4 py-3">Your Action</th>
+                    <th className="px-4 py-3">Your Outlook</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optionReference.map(item => (
+                    <tr key={item.position} className="border-t border-gray-700/50">
+                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{item.position}</td>
+                      <td className="px-4 py-3 font-semibold text-violet-300 whitespace-nowrap">{item.formalName}</td>
+                      <td className="px-4 py-3 text-gray-400">{item.action}</td>
+                      <td className="px-4 py-3 text-gray-400">{item.outlook}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {optionExamples.map(item => (
+                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+                  <div className="text-sm font-semibold text-white mb-2">{item.title}</div>
+                  <div className="space-y-1.5 text-xs leading-relaxed">
+                    <div><span className="text-gray-500">Setup:</span> <span className="text-gray-300">{item.setup}</span></div>
+                    <div><span className="text-emerald-400">Profit:</span> <span className="text-gray-400">{item.profit}</span></div>
+                    <div><span className="text-red-400">Risk:</span> <span className="text-gray-400">{item.risk}</span></div>
+                    <div><span className="text-violet-300">Best when:</span> <span className="text-gray-400">{item.bestWhen}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-amber-900/20 border border-amber-800/50 rounded-xl px-4 py-3 text-xs text-amber-300/90">
+              The examples are simplified teaching cases. Real results depend on strike selection, IV changes,
+              liquidity, assignment, and exit timing.
+            </div>
+          </div>
+        </InfoCard>
+
+        {/* Glossary */}
+        <InfoCard icon={<BookOpen size={18} />} title="Options Glossary">
+          <div className="grid gap-2 md:grid-cols-2">
+            {glossaryTerms.map(item => (
+              <div key={item.term} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
+                <div className="font-semibold text-violet-300 text-sm">{item.term}</div>
+                <div className="text-xs text-gray-400 mt-1 leading-relaxed">{item.def}</div>
+              </div>
+            ))}
+          </div>
+        </InfoCard>
+
         {/* AI Radar */}
         <InfoCard icon={<Brain size={18} />} title="AI Radar">
           <div className="space-y-3 text-sm text-gray-400">
@@ -399,8 +495,24 @@ export default function HelpPage() {
               Every recommendation is automatically run through 10 checks. Each check is either a
               <span className="text-red-400 font-semibold"> hard fail</span> (one alone triggers NO GO) or a
               <span className="text-amber-400 font-semibold"> soft fail</span> (accumulate two → NO GO; one → CAUTION).
-              Warnings count toward CAUTION when there are 3 or more.
+              Multiple warnings can stack toward CAUTION; five or more warnings alone flip the verdict to CAUTION.
             </p>
+
+            {/* Thin edge → verdict & alerts (v1.01) */}
+            <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
+              <div className="text-violet-300 font-semibold text-sm mb-2">Thin Kelly edge — verdict &amp; alerts (v1.01)</div>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                Edge ratio is <span className="font-mono text-gray-300">EV ÷ max_loss</span> (same units as displayed per-share metrics).
+                When edge ratio is below <span className="text-gray-200 font-semibold">5%</span>, the checklist logs a{' '}
+                <span className="text-gray-200 font-semibold">Kelly Edge</span> warning because small errors in PoP or pricing can erase the modeled edge.
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                That warning <span className="text-amber-400 font-semibold">downgrades the verdict to CAUTION</span>, never GO — even if EV is positive and other checks look fine (for example a long call with tiny EV versus large max loss).
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Backend email/watchlist GO alerts use the same rule: trades with edge ratio below 5% are excluded so alerts stay aligned with the green GO badge you see in the app.
+              </p>
+            </div>
 
             {/* Verdict legend */}
             <div className="grid gap-2 md:grid-cols-3">
@@ -539,7 +651,7 @@ export default function HelpPage() {
                 ))}
               </div>
               <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1.5">
-                <div><span className="text-violet-400">Edge Ratio</span>  = $0.20 ÷ $3.90 = <span className="text-emerald-400">5.1%</span>  <span className="text-gray-600">← passes 2% minimum</span></div>
+                <div><span className="text-violet-400">Edge Ratio</span>  = $0.20 ÷ $3.90 = <span className="text-emerald-400">5.1%</span>  <span className="text-gray-600">← clears 5% minimum</span></div>
                 <div><span className="text-violet-400">Kelly %</span>     = 5.1% of capital</div>
                 <div><span className="text-violet-400">Half-Kelly</span>  = 2.55% of capital</div>
                 <div className="border-t border-gray-700 pt-1.5 mt-1.5">
@@ -563,9 +675,9 @@ export default function HelpPage() {
               <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-3">
                 <div className="text-amber-400 font-semibold text-sm mb-2">⚠ Thin Edge Warning</div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  When <span className="font-mono text-amber-300">Edge Ratio &lt; 2%</span>, the engine warns that
-                  estimation error in the PoP calculation could wipe out the edge entirely. The trade is not rejected —
-                  but you see the warning badge and should size conservatively (1 contract or less).
+                  When <span className="font-mono text-amber-300">Edge Ratio &lt; 5%</span>, the engine warns that
+                  estimation error in the PoP calculation could wipe out the edge entirely. The trade is not rejected by the ranking engine —
+                  but the pre-trade verdict becomes <span className="text-amber-400 font-semibold">CAUTION</span>, recommendation cards show the thin-edge callout, and you should size conservatively (often 1 contract or less).
                 </p>
                 <div className="mt-2 font-mono text-xs bg-gray-900/50 rounded-lg p-2 text-gray-400">
                   EV = $0.05/share → Edge = $0.05/$3.90 = 1.3% ← thin
@@ -1256,50 +1368,6 @@ if HIGH_IV and BEARISH:
             </div>
           </InfoCard>
         </div>
-
-        {/* Option Reference */}
-        <InfoCard icon={<BookOpen size={18} />} title="Option Reference" defaultOpen={false}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-400">
-              A quick primer for the four basic option positions. Buying options means paying premium for a right;
-              selling options means collecting premium while taking on an obligation.
-            </p>
-            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="bg-gray-800">
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3">Position</th>
-                    <th className="px-4 py-3">Formal Name</th>
-                    <th className="px-4 py-3">Your Action</th>
-                    <th className="px-4 py-3">Your Outlook</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {optionReference.map(item => (
-                    <tr key={item.position} className="border-t border-gray-700/50">
-                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{item.position}</td>
-                      <td className="px-4 py-3 font-semibold text-violet-300 whitespace-nowrap">{item.formalName}</td>
-                      <td className="px-4 py-3 text-gray-400">{item.action}</td>
-                      <td className="px-4 py-3 text-gray-400">{item.outlook}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </InfoCard>
-
-        {/* Glossary */}
-        <InfoCard icon={<BookOpen size={18} />} title="Options Glossary" defaultOpen={false}>
-          <div className="grid gap-2 md:grid-cols-2">
-            {glossaryTerms.map(item => (
-              <div key={item.term} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                <div className="font-semibold text-violet-300 text-sm">{item.term}</div>
-                <div className="text-xs text-gray-400 mt-1 leading-relaxed">{item.def}</div>
-              </div>
-            ))}
-          </div>
-        </InfoCard>
 
         {/* Risk */}
         <InfoCard icon={<ShieldCheck size={18} />} title="Risk Warnings">
