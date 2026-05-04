@@ -1,10 +1,11 @@
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta
 
 import pandas as pd
 
 from analysis import MarketSignals
-from engine import run_engine
+from engine import compute_bs_ev_long, compute_ev, compute_kelly_metrics, run_engine
 
 
 PRICE = 100.0
@@ -50,6 +51,32 @@ def _puts_chain() -> pd.DataFrame:
         _option_row(105, 8.4, 8.6, 0.30, -0.62),
         _option_row(110, 11.8, 12.2, 0.30, -0.75),
         _option_row(115, 15.8, 16.2, 0.30, -0.86),
+    ])
+
+
+def _long_calls_chain() -> pd.DataFrame:
+    return pd.DataFrame([
+        _option_row(85, 15.8, 16.2, 0.45, 0.86),
+        _option_row(90, 11.8, 12.2, 0.45, 0.75),
+        _option_row(95, 8.4, 8.6, 0.45, 0.62),
+        _option_row(100, 2.9, 3.1, 0.45, 0.50),
+        _option_row(105, 1.4, 1.6, 0.45, 0.42),
+        _option_row(110, 0.45, 0.55, 0.45, 0.25),
+        _option_row(115, 0.20, 0.30, 0.45, 0.16),
+        _option_row(120, 0.10, 0.20, 0.45, 0.10),
+    ])
+
+
+def _long_puts_chain() -> pd.DataFrame:
+    return pd.DataFrame([
+        _option_row(80, 0.10, 0.20, 0.45, -0.10),
+        _option_row(85, 0.20, 0.30, 0.45, -0.16),
+        _option_row(90, 0.45, 0.55, 0.45, -0.25),
+        _option_row(95, 1.4, 1.6, 0.45, -0.42),
+        _option_row(100, 2.9, 3.1, 0.45, -0.50),
+        _option_row(105, 8.4, 8.6, 0.45, -0.62),
+        _option_row(110, 11.8, 12.2, 0.45, -0.75),
+        _option_row(115, 15.8, 16.2, 0.45, -0.86),
     ])
 
 
@@ -99,11 +126,16 @@ def _signals(
     )
 
 
-def _strategies_for(signals: MarketSignals, strategy_mode: str) -> set[str]:
+def _strategies_for(
+    signals: MarketSignals,
+    strategy_mode: str,
+    calls: pd.DataFrame | None = None,
+    puts: pd.DataFrame | None = None,
+) -> set[str]:
     trades = run_engine(
         signals,
-        _calls_chain(),
-        _puts_chain(),
+        calls if calls is not None else _calls_chain(),
+        puts if puts is not None else _puts_chain(),
         [_expiry()],
         spread_width_override=5,
         weeks_out=4,
@@ -113,6 +145,15 @@ def _strategies_for(signals: MarketSignals, strategy_mode: str) -> set[str]:
 
 
 class TradeEngineStrategyCoverageTest(unittest.TestCase):
+    def test_kelly_metrics_use_half_kelly_with_twenty_percent_cap(self):
+        kelly, half_kelly, edge = compute_kelly_metrics(0.20, 3.90)
+
+        self.assertAlmostEqual(edge, 0.0513, places=4)
+        self.assertAlmostEqual(kelly, 0.0513, places=4)
+        self.assertAlmostEqual(half_kelly, 0.0256, places=4)
+
+        self.assertEqual(compute_kelly_metrics(1.00, 1.00)[1], 0.20)
+
     def test_long_only_bullish_builds_long_call_and_bull_call_spread(self):
         strategies = _strategies_for(
             _signals(
@@ -123,6 +164,8 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
+            calls=_long_calls_chain(),
+            puts=_long_puts_chain(),
         )
 
         self.assertIn("Long Call", strategies)
@@ -138,6 +181,8 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
+            calls=_long_calls_chain(),
+            puts=_long_puts_chain(),
         )
 
         self.assertIn("Long Put", strategies)
@@ -153,6 +198,8 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
                 volatility_regime="Buy Premium",
             ),
             "long_only",
+            calls=_long_calls_chain(),
+            puts=_long_puts_chain(),
         )
 
         self.assertIn("Long Straddle", strategies)
@@ -202,6 +249,204 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
         )
 
         self.assertIn("Short Call", strategies)
+
+    def test_recommendations_have_positive_ev_and_kelly_metrics(self):
+        trades = run_engine(
+            _signals(
+                bias="Neutral",
+                confidence=0,
+                iv_rank=70,
+                iv_vs_hv=8,
+                volatility_regime="Sell Premium",
+            ),
+            _calls_chain(),
+            _puts_chain(),
+            [_expiry()],
+            spread_width_override=5,
+            weeks_out=4,
+            strategy_mode="credit_only",
+        )
+
+        self.assertGreater(len(trades), 0)
+        for trade in trades:
+            self.assertGreater(trade.expected_value, 0)
+            self.assertAlmostEqual(trade.edge_ratio, trade.expected_value / trade.max_loss, places=4)
+            self.assertAlmostEqual(trade.kelly_fraction, trade.edge_ratio, places=4)
+            self.assertLessEqual(trade.half_kelly_fraction, 0.20)
+
+    def test_long_call_uses_black_scholes_ev_not_capped_binary_ev(self):
+        signals = _signals(
+            bias="Bullish",
+            confidence=75,
+            iv_rank=20,
+            iv_vs_hv=-4,
+            volatility_regime="Buy Premium",
+        )
+        trades = run_engine(
+            signals,
+            _long_calls_chain(),
+            _long_puts_chain(),
+            [_expiry()],
+            spread_width_override=5,
+            weeks_out=4,
+            strategy_mode="long_only",
+        )
+
+        long_call = next(trade for trade in trades if trade.strategy == "Long Call")
+        leg = long_call.legs[0]
+        bs_ev = compute_bs_ev_long(
+            current_price=PRICE,
+            strike=leg.strike,
+            iv_pct=leg.iv,
+            expiry=long_call.expiry,
+            premium=leg.mid_price,
+            option_type="CALL",
+            directional_bias=signals.directional_bias,
+            bias_confidence=signals.bias_confidence,
+        )
+        capped_binary_ev = compute_ev(leg.mid_price * 10, leg.mid_price, long_call.prob_of_profit)
+
+        self.assertAlmostEqual(long_call.expected_value, bs_ev, places=4)
+        self.assertNotEqual(long_call.expected_value, capped_binary_ev)
+
+    def test_long_put_uses_black_scholes_ev_not_capped_binary_ev(self):
+        signals = _signals(
+            bias="Bearish",
+            confidence=75,
+            iv_rank=20,
+            iv_vs_hv=-4,
+            volatility_regime="Buy Premium",
+        )
+        trades = run_engine(
+            signals,
+            _long_calls_chain(),
+            _long_puts_chain(),
+            [_expiry()],
+            spread_width_override=5,
+            weeks_out=4,
+            strategy_mode="long_only",
+        )
+
+        long_put = next(trade for trade in trades if trade.strategy == "Long Put")
+        leg = long_put.legs[0]
+        bs_ev = compute_bs_ev_long(
+            current_price=PRICE,
+            strike=leg.strike,
+            iv_pct=leg.iv,
+            expiry=long_put.expiry,
+            premium=leg.mid_price,
+            option_type="PUT",
+            directional_bias=signals.directional_bias,
+            bias_confidence=signals.bias_confidence,
+        )
+        capped_binary_ev = compute_ev(leg.mid_price * 10, leg.mid_price, long_put.prob_of_profit)
+
+        self.assertAlmostEqual(long_put.expected_value, bs_ev, places=4)
+        self.assertNotEqual(long_put.expected_value, capped_binary_ev)
+
+    def test_long_straddle_uses_black_scholes_ev_for_each_leg(self):
+        signals = _signals(
+            bias="Neutral",
+            confidence=0,
+            iv_rank=20,
+            iv_vs_hv=-4,
+            volatility_regime="Buy Premium",
+        )
+        trades = run_engine(
+            signals,
+            _long_calls_chain(),
+            _long_puts_chain(),
+            [_expiry()],
+            spread_width_override=5,
+            weeks_out=4,
+            strategy_mode="long_only",
+        )
+
+        straddle = next(trade for trade in trades if trade.strategy == "Long Straddle")
+        call_leg, put_leg = straddle.legs
+        avg_iv = round((call_leg.iv + put_leg.iv) / 2, 4)
+        expected_ev = round(
+            compute_bs_ev_long(
+                current_price=PRICE,
+                strike=call_leg.strike,
+                iv_pct=avg_iv,
+                expiry=straddle.expiry,
+                premium=call_leg.mid_price,
+                option_type="CALL",
+                directional_bias=signals.directional_bias,
+                bias_confidence=signals.bias_confidence,
+            )
+            + compute_bs_ev_long(
+                current_price=PRICE,
+                strike=put_leg.strike,
+                iv_pct=avg_iv,
+                expiry=straddle.expiry,
+                premium=put_leg.mid_price,
+                option_type="PUT",
+                directional_bias=signals.directional_bias,
+                bias_confidence=signals.bias_confidence,
+            ),
+            4,
+        )
+        capped_binary_ev = compute_ev(
+            (call_leg.mid_price + put_leg.mid_price) * 3,
+            call_leg.mid_price + put_leg.mid_price,
+            straddle.prob_of_profit,
+        )
+
+        self.assertAlmostEqual(straddle.expected_value, expected_ev, places=4)
+        self.assertNotEqual(straddle.expected_value, capped_binary_ev)
+
+    def test_bounded_spreads_and_income_trades_keep_binary_ev(self):
+        calls = _calls_chain()
+        puts = _puts_chain()
+        expiry = _expiry()
+
+        with patch("engine.compute_bs_ev_long") as bs_ev:
+            credit_trades = run_engine(
+                _signals(
+                    bias="Neutral",
+                    confidence=0,
+                    iv_rank=70,
+                    iv_vs_hv=8,
+                    volatility_regime="Sell Premium",
+                ),
+                calls,
+                puts,
+                [expiry],
+                spread_width_override=5,
+                weeks_out=4,
+                strategy_mode="credit_only",
+            )
+            income_trades = run_engine(
+                _signals(
+                    bias="Neutral",
+                    confidence=0,
+                    iv_rank=70,
+                    iv_vs_hv=8,
+                    volatility_regime="Sell Premium",
+                ),
+                calls,
+                puts,
+                [expiry],
+                spread_width_override=5,
+                weeks_out=4,
+                strategy_mode="short_or_covered",
+            )
+
+        bs_ev.assert_not_called()
+
+        for trade in [*credit_trades, *income_trades]:
+            is_income_trade = trade.strategy in {
+                "Covered Call", "Covered Put", "Short Put", "Short Call"
+            }
+            max_profit = trade.net_credit if is_income_trade else trade.max_profit
+            max_loss = round(trade.net_credit * 2, 4) if is_income_trade else trade.max_loss
+            self.assertAlmostEqual(
+                trade.expected_value,
+                compute_ev(max_profit, max_loss, trade.prob_of_profit),
+                places=4,
+            )
 
 
 if __name__ == "__main__":

@@ -376,11 +376,18 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
         detail: `Risk/Reward ${rec.risk_reward_ratio.toFixed(1)}x — below ideal. A large move is required to generate meaningful profit relative to premium paid.` })
   }
 
-  // ── 9. Expected Value ─────────────────────────────────────────────────────
-  // For covered strategies, EV is modeled on the option-stop scenario (2× credit = practical stop).
-  // The primary edge metric for income strategies is income yield, not speculative EV.
+  // ── 9. Expected Value / Kelly Edge ────────────────────────────────────────
+  // EV <= 0 is a hard NO GO for every strategy. Positive but very small
+  // EV/max-loss is shown as a thin-edge warning because PoP estimation error can erase it.
   const ev = rec.expected_value
-  if (isIncomeSell) {
+  const edge = rec.edge_ratio ?? (rec.max_loss > 0 ? ev / rec.max_loss : 0)
+  if (ev <= 0)
+    items.push({ label: 'Expected Value', status: 'fail', hard: true, category: 'Structure',
+      detail: `EV $${(ev * 100).toFixed(2)}/contract — negative expected value. The probability math does not favor this trade.` })
+  else if (edge < 0.02)
+    items.push({ label: 'Kelly Edge', status: 'warn', hard: false, category: 'Structure',
+      detail: `EV +$${(ev * 100).toFixed(2)}/contract, but edge is only ${(edge * 100).toFixed(1)}% of max loss. Size conservatively; estimation error could erase it.` })
+  else if (isIncomeSell) {
     // Income-sell strategies: evaluate on yield vs. capital, not speculative EV
     const yield_pct = rec.credit_pct_of_width   // yield % stored here for income-sell strategies
     const collLabel = rec.strategy === 'Covered Call'
@@ -399,13 +406,10 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
         detail: `${yield_pct.toFixed(2)}% yield on ${collLabel} — premium is too small. Low IV or wrong strike selection; the income does not compensate for risk.` })
   } else if (ev > 0.04)
     items.push({ label: 'Expected Value', status: 'pass', hard: false, category: 'Structure',
-      detail: `EV +$${(ev * 100).toFixed(2)}/contract — meaningful positive edge after probability weighting.` })
+      detail: `EV +$${(ev * 100).toFixed(2)}/contract — meaningful positive edge after probability weighting. Edge ratio ${(edge * 100).toFixed(1)}%.` })
   else if (ev > 0)
     items.push({ label: 'Expected Value', status: 'warn', hard: false, category: 'Structure',
-      detail: `EV +$${(ev * 100).toFixed(2)}/contract — thin edge. Commissions and slippage may fully erase it.` })
-  else
-    items.push({ label: 'Expected Value', status: 'fail', hard: true, category: 'Structure',
-      detail: `EV $${(ev * 100).toFixed(2)}/contract — negative expected value. The probability math does not favor this trade.` })
+      detail: `EV +$${(ev * 100).toFixed(2)}/contract — positive but thin. Commissions and slippage may reduce the edge.` })
 
   // ── 10. Prob of Profit ────────────────────────────────────────────────────
   // Credit spreads are DESIGNED to have high PoP (60–75%) — that's the trade-off

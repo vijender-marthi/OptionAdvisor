@@ -522,6 +522,10 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
   const sStyle     = suggestion ? SUGGESTION_STYLE[suggestion.level] : null
 
   const dte = Math.ceil((new Date(pos.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
+  const hasKellySnapshot = pos.kelly_fraction != null || pos.half_kelly_fraction != null || pos.edge_ratio != null
+  const capitalRiskPct = pos.account_size_at_entry && pos.capital_at_risk != null
+    ? (pos.capital_at_risk / pos.account_size_at_entry) * 100
+    : null
 
   const isMistake = !!(pos.notes?.toLowerCase().includes('mistake') || pos.notes?.toLowerCase().includes('accidental') || pos.notes?.toLowerCase().includes('error'))
 
@@ -715,6 +719,44 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
               </div>
             )}
 
+            {/* Kelly snapshot */}
+            {hasKellySnapshot && (
+              <div className="bg-violet-950/30 border border-violet-900/60 rounded-xl px-3 py-2">
+                <div className="text-xs text-violet-300 font-semibold mb-1.5">Kelly snapshot at entry</div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+                  <div>
+                    <div className="text-gray-500">Edge</div>
+                    <div className={`font-mono font-bold ${(pos.edge_ratio ?? 0) < 0.02 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {((pos.edge_ratio ?? 0) * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Full Kelly</div>
+                    <div className="font-mono font-bold text-violet-300">{((pos.kelly_fraction ?? 0) * 100).toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Half-Kelly</div>
+                    <div className="font-mono font-bold text-violet-400">{((pos.half_kelly_fraction ?? 0) * 100).toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Capital at risk</div>
+                    <div className="font-mono font-bold text-gray-200">
+                      {pos.capital_at_risk != null ? fmtDollar(pos.capital_at_risk) : '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Account</div>
+                    <div className={`font-mono font-bold ${
+                      capitalRiskPct != null && capitalRiskPct > 20 ? 'text-red-400' :
+                      capitalRiskPct != null && capitalRiskPct >= 10 ? 'text-amber-400' : 'text-gray-200'
+                    }`}>
+                      {capitalRiskPct != null ? `${capitalRiskPct.toFixed(1)}%` : '-'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Legs */}
             <div className="bg-gray-800/40 rounded-xl px-3 py-2">
               <div className="text-xs text-gray-500 mb-1.5">Legs</div>
@@ -841,6 +883,11 @@ export default function PortfolioPage() {
         'Warnings / Errors': warnings,
         'Max Profit': pos.max_profit * 100 * contracts,
         'Max Loss': pos.max_loss * 100 * contracts,
+        'Kelly Fraction': pos.kelly_fraction != null ? pos.kelly_fraction : '',
+        'Half-Kelly Fraction': pos.half_kelly_fraction != null ? pos.half_kelly_fraction : '',
+        'Edge Ratio': pos.edge_ratio != null ? pos.edge_ratio : '',
+        'Capital At Risk': pos.capital_at_risk ?? '',
+        'Account Size At Entry': pos.account_size_at_entry ?? '',
         ...legColumns,
         'Leg Details': pos.legs.map(leg => `${leg.action} ${leg.option_type} ${leg.strike} @ ${leg.mid_price}`).join('; '),
         'Strategy Type': pos.strategy,

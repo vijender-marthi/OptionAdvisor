@@ -48,6 +48,8 @@ CREDIT_PROFIT_TARGET_PCT  = 50     # Close credit at 50% of max profit
 DEBIT_PROFIT_TARGET_PCT   = 100    # Close debit at 2x cost (100% gain)
 CREDIT_STOP_LOSS_MULT     = 2.0    # Stop if loss = 2x credit received
 CLOSE_AT_DTE              = 21     # Always close credit spreads at 21 DTE
+THIN_EDGE_RATIO           = 0.02    # EV/max_loss below this is vulnerable to PoP estimation error
+HALF_KELLY_CAP            = 0.20    # Never recommend risking more than 20% on one trade
 
 
 # ─────────────────────────────────────────────────────────────
@@ -353,6 +355,143 @@ def compute_ev(max_profit: float, max_loss: float, prob_profit: float) -> float:
     return round((prob_profit * max_profit) - (prob_loss * max_loss), 4)
 
 
+def compute_kelly_metrics(expected_value: float, max_loss: float) -> tuple[float, float, float]:
+    """
+    Kelly sizing based on per-share EV and max loss.
+
+    Kelly % = EV / max_loss. The recommended sizing uses Half-Kelly and caps
+    any single trade at 20% of account capital.
+    """
+    if max_loss <= 0:
+        return 0.0, 0.0, 0.0
+    edge_ratio = expected_value / max_loss
+    kelly_fraction = max(edge_ratio, 0.0)
+    half_kelly_fraction = min(kelly_fraction * 0.5, HALF_KELLY_CAP)
+    return (
+        round(kelly_fraction, 4),
+        round(half_kelly_fraction, 4),
+        round(edge_ratio, 4),
+    )
+
+
+def directional_drift(directional_bias: str, bias_confidence: int) -> float:
+    """
+    Annualized drift for real-world lognormal EV on long premium trades.
+
+    Defined-risk spreads and income strategies use binary EV below; this drift is
+    only for uncapped long-option payoff distributions.
+    """
+    confidence = max(0.0, min(1.0, bias_confidence / 100.0))
+    if directional_bias in ("Bullish", "Mildly Bullish"):
+        return 0.15 * confidence
+    if directional_bias in ("Bearish", "Mildly Bearish"):
+        return -0.10 * confidence
+    return 0.05
+
+
+def expected_option_payoff(
+    current_price: float,
+    strike: float,
+    iv_pct: float,
+    expiry: str,
+    option_type: str,
+    annual_drift: float,
+) -> float:
+    """
+    Expected expiry payoff E[max(+/-(S_T-K), 0)] under a lognormal stock model.
+
+    This is the Black-Scholes payoff integral without subtracting premium. It is
+    appropriate for long calls, long puts, and each long straddle leg because
+    upside/tail payoff is not capped at construction.
+    """
+    S = current_price
+    K = strike
+    sigma = iv_pct / 100.0
+    T = max(years_to_expiry(expiry), 1 / 365)
+
+    if sigma <= 0 or S <= 0 or K <= 0:
+        return 0.0
+
+    vol_sqrt_t = sigma * sqrt(T)
+    if vol_sqrt_t <= 0:
+        return 0.0
+
+    try:
+        d1 = (log(S / K) + (annual_drift + 0.5 * sigma ** 2) * T) / vol_sqrt_t
+        d2 = d1 - vol_sqrt_t
+
+        if option_type == "CALL":
+            payoff = S * np.exp(annual_drift * T) * normal_cdf(d1) - K * normal_cdf(d2)
+        else:
+            payoff = K * normal_cdf(-d2) - S * np.exp(annual_drift * T) * normal_cdf(-d1)
+        return max(float(payoff), 0.0)
+    except Exception:
+        return 0.0
+
+
+def compute_bs_ev_long(
+    current_price: float,
+    strike: float,
+    iv_pct: float,
+    expiry: str,
+    premium: float,
+    option_type: str,
+    directional_bias: str,
+    bias_confidence: int,
+) -> float:
+    """Black-Scholes/lognormal EV for one long option leg."""
+    drift = directional_drift(directional_bias, bias_confidence)
+    payoff = expected_option_payoff(
+        current_price=current_price,
+        strike=strike,
+        iv_pct=iv_pct,
+        expiry=expiry,
+        option_type=option_type,
+        annual_drift=drift,
+    )
+    return round(payoff - premium, 4)
+
+
+def compute_bs_ev_straddle(
+    current_price: float,
+    call_strike: float,
+    put_strike: float,
+    avg_iv_pct: float,
+    expiry: str,
+    call_premium: float,
+    put_premium: float,
+    directional_bias: str,
+    bias_confidence: int,
+) -> float:
+    """
+    Black-Scholes/lognormal EV for a long straddle.
+
+    The call and put payoffs are uncapped in opposite tails, so evaluate each
+    long option leg independently with the same ATM IV input and sum the EVs.
+    """
+    call_ev = compute_bs_ev_long(
+        current_price=current_price,
+        strike=call_strike,
+        iv_pct=avg_iv_pct,
+        expiry=expiry,
+        premium=call_premium,
+        option_type="CALL",
+        directional_bias=directional_bias,
+        bias_confidence=bias_confidence,
+    )
+    put_ev = compute_bs_ev_long(
+        current_price=current_price,
+        strike=put_strike,
+        iv_pct=avg_iv_pct,
+        expiry=expiry,
+        premium=put_premium,
+        option_type="PUT",
+        directional_bias=directional_bias,
+        bias_confidence=bias_confidence,
+    )
+    return round(call_ev + put_ev, 4)
+
+
 def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
     """
     Score 0–40: how well the current market signals align with the strategy.
@@ -541,7 +680,16 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
     max_profit = 999.0  # unlimited — cap for display at 10x cost
     max_loss = cost
     rr = round(max_loss / (cost * 10), 2)  # display R:R vs 10x target
-    ev = compute_ev(cost * 10, max_loss, rop)
+    ev = compute_bs_ev_long(
+        current_price=price,
+        strike=leg.strike,
+        iv_pct=leg.iv,
+        expiry=expiry,
+        premium=cost,
+        option_type="CALL",
+        directional_bias=signals.directional_bias,
+        bias_confidence=signals.bias_confidence,
+    )
 
     return dict(
         strategy="Long Call", bias="Bullish",
@@ -580,7 +728,16 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
         return None
     be = round(leg.strike - cost, 2)
     rop = round(abs(leg.delta) if leg.delta < 0 else 0.45, 2)
-    ev = compute_ev(cost * 10, cost, rop)
+    ev = compute_bs_ev_long(
+        current_price=price,
+        strike=leg.strike,
+        iv_pct=leg.iv,
+        expiry=expiry,
+        premium=cost,
+        option_type="PUT",
+        directional_bias=signals.directional_bias,
+        bias_confidence=signals.bias_confidence,
+    )
 
     return dict(
         strategy="Long Put", bias="Bearish",
@@ -860,7 +1017,18 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
     be_upper = round(call_leg.strike + total_cost, 2)
     be_lower = round(put_leg.strike - total_cost, 2)
     rop = 0.40  # straddles typically have ~40% PoP due to cost
-    ev = compute_ev(total_cost * 3, total_cost, rop)
+    avg_iv = round((call_leg.iv + put_leg.iv) / 2, 4)
+    ev = compute_bs_ev_straddle(
+        current_price=price,
+        call_strike=call_leg.strike,
+        put_strike=put_leg.strike,
+        avg_iv_pct=avg_iv,
+        expiry=expiry,
+        call_premium=call_leg.mid_price,
+        put_premium=put_leg.mid_price,
+        directional_bias=signals.directional_bias,
+        bias_confidence=signals.bias_confidence,
+    )
 
     return dict(
         strategy="Long Straddle", bias="Neutral (Volatile)",
@@ -1338,9 +1506,31 @@ def run_engine(
         t["warnings"] = warnings_list
         filtered.append(t)
 
+    # ── EV / KELLY PASS ──────────────────────────────────────
+    ev_positive = []
+    for t in filtered:
+        if t["expected_value"] <= 0:
+            continue
+
+        kelly_fraction, half_kelly_fraction, edge_ratio = compute_kelly_metrics(
+            t["expected_value"],
+            t["max_loss"],
+        )
+        t["kelly_fraction"] = kelly_fraction
+        t["half_kelly_fraction"] = half_kelly_fraction
+        t["edge_ratio"] = edge_ratio
+
+        if edge_ratio < THIN_EDGE_RATIO:
+            t.setdefault("warnings", []).append(
+                f"Thin edge: EV/max loss is only {edge_ratio * 100:.1f}%. "
+                "Small PoP estimation errors could wipe out this edge; size conservatively."
+            )
+
+        ev_positive.append(t)
+
     # ── SCORING PASS ─────────────────────────────────────────
     scored = []
-    for t in filtered:
+    for t in ev_positive:
         sig_score  = score_signal_alignment(signals, t["strategy"])
         str_score  = score_structure(t)
         liq_score  = score_liquidity(t["legs"])
@@ -1376,6 +1566,9 @@ def run_engine(
             rationale=t["rationale"],
             exit_plan=t["exit_plan"],
             warnings=t.get("warnings", []),
+            kelly_fraction=t["kelly_fraction"],
+            half_kelly_fraction=t["half_kelly_fraction"],
+            edge_ratio=t["edge_ratio"],
         ))
 
     scored.sort(key=lambda x: x.total_score, reverse=True)

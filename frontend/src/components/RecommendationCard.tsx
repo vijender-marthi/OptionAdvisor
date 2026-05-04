@@ -45,7 +45,7 @@ function ScoreBar({ label, value, max, color }: { label: string; value: number; 
   )
 }
 
-const CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
+const BASE_CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
@@ -346,15 +346,19 @@ export default function RecommendationCard({
             // capitalAtRisk = accountSize × half_kelly_fraction
             // kellyContracts = floor(capitalAtRisk / max_loss_per_contract)
             const maxLossPerContract  = rec.max_loss * 100
-            const capitalAtRisk       = accountSize * rec.half_kelly_fraction
-            const kellyContracts      = Math.max(1, Math.floor(capitalAtRisk / maxLossPerContract))
-            const clampedKelly        = Math.min(kellyContracts, 10)
+            const capitalToRisk       = accountSize * rec.half_kelly_fraction
+            const kellyContracts      = maxLossPerContract > 0 ? Math.floor(capitalToRisk / maxLossPerContract) : 0
             const kellyPct            = (rec.half_kelly_fraction * 100).toFixed(1)
             const fullKellyPct        = (rec.kelly_fraction * 100).toFixed(1)
             const edgeRatioPct        = (rec.edge_ratio * 100).toFixed(1)
             const isThinEdge          = rec.edge_ratio < 0.02
             const capitalForSelected  = maxLossPerContract * selectedContracts
-            const capitalPct          = accountSize > 0 ? (capitalForSelected / accountSize * 100).toFixed(1) : '—'
+            const capitalPctNumber    = accountSize > 0 ? capitalForSelected / accountSize * 100 : 0
+            const capitalPct          = accountSize > 0 ? capitalPctNumber.toFixed(1) : '—'
+            const contractOptions     = Array.from(new Set([
+              ...BASE_CONTRACT_OPTIONS,
+              ...(kellyContracts > 0 ? [kellyContracts] : []),
+            ])).sort((a, b) => a - b)
 
             return (
               <div
@@ -393,9 +397,19 @@ export default function RecommendationCard({
                     <div className="bg-gray-900/60 rounded-lg px-2 py-1.5">
                       <div className="text-gray-500 mb-0.5">Kelly contracts</div>
                       <div className="font-mono font-bold text-white">
-                        {clampedKelly} @ ${accountSize.toLocaleString()} acct
+                        {kellyContracts} @ ${accountSize.toLocaleString()} acct
                       </div>
                     </div>
+                  </div>
+                  <div className="mt-2 text-[11px] text-gray-500">
+                    Capital to risk: <span className="font-mono text-gray-300">${Math.round(capitalToRisk).toLocaleString()}</span>
+                    <span className="mx-1 text-gray-700">·</span>
+                    Max loss/contract: <span className="font-mono text-gray-300">${Math.round(maxLossPerContract).toLocaleString()}</span>
+                    {kellyContracts === 0 && (
+                      <span className="block mt-1 text-amber-400/80">
+                        Half-Kelly recommends less than 1 contract for this account size.
+                      </span>
+                    )}
                   </div>
 
                   {/* Account size input */}
@@ -426,8 +440,8 @@ export default function RecommendationCard({
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {CONTRACT_OPTIONS.map(n => {
-                      const isKelly = n === clampedKelly
+                    {contractOptions.map(n => {
+                      const isKelly = n === kellyContracts
                       return (
                         <button
                           key={n}
@@ -466,14 +480,19 @@ export default function RecommendationCard({
                     <span>
                       <span className="text-gray-500">Capital at risk: </span>
                       <span className={`font-mono font-semibold ${
-                        Number(capitalPct) > 20 ? 'text-red-400' :
-                        Number(capitalPct) > 10 ? 'text-amber-400' : 'text-gray-300'
+                        capitalPctNumber > 20 ? 'text-red-400' :
+                        capitalPctNumber >= 10 ? 'text-amber-400' : 'text-gray-300'
                       }`}>{capitalPct}% of account</span>
                     </span>
                   </div>
-                  {Number(capitalPct) > 20 && (
+                  {capitalPctNumber >= 10 && capitalPctNumber <= 20 && (
+                    <div className="mt-1.5 text-[10px] text-amber-400/80">
+                      {capitalPct}% of capital is approaching the 20% Half-Kelly cap. Watch total portfolio exposure.
+                    </div>
+                  )}
+                  {capitalPctNumber > 20 && (
                     <div className="mt-1.5 text-[10px] text-red-400/80">
-                      ⚠ {capitalPct}% of capital in one trade exceeds the Kelly-recommended {kellyPct}%. Consider fewer contracts.
+                      {capitalPct}% of capital in one trade exceeds the 20% Kelly cap. Consider fewer contracts.
                     </div>
                   )}
 
