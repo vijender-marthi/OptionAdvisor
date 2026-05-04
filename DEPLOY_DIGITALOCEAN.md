@@ -74,6 +74,7 @@ Create backend environment file:
 ```bash
 sudo tee /etc/optionadvisor.env >/dev/null <<'EOF'
 OPTION_ADVISOR_DB_PATH=/mnt/optionadvisor-data/option_advisor.sqlite3
+OPTION_ADVISOR_PUBLIC_URL=https://optionadvisor.zetayuai.com
 # Optional: comma-separated emails → promote default users to finance role (see storage.effective_user_role).
 OPTION_ADVISOR_FINANCE_EMAILS=
 # Email: SendGrid (preferred if set) or Gmail SMTP — see backend/.env.example

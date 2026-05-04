@@ -16,6 +16,7 @@ import os
 import json
 import threading
 import time
+from collections import defaultdict
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -979,6 +980,9 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
         if ticker and ticker not in tickers:
             tickers.append(ticker)
 
+    new_alert_items: list[AlertItem] = []
+    new_alert_ids: list[str] = []
+
     for ticker in tickers:
         try:
             # Alert scans only run for tickers saved in the user's watchlist.
@@ -1021,8 +1025,24 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
             if not inserted:
                 continue
 
-            result = _send_alert_email(email, [_alert_item_from_dict(alert)], user_name)
-            update_user_alert_email(email, alert_id, bool(result.get("sent")), str(result.get("message", "")))
+            new_alert_ids.append(alert_id)
+            new_alert_items.append(_alert_item_from_dict(alert))
+
+    if not new_alert_items:
+        return
+
+    alerts_by_window: dict[str, list[AlertItem]] = defaultdict(list)
+    alert_ids_by_window: dict[str, list[str]] = defaultdict(list)
+    for alert_id, alert_item in zip(new_alert_ids, new_alert_items):
+        alerts_by_window[alert_item.time_window].append(alert_item)
+        alert_ids_by_window[alert_item.time_window].append(alert_id)
+
+    for time_window, alert_items in alerts_by_window.items():
+        result = _send_alert_email(email, alert_items, user_name)
+        message = str(result.get("message", ""))
+        sent = bool(result.get("sent"))
+        for alert_id in alert_ids_by_window[time_window]:
+            update_user_alert_email(email, alert_id, sent, message)
 
 
 def _alert_scan_loop() -> None:
