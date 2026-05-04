@@ -191,6 +191,8 @@ ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
+ALERT_SCAN_WEEKS_OUT = 4
+ALERT_SCAN_SPREAD_WIDTH = 5
 
 # User-facing analyze endpoint cache TTL:
 #   90 seconds during market hours (fast refresh for live trading)
@@ -988,7 +990,12 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
             # Alert scans only run for tickers saved in the user's watchlist.
             # Reuse fresh backend analysis data; if absent/stale, this refreshes
             # Yahoo/options data once and stores the result for the scan window.
-            data = _get_analysis_with_cache(ticker, weeks_out=4, spread_width=5, strategy_mode="all")
+            data = _get_analysis_with_cache(
+                ticker,
+                weeks_out=ALERT_SCAN_WEEKS_OUT,
+                spread_width=ALERT_SCAN_SPREAD_WIDTH,
+                strategy_mode="all",
+            )
         except Exception as exc:
             print(f"[alert-scan] {email} {ticker} failed: {exc}", flush=True)
             continue
@@ -1008,7 +1015,7 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
                 "bias": rec.bias,
                 "expiry": rec.expiry,
                 "dte": rec.dte,
-                "weeksOut": round(rec.dte / 7),
+                "weeksOut": ALERT_SCAN_WEEKS_OUT,
                 "score": rec.scores.total_score,
                 "maxProfit": rec.max_profit,
                 "maxLoss": rec.max_loss,

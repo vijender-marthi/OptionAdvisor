@@ -44,7 +44,7 @@ const biasBg = (b: string) =>
 function AlertCard({ alert, onDismiss, onNavigate }: {
   alert: AlertEntry
   onDismiss: (id: string) => void
-  onNavigate: (ticker: string) => void
+  onNavigate: (alert: AlertEntry) => void
 }) {
   const isCredit  = alert.netCredit > 0
   const evColor   = alert.ev > 0 ? 'text-green-400' : 'text-red-400'
@@ -76,7 +76,7 @@ function AlertCard({ alert, onDismiss, onNavigate }: {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => onNavigate(alert.ticker)}
+              onClick={() => onNavigate(alert)}
               className="text-sm font-semibold text-white tracking-tight hover:text-violet-300 transition-colors"
             >
               {alert.ticker}
@@ -161,8 +161,13 @@ export default function AlertsPage() {
   const totalCount    = activeAlerts.length
   const scanning = refreshingTickers.size > 0
 
-  const handleNavigate = (ticker: string) => {
-    requestAnalysis(ticker)
+  const handleNavigate = (alert: AlertEntry) => {
+    requestAnalysis(alert.ticker, {
+      weeksOut: alert.weeksOut,
+      spreadWidth: 5,
+      strategyMode: 'all',
+      force: true,
+    })
   }
 
   return (

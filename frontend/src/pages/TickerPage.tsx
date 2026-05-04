@@ -186,7 +186,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
 export default function TickerPage() {
   const {
     addToWatchlist, removeFromWatchlist, isWatched,
-    pendingTicker, clearPendingTicker,
+    pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
   } = useApp()
@@ -267,11 +267,19 @@ export default function TickerPage() {
     if (pendingTicker && !didRun.current) {
       didRun.current = true
       setInputTicker(pendingTicker)
+      const weeksOut = pendingAnalysisOptions?.weeksOut ?? 4
+      const spreadWidth = pendingAnalysisOptions?.spreadWidth ?? 5
+      const strategyMode = pendingAnalysisOptions?.strategyMode ?? 'all'
+      const force = pendingAnalysisOptions?.force ?? false
       clearPendingTicker()
-      handleAnalyzeWithCache(pendingTicker, 4, 5, 'all')
+      if (force) {
+        handleAnalyze(pendingTicker, weeksOut, spreadWidth, strategyMode)
+      } else {
+        handleAnalyzeWithCache(pendingTicker, weeksOut, spreadWidth, strategyMode)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingTicker])
+  }, [pendingTicker, pendingAnalysisOptions])
 
   useEffect(() => {
     if (!pendingTicker) didRun.current = false

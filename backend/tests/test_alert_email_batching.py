@@ -54,14 +54,19 @@ class AlertEmailBatchingTests(unittest.TestCase):
         )
         sent_batches: list[list[str]] = []
         updated_alert_ids: list[str] = []
+        stored_weeks_out: list[int] = []
 
         def fake_send(_email, alerts, _user_name=None):
             sent_batches.append([a.strategy for a in alerts])
             return {"sent": True, "message": "batched"}
 
-        with patch.object(main, "_get_analysis_with_cache", return_value=data), \
+        def fake_add_alert(_email, alert, *_args, **_kwargs):
+            stored_weeks_out.append(alert["weeksOut"])
+            return True
+
+        with patch.object(main, "_get_analysis_with_cache", return_value=data) as get_analysis, \
              patch.object(main, "_backend_verdict_is_go", return_value=True), \
-             patch.object(main, "add_user_alert", return_value=True), \
+             patch.object(main, "add_user_alert", side_effect=fake_add_alert), \
              patch.object(main, "_send_alert_email", side_effect=fake_send), \
              patch.object(main, "update_user_alert_email", side_effect=lambda _email, alert_id, *_args: updated_alert_ids.append(alert_id)):
             main._scan_user_watchlist_for_alerts({
@@ -69,7 +74,9 @@ class AlertEmailBatchingTests(unittest.TestCase):
                 "watchlist": [{"ticker": "AAPL"}],
             })
 
+        get_analysis.assert_called_once_with("AAPL", weeks_out=4, spread_width=5, strategy_mode="all")
         self.assertEqual(sent_batches, [["Bull Put Spread", "Cash-Secured Put"]])
+        self.assertEqual(stored_weeks_out, [4, 4])
         self.assertEqual(updated_alert_ids, [
             "AAPL-Bull Put Spread-2026-06-19",
             "AAPL-Cash-Secured Put-2026-06-26",

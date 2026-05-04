@@ -116,7 +116,8 @@ interface AppContextValue {
 
   // Cross-page ticker handoff
   pendingTicker: string | null
-  requestAnalysis: (ticker: string) => void
+  pendingAnalysisOptions: PendingAnalysisOptions | null
+  requestAnalysis: (ticker: string, options?: PendingAnalysisOptions) => void
   clearPendingTicker: () => void
 
   // Auth
@@ -185,6 +186,13 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null)
 const ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 
+interface PendingAnalysisOptions {
+  weeksOut?: number
+  spreadWidth?: number | null
+  strategyMode?: StrategyMode
+  force?: boolean
+}
+
 // ─── Persistence helpers ────────────────────────────────────────────────────────
 function load<T>(key: string, fallback: T): T {
   try {
@@ -213,6 +221,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
   const [portfolio, setPortfolio]   = useState<PortfolioPosition[]>([])
   const [pendingTicker, setPendingTicker] = useState<string | null>(null)
+  const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<PendingAnalysisOptions | null>(null)
   const [tickerCache, setTickerCache]     = useState<Record<string, TickerCacheEntry>>(
     () => load('oa_cache', {})
   )
@@ -399,11 +408,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Router ──────────────────────────────────────────────────────────────────
   const navigate = useCallback((p: Page) => setPage(p), [])
 
-  const requestAnalysis = useCallback((ticker: string) => {
+  const requestAnalysis = useCallback((ticker: string, options?: PendingAnalysisOptions) => {
     setPendingTicker(ticker.trim().toUpperCase())
+    setPendingAnalysisOptions(options ?? null)
     setPage('ticker')
   }, [])
-  const clearPendingTicker = useCallback(() => setPendingTicker(null), [])
+  const clearPendingTicker = useCallback(() => {
+    setPendingTicker(null)
+    setPendingAnalysisOptions(null)
+  }, [])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   const applyAuthSession = useCallback((session: AuthLoginResponse) => {
@@ -833,7 +846,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       page, navigate,
-      pendingTicker, requestAnalysis, clearPendingTicker,
+      pendingTicker, pendingAnalysisOptions, requestAnalysis, clearPendingTicker,
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
       portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
