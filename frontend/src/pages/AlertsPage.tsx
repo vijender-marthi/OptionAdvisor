@@ -167,6 +167,7 @@ export default function AlertsPage() {
       spreadWidth: 5,
       strategyMode: 'all',
       force: true,
+      chainExpiry: alert.expiry.trim().slice(0, 10),
     })
   }
 
@@ -307,7 +308,7 @@ export default function AlertsPage() {
                   {alerts.filter(a => a.emailSent).length} emails sent
                 </span>
               </div>
-              <span className="text-gray-700">Click a ticker to open it in Option Advisory</span>
+              <span className="text-gray-700">Click a ticker to open Option Advisor on the same expiry as the alert</span>
             </div>
           </div>
         )}

@@ -583,8 +583,8 @@ function ManualPositionEditor({
 
   if (variant === 'modal') {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg my-4 overflow-hidden">
+      <div className="portfolio-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="portfolio-position-editor bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg my-4 overflow-hidden shadow-xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
             <div>
               <div className="text-base font-bold text-white flex items-center gap-2">
@@ -606,7 +606,7 @@ function ManualPositionEditor({
   }
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-4 max-h-[min(70vh,720px)] overflow-y-auto">
+    <div className="portfolio-position-editor rounded-xl border border-gray-700 bg-gray-950/40 p-4 max-h-[min(70vh,720px)] overflow-y-auto">
       <div className="text-xs font-bold text-violet-300 uppercase tracking-wide mb-1">Edit position fields</div>
       <p className="text-[11px] text-gray-500 mb-4">Fix typos or wrong legs here. Use <span className="text-cyan-400">Update</span> on the card header for fresh option-chain prices.</p>
       {fieldsBlock}
@@ -642,7 +642,7 @@ function CloseModal({ pos, onClose, onConfirm }: {
   const profitLabel = isDebit ? '10× premium target' : 'max profit'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="portfolio-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="text-base font-bold text-white">Close Position</div>
@@ -795,7 +795,7 @@ function PositionCard({
               type="button"
               onClick={() => { setExpanded(true); setDetailTab('edit') }}
               title="Edit strikes, premiums, expiry, contracts — fixes wrong manual entry"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors"
+              className="portfolio-edit-trigger flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors"
             >
               <FileEdit size={12} /> Edit
             </button>

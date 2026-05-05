@@ -1302,6 +1302,31 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
     )
 
 
+def _tradeable_chain_near_money(df: pd.DataFrame, spot: float) -> pd.DataFrame:
+    """
+    Rows near spot suitable for spread builders.
+
+    Previously we required ``bid >= 0`` and ``ask >= 0``. Yahoo often leaves bid/ask as NaN;
+    in pandas ``NaN >= 0`` is False, so the entire chain could disappear and **no recommendations**
+    were produced even though ``get_mid()`` treats NaN as 0 and falls back to lastPrice.
+
+    Filter uses the same mid semantics as ``get_mid`` and drops only strikes with no usable price.
+    """
+    if df is None or df.empty:
+        return df
+    strike_ok = (df["strike"] >= spot * 0.75) & (df["strike"] <= spot * 1.30)
+    bid = df["bid"].fillna(0).astype(float) if "bid" in df.columns else pd.Series(0.0, index=df.index)
+    ask = df["ask"].fillna(0).astype(float) if "ask" in df.columns else pd.Series(0.0, index=df.index)
+    last = df["lastPrice"].fillna(0).astype(float) if "lastPrice" in df.columns else pd.Series(0.0, index=df.index)
+    bv, av, lv = bid.values, ask.values, last.values
+    mid_np = np.where((bv > 0) & (av > 0), (bv + av) / 2,
+                      np.where((bv == 0) & (av == 0), lv,
+                               np.where(bv == 0, av * 0.9, bv * 1.1)))
+    mid = pd.Series(mid_np, index=df.index)
+    quote_ok = mid >= MIN_MID_PRICE
+    return df[strike_ok & quote_ok].copy()
+
+
 # ─────────────────────────────────────────────────────────────
 # MAIN RECOMMENDATION ENGINE
 # ─────────────────────────────────────────────────────────────
@@ -1346,19 +1371,9 @@ def run_engine(
     LONG_IV_OK   = LOW_IV  or strategy_mode in ('long_only', 'straddle_only')
     CREDIT_IV_OK = HIGH_IV or strategy_mode in ('credit_only', 'short_or_covered')
 
-    # Filter options chain to tradeable range (75%–130% of price)
-    calls_f = calls[
-        (calls["strike"] >= price * 0.75) &
-        (calls["strike"] <= price * 1.30) &
-        (calls["bid"] >= 0) &
-        (calls["ask"] >= 0)
-    ].copy()
-    puts_f = puts[
-        (puts["strike"] >= price * 0.75) &
-        (puts["strike"] <= price * 1.30) &
-        (puts["bid"] >= 0) &
-        (puts["ask"] >= 0)
-    ].copy()
+    # Near-money strikes with a usable mid (NaN-safe — matches get_mid semantics).
+    calls_f = _tradeable_chain_near_money(calls, price)
+    puts_f = _tradeable_chain_near_money(puts, price)
 
     # Pick expiries anchored to the user's weeks_out selection.
     # Allow ±1 week on either side so the nearest listed expiry is always found.

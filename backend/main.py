@@ -36,7 +36,7 @@ DEFAULT_MAIL_FROM = os.getenv("OPTION_ADVISOR_DEFAULT_FROM_EMAIL", "adminzetayua
 
 from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
-    OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown,
+    OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
     AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
 )
@@ -47,6 +47,8 @@ from storage import (
     add_user_alert, clear_user_alerts, dismiss_user_alert, get_user_alerts,
     get_user_state, init_db, list_user_states, save_user_state,
     update_user_alert_email,
+    fetch_iv_atm_history_strict_before,
+    upsert_iv_atm_snapshot,
 )
 
 # ── SMTP config from environment (optional — email skipped if absent) ─────────
@@ -301,6 +303,82 @@ def chain_to_output(df: pd.DataFrame, current_price: float, expiry: str, option_
             data_quality_reason=quality_reason,
         ))
     return rows
+
+
+def _compute_quote_quality_summary(
+    calls_chain: list[OptionRowOut],
+    puts_chain: list[OptionRowOut],
+    underlying_live: bool,
+) -> QuoteQualitySummary:
+    """Roll up per-strike Yahoo quote flags into user-facing stale/incomplete messaging."""
+    from collections import Counter
+
+    rows = list(calls_chain) + list(puts_chain)
+    n = len(rows)
+    underlying_src = "live" if underlying_live else "previous_close"
+    banner_lines: list[str] = []
+    show = False
+
+    if not underlying_live:
+        show = True
+        banner_lines.append(
+            "Underlying price is from the last daily close — Yahoo did not return a live quote; "
+            "option marks vs spot may be wrong until data refreshes."
+        )
+
+    if n == 0:
+        return QuoteQualitySummary(
+            chain_rows_total=0,
+            underlying_quote_source=underlying_src,
+            banner_show=show,
+            banner_lines=banner_lines,
+        )
+
+    qualities = Counter(((getattr(r, "data_quality", None) or "OK").strip().upper()) for r in rows)
+    ok_n = qualities.get("OK", 0)
+    stale_n = qualities.get("STALE", 0)
+    unreliable_n = qualities.get("UNRELIABLE", 0)
+    model_n = qualities.get("MODEL", 0)
+    non_ok = stale_n + unreliable_n + model_n
+    pct_non_ok = round(100.0 * non_ok / n, 1)
+
+    if unreliable_n > 0:
+        show = True
+        banner_lines.append(
+            f"{unreliable_n} option quote(s) failed sanity checks (mid below intrinsic) — "
+            "likely stale Yahoo data. Refresh or verify with your broker."
+        )
+
+    stale_thresh = max(8, int(0.2 * n))
+    if stale_n >= stale_thresh:
+        show = True
+        banner_lines.append(
+            f"{stale_n} of {n} strikes show bid and ask at zero — using last trade only (often stale)."
+        )
+    elif stale_n >= 5:
+        show = True
+        banner_lines.append(
+            f"{stale_n} strikes use last-price-only quotes (bid/ask missing); treat mids as approximate."
+        )
+
+    model_thresh = max(5, int(0.12 * n))
+    if model_n >= model_thresh:
+        show = True
+        banner_lines.append(
+            f"{model_n} strikes used model-derived mids because Yahoo bid/ask looked inconsistent with IV."
+        )
+
+    return QuoteQualitySummary(
+        chain_rows_total=n,
+        ok_rows=ok_n,
+        stale_rows=stale_n,
+        unreliable_rows=unreliable_n,
+        model_rows=model_n,
+        pct_non_ok=pct_non_ok,
+        underlying_quote_source=underlying_src,
+        banner_show=show,
+        banner_lines=banner_lines,
+    )
 
 
 @app.get("/")
@@ -643,9 +721,18 @@ def _analyze_ticker(
         (puts_raw["strike"] <= price_approx * 1.30)
     ].copy()
 
-    # Generate signals
+    # Generate signals (broker IV Rank uses stored ATM IV history when ≥20 sessions exist)
+    session_et = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    iv_hist_past = fetch_iv_atm_history_strict_before(ticker, session_et, limit=380)
     try:
-        signals = generate_signals(hist, calls_f, puts_f)
+        signals = generate_signals(
+            hist,
+            calls_f,
+            puts_f,
+            reference_price=price_approx,
+            implied_iv_history=iv_hist_past,
+        )
+        upsert_iv_atm_snapshot(ticker, session_et, signals.current_iv)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
 
@@ -764,6 +851,14 @@ def _analyze_ticker(
     calls_export = calls_raw.sort_values("strike", ascending=True)
     puts_export = puts_raw.sort_values("strike", ascending=True)
 
+    calls_chain_out = chain_to_output(calls_export, price_approx, target_expiry, "CALL")
+    puts_chain_out = chain_to_output(puts_export, price_approx, target_expiry, "PUT")
+    quote_quality_summary = _compute_quote_quality_summary(
+        calls_chain_out,
+        puts_chain_out,
+        live_price > 0,
+    )
+
     return AnalyzeResponse(
         ticker=ticker,
         company_name=company_name,
@@ -771,8 +866,8 @@ def _analyze_ticker(
         market_cap=market_cap,
         signals=signals_out,
         recommendations=recs_out,
-        calls_chain=chain_to_output(calls_export, price_approx, target_expiry, "CALL"),
-        puts_chain=chain_to_output(puts_export, price_approx, target_expiry, "PUT"),
+        calls_chain=calls_chain_out,
+        puts_chain=puts_chain_out,
         price_history=price_history_out,
         filters_applied={
             "chain_expiry": target_expiry,
@@ -787,7 +882,8 @@ def _analyze_ticker(
             "min_open_interest": 50,
             "spread_width": spread_width if spread_width else "auto",
             "strategy_mode": strategy_mode,
-        }
+        },
+        quote_quality_summary=quote_quality_summary,
     )
 
 

@@ -161,6 +161,60 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS iv_atm_snapshots (
+                ticker TEXT NOT NULL,
+                session_date TEXT NOT NULL,
+                iv_pct REAL NOT NULL,
+                recorded_at INTEGER NOT NULL,
+                PRIMARY KEY (ticker, session_date)
+            )
+            """
+        )
+
+
+def upsert_iv_atm_snapshot(ticker: str, session_date: str, iv_pct: float) -> None:
+    """Store one ATM-implied-vol snapshot per ticker per US session date (for IV Rank)."""
+    t = ticker.upper().strip()
+    if not t:
+        return
+    d = session_date.strip()[:10]
+    now_ms = int(time.time() * 1000)
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO iv_atm_snapshots (ticker, session_date, iv_pct, recorded_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(ticker, session_date) DO UPDATE SET
+              iv_pct = excluded.iv_pct,
+              recorded_at = excluded.recorded_at
+            """,
+            (t, d, float(iv_pct), now_ms),
+        )
+
+
+def fetch_iv_atm_history_strict_before(ticker: str, before_session_date: str, limit: int = 380) -> list[float]:
+    """
+    Past ATM IV readings strictly before calendar date ``before_session_date`` (YYYY-MM-DD).
+    Used for broker-style IV Rank (52-week implied vol range). Newest sessions first.
+    """
+    t = ticker.upper().strip()
+    if not t:
+        return []
+    bd = before_session_date.strip()[:10]
+    lim = max(1, min(int(limit), 500))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT iv_pct FROM iv_atm_snapshots
+            WHERE ticker = ? AND session_date < ?
+            ORDER BY session_date DESC
+            LIMIT ?
+            """,
+            (t, bd, lim),
+        ).fetchall()
+    return [float(row[0]) for row in rows]
 
 
 def get_user_state(email: str) -> dict[str, Any]:

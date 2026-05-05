@@ -49,8 +49,8 @@ class MarketSignals:
     current_iv: float       # Median ATM IV from options chain (%)
     hv_20: float            # 20-day historical (realized) volatility (%)
     hv_60: float            # 60-day historical volatility (%)
-    iv_rank: float          # 0–100: where IV sits in 52-week range
-    iv_percentile: float    # % of days in past year where IV was lower
+    iv_rank: float          # 0–100: IV Rank vs 52-week ATM IV history when available; else HV proxy
+    iv_percentile: float    # % of past ATM IV samples below today when available; else HV proxy
     iv_vs_hv: float         # current_iv - hv_20 (positive = IV premium, good to sell)
     iv_environment: str     # High / Elevated / Moderate / Low / Very Low
 
@@ -182,13 +182,56 @@ def compute_hv(series: pd.Series, period: int) -> float:
 
 
 def compute_iv_rank(series: pd.Series, current_iv: float) -> float:
-    """IV Rank: position of current IV within 52-week HV range."""
-    low = float(series.min())
-    high = float(series.max())
-    if high == low:
+    """HV-proxy IV Rank (fallback): where ``current_iv`` sits vs trailing historical volatility band."""
+    s = series.dropna().astype(float)
+    s = s[s > 0]
+    if len(s) < 20:
+        return 50.0
+    if current_iv is None or (isinstance(current_iv, float) and (np.isnan(current_iv) or current_iv <= 0)):
+        return 50.0
+    low = float(s.quantile(0.05))
+    high = float(s.quantile(0.95))
+    if high <= low:
         return 50.0
     rank = (current_iv - low) / (high - low) * 100
     return round(float(np.clip(rank, 0, 100)), 1)
+
+
+MIN_IMPLIED_IV_SAMPLES_FOR_RANK = 20
+
+
+def compute_iv_rank_implied_history(iv_samples: list[float], current_iv: float) -> Optional[float]:
+    """
+    Broker-style IV Rank (0–100): compare today's ATM IV % to past ATM IV readings.
+
+    Uses a robust band (5th–95th percentile) over stored snapshots — broker highs/lows are
+    effectively extremes over ~252 sessions; trimming reduces single-bar outliers.
+
+    Returns None when insufficient history → caller falls back to HV proxy.
+    """
+    vals = [float(v) for v in iv_samples if v is not None and float(v) > 0]
+    if len(vals) < MIN_IMPLIED_IV_SAMPLES_FOR_RANK:
+        return None
+    if current_iv is None or (isinstance(current_iv, float) and (np.isnan(current_iv) or current_iv <= 0)):
+        return None
+    s = pd.Series(vals)
+    low = float(s.quantile(0.05))
+    high = float(s.quantile(0.95))
+    if high <= low:
+        return 50.0
+    rank = (current_iv - low) / (high - low) * 100
+    return round(float(np.clip(rank, 0, 100)), 1)
+
+
+def compute_iv_percentile_implied_history(iv_samples: list[float], current_iv: float) -> Optional[float]:
+    """Percent of past ATM IV readings strictly below today's IV (needs same minimum samples)."""
+    vals = [float(v) for v in iv_samples if v is not None and float(v) > 0]
+    if len(vals) < MIN_IMPLIED_IV_SAMPLES_FOR_RANK:
+        return None
+    if current_iv is None or (isinstance(current_iv, float) and (np.isnan(current_iv) or current_iv <= 0)):
+        return None
+    pct = (pd.Series(vals) < current_iv).mean() * 100
+    return round(float(pct), 1)
 
 
 def compute_iv_percentile(series: pd.Series, current_iv: float) -> float:
@@ -379,11 +422,27 @@ def build_hv_series(hist: pd.DataFrame, period: int = 20) -> pd.Series:
     return returns.rolling(period).std() * np.sqrt(252) * 100
 
 
-def generate_signals(hist: pd.DataFrame, calls: pd.DataFrame, puts: pd.DataFrame) -> MarketSignals:
-    """Master function — computes all signals from raw data."""
+def generate_signals(
+    hist: pd.DataFrame,
+    calls: pd.DataFrame,
+    puts: pd.DataFrame,
+    *,
+    reference_price: float | None = None,
+    implied_iv_history: Optional[list[float]] = None,
+) -> MarketSignals:
+    """Master function — computes all signals from raw data.
+
+    reference_price: spot used for ATM IV/skew (should match chain filter center). When omitted,
+    uses last bar close — can mismatch live quotes and skew IV Rank.
+
+    implied_iv_history: prior calendar-session ATM IV % snapshots (newest-first OK). When enough
+    samples exist, IV Rank / IV Percentile use broker-style **implied vol** history; otherwise HV proxy.
+    """
     close = hist["Close"]
-    current_price = float(close.iloc[-1])
+    last_bar_close = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
+    ref = float(reference_price) if reference_price is not None and reference_price > 0 else last_bar_close
+    current_price = ref
     price_change = round(current_price - prev_close, 2)
     price_change_pct = round(price_change / prev_close * 100, 2)
 
@@ -401,8 +460,11 @@ def generate_signals(hist: pd.DataFrame, calls: pd.DataFrame, puts: pd.DataFrame
     hv_60 = compute_hv(close, 60)
     current_iv = compute_iv_from_chain(calls, puts, current_price)
     hv_series = build_hv_series(hist, 20)
-    iv_rank = compute_iv_rank(hv_series, current_iv)
-    iv_percentile = compute_iv_percentile(hv_series, current_iv)
+    iv_hist = implied_iv_history if implied_iv_history is not None else []
+    iv_rank_impl = compute_iv_rank_implied_history(iv_hist, current_iv)
+    iv_pct_impl = compute_iv_percentile_implied_history(iv_hist, current_iv)
+    iv_rank = iv_rank_impl if iv_rank_impl is not None else compute_iv_rank(hv_series, current_iv)
+    iv_percentile = iv_pct_impl if iv_pct_impl is not None else compute_iv_percentile(hv_series, current_iv)
     iv_vs_hv = round(current_iv - hv_20, 1)
     iv_env = classify_iv_environment(iv_rank, iv_vs_hv)
 

@@ -21,6 +21,8 @@ interface LastAnalysisRequest {
   weeksOut: number
   spreadWidth: number | null
   strategyMode: StrategyMode
+  /** Exact chain expiry used for last analyze (optional). */
+  chainExpiry?: string | null
 }
 
 function analyzeErrorDetail(e: unknown): string {
@@ -40,11 +42,18 @@ function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null 
   const strategyMode = value.strategyMode ?? 'all'
   if (!ticker || !Number.isFinite(weeksOut) || ![2, 3, 4, 6, 8].includes(weeksOut)) return null
   if (!['all', 'long_only', 'credit_only', 'short_or_covered', 'straddle_only'].includes(strategyMode)) return null
+  let chainExpiry: string | undefined
+  const ceRaw = value.chainExpiry
+  if (typeof ceRaw === 'string' && ceRaw.trim()) {
+    const ce = ceRaw.trim().slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ce)) chainExpiry = ce
+  }
   return {
     ticker,
     weeksOut,
     spreadWidth: value.spreadWidth ?? null,
     strategyMode,
+    ...(chainExpiry ? { chainExpiry } : {}),
   }
 }
 
@@ -250,6 +259,8 @@ export default function TickerPage() {
   const [lastWeeks,     setLastWeeks]     = useState(4)
   const [lastWidth,     setLastWidth]     = useState<number | null>(5)
   const [lastMode,      setLastMode]      = useState<StrategyMode>('all')
+  /** YYYY-MM-DD when analysis is pinned to an exact expiry (e.g. opened from Alerts). */
+  const [lastChainExpiry, setLastChainExpiry] = useState<string | null>(null)
   const [inputTicker,   setInputTicker]   = useState('')
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
 
@@ -262,6 +273,7 @@ export default function TickerPage() {
     weeksOut = 4,
     spreadWidth: number | null = 5,
     strategyMode: StrategyMode = 'all',
+    chainExpiry: string | null = null,
   ) => {
     setInputTicker(ticker.trim().toUpperCase())
     const tickerUpper = ticker.trim().toUpperCase()
@@ -273,12 +285,22 @@ export default function TickerPage() {
     setLastWidth(spreadWidth)
     setLastMode(strategyMode)
     setSelectedWeeksOut(weeksOut)
-    saveLastAnalysisRequest({ ticker: tickerUpper, weeksOut, spreadWidth, strategyMode })
+    const ceRaw = chainExpiry?.trim().slice(0, 10) ?? null
+    const ceKey = ceRaw && /^\d{4}-\d{2}-\d{2}$/.test(ceRaw) ? ceRaw : null
+    setLastChainExpiry(ceKey)
+    const saveReq = {
+      ticker: tickerUpper,
+      weeksOut,
+      spreadWidth,
+      strategyMode,
+      ...(ceKey ? { chainExpiry: ceKey } : {}),
+    }
+    saveLastAnalysisRequest(saveReq)
     try {
-      const result = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
+      const result = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode, ceKey)
       setData(result)
       setActiveTab('chart')
-      setCached(ticker, result, weeksOut, spreadWidth, strategyMode)
+      setCached(ticker, result, weeksOut, spreadWidth, strategyMode, ceKey)
     } catch (e: unknown) {
       const msg = analyzeErrorDetail(e)
       const cached = getCached(tickerUpper)
@@ -289,6 +311,7 @@ export default function TickerPage() {
         setLastWidth(cached.spreadWidth)
         setLastMode(cached.strategyMode ?? 'all')
         setSelectedWeeksOut(cached.weeksOut)
+        setLastChainExpiry(cached.chainExpiry ?? null)
         setFromCache({ age: cacheAge(cached), fresh: false })
         setStaleSnapshotInfo({ cachedAt: cached.timestamp, errorDetail: msg })
         setError(null)
@@ -297,6 +320,7 @@ export default function TickerPage() {
           weeksOut: cached.weeksOut,
           spreadWidth: cached.spreadWidth,
           strategyMode: cached.strategyMode ?? 'all',
+          ...(cached.chainExpiry ? { chainExpiry: cached.chainExpiry } : {}),
         })
       } else {
         setStaleSnapshotInfo(null)
@@ -313,13 +337,17 @@ export default function TickerPage() {
     weeksOut = 4,
     spreadWidth: number | null = 5,
     strategyMode: StrategyMode = 'all',
+    chainExpiry: string | null = null,
   ) => {
     setInputTicker(ticker.trim().toUpperCase())
     const cached = getCached(ticker)
+    const ce = chainExpiry?.trim().slice(0, 10) ?? null
+    const ceKey = ce && /^\d{4}-\d{2}-\d{2}$/.test(ce) ? ce : null
     if (cached && isCacheFresh(cached) &&
         cached.weeksOut === weeksOut &&
         cached.spreadWidth === spreadWidth &&
-        (cached.strategyMode ?? 'all') === strategyMode) {
+        (cached.strategyMode ?? 'all') === strategyMode &&
+        (cached.chainExpiry ?? null) === (ceKey ?? null)) {
       setData(cached.data)
       setActiveTab('chart')
       setFromCache({ age: cacheAge(cached), fresh: true })
@@ -329,9 +357,16 @@ export default function TickerPage() {
       setLastWidth(spreadWidth)
       setLastMode(strategyMode)
       setSelectedWeeksOut(weeksOut)
-      saveLastAnalysisRequest({ ticker: ticker.trim().toUpperCase(), weeksOut, spreadWidth, strategyMode })
+      setLastChainExpiry(ceKey)
+      saveLastAnalysisRequest({
+        ticker: ticker.trim().toUpperCase(),
+        weeksOut,
+        spreadWidth,
+        strategyMode,
+        ...(ceKey ? { chainExpiry: ceKey } : {}),
+      })
     } else {
-      handleAnalyze(ticker, weeksOut, spreadWidth, strategyMode)
+      handleAnalyze(ticker, weeksOut, spreadWidth, strategyMode, chainExpiry)
     }
   }
 
@@ -344,11 +379,16 @@ export default function TickerPage() {
       const spreadWidth = pendingAnalysisOptions?.spreadWidth ?? 5
       const strategyMode = pendingAnalysisOptions?.strategyMode ?? 'all'
       const force = pendingAnalysisOptions?.force ?? false
+      const rawCe = pendingAnalysisOptions?.chainExpiry
+      const chainExpiry = typeof rawCe === 'string' && rawCe.trim()
+        ? rawCe.trim().slice(0, 10)
+        : null
+      const chainExpiryNorm = chainExpiry && /^\d{4}-\d{2}-\d{2}$/.test(chainExpiry) ? chainExpiry : null
       clearPendingTicker()
       if (force) {
-        handleAnalyze(pendingTicker, weeksOut, spreadWidth, strategyMode)
+        handleAnalyze(pendingTicker, weeksOut, spreadWidth, strategyMode, chainExpiryNorm)
       } else {
-        handleAnalyzeWithCache(pendingTicker, weeksOut, spreadWidth, strategyMode)
+        handleAnalyzeWithCache(pendingTicker, weeksOut, spreadWidth, strategyMode, chainExpiryNorm)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -370,7 +410,8 @@ export default function TickerPage() {
     setLastWidth(last.spreadWidth)
     setLastMode(last.strategyMode)
     setSelectedWeeksOut(last.weeksOut)
-    handleAnalyze(last.ticker, last.weeksOut, last.spreadWidth, last.strategyMode)
+    setLastChainExpiry(last.chainExpiry ?? null)
+    handleAnalyze(last.ticker, last.weeksOut, last.spreadWidth, last.strategyMode, last.chainExpiry ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTicker])
 
@@ -396,7 +437,7 @@ export default function TickerPage() {
 
   // ── Manual refresh (bypass cache) ────────────────────────────────────────
   const handleRefresh = () => {
-    if (data) handleAnalyze(data.ticker, lastWeeks, lastWidth, lastMode)
+    if (data) handleAnalyze(data.ticker, lastWeeks, lastWidth, lastMode, lastChainExpiry)
   }
 
   const cacheEntry = data ? tickerCache[data.ticker] : null
@@ -463,6 +504,24 @@ export default function TickerPage() {
                     . Cached data was kept until a new request succeeds.
                   </p>
                   <p className="text-amber-200/75 text-xs mt-2 font-mono break-words">{staleSnapshotInfo.errorDetail}</p>
+                </div>
+              </div>
+            )}
+            {displayData.quote_quality_summary?.banner_show &&
+              (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
+              <div className="rounded-2xl border border-amber-700/55 bg-amber-950/35 px-4 py-3 flex gap-3">
+                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" aria-hidden />
+                <div className="min-w-0 text-sm">
+                  <div className="font-semibold text-amber-200">Yahoo option data looks incomplete or stale</div>
+                  <ul className="mt-2 space-y-1.5 text-amber-100/90 leading-relaxed list-disc pl-4">
+                    {displayData.quote_quality_summary.banner_lines.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-amber-200/75 mt-3">
+                    Data comes from Yahoo Finance — when bid/ask are missing or Yahoo serves cached last prices,
+                    mids and signals can drift. Tap refresh after a minute or confirm strikes with your broker.
+                  </p>
                 </div>
               </div>
             )}

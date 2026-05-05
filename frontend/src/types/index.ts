@@ -134,6 +134,8 @@ export interface TickerCacheEntry {
   weeksOut: number
   spreadWidth: number | null
   strategyMode: StrategyMode
+  /** When set, primary `data` was loaded for this exact chain expiry (YYYY-MM-DD). */
+  chainExpiry?: string | null
   /** Exact expiry snapshots from Portfolio auto-fetch / refresh (YYYY-MM-DD → analyze response). */
   portfolioByExpiry?: Record<string, AnalyzeResponse>
   // Multi-week scan: keyed by weeksOut (2,3,4,6,8) → full response for that expiry window
@@ -260,6 +262,18 @@ export interface UserDataState {
   watchlist_max?: number
 }
 
+export interface QuoteQualitySummary {
+  chain_rows_total: number
+  ok_rows: number
+  stale_rows: number
+  unreliable_rows: number
+  model_rows: number
+  pct_non_ok: number
+  underlying_quote_source: 'live' | 'previous_close'
+  banner_show: boolean
+  banner_lines: string[]
+}
+
 export interface AnalyzeResponse {
   ticker: string
   company_name: string
@@ -271,6 +285,7 @@ export interface AnalyzeResponse {
   puts_chain: OptionRow[]
   price_history: PricePoint[]
   filters_applied: Record<string, unknown>
+  quote_quality_summary?: QuoteQualitySummary
 }
 
 // ─── Backtesting ────────────────────────────────────────────

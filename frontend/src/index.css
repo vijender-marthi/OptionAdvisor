@@ -1056,6 +1056,59 @@ html.light .portfolio-page .portfolio-mtm-tile--neutral {
   border-color: rgba(148, 163, 184, 0.55);
 }
 
+/* Portfolio — manual editor & Edit control (fills gaps vs dark Tailwind alphas / cyan) */
+html.light .portfolio-page .portfolio-position-editor.bg-gray-950\/40,
+html.light .portfolio-page .bg-gray-950\/40 {
+  background-color: var(--light-surface-1-a90);
+}
+html.light .portfolio-page .bg-gray-800\/50 {
+  background-color: var(--light-surface-2-a72);
+}
+html.light .portfolio-page select {
+  background-color: var(--light-input-bg);
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+html.light .portfolio-page select option {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+html.light .portfolio-page .bg-amber-950\/25 {
+  background-color: rgba(254, 243, 199, 0.62);
+}
+html.light .portfolio-page .border-amber-900\/50 {
+  border-color: rgba(180, 83, 9, 0.38);
+}
+html.light .portfolio-page .text-amber-200 {
+  color: #92400e;
+}
+html.light .portfolio-page .bg-cyan-900\/20 {
+  background-color: rgba(207, 250, 254, 0.72);
+}
+html.light .portfolio-page .hover\:bg-cyan-900\/35:hover {
+  background-color: rgba(165, 243, 252, 0.88);
+}
+html.light .portfolio-page .border-cyan-800 {
+  border-color: #22d3ee;
+}
+html.light .portfolio-page .text-cyan-400 {
+  color: #0e7490;
+}
+html.light .portfolio-page .portfolio-edit-trigger {
+  background-color: var(--light-surface-2);
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #334155;
+}
+html.light .portfolio-page .portfolio-edit-trigger:hover {
+  background-color: var(--light-surface-3);
+  border-color: #a78bfa;
+  color: #5b21b6;
+}
+
+html.light .portfolio-page .portfolio-modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.42);
+}
+
 /* Scrollbar in light mode */
 html.light ::-webkit-scrollbar-track { background: #c8cedc; }
 html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }

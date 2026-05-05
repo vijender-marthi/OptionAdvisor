@@ -182,7 +182,14 @@ interface AppContextValue {
   // Cache
   tickerCache: Record<string, TickerCacheEntry>
   getCached: (ticker: string) => TickerCacheEntry | null
-  setCached: (ticker: string, data: AnalyzeResponse, weeksOut: number, spreadWidth: number | null, strategyMode: StrategyMode) => void
+  setCached: (
+    ticker: string,
+    data: AnalyzeResponse,
+    weeksOut: number,
+    spreadWidth: number | null,
+    strategyMode: StrategyMode,
+    chainExpiry?: string | null,
+  ) => void
   evictCache: (ticker: string) => void
   refreshingTickers: Set<string>
   refreshTicker: (ticker: string) => Promise<void>
@@ -232,6 +239,8 @@ interface PendingAnalysisOptions {
   weeksOut?: number
   spreadWidth?: number | null
   strategyMode?: StrategyMode
+  /** Lock analyze to this chain expiry (YYYY-MM-DD), e.g. when opening from Alerts. */
+  chainExpiry?: string | null
   force?: boolean
 }
 
@@ -692,6 +701,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setCached = useCallback((
     ticker: string, data: AnalyzeResponse,
     weeksOut: number, spreadWidth: number | null, strategyMode: StrategyMode = 'all',
+    chainExpiry?: string | null,
   ) => {
     setTickerCache(prev => {
       const old = prev[ticker]
@@ -702,6 +712,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         weeksOut,
         spreadWidth,
         strategyMode,
+        chainExpiry: chainExpiry ?? undefined,
         portfolioByExpiry: old?.portfolioByExpiry,
         multiWeekData: old?.multiWeekData,
         multiWeekTimestamp: old?.multiWeekTimestamp,
@@ -858,6 +869,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         weeksOut: hadPrimary ? existing!.weeksOut : weeksOut,
         spreadWidth: hadPrimary ? existing!.spreadWidth : spreadWidth,
         strategyMode: hadPrimary ? existing!.strategyMode : strategyMode,
+        chainExpiry: existing?.chainExpiry,
         multiWeekData: existing?.multiWeekData,
         multiWeekTimestamp: existing?.multiWeekTimestamp,
         portfolioByExpiry,
@@ -898,6 +910,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         weeksOut,
         spreadWidth,
         strategyMode,
+        chainExpiry: undefined,
         portfolioByExpiry: existing?.portfolioByExpiry,
         multiWeekData: existing?.multiWeekData,
         multiWeekTimestamp: existing?.multiWeekTimestamp,

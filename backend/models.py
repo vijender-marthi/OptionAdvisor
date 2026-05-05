@@ -1,7 +1,7 @@
 """
 models.py — Pydantic request/response models for FastAPI
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Optional
 
 
@@ -203,6 +203,20 @@ class SignalsOut(BaseModel):
     ext_market_type: str = ""           # "pre" | "post" | ""
 
 
+class QuoteQualitySummary(BaseModel):
+    """Aggregated Yahoo/options quote health for the analyzed chain window."""
+
+    chain_rows_total: int = 0
+    ok_rows: int = 0
+    stale_rows: int = 0
+    unreliable_rows: int = 0
+    model_rows: int = 0
+    pct_non_ok: float = 0.0
+    underlying_quote_source: str = "live"  # live | previous_close
+    banner_show: bool = False
+    banner_lines: list[str] = []
+
+
 class AnalyzeResponse(BaseModel):
     ticker: str
     company_name: str
@@ -214,6 +228,7 @@ class AnalyzeResponse(BaseModel):
     puts_chain: list[OptionRowOut]
     price_history: list[PricePoint]
     filters_applied: dict
+    quote_quality_summary: QuoteQualitySummary = Field(default_factory=QuoteQualitySummary)
 
 
 class BacktestRequest(BaseModel):
