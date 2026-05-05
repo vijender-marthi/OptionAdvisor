@@ -1,0 +1,64 @@
+# Deploys to your DigitalOcean droplet over SSH.
+#
+# Setup (once): add repo Secrets — PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY
+# Server: deploy user needs passwordless sudo for systemctl + writable /opt/optionadvisor & frontend build.
+# See DEPLOY_DIGITALOCEAN.md § "GitHub Actions production deploy".
+
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git branch or tag to deploy'
+        required: false
+        default: main
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script_stop: true
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            export DEPLOY_REF='${{ env.DEPLOY_REF }}'
+            cd /opt/optionadvisor
+
+            git fetch origin --tags --prune
+            git checkout "$DEPLOY_REF"
+            if git symbolic-ref -q HEAD >/dev/null; then
+              git pull --ff-only origin "$DEPLOY_REF" || git reset --hard "origin/$DEPLOY_REF"
+            fi
+
+            cd backend
+            source .venv/bin/activate
+            pip install --quiet --upgrade pip
+            pip install --quiet -r requirements.txt
+
+            cd ../frontend
+            npm ci
+            export NODE_OPTIONS='--max-old-space-size=4096'
+            npm run build
+
+            rsync -a --delete dist/ /var/www/optionadvisor/
+
+            sudo systemctl restart optionadvisor
+            sudo systemctl reload nginx

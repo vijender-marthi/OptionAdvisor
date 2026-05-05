@@ -23,9 +23,10 @@ OptionAdvisor is a systematic options analysis app for scanning tickers, buildin
 ## Project Structure
 
 ```text
-backend/                 FastAPI API, options engine, SQLite storage
-frontend/                React/Vite application
-DEPLOY_DIGITALOCEAN.md   Production deployment guide
+backend/                   FastAPI API, options engine, SQLite storage
+frontend/                  React/Vite application
+DEPLOY_DIGITALOCEAN.md     Production deployment guide (includes GitHub Actions deploy)
+.github/workflows/         Manual + tag-trigger production deploy workflow
 ```
 
 ## Local Backend Setup
@@ -111,6 +112,7 @@ See `DEPLOY_DIGITALOCEAN.md` for the full DigitalOcean setup, including:
 - Nginx frontend/API proxy
 - SSL with Certbot
 - Redeploy steps
+- GitHub Actions on-demand deploy (§11): **Actions → Deploy to production**, or push a `v*` tag
 
 ## Disclaimer
 

@@ -250,3 +250,49 @@ rsync -a --delete dist/ /var/www/optionadvisor/
 You still need `sudo` for `systemctl restart optionadvisor` (and typically for `systemctl reload nginx`) unless configured otherwise.
 
 The database remains on `/mnt/optionadvisor-data`, outside the app directory.
+
+## 11. GitHub Actions production deploy
+
+This repo includes `.github/workflows/deploy-production.yml`. It was never wired in-git before—if deployment felt “automatic,” it was likely **DigitalOcean App Platform**, **another fork**, or **manual SSH**. Tracking the workflow here keeps deploy reproducible.
+
+### What it does
+
+- **Manual:** GitHub → **Actions** → **Deploy to production** → **Run workflow** (optional branch/tag input; default `main`).
+- **Automatic:** Pushing a **version tag** matching `v*` (for example `v1.04`) also starts a deploy run.
+
+Each run SSHs into the droplet and executes the same steps as §10 (fetch/checkout ref, `pip install`, `npm ci`, `npm run build`, `rsync`, restart services).
+
+### One-time GitHub setup
+
+In the repo on GitHub: **Settings → Secrets and variables → Actions**, add:
+
+| Secret | Example |
+| --- | --- |
+| `PRODUCTION_HOST` | Droplet hostname or IP |
+| `PRODUCTION_USER` | `fluxtrade` (or your deploy UNIX user) |
+| `PRODUCTION_SSH_KEY` | Private key whose **public** half is in `~/.ssh/authorized_keys` on the droplet for that user |
+
+Use a **dedicated deploy key** for Actions (do not reuse your laptop’s personal key).
+
+### One-time droplet setup for CI
+
+1. **`git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
+2. **Passwordless sudo** for the deploy user so the workflow can restart services:
+
+```bash
+sudo visudo -f /etc/sudoers.d/optionadvisor-deploy
+```
+
+Example (adjust username):
+
+```text
+fluxtrade ALL=(ALL) NOPASSWD: /bin/systemctl restart optionadvisor, /bin/systemctl reload nginx
+```
+
+3. **`rsync`** to `/var/www/optionadvisor` must succeed without a password (ownership like §10).
+
+### Troubleshooting
+
+- Workflow stuck or failing SSH: confirm firewall allows GitHub Actions IPs if restricted; verify `PRODUCTION_HOST` / key / user.
+- `git fetch` fails on server: fix Git credentials on the droplet for `origin`.
+- `sudo`: extend the sudoers line if you add commands (keep entries minimal).
