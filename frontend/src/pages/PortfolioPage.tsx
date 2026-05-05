@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   Briefcase, TrendingUp, TrendingDown, CheckCircle, Clock, Trash2, X,
   DollarSign, Layers, Plus, AlertTriangle, ChevronDown, ChevronUp, FileEdit, RefreshCw, Download,
@@ -209,6 +209,41 @@ function computeMetrics(
   return { netCredit, spreadWidth, maxProfit, maxLoss, beLower, beUpper }
 }
 
+function normalizeExpiryForDateInput(expiry: string): string {
+  const s = expiry.trim()
+  if (!s) return ''
+  return s.includes('T') ? s.slice(0, 10) : s.slice(0, 10)
+}
+
+function guessStrategyFromLegs(legs: OptionLeg[]): string | null {
+  const sig = legs.map(l => `${l.action}:${l.option_type}`).join('|')
+  for (const [name, def] of Object.entries(STRATEGY_DEFS)) {
+    if (def.legs.length !== legs.length) continue
+    const defSig = def.legs.map(l => `${l.action}:${l.option_type}`).join('|')
+    if (defSig === sig) return name
+  }
+  return null
+}
+
+function resolveEditorStrategyForEdit(pos: PortfolioPosition): string {
+  if (STRATEGY_DEFS[pos.strategy]) return pos.strategy
+  const guessed = guessStrategyFromLegs(pos.legs)
+  if (guessed) return guessed
+  return Object.keys(STRATEGY_DEFS)[0]
+}
+
+function seedLegStringsFromPosition(pos: PortfolioPosition): { strikes: string[]; premiums: string[] } {
+  const strikes = ['', '', '', '']
+  const premiums = ['', '', '', '']
+  for (let i = 0; i < Math.min(pos.legs.length, 4); i++) {
+    strikes[i] = pos.legs[i].strike > 0 ? String(pos.legs[i].strike) : ''
+    premiums[i] = Number.isFinite(pos.legs[i].mid_price) ? String(pos.legs[i].mid_price) : ''
+  }
+  return { strikes, premiums }
+}
+
+type ManualPositionCommitPayload = Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Exit suggestion engine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,14 +331,22 @@ const SUGGESTION_STYLE: Record<SuggestionLevel, { bg: string; border: string; ti
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Manual-entry modal
+// Manual position editor (modal add / inline edit on card)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ManualEntryModal({ onClose, onAdd }: {
-  onClose: () => void
-  onAdd: (pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
+function ManualPositionEditor({
+  variant,
+  initialPosition,
+  onCancel,
+  onCommit,
+}: {
+  variant: 'modal' | 'inline'
+  initialPosition: PortfolioPosition | null
+  onCancel: () => void
+  onCommit: (pos: ManualPositionCommitPayload) => void
 }) {
   const strategies = Object.keys(STRATEGY_DEFS)
+  const isEdit = initialPosition != null
   const [ticker,          setTicker]         = useState('')
   const [companyName,     setCompanyName]    = useState('')
   const [strategy,        setStrategy]       = useState(strategies[0])
@@ -314,9 +357,34 @@ function ManualEntryModal({ onClose, onAdd }: {
   const [legStrikes,      setLegStrikes]     = useState<string[]>(['', '', '', ''])
   const [legPremiums,     setLegPremiums]    = useState<string[]>(['', '', '', ''])
 
+  useEffect(() => {
+    if (!initialPosition) {
+      setTicker('')
+      setCompanyName('')
+      setStrategy(Object.keys(STRATEGY_DEFS)[0])
+      setExpiry('')
+      setContracts(1)
+      setEntryStock('')
+      setNotes('')
+      setLegStrikes(['', '', '', ''])
+      setLegPremiums(['', '', '', ''])
+      return
+    }
+    const strat = resolveEditorStrategyForEdit(initialPosition)
+    const { strikes, premiums } = seedLegStringsFromPosition(initialPosition)
+    setTicker(initialPosition.ticker)
+    setCompanyName(initialPosition.companyName)
+    setStrategy(strat)
+    setExpiry(normalizeExpiryForDateInput(initialPosition.expiry))
+    setContracts(normalizedContractCount(initialPosition))
+    setEntryStock(String(initialPosition.entryPrice))
+    setNotes(initialPosition.notes ?? '')
+    setLegStrikes(strikes)
+    setLegPremiums(premiums)
+  }, [initialPosition])
+
   const def = STRATEGY_DEFS[strategy]
 
-  // Reset leg fields when strategy changes
   const handleStrategyChange = (s: string) => {
     setStrategy(s)
     setLegStrikes(['', '', '', ''])
@@ -330,7 +398,7 @@ function ManualEntryModal({ onClose, onAdd }: {
   const legsComplete = def.legs.every((_, i) => strikesNum[i] > 0 && premiumsNum[i] > 0)
   const canSubmit = ticker.trim() && expiry && legsComplete && (parseFloat(entryStockPrice) || 0) > 0
 
-  const handleAdd = () => {
+  const handleSubmit = () => {
     if (!canSubmit) return
     const entryPrice = parseFloat(entryStockPrice)
     const dteVal = Math.ceil((new Date(expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
@@ -350,7 +418,9 @@ function ManualEntryModal({ onClose, onAdd }: {
       bid_ask_spread_pct: 0,
     }))
 
-    onAdd({
+    const capital_at_risk = Math.round(metrics.maxLoss * SHARES_PER_OPTION_CONTRACT * contracts)
+
+    const payload: ManualPositionCommitPayload = {
       ticker: ticker.trim().toUpperCase(),
       companyName: companyName.trim() || ticker.trim().toUpperCase(),
       strategy,
@@ -362,144 +432,195 @@ function ManualEntryModal({ onClose, onAdd }: {
       spread_width: metrics.spreadWidth,
       max_profit: metrics.maxProfit,
       max_loss: metrics.maxLoss,
-      prob_of_profit: 0,
-      expected_value: 0,
-      scores_total: 0,
+      prob_of_profit: initialPosition?.prob_of_profit ?? 0,
+      expected_value: initialPosition?.expected_value ?? 0,
+      scores_total: initialPosition?.scores_total ?? 0,
       contracts,
       breakeven_lower: metrics.beLower,
       breakeven_upper: metrics.beUpper,
       entryPrice,
-      source: 'manual',
       notes: notes.trim() || undefined,
-    })
+      capital_at_risk,
+      ...(initialPosition
+        ? {
+            source: initialPosition.source,
+            kelly_fraction: initialPosition.kelly_fraction,
+            half_kelly_fraction: initialPosition.half_kelly_fraction,
+            edge_ratio: initialPosition.edge_ratio,
+            account_size_at_entry: initialPosition.account_size_at_entry,
+          }
+        : { source: 'manual' as const }),
+    }
+
+    onCommit(payload)
+    if (variant === 'modal') onCancel()
   }
 
   const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 placeholder-gray-600'
   const labelCls = 'block text-xs font-semibold text-gray-400 mb-1'
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg my-4 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <div>
-            <div className="text-base font-bold text-white flex items-center gap-2">
-              <FileEdit size={16} className="text-violet-400" /> Add Trade Manually
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">Enter any trade — recommendations, manual entries, or accidental trades to track for exit</div>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 shrink-0"><X size={16} /></button>
+  const fieldsBlock = (
+    <div className={variant === 'modal' ? 'p-5 space-y-4 max-h-[75vh] overflow-y-auto' : 'space-y-4'}>
+      {isEdit && initialPosition && !STRATEGY_DEFS[initialPosition.strategy] && (
+        <p className="text-xs text-amber-400/90 rounded-lg bg-amber-950/25 border border-amber-900/50 px-3 py-2">
+          Saved strategy name &quot;{initialPosition.strategy}&quot; was matched to template <span className="font-semibold text-amber-200">{strategy}</span> from your legs. Change the dropdown if that is wrong.
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Ticker *</label>
+          <input className={inputCls} placeholder="AAPL" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} />
         </div>
-
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Row 1: Ticker + Company */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Ticker *</label>
-              <input className={inputCls} placeholder="AAPL" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} />
-            </div>
-            <div>
-              <label className={labelCls}>Company (optional)</label>
-              <input className={inputCls} placeholder="Apple Inc." value={companyName} onChange={e => setCompanyName(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Row 2: Strategy */}
-          <div>
-            <label className={labelCls}>Strategy *</label>
-            <select className={inputCls} value={strategy} onChange={e => handleStrategyChange(e.target.value)}>
-              {strategies.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
-          {/* Row 3: Expiry + Contracts + Entry stock */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className={labelCls}>Expiry Date *</label>
-              <input type="date" className={inputCls} value={expiry} onChange={e => setExpiry(e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>Contracts *</label>
-              <input type="number" min={1} className={inputCls} value={contracts} onChange={e => setContracts(Math.max(1, parseInt(e.target.value) || 1))} />
-            </div>
-            <div>
-              <label className={labelCls}>Stock Price @ Entry *</label>
-              <input type="number" step="0.01" className={inputCls} placeholder="185.50" value={entryStockPrice} onChange={e => setEntryStock(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Legs */}
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Option Legs</div>
-            {def.legs.map((tmpl, i) => (
-              <div key={i} className="bg-gray-800/50 rounded-xl p-3 space-y-2">
-                <div className={`text-xs font-bold ${tmpl.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {tmpl.action} {tmpl.option_type} — {tmpl.label}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Strike Price *</label>
-                    <input type="number" step="0.5" className={inputCls} placeholder="195.00"
-                      value={legStrikes[i]} onChange={e => { const a = [...legStrikes]; a[i] = e.target.value; setLegStrikes(a) }} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Premium Paid/Received *</label>
-                    <input type="number" step="0.01" className={inputCls} placeholder="3.45"
-                      value={legPremiums[i]} onChange={e => { const a = [...legPremiums]; a[i] = e.target.value; setLegPremiums(a) }} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Computed metrics preview */}
-          {legsComplete && (
-            <div className="bg-gray-800/60 rounded-xl p-3 text-xs font-mono space-y-1">
-              <div className="text-gray-400 font-sans font-semibold text-[10px] uppercase tracking-wide mb-2">Computed</div>
-              <div className="flex gap-4 flex-wrap">
-                <span className={metrics.netCredit >= 0 ? 'text-violet-400' : 'text-amber-400'}>
-                  {metrics.netCredit >= 0 ? 'Net Credit' : 'Net Debit'}: {metrics.netCredit >= 0 ? '+' : ''}${Math.abs(metrics.netCredit).toFixed(2)}/share
-                </span>
-                <span className="text-emerald-400">Max Profit: ${(metrics.maxProfit * 100 * contracts).toLocaleString()}</span>
-                <span className="text-red-400">Max Loss: ${(metrics.maxLoss * 100 * contracts).toLocaleString()}</span>
-              </div>
-              {metrics.beLower > 0 && (
-                <div className="text-gray-400">
-                  Breakeven: ${metrics.beLower.toFixed(2)}{metrics.beUpper < 990 ? ` – $${metrics.beUpper.toFixed(2)}` : ''}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className={labelCls}>Notes (optional — e.g. "accidental entry", "hedging position")</label>
-            <textarea
-              className={`${inputCls} resize-none`} rows={2}
-              placeholder="e.g. Entered by mistake — need to exit ASAP"
-              value={notes} onChange={e => setNotes(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-800">
-          <button onClick={onClose} className="flex-1 py-2.5 bg-gray-800 text-gray-300 text-sm rounded-xl hover:bg-gray-700 transition-colors">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={!canSubmit}
-            aria-label="Add to portfolio"
-            title="Add to portfolio"
-            className="inline-flex flex-1 min-h-[44px] items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
-          >
-            <Briefcase size={20} />
-          </button>
+        <div>
+          <label className={labelCls}>Company (optional)</label>
+          <input className={inputCls} placeholder="Apple Inc." value={companyName} onChange={e => setCompanyName(e.target.value)} />
         </div>
       </div>
+
+      <div>
+        <label className={labelCls}>Strategy *</label>
+        <select className={inputCls} value={strategy} onChange={e => handleStrategyChange(e.target.value)}>
+          {strategies.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className={labelCls}>Expiry Date *</label>
+          <input type="date" className={inputCls} value={expiry} onChange={e => setExpiry(e.target.value)} />
+        </div>
+        <div>
+          <label className={labelCls}>Contracts *</label>
+          <input type="number" min={1} className={inputCls} value={contracts} onChange={e => setContracts(Math.max(1, parseInt(e.target.value) || 1))} />
+        </div>
+        <div>
+          <label className={labelCls}>Stock Price @ Entry *</label>
+          <input type="number" step="0.01" className={inputCls} placeholder="185.50" value={entryStockPrice} onChange={e => setEntryStock(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Option Legs</div>
+        {def.legs.map((tmpl, i) => (
+          <div key={i} className="bg-gray-800/50 rounded-xl p-3 space-y-2">
+            <div className={`text-xs font-bold ${tmpl.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
+              {tmpl.action} {tmpl.option_type} — {tmpl.label}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Strike Price *</label>
+                <input type="number" step="0.5" className={inputCls} placeholder="195.00"
+                  value={legStrikes[i]} onChange={e => { const a = [...legStrikes]; a[i] = e.target.value; setLegStrikes(a) }} />
+              </div>
+              <div>
+                <label className={labelCls}>Premium Paid/Received *</label>
+                <input type="number" step="0.01" className={inputCls} placeholder="3.45"
+                  value={legPremiums[i]} onChange={e => { const a = [...legPremiums]; a[i] = e.target.value; setLegPremiums(a) }} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {legsComplete && (
+        <div className="bg-gray-800/60 rounded-xl p-3 text-xs font-mono space-y-1">
+          <div className="text-gray-400 font-sans font-semibold text-[10px] uppercase tracking-wide mb-2">Computed</div>
+          <div className="flex gap-4 flex-wrap">
+            <span className={metrics.netCredit >= 0 ? 'text-violet-400' : 'text-amber-400'}>
+              {metrics.netCredit >= 0 ? 'Net Credit' : 'Net Debit'}: {metrics.netCredit >= 0 ? '+' : ''}${Math.abs(metrics.netCredit).toFixed(2)}/share
+            </span>
+            <span className="text-emerald-400">Max Profit: ${(metrics.maxProfit * 100 * contracts).toLocaleString()}</span>
+            <span className="text-red-400">Max Loss: ${(metrics.maxLoss * 100 * contracts).toLocaleString()}</span>
+          </div>
+          {metrics.beLower > 0 && (
+            <div className="text-gray-400">
+              Breakeven: ${metrics.beLower.toFixed(2)}{metrics.beUpper < 990 ? ` – $${metrics.beUpper.toFixed(2)}` : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div>
+        <label className={labelCls}>Notes (optional — e.g. &quot;accidental entry&quot;, &quot;hedging position&quot;)</label>
+        <textarea
+          className={`${inputCls} resize-none`} rows={2}
+          placeholder="e.g. Entered by mistake — need to exit ASAP"
+          value={notes} onChange={e => setNotes(e.target.value)}
+        />
+      </div>
     </div>
+  )
+
+  const footer = (
+    <div className={variant === 'modal' ? 'flex gap-2 px-5 py-4 border-t border-gray-800' : 'flex gap-2 pt-4 border-t border-gray-800'}>
+      <button type="button" onClick={onCancel} className="flex-1 py-2.5 bg-gray-800 text-gray-300 text-sm rounded-xl hover:bg-gray-700 transition-colors">
+        Cancel
+      </button>
+      {isEdit || variant === 'inline' ? (
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+        >
+          Save changes
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          aria-label="Add to portfolio"
+          title="Add to portfolio"
+          className="inline-flex flex-1 min-h-[44px] items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
+        >
+          <Briefcase size={20} />
+        </button>
+      )}
+    </div>
+  )
+
+  if (variant === 'modal') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg my-4 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+            <div>
+              <div className="text-base font-bold text-white flex items-center gap-2">
+                <FileEdit size={16} className="text-violet-400" /> {isEdit ? 'Edit position' : 'Add Trade Manually'}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {isEdit
+                  ? 'Correct strikes, premiums, expiry, contracts, or ticker — distinct from Update (live quotes).'
+                  : 'Enter any trade — recommendations, manual entries, or accidental trades to track for exit'}
+              </div>
+            </div>
+            <button type="button" onClick={onCancel} className="text-gray-500 hover:text-gray-300 shrink-0"><X size={16} /></button>
+          </div>
+          {fieldsBlock}
+          {footer}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-950/40 p-4 max-h-[min(70vh,720px)] overflow-y-auto">
+      <div className="text-xs font-bold text-violet-300 uppercase tracking-wide mb-1">Edit position fields</div>
+      <p className="text-[11px] text-gray-500 mb-4">Fix typos or wrong legs here. Use <span className="text-cyan-400">Update</span> on the card header for fresh option-chain prices.</p>
+      {fieldsBlock}
+      {footer}
+    </div>
+  )
+}
+
+function ManualEntryModal({ onClose, onAdd }: {
+  onClose: () => void
+  onAdd: (pos: ManualPositionCommitPayload) => void
+}) {
+  return (
+    <ManualPositionEditor variant="modal" initialPosition={null} onCancel={onClose} onCommit={onAdd} />
   )
 }
 
@@ -562,9 +683,25 @@ function CloseModal({ pos, onClose, onConfirm }: {
 // Position card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onClose: () => void; onRemove: () => void }) {
+function PositionCard({
+  pos,
+  onClose,
+  onRemove,
+  onUpdateQuotes,
+  isUpdatingQuotes,
+  onSaveEditedPosition,
+}: {
+  pos: PortfolioPosition
+  onClose: () => void
+  onRemove: () => void
+  /** Refetch chain/quotes for this open position's ticker + expiry */
+  onUpdateQuotes?: () => void | Promise<void>
+  isUpdatingQuotes?: boolean
+  onSaveEditedPosition: (id: string, payload: ManualPositionCommitPayload) => void
+}) {
   const { tickerCache } = useApp()
   const [expanded, setExpanded] = useState(false)
+  const [detailTab, setDetailTab] = useState<'details' | 'edit'>('details')
   const contractCount = normalizedContractCount(pos)
   const isClosed   = pos.status === 'closed'
   const isDebit    = pos.net_credit < 0
@@ -582,14 +719,14 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
   let mtmUnavailableHint: string | null = null
   if (!isClosed && mtmDollar === null) {
     if (!analyzeData) {
-      mtmUnavailableHint = 'Fetching option marks for your expiry… If this persists, tap Refresh or check your connection.'
+      mtmUnavailableHint = 'Fetching option marks for your expiry… If this persists, tap Refresh at the top or Update on this card.'
     } else if (!chainExpiryMatches(analyzeData, pos.expiry)) {
       const ce = analyzeData.filters_applied?.chain_expiry
       const ceLabel = typeof ce === 'string' ? normalizeExpiryIso(ce) : '?'
       mtmUnavailableHint =
-        `Live P&L compares entry mids to today's chain mids for expiry ${normalizeExpiryIso(pos.expiry)}. Cached chain is ${ceLabel}. Tap Refresh to reload.`
+        `Live P&L compares entry mids to today's chain mids for expiry ${normalizeExpiryIso(pos.expiry)}. Cached chain is ${ceLabel}. Tap Refresh or Update on this card to reload.`
     } else {
-      mtmUnavailableHint = 'Could not read a mid price for every leg (missing quotes). Try Refresh or wait for tighter markets.'
+      mtmUnavailableHint = 'Could not read a mid price for every leg (missing quotes). Try Refresh or Update on this card, or wait for tighter markets.'
     }
   }
 
@@ -653,7 +790,27 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
             <div className="text-xs text-gray-500 mt-0.5">{pos.companyName} · Exp {pos.expiry}</div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => { setExpanded(true); setDetailTab('edit') }}
+              title="Edit strikes, premiums, expiry, contracts — fixes wrong manual entry"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors"
+            >
+              <FileEdit size={12} /> Edit
+            </button>
+            {!isClosed && onUpdateQuotes && (
+              <button
+                type="button"
+                onClick={() => void onUpdateQuotes()}
+                disabled={isUpdatingQuotes}
+                title="Fetch latest option chain and spot for this expiry (updates Current P&L)"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-900/20 hover:bg-cyan-900/35 border border-cyan-800 text-cyan-400 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw size={12} className={isUpdatingQuotes ? 'animate-spin shrink-0' : 'shrink-0'} />
+                Update
+              </button>
+            )}
             {!isClosed && (
               <button onClick={onClose}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-800 text-emerald-400 text-xs font-semibold rounded-xl transition-colors">
@@ -726,13 +883,15 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
             <div className="text-xs text-gray-600 truncate">${(pos.max_loss * SHARES_PER_OPTION_CONTRACT).toFixed(0)}/ea</div>
           </div>
           {!isClosed && (
-            <div className={`rounded-xl px-3 py-2 border ${
-              mtmDollar == null
-                ? 'bg-gray-800/60 border-gray-700/60'
-                : mtmDollar >= 0
-                  ? 'bg-emerald-950/45 border-emerald-600/55 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)]'
-                  : 'bg-red-950/45 border-red-700/55 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.12)]'
-            }`}>
+            <div
+              className={`portfolio-mtm-tile rounded-xl px-3 py-2 border ${
+                mtmDollar == null
+                  ? 'portfolio-mtm-tile--neutral bg-gray-800/60 border-gray-700/60'
+                  : mtmDollar >= 0
+                    ? 'portfolio-mtm-tile--gain bg-emerald-950/40 border-emerald-600/50'
+                    : 'portfolio-mtm-tile--loss bg-red-950/40 border-red-600/50'
+              }`}
+            >
               <div className="text-xs text-gray-500 mb-0.5">Current P&amp;L</div>
               <div className={`text-sm font-bold font-mono tabular-nums ${
                 mtmDollar == null ? 'text-gray-500' : mtmDollar >= 0 ? 'text-emerald-400' : 'text-red-400'
@@ -752,15 +911,42 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
           <p className="text-xs text-amber-400/95 px-0.5">{mtmUnavailableHint}</p>
         )}
 
-        {/* Expand toggle for details */}
+        {/* Expand toggle for details / edit */}
         <button
-          onClick={() => setExpanded(e => !e)}
+          type="button"
+          onClick={() => setExpanded(e => {
+            if (e) setDetailTab('details')
+            return !e
+          })}
           className="w-full flex items-center justify-center gap-1 text-xs text-gray-600 hover:text-gray-400 transition-colors py-0.5"
         >
           {expanded ? <><ChevronUp size={12} /> Hide details</> : <><ChevronDown size={12} /> Show details</>}
         </button>
 
         {expanded && (
+          <>
+            <div className="flex justify-center gap-1 p-1 bg-gray-800/50 border border-gray-800 rounded-xl w-full max-w-xs mx-auto">
+              <button
+                type="button"
+                onClick={() => setDetailTab('details')}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  detailTab === 'details' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailTab('edit')}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  detailTab === 'edit' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                Edit
+              </button>
+            </div>
+
+            {detailTab === 'details' ? (
           <div className="space-y-2">
             {/* Breakeven */}
             {(pos.breakeven_lower > 0 || (pos.breakeven_upper && pos.breakeven_upper < 990)) && (
@@ -836,7 +1022,7 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
               <div className="flex flex-wrap gap-2">
                 {pos.legs.map((leg, i) => (
                   <span key={i} className={`text-xs font-mono px-2 py-0.5 rounded-lg border ${leg.action === 'SELL' ? 'bg-red-900/15 border-red-900/40 text-red-300' : 'bg-emerald-900/15 border-emerald-900/40 text-emerald-300'}`}>
-                    {leg.action} ${leg.strike} {leg.option_type[0]} @ ${leg.mid_price.toFixed(2)}
+                    {leg.action} ${leg.strike} {leg.option_type[0]} @ ${Number(leg.mid_price).toFixed(2)}
                   </span>
                 ))}
               </div>
@@ -858,6 +1044,18 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
               {pos.scores_total > 0 && <span>Score: {pos.scores_total}/100 · PoP {(pos.prob_of_profit * 100).toFixed(0)}%</span>}
             </div>
           </div>
+            ) : (
+              <ManualPositionEditor
+                variant="inline"
+                initialPosition={pos}
+                onCancel={() => setDetailTab('details')}
+                onCommit={(payload) => {
+                  onSaveEditedPosition(pos.id, payload)
+                  setDetailTab('details')
+                }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -870,9 +1068,10 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
 
 export default function PortfolioPage() {
   const {
-    portfolio, closePosition, removeFromPortfolio, addManualPosition, navigate,
+    portfolio, closePosition, removeFromPortfolio, addManualPosition, updatePortfolioPosition, navigateToTickerAdvisorFresh,
     refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry,
   } = useApp()
+  const [refreshingPositionIds, setRefreshingPositionIds] = useState<Set<string>>(() => new Set())
   const [closing,    setClosing]    = useState<PortfolioPosition | null>(null)
   const [addingNew,  setAddingNew]  = useState(false)
   const [filter,     setFilter]     = useState<'all' | 'open' | 'closed'>('open')
@@ -925,6 +1124,23 @@ export default function PortfolioPage() {
       setRefreshingPortfolio(false)
     }
   }
+
+  const handleUpdatePositionCard = useCallback(async (pos: PortfolioPosition) => {
+    if (pos.status !== 'open') return
+    setRefreshingPositionIds(prev => new Set(prev).add(pos.id))
+    try {
+      await ensureAnalysisForPortfolioExpiry(pos.ticker, pos.expiry, {
+        force: true,
+        spreadWidth: Number.isFinite(pos.spread_width) ? Math.round(pos.spread_width) : undefined,
+      })
+    } finally {
+      setRefreshingPositionIds(prev => {
+        const next = new Set(prev)
+        next.delete(pos.id)
+        return next
+      })
+    }
+  }, [ensureAnalysisForPortfolioExpiry])
 
   useEffect(() => {
     if (open.length === 0) return
@@ -1186,7 +1402,7 @@ export default function PortfolioPage() {
               <Plus size={20} strokeWidth={2.5} />
             </button>
             <button
-              onClick={() => navigate('ticker')}
+              onClick={() => navigateToTickerAdvisorFresh()}
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
             >
               <TrendingUp size={14} /> New Analysis
@@ -1254,7 +1470,7 @@ export default function PortfolioPage() {
               >
                 <Plus size={22} strokeWidth={2.5} />
               </button>
-              <button onClick={() => navigate('ticker')}
+              <button onClick={() => navigateToTickerAdvisorFresh()}
                 className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors">
                 Analyze a Ticker
               </button>
@@ -1265,7 +1481,14 @@ export default function PortfolioPage() {
         {/* Positions */}
         <div className="space-y-3">
           {shown.map(pos => (
-            <PositionCard key={pos.id} pos={pos} onClose={() => setClosing(pos)} onRemove={() => removeFromPortfolio(pos.id)} />
+            <PositionCard
+              key={pos.id}
+              pos={pos}
+              onClose={() => setClosing(pos)}
+              onRemove={() => removeFromPortfolio(pos.id)}
+              onUpdateQuotes={pos.status === 'open' ? () => handleUpdatePositionCard(pos) : undefined}
+              onSaveEditedPosition={(id, payload) => updatePortfolioPosition(id, payload)}
+            />
           ))}
         </div>
 

@@ -4,9 +4,61 @@ import {
   User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
   MoreHorizontal, Moon, Sun, Menu, BookOpen, Zap,
 } from 'lucide-react'
-import type { Page } from '../types'
+import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
+import { normalizeUserRole, roleLabel } from '../permissions'
 import ThemeToggle from './ThemeToggle'
+
+type ProfileRole = 'user' | 'admin' | 'finance'
+
+function profileRole(role: UserRole | undefined | null): ProfileRole {
+  if (!role) return 'user'
+  const r = normalizeUserRole(role)
+  if (r === 'admin' || r === 'finance') return r
+  return 'user'
+}
+
+/** Desktop sidebar profile strip only — role tint + html.light overrides in index.css */
+const PROFILE: Record<
+  ProfileRole,
+  {
+    card: string
+    avatar: string
+    name: string
+    email: string
+    logout: string
+    roleTagClass: string | null
+  }
+> = {
+  user: {
+    card: 'sidebar-profile-card sidebar-profile-user bg-gray-800/60',
+    avatar: 'bg-violet-700',
+    name: 'sidebar-profile-name text-gray-200',
+    email: 'sidebar-profile-email text-gray-500',
+    logout: 'sidebar-profile-logout text-gray-500 hover:text-red-400',
+    roleTagClass: null,
+  },
+  admin: {
+    card:
+      'sidebar-profile-card sidebar-profile-admin bg-amber-950/45 border border-amber-600/40 ring-1 ring-inset ring-amber-400/15',
+    avatar: 'bg-amber-600',
+    name: 'sidebar-profile-name text-amber-50',
+    email: 'sidebar-profile-email text-amber-200/65',
+    logout: 'sidebar-profile-logout text-amber-200/80 hover:text-red-400',
+    roleTagClass:
+      'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-amber-300/95',
+  },
+  finance: {
+    card:
+      'sidebar-profile-card sidebar-profile-finance bg-emerald-950/40 border border-emerald-600/38 ring-1 ring-inset ring-emerald-400/12',
+    avatar: 'bg-emerald-600',
+    name: 'sidebar-profile-name text-emerald-50',
+    email: 'sidebar-profile-email text-emerald-200/65',
+    logout: 'sidebar-profile-logout text-emerald-200/80 hover:text-red-400',
+    roleTagClass:
+      'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-emerald-300/95',
+  },
+}
 
 interface NavItem {
   id: Page
@@ -27,6 +79,8 @@ export default function Sidebar() {
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
 
   const openPositions = portfolio.filter(p => p.status === 'open').length
+  const pr = user ? profileRole(user.role) : 'user'
+  const pf = PROFILE[pr]
 
   const navGroups: NavGroup[] = [
     {
@@ -108,7 +162,6 @@ export default function Sidebar() {
       <nav className="desktop-sidebar-nav flex-1 min-h-0 overflow-y-auto py-2 px-1.5 space-y-2">
         {visibleNavGroups.map(group => (
           <div key={group.label}>
-            {/* Group label — hidden when collapsed */}
             {!collapsed && (
               <div className="px-3 pb-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-600">
                 {group.label}
@@ -189,18 +242,24 @@ export default function Sidebar() {
         <ThemeToggle collapsed={collapsed} className="w-full !py-2" />
 
         {user && (
-          <div className={`flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gray-800/60 ${collapsed ? 'justify-center' : ''}`}>
-            <div className="w-7 h-7 rounded-full bg-violet-700 flex items-center justify-center shrink-0">
+          <div
+            data-profile-role={pr}
+            className={`flex items-center gap-2 px-2.5 py-2 rounded-lg ${pf.card} ${collapsed ? 'justify-center' : ''}`}
+          >
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${pf.avatar}`}>
               <User size={13} className="text-white" />
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-200 truncate">{user.name}</div>
-                <div className="text-[11px] font-medium text-gray-500 truncate">{user.email}</div>
+                {pf.roleTagClass && (
+                  <div className={pf.roleTagClass}>{roleLabel(normalizeUserRole(user.role))}</div>
+                )}
+                <div className={`text-sm font-semibold truncate ${pf.name}`}>{user.name}</div>
+                <div className={`text-[11px] font-medium truncate ${pf.email}`}>{user.email}</div>
               </div>
             )}
             {!collapsed && (
-              <button onClick={logout} title="Sign out" className="text-gray-500 hover:text-red-400 transition-colors shrink-0">
+              <button onClick={logout} title="Sign out" className={`transition-colors shrink-0 ${pf.logout}`}>
                 <LogOut size={14} />
               </button>
             )}
@@ -228,7 +287,7 @@ export default function Sidebar() {
       </div>
     </aside>
 
-    {/* Phone: backdrop as sibling — negative z inside fixed ancestors breaks tap/stacking on Safari */}
+    {/* Phone */}
     {phoneMenuOpen && (
       <button
         type="button"
@@ -315,7 +374,7 @@ export default function Sidebar() {
       </button>
     </div>
 
-    {/* Tablet bottom navigation stays visible and centered. */}
+    {/* Tablet bottom navigation */}
     <nav className="mobile-bottom-nav hidden sm:block xl:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/85 pb-[env(safe-area-inset-bottom)]">
       {mobileMoreOpen && (
         <button

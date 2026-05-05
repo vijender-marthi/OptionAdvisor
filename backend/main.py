@@ -507,7 +507,23 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
     normalized_email = email.strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="Email is required")
-    return save_user_state(normalized_email, payload.watchlist, payload.portfolio)
+    try:
+        return save_user_state(
+            normalized_email,
+            payload.watchlist,
+            payload.portfolio,
+            advisory_terms_version=payload.advisory_terms_version,
+            advisory_accepted_at=payload.advisory_accepted_at,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("watchlist_limit:"):
+            lim = msg.split(":", 1)[1]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Watchlist cannot exceed {lim} symbols for your account.",
+            ) from None
+        raise
 
 
 def _analyze_ticker(

@@ -82,6 +82,74 @@ html.light .mobile-nav-item.border-violet-700\/50 {
   color: #5b21b6;
 }
 
+/* Desktop sidebar — profile strip role highlight when document is in light theme */
+html.light .sidebar-profile-card {
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-user {
+  background-color: rgba(241, 245, 249, 0.94);
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14);
+}
+
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-name {
+  color: #0f172a;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-email {
+  color: #475569;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-logout {
+  color: #64748b;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-admin {
+  background-color: #fffbeb;
+  border-color: #fbbf24 !important;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.35);
+}
+
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-role-tag {
+  color: #b45309;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-name {
+  color: #78350f;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-email {
+  color: #92400e;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-logout {
+  color: #b45309;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-finance {
+  background-color: #ecfdf5;
+  border-color: #34d399 !important;
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.28);
+}
+
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-role-tag {
+  color: #047857;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-name {
+  color: #065f46;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-email {
+  color: #0f766e;
+}
+
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-logout {
+  color: #0d9488;
+}
+
 html.light .mobile-more-menu {
   background-color: var(--light-surface-1);
   border-color: rgba(148, 163, 184, 0.55);
@@ -708,6 +776,32 @@ html.light .ticker-page .font-semibold,
 html.light .ticker-page .font-bold {
   letter-spacing: -0.005em;
 }
+
+/* Options Trade Advisor — strategy mode chips: readable on light surfaces */
+html.light .ticker-page .strategy-mode-picker > span.strategy-mode-heading {
+  color: #0f172a;
+}
+
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800 {
+  color: #0f172a;
+}
+
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800 .strategy-mode-sub {
+  color: #475569;
+}
+
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover {
+  color: #0f172a;
+}
+
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover .strategy-mode-sub {
+  color: #334155;
+}
+
+html.light .ticker-page .strategy-mode-picker button.bg-violet-600 .strategy-mode-sub {
+  color: rgba(255, 255, 255, 0.92);
+}
+
 html.light .ticker-page .font-mono {
   font-variant-numeric: tabular-nums;
 }
@@ -935,6 +1029,33 @@ html.light :is(.portfolio-page, .journal-page) .border-red-900\/40 { border-colo
 html.light :is(.portfolio-page, .journal-page) .text-red-300,
 html.light :is(.portfolio-page, .journal-page) .text-red-400,
 html.light :is(.portfolio-page, .journal-page) .hover\:text-red-400:hover { color: #b91c1c; }
+
+/* Portfolio — Current P&L tile (soft mint/rose on light theme; subtle tint on dark) */
+html.dark .portfolio-page .portfolio-mtm-tile--gain {
+  background-color: rgba(16, 185, 129, 0.09);
+  border-color: rgba(52, 211, 153, 0.28);
+}
+html.dark .portfolio-page .portfolio-mtm-tile--loss {
+  background-color: rgba(244, 63, 94, 0.09);
+  border-color: rgba(251, 113, 133, 0.32);
+}
+html.dark .portfolio-page .portfolio-mtm-tile--neutral {
+  border-color: rgba(71, 85, 105, 0.48);
+}
+
+html.light .portfolio-page .portfolio-mtm-tile--gain {
+  background-color: rgba(209, 250, 229, 0.88);
+  border-color: rgba(45, 212, 191, 0.42);
+}
+html.light .portfolio-page .portfolio-mtm-tile--loss {
+  background-color: rgba(254, 226, 226, 0.88);
+  border-color: rgba(248, 113, 113, 0.42);
+}
+html.light .portfolio-page .portfolio-mtm-tile--neutral {
+  background-color: var(--light-surface-2-a90);
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
 /* Scrollbar in light mode */
 html.light ::-webkit-scrollbar-track { background: #c8cedc; }
 html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }

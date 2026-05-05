@@ -59,6 +59,18 @@ def _migrate_user_state_auth_columns(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_user_state_advisory_columns(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "advisory_terms_version" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN advisory_terms_version TEXT"
+        )
+    if "advisory_accepted_at" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN advisory_accepted_at TEXT"
+        )
+
+
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
     Resolve role from SQLite user_state.role (admin | finance | user).
@@ -70,7 +82,7 @@ def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     default user → finance when DB role is still user (optional org-wide policy).
     Finance env never overrides admin.
     """
-    load_dotenv(Path(__file__).with_name(".env"), override=True)
+    load_dotenv(Path(__file__).with_name(".env"), override=False)
     r = (stored_role or "user").strip().lower()
     if r == "admin":
         return "admin"
@@ -89,6 +101,36 @@ def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     return "user"
 
 
+def watchlist_limit_for_role(role: str) -> int:
+    """
+    Max watchlist tickers per account. Configurable via .env:
+
+    OPTION_ADVISOR_WATCHLIST_MAX_USER — default users and finance role (default 15)
+    OPTION_ADVISOR_WATCHLIST_MAX_ADMIN — administrators only (default 30)
+
+    Minimum enforced value is 1.
+    """
+    try:
+        user_max = int(os.getenv("OPTION_ADVISOR_WATCHLIST_MAX_USER", "15"))
+    except ValueError:
+        user_max = 15
+    try:
+        admin_max = int(os.getenv("OPTION_ADVISOR_WATCHLIST_MAX_ADMIN", "30"))
+    except ValueError:
+        admin_max = 30
+    user_max = max(1, user_max)
+    admin_max = max(1, admin_max)
+    if (role or "").strip().lower() == "admin":
+        return admin_max
+    return user_max
+
+
+def _state_with_watchlist_max(state: dict[str, Any]) -> dict[str, Any]:
+    out = dict(state)
+    out["watchlist_max"] = watchlist_limit_for_role(str(out.get("role") or "user"))
+    return out
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.execute(
@@ -104,6 +146,7 @@ def init_db() -> None:
         )
         _migrate_user_state_role_column(conn)
         _migrate_user_state_auth_columns(conn)
+        _migrate_user_state_advisory_columns(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -123,12 +166,22 @@ def init_db() -> None:
 def get_user_state(email: str) -> dict[str, Any]:
     normalized = normalize_email(email)
     if not normalized:
-        return {"email": "", "role": "user", "watchlist": [], "portfolio": []}
+        return _state_with_watchlist_max(
+            {
+                "email": "",
+                "role": "user",
+                "watchlist": [],
+                "portfolio": [],
+                "advisory_terms_version": None,
+                "advisory_accepted_at": None,
+            }
+        )
 
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT email, watchlist_json, portfolio_json, role
+            SELECT email, watchlist_json, portfolio_json, role,
+                   advisory_terms_version, advisory_accepted_at
             FROM user_state
             WHERE email = ?
             """,
@@ -136,20 +189,28 @@ def get_user_state(email: str) -> dict[str, Any]:
         ).fetchone()
 
     if row is None:
-        return {
-            "email": normalized,
-            "role": effective_user_role(normalized, None),
-            "watchlist": [],
-            "portfolio": [],
-        }
+        return _state_with_watchlist_max(
+            {
+                "email": normalized,
+                "role": effective_user_role(normalized, None),
+                "watchlist": [],
+                "portfolio": [],
+                "advisory_terms_version": None,
+                "advisory_accepted_at": None,
+            }
+        )
 
     stored_role = str(row["role"]) if row["role"] is not None else "user"
-    return {
-        "email": row["email"],
-        "role": effective_user_role(normalized, stored_role),
-        "watchlist": json.loads(row["watchlist_json"]),
-        "portfolio": json.loads(row["portfolio_json"]),
-    }
+    return _state_with_watchlist_max(
+        {
+            "email": row["email"],
+            "role": effective_user_role(normalized, stored_role),
+            "watchlist": json.loads(row["watchlist_json"]),
+            "portfolio": json.loads(row["portfolio_json"]),
+            "advisory_terms_version": row["advisory_terms_version"],
+            "advisory_accepted_at": row["advisory_accepted_at"],
+        }
+    )
 
 
 def list_user_states() -> list[dict[str, Any]]:
@@ -173,19 +234,47 @@ def list_user_states() -> list[dict[str, Any]]:
     ]
 
 
-def save_user_state(email: str, watchlist: list[dict[str, Any]], portfolio: list[dict[str, Any]]) -> dict[str, Any]:
+def save_user_state(
+    email: str,
+    watchlist: list[dict[str, Any]],
+    portfolio: list[dict[str, Any]],
+    *,
+    advisory_terms_version: Optional[str] = None,
+    advisory_accepted_at: Optional[str] = None,
+) -> dict[str, Any]:
     normalized = normalize_email(email)
+    preview = get_user_state(normalized)
+    lim = watchlist_limit_for_role(str(preview.get("role") or "user"))
+    if len(watchlist) > lim:
+        raise ValueError(f"watchlist_limit:{lim}")
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO user_state (email, watchlist_json, portfolio_json, role, updated_at)
-            VALUES (?, ?, ?, 'user', CURRENT_TIMESTAMP)
+            INSERT INTO user_state (
+                email, watchlist_json, portfolio_json, role,
+                advisory_terms_version, advisory_accepted_at, updated_at
+            )
+            VALUES (?, ?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 watchlist_json = excluded.watchlist_json,
                 portfolio_json = excluded.portfolio_json,
+                advisory_terms_version = COALESCE(
+                    excluded.advisory_terms_version,
+                    user_state.advisory_terms_version
+                ),
+                advisory_accepted_at = COALESCE(
+                    excluded.advisory_accepted_at,
+                    user_state.advisory_accepted_at
+                ),
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (normalized, json.dumps(watchlist), json.dumps(portfolio)),
+            (
+                normalized,
+                json.dumps(watchlist),
+                json.dumps(portfolio),
+                advisory_terms_version,
+                advisory_accepted_at,
+            ),
         )
 
     return get_user_state(normalized)

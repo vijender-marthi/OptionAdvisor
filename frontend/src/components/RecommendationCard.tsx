@@ -74,7 +74,7 @@ export default function RecommendationCard({
   }
 
   const handleAddWatchlist = () => {
-    addToWatchlist({ ticker, companyName, lastPrice: currentPrice })
+    if (!addToWatchlist({ ticker, companyName, lastPrice: currentPrice })) return
     setAddedWatch(true)
   }
 

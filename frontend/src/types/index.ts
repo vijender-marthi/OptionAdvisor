@@ -253,6 +253,11 @@ export interface UserDataState {
   role: UserRole
   watchlist: WatchlistItem[]
   portfolio: PortfolioPosition[]
+  /** Server-persisted acknowledgment of the options-advisory disclaimer (see AppContext). */
+  advisory_terms_version?: string | null
+  advisory_accepted_at?: string | null
+  /** Max watchlist symbols for this account (role + OPTION_ADVISOR_WATCHLIST_MAX_*). */
+  watchlist_max?: number
 }
 
 export interface AnalyzeResponse {

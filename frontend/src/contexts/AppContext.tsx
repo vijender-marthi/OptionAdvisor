@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
+import axios from 'axios'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
 import {
@@ -21,10 +22,27 @@ import {
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import { normalizePortfolioExpiryIso, resolvePortfolioAnalyzeData } from '../utils/portfolioAnalysis'
+import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+import { ADVISORY_TERMS_VERSION } from '../constants/advisoryDisclaimer'
 
 function migrateStoredUser(raw: User | null): User | null {
   if (!raw?.email) return raw
   return { ...raw, role: normalizeUserRole(raw.role as string | undefined) }
+}
+
+function extractAxiosDetail(err: unknown): string | undefined {
+  if (!axios.isAxiosError(err)) return undefined
+  const d = err.response?.data?.detail as unknown
+  if (typeof d === 'string') return d
+  if (Array.isArray(d))
+    return d
+      .map((x: unknown) =>
+        typeof x === 'object' && x !== null && 'msg' in x
+          ? String((x as { msg: unknown }).msg)
+          : String(x),
+      )
+      .join(' ')
+  return undefined
 }
 
 // ─── Router ────────────────────────────────────────────────────────────────────
@@ -114,6 +132,8 @@ interface AppContextValue {
   // Router
   page: Page
   navigate: (p: Page) => void
+  /** Go to Options Trade Advisor with empty form (no restore of last analysis). */
+  navigateToTickerAdvisorFresh: () => void
 
   // Cross-page ticker handoff
   pendingTicker: string | null
@@ -130,16 +150,31 @@ interface AppContextValue {
   /** Feature gating: finance users omit discovery radars; admin/user see all pages. */
   canAccessPage: (p: Page) => boolean
 
+  /** Server-backed watchlist/portfolio finished loading for the signed-in user. */
+  userDataLoaded: boolean
+  /** ISO timestamp when user accepted the advisory disclaimer in the DB, if any. */
+  advisoryAcceptedAt: string | null
+  advisoryTermsVersion: string | null
+  /** Blocking modal until user accepts current ADVISORY_TERMS_VERSION. */
+  needsAdvisoryAcknowledgement: boolean
+  acknowledgeAdvisoryDisclaimer: () => Promise<void>
+
   // Watchlist
   watchlist: WatchlistItem[]
-  addToWatchlist: (item: Omit<WatchlistItem, 'addedAt'>) => void
+  /** Max symbols allowed on the watchlist for this session (from server; defaults to 15 until loaded). */
+  watchlistMax: number
+  addToWatchlist: (item: Omit<WatchlistItem, 'addedAt'>) => boolean
   removeFromWatchlist: (ticker: string) => void
   isWatched: (ticker: string) => boolean
+  watchlistNotice: string | null
+  clearWatchlistNotice: () => void
 
   // Portfolio
   portfolio: PortfolioPosition[]
   addToPortfolio: (rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number) => void
   addManualPosition: (pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
+  /** Replace editable fields while preserving id, addedAt, status, and close metadata (pnlPct, exitDate). */
+  updatePortfolioPosition: (id: string, pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   removeFromPortfolio: (id: string) => void
   closePosition: (id: string, pnlPct: number) => void
   isInPortfolio: (ticker: string, strategy: string, expiry: string) => boolean
@@ -226,6 +261,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [page, setPage]             = useState<Page>(getHashPage)
   const [user, setUser]             = useState<User | null>(() => migrateStoredUser(load<User | null>('oa_user', null)))
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
+  const [watchlistMax, setWatchlistMax] = useState(15)
+  const [watchlistNotice, setWatchlistNotice] = useState<string | null>(null)
   const [portfolio, setPortfolio]   = useState<PortfolioPosition[]>([])
   const [pendingTicker, setPendingTicker] = useState<string | null>(null)
   const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<PendingAnalysisOptions | null>(null)
@@ -244,6 +281,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [alertEmailEnabled, setAlertEmailEnabledState] = useState<boolean>(() => load<boolean>('oa_alert_email_enabled', true))
   const [accountSize, setAccountSizeState] = useState<number>(() => load<number>('oa_account_size', 25000))
   const [userDataLoaded, setUserDataLoaded] = useState(false)
+  const [advisoryAcceptedAt, setAdvisoryAcceptedAt] = useState<string | null>(null)
+  const [advisoryTermsVersion, setAdvisoryTermsVersion] = useState<string | null>(null)
   const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
 
@@ -260,6 +299,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Keep refs so interval/async closures always see current values
   const watchlistRef = useRef(watchlist)
   useEffect(() => { watchlistRef.current = watchlist }, [watchlist])
+  const watchlistMaxRef = useRef(watchlistMax)
+  useEffect(() => { watchlistMaxRef.current = watchlistMax }, [watchlistMax])
+  const portfolioRef = useRef(portfolio)
+  useEffect(() => { portfolioRef.current = portfolio }, [portfolio])
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
   const tickerCacheRef = useRef(tickerCache)
@@ -311,16 +354,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!user?.email) {
         setWatchlist([])
         setPortfolio([])
+        setWatchlistMax(15)
+        setWatchlistNotice(null)
         setUserDataLoaded(false)
+        setAdvisoryAcceptedAt(null)
+        setAdvisoryTermsVersion(null)
         return
       }
 
       setUserDataLoaded(false)
+      setAdvisoryAcceptedAt(null)
+      setAdvisoryTermsVersion(null)
       try {
         const data = await getUserData(user.email)
         if (cancelled) return
         setWatchlist(data.watchlist)
         setPortfolio(data.portfolio)
+        const wm = Number(data.watchlist_max)
+        setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
+        setAdvisoryAcceptedAt(data.advisory_accepted_at ?? null)
+        setAdvisoryTermsVersion(data.advisory_terms_version ?? null)
         setUser(prev => {
           if (!prev) return prev
           const em = prev.email.trim().toLowerCase()
@@ -333,7 +386,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setWatchlist([])
           setPortfolio([])
+          setWatchlistMax(15)
           setUserDataLoaded(false)
+          setAdvisoryAcceptedAt(null)
+          setAdvisoryTermsVersion(null)
         }
       }
     }
@@ -345,10 +401,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Save per-email watchlist and portfolio changes to SQLite.
   useEffect(() => {
     if (!user?.email || !userDataLoaded) return
-    saveUserData(user.email, watchlist, portfolio).catch(e => {
+    const advisory =
+      advisoryAcceptedAt && advisoryTermsVersion
+        ? { advisoryTermsVersion, advisoryAcceptedAt }
+        : undefined
+    saveUserData(user.email, watchlist, portfolio, advisory).catch(e => {
+      const msg = extractAxiosDetail(e)
+      if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
       console.warn('[user-data] save failed:', e)
     })
-  }, [portfolio, user?.email, userDataLoaded, watchlist])
+  }, [advisoryAcceptedAt, advisoryTermsVersion, portfolio, user?.email, userDataLoaded, watchlist])
+
+  const needsAdvisoryAcknowledgement = Boolean(
+    user &&
+      userDataLoaded &&
+      (!advisoryAcceptedAt || advisoryTermsVersion !== ADVISORY_TERMS_VERSION),
+  )
+
+  const acknowledgeAdvisoryDisclaimer = useCallback(async () => {
+    const email = userRef.current?.email
+    if (!email) return
+    const version = ADVISORY_TERMS_VERSION
+    const acceptedAt = new Date().toISOString()
+    const data = await saveUserData(email, watchlistRef.current, portfolioRef.current, {
+      advisoryTermsVersion: version,
+      advisoryAcceptedAt: acceptedAt,
+    })
+    const wm = Number(data.watchlist_max)
+    setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
+    setAdvisoryAcceptedAt(data.advisory_accepted_at ?? acceptedAt)
+    setAdvisoryTermsVersion(data.advisory_terms_version ?? version)
+  }, [])
 
   // Alerts are produced by the backend scanner, independent of browser sessions.
   useEffect(() => {
@@ -417,14 +500,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Router ──────────────────────────────────────────────────────────────────
   const navigate = useCallback((p: Page) => setPage(p), [])
 
+  const clearWatchlistNotice = useCallback(() => setWatchlistNotice(null), [])
+
+  const clearPendingTicker = useCallback(() => {
+    setPendingTicker(null)
+    setPendingAnalysisOptions(null)
+  }, [])
+
+  const navigateToTickerAdvisorFresh = useCallback(() => {
+    try {
+      localStorage.removeItem(OA_LAST_OPTION_ANALYSIS_KEY)
+    } catch {
+      /* ignore */
+    }
+    clearPendingTicker()
+    setPage('ticker')
+  }, [clearPendingTicker])
+
   const requestAnalysis = useCallback((ticker: string, options?: PendingAnalysisOptions) => {
     setPendingTicker(ticker.trim().toUpperCase())
     setPendingAnalysisOptions(options ?? null)
     setPage('ticker')
-  }, [])
-  const clearPendingTicker = useCallback(() => {
-    setPendingTicker(null)
-    setPendingAnalysisOptions(null)
   }, [])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -474,7 +570,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setWatchlist([])
     setPortfolio([])
+    setWatchlistMax(15)
+    setWatchlistNotice(null)
     setUserDataLoaded(false)
+    setAdvisoryAcceptedAt(null)
+    setAdvisoryTermsVersion(null)
     setJournalEntryCount(0)
     setPage('login')
   }, [])
@@ -493,11 +593,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ── Watchlist ───────────────────────────────────────────────────────────────
-  const addToWatchlist = useCallback((item: Omit<WatchlistItem, 'addedAt'>) => {
-    setWatchlist(prev => {
-      if (prev.some(w => w.ticker === item.ticker)) return prev
-      return [...prev, { ...item, addedAt: new Date().toISOString() }]
-    })
+  const addToWatchlist = useCallback((item: Omit<WatchlistItem, 'addedAt'>): boolean => {
+    const ticker = String(item.ticker ?? '').trim().toUpperCase()
+    if (!ticker) return false
+    const prev = watchlistRef.current
+    if (prev.some(w => w.ticker === ticker)) return true
+    const max = watchlistMaxRef.current
+    if (prev.length >= max) {
+      setWatchlistNotice(`Watchlist is full (${max} symbols max). Remove one to add another.`)
+      return false
+    }
+    setWatchlistNotice(null)
+    setWatchlist([...prev, { ...item, ticker, addedAt: new Date().toISOString() }])
+    return true
   }, [])
 
   const removeFromWatchlist = useCallback((ticker: string) => {
@@ -546,6 +654,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       status: 'open' as const,
       source: 'manual' as const,
     }, ...prev])
+  }, [])
+
+  const updatePortfolioPosition = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
+    setPortfolio(prev => prev.map(p =>
+      p.id !== id
+        ? p
+        : {
+            ...data,
+            id: p.id,
+            addedAt: p.addedAt,
+            status: p.status,
+            pnlPct: p.pnlPct,
+            exitDate: p.exitDate,
+          },
+    ))
   }, [])
 
   const removeFromPortfolio = useCallback((id: string) => {
@@ -853,7 +976,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTickerCache(prev => {
       const existing = prev[ticker]
       if (!existing) return prev
-      return { ...prev, [ticker]: { ...existing, multiWeekData, multiWeekTimestamp: Date.now() } }
+      // Merge so an all-Yahoo-failure sweep does not wipe previously cached weeks.
+      const mergedMulti: Record<number, AnalyzeResponse> = {
+        ...(existing.multiWeekData ?? {}),
+        ...multiWeekData,
+      }
+      const hasNew = Object.keys(multiWeekData).length > 0
+      return {
+        ...prev,
+        [ticker]: {
+          ...existing,
+          multiWeekData: mergedMulti,
+          multiWeekTimestamp: hasNew ? Date.now() : (existing.multiWeekTimestamp ?? Date.now()),
+        },
+      }
     })
     setFetchingAllWeeks(prev => { const n = new Set(prev); n.delete(ticker); return n })
   }, [fetchingAllWeeks])
@@ -931,11 +1067,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      page, navigate,
+      page, navigate, navigateToTickerAdvisorFresh,
       pendingTicker, pendingAnalysisOptions, requestAnalysis, clearPendingTicker,
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
-      watchlist, addToWatchlist, removeFromWatchlist, isWatched,
-      portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
+      userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
+      watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, isWatched, watchlistNotice, clearWatchlistNotice,
+      portfolio, addToPortfolio, addManualPosition, updatePortfolioPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
       refreshingTickers, refreshTicker, ensureAnalysisForPortfolioExpiry, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
       fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,

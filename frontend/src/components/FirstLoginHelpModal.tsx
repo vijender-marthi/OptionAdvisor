@@ -8,7 +8,7 @@ function getWelcomeKey(email: string) {
 }
 
 export default function FirstLoginHelpModal() {
-  const { user, navigate } = useApp()
+  const { user, navigate, userDataLoaded, needsAdvisoryAcknowledgement } = useApp()
   const [open, setOpen] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const storageKey = useMemo(() => user?.email ? getWelcomeKey(user.email) : null, [user?.email])
@@ -61,14 +61,14 @@ export default function FirstLoginHelpModal() {
   const isLastStep = currentStep === steps.length - 1
 
   useEffect(() => {
-    if (!storageKey) return
+    if (!storageKey || !userDataLoaded || needsAdvisoryAcknowledgement) return
     try {
       setOpen(localStorage.getItem(storageKey) !== 'true')
       setCurrentStep(0)
     } catch {
       setOpen(false)
     }
-  }, [storageKey])
+  }, [storageKey, userDataLoaded, needsAdvisoryAcknowledgement])
 
   const close = () => {
     if (storageKey) {

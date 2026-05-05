@@ -14,14 +14,22 @@ import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
-
-const LAST_ANALYSIS_KEY = 'oa_last_option_analysis'
+import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 
 interface LastAnalysisRequest {
   ticker: string
   weeksOut: number
   spreadWidth: number | null
   strategyMode: StrategyMode
+}
+
+function analyzeErrorDetail(e: unknown): string {
+  return (
+    (e as { response?: { data?: { detail?: string } }; message?: string })
+      ?.response?.data?.detail ??
+    (e as { message?: string })?.message ??
+    'Something went wrong'
+  )
 }
 
 function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null {
@@ -42,7 +50,7 @@ function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null 
 
 function loadLastAnalysisRequest(): LastAnalysisRequest | null {
   try {
-    return normalizeLastAnalysisRequest(JSON.parse(localStorage.getItem(LAST_ANALYSIS_KEY) ?? 'null'))
+    return normalizeLastAnalysisRequest(JSON.parse(localStorage.getItem(OA_LAST_OPTION_ANALYSIS_KEY) ?? 'null'))
   } catch {
     return null
   }
@@ -50,7 +58,7 @@ function loadLastAnalysisRequest(): LastAnalysisRequest | null {
 
 function saveLastAnalysisRequest(request: LastAnalysisRequest) {
   try {
-    localStorage.setItem(LAST_ANALYSIS_KEY, JSON.stringify(request))
+    localStorage.setItem(OA_LAST_OPTION_ANALYSIS_KEY, JSON.stringify(request))
   } catch {
     /* ignore storage failures */
   }
@@ -237,6 +245,8 @@ export default function TickerPage() {
   const [error,         setError]         = useState<string | null>(null)
   const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | 'chain'>('chart')
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
+  /** Set when live Yahoo/API fetch failed but we kept showing last cached analysis. */
+  const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
   const [lastWidth,     setLastWidth]     = useState<number | null>(5)
   const [lastMode,      setLastMode]      = useState<StrategyMode>('all')
@@ -254,26 +264,44 @@ export default function TickerPage() {
     strategyMode: StrategyMode = 'all',
   ) => {
     setInputTicker(ticker.trim().toUpperCase())
+    const tickerUpper = ticker.trim().toUpperCase()
     setLoading(true)
     setError(null)
+    setStaleSnapshotInfo(null)
     setFromCache(null)
     setLastWeeks(weeksOut)
     setLastWidth(spreadWidth)
     setLastMode(strategyMode)
     setSelectedWeeksOut(weeksOut)
-    saveLastAnalysisRequest({ ticker: ticker.trim().toUpperCase(), weeksOut, spreadWidth, strategyMode })
+    saveLastAnalysisRequest({ ticker: tickerUpper, weeksOut, spreadWidth, strategyMode })
     try {
       const result = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
       setData(result)
       setActiveTab('chart')
       setCached(ticker, result, weeksOut, spreadWidth, strategyMode)
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { detail?: string } }; message?: string })
-          ?.response?.data?.detail ??
-        (e as { message?: string })?.message ??
-        'Something went wrong'
-      setError(msg)
+      const msg = analyzeErrorDetail(e)
+      const cached = getCached(tickerUpper)
+      if (cached?.data) {
+        setData(cached.data)
+        setActiveTab('chart')
+        setLastWeeks(cached.weeksOut)
+        setLastWidth(cached.spreadWidth)
+        setLastMode(cached.strategyMode ?? 'all')
+        setSelectedWeeksOut(cached.weeksOut)
+        setFromCache({ age: cacheAge(cached), fresh: false })
+        setStaleSnapshotInfo({ cachedAt: cached.timestamp, errorDetail: msg })
+        setError(null)
+        saveLastAnalysisRequest({
+          ticker: tickerUpper,
+          weeksOut: cached.weeksOut,
+          spreadWidth: cached.spreadWidth,
+          strategyMode: cached.strategyMode ?? 'all',
+        })
+      } else {
+        setStaleSnapshotInfo(null)
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -296,6 +324,7 @@ export default function TickerPage() {
       setActiveTab('chart')
       setFromCache({ age: cacheAge(cached), fresh: true })
       setError(null)
+      setStaleSnapshotInfo(null)
       setLastWeeks(weeksOut)
       setLastWidth(spreadWidth)
       setLastMode(strategyMode)
@@ -353,12 +382,15 @@ export default function TickerPage() {
     if (watched) {
       removeFromWatchlist(data.ticker)
     } else {
-      addToWatchlist({
-        ticker: data.ticker,
-        companyName: data.company_name,
-        sector: data.sector,
-        lastPrice: data.signals.current_price,
-      })
+      if (
+        !addToWatchlist({
+          ticker: data.ticker,
+          companyName: data.company_name,
+          sector: data.sector,
+          lastPrice: data.signals.current_price,
+        })
+      )
+        return
     }
   }
 
@@ -415,6 +447,25 @@ export default function TickerPage() {
         {/* Results */}
         {!loading && data && displayData && (
           <>
+            {staleSnapshotInfo && (
+              <div className="rounded-2xl border border-amber-700/55 bg-amber-950/35 px-4 py-3 flex gap-3">
+                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" aria-hidden />
+                <div className="min-w-0 text-sm">
+                  <div className="font-semibold text-amber-200">Latest market data did not load</div>
+                  <p className="text-amber-100/90 mt-1 leading-relaxed">
+                    Showing your last successful analysis snapshot from{' '}
+                    <span className="font-mono text-white whitespace-nowrap">
+                      {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                    . Cached data was kept until a new request succeeds.
+                  </p>
+                  <p className="text-amber-200/75 text-xs mt-2 font-mono break-words">{staleSnapshotInfo.errorDetail}</p>
+                </div>
+              </div>
+            )}
             {/* Header bar: cache badge + watchlist + refresh */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               {fromCache ? (

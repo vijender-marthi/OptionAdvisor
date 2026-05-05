@@ -56,6 +56,8 @@ class AlertClearRequest(BaseModel):
 class UserDataRequest(BaseModel):
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
+    advisory_terms_version: Optional[str] = None
+    advisory_accepted_at: Optional[str] = None
 
 
 class UserDataResponse(BaseModel):
@@ -64,6 +66,10 @@ class UserDataResponse(BaseModel):
     role: str = "user"
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
+    advisory_terms_version: Optional[str] = None
+    advisory_accepted_at: Optional[str] = None
+    """Max watchlist length for this account (OPTION_ADVISOR_WATCHLIST_MAX_USER / _ADMIN)."""
+    watchlist_max: int = 15
 
 
 class OptionLegOut(BaseModel):

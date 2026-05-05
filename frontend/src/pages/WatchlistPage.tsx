@@ -276,7 +276,7 @@ function TickerRow({
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function WatchlistPage() {
   const {
-    watchlist, removeFromWatchlist, addToWatchlist,
+    watchlist, watchlistMax, removeFromWatchlist, addToWatchlist,
     requestAnalysis, getCached, refreshTicker, refreshingTickers, lastBgRefresh, refreshWatchlistForAlerts,
   } = useApp()
 
@@ -368,7 +368,7 @@ export default function WatchlistPage() {
   const handleAdd = () => {
     const t = addTicker.trim().toUpperCase()
     if (!t) return
-    addToWatchlist({ ticker: t, notes: addNotes.trim() || undefined })
+    if (!addToWatchlist({ ticker: t, notes: addNotes.trim() || undefined })) return
     setAddTicker('')
     setAddNotes('')
     setShowAdd(false)
@@ -394,7 +394,9 @@ export default function WatchlistPage() {
               Watchlist
             </h1>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-sm text-gray-500">{watchlist.length} ticker{watchlist.length !== 1 ? 's' : ''}</span>
+              <span className="text-sm text-gray-500">
+                {watchlist.length} of {watchlistMax} ticker{watchlist.length !== 1 ? 's' : ''}
+              </span>
               {cachedCount > 0 && (
                 <span className="text-xs text-gray-600">· {cachedCount} cached</span>
               )}

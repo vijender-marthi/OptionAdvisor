@@ -75,7 +75,7 @@ export default function TickerInput({
         </span>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_auto_auto]">
+      <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(12rem,1fr)_auto_auto] sm:items-center sm:gap-3">
         <input
           className="w-full min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3
                      text-white placeholder-gray-500 focus:outline-none focus:border-violet-500
@@ -96,11 +96,12 @@ export default function TickerInput({
           ))}
         </select>
         <button
+          type="button"
           onClick={handle}
           disabled={loading || !ticker.trim()}
-          className="w-full sm:w-auto justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed
+          className="w-full sm:w-auto order-last sm:order-none justify-center bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed
                      text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2
-                     transition-colors duration-150"
+                     transition-colors duration-150 shrink-0"
         >
           {loading ? (
             <>
@@ -117,21 +118,26 @@ export default function TickerInput({
       </div>
 
       {/* Strategy mode selector */}
-      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 mt-4">
-        <span className="text-xs text-gray-500 font-semibold sm:mt-2 shrink-0">Strategy mode:</span>
+      <div className="strategy-mode-picker flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 mt-4">
+        <span className="strategy-mode-heading text-xs text-gray-500 font-semibold sm:mt-2 shrink-0">Strategy mode:</span>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:grid lg:grid-cols-5 xl:flex">
           {STRATEGY_MODES.map(opt => (
             <button
               key={opt.value}
+              type="button"
               onClick={() => setStrategyMode(opt.value)}
-              className={`min-w-0 flex flex-col items-start px-3 py-2 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              className={`strategy-mode-option min-w-0 flex flex-col items-start px-3 py-2 sm:py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                 strategyMode === opt.value
                   ? 'bg-violet-600 border-violet-500 text-white'
                   : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
               }`}
             >
-              <span>{opt.label}</span>
-              <span className={`text-[10px] font-normal mt-0.5 ${strategyMode === opt.value ? 'text-violet-200' : 'text-gray-600'}`}>
+              <span className="strategy-mode-label">{opt.label}</span>
+              <span
+                className={`strategy-mode-sub text-[10px] font-normal mt-0.5 leading-snug ${
+                  strategyMode === opt.value ? 'text-violet-200' : 'text-gray-600'
+                }`}
+              >
                 {opt.sub}
               </span>
             </button>

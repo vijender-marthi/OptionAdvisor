@@ -184,11 +184,14 @@ export const saveUserData = async (
   email: string,
   watchlist: WatchlistItem[],
   portfolio: PortfolioPosition[],
+  advisory?: { advisoryTermsVersion: string; advisoryAcceptedAt: string },
 ): Promise<UserDataState> => {
-  const { data } = await api.put<UserDataState>(`/user-data/${encodeURIComponent(email)}`, {
-    watchlist,
-    portfolio,
-  })
+  const body: Record<string, unknown> = { watchlist, portfolio }
+  if (advisory) {
+    body.advisory_terms_version = advisory.advisoryTermsVersion
+    body.advisory_accepted_at = advisory.advisoryAcceptedAt
+  }
+  const { data } = await api.put<UserDataState>(`/user-data/${encodeURIComponent(email)}`, body)
   return data
 }
 
