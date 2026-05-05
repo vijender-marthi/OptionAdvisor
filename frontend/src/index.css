@@ -91,6 +91,21 @@ html.light .mobile-dock-pill {
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
+/* Bottom dock: Finder (ticker) icon — violet + moderate glow (currentColor → Lucide SVG) */
+html.dark .mobile-dock-finder-icon {
+  color: #c4b5fd;
+  filter:
+    drop-shadow(0 0 3px rgba(167, 139, 250, 0.55))
+    drop-shadow(0 0 8px rgba(124, 58, 246, 0.28));
+}
+
+html.light .mobile-dock-finder-icon {
+  color: #6d28d9;
+  filter:
+    drop-shadow(0 0 2px rgba(139, 92, 246, 0.45))
+    drop-shadow(0 1px 5px rgba(91, 33, 182, 0.22));
+}
+
 /* Dark dock: default tab label color (glass active overrides below) */
 html.dark .mobile-nav-item:not(.mobile-nav-glass-active) {
   color: #94a3b8;

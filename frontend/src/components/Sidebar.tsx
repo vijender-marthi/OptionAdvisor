@@ -119,11 +119,11 @@ export default function Sidebar() {
   const w = collapsed ? 'w-16' : 'w-56'
   /** Bottom rail (< xl docked): fixed five tabs — order matches product priority. */
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={17} />, badge: openPositions || undefined },
-    { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={17} /> },
+    { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={23} />, badge: openPositions || undefined },
+    { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={23} /> },
     { id: 'ticker',        label: 'Finder',    icon: <TrendingUp size={34} strokeWidth={2} /> },
-    { id: 'watchlist',     label: 'Watchlist', icon: <Star size={17} />,       badge: watchlist.length || undefined },
-    { id: 'alerts',        label: 'Alerts',    icon: <Bell size={17} />,      badge: unreadAlertCount || undefined },
+    { id: 'watchlist',     label: 'Watchlist', icon: <Star size={23} />,       badge: watchlist.length || undefined },
+    { id: 'alerts',        label: 'Alerts',    icon: <Bell size={23} />,      badge: unreadAlertCount || undefined },
   ]
   const mobileMoreItems: NavItem[] = [
     { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
@@ -198,7 +198,11 @@ export default function Sidebar() {
                 }`}
               >
                 <span className="relative inline-flex shrink-0">
-                  {item.icon}
+                  {item.id === 'ticker' ? (
+                    <span className="mobile-dock-finder-icon inline-flex">{item.icon}</span>
+                  ) : (
+                    item.icon
+                  )}
                   {isTradeSignals && (
                     <span className="absolute -right-2.5 -top-1.5 whitespace-nowrap rounded border border-violet-600/50 bg-violet-600/35 px-[3px] text-[7px] font-bold leading-snug text-violet-100">
                       Live
