@@ -59,24 +59,68 @@ textarea {
   display: none;
 }
 
-/* Dark: bottom nav (phone + iPad/tablet rails) — solid bar, no glass/backdrop bleed */
-html.dark .mobile-bottom-nav {
-  background-color: rgb(17 24 39); /* gray-900 */
+/* Floating bottom dock shell — no full-bleed bar; capsule chroming is `.mobile-dock-pill`. */
+html.dark .mobile-bottom-nav-shell,
+html.light .mobile-bottom-nav-shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-/* Mobile/iPad bottom navigation light mode: strip slightly deeper than page + clear top edge. */
-html.light .mobile-bottom-nav {
-  background-color: var(--light-surface-2);
-  border-color: rgba(100, 116, 139, 0.42);
+html.dark .mobile-dock-pill {
+  background: rgba(30, 30, 32, 0.74);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-color: rgba(255, 255, 255, 0.14) !important;
   box-shadow:
-    0 -1px 0 rgba(255, 255, 255, 0.65),
-    0 -10px 32px rgba(15, 23, 42, 0.1);
+    0 4px 28px rgba(0, 0, 0, 0.5),
+    0 14px 40px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-html.light .mobile-nav-item {
-  color: #334155;
+html.light .mobile-dock-pill {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  box-shadow:
+    0 4px 24px rgba(15, 23, 42, 0.1),
+    0 12px 36px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+/* Dark dock: default tab label color (glass active overrides below) */
+html.dark .mobile-nav-item:not(.mobile-nav-glass-active) {
+  color: #94a3b8;
+}
+
+html.dark .mobile-nav-item:not(.mobile-nav-glass-active):hover {
+  color: #f1f5f9;
+}
+
+/* Mobile dock: liquid-glass pill for selected tab (phone + tablet rails) */
+html.dark .mobile-nav-glass-active {
+  background: rgba(255, 255, 255, 0.09) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 4px 22px -6px rgba(124, 58, 246, 0.42);
+  color: #ede9fe !important;
+}
+
+html.light .mobile-nav-glass-active {
+  background: rgba(255, 255, 255, 0.58) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(139, 92, 246, 0.42) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    0 2px 16px -4px rgba(91, 33, 182, 0.2);
+  color: #5b21b6 !important;
 }
 
 html.light .mobile-nav-item:hover {

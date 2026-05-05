@@ -278,7 +278,7 @@ Use a **dedicated deploy key** for Actions (do not reuse your laptop’s persona
 
 ### One-time droplet setup for CI
 
-1. `**git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
+1. **`git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
 2. **Passwordless sudo** for the deploy user so the workflow can restart services:
 
 ```bash
@@ -291,7 +291,7 @@ Example (adjust username):
 fluxtrade ALL=(ALL) NOPASSWD: /bin/systemctl restart optionadvisor, /bin/systemctl reload nginx
 ```
 
-3. `**rsync**` to `/var/www/optionadvisor` must succeed without a password (ownership like §10).
+3. **`rsync`** to `/var/www/optionadvisor` must succeed **without sudo** for the deploy user (ownership like §10 — e.g. `chown -R fluxtrade:fluxtrade /var/www/optionadvisor`).
 
 ### Troubleshooting
 

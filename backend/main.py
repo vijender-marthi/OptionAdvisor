@@ -17,8 +17,10 @@ import json
 import threading
 import time
 from collections import defaultdict
+import html
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -396,6 +398,28 @@ def _is_market_hours_now() -> bool:
     return 6 * 60 <= minutes < 16 * 60
 
 
+def _option_advisor_public_base() -> str:
+    """SPA origin for email deep links (same default as auth confirmation emails)."""
+    return os.getenv("OPTION_ADVISOR_PUBLIC_URL", "http://localhost:4200").rstrip("/")
+
+
+def _finder_deeplink_for_alert(a: AlertItem) -> str:
+    """Query-string link: Strategy Finder with ticker, scan weeks, optional chain expiry."""
+    base = _option_advisor_public_base()
+    ticker = a.ticker.strip().upper()
+    w = int(a.weeks_out) if getattr(a, "weeks_out", None) is not None else 4
+    if w not in (2, 3, 4, 6, 8):
+        w = 4
+    exp_raw = (a.expiry or "").strip()
+    exp = exp_raw[:10] if len(exp_raw) >= 10 else ""
+    if len(exp) != 10 or exp[4] != "-" or exp[7] != "-":
+        exp = ""
+    q = f"ticker={quote(ticker, safe='')}&weeks={w}"
+    if exp:
+        q += f"&expiry={quote(exp, safe='')}"
+    return f"{base}/?{q}"
+
+
 def _get_15_min_window(ts_ms: int) -> str:
     dt = datetime.fromtimestamp(ts_ms / 1000, ZoneInfo("America/Los_Angeles"))
     bucket_start = (dt.minute // 15) * 15
@@ -415,6 +439,11 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
     display_name = (user_name or "").strip() or email
     rows_html = ""
     for a in alerts:
+        app_url = _finder_deeplink_for_alert(a)
+        tick_safe = html.escape(a.ticker.strip().upper())
+        strat_safe = html.escape(a.strategy)
+        bias_safe = html.escape(a.bias)
+        exp_safe = html.escape(f"{a.expiry} ({a.dte}d)")
         pop_pct = f"{round(a.pop * 100)}%"
         ev_str = f"${round(a.ev * 100, 0):+.0f}"  # per contract
         profit = f"${round(a.max_profit * 100, 0):.0f}"
@@ -424,16 +453,16 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
         ev_cls = "oa-ev-pos" if a.ev > 0 else "oa-ev-neg"
         rows_html += f"""
         <tr class="oa-tr">
-          <td class="oa-td oa-tick">{a.ticker}</td>
-          <td class="oa-td oa-strat">{a.strategy}</td>
-          <td class="oa-td oa-bias" style="color:{bias_color} !important;">{a.bias}</td>
-          <td class="oa-td oa-muted">{a.expiry} ({a.dte}d)</td>
+          <td class="oa-td oa-tick"><a class="oa-app-link" href="{app_url}">{tick_safe}</a></td>
+          <td class="oa-td oa-strat"><a class="oa-app-link oa-app-link-subtle" href="{app_url}">{strat_safe}</a></td>
+          <td class="oa-td oa-bias" style="color:{bias_color} !important;">{bias_safe}</td>
+          <td class="oa-td oa-muted">{exp_safe}</td>
           <td class="oa-td oa-pos">{profit}</td>
           <td class="oa-td oa-neg">{loss}</td>
           <td class="oa-td oa-num">{credit}</td>
           <td class="oa-td oa-num">{pop_pct}</td>
           <td class="oa-td oa-num {ev_cls}">{ev_str}</td>
-          <td class="oa-td" style="text-align:center;"><span class="oa-go">✅ GO</span></td>
+          <td class="oa-td" style="text-align:center;"><a class="oa-app-link" href="{app_url}"><span class="oa-go">✅ GO · Open</span></a></td>
         </tr>"""
 
     window_label = alerts[0].time_window if alerts else ""
@@ -486,6 +515,13 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
       display: inline-block; background: #dcfce7 !important; color: #166534 !important;
       padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;
     }}
+    a.oa-app-link {{
+      color: inherit !important;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }}
+    a.oa-app-link:hover {{ opacity: 0.88; }}
+    a.oa-app-link-subtle {{ font-weight: 600; }}
     .oa-disclaimer {{ color: #64748b !important; font-size: 11px; margin: 20px 0 0; line-height: 1.6; }}
     .oa-footer {{
       background: #f1f5f9 !important; padding: 14px 28px;
@@ -515,6 +551,7 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
       .oa-ev-pos {{ color: #4ade80 !important; }}
       .oa-ev-neg {{ color: #f87171 !important; }}
       .oa-go {{ background: #166534 !important; color: #bbf7d0 !important; }}
+      a.oa-app-link .oa-go {{ text-decoration: none; }}
       .oa-disclaimer {{ color: #94a3b8 !important; }}
       .oa-footer {{ background: #12121e !important; border-top-color: #2d2d3a !important; }}
       .oa-footer span {{ color: #94a3b8 !important; }}
@@ -528,17 +565,20 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
         <div style="width:36px;height:36px;background:#7c3aed;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;">📈</div>
         <div>
           <div style="font-size:18px;font-weight:800;color:#fff;">OptionAdvisor — GO Trade Alert</div>
-          <div style="font-size:13px;color:#e9d5ff;margin-top:2px;">{count} new {plural} passed all checklist criteria · {window_label}</div>
+          <div style="font-size:13px;color:#e9d5ff;margin-top:2px;">{count} new {plural} passed all checklist criteria · {html.escape(window_label)}</div>
         </div>
       </div>
     </div>
 
     <div class="oa-body-pad">
       <p class="oa-intro">
-        Hi <strong>{display_name}</strong>, the systematic engine found
+        Hi <strong>{html.escape(display_name)}</strong>, the systematic engine found
         <strong>{count} GO {plural}</strong> across your watchlist
-        in the <strong class="oa-accent">{window_label}</strong> scan window.
+        in the <strong class="oa-accent">{html.escape(window_label)}</strong> scan window.
         These passed all 10 pre-trade checks — no hard fails, no soft fails.
+        <br><br>
+        <strong>Tip:</strong> tap the <strong>ticker</strong>, <strong>strategy</strong>, or <strong>✅ GO · Open</strong> on a row to open
+        <strong>Strategy Finder</strong> in your browser (stay signed in for one-tap access). The symbol and expiry from the alert are applied automatically.
       </p>
 
       <div class="oa-table-wrap">
@@ -554,7 +594,7 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
               <th>Credit</th>
               <th>PoP</th>
               <th>EV/cont.</th>
-              <th>Verdict</th>
+              <th style="text-align:center;">Open</th>
             </tr>
           </thead>
           <tbody>{rows_html}
@@ -570,7 +610,7 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
 
     <div class="oa-footer" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <span>OptionAdvisor Systematic Engine v2</span>
-      <span>Alerts sent to {display_name} &lt;{email}&gt;</span>
+      <span>Alerts sent to {html.escape(display_name)} &lt;{html.escape(email)}&gt;</span>
     </div>
   </div>
 </body>

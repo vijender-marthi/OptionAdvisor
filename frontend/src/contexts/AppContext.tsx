@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import axios from 'axios'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
@@ -294,6 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [advisoryTermsVersion, setAdvisoryTermsVersion] = useState<string | null>(null)
   const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
+  const finderDeepLinkHandledRef = useRef(false)
 
   /** Drop stale client-only sessions now that APIs require a Bearer token. */
   useEffect(() => {
@@ -531,6 +532,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPendingAnalysisOptions(options ?? null)
     setPage('ticker')
   }, [])
+
+  useEffect(() => {
+    if (!user) finderDeepLinkHandledRef.current = false
+  }, [user])
+
+  /** Email alert links: ?ticker=SYM&weeks=4&expiry=YYYY-MM-DD — consume before TickerPage localStorage restore. */
+  useLayoutEffect(() => {
+    if (!user || finderDeepLinkHandledRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('ticker')
+    const ticker = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
+    if (!ticker || ticker.length > 16 || !/^[A-Z0-9.\-]+$/.test(ticker)) return
+
+    finderDeepLinkHandledRef.current = true
+
+    let weeksOut = Number(params.get('weeks'))
+    if (!Number.isFinite(weeksOut) || weeksOut <= 0) weeksOut = 4
+    if (!([2, 3, 4, 6, 8] as const).includes(weeksOut as 2 | 3 | 4 | 6 | 8))
+      weeksOut = 4
+
+    const expRaw = params.get('expiry')?.trim().slice(0, 10) ?? ''
+    const chainExpiry = /^\d{4}-\d{2}-\d{2}$/.test(expRaw) ? expRaw : null
+
+    const url = new URL(window.location.href)
+    url.searchParams.delete('ticker')
+    url.searchParams.delete('weeks')
+    url.searchParams.delete('expiry')
+    const q = url.searchParams.toString()
+    window.history.replaceState({}, '', `${url.pathname}${q ? `?${q}` : ''}${url.hash}`)
+
+    requestAnalysis(ticker, { weeksOut: weeksOut as 2 | 3 | 4 | 6 | 8, chainExpiry, force: false })
+  }, [user, requestAnalysis])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   const applyAuthSession = useCallback((session: AuthLoginResponse) => {
