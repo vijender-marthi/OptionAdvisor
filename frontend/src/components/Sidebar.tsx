@@ -121,7 +121,7 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={17} />, badge: openPositions || undefined },
     { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={17} /> },
-    { id: 'ticker',        label: 'Finder',    icon: <TrendingUp size={17} /> },
+    { id: 'ticker',        label: 'Finder',    icon: <TrendingUp size={34} strokeWidth={2} /> },
     { id: 'watchlist',     label: 'Watchlist', icon: <Star size={17} />,       badge: watchlist.length || undefined },
     { id: 'alerts',        label: 'Alerts',    icon: <Bell size={17} />,      badge: unreadAlertCount || undefined },
   ]
@@ -180,7 +180,7 @@ export default function Sidebar() {
   const mobileDockGrid = (
     <div className="pointer-events-auto mx-auto w-full max-w-2xl">
       <div className="mobile-dock-pill overflow-hidden rounded-full border">
-        <div className="mobile-nav-scroll flex w-full touch-manipulation flex-nowrap items-stretch gap-0 px-1 py-0.5 sm:px-1.5 sm:py-1">
+        <div className="mobile-nav-scroll flex w-full touch-manipulation flex-nowrap items-stretch gap-0 px-1 py-1 sm:px-2 sm:py-1.5">
           {visibleMobilePrimaryItems.map(item => {
             const active = page === item.id
             const isTradeSignals = item.id === 'trade-signals'
@@ -191,7 +191,7 @@ export default function Sidebar() {
                 type="button"
                 onClick={() => handleMobileNavigate(item.id)}
                 title={item.label}
-                className={`mobile-nav-item flex min-w-0 flex-1 flex-col items-center justify-center gap-0 rounded-full border px-0.5 py-1.5 text-[10px] font-semibold leading-tight tracking-tight transition-all duration-200 ease-out ${
+                className={`mobile-nav-item flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full border px-0.5 py-2 text-[10px] font-semibold leading-tight tracking-tight transition-all duration-200 ease-out sm:min-h-[52px] sm:py-2.5 ${
                   active
                     ? 'mobile-nav-glass-active'
                     : 'border-transparent dark:hover:bg-gray-800/75 dark:hover:text-gray-100'
