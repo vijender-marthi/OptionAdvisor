@@ -1,11 +1,16 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Briefcase, TrendingUp, TrendingDown, CheckCircle, Clock, Trash2, X,
   DollarSign, Layers, Plus, AlertTriangle, ChevronDown, ChevronUp, FileEdit, RefreshCw, Download,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import type { PortfolioPosition, OptionLeg } from '../types'
+import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition } from '../types'
 import { useApp } from '../contexts/AppContext'
+import {
+  normalizePortfolioExpiryIso as normalizeExpiryIso,
+  chainExpiryMatchesData as chainExpiryMatches,
+  resolvePortfolioAnalyzeData,
+} from '../utils/portfolioAnalysis'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -18,17 +23,86 @@ function fmtDollar(n: number, showPlus = false): string {
   return `$${abs}`
 }
 
-function estimateAtExpiryPnl(legs: OptionLeg[], currentPrice: number): number {
+/** Per-share P&L if every leg expired at spot S: intrinsic only vs entry mids. Not broker MTM. */
+function estimateAtExpiryPnl(legs: OptionLeg[], spotPrice: number): number {
   let total = 0
   for (const leg of legs) {
     const intrinsic =
       leg.option_type === 'CALL'
-        ? Math.max(0, currentPrice - leg.strike)
-        : Math.max(0, leg.strike - currentPrice)
+        ? Math.max(0, spotPrice - leg.strike)
+        : Math.max(0, leg.strike - spotPrice)
     const premium = leg.mid_price
     total += leg.action === 'BUY' ? intrinsic - premium : premium - intrinsic
   }
   return total
+}
+
+function optionRowMid(row: OptionRow | undefined): number | null {
+  if (!row) return null
+  const { bid, ask, last_price: lp } = row
+  if (typeof bid === 'number' && typeof ask === 'number' && bid > 0 && ask > 0) return (bid + ask) / 2
+  if (typeof lp === 'number' && lp > 0) return lp
+  return null
+}
+
+function findStrikeRow(chain: OptionRow[], strike: number): OptionRow | undefined {
+  return chain.find(r => Math.abs(r.strike - strike) < 0.02)
+}
+
+/** US equity options: premium is per share of underlying; one contract = 100 shares. */
+const SHARES_PER_OPTION_CONTRACT = 100
+
+/**
+ * Per-share mark-to-market vs entry leg mids using current chain mids (same expiry row as cached analysis).
+ * Uses mid if bid & ask are quoted; otherwise last. Not a brokerage fill — still a model.
+ */
+function estimateMarkToMarketPerShare(
+  legs: OptionLeg[],
+  data: AnalyzeResponse,
+  positionExpiry: string,
+): { perShare: number } | null {
+  if (!chainExpiryMatches(data, positionExpiry)) return null
+  const calls = data.calls_chain ?? []
+  const puts = data.puts_chain ?? []
+  let total = 0
+  for (const leg of legs) {
+    const chain = leg.option_type === 'CALL' ? calls : puts
+    const row = findStrikeRow(chain, leg.strike)
+    const mid = optionRowMid(row)
+    if (mid == null) return null
+    const entry = leg.mid_price
+    total += leg.action === 'BUY' ? mid - entry : entry - mid
+  }
+  return { perShare: total }
+}
+
+/** Whole-position dollar MTM: (sum of per-share leg deltas) × 100 × contract count. */
+function markToMarketPositionDollars(
+  legs: OptionLeg[],
+  data: AnalyzeResponse,
+  positionExpiry: string,
+  contractCount: number,
+): number | null {
+  const mtm = estimateMarkToMarketPerShare(legs, data, positionExpiry)
+  if (mtm == null) return null
+  return mtm.perShare * SHARES_PER_OPTION_CONTRACT * contractCount
+}
+
+/** For suggestions / urgency: MTM dollar when mids exist; else intrinsic at cached spot × 100 × contracts. */
+function normalizedContractCount(pos: PortfolioPosition): number {
+  const n = Number(pos.contracts)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.max(1, Math.round(n))
+}
+
+function openPositionEvalDollar(pos: PortfolioPosition, analyzeData: AnalyzeResponse | null): number | null {
+  const contractCount = normalizedContractCount(pos)
+  if (!analyzeData) return null
+  const mtmD = markToMarketPositionDollars(pos.legs, analyzeData, pos.expiry, contractCount)
+  if (mtmD != null) return mtmD
+  const spot = analyzeData.signals?.current_price ?? null
+  if (spot == null) return null
+  return estimateAtExpiryPnl(pos.legs, spot) * SHARES_PER_OPTION_CONTRACT * contractCount
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,17 +222,15 @@ interface Suggestion {
   action: string
 }
 
-function getExitSuggestion(pos: PortfolioPosition, currentPrice: number | null): Suggestion {
+function getExitSuggestion(pos: PortfolioPosition, pnlDollar: number | null): Suggestion {
   const dte       = Math.ceil((new Date(pos.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
   const isDebit   = pos.net_credit < 0
-  const contracts = pos.contracts ?? 1
-  const atExpiryPS = currentPrice != null ? estimateAtExpiryPnl(pos.legs, currentPrice) : null
-  const atExpiry   = atExpiryPS != null ? atExpiryPS * 100 * contracts : null
+  const contractCount = normalizedContractCount(pos)
 
-  const refProfit = pos.max_profit * 100 * contracts
-  const refLoss   = pos.max_loss   * 100 * contracts
-  const profitPct = atExpiry != null && refProfit > 0 ? (atExpiry / refProfit) * 100 : null
-  const lossPct   = atExpiry != null && refLoss   > 0 ? (-atExpiry / refLoss) * 100  : null
+  const refProfit = pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount
+  const refLoss   = pos.max_loss   * SHARES_PER_OPTION_CONTRACT * contractCount
+  const profitPct = pnlDollar !== null && refProfit > 0 ? (pnlDollar / refProfit) * 100 : null
+  const lossPct   = pnlDollar !== null && refLoss > 0 && pnlDollar < 0 ? (-pnlDollar / refLoss) * 100 : null
 
   if (dte <= 0) return {
     level: 'EXPIRED', title: 'Expired',
@@ -172,12 +244,12 @@ function getExitSuggestion(pos: PortfolioPosition, currentPrice: number | null):
   }
   if (profitPct != null && profitPct >= 75) return {
     level: 'TAKE_PROFIT', title: `Take Profit — ${profitPct.toFixed(0)}% of target`,
-    reason: `At-expiry estimate shows ${profitPct.toFixed(0)}% of ${isDebit ? '10× target' : 'max profit'} captured.`,
+    reason: `Estimated P&L is ${profitPct.toFixed(0)}% of ${isDebit ? '10× target' : 'max profit'} (option mids vs entry when available; else intrinsic at spot — see Help).`,
     action: 'Lock in gains. Very little additional edge from holding further.',
   }
   if (profitPct != null && profitPct >= 50) return {
     level: 'CONSIDER_CLOSE', title: `50% Profit Target Hit`,
-    reason: `${profitPct.toFixed(0)}% of max profit at current price. Standard target for credit trades.`,
+    reason: `${profitPct.toFixed(0)}% of max profit on the estimate used for signals.`,
     action: 'Close to lock in gains and free up buying power. Remaining edge is minimal vs remaining risk.',
   }
   if (lossPct != null && lossPct >= 200) return {
@@ -187,7 +259,7 @@ function getExitSuggestion(pos: PortfolioPosition, currentPrice: number | null):
   }
   if (lossPct != null && lossPct >= 100) return {
     level: 'EXIT_NOW', title: `Max Loss Reached`,
-    reason: `At current price, holding to expiry results in maximum loss.`,
+    reason: `Estimate implies maximum loss at this mark.`,
     action: 'Close immediately. No remaining edge. Capital recovery takes priority.',
   }
   if (!isDebit && dte <= 21 && (profitPct == null || profitPct < 25)) return {
@@ -205,8 +277,8 @@ function getExitSuggestion(pos: PortfolioPosition, currentPrice: number | null):
   return {
     level: 'HOLD', title: 'Hold — Within Parameters',
     reason: profitPct != null
-      ? `${dte} DTE · At-expiry estimate ${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(0)}% of ${isDebit ? '10× target' : 'max profit'}.`
-      : `${dte} DTE remaining. Analyze the ticker to get a live at-expiry estimate.`,
+      ? `${dte} DTE · Estimated P&L ${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(0)}% of ${isDebit ? '10× target' : 'max profit'}.`
+      : `${dte} DTE remaining. Load option marks (Refresh Portfolio) for a dollar P&L estimate vs your entry.`,
     action: isDebit
       ? 'Monitor for entry into profit zone. Consider closing if stock moves sharply in your favour.'
       : 'Let theta decay work. Next key review: 21 DTE or if position moves against you by 50% of max loss.',
@@ -442,10 +514,10 @@ function CloseModal({ pos, onClose, onConfirm }: {
 }) {
   const [pnl, setPnl] = useState('')
   const pnlNum    = parseFloat(pnl)
-  const contracts = pos.contracts ?? 1
+  const contractCount = normalizedContractCount(pos)
   const isDebit   = pos.net_credit < 0
   const isValid   = pnl !== '' && !isNaN(pnlNum)
-  const dollarPnl = isValid ? (pnlNum / 100) * pos.max_profit * 100 * contracts : 0
+  const dollarPnl = isValid ? (pnlNum / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount : 0
   const profitLabel = isDebit ? '10× premium target' : 'max profit'
 
   return (
@@ -456,11 +528,11 @@ function CloseModal({ pos, onClose, onConfirm }: {
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300"><X size={16} /></button>
         </div>
         <div className="bg-gray-800 rounded-xl p-3 text-sm">
-          <div className="text-gray-400 text-xs mb-1">{pos.ticker} · {pos.strategy} · {contracts} contract{contracts > 1 ? 's' : ''}</div>
+          <div className="text-gray-400 text-xs mb-1">{pos.ticker} · {pos.strategy} · {contractCount} contract{contractCount > 1 ? 's' : ''}</div>
           <div className="text-gray-200 font-mono">
-            {isDebit ? '10× target' : 'Max profit'}: {fmtDollar(pos.max_profit * 100 * contracts)} total
+            {isDebit ? '10× target' : 'Max profit'}: {fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount)} total
           </div>
-          <div className="text-gray-500 text-xs">{fmtDollar(pos.max_profit * 100)}/contract{isDebit ? ' (10× premium reference)' : ''}</div>
+          <div className="text-gray-500 text-xs">{fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT)}/contract{isDebit ? ' (10× premium reference)' : ''}</div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-400 block mb-1.5">P&L as % of {profitLabel}</label>
@@ -470,7 +542,7 @@ function CloseModal({ pos, onClose, onConfirm }: {
           />
           {isValid && (
             <div className={`mt-1.5 text-xs font-mono ${dollarPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              ≈ {fmtDollar(dollarPnl, true)} total ({contracts} contract{contracts > 1 ? 's' : ''})
+              ≈ {fmtDollar(dollarPnl, true)} total ({contractCount} contract{contractCount > 1 ? 's' : ''})
             </div>
           )}
         </div>
@@ -493,32 +565,37 @@ function CloseModal({ pos, onClose, onConfirm }: {
 function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onClose: () => void; onRemove: () => void }) {
   const { tickerCache } = useApp()
   const [expanded, setExpanded] = useState(false)
-  const contracts  = pos.contracts ?? 1
+  const contractCount = normalizedContractCount(pos)
   const isClosed   = pos.status === 'closed'
   const isDebit    = pos.net_credit < 0
   const isManual   = pos.source === 'manual'
 
   const cachedEntry        = tickerCache[pos.ticker]
-  const currentPrice       = cachedEntry?.data?.signals?.current_price ?? null
-  const unrealisedPerShare = currentPrice != null ? estimateAtExpiryPnl(pos.legs, currentPrice) : null
-  const unrealisedDollar   = unrealisedPerShare != null ? unrealisedPerShare * 100 * contracts : null
-
-  // P&L as % of max profit (when winning) or % of max loss (when losing)
-  const refProfit  = pos.max_profit * 100 * contracts
-  const refLoss    = pos.max_loss   * 100 * contracts
-  const profitPct  = unrealisedDollar !== null && refProfit > 0
-    ? (unrealisedDollar / refProfit) * 100 : null
-  const lossPct    = unrealisedDollar !== null && refLoss > 0 && unrealisedDollar < 0
-    ? (-unrealisedDollar / refLoss) * 100 : null
-  const pctLabel   = profitPct !== null && profitPct >= 0
-    ? `${profitPct.toFixed(0)}% of ${isDebit ? '10× target' : 'max profit'}`
-    : lossPct !== null
-      ? `${lossPct.toFixed(0)}% of max loss`
+  const analyzeData        = resolvePortfolioAnalyzeData(cachedEntry, pos.expiry)
+  const currentPrice       = analyzeData?.signals?.current_price ?? null
+  const suggestionEval     = openPositionEvalDollar(pos, analyzeData)
+  const mtmDollar =
+    !isClosed && analyzeData
+      ? markToMarketPositionDollars(pos.legs, analyzeData, pos.expiry, contractCount)
       : null
 
-  const realisedDollar = pos.pnlPct != null ? (pos.pnlPct / 100) * pos.max_profit * 100 * contracts : null
+  let mtmUnavailableHint: string | null = null
+  if (!isClosed && mtmDollar === null) {
+    if (!analyzeData) {
+      mtmUnavailableHint = 'Fetching option marks for your expiry… If this persists, tap Refresh or check your connection.'
+    } else if (!chainExpiryMatches(analyzeData, pos.expiry)) {
+      const ce = analyzeData.filters_applied?.chain_expiry
+      const ceLabel = typeof ce === 'string' ? normalizeExpiryIso(ce) : '?'
+      mtmUnavailableHint =
+        `Live P&L compares entry mids to today's chain mids for expiry ${normalizeExpiryIso(pos.expiry)}. Cached chain is ${ceLabel}. Tap Refresh to reload.`
+    } else {
+      mtmUnavailableHint = 'Could not read a mid price for every leg (missing quotes). Try Refresh or wait for tighter markets.'
+    }
+  }
 
-  const suggestion = !isClosed ? getExitSuggestion(pos, currentPrice) : null
+  const realisedDollar = pos.pnlPct != null ? (pos.pnlPct / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount : null
+
+  const suggestion = !isClosed ? getExitSuggestion(pos, suggestionEval) : null
   const sStyle     = suggestion ? SUGGESTION_STYLE[suggestion.level] : null
 
   const dte = Math.ceil((new Date(pos.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
@@ -562,7 +639,7 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
                 <span className="text-xs bg-gray-800 text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">manual</span>
               )}
               <span className="flex items-center gap-1 text-xs bg-gray-800 border border-gray-700 text-gray-400 px-2 py-0.5 rounded-full">
-                <Layers size={10} /> {contracts} contract{contracts > 1 ? 's' : ''}
+                <Layers size={10} /> {contractCount} contract{contractCount > 1 ? 's' : ''}
               </span>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${
                 isClosed ? 'bg-gray-800 text-gray-500 border-gray-700'
@@ -589,52 +666,6 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
           </div>
         </div>
 
-        {/* Live at-expiry P&L */}
-        {!isClosed && unrealisedDollar !== null && (
-          <div className="rounded-xl px-3 py-2.5 bg-gray-800/60">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2 min-w-0">
-                {unrealisedDollar >= 0
-                  ? <TrendingUp size={15} className="text-gray-500 shrink-0 mt-0.5" />
-                  : <TrendingDown size={15} className="text-gray-500 shrink-0 mt-0.5" />}
-                <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    Current Est. P&amp;L
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Current stock <span className="font-mono text-gray-300">${currentPrice!.toFixed(2)}</span>
-                    <span className="mx-1 text-gray-600">·</span>
-                    Entry <span className="font-mono text-gray-300">${pos.entryPrice.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-right shrink-0">
-                <div className={`text-base font-bold font-mono ${unrealisedDollar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {fmtDollar(unrealisedDollar, true)}
-                </div>
-                {pctLabel && (
-                  <div className={`text-[11px] font-semibold ${unrealisedDollar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {pctLabel}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Breakeven hint */}
-            {isDebit && unrealisedDollar < 0 && pos.breakeven_lower && pos.breakeven_lower < 990 && (
-              <div className="text-xs text-amber-400/80 mt-2 border-t border-gray-700/50 pt-2">
-                {(() => {
-                  const isBearishLeg = pos.legs.some(l => l.option_type === 'PUT' && l.action === 'BUY')
-                  const direction = isBearishLeg ? 'fall to' : 'rise to'
-                  const gap = currentPrice != null ? Math.abs(pos.breakeven_lower - currentPrice) : null
-                  return <>⚠ Stock needs to {direction} ${pos.breakeven_lower.toFixed(2)} to break even{gap != null && <span className="text-gray-500 ml-1">(${gap.toFixed(2)} away)</span>}</>
-                })()}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Realised P&L (closed) */}
         {isClosed && realisedDollar !== null && (
           <div className={`rounded-xl px-3 py-2.5 border ${
@@ -643,12 +674,7 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 {realisedDollar >= 0 ? <TrendingUp size={15} className="text-emerald-400" /> : <TrendingDown size={15} className="text-red-400" />}
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Realized P&amp;L</div>
-                  <div className="text-xs text-gray-500">
-                    {pos.pnlPct?.toFixed(0)}% of {isDebit ? '10x target' : 'max profit'}
-                  </div>
-                </div>
+                <span className="text-sm font-medium text-gray-400">Realized P&amp;L</span>
               </div>
               <div className="text-right">
                 <div className={`text-base font-bold font-mono ${realisedDollar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -665,32 +691,66 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
         )}
 
         {/* Key metrics grid */}
-        <div className={`grid gap-2 ${!isClosed && unrealisedDollar !== null ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'}`}>
-          {[
-            isDebit
-              ? { label: 'Net Debit',   value: `$${(Math.abs(pos.net_credit) * 100 * contracts).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, sub: `$${(Math.abs(pos.net_credit) * 100).toFixed(0)}/ea`, color: 'text-amber-400' }
-              : { label: 'Net Credit',  value: `+$${(pos.net_credit * 100 * contracts).toLocaleString('en-US', { maximumFractionDigits: 0 })}`,           sub: `${contracts}×contract`,                              color: 'text-violet-400' },
-            isDebit
-              ? { label: 'Max Profit',  value: `$${(pos.max_profit * 100 * contracts).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, sub: '10× target/ea', color: 'text-emerald-400' }
-              : { label: 'Max Profit',  value: `$${(pos.max_profit * 100 * contracts).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, sub: `$${(pos.max_profit * 100).toFixed(0)}/ea`, color: 'text-emerald-400' },
-            ...(!isClosed && unrealisedDollar !== null
-              ? [{
-                label: 'Estimated P&L At Expiry',
-                value: fmtDollar(unrealisedDollar, true),
-                sub: `Stock now $${currentPrice!.toFixed(2)}`,
-                color: unrealisedDollar >= 0 ? 'text-emerald-400' : 'text-red-400',
-              }]
-              : []),
-            { label: 'Max Loss',      value: `-$${(pos.max_loss * 100 * contracts).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, sub: `$${(pos.max_loss * 100).toFixed(0)}/ea`, color: 'text-red-400' },
-            { label: 'Stock @ Entry', value: `$${pos.entryPrice.toFixed(2)}`, sub: pos.bias, color: 'text-gray-300' },
-          ].map(m => (
-            <div key={m.label} className="bg-gray-800/60 rounded-xl px-3 py-2">
-              <div className="text-xs text-gray-500 mb-0.5">{m.label}</div>
-              <div className={`text-sm font-bold font-mono ${m.color}`}>{m.value}</div>
-              <div className="text-xs text-gray-600 truncate">{m.sub}</div>
+        <div className={`grid gap-2 grid-cols-2 ${isClosed ? 'sm:grid-cols-4' : 'sm:grid-cols-3 lg:grid-cols-5'}`}>
+          {isDebit
+            ? (
+              <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                <div className="text-xs text-gray-500 mb-0.5">Net Debit</div>
+                <div className="text-sm font-bold font-mono text-amber-400">
+                  ${(Math.abs(pos.net_credit) * SHARES_PER_OPTION_CONTRACT * contractCount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </div>
+                <div className="text-xs text-gray-600 truncate">${(Math.abs(pos.net_credit) * SHARES_PER_OPTION_CONTRACT).toFixed(0)}/ea</div>
+              </div>
+            )
+            : (
+              <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                <div className="text-xs text-gray-500 mb-0.5">Net Credit</div>
+                <div className="text-sm font-bold font-mono text-violet-400">
+                  +${(pos.net_credit * SHARES_PER_OPTION_CONTRACT * contractCount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </div>
+                <div className="text-xs text-gray-600 truncate">{contractCount}× contract</div>
+              </div>
+            )}
+          <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+            <div className="text-xs text-gray-500 mb-0.5">Max Profit</div>
+            <div className="text-sm font-bold font-mono text-emerald-400">
+              ${(pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
-          ))}
+            <div className="text-xs text-gray-600 truncate">{isDebit ? '10× target/ea' : `$${(pos.max_profit * SHARES_PER_OPTION_CONTRACT).toFixed(0)}/ea`}</div>
+          </div>
+          <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+            <div className="text-xs text-gray-500 mb-0.5">Max Loss</div>
+            <div className="text-sm font-bold font-mono text-red-400">
+              -${(pos.max_loss * SHARES_PER_OPTION_CONTRACT * contractCount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            </div>
+            <div className="text-xs text-gray-600 truncate">${(pos.max_loss * SHARES_PER_OPTION_CONTRACT).toFixed(0)}/ea</div>
+          </div>
+          {!isClosed && (
+            <div className={`rounded-xl px-3 py-2 border ${
+              mtmDollar == null
+                ? 'bg-gray-800/60 border-gray-700/60'
+                : mtmDollar >= 0
+                  ? 'bg-emerald-950/45 border-emerald-600/55 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)]'
+                  : 'bg-red-950/45 border-red-700/55 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.12)]'
+            }`}>
+              <div className="text-xs text-gray-500 mb-0.5">Current P&amp;L</div>
+              <div className={`text-sm font-bold font-mono tabular-nums ${
+                mtmDollar == null ? 'text-gray-500' : mtmDollar >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}>
+                {mtmDollar != null ? fmtDollar(mtmDollar, true) : '—'}
+              </div>
+              <div className="text-xs text-gray-600 truncate">{contractCount} ct × {SHARES_PER_OPTION_CONTRACT} sh</div>
+            </div>
+          )}
+          <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+            <div className="text-xs text-gray-500 mb-0.5">Stock @ Entry</div>
+            <div className="text-sm font-bold font-mono text-gray-300">${pos.entryPrice.toFixed(2)}</div>
+            <div className="text-xs text-gray-600 truncate">{pos.bias}</div>
+          </div>
         </div>
+        {!isClosed && mtmUnavailableHint && (
+          <p className="text-xs text-amber-400/95 px-0.5">{mtmUnavailableHint}</p>
+        )}
 
         {/* Expand toggle for details */}
         <button
@@ -712,10 +772,23 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
                     : `$${pos.breakeven_lower.toFixed(2)}`}
                 </span>
                 {currentPrice != null && (
-                  <span className={`ml-auto font-semibold ${unrealisedDollar != null && unrealisedDollar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <span className={`ml-auto font-semibold ${
+                    suggestionEval == null ? 'text-gray-500'
+                      : suggestionEval >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`}>
                     Current: ${currentPrice.toFixed(2)}
                   </span>
                 )}
+              </div>
+            )}
+            {isDebit && suggestionEval != null && suggestionEval < 0 && pos.breakeven_lower && pos.breakeven_lower < 990 && currentPrice != null && (
+              <div className="text-xs text-amber-400/80 rounded-xl px-3 py-2 bg-gray-800/40 border border-amber-900/30">
+                {(() => {
+                  const isBearishLeg = pos.legs.some(l => l.option_type === 'PUT' && l.action === 'BUY')
+                  const direction = isBearishLeg ? 'fall to' : 'rise to'
+                  const gap = Math.abs(pos.breakeven_lower - currentPrice)
+                  return <>Stock needs to {direction} ${pos.breakeven_lower.toFixed(2)} to break even (${gap.toFixed(2)} away).</>
+                })()}
               </div>
             )}
 
@@ -798,13 +871,14 @@ function PositionCard({ pos, onClose, onRemove }: { pos: PortfolioPosition; onCl
 export default function PortfolioPage() {
   const {
     portfolio, closePosition, removeFromPortfolio, addManualPosition, navigate,
-    refreshTicker, refreshingTickers, tickerCache,
+    refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry,
   } = useApp()
   const [closing,    setClosing]    = useState<PortfolioPosition | null>(null)
   const [addingNew,  setAddingNew]  = useState(false)
   const [filter,     setFilter]     = useState<'all' | 'open' | 'closed'>('open')
   const [refreshingPortfolio, setRefreshingPortfolio] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [portfolioHydratePulse, setPortfolioHydratePulse] = useState(0)
 
   const open   = portfolio.filter(p => p.status === 'open')
   const closed = portfolio.filter(p => p.status === 'closed')
@@ -815,16 +889,18 @@ export default function PortfolioPage() {
   // Urgent positions (EXIT_NOW / EXPIRED) — shown in alert banner
   const urgentCount = useMemo(() =>
     open.filter(p => {
-      const price = tickerCache[p.ticker]?.data?.signals?.current_price ?? null
-      const s = getExitSuggestion(p, price)
+      const entry = tickerCache[p.ticker]
+      const resolved = resolvePortfolioAnalyzeData(entry, p.expiry)
+      const evalDollar = openPositionEvalDollar(p, resolved)
+      const s = getExitSuggestion(p, evalDollar)
       return s.level === 'EXIT_NOW' || s.level === 'EXPIRED'
     }).length
   , [open, tickerCache])
 
   const closedWithPnl    = closed.filter(p => p.pnlPct != null)
   const totalRealisedPnl = closedWithPnl.reduce((s, p) => {
-    const c = p.contracts ?? 1
-    return s + ((p.pnlPct! / 100) * p.max_profit * 100 * c)
+    const c = normalizedContractCount(p)
+    return s + ((p.pnlPct! / 100) * p.max_profit * SHARES_PER_OPTION_CONTRACT * c)
   }, 0)
   const totalOpenContracts = open.reduce((s, p) => s + (p.contracts ?? 1), 0)
   const winRate = closedWithPnl.length
@@ -832,31 +908,70 @@ export default function PortfolioPage() {
     : null
 
   const handleRefreshPortfolio = async () => {
-    if (openTickers.length === 0 || refreshingPortfolio) return
+    if (open.length === 0 || refreshingPortfolio) return
     setRefreshingPortfolio(true)
     try {
-      for (const ticker of openTickers) {
-        await refreshTicker(ticker)
+      const seen = new Set<string>()
+      for (const pos of open) {
+        const key = `${pos.ticker}|${normalizeExpiryIso(pos.expiry)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        await ensureAnalysisForPortfolioExpiry(pos.ticker, pos.expiry, {
+          force: true,
+          spreadWidth: Number.isFinite(pos.spread_width) ? Math.round(pos.spread_width) : undefined,
+        })
       }
     } finally {
       setRefreshingPortfolio(false)
     }
   }
 
+  useEffect(() => {
+    if (open.length === 0) return
+    const unresolved = open.some(
+      p => !resolvePortfolioAnalyzeData(tickerCache[p.ticker], p.expiry),
+    )
+    if (!unresolved) return
+    const id = window.setInterval(() => setPortfolioHydratePulse(h => h + 1), 61_000)
+    return () => clearInterval(id)
+  }, [open, tickerCache])
+
+  useEffect(() => {
+    if (open.length === 0) return
+    const seen = new Set<string>()
+    for (const pos of open) {
+      const key = `${pos.ticker}|${normalizeExpiryIso(pos.expiry)}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (resolvePortfolioAnalyzeData(tickerCache[pos.ticker], pos.expiry)) continue
+      void ensureAnalysisForPortfolioExpiry(pos.ticker, pos.expiry, {
+        spreadWidth: Number.isFinite(pos.spread_width) ? Math.round(pos.spread_width) : undefined,
+      })
+    }
+  }, [open, tickerCache, ensureAnalysisForPortfolioExpiry, portfolioHydratePulse])
+
   const getExportRows = () => shown.map(pos => {
-      const contracts = pos.contracts ?? 1
-      const currentPrice = tickerCache[pos.ticker]?.data?.signals?.current_price ?? null
-      const expiryPnl = pos.status === 'open' && currentPrice != null
-        ? estimateAtExpiryPnl(pos.legs, currentPrice) * 100 * contracts
+      const contractCount = normalizedContractCount(pos)
+      const analyzeData = resolvePortfolioAnalyzeData(tickerCache[pos.ticker], pos.expiry)
+      const currentPrice = analyzeData?.signals?.current_price ?? null
+      const scenarioPnl = pos.status === 'open' && currentPrice != null
+        ? estimateAtExpiryPnl(pos.legs, currentPrice) * SHARES_PER_OPTION_CONTRACT * contractCount
         : null
+      const mtmDollarExport =
+        pos.status === 'open' && analyzeData
+          ? markToMarketPositionDollars(pos.legs, analyzeData, pos.expiry, contractCount)
+          : null
       const realizedPnl = pos.status === 'closed' && pos.pnlPct != null
-        ? (pos.pnlPct / 100) * pos.max_profit * 100 * contracts
+        ? (pos.pnlPct / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount
         : null
-      const currentPnl = pos.status === 'closed' ? realizedPnl : expiryPnl
-      const suggestion = pos.status === 'open' ? getExitSuggestion(pos, currentPrice) : null
+      const suggestion =
+        pos.status === 'open' ? getExitSuggestion(pos, openPositionEvalDollar(pos, analyzeData)) : null
       const warnings = [
         pos.status === 'open' && currentPrice == null ? 'No current price cache. Refresh before export.' : '',
-        pos.status === 'open' && currentPrice != null ? 'Current P&L is estimated from current stock price and expiry payoff; not live option mark-to-market.' : '',
+        pos.status === 'open' && currentPrice != null ? 'Scenario $ uses cached spot + intrinsic vs entry mids; not live option marks.' : '',
+        pos.status === 'open' && analyzeData && mtmDollarExport == null
+          ? 'MTM $ blank: cached chain expiry must match position expiry, or quotes missing on a leg.'
+          : '',
         suggestion && suggestion.level !== 'HOLD' ? `${suggestion.title}: ${suggestion.reason}` : '',
         pos.notes ? `Notes: ${pos.notes}` : '',
       ].filter(Boolean).join(' | ')
@@ -864,7 +979,7 @@ export default function PortfolioPage() {
         const leg = pos.legs[index]
         const legNumber = index + 1
         const signedValue = leg
-          ? (leg.action === 'BUY' ? -1 : 1) * leg.mid_price * 100 * contracts
+          ? (leg.action === 'BUY' ? -1 : 1) * leg.mid_price * SHARES_PER_OPTION_CONTRACT * contractCount
           : ''
         return {
           [`Leg ${legNumber} Action`]: leg ? `${leg.action} ${leg.option_type}` : '',
@@ -875,14 +990,16 @@ export default function PortfolioPage() {
 
       return {
         Ticker: pos.ticker,
-        'Number of Contracts': contracts,
+        'Number of Contracts': contractCount,
         'Purchased Date': pos.addedAt ? new Date(pos.addedAt).toLocaleDateString('en-US') : '',
         Expiry: pos.expiry,
-        'Expiry P&L': expiryPnl != null ? Math.round(expiryPnl * 100) / 100 : '',
-        'Current P&L': currentPnl != null ? Math.round(currentPnl * 100) / 100 : '',
+        'Scenario $ (@ cached spot)': scenarioPnl != null ? Math.round(scenarioPnl * 100) / 100 : '',
+        'MTM $ (mid vs entry)':
+          mtmDollarExport != null ? Math.round(mtmDollarExport * 100) / 100 : '',
+        'Realized $ (closed)': realizedPnl != null ? Math.round(realizedPnl * 100) / 100 : '',
         'Warnings / Errors': warnings,
-        'Max Profit': pos.max_profit * 100 * contracts,
-        'Max Loss': pos.max_loss * 100 * contracts,
+        'Max Profit': pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount,
+        'Max Loss': pos.max_loss * SHARES_PER_OPTION_CONTRACT * contractCount,
         'Kelly Fraction': pos.kelly_fraction != null ? pos.kelly_fraction : '',
         'Half-Kelly Fraction': pos.half_kelly_fraction != null ? pos.half_kelly_fraction : '',
         'Edge Ratio': pos.edge_ratio != null ? pos.edge_ratio : '',
@@ -904,7 +1021,7 @@ export default function PortfolioPage() {
     const worksheet = XLSX.utils.json_to_sheet(rows)
     worksheet['!cols'] = [
       { wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 14 },
-      { wch: 14 }, { wch: 14 }, { wch: 46 }, { wch: 14 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 46 }, { wch: 14 },
       { wch: 14 },
       { wch: 14 }, { wch: 12 }, { wch: 14 },
       { wch: 14 }, { wch: 12 }, { wch: 14 },
@@ -932,16 +1049,17 @@ export default function PortfolioPage() {
     const autoTable = autoTableModule.default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
     const headers = [
-      'Ticker', 'Contracts', 'Purchased Date', 'Expiry', 'Expiry P&L',
-      'Current P&L', 'Warnings / Errors', 'Max Profit', 'Leg Details', 'Strategy Type',
+      'Ticker', 'Contracts', 'Purchased Date', 'Expiry', 'Scenario $ (@ cached spot)',
+      'MTM $ (mid vs entry)', 'Realized $ (closed)', 'Warnings / Errors', 'Max Profit', 'Leg Details', 'Strategy Type',
     ]
     const body = rows.map(row => [
       row.Ticker,
       row['Number of Contracts'],
       row['Purchased Date'],
       row.Expiry,
-      row['Expiry P&L'],
-      row['Current P&L'],
+      row['Scenario $ (@ cached spot)'],
+      row['MTM $ (mid vs entry)'],
+      row['Realized $ (closed)'],
       row['Warnings / Errors'],
       row['Max Profit'],
       row['Leg Details'],
@@ -965,12 +1083,13 @@ export default function PortfolioPage() {
         1: { cellWidth: 48 },
         2: { cellWidth: 64 },
         3: { cellWidth: 58 },
-        4: { cellWidth: 58 },
-        5: { cellWidth: 58 },
-        6: { cellWidth: 150 },
-        7: { cellWidth: 58 },
-        8: { cellWidth: 150 },
-        9: { cellWidth: 78 },
+        4: { cellWidth: 52 },
+        5: { cellWidth: 52 },
+        6: { cellWidth: 52 },
+        7: { cellWidth: 140 },
+        8: { cellWidth: 52 },
+        9: { cellWidth: 140 },
+        10: { cellWidth: 72 },
       },
       margin: { left: 36, right: 36 },
     })
@@ -1164,7 +1283,8 @@ export default function PortfolioPage() {
         {/* Disclaimer */}
         <div className="text-center text-xs text-gray-600 py-2 border-t border-gray-800/50">
           <DollarSign size={11} className="inline mr-1" />
-          Exit signals are at-expiry estimates based on the last cached stock price. Actual P&L depends on time value, IV, and exit timing. Not financial advice.
+          Open positions show <span className="text-gray-300">Current P&amp;L</span> in the metrics row (green/red tile): option mids vs entry mids, scaled by{' '}
+          <span className="font-mono text-gray-300">{SHARES_PER_OPTION_CONTRACT}</span> shares per contract × your contract count. Not your broker&apos;s mark — see Help for formulas.
         </div>
       </div>
     </div>

@@ -515,6 +515,7 @@ def _analyze_ticker(
     weeks_out: int = 4,
     spread_width: int | None = None,
     strategy_mode: str = "all",
+    chain_expiry: str | None = None,
 ) -> AnalyzeResponse:
     ticker = ticker.upper().strip()
 
@@ -547,21 +548,37 @@ def _analyze_ticker(
     if not opt_dates:
         raise HTTPException(status_code=404, detail=f"No options available for '{ticker}'")
 
-    # Select the expiry that matches the user's weeks_out target — the same DTE
-    # window the engine uses internally so chain pricing, Greeks, and recommendations
-    # all refer to the same expiry.  Mirror the engine's pick_expiry_by_dte math:
-    #   target_dte = weeks_out * 7,  window = ±7 days
     from engine import pick_expiry_by_dte as _pick_expiry
-    target_dte = weeks_out * 7
-    dte_lo = max(7, target_dte - 7)
-    dte_hi = target_dte + 7
-    target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
-    if target_expiry is None:
-        # Fallback: pick the nearest available expiry beyond dte_lo
-        target_expiry = next(
-            (d for d in opt_dates if (datetime.strptime(d, "%Y-%m-%d") - datetime.today()).days >= dte_lo - 3),
-            opt_dates[min(2, len(opt_dates) - 1)]
-        )
+
+    if chain_expiry:
+        ce = chain_expiry.strip()[:10]
+        if ce in opt_dates:
+            target_expiry = ce
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No option chain for '{ticker}' on expiry {ce} (listed: {len(opt_dates)} expiries)",
+            )
+        exp_dt = datetime.strptime(target_expiry, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        dte_chain = max(0, (exp_dt - today).days)
+        weeks_for_engine = max(2, min(8, max(2, round(dte_chain / 7)))) if dte_chain > 0 else 2
+    else:
+        weeks_for_engine = weeks_out
+        # Select the expiry that matches the user's weeks_out target — the same DTE
+        # window the engine uses internally so chain pricing, Greeks, and recommendations
+        # all refer to the same expiry.  Mirror the engine's pick_expiry_by_dte math:
+        #   target_dte = weeks_out * 7,  window = ±7 days
+        target_dte = weeks_out * 7
+        dte_lo = max(7, target_dte - 7)
+        dte_hi = target_dte + 7
+        target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
+        if target_expiry is None:
+            # Fallback: pick the nearest available expiry beyond dte_lo
+            target_expiry = next(
+                (d for d in opt_dates if (datetime.strptime(d, "%Y-%m-%d") - datetime.today()).days >= dte_lo - 3),
+                opt_dates[min(2, len(opt_dates) - 1)]
+            )
 
     try:
         chain = stock.option_chain(target_expiry)
@@ -620,7 +637,7 @@ def _analyze_ticker(
     try:
         trades = run_engine(signals, calls_f, puts_f, list(opt_dates),
                             spread_width_override=spread_width,
-                            weeks_out=weeks_out,
+                            weeks_out=weeks_for_engine,
                             strategy_mode=strategy_mode)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Trade engine failed: {str(e)}")
@@ -726,15 +743,10 @@ def _analyze_ticker(
         for p in signals.price_history
     ]
 
-    # NTM chain for display
-    ntm_calls = calls_f[
-        (calls_f["strike"] >= price_approx * 0.90) &
-        (calls_f["strike"] <= price_approx * 1.10)
-    ].head(20)
-    ntm_puts = puts_f[
-        (puts_f["strike"] >= price_approx * 0.90) &
-        (puts_f["strike"] <= price_approx * 1.10)
-    ].head(20)
+    # Full strikes for this expiry (sorted). The old ±10% NTM slice + head(20) omitted typical
+    # Bull/Bear vertical short legs — Portfolio MTM couldn't find mids past ~110% of spot.
+    calls_export = calls_raw.sort_values("strike", ascending=True)
+    puts_export = puts_raw.sort_values("strike", ascending=True)
 
     return AnalyzeResponse(
         ticker=ticker,
@@ -743,14 +755,18 @@ def _analyze_ticker(
         market_cap=market_cap,
         signals=signals_out,
         recommendations=recs_out,
-        calls_chain=chain_to_output(ntm_calls, price_approx, target_expiry, "CALL"),
-        puts_chain=chain_to_output(ntm_puts, price_approx, target_expiry, "PUT"),
+        calls_chain=chain_to_output(calls_export, price_approx, target_expiry, "CALL"),
+        puts_chain=chain_to_output(puts_export, price_approx, target_expiry, "PUT"),
         price_history=price_history_out,
         filters_applied={
             "chain_expiry": target_expiry,
             "min_credit_pct_of_width": MIN_CREDIT_PCT_OF_WIDTH,
             "short_delta_range": list(TARGET_SHORT_DELTA_CREDIT),
-            "target_dte": f"{weeks_out}w ({weeks_out * 7}d ±7)",
+            "target_dte": (
+                f"fixed {target_expiry} (~{max(0, (datetime.strptime(target_expiry, '%Y-%m-%d').date() - datetime.now().date()).days)}d)"
+                if chain_expiry
+                else f"{weeks_out}w ({weeks_out * 7}d ±7)"
+            ),
             "max_bid_ask_spread_pct": 15,
             "min_open_interest": 50,
             "spread_width": spread_width if spread_width else "auto",
@@ -759,9 +775,16 @@ def _analyze_ticker(
     )
 
 
-def _cache_key(ticker: str, weeks_out: int, spread_width: int | None, strategy_mode: str) -> str:
+def _cache_key(
+    ticker: str,
+    weeks_out: int,
+    spread_width: int | None,
+    strategy_mode: str,
+    chain_expiry: str | None = None,
+) -> str:
     width_key = "auto" if spread_width is None else str(spread_width)
-    return f"{ticker.upper().strip()}|{weeks_out}|{width_key}|{strategy_mode}"
+    ce = (chain_expiry or "").strip()[:10]
+    return f"{ticker.upper().strip()}|{weeks_out}|{width_key}|{strategy_mode}|{ce}"
 
 
 def _get_analysis_with_cache(
@@ -809,7 +832,8 @@ def analyze(req: AnalyzeRequest):
     so the chain and signals are always close to real-time. The alert scanner uses
     a separate longer-TTL cache (_get_analysis_with_cache) so the two don't interfere.
     """
-    key = _cache_key(req.ticker, req.weeks_out, req.spread_width, req.strategy_mode)
+    ce = (req.chain_expiry or "").strip()[:10] or None
+    key = _cache_key(req.ticker, req.weeks_out, req.spread_width, req.strategy_mode, ce)
     now = time.time()
     ttl = _user_analyze_ttl()
 
@@ -823,6 +847,7 @@ def analyze(req: AnalyzeRequest):
         weeks_out=req.weeks_out,
         spread_width=req.spread_width,
         strategy_mode=req.strategy_mode,
+        chain_expiry=ce,
     )
     with analyze_user_cache_lock:
         analyze_user_cache[key] = (time.time(), data)

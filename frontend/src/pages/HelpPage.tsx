@@ -798,6 +798,44 @@ export default function HelpPage() {
               The Portfolio page tracks every position you add from a recommendation. Each entry records the full
               trade structure — strategy, legs, expiry, max profit/loss, PoP, contracts, and the stock price when you added it.
             </p>
+            <div className="rounded-xl border border-gray-700/60 bg-gray-800/40 px-3 py-2.5 mb-3">
+              <div className="text-xs font-semibold text-gray-200 mb-1.5">Open P&amp;L on each card</div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Each open card includes a <span className="text-gray-300">Current P&amp;L</span> tile next to Max Loss (highlighted green or red): today&apos;s option mids vs the mids saved at entry, multiplied by{' '}
+                <span className="font-mono text-gray-300">100 × contract count</span>. Exact formulas and caveats are in the reference block below.
+              </p>
+            </div>
+            <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 px-3 py-2.5 mb-3 space-y-2 text-xs text-gray-400 leading-relaxed">
+              <div className="font-semibold text-violet-200 text-sm">Formulas (reference)</div>
+              <ul className="list-disc pl-4 space-y-1.5">
+                <li>
+                  <span className="text-gray-300">Per-share contribution per leg:</span>{' '}
+                  BUY → <span className="font-mono text-gray-300">current_mid − entry_mid</span>;
+                  SELL → <span className="font-mono text-gray-300">entry_mid − current_mid</span>.
+                </li>
+                <li>
+                  <span className="text-gray-300">Current mid</span> on each leg: if bid and ask are both quoted and positive,{' '}
+                  <span className="font-mono text-gray-300">(bid + ask) / 2</span>; otherwise use last trade price if available.
+                  Strikes must match your saved legs on the expiry chain loaded for your position.
+                </li>
+                <li>
+                  <span className="text-gray-300">Position dollars:</span>{' '}
+                  sum those per-share leg contributions, then multiply by <span className="font-mono text-gray-300">100 × contracts</span>.
+                </li>
+                <li>
+                  <span className="text-gray-300">Exit suggestion percentages</span> compare that dollar estimate (preferring mids above)
+                  to max profit / max loss for the trade — see scenario fallback below when mids are unavailable.
+                </li>
+                <li>
+                  <span className="text-gray-300">Scenario fallback (signals only):</span> if mids cannot be read for every leg,
+                  the engine may use <span className="font-mono text-gray-300">intrinsic value at the cached stock spot</span> vs entry mids
+                  (as if expiry at today&apos;s underlying quote) for the same percentage math — not live option marks.
+                </li>
+                <li>
+                  <span className="text-amber-400/90">This is not your broker&apos;s P&amp;L</span> — spreads, assignments, portfolio margin, and fills will differ.
+                </li>
+              </ul>
+            </div>
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 {
@@ -810,11 +848,11 @@ export default function HelpPage() {
                 },
                 {
                   title: 'P&L tracking',
-                  desc: 'Open positions show an estimated P&L using the latest cached stock price and the option payoff at expiry. This is an at-expiry estimate, not brokerage mark-to-market option pricing.',
+                  desc: 'Current P&amp;L appears as a highlighted tile beside Max Loss on open positions. Exports still include scenario $ (intrinsic at cached spot) for spreadsheets.',
                 },
                 {
                   title: 'Refresh prices',
-                  desc: 'Use the refresh (circular arrows) button on Portfolio to re-analyze every unique open-position ticker. This updates cached stock prices, exit suggestions, and the Portfolio P&L estimate for each open trade.',
+                  desc: 'Use the refresh (circular arrows) button on Portfolio to refetch analysis for each open position\'s expiry (exact option chain). Open positions also trigger an automatic fetch when you land on Portfolio if that expiry was not cached yet.',
                 },
                 {
                   title: 'Position sizing',
@@ -822,11 +860,11 @@ export default function HelpPage() {
                 },
                 {
                   title: 'Exit suggestions',
-                  desc: 'Open positions can show HOLD, MANAGE, ROLL, TAKE PROFIT, EXIT NOW, or EXPIRED suggestions based on DTE, estimated profit capture, loss pressure, and gamma/assignment risk.',
+                  desc: 'Suggestions use your estimated dollar P&L when mids exist (otherwise intrinsic-at-spot fallback) versus max profit or loss, plus DTE rules — details under Formulas.',
                 },
                 {
                   title: 'Export reports',
-                  desc: 'Use the download button on Portfolio to export the current view as XLSX or PDF. XLSX includes tabular columns for ticker, contracts, purchased date, expiry/current P&L, warnings, max profit/loss, strategy type, and separate leg action/strike/value columns.',
+                  desc: 'Use the download button on Portfolio to export the current view as XLSX or PDF. Columns include scenario dollars at cached spot, MTM dollars from mids vs entry when available, realized dollars when closed, warnings, max profit/loss, Kelly fields, leg columns, and strategy.',
                 },
               ].map(item => (
                 <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
@@ -836,7 +874,7 @@ export default function HelpPage() {
               ))}
             </div>
             <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: refresh the Portfolio before exporting when you want current stock prices and current P&L estimates in the report.
+              Tip: Portfolio loads quotes per position expiry automatically when needed. Manual Refresh forces every open expiry to reload; exports use whatever is cached after those complete.
             </p>
           </div>
         </InfoCard>

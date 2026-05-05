@@ -96,13 +96,16 @@ export const analyzeOptions = async (
   weeksOut: number,
   spreadWidth?: number | null,
   strategyMode: StrategyMode = 'all',
+  chainExpiry?: string | null,
 ): Promise<AnalyzeResponse> => {
-  const { data } = await api.post<AnalyzeResponse>('/analyze', {
+  const payload: Record<string, unknown> = {
     ticker,
     weeks_out: weeksOut,
     spread_width: spreadWidth ?? null,
     strategy_mode: strategyMode,
-  })
+  }
+  if (chainExpiry?.trim()) payload.chain_expiry = chainExpiry.trim().slice(0, 10)
+  const { data } = await api.post<AnalyzeResponse>('/analyze', payload)
   return data
 }
 

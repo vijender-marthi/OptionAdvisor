@@ -20,6 +20,7 @@ import {
 } from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
+import { normalizePortfolioExpiryIso, resolvePortfolioAnalyzeData } from '../utils/portfolioAnalysis'
 
 function migrateStoredUser(raw: User | null): User | null {
   if (!raw?.email) return raw
@@ -150,6 +151,12 @@ interface AppContextValue {
   evictCache: (ticker: string) => void
   refreshingTickers: Set<string>
   refreshTicker: (ticker: string) => Promise<void>
+  /** Fetch /analyze for an open position's exact expiry and merge into ticker cache (Portfolio). */
+  ensureAnalysisForPortfolioExpiry: (
+    ticker: string,
+    positionExpiry: string,
+    opts?: { force?: boolean; spreadWidth?: number | null },
+  ) => Promise<void>
   lastBgRefresh: number | null   // timestamp of last background sweep
   isMarketHours: boolean         // true when within 6 AM–4 PM PST weekdays
   refreshWatchlistForAlerts: () => Promise<void>
@@ -257,6 +264,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { userRef.current = user }, [user])
   const tickerCacheRef = useRef(tickerCache)
   useEffect(() => { tickerCacheRef.current = tickerCache }, [tickerCache])
+  const portfolioExpiryFetchRef = useRef<Set<string>>(new Set())
+  const portfolioFetchFailuresRef = useRef<Map<string, number>>(new Map())
 
   // Sync hash (preserve ?token= on activate / reset-password)
   useEffect(() => {
@@ -561,8 +570,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ticker: string, data: AnalyzeResponse,
     weeksOut: number, spreadWidth: number | null, strategyMode: StrategyMode = 'all',
   ) => {
-    const entry: TickerCacheEntry = { ticker, data, timestamp: Date.now(), weeksOut, spreadWidth, strategyMode }
-    setTickerCache(prev => ({ ...prev, [ticker]: entry }))
+    setTickerCache(prev => {
+      const old = prev[ticker]
+      const entry: TickerCacheEntry = {
+        ticker,
+        data,
+        timestamp: Date.now(),
+        weeksOut,
+        spreadWidth,
+        strategyMode,
+        portfolioByExpiry: old?.portfolioByExpiry,
+        multiWeekData: old?.multiWeekData,
+        multiWeekTimestamp: old?.multiWeekTimestamp,
+      }
+      return { ...prev, [ticker]: entry }
+    })
     // Also update lastPrice on matching watchlist item
     setWatchlist(prev => prev.map(w =>
       w.ticker === ticker
@@ -681,6 +703,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [scanCachedTickerForGoAlerts])
 
+  const ensureAnalysisForPortfolioExpiry = useCallback(async (
+    ticker: string,
+    positionExpiry: string,
+    opts?: { force?: boolean; spreadWidth?: number | null },
+  ) => {
+    const norm = normalizePortfolioExpiryIso(positionExpiry)
+    const inflightKey = `${ticker}|${norm}`
+    if (!opts?.force && resolvePortfolioAnalyzeData(tickerCacheRef.current[ticker], positionExpiry)) return
+    const failedAt = portfolioFetchFailuresRef.current.get(inflightKey)
+    if (!opts?.force && failedAt != null && Date.now() - failedAt < 60_000) return
+    if (portfolioExpiryFetchRef.current.has(inflightKey)) return
+
+    portfolioExpiryFetchRef.current.add(inflightKey)
+    try {
+      const existing = tickerCacheRef.current[ticker]
+      const spreadWidth =
+        opts?.spreadWidth !== undefined ? opts.spreadWidth : existing?.spreadWidth ?? null
+      const strategyMode = (existing?.strategyMode ?? 'all') as StrategyMode
+      const expMs = new Date(`${norm}T12:00:00`).getTime()
+      const dte = Math.ceil((expMs - Date.now()) / 86400000)
+      const weeksOut = Math.max(2, Math.min(8, Math.round(dte / 7) || 2))
+
+      const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode, norm)
+      const portfolioByExpiry = { ...(existing?.portfolioByExpiry ?? {}), [norm]: data }
+      const hadPrimary = !!existing?.data
+      const entry: TickerCacheEntry = {
+        ticker,
+        data: hadPrimary ? existing!.data : data,
+        timestamp: hadPrimary ? existing!.timestamp : Date.now(),
+        weeksOut: hadPrimary ? existing!.weeksOut : weeksOut,
+        spreadWidth: hadPrimary ? existing!.spreadWidth : spreadWidth,
+        strategyMode: hadPrimary ? existing!.strategyMode : strategyMode,
+        multiWeekData: existing?.multiWeekData,
+        multiWeekTimestamp: existing?.multiWeekTimestamp,
+        portfolioByExpiry,
+      }
+
+      tickerCacheRef.current = { ...tickerCacheRef.current, [ticker]: entry }
+      setTickerCache(prev => ({ ...prev, [ticker]: entry }))
+      setWatchlist(prev => prev.map(w =>
+        w.ticker === ticker
+          ? { ...w, lastPrice: data.signals.current_price, companyName: data.company_name, sector: data.sector }
+          : w
+      ))
+      portfolioFetchFailuresRef.current.delete(inflightKey)
+      await scanCachedTickerForGoAlerts(ticker)
+    } catch (e) {
+      console.warn(`[portfolio] fetch analysis failed for ${ticker} ${norm}:`, e)
+      portfolioFetchFailuresRef.current.set(inflightKey, Date.now())
+    } finally {
+      portfolioExpiryFetchRef.current.delete(inflightKey)
+    }
+  }, [scanCachedTickerForGoAlerts])
+
   // ── refreshTicker: re-fetch one ticker and update cache ─────────────────────
   const refreshTicker = useCallback(async (ticker: string) => {
     const existing = tickerCacheRef.current[ticker]
@@ -692,7 +768,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // ONE Yahoo API fetch — used for both cache update AND alert scanning
       const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
-      const entry: TickerCacheEntry = { ticker, data, timestamp: Date.now(), weeksOut, spreadWidth, strategyMode }
+      const entry: TickerCacheEntry = {
+        ticker,
+        data,
+        timestamp: Date.now(),
+        weeksOut,
+        spreadWidth,
+        strategyMode,
+        portfolioByExpiry: existing?.portfolioByExpiry,
+        multiWeekData: existing?.multiWeekData,
+        multiWeekTimestamp: existing?.multiWeekTimestamp,
+      }
       tickerCacheRef.current = { ...tickerCacheRef.current, [ticker]: entry }
       setTickerCache(prev => ({ ...prev, [ticker]: entry }))
       setWatchlist(prev => prev.map(w =>
@@ -851,7 +937,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       watchlist, addToWatchlist, removeFromWatchlist, isWatched,
       portfolio, addToPortfolio, addManualPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
-      refreshingTickers, refreshTicker, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
+      refreshingTickers, refreshTicker, ensureAnalysisForPortfolioExpiry, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,
       fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
       alerts, unreadAlertCount, dismissAlert, clearAlerts,
       theme, toggleTheme,

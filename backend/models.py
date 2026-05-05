@@ -10,6 +10,9 @@ class AnalyzeRequest(BaseModel):
     weeks_out: int = 4
     spread_width: Optional[int] = None   # 5, 10, or None (auto)
     strategy_mode: str = 'all'           # 'all' | 'long_only' | 'credit_only' | 'short_or_covered' | 'straddle_only'
+    # When set (YYYY-MM-DD), load that listed expiry's chain instead of pick_expiry_by_dte(weeks_out).
+    # Used by Portfolio so MTM matches the position's expiry without visiting the ticker page first.
+    chain_expiry: Optional[str] = None
 
 
 class AlertItem(BaseModel):
