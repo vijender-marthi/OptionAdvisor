@@ -258,7 +258,7 @@ This repo includes `.github/workflows/deploy-production.yml`. It was never wired
 ### What it does
 
 - **Manual:** GitHub → **Actions** → **Deploy to production** → **Run workflow** (optional branch/tag input; default `main`).
-- **Automatic:** Pushing a **version tag** matching `v*` (for example `v1.04`) also starts a deploy run.
+- **Automatic:** Pushing a **version tag** matching `v`* (for example `v1.04`) also starts a deploy run.
 
 Each run SSHs into the droplet and executes the same steps as §10 (fetch/checkout ref, `pip install`, `npm ci`, `npm run build`, `rsync`, restart services).
 
@@ -266,17 +266,19 @@ Each run SSHs into the droplet and executes the same steps as §10 (fetch/checko
 
 In the repo on GitHub: **Settings → Secrets and variables → Actions**, add:
 
-| Secret | Example |
-| --- | --- |
-| `PRODUCTION_HOST` | Droplet hostname or IP |
-| `PRODUCTION_USER` | `fluxtrade` (or your deploy UNIX user) |
+
+| Secret               | Example                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `PRODUCTION_HOST`    | Droplet hostname or IP                                                                        |
+| `PRODUCTION_USER`    | `fluxtrade` (or your deploy UNIX user)                                                        |
 | `PRODUCTION_SSH_KEY` | Private key whose **public** half is in `~/.ssh/authorized_keys` on the droplet for that user |
+
 
 Use a **dedicated deploy key** for Actions (do not reuse your laptop’s personal key).
 
 ### One-time droplet setup for CI
 
-1. **`git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
+1. `**git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
 2. **Passwordless sudo** for the deploy user so the workflow can restart services:
 
 ```bash
@@ -289,10 +291,40 @@ Example (adjust username):
 fluxtrade ALL=(ALL) NOPASSWD: /bin/systemctl restart optionadvisor, /bin/systemctl reload nginx
 ```
 
-3. **`rsync`** to `/var/www/optionadvisor` must succeed without a password (ownership like §10).
+3. `**rsync**` to `/var/www/optionadvisor` must succeed without a password (ownership like §10).
 
 ### Troubleshooting
 
 - Workflow stuck or failing SSH: confirm firewall allows GitHub Actions IPs if restricted; verify `PRODUCTION_HOST` / key / user.
 - `git fetch` fails on server: fix Git credentials on the droplet for `origin`.
 - `sudo`: extend the sudoers line if you add commands (keep entries minimal).
+
+#### Sudo password errors (GitHub Actions)
+
+If logs show either message:
+
+- `sudo: a terminal is required to read the password`
+- `sudo: a password is required`
+
+GitHub Actions uses **non-interactive** SSH: there is no TTY, so `sudo` cannot prompt for a password. The deploy user needs **passwordless** sudo, but **only** for the two commands the workflow runs: `sudo systemctl restart optionadvisor` and `sudo systemctl reload nginx`.
+
+Configure `NOPASSWD` with the **resolved path** for `systemctl`. The workflow calls `sudo systemctl …` (not `/bin/systemctl`); on Ubuntu `systemctl` is `/bin/systemctl`. Sudoers matches the command path after resolution, so use `/bin/systemctl` in the rule and allow **no other** commands via this line.
+
+Edit the drop-in sudoers file (adjust username if not `fluxtrade`):
+
+```bash
+sudo visudo -f /etc/sudoers.d/optionadvisor-deploy
+```
+
+```text
+fluxtrade ALL=(ALL) NOPASSWD: /bin/systemctl restart optionadvisor, /bin/systemctl reload nginx
+```
+
+As the **deploy user**, confirm passwordless sudo works (must exit 0 with no prompt):
+
+```bash
+sudo -n systemctl reload nginx
+```
+
+You can also run `sudo -n systemctl restart optionadvisor` once to verify the restart rule (brief backend interruption).
+

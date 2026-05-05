@@ -411,77 +411,150 @@ def _get_15_min_window(ts_ms: int) -> str:
 
 
 def _build_alert_html(email: str, alerts: list, user_name: str | None = None) -> str:
-    """Render a clean HTML email for GO-trade alerts."""
+    """Render HTML for GO-trade alerts: high-contrast light default; dark when client prefers dark."""
     display_name = (user_name or "").strip() or email
     rows_html = ""
     for a in alerts:
-        pop_pct  = f"{round(a.pop * 100)}%"
-        ev_str   = f"${round(a.ev * 100, 0):+.0f}"  # per contract
-        profit   = f"${round(a.max_profit * 100, 0):.0f}"
-        loss     = f"${round(a.max_loss * 100, 0):.0f}"
-        credit   = f"${round(a.net_credit * 100, 2):.2f}" if a.net_credit > 0 else f"-${round(abs(a.net_credit) * 100, 2):.2f}"
-        bias_color = "#22c55e" if "bull" in a.bias.lower() else "#ef4444" if "bear" in a.bias.lower() else "#f59e0b"
+        pop_pct = f"{round(a.pop * 100)}%"
+        ev_str = f"${round(a.ev * 100, 0):+.0f}"  # per contract
+        profit = f"${round(a.max_profit * 100, 0):.0f}"
+        loss = f"${round(a.max_loss * 100, 0):.0f}"
+        credit = f"${round(a.net_credit * 100, 2):.2f}" if a.net_credit > 0 else f"-${round(abs(a.net_credit) * 100, 2):.2f}"
+        bias_color = "#15803d" if "bull" in a.bias.lower() else "#b91c1c" if "bear" in a.bias.lower() else "#b45309"
+        ev_cls = "oa-ev-pos" if a.ev > 0 else "oa-ev-neg"
         rows_html += f"""
-        <tr style="border-bottom:1px solid #2d2d3a;">
-          <td style="padding:10px 12px;font-weight:700;color:#e2e8f0;">{a.ticker}</td>
-          <td style="padding:10px 12px;color:#a78bfa;font-weight:600;">{a.strategy}</td>
-          <td style="padding:10px 12px;color:{bias_color};">{a.bias}</td>
-          <td style="padding:10px 12px;color:#94a3b8;">{a.expiry} ({a.dte}d)</td>
-          <td style="padding:10px 12px;color:#4ade80;font-family:monospace;">{profit}</td>
-          <td style="padding:10px 12px;color:#f87171;font-family:monospace;">{loss}</td>
-          <td style="padding:10px 12px;color:#e2e8f0;font-family:monospace;">{credit}</td>
-          <td style="padding:10px 12px;color:#e2e8f0;font-family:monospace;">{pop_pct}</td>
-          <td style="padding:10px 12px;color:{'#4ade80' if a.ev > 0 else '#f87171'};font-family:monospace;">{ev_str}</td>
-          <td style="padding:10px 12px;text-align:center;">
-            <span style="background:#166534;color:#4ade80;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">✅ GO</span>
-          </td>
+        <tr class="oa-tr">
+          <td class="oa-td oa-tick">{a.ticker}</td>
+          <td class="oa-td oa-strat">{a.strategy}</td>
+          <td class="oa-td oa-bias" style="color:{bias_color} !important;">{a.bias}</td>
+          <td class="oa-td oa-muted">{a.expiry} ({a.dte}d)</td>
+          <td class="oa-td oa-pos">{profit}</td>
+          <td class="oa-td oa-neg">{loss}</td>
+          <td class="oa-td oa-num">{credit}</td>
+          <td class="oa-td oa-num">{pop_pct}</td>
+          <td class="oa-td oa-num {ev_cls}">{ev_str}</td>
+          <td class="oa-td" style="text-align:center;"><span class="oa-go">✅ GO</span></td>
         </tr>"""
 
     window_label = alerts[0].time_window if alerts else ""
     count = len(alerts)
     plural = "trade" if count == 1 else "trades"
 
+    # Light theme = default (readable in Gmail/Apple light). Dark via prefers-color-scheme where supported.
     return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#0f0f17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:780px;margin:32px auto;background:#1a1a2e;border-radius:16px;overflow:hidden;border:1px solid #2d2d3a;">
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style>
+    body {{ margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }}
+    .oa-root {{
+      background: #f1f5f9 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }}
+    .oa-shell {{
+      max-width: 780px; margin: 24px auto; border-radius: 16px; overflow: hidden;
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+    }}
+    .oa-body-pad {{ padding: 24px 28px; }}
+    .oa-intro {{ color: #334155 !important; font-size: 13px; margin: 0 0 20px; line-height: 1.55; }}
+    .oa-intro strong {{ color: #0f172a !important; }}
+    .oa-accent {{ color: #5b21b6 !important; }}
+    .oa-table-wrap {{
+      overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0 !important;
+      background: #f8fafc !important;
+    }}
+    table.oa-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    .oa-th-row th {{
+      padding: 10px 12px; text-align: left; font-weight: 600; text-transform: uppercase;
+      font-size: 11px; letter-spacing: 0.06em; background: #e2e8f0 !important; color: #475569 !important;
+    }}
+    .oa-td {{ padding: 10px 12px; border-bottom: 1px solid #e2e8f0 !important; }}
+    .oa-tr:last-child .oa-td {{ border-bottom: none !important; }}
+    .oa-tick {{ font-weight: 700; color: #0f172a !important; }}
+    .oa-strat {{ font-weight: 600; color: #5b21b6 !important; }}
+    .oa-muted {{ color: #475569 !important; }}
+    .oa-pos {{ color: #15803d !important; font-family: ui-monospace, monospace; }}
+    .oa-neg {{ color: #b91c1c !important; font-family: ui-monospace, monospace; }}
+    .oa-num {{ color: #0f172a !important; font-family: ui-monospace, monospace; }}
+    .oa-ev-pos {{ color: #15803d !important; }}
+    .oa-ev-neg {{ color: #b91c1c !important; }}
+    .oa-go {{
+      display: inline-block; background: #dcfce7 !important; color: #166534 !important;
+      padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;
+    }}
+    .oa-disclaimer {{ color: #64748b !important; font-size: 11px; margin: 20px 0 0; line-height: 1.6; }}
+    .oa-footer {{
+      background: #f1f5f9 !important; padding: 14px 28px;
+      border-top: 1px solid #e2e8f0 !important;
+    }}
+    .oa-footer span {{ color: #64748b !important; font-size: 11px; }}
 
-    <!-- Header -->
+    @media (prefers-color-scheme: dark) {{
+      .oa-root {{ background: #0f0f17 !important; }}
+      .oa-shell {{
+        background: #1a1a2e !important;
+        border-color: #2d2d3a !important;
+        box-shadow: none;
+      }}
+      .oa-intro {{ color: #94a3b8 !important; }}
+      .oa-intro strong {{ color: #e2e8f0 !important; }}
+      .oa-accent {{ color: #c4b5fd !important; }}
+      .oa-table-wrap {{ border-color: #2d2d3a !important; background: #14141f !important; }}
+      .oa-th-row th {{ background: #252538 !important; color: #94a3b8 !important; }}
+      .oa-td {{ border-bottom-color: #2d2d3a !important; }}
+      .oa-tick {{ color: #f1f5f9 !important; }}
+      .oa-strat {{ color: #c4b5fd !important; }}
+      .oa-muted {{ color: #94a3b8 !important; }}
+      .oa-num {{ color: #e2e8f0 !important; }}
+      .oa-pos {{ color: #4ade80 !important; }}
+      .oa-neg {{ color: #f87171 !important; }}
+      .oa-ev-pos {{ color: #4ade80 !important; }}
+      .oa-ev-neg {{ color: #f87171 !important; }}
+      .oa-go {{ background: #166534 !important; color: #bbf7d0 !important; }}
+      .oa-disclaimer {{ color: #94a3b8 !important; }}
+      .oa-footer {{ background: #12121e !important; border-top-color: #2d2d3a !important; }}
+      .oa-footer span {{ color: #94a3b8 !important; }}
+    }}
+  </style>
+</head>
+<body class="oa-root">
+  <div class="oa-shell">
     <div style="background:linear-gradient(135deg,#4c1d95,#312e81);padding:24px 28px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="width:36px;height:36px;background:#7c3aed;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;">📈</div>
         <div>
           <div style="font-size:18px;font-weight:800;color:#fff;">OptionAdvisor — GO Trade Alert</div>
-          <div style="font-size:13px;color:#c4b5fd;margin-top:2px;">{count} new {plural} passed all checklist criteria · {window_label}</div>
+          <div style="font-size:13px;color:#e9d5ff;margin-top:2px;">{count} new {plural} passed all checklist criteria · {window_label}</div>
         </div>
       </div>
     </div>
 
-    <!-- Body -->
-    <div style="padding:24px 28px;">
-      <p style="color:#94a3b8;font-size:13px;margin:0 0 20px;">
-        Hi <strong style="color:#e2e8f0;">{display_name}</strong>, the systematic engine found
-        <strong style="color:#e2e8f0;">{count} GO {plural}</strong> across your watchlist
-        in the <strong style="color:#a78bfa;">{window_label}</strong> scan window.
+    <div class="oa-body-pad">
+      <p class="oa-intro">
+        Hi <strong>{display_name}</strong>, the systematic engine found
+        <strong>{count} GO {plural}</strong> across your watchlist
+        in the <strong class="oa-accent">{window_label}</strong> scan window.
         These passed all 10 pre-trade checks — no hard fails, no soft fails.
       </p>
 
-      <!-- Table -->
-      <div style="overflow-x:auto;border-radius:12px;border:1px solid #2d2d3a;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <div class="oa-table-wrap">
+        <table class="oa-table" role="presentation">
           <thead>
-            <tr style="background:#252538;text-align:left;">
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Ticker</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Strategy</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Bias</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Expiry</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Max Profit</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Max Loss</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Credit</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">PoP</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">EV/cont.</th>
-              <th style="padding:10px 12px;color:#64748b;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.06em;">Verdict</th>
+            <tr class="oa-th-row">
+              <th>Ticker</th>
+              <th>Strategy</th>
+              <th>Bias</th>
+              <th>Expiry</th>
+              <th>Max Profit</th>
+              <th>Max Loss</th>
+              <th>Credit</th>
+              <th>PoP</th>
+              <th>EV/cont.</th>
+              <th>Verdict</th>
             </tr>
           </thead>
           <tbody>{rows_html}
@@ -489,17 +562,15 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
         </table>
       </div>
 
-      <!-- Disclaimer -->
-      <p style="color:#475569;font-size:11px;margin:20px 0 0;line-height:1.6;">
+      <p class="oa-disclaimer">
         ⚠️ This is a systematic screen, not investment advice. Always verify the trade in the app before placing an order.
         Options trading involves substantial risk of loss.
       </p>
     </div>
 
-    <!-- Footer -->
-    <div style="background:#12121e;padding:14px 28px;display:flex;justify-content:space-between;align-items:center;">
-      <span style="color:#334155;font-size:11px;">OptionAdvisor Systematic Engine v2</span>
-      <span style="color:#334155;font-size:11px;">Alerts sent to {display_name} &lt;{email}&gt;</span>
+    <div class="oa-footer" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <span>OptionAdvisor Systematic Engine v2</span>
+      <span>Alerts sent to {display_name} &lt;{email}&gt;</span>
     </div>
   </div>
 </body>
@@ -541,13 +612,40 @@ def send_test_email(req: TestEmailRequest):
 
     try:
         subject = "OptionAdvisor email test"
-        html = f"""
-            <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a;">
-              <h2>OptionAdvisor email test</h2>
-              <p>This confirms your email provider (SendGrid or SMTP) can send from the OptionAdvisor backend.</p>
-              <p style="color:#475569;font-size:12px;">Sent to {email}</p>
-            </div>
-            """
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style>
+    body {{ margin: 0; padding: 24px; -webkit-font-smoothing: antialiased;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f1f5f9; line-height: 1.55; }}
+    .oa-test-card {{
+      max-width: 560px; margin: 0 auto; padding: 24px 28px; border-radius: 16px;
+      background: #ffffff; border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06); }}
+    .oa-test-h2 {{ color: #0f172a; font-size: 20px; margin: 0 0 12px; }}
+    .oa-test-p {{ color: #334155; font-size: 14px; margin: 0 0 12px; }}
+    .oa-test-meta {{ color: #64748b; font-size: 12px; margin: 16px 0 0; }}
+    @media (prefers-color-scheme: dark) {{
+      body {{ background: #0f0f17; }}
+      .oa-test-card {{ background: #1a1a2e; border-color: #2d2d3a; box-shadow: none; }}
+      .oa-test-h2 {{ color: #f1f5f9; }}
+      .oa-test-p {{ color: #94a3b8; }}
+      .oa-test-meta {{ color: #94a3b8; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="oa-test-card">
+    <h2 class="oa-test-h2">OptionAdvisor email test</h2>
+    <p class="oa-test-p">This confirms your email provider (SendGrid or SMTP) can send from the OptionAdvisor backend.</p>
+    <p class="oa-test-meta">Sent to {email}</p>
+  </div>
+</body>
+</html>"""
         used = _deliver_html_email(email, req.user_name, subject, html)
         return {"sent": True, "message": f"Test email sent to {email} ({used})"}
     except Exception as e:

@@ -2,6 +2,10 @@
 #
 # Setup (once): add repo Secrets — PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY
 # Server: deploy user needs passwordless sudo for systemctl + writable /opt/optionadvisor & frontend build.
+# Non-interactive SSH cannot prompt: NOPASSWD in sudoers must allow only
+#   /bin/systemctl restart optionadvisor
+#   /bin/systemctl reload nginx
+# (paths as resolved from `sudo systemctl` — see DEPLOY_DIGITALOCEAN.md §11 Troubleshooting.)
 # See DEPLOY_DIGITALOCEAN.md § "GitHub Actions production deploy".
 
 name: Deploy to production

@@ -8,7 +8,8 @@ function getWelcomeKey(email: string) {
 }
 
 export default function FirstLoginHelpModal() {
-  const { user, navigate, userDataLoaded, needsAdvisoryAcknowledgement } = useApp()
+  const { user, navigate, userDataLoaded, needsAdvisoryAcknowledgement, theme } = useApp()
+  const isLight = theme === 'light'
   const [open, setOpen] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const storageKey = useMemo(() => user?.email ? getWelcomeKey(user.email) : null, [user?.email])
@@ -85,23 +86,47 @@ export default function FirstLoginHelpModal() {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-950/75 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-gray-800 px-6 py-5">
+    <div
+      className={`fixed inset-0 z-[100] flex items-center justify-center px-4 backdrop-blur-sm ${
+        isLight ? 'bg-slate-900/40' : 'bg-gray-950/75'
+      }`}
+    >
+      <div
+        className={`w-full max-w-xl rounded-2xl border shadow-2xl ${
+          isLight ? 'border-slate-200 bg-white' : 'border-gray-800 bg-gray-900'
+        }`}
+      >
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${
+            isLight ? 'border-slate-200' : 'border-gray-800'
+          }`}
+        >
           <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-700/50 bg-violet-950/50 px-3 py-1 text-xs font-semibold text-violet-300">
+            <div
+              className={`mb-2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                isLight
+                  ? 'border-violet-200 bg-violet-50 text-violet-800'
+                  : 'border-violet-700/50 bg-violet-950/50 text-violet-300'
+              }`}
+            >
               <HelpCircle size={14} />
               Interactive quick start
             </div>
-            <h2 className="text-xl font-bold text-white">Welcome to OptionAdvisor</h2>
-            <p className="mt-1 text-sm text-gray-400">
+            <h2 className={`text-xl font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>
+              Welcome to OptionAdvisor
+            </h2>
+            <p className={`mt-1 text-sm ${isLight ? 'text-slate-600' : 'text-gray-400'}`}>
               Step {currentStep + 1} of {steps.length}
             </p>
           </div>
           <button
             type="button"
             onClick={close}
-            className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            className={`rounded-lg p-2 transition-colors ${
+              isLight
+                ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'
+            }`}
             aria-label="Close welcome message"
           >
             <X size={18} />
@@ -109,12 +134,24 @@ export default function FirstLoginHelpModal() {
         </div>
 
         <div className="px-6 py-6">
-          <div className="rounded-2xl border border-gray-800 bg-gray-950/70 p-6 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-900/70 text-violet-300">
+          <div
+            className={`rounded-2xl border p-6 text-center ${
+              isLight ? 'border-slate-200 bg-slate-50' : 'border-gray-800 bg-gray-950/70'
+            }`}
+          >
+            <div
+              className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${
+                isLight ? 'bg-violet-100 text-violet-700' : 'bg-violet-900/70 text-violet-300'
+              }`}
+            >
               {step.icon}
             </div>
-            <h3 className="text-lg font-bold text-gray-100">{step.title}</h3>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-400">{step.body}</p>
+            <h3 className={`text-lg font-bold ${isLight ? 'text-slate-800' : 'text-gray-100'}`}>{step.title}</h3>
+            <p
+              className={`mx-auto mt-3 max-w-md text-sm leading-relaxed ${isLight ? 'text-slate-600' : 'text-gray-400'}`}
+            >
+              {step.body}
+            </p>
             <button
               type="button"
               onClick={() => openPage(step.page)}
@@ -131,7 +168,11 @@ export default function FirstLoginHelpModal() {
                 type="button"
                 onClick={() => setCurrentStep(index)}
                 className={`h-2.5 rounded-full transition-all ${
-                  index === currentStep ? 'w-8 bg-violet-400' : 'w-2.5 bg-gray-700 hover:bg-gray-600'
+                  index === currentStep
+                    ? 'w-8 bg-violet-500'
+                    : isLight
+                      ? 'w-2.5 bg-slate-300 hover:bg-slate-400'
+                      : 'w-2.5 bg-gray-700 hover:bg-gray-600'
                 }`}
                 aria-label={`Show step ${index + 1}`}
               />
@@ -139,11 +180,17 @@ export default function FirstLoginHelpModal() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-gray-800 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className={`flex flex-col gap-3 border-t px-6 py-5 sm:flex-row sm:items-center sm:justify-between ${
+            isLight ? 'border-slate-200' : 'border-gray-800'
+          }`}
+        >
           <button
             type="button"
             onClick={close}
-            className="text-sm font-semibold text-gray-500 transition-colors hover:text-gray-300"
+            className={`text-sm font-semibold transition-colors ${
+              isLight ? 'text-slate-500 hover:text-slate-700' : 'text-gray-500 hover:text-gray-300'
+            }`}
           >
             Skip tour
           </button>
@@ -152,7 +199,11 @@ export default function FirstLoginHelpModal() {
               type="button"
               onClick={() => setCurrentStep(step => Math.max(0, step - 1))}
               disabled={currentStep === 0}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                isLight
+                  ? 'border-slate-200 text-slate-800 hover:bg-slate-100'
+                  : 'border-gray-700 text-gray-200 hover:bg-gray-800'
+              }`}
             >
               <ChevronLeft size={16} />
               Back
