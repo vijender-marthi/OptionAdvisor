@@ -640,7 +640,7 @@ export default function JournalPage() {
           onClick={handleRefresh}
           disabled={refreshing || loading}
           aria-label={refreshing ? 'Refreshing P&L' : 'Refresh journal P&L'}
-          title="Refresh journal P&L from market data"
+          title="Refresh"
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center bg-gray-800 border border-gray-700
                      text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
                      transition-colors disabled:opacity-50"

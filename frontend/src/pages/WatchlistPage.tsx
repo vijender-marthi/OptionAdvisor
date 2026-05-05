@@ -193,7 +193,7 @@ function TickerRow({
             type="button"
             onClick={onAnalyze}
             aria-label={`Analyze ${item.ticker}`}
-            title="Analyze ticker"
+            title={`Analyze ${item.ticker}`}
             className="inline-flex h-9 w-9 items-center justify-center bg-violet-600/20 hover:bg-violet-600/40
                        border border-violet-700/50 text-violet-300 rounded-xl transition-colors shrink-0"
           >
@@ -204,7 +204,7 @@ function TickerRow({
             onClick={onRefresh}
             disabled={refreshing}
             aria-label="Refresh ticker data"
-            title="Refresh"
+            title={`Refresh ${item.ticker}`}
             className="inline-flex h-9 w-9 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400
                        hover:text-gray-200 rounded-xl transition-colors disabled:opacity-40 shrink-0"
           >
@@ -221,8 +221,9 @@ function TickerRow({
             </button>
           )}
           <button
+            type="button"
             onClick={onRemove}
-            title="Remove"
+            title={`Remove ${item.ticker} from watchlist`}
             className="p-1.5 bg-gray-800 hover:bg-red-900/30 border border-gray-700
                        text-gray-500 hover:text-red-400 rounded-xl transition-colors"
           >
@@ -421,7 +422,7 @@ export default function WatchlistPage() {
                 onClick={refreshAll}
                 disabled={anyRefreshing}
                 aria-label="Refresh all cached watchlist tickers"
-                title="Refresh all cached tickers"
+                title="Refresh"
                 className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
                            text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
                            transition-colors disabled:opacity-50 shrink-0"

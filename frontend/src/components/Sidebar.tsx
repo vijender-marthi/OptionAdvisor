@@ -8,6 +8,7 @@ import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole, roleLabel } from '../permissions'
 import ThemeToggle from './ThemeToggle'
+import BetaProductTag from './BetaProductTag'
 
 type ProfileRole = 'user' | 'admin' | 'finance'
 
@@ -84,17 +85,9 @@ export default function Sidebar() {
 
   const navGroups: NavGroup[] = [
     {
-      label: 'Discover',
-      items: [
-        { id: 'ai-stocks', label: 'AI Radar',    icon: <Brain         size={18} /> },
-        { id: 'q-radar',   label: 'Q Radar',    icon: <Atom          size={18} /> },
-        { id: 'backtest',  label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
-      ],
-    },
-    {
       label: 'Analyze',
       items: [
-        { id: 'ticker',        label: 'Option Advisory', icon: <TrendingUp size={18} /> },
+        { id: 'ticker',        label: 'Strategy Finder', icon: <TrendingUp size={18} /> },
         { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={18} /> },
       ],
     },
@@ -108,22 +101,30 @@ export default function Sidebar() {
         ...(canAccessPage('auto-trade') ? [{ id: 'auto-trade' as const, label: 'Auto Trade', icon: <Zap size={18} /> }] : []),
       ],
     },
+    {
+      label: 'Discover',
+      items: [
+        { id: 'ai-stocks', label: 'AI Radar',    icon: <Brain         size={18} /> },
+        { id: 'q-radar',   label: 'Q Radar',    icon: <Atom          size={18} /> },
+        { id: 'backtest',  label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+      ],
+    },
   ]
 
   const w = collapsed ? 'w-16' : 'w-56'
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'ticker',        label: 'Home', icon: <TrendingUp size={18} /> },
+    { id: 'ticker',        label: 'Strategy Finder', icon: <TrendingUp size={18} /> },
     { id: 'trade-signals', label: 'Signals', icon: <ShieldCheck size={18} /> },
     { id: 'watchlist',     label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
     { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
     { id: 'alerts',        label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
   ]
   const mobileMoreItems: NavItem[] = [
+    { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },
-    { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
     { id: 'settings',  label: 'Settings',   icon: <Settings size={18} /> },
     { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
   ]
@@ -151,8 +152,11 @@ export default function Sidebar() {
           <BarChart2 size={16} className="text-white" />
         </div>
         {!collapsed && (
-          <div>
-            <div className="text-sm font-semibold text-white leading-tight">OptionAdvisor</div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-sm font-semibold text-white leading-tight">OptionAdvisor</span>
+              <BetaProductTag />
+            </div>
             <div className="text-[10px] text-gray-500 leading-tight">Systematic Engine v2</div>
           </div>
         )}
@@ -177,7 +181,7 @@ export default function Sidebar() {
                   <button
                     key={item.id}
                     onClick={() => navigate(item.id)}
-                    title={collapsed ? item.label : undefined}
+                    title={item.label}
                     className={`relative isolate w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all touch-manipulation
                       ${active
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
@@ -215,7 +219,7 @@ export default function Sidebar() {
       <div className="border-t border-gray-800 p-1.5 space-y-0.5 shrink-0">
         <button
           onClick={() => navigate('settings')}
-          title={collapsed ? 'Settings' : undefined}
+          title="Settings"
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
             ${page === 'settings'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
@@ -228,7 +232,7 @@ export default function Sidebar() {
 
         <button
           onClick={() => navigate('help')}
-          title={collapsed ? 'Help' : undefined}
+          title="Help"
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
             ${page === 'help'
               ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
@@ -244,6 +248,7 @@ export default function Sidebar() {
         {user && (
           <div
             data-profile-role={pr}
+            title={collapsed ? `${user.name} — ${user.email}` : undefined}
             className={`flex items-center gap-2 px-2.5 py-2 rounded-lg ${pf.card} ${collapsed ? 'justify-center' : ''}`}
           >
             <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${pf.avatar}`}>
@@ -279,7 +284,9 @@ export default function Sidebar() {
 
         {/* Collapse toggle */}
         <button
+          type="button"
           onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-gray-600 hover:text-gray-400 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           {collapsed ? <ChevronRight size={14} /> : <><ChevronLeft size={14} /><span>Collapse</span></>}
@@ -314,6 +321,7 @@ export default function Sidebar() {
                       key={item.id}
                       type="button"
                       onClick={() => handleMobileNavigate(item.id)}
+                      title={item.label}
                       className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors touch-manipulation ${
                         active
                           ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
@@ -341,6 +349,7 @@ export default function Sidebar() {
                     toggleTheme()
                     setPhoneMenuOpen(false)
                   }}
+                  title={isLight ? 'Dark theme' : 'Light theme'}
                   className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800"
                 >
                   {isLight ? <Moon size={18} className="shrink-0" /> : <Sun size={18} className="shrink-0" />}
@@ -353,6 +362,7 @@ export default function Sidebar() {
                       logout()
                       setPhoneMenuOpen(false)
                     }}
+                    title="Sign out"
                     className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-red-800 hover:bg-red-900/20 hover:text-red-300"
                   >
                     <LogOut size={18} className="shrink-0" />
@@ -366,8 +376,9 @@ export default function Sidebar() {
       <button
         type="button"
         onClick={() => setPhoneMenuOpen(open => !open)}
-        aria-expanded={phoneMenuOpen}
-        className="mobile-floating-menu-button flex h-14 min-w-14 items-center justify-center gap-2 rounded-full border border-violet-700/60 bg-violet-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-violet-950/30"
+          aria-expanded={phoneMenuOpen}
+          title="Menu"
+          className="mobile-floating-menu-button flex h-14 min-w-14 items-center justify-center gap-2 rounded-full border border-violet-700/60 bg-violet-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-violet-950/30"
       >
         <Menu size={20} />
         <span>Menu</span>
@@ -399,6 +410,7 @@ export default function Sidebar() {
                     key={item.id}
                     type="button"
                     onClick={() => handleMobileNavigate(item.id)}
+                    title={item.label}
                     className={`mobile-more-item relative flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors touch-manipulation ${
                       active
                         ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
@@ -421,6 +433,7 @@ export default function Sidebar() {
                   toggleTheme()
                   setMobileMoreOpen(false)
                 }}
+                title={isLight ? 'Dark theme' : 'Light theme'}
                 className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800"
               >
                 {isLight ? <Moon size={18} className="shrink-0" /> : <Sun size={18} className="shrink-0" />}
@@ -433,6 +446,7 @@ export default function Sidebar() {
                     logout()
                     setMobileMoreOpen(false)
                   }}
+                  title="Sign out"
                   className="mobile-more-item flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-800/60 px-3 py-2.5 text-left text-sm font-semibold text-gray-300 transition-colors hover:border-red-800 hover:bg-red-900/20 hover:text-red-300"
                 >
                   <LogOut size={18} className="shrink-0" />
@@ -452,6 +466,7 @@ export default function Sidebar() {
               key={item.id}
               type="button"
               onClick={() => handleMobileNavigate(item.id)}
+              title={item.label}
               className={`mobile-nav-item min-w-[4.75rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors touch-manipulation ${
                 active
                   ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'
@@ -479,6 +494,7 @@ export default function Sidebar() {
           type="button"
           onClick={() => setMobileMoreOpen(open => !open)}
           aria-expanded={mobileMoreOpen}
+          title="More"
           className={`mobile-nav-item min-w-[4.25rem] flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-colors ${
             mobileMoreOpen || mobileMoreActive
               ? 'bg-violet-600/20 text-violet-300 border-violet-700/50'

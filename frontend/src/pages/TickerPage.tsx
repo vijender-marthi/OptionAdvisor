@@ -574,7 +574,7 @@ export default function TickerPage() {
                   onClick={handleRefresh}
                   disabled={loading}
                   aria-label="Refresh analysis"
-                  title="Refresh analysis"
+                  title="Refresh"
                   className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
                              text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl transition-colors justify-self-center sm:justify-self-auto disabled:opacity-50"
                 >

@@ -228,7 +228,7 @@ export default function AlertsPage() {
               onClick={() => refreshWatchlistForAlerts()}
               disabled={scanning}
               aria-label="Scan watchlist for alerts"
-              title="Scan watchlist now"
+              title="Refresh"
               className="inline-flex h-10 w-10 items-center justify-center bg-violet-600/20 border border-violet-700
                          text-violet-300 hover:bg-violet-600/30 rounded-xl
                          transition-colors disabled:opacity-50 shrink-0"
@@ -308,7 +308,7 @@ export default function AlertsPage() {
                   {alerts.filter(a => a.emailSent).length} emails sent
                 </span>
               </div>
-              <span className="text-gray-700">Click a ticker to open Option Advisor on the same expiry as the alert</span>
+              <span className="text-gray-700">Click a ticker to open Strategy Finder on the same expiry as the alert</span>
             </div>
           </div>
         )}

@@ -209,7 +209,7 @@ analyze_user_cache_lock = threading.Lock()
 analysis_cache_lock = threading.Lock()
 analysis_cache: dict[str, tuple[float, AnalyzeResponse]] = {}
 
-app = FastAPI(title="Options Trade Advisor API", version="2.0")
+app = FastAPI(title="Strategy Finder API", version="2.0")
 init_db()
 
 app.add_middleware(
@@ -383,7 +383,7 @@ def _compute_quote_quality_summary(
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "Options Trade Advisor API v2.0"}
+    return {"status": "ok", "message": "Strategy Finder API v2.0"}
 
 
 def _is_market_hours_now() -> bool:

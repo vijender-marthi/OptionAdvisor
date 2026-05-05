@@ -273,7 +273,7 @@ const workflowSteps = [
   },
   {
     step: '3',
-    title: 'Analyze in Option Advisory',
+    title: 'Analyze in Strategy Finder',
     icon: <BarChart2 size={16} />,
     color: 'text-sky-400',
     desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (2–8), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
@@ -460,7 +460,7 @@ export default function HelpPage() {
               Semicon Equipment, Optical Networking, AI Networking, and AI Applications.</span>
             </p>
             <p>
-              Each card shows a one-click Analyze button that loads the ticker directly into Option Advisory with your
+              Each card shows a one-click Analyze button that loads the ticker directly into Strategy Finder with your
               current weeks-out and spread settings. The Watchlist groups tickers using these same categories so you
               always know at a glance which theme a position belongs to.
             </p>
@@ -923,7 +923,7 @@ export default function HelpPage() {
           <div className="space-y-3 text-sm text-gray-400">
             <p>
               The Trade Journal is for <span className="text-gray-200 font-semibold">trades you actually place</span>. You must be signed in.
-              From Option Advisory, expand a recommendation and use <span className="text-violet-300 font-semibold">Save to Journal</span> to
+              From Strategy Finder, expand a recommendation and use <span className="text-violet-300 font-semibold">Save to Journal</span> to
               snapshot the setup (ticker, strategy, legs, scores, bias, etc.).
             </p>
             <div className="grid gap-3 md:grid-cols-2">

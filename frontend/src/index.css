@@ -730,7 +730,7 @@ html.light .q-radar-page input:focus {
   box-shadow: 0 0 0 1px rgba(8,145,178,0.35);
 }
 
-/* Option Advisory / analyzer light mode: same page + card stack as Alerts. */
+/* Strategy Finder / ticker analyzer light mode: same page + card stack as Alerts. */
 html.light .ticker-page {
   color: #0f172a;
 }
@@ -777,7 +777,7 @@ html.light .ticker-page .font-bold {
   letter-spacing: -0.005em;
 }
 
-/* Options Trade Advisor — strategy mode chips: readable on light surfaces */
+/* Strategy Finder — strategy mode chips: readable on light surfaces */
 html.light .ticker-page .strategy-mode-picker > span.strategy-mode-heading {
   color: #0f172a;
 }

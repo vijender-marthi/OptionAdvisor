@@ -4,6 +4,7 @@ import { GoogleLogin } from '@react-oauth/google'
 import { useApp } from '../contexts/AppContext'
 import ThemeToggle from '../components/ThemeToggle'
 import CopyrightFooter from '../components/CopyrightFooter'
+import BetaProductTag from '../components/BetaProductTag'
 
 const googleWebClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
@@ -78,8 +79,11 @@ export default function LoginPage() {
           <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center">
             <BarChart2 size={20} className="text-white" />
           </div>
-          <div>
-            <div className="text-lg font-bold text-white">OptionAdvisor</div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-lg font-bold text-white">OptionAdvisor</span>
+              <BetaProductTag className="scale-110 origin-left" />
+            </div>
             <div className="text-xs text-gray-500">Systematic Engine v2</div>
           </div>
         </div>
@@ -116,11 +120,14 @@ export default function LoginPage() {
 
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-6">
-          <div className="flex lg:hidden items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center">
+          <div className="flex lg:hidden flex-wrap items-center gap-2 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
               <BarChart2 size={15} className="text-white" />
             </div>
-            <span className="font-bold text-white">OptionAdvisor</span>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <span className="font-bold text-white">OptionAdvisor</span>
+              <BetaProductTag />
+            </div>
           </div>
 
           <div>

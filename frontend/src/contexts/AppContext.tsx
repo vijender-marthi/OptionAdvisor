@@ -132,7 +132,7 @@ interface AppContextValue {
   // Router
   page: Page
   navigate: (p: Page) => void
-  /** Go to Options Trade Advisor with empty form (no restore of last analysis). */
+  /** Go to Strategy Finder with empty form (no restore of last analysis). */
   navigateToTickerAdvisorFresh: () => void
 
   // Cross-page ticker handoff

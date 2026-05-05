@@ -804,7 +804,7 @@ function PositionCard({
                 type="button"
                 onClick={() => void onUpdateQuotes()}
                 disabled={isUpdatingQuotes}
-                title="Fetch latest option chain and spot for this expiry (updates Current P&L)"
+                title="Update"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-900/20 hover:bg-cyan-900/35 border border-cyan-800 text-cyan-400 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw size={12} className={isUpdatingQuotes ? 'animate-spin shrink-0' : 'shrink-0'} />
@@ -812,12 +812,21 @@ function PositionCard({
               </button>
             )}
             {!isClosed && (
-              <button onClick={onClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-800 text-emerald-400 text-xs font-semibold rounded-xl transition-colors">
+              <button
+                type="button"
+                onClick={onClose}
+                title="Close position"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-800 text-emerald-400 text-xs font-semibold rounded-xl transition-colors"
+              >
                 <CheckCircle size={12} /> Close
               </button>
             )}
-            <button onClick={onRemove} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors">
+            <button
+              type="button"
+              onClick={onRemove}
+              title="Remove from portfolio"
+              className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+            >
               <Trash2 size={13} />
             </button>
           </div>
@@ -1351,7 +1360,7 @@ export default function PortfolioPage() {
                 className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-300 hover:text-emerald-300 hover:border-emerald-700 rounded-xl
                            transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title="Export the current portfolio view (XLSX or PDF)"
+                title="Export"
               >
                 <Download size={18} />
               </button>
@@ -1388,7 +1397,7 @@ export default function PortfolioPage() {
               className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
                          text-gray-300 hover:text-cyan-300 hover:border-cyan-700 rounded-xl
                          transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-              title="Refresh latest prices for open portfolio positions"
+              title="Refresh"
             >
               <RefreshCw size={18} className={portfolioRefreshActive ? 'animate-spin' : ''} />
             </button>
@@ -1397,12 +1406,14 @@ export default function PortfolioPage() {
               onClick={() => setAddingNew(true)}
               aria-label="Add trade manually"
               className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 rounded-xl transition-colors shrink-0"
-              title="Add trade manually"
+              title="Add trade"
             >
               <Plus size={20} strokeWidth={2.5} />
             </button>
             <button
+              type="button"
               onClick={() => navigateToTickerAdvisorFresh()}
+              title="New Analysis"
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
             >
               <TrendingUp size={14} /> New Analysis

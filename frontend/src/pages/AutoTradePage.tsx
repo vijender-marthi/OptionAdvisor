@@ -106,7 +106,7 @@ function PositionsTable({ positions, onClose }: {
       <div className="text-center py-16 space-y-2">
         <div className="text-4xl">⚡</div>
         <div className="text-lg font-semibold text-gray-300">No open paper positions</div>
-        <div className="text-sm text-gray-500">Execute a recommendation from Option Advisory to see it here.</div>
+        <div className="text-sm text-gray-500">Execute a recommendation from Strategy Finder to see it here.</div>
       </div>
     )
   }
@@ -407,7 +407,7 @@ export default function AutoTradePage() {
               onClick={() => loadAll(true)}
               disabled={refreshing || loading}
               aria-label={refreshing ? 'Refreshing trading data' : 'Refresh trading data'}
-              title="Refresh account, positions, and orders"
+              title="Refresh"
               className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
                          text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
                          transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
@@ -417,8 +417,8 @@ export default function AutoTradePage() {
             <button
               type="button"
               onClick={() => navigate('ticker')}
-              aria-label="Open Option Advisory"
-              title="Open Option Advisory"
+              aria-label="Open Strategy Finder"
+              title="Open Strategy Finder"
               className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
                          text-white rounded-xl transition-colors shrink-0"
             >
@@ -512,7 +512,7 @@ export default function AutoTradePage() {
               <Zap size={16} className="text-violet-400 shrink-0 mt-0.5" />
               <p className="text-sm text-gray-400 leading-relaxed">
                 <span className="font-semibold text-gray-300">Execute trades:</span>{' '}
-                Use <strong className="text-violet-300">Option Advisory</strong>, expand a recommendation, then{' '}
+                Use <strong className="text-violet-300">Strategy Finder</strong>, expand a recommendation, then{' '}
                 <strong className="text-violet-300">Execute Paper Trade</strong> (admins). Orders show under{' '}
                 <span className="text-gray-300">Recent Orders</span>.
               </p>
