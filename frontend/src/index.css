@@ -1476,6 +1476,47 @@ html.light .day-trade-page .border-gray-600\/50 { border-color: rgba(100, 116, 1
 html.light .day-trade-page .bg-violet-600 { background-color: #7c3aed; }
 html.light .day-trade-page .hover\:bg-violet-500:hover { background-color: #6d28d9; }
 
+/* Day Trade Watchlist row chrome — AH/Pre badges, collapsed panel, hover affordances */
+html.light .day-trade-page .bg-black\/25 {
+  background-color: rgba(15, 23, 42, 0.08);
+}
+html.light .day-trade-page .bg-gray-700\/55 {
+  background-color: rgba(241, 245, 249, 0.95);
+}
+html.light .day-trade-page .border-gray-600\/55 {
+  border-color: rgba(100, 116, 139, 0.4);
+}
+html.light .day-trade-page .bg-gray-800\/70 {
+  background-color: rgba(241, 245, 249, 0.88);
+}
+html.light .day-trade-page .border-gray-700\/80 {
+  border-color: rgba(148, 163, 184, 0.52);
+}
+html.light .day-trade-page .bg-violet-500\/18 {
+  background-color: rgba(237, 233, 254, 0.9);
+}
+html.light .day-trade-page .border-violet-500\/35 {
+  border-color: rgba(139, 92, 246, 0.38);
+}
+html.light .day-trade-page .text-violet-200 {
+  color: #5b21b6;
+}
+html.light .day-trade-page .bg-sky-500\/15 {
+  background-color: rgba(224, 242, 254, 0.82);
+}
+html.light .day-trade-page .border-sky-500\/35 {
+  border-color: rgba(14, 165, 233, 0.4);
+}
+html.light .day-trade-page .text-sky-200 {
+  color: #0369a1;
+}
+html.light .day-trade-page .text-gray-600 {
+  color: #475569;
+}
+html.light .day-trade-page .hover\:text-white:hover {
+  color: #0f172a;
+}
+
 /* First-time advisory consent + welcome tour — light theme depth & checkbox */
 html.light .advisory-consent-modal {
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.14);
