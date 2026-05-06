@@ -93,7 +93,7 @@ export default function TickerInput({
           onChange={e => setWeeks(Number(e.target.value))}
         >
           {MULTI_WEEK_TARGETS.map(w => (
-            <option key={w} value={w}>{w === 0 ? '0w (front)' : `${w} weeks out`}</option>
+            <option key={w} value={w}>{w} weeks out</option>
           ))}
         </select>
         <button

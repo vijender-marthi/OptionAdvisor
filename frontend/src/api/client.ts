@@ -109,6 +109,35 @@ export const analyzeOptions = async (
   return data
 }
 
+/** One 1m RTH bar for the day-trade session chart (see metrics.chart_bars). */
+export interface DayTradeChartBar {
+  t: string
+  o: number
+  h: number
+  l: number
+  c: number
+  v: number
+  vwap: number
+}
+
+/** Intraday day-trade scan — verdict tiers: STRONG GO, GO, WATCH, NO-GO, WAIT. */
+export interface DayTradeScanResult {
+  ticker: string
+  company_name: string
+  verdict: 'STRONG GO' | 'GO' | 'WATCH' | 'NO-GO' | 'WAIT'
+  bias: 'long' | 'short' | null
+  bull_score: number
+  bear_score: number
+  reasons: string[]
+  /** Includes chart_bars (OHLCV + session VWAP per bar) for visualization. */
+  metrics: Record<string, unknown>
+}
+
+export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {
+  const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim() })
+  return data
+}
+
 export const getUserData = async (email: string): Promise<UserDataState> => {
   const { data } = await api.get<UserDataState>(`/user-data/${encodeURIComponent(email)}`)
   return data

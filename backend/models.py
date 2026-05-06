@@ -149,6 +149,9 @@ class OptionRowOut(BaseModel):
 
 class PricePoint(BaseModel):
     date: str
+    open: float
+    high: float
+    low: float
     close: float
     ma20: float
     ma50: float
@@ -238,3 +241,18 @@ class BacktestRequest(BaseModel):
     strategy_mode: str = 'all'
     weeks_out: int = 4
     spread_width: Optional[float] = None
+
+
+class DayTradeRequest(BaseModel):
+    ticker: str
+
+
+class DayTradeResponse(BaseModel):
+    ticker: str
+    company_name: str = ""
+    verdict: str  # STRONG GO | GO | WATCH | NO-GO | WAIT
+    bias: Optional[str] = None  # long | short
+    bull_score: float
+    bear_score: float
+    reasons: list[str]
+    metrics: dict

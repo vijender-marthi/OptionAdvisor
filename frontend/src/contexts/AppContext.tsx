@@ -67,6 +67,8 @@ function getHashPage(): Page {
   if (h === 'settings') return 'settings'
   if (h === 'journal') return 'journal'
   if (h === 'auto-trade') return 'auto-trade'
+  if (h === 'day-trade') return 'day-trade'
+  if (h === 'day-trade-watchlist') return 'day-trade-watchlist'
   if (h === 'forgot-password') return 'forgot-password'
   if (h === 'reset-password') return 'reset-password'
   if (h === 'activate') return 'activate'
@@ -152,7 +154,7 @@ interface AppContextValue {
   registerWithPassword: (name: string, email: string, password: string) => Promise<{ needs_activation: boolean; message: string }>
   loginWithGoogleCredential: (credential: string) => Promise<void>
   logout: () => void
-  /** Feature gating: finance users omit discovery radars; admin/user see all pages. */
+  /** Feature gating: finance omits discovery radars; day trading + auto-trade are admin-only; admin/user see the rest. */
   canAccessPage: (p: Page) => boolean
 
   /** Server-backed watchlist/portfolio finished loading for the signed-in user. */

@@ -8,11 +8,15 @@ export function normalizeUserRole(raw: string | undefined | null): UserRole {
 }
 
 const FINANCE_NO_ACCESS: ReadonlySet<Page> = new Set(['ai-stocks', 'q-radar', 'auto-trade'])
-const ADMIN_ONLY: ReadonlySet<Page> = new Set(['auto-trade'])
+const ADMIN_ONLY: ReadonlySet<Page> = new Set([
+  'auto-trade',
+  'day-trade',
+  'day-trade-watchlist',
+])
 
 /**
  * Finance users get analysis, portfolio, journal, alerts, etc., but not stock-discovery radars.
- * auto-trade is admin-only.
+ * auto-trade and Day Trading (engine + watchlist) are admin-only.
  * Admin and standard users have full navigation (except admin-only pages).
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {

@@ -1301,7 +1301,8 @@ html.light .backtest-page,
 html.light .help-page,
 html.light .settings-page,
 html.light .ai-radar-page,
-html.light .q-radar-page {
+html.light .q-radar-page,
+html.light .day-trade-page {
   background-color: var(--light-app-canvas);
 }
 
@@ -1376,3 +1377,109 @@ html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-700.text-white,
 html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-700.text-white,
 html.light :is(.watchlist-page, .trade-signals-page) .bg-red-700.text-white,
 html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600.text-white { color: #ffffff; }
+
+/* Day Trade Engine / Watchlist — light theme (verdict cards, metrics, inputs) */
+html.light .day-trade-page .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
+html.light .day-trade-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light .day-trade-page .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
+html.light .day-trade-page .bg-gray-900\/30 { background-color: var(--light-surface-1-a82); }
+html.light .day-trade-page .bg-gray-950\/50 { background-color: var(--light-surface-1-a90); }
+html.light .day-trade-page .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light .day-trade-page .bg-gray-800\/80 { background-color: var(--light-surface-2-a94); }
+html.light .day-trade-page .hover\:bg-gray-800\/40:hover { background-color: rgba(226, 232, 240, 0.85); }
+html.light .day-trade-page .hover\:bg-gray-800\/50:hover { background-color: rgba(226, 232, 240, 0.9); }
+html.light .day-trade-page .border-gray-800 { border-color: #cbd5e1; }
+html.light .day-trade-page .border-gray-800\/80 { border-color: rgba(148, 163, 184, 0.45); }
+html.light .day-trade-page .border-dashed.border-gray-700 { border-color: #94a3b8; }
+html.light .day-trade-page .border-l.border-gray-800 { border-color: #e2e8f0; }
+html.light .day-trade-page .bg-black\/20 { background-color: rgba(15, 23, 42, 0.06); }
+html.light .day-trade-page input {
+  background-color: var(--light-input-bg, #f1f5f9);
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+html.light .day-trade-page input::placeholder { color: #64748b; }
+html.light .day-trade-page .text-white { color: #0f172a; }
+html.light .day-trade-page .bg-violet-600.text-white,
+html.light .day-trade-page .bg-violet-600 .text-white { color: #ffffff; }
+html.light .day-trade-page .text-gray-100 { color: #0f172a; }
+html.light .day-trade-page .text-gray-200 { color: #1e293b; }
+html.light .day-trade-page .text-gray-300 { color: #1f2937; }
+html.light .day-trade-page .text-gray-400 { color: #334155; }
+html.light .day-trade-page .text-gray-500 { color: #334155; }
+html.light .day-trade-page .border-gray-600 { border-color: #94a3b8; }
+html.light .day-trade-page .border-gray-700 { border-color: #94a3b8; }
+html.light .day-trade-page .text-rose-300 { color: #be123c; }
+html.light .day-trade-page .text-rose-400 { color: #e11d48; }
+html.light .day-trade-page .hover\:text-violet-300:hover { color: #6d28d9; }
+html.light .day-trade-page .hover\:text-rose-400:hover { color: #e11d48; }
+html.light .day-trade-page .hover\:bg-rose-950\/20:hover { background-color: rgba(254, 205, 211, 0.35); }
+/* Verdict panel tints */
+html.light .day-trade-page .bg-emerald-950\/70 { background-color: rgba(209, 250, 229, 0.95); }
+html.light .day-trade-page .bg-emerald-950\/60 { background-color: rgba(209, 250, 229, 0.88); }
+html.light .day-trade-page .bg-emerald-950\/25 { background-color: rgba(209, 250, 229, 0.55); }
+html.light .day-trade-page .border-emerald-500\/70 { border-color: rgba(16, 185, 129, 0.65); }
+html.light .day-trade-page .border-emerald-600\/60 { border-color: rgba(5, 150, 105, 0.55); }
+html.light .day-trade-page .border-emerald-800\/40 { border-color: rgba(52, 211, 153, 0.5); }
+html.light .day-trade-page .ring-emerald-400\/35 { --tw-ring-color: rgba(16, 185, 129, 0.35); }
+html.light .day-trade-page .ring-emerald-500\/30 { --tw-ring-color: rgba(16, 185, 129, 0.28); }
+html.light .day-trade-page .ring-emerald-500\/10 { --tw-ring-color: rgba(16, 185, 129, 0.12); }
+html.light .day-trade-page .bg-amber-950\/40 { background-color: rgba(254, 243, 199, 0.85); }
+html.light .day-trade-page .border-amber-600\/50 { border-color: rgba(245, 158, 11, 0.55); }
+html.light .day-trade-page .ring-amber-500\/25 { --tw-ring-color: rgba(245, 158, 11, 0.22); }
+html.light .day-trade-page .bg-rose-950\/50 { background-color: rgba(255, 228, 230, 0.92); }
+html.light .day-trade-page .bg-rose-950\/25 { background-color: rgba(255, 228, 230, 0.55); }
+html.light .day-trade-page .border-rose-600\/50 { border-color: rgba(244, 63, 94, 0.5); }
+html.light .day-trade-page .border-rose-800\/40 { border-color: rgba(251, 113, 133, 0.45); }
+html.light .day-trade-page .ring-rose-500\/30 { --tw-ring-color: rgba(244, 63, 94, 0.25); }
+html.light .day-trade-page .ring-rose-500\/10 { --tw-ring-color: rgba(244, 63, 94, 0.12); }
+html.light .day-trade-page .bg-gray-800\/80 { background-color: rgba(226, 232, 240, 0.92); }
+html.light .day-trade-page .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.45); }
+html.light .day-trade-page .ring-gray-500\/20 { --tw-ring-color: rgba(100, 116, 139, 0.18); }
+html.light .day-trade-page .bg-violet-950\/20 { background-color: rgba(237, 233, 254, 0.72); }
+html.light .day-trade-page .border-violet-900\/40 { border-color: rgba(139, 92, 246, 0.35); }
+html.light .day-trade-page .border-rose-800\/60 { border-color: rgba(251, 113, 133, 0.5); }
+html.light .day-trade-page .bg-rose-950\/30 { background-color: rgba(255, 228, 230, 0.65); }
+html.light .day-trade-page .text-rose-200 { color: #be123c; }
+html.light .day-trade-page .text-rose-300\/80 { color: rgba(190, 18, 60, 0.88); }
+html.light .day-trade-page .text-emerald-200 { color: #065f46; }
+html.light .day-trade-page .text-amber-200 { color: #92400e; }
+html.light .day-trade-page .text-emerald-400\/95 { color: #047857; }
+html.light .day-trade-page .text-emerald-400\/90 { color: #047857; }
+html.light .day-trade-page .text-amber-300\/95 { color: #b45309; }
+html.light .day-trade-page .text-amber-400\/90 { color: #b45309; }
+html.light .day-trade-page .text-amber-400\/85 { color: #b45309; }
+html.light .day-trade-page .text-violet-400\/90 { color: #6d28d9; }
+html.light .day-trade-page .border-amber-800\/40 { border-color: rgba(251, 191, 36, 0.45); }
+html.light .day-trade-page .bg-amber-950\/20 { background-color: rgba(254, 243, 199, 0.5); }
+html.light .day-trade-page .text-amber-200\/70 { color: #92400e; }
+html.light .day-trade-page .text-emerald-600\/80 { color: #047857; }
+html.light .day-trade-page .text-rose-600\/80 { color: #be123c; }
+html.light .day-trade-page .bg-orange-600\/20 { background-color: rgba(255, 237, 213, 0.85); }
+html.light .day-trade-page .text-orange-400 { color: #c2410c; }
+html.light .day-trade-page .text-sky-300\/90 { color: #0369a1; }
+html.light .day-trade-page .text-rose-400\/95 { color: #e11d48; }
+/* Watchlist verdict pills */
+html.light .day-trade-page .bg-emerald-500\/20 { background-color: rgba(167, 243, 208, 0.65); }
+html.light .day-trade-page .bg-emerald-600\/25 { background-color: rgba(167, 243, 208, 0.58); }
+html.light .day-trade-page .bg-amber-600\/25 { background-color: rgba(253, 230, 138, 0.6); }
+html.light .day-trade-page .bg-rose-600\/25 { background-color: rgba(254, 205, 211, 0.6); }
+html.light .day-trade-page .bg-gray-700\/60 { background-color: rgba(203, 213, 225, 0.85); }
+html.light .day-trade-page .text-emerald-200 { color: #065f46; }
+html.light .day-trade-page .text-emerald-300 { color: #047857; }
+html.light .day-trade-page .text-emerald-400 { color: #047857; }
+html.light .day-trade-page .border-emerald-400\/50 { border-color: rgba(52, 211, 153, 0.55); }
+html.light .day-trade-page .border-emerald-600\/40 { border-color: rgba(5, 150, 105, 0.45); }
+html.light .day-trade-page .border-amber-600\/40 { border-color: rgba(217, 119, 6, 0.45); }
+html.light .day-trade-page .border-rose-600\/40 { border-color: rgba(244, 63, 94, 0.45); }
+html.light .day-trade-page .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.4); }
+html.light .day-trade-page .bg-violet-600 { background-color: #7c3aed; }
+html.light .day-trade-page .hover\:bg-violet-500:hover { background-color: #6d28d9; }
+
+/* First-time advisory consent + welcome tour — light theme depth & checkbox */
+html.light .advisory-consent-modal {
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.14);
+}
+html.light .first-login-welcome-modal {
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.12);
+}

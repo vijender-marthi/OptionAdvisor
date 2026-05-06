@@ -251,7 +251,7 @@ export default function RecommendationCard({
                   onClick={e => { e.stopPropagation(); onFetchAllWeeks() }}
                   disabled={fetchingAllWeeks}
                   aria-label={fetchingAllWeeks ? 'Fetching all weeks' : 'Fetch all expiry weeks'}
-                  title={fetchingAllWeeks ? 'Fetching…' : 'Fetch all weeks (0w–6w)'}
+                  title={fetchingAllWeeks ? 'Fetching…' : 'Fetch all weeks (1w–6w)'}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400 disabled:opacity-50"
                 >

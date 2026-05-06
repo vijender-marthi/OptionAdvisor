@@ -99,6 +99,31 @@ def normal_cdf(value: float) -> float:
     return 0.5 * (1.0 + erf(value / sqrt(2.0)))
 
 
+def prob_above(
+    price: float,
+    target: float,
+    iv_pct: float,
+    expiry: str,
+    annual_drift: float = 0.0,
+) -> float:
+    """
+    Probability that the stock closes ABOVE `target` at `expiry`.
+
+    With annual_drift=0.0 this is the risk-neutral N(d2) approximation.
+    A non-zero annual_drift shifts the terminal distribution to match the
+    engine's directional thesis, keeping PoP consistent with EV.
+
+    Bull Put Spread  PoP = prob_above(price, breakeven, avg_iv, expiry, mu)
+    Bear Call Spread PoP = 1 - prob_above(price, breakeven, avg_iv, expiry, mu)
+    """
+    T = years_to_expiry(expiry)
+    sigma = iv_pct / 100.0
+    if sigma <= 0 or T <= 0 or price <= 0 or target <= 0:
+        return 0.5
+    d2 = (log(price / target) + (annual_drift - 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
+    return round(normal_cdf(d2), 4)
+
+
 def years_to_expiry(expiry: str) -> float:
     try:
         dte = max((datetime.strptime(expiry, "%Y-%m-%d") - datetime.today()).days, 1)
@@ -435,6 +460,45 @@ def expected_option_payoff(
         return 0.0
 
 
+def compute_bs_ev_credit_spread(
+    current_price: float,
+    short_strike: float,
+    long_strike: float,
+    short_iv_pct: float,
+    long_iv_pct: float,
+    expiry: str,
+    net_credit: float,
+    option_type: str,
+    directional_bias: str,
+    bias_confidence: int,
+) -> float:
+    """
+    Expected expiry profit for a vertical credit spread.
+
+    Profit = credit - short-option payoff + long-option payoff.
+    Capturing the middle region between breakeven and max-loss that the
+    old binary-EV shortcut ignored.
+    """
+    mu = directional_drift(directional_bias, bias_confidence)
+    short_payoff = expected_option_payoff(
+        current_price=current_price,
+        strike=short_strike,
+        iv_pct=short_iv_pct,
+        expiry=expiry,
+        option_type=option_type,
+        annual_drift=mu,
+    )
+    long_payoff = expected_option_payoff(
+        current_price=current_price,
+        strike=long_strike,
+        iv_pct=long_iv_pct,
+        expiry=expiry,
+        option_type=option_type,
+        annual_drift=mu,
+    )
+    return round(net_credit - short_payoff + long_payoff, 4)
+
+
 def compute_bs_ev_long(
     current_price: float,
     strike: float,
@@ -682,10 +746,12 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
     if cost < MIN_MID_PRICE:
         return None
     be = round(leg.strike + cost, 2)
-    rop = round(1 - leg.delta if leg.delta > 0 else 0.45, 2)  # approx PoP
-    max_profit = 999.0  # unlimited — cap for display at 10x cost
+    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
+    # PoP = P(stock > breakeven at expiry) via BS N(d2).
+    # 1-delta uses N(d1) at the strike — always above N(d2) at the (higher) breakeven — so it overstates PoP.
+    rop = prob_above(price, be, leg.iv, expiry, annual_drift=mu)
+    prob_max_loss = round(1.0 - prob_above(price, leg.strike, leg.iv, expiry, annual_drift=mu), 4)
     max_loss = cost
-    rr = round(max_loss / (cost * 10), 2)  # display R:R vs 10x target
     ev = compute_bs_ev_long(
         current_price=price,
         strike=leg.strike,
@@ -696,6 +762,7 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
         directional_bias=signals.directional_bias,
         bias_confidence=signals.bias_confidence,
     )
+    ev_per_contract = round(ev * 100, 0)
 
     return dict(
         strategy="Long Call", bias="Bullish",
@@ -706,7 +773,7 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
         credit_pct_of_width=0,
         breakeven_lower=be, breakeven_upper=999,
         short_leg_delta=leg.delta, prob_of_profit=rop,
-        prob_of_max_loss=round(1 - rop, 2),
+        prob_of_max_loss=prob_max_loss,
         expected_value=ev,
         passes_rr_filter=True,
         passes_credit_filter=True,
@@ -717,7 +784,8 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
             f"IV rank {signals.iv_rank:.0f}% ({signals.iv_environment}) — "
             f"{'options are relatively cheap for buying.' if signals.iv_rank < 45 else 'note: elevated IV increases cost.'} "
             f"Long call at ${leg.strike} breaks even at ${be}. "
-            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% chance of profit at expiry."
+            f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
+            f"drift ({signals.bias_confidence}% confidence)."
         ),
         exit_plan=generate_exit_plan("Long Call", cost * 10, -cost, expiry, days_to_expiry(expiry)),
     )
@@ -733,7 +801,11 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
     if cost < MIN_MID_PRICE:
         return None
     be = round(leg.strike - cost, 2)
-    rop = round(abs(leg.delta) if leg.delta < 0 else 0.45, 2)
+    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
+    # PoP = P(stock < breakeven at expiry) = 1 - N(d2) at breakeven.
+    # |delta| ≈ N(-d1) at the strike — understates PoP because breakeven < strike.
+    rop = round(1.0 - prob_above(price, be, leg.iv, expiry, annual_drift=mu), 4)
+    prob_max_loss = round(prob_above(price, leg.strike, leg.iv, expiry, annual_drift=mu), 4)
     ev = compute_bs_ev_long(
         current_price=price,
         strike=leg.strike,
@@ -744,6 +816,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
         directional_bias=signals.directional_bias,
         bias_confidence=signals.bias_confidence,
     )
+    ev_per_contract = round(ev * 100, 0)
 
     return dict(
         strategy="Long Put", bias="Bearish",
@@ -754,7 +827,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
         credit_pct_of_width=0,
         breakeven_lower=0, breakeven_upper=be,
         short_leg_delta=abs(leg.delta), prob_of_profit=rop,
-        prob_of_max_loss=round(1 - rop, 2),
+        prob_of_max_loss=prob_max_loss,
         expected_value=ev,
         passes_rr_filter=True, passes_credit_filter=True, passes_liquidity_filter=True,
         rationale=(
@@ -762,7 +835,8 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
             f"RSI {signals.rsi} ({signals.rsi_signal}). "
             f"MACD: {signals.macd_crossover} crossover. "
             f"Long put at ${leg.strike} — break even below ${be}. "
-            f"Delta {leg.delta:.2f} implies ~{int(rop*100)}% probability of profit."
+            f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
+            f"drift ({signals.bias_confidence}% confidence)."
         ),
         exit_plan=generate_exit_plan("Long Put", cost * 10, -cost, expiry, days_to_expiry(expiry)),
     )
@@ -883,15 +957,32 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
     max_loss = round(spread_width - net_credit, 2)
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
     short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
-    rop = round(1 - short_delta, 2)
-    ev = compute_ev(max_profit, max_loss, rop)
+    avg_iv = (sell_leg.iv + buy_leg.iv) / 2
+    mu = directional_drift(signals.directional_bias, signals.bias_confidence)
 
     if option_type == "PUT":
         be = round(sell_leg.strike - net_credit, 2)
         be_lower, be_upper = be, 999
+        rop = prob_above(price, be, avg_iv, expiry, annual_drift=mu)
+        prob_max_loss = round(1.0 - prob_above(price, buy_leg.strike, avg_iv, expiry, annual_drift=mu), 4)
     else:
         be = round(sell_leg.strike + net_credit, 2)
         be_lower, be_upper = 0, be
+        rop = round(1.0 - prob_above(price, be, avg_iv, expiry, annual_drift=mu), 4)
+        prob_max_loss = prob_above(price, buy_leg.strike, avg_iv, expiry, annual_drift=mu)
+
+    ev = compute_bs_ev_credit_spread(
+        current_price=price,
+        short_strike=sell_leg.strike,
+        long_strike=buy_leg.strike,
+        short_iv_pct=sell_leg.iv,
+        long_iv_pct=buy_leg.iv,
+        expiry=expiry,
+        net_credit=net_credit,
+        option_type=option_type,
+        directional_bias=signals.directional_bias,
+        bias_confidence=signals.bias_confidence,
+    )
 
     passes_credit = credit_pct >= MIN_CREDIT_PCT_OF_WIDTH
 
@@ -904,7 +995,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         credit_pct_of_width=credit_pct,
         breakeven_lower=be_lower, breakeven_upper=be_upper,
         short_leg_delta=short_delta, prob_of_profit=rop,
-        prob_of_max_loss=round(1 - rop, 2),
+        prob_of_max_loss=prob_max_loss,
         expected_value=ev,
         passes_rr_filter=rr <= 5.0,
         passes_credit_filter=passes_credit,
@@ -914,7 +1005,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
             f"buy protection at ${buy_leg.strike}. "
             f"Collect ${net_credit:.2f}/share credit = {credit_pct:.0f}% of the ${spread_width} spread width. "
             f"{'✅ Meets minimum 25% credit threshold.' if passes_credit else '⚠️ Below 25% threshold — thin credit.'} "
-            f"~{int(rop*100)}% probability of keeping full credit. "
+            f"~{int(rop*100)}% probability of any profit above breakeven ${be:.2f}. "
             f"Risk/Reward: risk ${max_loss:.2f} to make ${max_profit:.2f}. "
             f"IV rank {signals.iv_rank:.0f}% — {'ideal for selling premium.' if signals.iv_rank >= 50 else 'marginal IV for credit selling.'}"
         ),

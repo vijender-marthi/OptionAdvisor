@@ -92,8 +92,8 @@ export default function FirstLoginHelpModal() {
       }`}
     >
       <div
-        className={`w-full max-w-xl rounded-2xl border shadow-2xl ${
-          isLight ? 'border-slate-200 bg-white' : 'border-gray-800 bg-gray-900'
+        className={`first-login-welcome-modal w-full max-w-xl rounded-2xl border shadow-2xl ${
+          isLight ? 'border-slate-200 bg-white ring-1 ring-slate-200/70' : 'border-gray-800 bg-gray-900'
         }`}
       >
         <div

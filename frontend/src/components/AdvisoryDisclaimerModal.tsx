@@ -53,8 +53,8 @@ export default function AdvisoryDisclaimerModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="advisory-disclaimer-title"
-        className={`flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl ${
-          isLight ? 'border-slate-200 bg-white' : 'border-amber-800/60 bg-gray-900'
+        className={`advisory-consent-modal flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl ${
+          isLight ? 'border-slate-200 bg-white ring-1 ring-slate-200/80' : 'border-amber-800/60 bg-gray-900'
         }`}
       >
         <div

@@ -351,7 +351,7 @@ function ManualPositionEditor({
   const [companyName,     setCompanyName]    = useState('')
   const [strategy,        setStrategy]       = useState(strategies[0])
   const [expiry,          setExpiry]         = useState('')
-  const [contracts,       setContracts]      = useState(1)
+  const [contractsInput, setContractsInput] = useState('1')
   const [entryStockPrice, setEntryStock]     = useState('')
   const [notes,           setNotes]          = useState('')
   const [legStrikes,      setLegStrikes]     = useState<string[]>(['', '', '', ''])
@@ -363,7 +363,7 @@ function ManualPositionEditor({
       setCompanyName('')
       setStrategy(Object.keys(STRATEGY_DEFS)[0])
       setExpiry('')
-      setContracts(1)
+      setContractsInput('1')
       setEntryStock('')
       setNotes('')
       setLegStrikes(['', '', '', ''])
@@ -376,7 +376,7 @@ function ManualPositionEditor({
     setCompanyName(initialPosition.companyName)
     setStrategy(strat)
     setExpiry(normalizeExpiryForDateInput(initialPosition.expiry))
-    setContracts(normalizedContractCount(initialPosition))
+    setContractsInput(String(normalizedContractCount(initialPosition)))
     setEntryStock(String(initialPosition.entryPrice))
     setNotes(initialPosition.notes ?? '')
     setLegStrikes(strikes)
@@ -395,11 +395,24 @@ function ManualPositionEditor({
   const premiumsNum = legPremiums.map(p => parseFloat(p) || 0)
   const metrics     = computeMetrics(strategy, strikesNum, premiumsNum, parseFloat(entryStockPrice) || 0)
 
+  const parseContractCount = (raw: string): number | null => {
+    const digits = raw.replace(/\D/g, '')
+    if (digits === '') return null
+    const n = parseInt(digits, 10)
+    if (!Number.isFinite(n) || n < 1 || n > 9999) return null
+    return n
+  }
+
+  const contractsParsed = parseContractCount(contractsInput)
+
   const legsComplete = def.legs.every((_, i) => strikesNum[i] > 0 && premiumsNum[i] > 0)
-  const canSubmit = ticker.trim() && expiry && legsComplete && (parseFloat(entryStockPrice) || 0) > 0
+  const canSubmit =
+    ticker.trim() && expiry && legsComplete && (parseFloat(entryStockPrice) || 0) > 0 && contractsParsed != null
 
   const handleSubmit = () => {
     if (!canSubmit) return
+    const cc = contractsParsed
+    if (cc == null) return
     const entryPrice = parseFloat(entryStockPrice)
     const dteVal = Math.ceil((new Date(expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
 
@@ -418,7 +431,7 @@ function ManualPositionEditor({
       bid_ask_spread_pct: 0,
     }))
 
-    const capital_at_risk = Math.round(metrics.maxLoss * SHARES_PER_OPTION_CONTRACT * contracts)
+    const capital_at_risk = Math.round(metrics.maxLoss * SHARES_PER_OPTION_CONTRACT * cc)
 
     const payload: ManualPositionCommitPayload = {
       ticker: ticker.trim().toUpperCase(),
@@ -435,7 +448,7 @@ function ManualPositionEditor({
       prob_of_profit: initialPosition?.prob_of_profit ?? 0,
       expected_value: initialPosition?.expected_value ?? 0,
       scores_total: initialPosition?.scores_total ?? 0,
-      contracts,
+      contracts: cc,
       breakeven_lower: metrics.beLower,
       breakeven_upper: metrics.beUpper,
       entryPrice,
@@ -467,14 +480,14 @@ function ManualPositionEditor({
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="min-w-0">
           <label className={labelCls}>Ticker *</label>
-          <input className={inputCls} placeholder="AAPL" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} />
+          <input className={`${inputCls} min-w-0`} placeholder="AAPL" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className={labelCls}>Company (optional)</label>
-          <input className={inputCls} placeholder="Apple Inc." value={companyName} onChange={e => setCompanyName(e.target.value)} />
+          <input className={`${inputCls} min-w-0`} placeholder="Apple Inc." value={companyName} onChange={e => setCompanyName(e.target.value)} />
         </div>
       </div>
 
@@ -485,34 +498,28 @@ function ManualPositionEditor({
         </select>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
+      <div className="grid grid-cols-1 gap-4 sm:gap-3 lg:grid-cols-3">
+        <div className="min-w-0">
           <label className={labelCls}>Expiry Date *</label>
           <input type="date" className={inputCls} value={expiry} onChange={e => setExpiry(e.target.value)} />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className={labelCls}>Contracts *</label>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            className={inputCls}
-            value={contracts}
+            className={`${inputCls} min-w-0`}
+            value={contractsInput}
             onChange={e => {
-              const digits = e.target.value.replace(/\D/g, '')
-              if (digits === '') {
-                setContracts(1)
-                return
-              }
-              const n = parseInt(digits, 10)
-              if (!Number.isFinite(n)) return
-              setContracts(Math.min(9999, Math.max(1, n)))
+              const digitsOnly = e.target.value.replace(/\D/g, '')
+              setContractsInput(digitsOnly)
             }}
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className={labelCls}>Stock Price @ Entry *</label>
-          <input type="number" step="0.01" className={inputCls} placeholder="185.50" value={entryStockPrice} onChange={e => setEntryStock(e.target.value)} />
+          <input type="number" step="0.01" className={`${inputCls} min-w-0`} placeholder="185.50" value={entryStockPrice} onChange={e => setEntryStock(e.target.value)} />
         </div>
       </div>
 
@@ -523,15 +530,15 @@ function ManualPositionEditor({
             <div className={`text-xs font-bold ${tmpl.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>
               {tmpl.action} {tmpl.option_type} — {tmpl.label}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="min-w-0">
                 <label className={labelCls}>Strike Price *</label>
-                <input type="number" step="0.5" className={inputCls} placeholder="195.00"
+                <input type="number" step="0.5" className={`${inputCls} min-w-0`} placeholder="195.00"
                   value={legStrikes[i]} onChange={e => { const a = [...legStrikes]; a[i] = e.target.value; setLegStrikes(a) }} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className={labelCls}>Premium Paid/Received *</label>
-                <input type="number" step="0.01" className={inputCls} placeholder="3.45"
+                <input type="number" step="0.01" className={`${inputCls} min-w-0`} placeholder="3.45"
                   value={legPremiums[i]} onChange={e => { const a = [...legPremiums]; a[i] = e.target.value; setLegPremiums(a) }} />
               </div>
             </div>
@@ -546,8 +553,14 @@ function ManualPositionEditor({
             <span className={metrics.netCredit >= 0 ? 'text-violet-400' : 'text-amber-400'}>
               {metrics.netCredit >= 0 ? 'Net Credit' : 'Net Debit'}: {metrics.netCredit >= 0 ? '+' : ''}${Math.abs(metrics.netCredit).toFixed(2)}/share
             </span>
-            <span className="text-emerald-400">Max Profit: ${(metrics.maxProfit * 100 * contracts).toLocaleString()}</span>
-            <span className="text-red-400">Max Loss: ${(metrics.maxLoss * 100 * contracts).toLocaleString()}</span>
+            {contractsParsed != null ? (
+              <>
+                <span className="text-emerald-400">Max Profit: ${(metrics.maxProfit * 100 * contractsParsed).toLocaleString()}</span>
+                <span className="text-red-400">Max Loss: ${(metrics.maxLoss * 100 * contractsParsed).toLocaleString()}</span>
+              </>
+            ) : (
+              <span className="text-gray-500">Enter a contract count (1–9999) for position dollar totals</span>
+            )}
           </div>
           {metrics.beLower > 0 && (
             <div className="text-gray-400">

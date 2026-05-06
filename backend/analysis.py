@@ -486,20 +486,28 @@ def generate_signals(
     directional_bias, bias_confidence = compute_directional_bias(trend, rsi, macd_cross, pcr)
 
     # Price history for chart
-    price_hist_df = hist[["Close"]].copy()
-    price_hist_df["MA20"] = close.rolling(20).mean()
-    price_hist_df["MA50"] = close.rolling(50).mean()
-    price_hist_df["MA200"] = close.rolling(200).mean()
-    price_hist_df = price_hist_df.dropna().tail(252)
+    ohlc = pd.DataFrame({
+        "Open": hist["Open"] if "Open" in hist.columns else hist["Close"],
+        "High": hist["High"] if "High" in hist.columns else hist["Close"],
+        "Low": hist["Low"] if "Low" in hist.columns else hist["Close"],
+        "Close": hist["Close"],
+    })
+    ohlc["MA20"] = close.rolling(20).mean()
+    ohlc["MA50"] = close.rolling(50).mean()
+    ohlc["MA200"] = close.rolling(200).mean()
+    ohlc = ohlc.dropna().tail(252)
     price_history = [
         {
             "date": str(idx.date()),
+            "open": round(float(row["Open"]), 2),
+            "high": round(float(row["High"]), 2),
+            "low": round(float(row["Low"]), 2),
             "close": round(float(row["Close"]), 2),
             "ma20": round(float(row["MA20"]), 2),
             "ma50": round(float(row["MA50"]), 2),
             "ma200": round(float(row["MA200"]), 2),
         }
-        for idx, row in price_hist_df.iterrows()
+        for idx, row in ohlc.iterrows()
     ]
 
     return MarketSignals(

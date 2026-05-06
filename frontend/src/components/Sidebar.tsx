@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight, FlaskConical,
   User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
-  Moon, Sun, Menu, BookOpen, Zap,
+  Moon, Sun, Menu, BookOpen, Zap, LayoutList,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -97,6 +97,13 @@ export default function Sidebar() {
       ],
     },
     {
+      label: 'Day Trading',
+      items: [
+        { id: 'day-trade' as Page, label: 'Day Trade Engine', icon: <Zap size={18} /> },
+        { id: 'day-trade-watchlist' as Page, label: 'Day Trade Watchlist', icon: <LayoutList size={18} /> },
+      ],
+    },
+    {
       label: 'Track',
       items: [
         { id: 'watchlist', label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
@@ -128,6 +135,8 @@ export default function Sidebar() {
   const mobileMoreItems: NavItem[] = [
     { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
     { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
+    { id: 'day-trade', label: 'Day Engine', icon: <Zap size={18} /> },
+    { id: 'day-trade-watchlist', label: 'DT Watchlist', icon: <LayoutList size={18} /> },
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },
@@ -234,7 +243,7 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-semibold text-white leading-tight">OptionAdvisor</span>
+              <span className="text-sm font-semibold text-white leading-tight">QuantPilot</span>
               <BetaProductTag />
             </div>
             <div className="text-[10px] text-gray-500 leading-tight">Systematic Engine v2</div>

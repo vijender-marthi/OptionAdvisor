@@ -113,6 +113,9 @@ export interface OptionRow {
 
 export interface PricePoint {
   date: string
+  open: number
+  high: number
+  low: number
   close: number
   ma20: number
   ma50: number
@@ -153,7 +156,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'forgot-password' | 'reset-password' | 'activate'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'forgot-password' | 'reset-password' | 'activate'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 

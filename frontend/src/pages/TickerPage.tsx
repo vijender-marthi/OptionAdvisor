@@ -231,7 +231,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
         onClick={onFetch}
         disabled={fetching}
         aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
-        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (0w–6w)'}
+        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (1w–6w)'}
         className="inline-flex h-10 w-full lg:w-10 items-center justify-center bg-gray-800 hover:bg-violet-600/20 border border-gray-700
                    hover:border-violet-600 text-gray-400 hover:text-violet-300 rounded-xl
                    transition-colors disabled:opacity-50 shrink-0"
@@ -680,7 +680,7 @@ export default function TickerPage() {
                   <button key={t} onClick={() => setActiveTab(t)}
                     className={`min-w-[8.5rem] sm:min-w-0 sm:flex-1 px-3 py-3 text-xs sm:text-sm font-semibold capitalize transition-colors
                       ${activeTab === t ? 'text-white border-b-2 border-violet-500 bg-gray-800/40' : 'text-gray-400 hover:text-white'}`}>
-                    {t === 'chart' ? '📉 Price Chart' : t === 'calculator' ? '📈 P&L Calculator' : '📋 Options Chain'}
+                    {t === 'chart' ? '📉 Candlestick' : t === 'calculator' ? '📈 P&L Calculator' : '📋 Options Chain'}
                   </button>
                 ))}
               </div>

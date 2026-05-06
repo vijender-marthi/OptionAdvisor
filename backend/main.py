@@ -41,13 +41,15 @@ from models import (
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
     AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
+    DayTradeRequest, DayTradeResponse,
 )
 from analysis import generate_signals
+from day_trade import run_day_trade_scan
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
 from storage import (
     add_user_alert, clear_user_alerts, dismiss_user_alert, get_user_alerts,
-    get_user_state, init_db, list_user_states, save_user_state,
+    get_user_state, init_db, list_user_states, normalize_email, save_user_state,
     update_user_alert_email,
     fetch_iv_atm_history_strict_before,
     upsert_iv_atm_snapshot,
@@ -197,7 +199,7 @@ ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true")
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 ALERT_SCAN_WEEKS_OUT = 4
 # Strategy Finder / email deeplink ?weeks= must match frontend MULTI_WEEK_TARGETS
-FINDER_VALID_WEEKS_OUT = frozenset({0, 1, 2, 3, 4, 6})
+FINDER_VALID_WEEKS_OUT = frozenset({1, 2, 4, 6})
 ALERT_SCAN_SPREAD_WIDTH = 5
 
 # User-facing analyze endpoint cache TTL:
@@ -980,8 +982,14 @@ def _analyze_ticker(
     # Price history
     price_history_out = [
         PricePoint(
-            date=p["date"], close=p["close"],
-            ma20=p["ma20"], ma50=p["ma50"], ma200=p["ma200"]
+            date=p["date"],
+            open=p["open"],
+            high=p["high"],
+            low=p["low"],
+            close=p["close"],
+            ma20=p["ma20"],
+            ma50=p["ma50"],
+            ma200=p["ma200"],
         )
         for p in signals.price_history
     ]
@@ -1104,6 +1112,39 @@ def analyze(req: AnalyzeRequest):
     with analyze_user_cache_lock:
         analyze_user_cache[key] = (time.time(), data)
     return data
+
+
+@app.post("/api/day-trade", response_model=DayTradeResponse)
+def day_trade_scan(
+    req: DayTradeRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Intraday prototype: 1m RTH, VWAP / OR / momentum / volume + RS vs QQQ session + confidence block;
+    verdicts: STRONG GO, GO, WATCH (weak volume), NO-GO, WAIT.
+    Restricted to users with the administrator role.
+    """
+    if get_user_state(normalize_email(auth_email)).get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Day Trading requires administrator access.",
+        )
+    try:
+        r = run_day_trade_scan(req.ticker)
+        return DayTradeResponse(
+            ticker=r.ticker,
+            company_name=r.company_name,
+            verdict=r.verdict,
+            bias=r.bias,
+            bull_score=r.bull_score,
+            bear_score=r.bear_score,
+            reasons=r.reasons,
+            metrics=r.metrics,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from None
 
 
 def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:

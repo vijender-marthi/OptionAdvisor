@@ -457,9 +457,9 @@ def main():
     with col2:
         weeks_out = st.selectbox(
             "Target Expiry",
-            [0, 1, 2, 3, 4, 6],
-            index=4,
-            format_func=lambda x: "~0w (front)" if x == 0 else f"~{x} weeks out",
+            [1, 2, 4, 6],
+            index=2,
+            format_func=lambda x: f"~{x} weeks out",
         )
     with col3:
         st.write("")

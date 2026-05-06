@@ -5,7 +5,13 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from analysis import MarketSignals
-from engine import compute_bs_ev_long, compute_ev, compute_kelly_metrics, run_engine
+from engine import (
+    compute_bs_ev_credit_spread,
+    compute_bs_ev_long,
+    compute_ev,
+    compute_kelly_metrics,
+    run_engine,
+)
 
 
 PRICE = 100.0
@@ -401,56 +407,72 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
         self.assertAlmostEqual(straddle.expected_value, expected_ev, places=4)
         self.assertNotEqual(straddle.expected_value, capped_binary_ev)
 
-    def test_bounded_spreads_and_income_trades_keep_binary_ev(self):
+    def test_credit_spreads_use_bs_distributional_ev_income_trades_use_binary_ev(self):
+        """
+        Bull Put Spread and Bear Call Spread now use compute_bs_ev_credit_spread
+        (full payoff distribution).  Iron Condor and naked/covered income trades
+        still use the binary compute_ev shortcut.  Neither family should ever
+        call compute_bs_ev_long (which is reserved for long uncapped strategies).
+        """
+        signals = _signals(
+            bias="Neutral",
+            confidence=0,
+            iv_rank=70,
+            iv_vs_hv=8,
+            volatility_regime="Sell Premium",
+        )
         calls = _calls_chain()
         puts = _puts_chain()
         expiry = _expiry()
 
-        with patch("engine.compute_bs_ev_long") as bs_ev:
+        with patch("engine.compute_bs_ev_long") as bs_ev_long:
             credit_trades = run_engine(
-                _signals(
-                    bias="Neutral",
-                    confidence=0,
-                    iv_rank=70,
-                    iv_vs_hv=8,
-                    volatility_regime="Sell Premium",
-                ),
-                calls,
-                puts,
-                [expiry],
-                spread_width_override=5,
-                weeks_out=4,
-                strategy_mode="credit_only",
+                signals, calls, puts, [expiry],
+                spread_width_override=5, weeks_out=4, strategy_mode="credit_only",
             )
             income_trades = run_engine(
-                _signals(
-                    bias="Neutral",
-                    confidence=0,
-                    iv_rank=70,
-                    iv_vs_hv=8,
-                    volatility_regime="Sell Premium",
-                ),
-                calls,
-                puts,
-                [expiry],
-                spread_width_override=5,
-                weeks_out=4,
-                strategy_mode="short_or_covered",
+                signals, calls, puts, [expiry],
+                spread_width_override=5, weeks_out=4, strategy_mode="short_or_covered",
             )
 
-        bs_ev.assert_not_called()
+        bs_ev_long.assert_not_called()
+
+        VERTICAL_SPREADS = {"Bull Put Spread", "Bear Call Spread"}
+        INCOME_STRATEGIES = {"Covered Call", "Covered Put", "Short Put", "Short Call"}
 
         for trade in [*credit_trades, *income_trades]:
-            is_income_trade = trade.strategy in {
-                "Covered Call", "Covered Put", "Short Put", "Short Call"
-            }
-            max_profit = trade.net_credit if is_income_trade else trade.max_profit
-            max_loss = round(trade.net_credit * 2, 4) if is_income_trade else trade.max_loss
-            self.assertAlmostEqual(
-                trade.expected_value,
-                compute_ev(max_profit, max_loss, trade.prob_of_profit),
-                places=4,
-            )
+            if trade.strategy in VERTICAL_SPREADS:
+                # Distributional EV: net_credit minus the expected option payoffs
+                leg_sell, leg_buy = trade.legs
+                option_type = "PUT" if trade.strategy == "Bull Put Spread" else "CALL"
+                expected_ev = compute_bs_ev_credit_spread(
+                    current_price=PRICE,
+                    short_strike=leg_sell.strike,
+                    long_strike=leg_buy.strike,
+                    short_iv_pct=leg_sell.iv,
+                    long_iv_pct=leg_buy.iv,
+                    expiry=trade.expiry,
+                    net_credit=trade.net_credit,
+                    option_type=option_type,
+                    directional_bias=signals.directional_bias,
+                    bias_confidence=signals.bias_confidence,
+                )
+                self.assertAlmostEqual(trade.expected_value, expected_ev, places=4,
+                                       msg=f"{trade.strategy} EV mismatch")
+            elif trade.strategy in INCOME_STRATEGIES:
+                # Binary EV for naked/covered income trades
+                expected_ev = compute_ev(
+                    trade.net_credit,
+                    round(trade.net_credit * 2, 4),
+                    trade.prob_of_profit,
+                )
+                self.assertAlmostEqual(trade.expected_value, expected_ev, places=4,
+                                       msg=f"{trade.strategy} EV mismatch")
+            else:
+                # Iron Condor: binary EV against its own max_loss
+                expected_ev = compute_ev(trade.max_profit, trade.max_loss, trade.prob_of_profit)
+                self.assertAlmostEqual(trade.expected_value, expected_ev, places=4,
+                                       msg=f"{trade.strategy} EV mismatch")
 
 
 if __name__ == "__main__":

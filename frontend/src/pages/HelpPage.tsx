@@ -4,8 +4,10 @@ import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
-  FlaskConical, NotebookPen, Scale, Sigma,
+  FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap,
 } from 'lucide-react'
+import { useApp } from '../contexts/AppContext'
+import { normalizeUserRole } from '../permissions'
 
 // ─── Section data ────────────────────────────────────────────────────────────
 
@@ -276,7 +278,7 @@ const workflowSteps = [
     title: 'Analyze in Strategy Finder',
     icon: <BarChart2 size={16} />,
     color: 'text-sky-400',
-    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w ladder: 0w, 1w, 2w, 3w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
+    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (1w–6w: 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
   },
   {
     step: '4',
@@ -290,7 +292,7 @@ const workflowSteps = [
     title: 'Scan Trade Signals',
     icon: <Radar size={16} />,
     color: 'text-amber-400',
-    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (0w, 1w, 2w, 3w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
+    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
   },
   {
     step: '6',
@@ -347,6 +349,10 @@ function InfoCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HelpPage() {
+  const { user, canAccessPage } = useApp()
+  const isAdmin = normalizeUserRole(user?.role) === 'admin'
+  const showAiRadarHelp = canAccessPage('ai-stocks')
+
   return (
     <div className="help-page min-h-screen p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
@@ -362,6 +368,10 @@ export default function HelpPage() {
               <p className="text-sm text-gray-400 mt-1 max-w-3xl">
                 A systematic options engine that reads live market signals, builds strategy candidates for the current
                 IV regime and directional bias, runs a 10-point pre-trade checklist, and ranks the survivors by score.
+              </p>
+              <p className="text-xs text-gray-500 mt-3 max-w-3xl border-t border-gray-800/50 pt-3">
+                Documentation matches your account: sections for features you cannot access in the app are hidden
+                (for example, AI Radar for finance-only accounts; Day Trading and Auto Trade for non-administrators).
               </p>
             </div>
           </div>
@@ -451,7 +461,8 @@ export default function HelpPage() {
           </div>
         </InfoCard>
 
-        {/* AI Radar */}
+        {/* AI Radar — discovery radars are not available to finance-only accounts */}
+        {showAiRadarHelp && (
         <InfoCard icon={<Brain size={18} />} title="AI Radar">
           <div className="space-y-3 text-sm text-gray-400">
             <p>
@@ -487,6 +498,7 @@ export default function HelpPage() {
             </div>
           </div>
         </InfoCard>
+        )}
 
         {/* Pre-Trade Checklist */}
         <InfoCard icon={<CheckCircle2 size={18} />} title="Pre-Trade Checklist">
@@ -758,17 +770,17 @@ export default function HelpPage() {
           <div className="space-y-3 text-sm text-gray-400">
             <p>
               Trade Signals is your signal dashboard — it shows every watchlist ticker with pre-trade
-              verdicts across six DTE scan windows (0w, 1w, 2w, 3w, 4w, 6w) at a glance.
+              verdicts across four DTE scan windows (1w, 2w, 4w, 6w) at a glance.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 {
                   title: 'Coverage dots',
-                  desc: 'Each ticker shows colored dots for 0w/1w/2w/3w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
+                  desc: 'Each ticker shows colored dots for 1w/2w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
                 },
                 {
                   title: 'Fetch All Weeks',
-                  desc: 'One button fires six API calls (600ms staggered) for all DTE scan windows simultaneously. Results are cached for 15 minutes — you only need to do this once per session per ticker.',
+                  desc: 'One button fires four API calls (600ms staggered) for all DTE scan windows simultaneously. Results are cached for 15 minutes — you only need to do this once per session per ticker.',
                 },
                 {
                   title: 'Week tabs',
@@ -786,7 +798,7 @@ export default function HelpPage() {
               ))}
             </div>
             <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: for same-week / ultra-short setups use 0w–1w. For typical weekly/monthly front, use 2w–4w. For a bit more time in the trade, use 6w.
+              Tip: for near-term setups use 1w–2w. For typical monthly front, use 4w. For more time in the trade, use 6w.
             </p>
           </div>
         </InfoCard>
@@ -1406,6 +1418,117 @@ if HIGH_IV and BEARISH:
             </div>
           </InfoCard>
         </div>
+
+        {isAdmin && (
+        <InfoCard icon={<Flame size={18} />} title="Day Trading Engine (administrator)">
+          <div className="space-y-5 text-sm text-gray-400">
+
+            {/* intro */}
+            <p>
+              The <span className="font-semibold text-gray-200">Day Trading Engine</span> analyzes
+              real-time intraday data using <span className="text-gray-200">VWAP</span>, <span className="text-gray-200">opening range breakout</span>, <span className="text-gray-200">momentum</span>, <span className="text-gray-200">volume spikes</span>, <span className="text-gray-200">market trend</span>, and <span className="text-gray-200">risk filters</span> to
+              generate tiered verdicts — <span className="text-emerald-300 font-semibold">STRONG GO</span>, <span className="text-emerald-400 font-semibold">GO</span>, <span className="text-amber-300 font-semibold">WATCH</span>, <span className="text-rose-400 font-semibold">NO-GO</span>, or <span className="text-gray-400 font-semibold">WAIT</span> — plus relative strength vs QQQ and an intraday confidence breakdown.
+              It is <span className="text-gray-200">separate</span> from the Swing Trading / Options Scanner engine — it uses 1-minute bars, not multi-week technical data.
+            </p>
+
+            {/* optimized for */}
+            <div>
+              <p className="mb-2 font-semibold text-gray-300">Optimized for:</p>
+              <ul className="space-y-1.5">
+                {[
+                  { dot: 'bg-orange-400', t: 'Day trading — enter and exit within the same session' },
+                  { dot: 'bg-rose-400',   t: '0DTE / 1DTE options — same-day or next-day expiry' },
+                  { dot: 'bg-amber-400',  t: 'Intraday momentum trades — ride fast directional moves' },
+                  { dot: 'bg-violet-400', t: 'Quick scalps — tight targets with defined risk' },
+                ].map(({ dot, t }) => (
+                  <li key={t} className="flex items-start gap-2 text-xs">
+                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* mini flow chart */}
+            <div>
+              <p className="mb-3 font-semibold text-gray-300">Engine Flow</p>
+              <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4 space-y-0">
+                {[
+                  { n: 1, label: 'User enters ticker',                     color: 'text-violet-400 border-violet-600/50' },
+                  { n: 2, label: 'Fetch 1-minute intraday data',           color: 'text-blue-400 border-blue-600/50' },
+                  { n: 3, label: 'VWAP, opening range, momentum, volume spike, RS vs QQQ', color: 'text-cyan-400 border-cyan-600/50' },
+                  { n: 4, label: 'Check market context (SPY, QQQ, VIX, earnings/news)', color: 'text-amber-400 border-amber-600/50' },
+                  { n: 5, label: 'Run intraday signal engine',             color: 'text-orange-400 border-orange-600/50' },
+                  { n: 6, label: 'Run risk analyzer',                      color: 'text-rose-400 border-rose-600/50' },
+                ].map((step, idx) => (
+                  <div key={step.n}>
+                    <div className={`flex items-center gap-2.5 rounded-lg border ${step.color.split(' ')[1]} bg-gray-900/60 px-3 py-2`}>
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${step.color.split(' ')[1]} text-[10px] font-bold ${step.color.split(' ')[0]}`}>
+                        {step.n}
+                      </span>
+                      <span className={`text-xs font-medium ${step.color.split(' ')[0]}`}>{step.label}</span>
+                    </div>
+                    {idx < 5 && (
+                      <div className="flex justify-center py-0.5">
+                        <ArrowDown size={12} className="text-gray-600" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {/* final output */}
+                <div className="flex justify-center py-0.5">
+                  <ArrowDown size={12} className="text-gray-600" />
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-900/25 px-2 py-1.5 text-center text-[10px] font-bold text-emerald-300 sm:text-xs">STRONG GO</div>
+                  <div className="rounded-lg border border-emerald-600/40 bg-emerald-900/20 px-2 py-1.5 text-center text-[10px] font-bold text-emerald-400 sm:text-xs">GO</div>
+                  <div className="rounded-lg border border-amber-600/45 bg-amber-900/25 px-2 py-1.5 text-center text-[10px] font-bold text-amber-200 sm:text-xs">WATCH</div>
+                  <div className="rounded-lg border border-rose-600/45 bg-rose-900/20 px-2 py-1.5 text-center text-[10px] font-bold text-rose-400 sm:text-xs">NO-GO</div>
+                  <div className="rounded-lg border border-gray-600/40 bg-gray-700/20 px-2 py-1.5 text-center text-[10px] font-bold text-gray-400 sm:text-xs">WAIT</div>
+                </div>
+              </div>
+            </div>
+
+            {/* key terms */}
+            <div>
+              <p className="mb-2 font-semibold text-gray-300">Key Terms</p>
+              <div className="space-y-2">
+                {[
+                  { term: 'VWAP',         def: 'Volume Weighted Average Price — the intraday "fair value" line. Price above = bullish; below = bearish.' },
+                  { term: 'Opening Range', def: 'High and low of the first 15–30 minutes. A breakout above the high is a classic bullish day-trade signal.' },
+                  { term: 'Volume Spike', def: 'A bar with 2× or more volume vs. recent average. Validates breakouts — low-volume breakouts are suspect.' },
+                  { term: 'VIX',          def: 'Market fear gauge. High VIX (>30) adds caution to signals because options premiums become erratic.' },
+                ].map(({ term, def }) => (
+                  <div key={term} className="flex gap-2.5 text-xs">
+                    <span className="mt-0.5 shrink-0 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 font-bold text-gray-300 h-fit">{term}</span>
+                    <span className="leading-relaxed">{def}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-700/30 bg-amber-900/10 px-4 py-3 text-xs text-amber-300/90">
+              <span className="font-semibold">⚡ Note:</span> Open <span className="font-semibold">Day Trade Engine</span> or <span className="font-semibold">Day Trade Watchlist</span> from the sidebar (administrator accounts only). Intraday engine — separate from the Options Scanner.
+            </div>
+          </div>
+        </InfoCard>
+        )}
+
+        {isAdmin && (
+          <InfoCard icon={<Zap size={18} />} title="Auto Trade (administrator)" defaultOpen={false}>
+            <div className="space-y-3 text-sm text-gray-400">
+              <p>
+                The <span className="text-gray-200 font-semibold">Auto Trade</span> page connects to Alpaca paper trading when API keys
+                are configured on the server. Administrators can review account status, positions, and orders — it is not shown to
+                standard or finance accounts.
+              </p>
+              <p className="text-xs text-gray-500">
+                Requires <span className="font-mono text-gray-400">ALPACA_API_KEY</span> and{' '}
+                <span className="font-mono text-gray-400">ALPACA_SECRET_KEY</span> in the deployment environment.
+              </p>
+            </div>
+          </InfoCard>
+        )}
 
         {/* Risk */}
         <InfoCard icon={<ShieldCheck size={18} />} title="Risk Warnings">

@@ -22,6 +22,8 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
+const DayTradePage = lazy(() => import('./pages/DayTradePage'))
+const DayTradeWatchlistPage = lazy(() => import('./pages/DayTradeWatchlistPage'))
 
 const GATEWAY_PAGES = new Set([
   'login',
@@ -88,6 +90,8 @@ function Router() {
         {renderPage === 'settings' && <SettingsPage />}
         {renderPage === 'journal' && <JournalPage />}
         {renderPage === 'auto-trade' && <AutoTradePage />}
+        {renderPage === 'day-trade' && <DayTradePage />}
+        {renderPage === 'day-trade-watchlist' && <DayTradeWatchlistPage />}
       </Suspense>
     </AppLayout>
   )
