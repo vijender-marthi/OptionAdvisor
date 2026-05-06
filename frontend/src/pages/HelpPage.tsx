@@ -276,7 +276,7 @@ const workflowSteps = [
     title: 'Analyze in Strategy Finder',
     icon: <BarChart2 size={16} />,
     color: 'text-sky-400',
-    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (2–8), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
+    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w ladder: 0w, 1w, 2w, 3w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
   },
   {
     step: '4',
@@ -290,7 +290,7 @@ const workflowSteps = [
     title: 'Scan Trade Signals',
     icon: <Radar size={16} />,
     color: 'text-amber-400',
-    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for all analyzed DTE windows (2w–8w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
+    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (0w, 1w, 2w, 3w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
   },
   {
     step: '6',
@@ -758,17 +758,17 @@ export default function HelpPage() {
           <div className="space-y-3 text-sm text-gray-400">
             <p>
               Trade Signals is your signal dashboard — it shows every watchlist ticker with pre-trade
-              verdicts across all DTE windows (2w, 3w, 4w, 6w, 8w) at a glance.
+              verdicts across six DTE scan windows (0w, 1w, 2w, 3w, 4w, 6w) at a glance.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 {
                   title: 'Coverage dots',
-                  desc: 'Each ticker shows colored dots for 2w/3w/4w/6w/8w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
+                  desc: 'Each ticker shows colored dots for 0w/1w/2w/3w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
                 },
                 {
                   title: 'Fetch All Weeks',
-                  desc: 'One button fires five API calls (600ms staggered) for all DTE windows simultaneously. Results are cached for 15 minutes — you only need to do this once per session per ticker.',
+                  desc: 'One button fires six API calls (600ms staggered) for all DTE scan windows simultaneously. Results are cached for 15 minutes — you only need to do this once per session per ticker.',
                 },
                 {
                   title: 'Week tabs',
@@ -786,7 +786,7 @@ export default function HelpPage() {
               ))}
             </div>
             <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: for earnings plays, use 2w–3w windows. For position trades, use 4w–6w. For LEAPS-style plays, use 8w+.
+              Tip: for same-week / ultra-short setups use 0w–1w. For typical weekly/monthly front, use 2w–4w. For a bit more time in the trade, use 6w.
             </p>
           </div>
         </InfoCard>

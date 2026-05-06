@@ -8,7 +8,7 @@ OptionAdvisor is a systematic options analysis app for scanning tickers, buildin
 - Trade recommendations scored by signal fit, structure, liquidity, and IV fit.
 - Pre-trade checklist with GO / CAUTION / NO GO verdicts.
 - Watchlist with sorting, industry grouping, refresh, and cached analysis data.
-- Trade Signals page with multi-week DTE windows: 2w, 3w, 4w, 6w, and 8w.
+- Trade Signals page with multi-week DTE windows: 0w, 1w, 2w, 3w, 4w, and 6w.
 - Alerts page for GO trades, retained for 24 hours, with optional email alerts.
 - Portfolio tracker for open and closed positions.
 - Light and dark themes.

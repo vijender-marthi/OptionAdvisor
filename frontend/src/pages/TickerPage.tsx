@@ -16,6 +16,8 @@ import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 
+const VALID_SAVED_WEEKS = new Set<number>(MULTI_WEEK_TARGETS as readonly number[])
+
 interface LastAnalysisRequest {
   ticker: string
   weeksOut: number
@@ -40,7 +42,7 @@ function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null 
   const ticker = typeof value.ticker === 'string' ? value.ticker.trim().toUpperCase() : ''
   const weeksOut = Number(value.weeksOut)
   const strategyMode = value.strategyMode ?? 'all'
-  if (!ticker || !Number.isFinite(weeksOut) || ![2, 3, 4, 6, 8].includes(weeksOut)) return null
+  if (!ticker || !Number.isFinite(weeksOut) || !VALID_SAVED_WEEKS.has(weeksOut)) return null
   if (!['all', 'long_only', 'credit_only', 'short_or_covered', 'straddle_only'].includes(strategyMode)) return null
   let chainExpiry: string | undefined
   const ceRaw = value.chainExpiry
@@ -134,7 +136,7 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
     }
   }
 
-  // Build ordered list for all 5 windows
+  // Build ordered list for all MULTI_WEEK_TARGETS slots
   return MULTI_WEEK_TARGETS.map(w => {
     const label = `${w}w`
     return slots.get(label) ?? { weeksOut: w, label, dte: null, verdict: null, recCount: 0, hasData: false }
@@ -229,7 +231,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
         onClick={onFetch}
         disabled={fetching}
         aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
-        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–8w)'}
+        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (0w–6w)'}
         className="inline-flex h-10 w-full lg:w-10 items-center justify-center bg-gray-800 hover:bg-violet-600/20 border border-gray-700
                    hover:border-violet-600 text-gray-400 hover:text-violet-300 rounded-xl
                    transition-colors disabled:opacity-50 shrink-0"

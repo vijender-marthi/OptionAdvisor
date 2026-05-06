@@ -1,6 +1,7 @@
 import { useEffect, useState, KeyboardEvent } from 'react'
 import { Search, TrendingUp } from 'lucide-react'
 import type { StrategyMode } from '../types'
+import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 
 interface Props {
   onAnalyze: (ticker: string, weeksOut: number, spreadWidth: number | null, strategyMode: StrategyMode) => void
@@ -91,8 +92,8 @@ export default function TickerInput({
           value={weeks}
           onChange={e => setWeeks(Number(e.target.value))}
         >
-          {[2, 3, 4, 6, 8].map(w => (
-            <option key={w} value={w}>{w} weeks out</option>
+          {MULTI_WEEK_TARGETS.map(w => (
+            <option key={w} value={w}>{w === 0 ? '0w (front)' : `${w} weeks out`}</option>
           ))}
         </select>
         <button

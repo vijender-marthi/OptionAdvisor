@@ -138,7 +138,7 @@ export interface TickerCacheEntry {
   chainExpiry?: string | null
   /** Exact expiry snapshots from Portfolio auto-fetch / refresh (YYYY-MM-DD → analyze response). */
   portfolioByExpiry?: Record<string, AnalyzeResponse>
-  // Multi-week scan: keyed by weeksOut (2,3,4,6,8) → full response for that expiry window
+  // Multi-week scan: keyed by weeksOut (MULTI_WEEK_TARGETS) → full response for that expiry window
   multiWeekData?: Record<number, AnalyzeResponse>
   multiWeekTimestamp?: number    // when the multi-week sweep was last run
 }

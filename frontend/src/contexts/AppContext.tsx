@@ -24,6 +24,11 @@ import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permis
 import { normalizePortfolioExpiryIso, resolvePortfolioAnalyzeData } from '../utils/portfolioAnalysis'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 import { ADVISORY_TERMS_VERSION } from '../constants/advisoryDisclaimer'
+import { MULTI_WEEK_TARGETS, type WeeksOut } from '../data/stockUniverse'
+
+function isWeeksOut(n: number): n is WeeksOut {
+  return (MULTI_WEEK_TARGETS as readonly number[]).includes(n)
+}
 
 function migrateStoredUser(raw: User | null): User | null {
   if (!raw?.email) return raw
@@ -202,7 +207,7 @@ interface AppContextValue {
   lastBgRefresh: number | null   // timestamp of last background sweep
   isMarketHours: boolean         // true when within 6 AM–4 PM PST weekdays
   refreshWatchlistForAlerts: () => Promise<void>
-  // Multi-week scan (2,3,4,6,8 weeks) — stored inside the cache entry's multiWeekData
+  // Multi-week scan (MULTI_WEEK_TARGETS) — stored inside the cache entry's multiWeekData
   fetchAllWeeks: (ticker: string) => Promise<void>
   fetchSingleWeek: (ticker: string, weeksOut: number) => Promise<void>
   fetchingAllWeeks: Set<string>
@@ -548,9 +553,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     finderDeepLinkHandledRef.current = true
 
     let weeksOut = Number(params.get('weeks'))
-    if (!Number.isFinite(weeksOut) || weeksOut <= 0) weeksOut = 4
-    if (!([2, 3, 4, 6, 8] as const).includes(weeksOut as 2 | 3 | 4 | 6 | 8))
-      weeksOut = 4
+    if (!Number.isFinite(weeksOut) || !isWeeksOut(weeksOut)) weeksOut = 4
 
     const expRaw = params.get('expiry')?.trim().slice(0, 10) ?? ''
     const chainExpiry = /^\d{4}-\d{2}-\d{2}$/.test(expRaw) ? expRaw : null
@@ -562,7 +565,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const q = url.searchParams.toString()
     window.history.replaceState({}, '', `${url.pathname}${q ? `?${q}` : ''}${url.hash}`)
 
-    requestAnalysis(ticker, { weeksOut: weeksOut as 2 | 3 | 4 | 6 | 8, chainExpiry, force: false })
+    requestAnalysis(ticker, { weeksOut: weeksOut, chainExpiry, force: false })
   }, [user, requestAnalysis])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -1000,14 +1003,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshWatchlistForAlerts(true)
   }, [refreshWatchlistForAlerts, user?.email, userDataLoaded, watchlist.length])
 
-  // ── fetchAllWeeks: fetch 2,3,4,6,8 week expiries and store in multiWeekData ──
+  // ── fetchAllWeeks: fetch each MULTI_WEEK_TARGETS expiry and store in multiWeekData ──
   const fetchAllWeeks = useCallback(async (ticker: string) => {
     if (fetchingAllWeeks.has(ticker)) return
     setFetchingAllWeeks(prev => new Set(prev).add(ticker))
     const existing = tickerCacheRef.current[ticker]
     const spreadWidth  = existing?.spreadWidth  ?? null
     const strategyMode = (existing?.strategyMode ?? 'all') as StrategyMode
-    const weeks = [2, 3, 4, 6, 8]
+    const weeks = [...MULTI_WEEK_TARGETS]
     const multiWeekData: Record<number, AnalyzeResponse> = {}
     for (let i = 0; i < weeks.length; i++) {
       const w = weeks[i]

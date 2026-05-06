@@ -455,7 +455,12 @@ def main():
     with col1:
         ticker = st.text_input("Enter Ticker Symbol", value="AAPL", placeholder="e.g. AAPL, TSLA, SPY").upper().strip()
     with col2:
-        weeks_out = st.selectbox("Target Expiry", [2, 3, 4, 6, 8], index=2, format_func=lambda x: f"~{x} weeks out")
+        weeks_out = st.selectbox(
+            "Target Expiry",
+            [0, 1, 2, 3, 4, 6],
+            index=4,
+            format_func=lambda x: "~0w (front)" if x == 0 else f"~{x} weeks out",
+        )
     with col3:
         st.write("")
         st.write("")

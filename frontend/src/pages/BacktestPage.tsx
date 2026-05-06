@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { runBacktest } from '../api/client'
 import type { BacktestResult, BacktestTrade, BacktestEquityPoint } from '../types'
+import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ function TradeRow({ t, expanded, onToggle }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const WEEK_OPTS = [2, 3, 4, 6, 8]
+const WEEK_OPTS = [...MULTI_WEEK_TARGETS]
 const WIDTH_OPTS: { label: string; value: number | null }[] = [
   { label: 'Auto', value: null },
   { label: '$5',   value: 5 },

@@ -11,15 +11,6 @@ import type { Recommendation, AnalyzeResponse } from '../types'
 import { cacheAge } from '../types'
 import { TICKER_CATEGORY_MAP, CATEGORY_BADGE, MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 
-// ─── DTE bucket ──────────────────────────────────────────────────────────────
-function dteBucket(dte: number): string {
-  if (dte <= 16)  return '2w'
-  if (dte <= 23)  return '3w'
-  if (dte <= 32)  return '4w'
-  if (dte <= 46)  return '6w'
-  return '8w+'
-}
-
 // ─── Verdict style ───────────────────────────────────────────────────────────
 type VerdictOrNone = Verdict | 'NONE'
 
@@ -50,8 +41,8 @@ function bestVerdict(vs: Verdict[]): VerdictOrNone {
 
 // ─── Per-week bucket ─────────────────────────────────────────────────────────
 interface WeekBucket {
-  weeksOut: number       // 2 | 3 | 4 | 6 | 8
-  label: string          // '2w' | '3w' etc.
+  weeksOut: number       // MULTI_WEEK_TARGETS
+  label: string          // e.g. '0w', '1w'
   dte: number            // actual DTE of the expiry found
   expiry: string         // option expiration / strike date
   recommendations: { rec: Recommendation; verdict: Verdict }[]
@@ -76,7 +67,7 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
     const dte = primaryRecs[0].rec.dte
     buckets.push({
       weeksOut: entry.weeksOut,
-      label: dteBucket(dte),
+      label: `${entry.weeksOut}w`,
       dte,
       expiry: primaryRecs[0].rec.expiry,
       recommendations: primaryRecs,
@@ -88,18 +79,18 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
   if (entry.multiWeekData) {
     for (const [wStr, data] of Object.entries(entry.multiWeekData)) {
       const w = Number(wStr)
-      // Skip if same DTE as primary (avoid duplicate)
+      // Skip if we already have this requested week (e.g. same as primary)
       const recs = (data as AnalyzeResponse).recommendations
       if (recs.length === 0) continue
+      if (buckets.some(b => b.weeksOut === w)) continue
       const dte = recs[0].dte
-      if (buckets.some(b => Math.abs(b.dte - dte) <= 3)) continue  // deduplicate ±3 DTE
       const withVerdicts = recs.map(rec => ({
         rec,
         verdict: deriveVerdict(buildChecklist(rec, (data as AnalyzeResponse).signals)),
       }))
       buckets.push({
         weeksOut: w,
-        label: dteBucket(dte),
+        label: `${w}w`,
         dte,
         expiry: recs[0].expiry,
         recommendations: withVerdicts,
@@ -114,13 +105,13 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
 
 // ─── Week coverage dots ───────────────────────────────────────────────────────
 function WeekCoverageDots({ buckets, hasFetched }: { buckets: WeekBucket[]; hasFetched: boolean }) {
-  const covered = new Set(buckets.map(b => b.label))
+  const coveredWeeks = new Set(buckets.map(b => b.weeksOut))
   return (
     <div className="flex items-center gap-1">
       {MULTI_WEEK_TARGETS.map(w => {
         const label = `${w}w`
-        const bucket = buckets.find(b => b.label === label)
-        const has = covered.has(label)
+        const bucket = buckets.find(b => b.weeksOut === w)
+        const has = coveredWeeks.has(w)
         const color = has
           ? bucket?.bestVerdict === 'GO' ? 'bg-emerald-500'
           : bucket?.bestVerdict === 'CAUTION' ? 'bg-amber-500'
@@ -301,7 +292,7 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize 
               onClick={onFetchAllWeeks}
               disabled={fetching}
               aria-label={fetching ? 'Fetching multi-week windows' : `Fetch multi-week windows for ${result.ticker}`}
-              title={fetching ? 'Fetching…' : 'Fetch multi-week windows (2w–8w)'}
+              title={fetching ? 'Fetching…' : 'Fetch multi-week windows (0w–6w)'}
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800
                          text-gray-400 transition-colors hover:border-violet-600 hover:bg-gray-700 hover:text-violet-300 disabled:opacity-50"
             >
@@ -385,10 +376,10 @@ type Filter = 'All' | 'GO' | 'CAUTION' | 'NO GO' | 'Not Analyzed'
 type WeekFilter = 'All' | number
 
 const SIGNALS_HEADER_INFO =
-  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 2w · 3w · 4w · 6w · 8w expiry windows — each window gets its own set of verdicts.'
+  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 0w · 1w · 2w · 3w · 4w · 6w expiry windows — each window gets its own set of verdicts.'
 
 const SIGNALS_MULTI_WEEK_INFO =
-  "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 2, 3, 4, 6, and 8 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
+  "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 0, 1, 2, 3, 4, and 6 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
 
 export default function TradeSignalsPage() {
   const { watchlist, tickerCache, requestAnalysis, refreshTicker,
@@ -560,7 +551,7 @@ export default function TradeSignalsPage() {
                 onClick={handleRefreshAll}
                 disabled={refreshingAll}
                 aria-label="Refresh trades — fetch multi-week scans for analyzed tickers"
-                title="Refresh trades (2w–8w scans)"
+                title="Refresh trades (0w–6w scans)"
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 px-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-400 rounded-xl transition-colors disabled:opacity-50"
               >
@@ -598,7 +589,7 @@ export default function TradeSignalsPage() {
           <div className="min-w-[240px]">
               <div className="text-xs font-semibold text-gray-300">Global DTE Window Filter</div>
               <div className="text-[11px] text-gray-600">
-                Select a 2w to 8w window, then refresh trades to populate and show that range across all analyzed tickers.
+                Select a scan window (0w, 1w, 2w, 3w, 4w, or 6w), then refresh trades to populate and show that range across all analyzed tickers.
               </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -612,7 +603,7 @@ export default function TradeSignalsPage() {
               <option value="All">All Windows ({results.length})</option>
               {weekOptions.map(option => (
                 <option key={option.weeksOut} value={option.weeksOut}>
-                  {option.weeksOut} weeks ({option.count} trades)
+                  {option.weeksOut === 0 ? '0w (front)' : `${option.weeksOut} weeks`} ({option.count} trades)
                 </option>
               ))}
               </select>

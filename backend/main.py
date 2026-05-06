@@ -196,6 +196,8 @@ ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS",
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 ALERT_SCAN_WEEKS_OUT = 4
+# Strategy Finder / email deeplink ?weeks= must match frontend MULTI_WEEK_TARGETS
+FINDER_VALID_WEEKS_OUT = frozenset({0, 1, 2, 3, 4, 6})
 ALERT_SCAN_SPREAD_WIDTH = 5
 
 # User-facing analyze endpoint cache TTL:
@@ -408,7 +410,7 @@ def _finder_deeplink_for_alert(a: AlertItem) -> str:
     base = _option_advisor_public_base()
     ticker = a.ticker.strip().upper()
     w = int(a.weeks_out) if getattr(a, "weeks_out", None) is not None else 4
-    if w not in (2, 3, 4, 6, 8):
+    if w not in FINDER_VALID_WEEKS_OUT:
         w = 4
     exp_raw = (a.expiry or "").strip()
     exp = exp_raw[:10] if len(exp_raw) >= 10 else ""
