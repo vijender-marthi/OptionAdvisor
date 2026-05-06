@@ -12,11 +12,12 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set([
   'auto-trade',
   'day-trade',
   'day-trade-watchlist',
+  'day-trade-alerts',
 ])
 
 /**
  * Finance users get analysis, portfolio, journal, alerts, etc., but not stock-discovery radars.
- * auto-trade and Day Trading (engine + watchlist) are admin-only.
+ * auto-trade plus Day Trading (engine, watchlist, alert feed) are admin-only.
  * Admin and standard users have full navigation (except admin-only pages).
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {

@@ -20,12 +20,17 @@ Bias = Optional[Literal["long", "short"]]
 
 OR_MINUTES = 15  # opening range = first 15 × 1m bars of RTH
 MIN_BARS = 25
-GO_THRESHOLD = 5.0
-MARGIN_GO = 3.0
+# Need a directional edge vs the other side — slightly relaxed vs original 5 / 3
+# now that RS and market context contribute more asymmetrically.
+GO_THRESHOLD = 4.5
+MARGIN_GO = 2.75
 STRONG_BULL = 7.0
 STRONG_DIFF = 4.0
 VIX_NO_GO = 40.0
 VIX_CAUTION = 30.0
+# Last bar vs typical mid-session liquidity (excluding OR burst and excluding last bar).
+VOL_SPIKE_MIN_STEADY = 5
+VOL_SPIKE_RATIO = 1.55
 
 
 @dataclass
@@ -116,6 +121,18 @@ def _finite_price(x: float, fallback: float) -> float:
     if not math.isfinite(float(x)):
         return fallback
     return float(x)
+
+
+def _info_opt_float(info: dict[str, Any], key: str) -> Optional[float]:
+    """Safely coerce yfinance ``info`` field to finite float."""
+    raw = info.get(key)
+    if raw is None:
+        return None
+    try:
+        x = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None
 
 
 def _index_change_pct(sym: str) -> Optional[float]:
@@ -255,6 +272,7 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
         company = (info.get("longName") or info.get("shortName") or t)[:120]
     except Exception:
         company = t
+        info = {}
 
     try:
         raw = stock.history(period="5d", interval="1m", auto_adjust=True)
@@ -293,16 +311,33 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
     c0 = float(session["Close"].iloc[-mom_bars])
     momentum_pct = round((last / c0 - 1.0) * 100, 3) if c0 > 0 else 0.0
 
-    # Volume spike: compare last bar against the OR window average (first OR_MINUTES bars).
-    # Using the OR window as a fixed baseline avoids late-session drift that occurs when
-    # the reference window slides forward and absorbs prior heavy volume.
+    # Volume spike: compare the *last* bar to a "steady session" baseline.
+    #
+    # Basing this on ONLY the opening 15-minute mean caused almost no spikes near the close:
+    # the open auction / first swings print far more volume than a normal minute, so
+    # close rarely exceeded 1.6× that level → everything became WATCH with a plausible edge,
+    # or WAIT when scores missed.
+    #
+    # We exclude (1) the OR window and (2) the final bar itself, then use the mean volume
+    # of what remains — stable reference for typical mid/late-session bars.
     or_vol = vol_ser.iloc[:OR_MINUTES]
-    if len(or_vol) >= 5:
+    steady_vol = vol_ser.iloc[OR_MINUTES:-1]
+    tail_mid = (
+        vol_ser.iloc[max(OR_MINUTES, len(vol_ser) // 3) :-1]
+        if len(vol_ser) > OR_MINUTES + VOL_SPIKE_MIN_STEADY + 2
+        else steady_vol
+    )
+    if len(steady_vol) >= VOL_SPIKE_MIN_STEADY:
+        avg_vol = float(steady_vol.mean())
+    elif len(tail_mid) >= VOL_SPIKE_MIN_STEADY:
+        avg_vol = float(tail_mid.mean())
+    elif len(or_vol) >= 5:
         avg_vol = float(or_vol.mean())
     else:
         avg_vol = float(vol_ser.iloc[:-1].mean()) if len(vol_ser) > 1 else 0.0
+
     v_last = float(vol_ser.iloc[-1])
-    vol_spike = avg_vol > 0 and v_last >= 1.6 * avg_vol
+    vol_spike = avg_vol > 0 and v_last >= VOL_SPIKE_RATIO * avg_vol
 
     vwap_dist_pct = round((last / vwap_last - 1.0) * 100, 3) if vwap_last > 0 else 0.0
 
@@ -348,8 +383,8 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
             body.append("Volume spike confirms directional lean.")
     else:
         body.append(
-            "No volume spike vs recent bars — expansion not confirmed; lower conviction, "
-            "higher reversal risk (e.g. gaps, earnings headline risk)."
+            "No volume spike vs mid-session baseline — expansion not strongly confirmed; "
+            "lower conviction, higher reversal risk (e.g. gaps, headline risk)."
         )
 
     spy_chg = _index_change_pct("SPY")
@@ -507,10 +542,28 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
             }
         )
 
+    session_change_pct = _intraday_session_return_pct(session)
+    post_m_p = _info_opt_float(info, "postMarketPrice")
+    post_m_chg = _info_opt_float(info, "postMarketChangePercent")
+    pre_m_p = _info_opt_float(info, "preMarketPrice")
+    pre_m_chg = _info_opt_float(info, "preMarketChangePercent")
+    reg_m_p = _info_opt_float(info, "regularMarketPrice")
+    reg_m_chg = _info_opt_float(info, "regularMarketChangePercent")
+    market_state_raw = info.get("marketState")
+    market_state = str(market_state_raw).strip().upper() if market_state_raw else ""
+
     metrics = {
         "session_date": session_date,
         "bars_used": len(session),
         "last_price": round(last, 4),
+        "session_change_pct": session_change_pct,
+        "post_market_price": post_m_p,
+        "post_market_change_pct": post_m_chg,
+        "pre_market_price": pre_m_p,
+        "pre_market_change_pct": pre_m_chg,
+        "regular_market_price": reg_m_p,
+        "regular_market_change_pct": reg_m_chg,
+        "market_state": market_state,
         "vwap": round(vwap_last, 4),
         "vwap_dist_pct": vwap_dist_pct,
         "or_high": round(or_high, 4),

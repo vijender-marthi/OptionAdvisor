@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AlertEmailItem, AlertEntry, AnalyzeResponse, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
+import type { AlertEmailItem, AlertEntry, AnalyzeResponse, DayTradeAlertEvent, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -138,6 +138,13 @@ export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResul
   return data
 }
 
+export const getDayTradeAlerts = async (email: string): Promise<DayTradeAlertEvent[]> => {
+  const { data } = await api.get<{ email: string; alerts: DayTradeAlertEvent[] }>(
+    `/day-trade-alerts/${encodeURIComponent(email)}`,
+  )
+  return data.alerts
+}
+
 export const getUserData = async (email: string): Promise<UserDataState> => {
   const { data } = await api.get<UserDataState>(`/user-data/${encodeURIComponent(email)}`)
   return data
@@ -214,11 +221,15 @@ export const saveUserData = async (
   watchlist: WatchlistItem[],
   portfolio: PortfolioPosition[],
   advisory?: { advisoryTermsVersion: string; advisoryAcceptedAt: string },
+  dayTradeWatchlist?: string[],
 ): Promise<UserDataState> => {
   const body: Record<string, unknown> = { watchlist, portfolio }
   if (advisory) {
     body.advisory_terms_version = advisory.advisoryTermsVersion
     body.advisory_accepted_at = advisory.advisoryAcceptedAt
+  }
+  if (dayTradeWatchlist !== undefined) {
+    body.day_trade_watchlist = dayTradeWatchlist
   }
   const { data } = await api.put<UserDataState>(`/user-data/${encodeURIComponent(email)}`, body)
   return data

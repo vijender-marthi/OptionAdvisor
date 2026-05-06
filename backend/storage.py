@@ -71,6 +71,14 @@ def _migrate_user_state_advisory_columns(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_user_state_day_trade_watchlist(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "day_trade_watchlist_json" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN day_trade_watchlist_json TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
     Resolve role from SQLite user_state.role (admin | finance | user).
@@ -147,6 +155,7 @@ def init_db() -> None:
         _migrate_user_state_role_column(conn)
         _migrate_user_state_auth_columns(conn)
         _migrate_user_state_advisory_columns(conn)
+        _migrate_user_state_day_trade_watchlist(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -169,6 +178,31 @@ def init_db() -> None:
                 iv_pct REAL NOT NULL,
                 recorded_at INTEGER NOT NULL,
                 PRIMARY KEY (ticker, session_date)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS day_trade_watchlist_last (
+                email TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                verdict TEXT NOT NULL,
+                session_date TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (email, ticker)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS day_trade_alert_events (
+                email TEXT NOT NULL,
+                alert_id TEXT NOT NULL,
+                alert_json TEXT NOT NULL,
+                detected_at INTEGER NOT NULL,
+                email_sent INTEGER NOT NULL DEFAULT 0,
+                email_message TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (email, alert_id)
             )
             """
         )
@@ -217,6 +251,25 @@ def fetch_iv_atm_history_strict_before(ticker: str, before_session_date: str, li
     return [float(row[0]) for row in rows]
 
 
+def _normalize_day_trade_tickers(raw: object) -> list[str]:
+    """Up to 10 unique US-style tickers."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in raw:
+        t = str(x).strip().upper()
+        if not t or len(t) > 12 or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        if len(out) >= 10:
+            break
+    return out
+
+
 def get_user_state(email: str) -> dict[str, Any]:
     normalized = normalize_email(email)
     if not normalized:
@@ -226,6 +279,7 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "role": "user",
                 "watchlist": [],
                 "portfolio": [],
+                "day_trade_watchlist": [],
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
             }
@@ -235,7 +289,8 @@ def get_user_state(email: str) -> dict[str, Any]:
         row = conn.execute(
             """
             SELECT email, watchlist_json, portfolio_json, role,
-                   advisory_terms_version, advisory_accepted_at
+                   advisory_terms_version, advisory_accepted_at,
+                   day_trade_watchlist_json
             FROM user_state
             WHERE email = ?
             """,
@@ -249,18 +304,25 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "role": effective_user_role(normalized, None),
                 "watchlist": [],
                 "portfolio": [],
+                "day_trade_watchlist": [],
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
             }
         )
 
     stored_role = str(row["role"]) if row["role"] is not None else "user"
+    try:
+        dt_json = row["day_trade_watchlist_json"]
+    except (KeyError, IndexError):
+        dt_json = "[]"
+    dt_list = _normalize_day_trade_tickers(json.loads(dt_json) if dt_json else [])
     return _state_with_watchlist_max(
         {
             "email": row["email"],
             "role": effective_user_role(normalized, stored_role),
             "watchlist": json.loads(row["watchlist_json"]),
             "portfolio": json.loads(row["portfolio_json"]),
+            "day_trade_watchlist": dt_list,
             "advisory_terms_version": row["advisory_terms_version"],
             "advisory_accepted_at": row["advisory_accepted_at"],
         }
@@ -271,7 +333,8 @@ def list_user_states() -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT email, watchlist_json, portfolio_json, role
+            SELECT email, watchlist_json, portfolio_json, role,
+                   day_trade_watchlist_json
             FROM user_state
             ORDER BY updated_at DESC
             """
@@ -283,6 +346,9 @@ def list_user_states() -> list[dict[str, Any]]:
             "role": effective_user_role(row["email"], str(row["role"]) if row["role"] is not None else None),
             "watchlist": json.loads(row["watchlist_json"]),
             "portfolio": json.loads(row["portfolio_json"]),
+            "day_trade_watchlist": _normalize_day_trade_tickers(
+                json.loads(row["day_trade_watchlist_json"] or "[]"),
+            ),
         }
         for row in rows
     ]
@@ -295,20 +361,27 @@ def save_user_state(
     *,
     advisory_terms_version: Optional[str] = None,
     advisory_accepted_at: Optional[str] = None,
+    day_trade_watchlist: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     normalized = normalize_email(email)
     preview = get_user_state(normalized)
     lim = watchlist_limit_for_role(str(preview.get("role") or "user"))
     if len(watchlist) > lim:
         raise ValueError(f"watchlist_limit:{lim}")
+    if day_trade_watchlist is not None:
+        dt_normalized = _normalize_day_trade_tickers(day_trade_watchlist)
+    else:
+        dt_normalized = _normalize_day_trade_tickers(preview.get("day_trade_watchlist"))
+
     with _connect() as conn:
         conn.execute(
             """
             INSERT INTO user_state (
                 email, watchlist_json, portfolio_json, role,
-                advisory_terms_version, advisory_accepted_at, updated_at
+                advisory_terms_version, advisory_accepted_at,
+                day_trade_watchlist_json, updated_at
             )
-            VALUES (?, ?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, 'user', ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 watchlist_json = excluded.watchlist_json,
                 portfolio_json = excluded.portfolio_json,
@@ -320,6 +393,7 @@ def save_user_state(
                     excluded.advisory_accepted_at,
                     user_state.advisory_accepted_at
                 ),
+                day_trade_watchlist_json = excluded.day_trade_watchlist_json,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -328,10 +402,114 @@ def save_user_state(
                 json.dumps(portfolio),
                 advisory_terms_version,
                 advisory_accepted_at,
+                json.dumps(dt_normalized),
             ),
         )
 
     return get_user_state(normalized)
+
+
+DAY_TRADE_ALERT_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
+
+
+def upsert_day_trade_watchlist_last(
+    email: str,
+    ticker: str,
+    verdict: str,
+    session_date: str,
+) -> None:
+    normalized = normalize_email(email)
+    t = ticker.upper().strip()
+    if not normalized or not t:
+        return
+    now_ms = int(time.time() * 1000)
+    sd = (session_date or "").strip()[:10]
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO day_trade_watchlist_last (email, ticker, verdict, session_date, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(email, ticker) DO UPDATE SET
+                verdict = excluded.verdict,
+                session_date = excluded.session_date,
+                updated_at = excluded.updated_at
+            """,
+            (normalized, t, verdict.strip().upper(), sd, now_ms),
+        )
+
+
+def get_day_trade_watchlist_last(email: str, ticker: str) -> Optional[dict[str, Any]]:
+    normalized = normalize_email(email)
+    t = ticker.upper().strip()
+    if not normalized or not t:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT verdict, session_date, updated_at
+            FROM day_trade_watchlist_last
+            WHERE email = ? AND ticker = ?
+            """,
+            (normalized, t),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "verdict": row["verdict"],
+        "session_date": row["session_date"] or "",
+        "updated_at": int(row["updated_at"]),
+    }
+
+
+def add_day_trade_alert_event(email: str, alert: dict[str, Any]) -> None:
+    """Insert or replace one day-trade escalation event (audit + UI)."""
+    normalized = normalize_email(email)
+    aid = str(alert["id"])
+    detected = int(alert["detectedAt"])
+    sent = bool(alert.get("emailSent"))
+    msg = str(alert.get("emailMessage", "") or "")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO day_trade_alert_events (
+                email, alert_id, alert_json, detected_at, email_sent, email_message
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email, alert_id) DO UPDATE SET
+                alert_json = excluded.alert_json,
+                email_sent = excluded.email_sent,
+                email_message = excluded.email_message
+            """,
+            (normalized, aid, json.dumps(alert), detected, 1 if sent else 0, msg),
+        )
+
+
+def list_day_trade_alert_events(email: str, retention_ms: int, now_ms: int) -> list[dict[str, Any]]:
+    normalized = normalize_email(email)
+    cutoff = now_ms - retention_ms
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM day_trade_alert_events WHERE email = ? AND detected_at < ?",
+            (normalized, cutoff),
+        )
+        rows = conn.execute(
+            """
+            SELECT alert_json, email_sent, email_message
+            FROM day_trade_alert_events
+            WHERE email = ?
+            ORDER BY detected_at DESC
+            LIMIT 500
+            """,
+            (normalized,),
+        ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        d = json.loads(row["alert_json"])
+        d["emailSent"] = bool(row["email_sent"])
+        d["emailMessage"] = row["email_message"]
+        out.append(d)
+    return out
 
 
 def add_user_alert(email: str, alert: dict[str, Any], email_sent: bool, email_message: str = "") -> bool:

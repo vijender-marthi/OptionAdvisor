@@ -58,6 +58,7 @@ class UserDataRequest(BaseModel):
     portfolio: list[dict[str, Any]]
     advisory_terms_version: Optional[str] = None
     advisory_accepted_at: Optional[str] = None
+    day_trade_watchlist: Optional[list[str]] = None
 
 
 class UserDataResponse(BaseModel):
@@ -68,6 +69,8 @@ class UserDataResponse(BaseModel):
     portfolio: list[dict[str, Any]]
     advisory_terms_version: Optional[str] = None
     advisory_accepted_at: Optional[str] = None
+    """Symbols scanned every 15m for day-trade WATCH→GO escalations (admin-only feature)."""
+    day_trade_watchlist: list[str] = Field(default_factory=list)
     """Max watchlist length for this account (OPTION_ADVISOR_WATCHLIST_MAX_USER / _ADMIN)."""
     watchlist_max: int = 15
 

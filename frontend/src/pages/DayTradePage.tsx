@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import {
   ArrowDown, BarChart2, ChevronDown, ChevronRight, Clock, Flame, Loader2,
   RefreshCw, Search, ShieldAlert, Zap,
 } from 'lucide-react'
-import { analyzeDayTrade, type DayTradeScanResult } from '../api/client'
+import { analyzeDayTrade } from '../api/client'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
+import { useApp } from '../contexts/AppContext'
 
 function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -13,31 +14,50 @@ function axiosDetail(e: unknown): string {
 }
 
 export default function DayTradePage() {
-  const [ticker, setTicker] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<DayTradeScanResult | null>(null)
-  const [glossaryOpen, setGlossaryOpen] = useState(false)
+  const { dayTradeEngineUI: ui, setDayTradeEngineUI: setUi } = useApp()
+  const { ticker, loading, error, result, glossaryOpen } = ui
+
+  useEffect(() => {
+    const readHashTicker = () => {
+      const raw = window.location.hash.replace(/^#/, '')
+      const qi = raw.indexOf('?')
+      if (qi < 0) return
+      const sp = new URLSearchParams(raw.slice(qi))
+      const t = sp.get('ticker')?.trim().toUpperCase()
+      if (t && t.length <= 12) {
+        setUi(cur =>
+          cur.ticker.trim() === t ? cur : { ...cur, ticker: t },
+        )
+      }
+    }
+    readHashTicker()
+    window.addEventListener('hashchange', readHashTicker)
+    return () => window.removeEventListener('hashchange', readHashTicker)
+  }, [setUi])
 
   const runScan = useCallback(async () => {
     const sym = ticker.trim().toUpperCase()
     if (!sym || sym.length > 12) {
-      setError('Enter a valid ticker symbol.')
+      setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
     }
-    setLoading(true)
-    setError(null)
-    setResult(null)
+    setUi(cur => ({ ...cur, loading: true, error: null, result: null }))
     try {
       const data = await analyzeDayTrade(sym)
-      setTicker(data.ticker)
-      setResult(data)
+      setUi(cur => ({
+        ...cur,
+        loading: false,
+        ticker: data.ticker,
+        result: data,
+      }))
     } catch (e) {
-      setError(axiosDetail(e))
-    } finally {
-      setLoading(false)
+      setUi(cur => ({
+        ...cur,
+        loading: false,
+        error: axiosDetail(e),
+      }))
     }
-  }, [ticker])
+  }, [ticker, setUi])
 
   return (
     <div className="day-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
@@ -59,7 +79,7 @@ export default function DayTradePage() {
             className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
             placeholder="SPY, NVDA, …"
             value={ticker}
-            onChange={e => setTicker(e.target.value.toUpperCase())}
+            onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
             onKeyDown={e => e.key === 'Enter' && runScan()}
             autoComplete="off"
             spellCheck={false}
@@ -94,7 +114,7 @@ export default function DayTradePage() {
       <section className="rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden">
         <button
           type="button"
-          onClick={() => setGlossaryOpen(o => !o)}
+          onClick={() => setUi(cur => ({ ...cur, glossaryOpen: !cur.glossaryOpen }))}
           className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800/50"
         >
           <span className="flex items-center gap-2">

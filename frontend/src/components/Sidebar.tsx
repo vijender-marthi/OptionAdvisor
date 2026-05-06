@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight, FlaskConical,
   User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
-  Moon, Sun, Menu, BookOpen, Zap, LayoutList,
+  Moon, Sun, Menu, BookOpen, Zap, LayoutList, BellRing,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -101,6 +101,7 @@ export default function Sidebar() {
       items: [
         { id: 'day-trade' as Page, label: 'Day Trade Engine', icon: <Zap size={18} /> },
         { id: 'day-trade-watchlist' as Page, label: 'Day Trade Watchlist', icon: <LayoutList size={18} /> },
+        { id: 'day-trade-alerts' as Page, label: 'Day Trade Alerts', icon: <BellRing size={18} /> },
       ],
     },
     {
@@ -137,6 +138,7 @@ export default function Sidebar() {
     { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
     { id: 'day-trade', label: 'Day Engine', icon: <Zap size={18} /> },
     { id: 'day-trade-watchlist', label: 'DT Watchlist', icon: <LayoutList size={18} /> },
+    { id: 'day-trade-alerts', label: 'DT Alerts', icon: <BellRing size={18} /> },
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },

@@ -4,7 +4,7 @@ main.py — FastAPI Backend
 Run: uvicorn main:app --reload --port 9000
 """
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
@@ -20,7 +20,7 @@ from collections import defaultdict
 import html
 import urllib.error
 import urllib.request
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -48,9 +48,21 @@ from day_trade import run_day_trade_scan
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
 from storage import (
-    add_user_alert, clear_user_alerts, dismiss_user_alert, get_user_alerts,
-    get_user_state, init_db, list_user_states, normalize_email, save_user_state,
+    add_user_alert,
+    add_day_trade_alert_event,
+    clear_user_alerts,
+    dismiss_user_alert,
+    DAY_TRADE_ALERT_RETENTION_MS,
+    get_day_trade_watchlist_last,
+    get_user_alerts,
+    get_user_state,
+    init_db,
+    list_day_trade_alert_events,
+    list_user_states,
+    normalize_email,
+    save_user_state,
     update_user_alert_email,
+    upsert_day_trade_watchlist_last,
     fetch_iv_atm_history_strict_before,
     upsert_iv_atm_snapshot,
 )
@@ -402,14 +414,59 @@ def _is_market_hours_now() -> bool:
     return 6 * 60 <= minutes < 16 * 60
 
 
-def _option_advisor_public_base() -> str:
-    """SPA origin for email deep links (same default as auth confirmation emails)."""
-    return os.getenv("OPTION_ADVISOR_PUBLIC_URL", "http://localhost:4200").rstrip("/")
+def _normalize_public_origin(url: str) -> str:
+    """Return usable http(s) origin with no trailing slash, or '' if invalid."""
+    u = (url or "").strip().rstrip("/")
+    if not u or not (u.startswith("http://") or u.startswith("https://")):
+        return ""
+    return u
 
 
-def _finder_deeplink_for_alert(a: AlertItem) -> str:
+def _spa_origin_from_request(request: Request) -> str | None:
+    """Derive SPA base from browser Origin / Referer (for /api/send-alert from the user's site)."""
+    origin = (
+        request.headers.get("origin")
+        or request.headers.get("Origin")
+        or ""
+    ).strip()
+    if origin:
+        norm = _normalize_public_origin(origin)
+        if norm:
+            return norm
+    ref = (request.headers.get("referer") or request.headers.get("Referer") or "").strip()
+    if ref:
+        try:
+            p = urlparse(ref)
+            if p.scheme in ("http", "https") and p.netloc:
+                return _normalize_public_origin(f"{p.scheme}://{p.netloc}")
+        except Exception:
+            return None
+    return None
+
+
+def _option_advisor_public_base(request: Request | None = None) -> str:
+    """
+    Base URL embedded in Strategy Finder GO-alert links (and hash links elsewhere).
+
+    1. OPTION_ADVISOR_PUBLIC_URL when set — required for production **background** scanner emails
+       (no HTTP request), and overrides everything when explicit.
+    2. Else, if ``request`` is set (manual send-alert from the SPA): ``Origin``, then ``Referer``.
+    3. Else ``http://localhost:4200`` (local scanner / dev default).
+    """
+    env_raw = os.getenv("OPTION_ADVISOR_PUBLIC_URL", "").strip()
+    env = _normalize_public_origin(env_raw)
+    if env:
+        return env
+    if request is not None:
+        from_req = _spa_origin_from_request(request)
+        if from_req:
+            return from_req
+    return "http://localhost:4200"
+
+
+def _finder_deeplink_for_alert(a: AlertItem, *, public_base: str) -> str:
     """Query-string link: Strategy Finder with ticker, scan weeks, optional chain expiry."""
-    base = _option_advisor_public_base()
+    base = public_base.strip().rstrip("/")
     ticker = a.ticker.strip().upper()
     w = int(a.weeks_out) if getattr(a, "weeks_out", None) is not None else 4
     if w not in FINDER_VALID_WEEKS_OUT:
@@ -438,12 +495,18 @@ def _get_15_min_window(ts_ms: int) -> str:
     return f"{fmt(dt.hour, bucket_start)} – {fmt(end_hour, end_min)} PT"
 
 
-def _build_alert_html(email: str, alerts: list, user_name: str | None = None) -> str:
+def _build_alert_html(
+    email: str,
+    alerts: list,
+    user_name: str | None = None,
+    *,
+    public_base: str,
+) -> str:
     """Render HTML for GO-trade alerts: high-contrast light default; dark when client prefers dark."""
     display_name = (user_name or "").strip() or email
     rows_html = ""
     for a in alerts:
-        app_url = _finder_deeplink_for_alert(a)
+        app_url = _finder_deeplink_for_alert(a, public_base=public_base)
         tick_safe = html.escape(a.ticker.strip().upper())
         strat_safe = html.escape(a.strategy)
         bias_safe = html.escape(a.bias)
@@ -457,8 +520,8 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
         ev_cls = "oa-ev-pos" if a.ev > 0 else "oa-ev-neg"
         rows_html += f"""
         <tr class="oa-tr">
-          <td class="oa-td oa-tick"><a class="oa-app-link" href="{app_url}">{tick_safe}</a></td>
-          <td class="oa-td oa-strat"><a class="oa-app-link oa-app-link-subtle" href="{app_url}">{strat_safe}</a></td>
+          <td class="oa-td oa-tick"><a class="oa-app-link" href="{html.escape(app_url, quote=True)}">{tick_safe}</a></td>
+          <td class="oa-td oa-strat"><a class="oa-app-link oa-app-link-subtle" href="{html.escape(app_url, quote=True)}">{strat_safe}</a></td>
           <td class="oa-td oa-bias" style="color:{bias_color} !important;">{bias_safe}</td>
           <td class="oa-td oa-muted">{exp_safe}</td>
           <td class="oa-td oa-pos">{profit}</td>
@@ -466,7 +529,7 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
           <td class="oa-td oa-num">{credit}</td>
           <td class="oa-td oa-num">{pop_pct}</td>
           <td class="oa-td oa-num {ev_cls}">{ev_str}</td>
-          <td class="oa-td" style="text-align:center;"><a class="oa-app-link" href="{app_url}"><span class="oa-go">✅ GO · Open</span></a></td>
+          <td class="oa-td" style="text-align:center;"><a class="oa-app-link" href="{html.escape(app_url, quote=True)}"><span class="oa-go">✅ GO · Open</span></a></td>
         </tr>"""
 
     window_label = alerts[0].time_window if alerts else ""
@@ -622,17 +685,28 @@ def _build_alert_html(email: str, alerts: list, user_name: str | None = None) ->
 
 
 @app.post("/api/send-alert")
-def send_alert(req: AlertEmailRequest, auth_email: str = Depends(require_access_email)):
+def send_alert(
+    http_request: Request,
+    req: AlertEmailRequest,
+    auth_email: str = Depends(require_access_email),
+):
     ensure_same_user(auth_email, req.email)
-    return _send_alert_email(req.email, req.alerts, req.user_name)
+    return _send_alert_email(req.email, req.alerts, req.user_name, request=http_request)
 
 
-def _send_alert_email(email: str, alerts: list, user_name: str | None = None) -> dict:
+def _send_alert_email(
+    email: str,
+    alerts: list,
+    user_name: str | None = None,
+    *,
+    request: Request | None = None,
+) -> dict:
     if not alerts:
         return {"sent": False, "message": "No alerts to send"}
 
     try:
-        html_body = _build_alert_html(email, alerts, user_name)
+        public_base = _option_advisor_public_base(request=request)
+        html_body = _build_alert_html(email, alerts, user_name, public_base=public_base)
         count = len(alerts)
         plural = "trade" if count == 1 else "trades"
         subject = f"🟢 OptionAdvisor: {count} GO {plural} detected — {alerts[0].time_window}"
@@ -643,6 +717,215 @@ def _send_alert_email(email: str, alerts: list, user_name: str | None = None) ->
         # Don't crash the app — email is optional
         print(f"[alert-email] send failed: {e}", flush=True)
         return {"sent": False, "message": f"Email failed: {str(e)}"}
+
+
+def _day_trade_app_anchor_links() -> tuple[str, str, str]:
+    """Hash links into the SPA: watchlist, alerts feed, intraday scanner (tickers chosen in UI)."""
+    base = _option_advisor_public_base()
+    return (
+        f"{base}/#day-trade-watchlist",
+        f"{base}/#day-trade-alerts",
+        f"{base}/#day-trade",
+    )
+
+
+def _norm_day_trade_verdict(v: object) -> str:
+    return str(v or "").strip().upper()
+
+
+def _build_day_trade_escalation_html(
+    email: str,
+    user_name: str | None,
+    items: list[dict],
+) -> str:
+    display_name = (user_name or "").strip() or email
+    wl_url, alerts_url, engine_url = _day_trade_app_anchor_links()
+    rows_html = ""
+    for it in items:
+        raw_t = str(it.get("ticker", "")).strip().upper()
+        tick = html.escape(raw_t)
+        prev_v = html.escape(_norm_day_trade_verdict(it.get("previousVerdict")))
+        verdict = html.escape(_norm_day_trade_verdict(it.get("verdict")))
+        bias = html.escape(str(it.get("bias") or "—"))
+        bull = html.escape(str(it.get("bullScore")))
+        bear = html.escape(str(it.get("bearScore")))
+        sess = html.escape(str(it.get("sessionDate") or ""))
+        reasons = it.get("reasons") or []
+        snippet = html.escape("; ".join(str(r) for r in reasons[:3])[:400])
+        open_scan = f"{engine_url}?ticker={quote(raw_t, safe='')}"
+        rows_html += f"""
+        <tr class="oa-tr">
+          <td class="oa-td oa-tick"><a class="oa-app-link" href="{html.escape(open_scan)}">{tick}</a></td>
+          <td class="oa-td">{prev_v} → <strong>{verdict}</strong></td>
+          <td class="oa-td">{bias}</td>
+          <td class="oa-td oa-num">{bull} / {bear}</td>
+          <td class="oa-td oa-muted">{sess}</td>
+          <td class="oa-td oa-muted" style="font-size:12px;">{snippet}</td>
+        </tr>"""
+
+    count = len(items)
+    plural = "symbol" if count == 1 else "symbols"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    body {{ margin: 0; padding: 0; -webkit-font-smoothing: antialiased;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+    .oa-root {{ background: #f1f5f9 !important; }}
+    .oa-shell {{
+      max-width: 720px; margin: 24px auto; border-radius: 16px; overflow: hidden;
+      background: #ffffff !important; border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+    }}
+    .oa-body-pad {{ padding: 24px 28px; }}
+    .oa-intro {{ color: #334155 !important; font-size: 14px; line-height: 1.55; margin: 0 0 16px; }}
+    .oa-links {{ margin: 0 0 20px; font-size: 14px; line-height: 1.7; }}
+    .oa-links a {{ color: #5b21b6 !important; font-weight: 600; }}
+    .oa-table-wrap {{
+      overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0 !important;
+      background: #f8fafc !important;
+    }}
+    table.oa-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    .oa-th-row th {{
+      padding: 10px 12px; text-align: left; font-weight: 600; text-transform: uppercase;
+      font-size: 11px; letter-spacing: 0.06em; background: #e2e8f0 !important; color: #475569 !important;
+    }}
+    .oa-td {{ padding: 10px 12px; border-bottom: 1px solid #e2e8f0 !important; vertical-align: top; }}
+    .oa-tr:last-child .oa-td {{ border-bottom: none !important; }}
+    .oa-tick {{ font-weight: 700; color: #0f172a !important; }}
+    .oa-muted {{ color: #475569 !important; }}
+    .oa-num {{ font-family: ui-monospace, monospace; color: #0f172a !important; }}
+    a.oa-app-link {{ color: inherit !important; text-decoration: underline; text-underline-offset: 2px; }}
+    .oa-disclaimer {{ color: #64748b !important; font-size: 11px; margin: 20px 0 0; line-height: 1.6; }}
+    .oa-footer {{
+      background: #f1f5f9 !important; padding: 14px 28px; border-top: 1px solid #e2e8f0 !important;
+      font-size: 11px; color: #64748b !important;
+    }}
+  </style>
+</head>
+<body class="oa-root">
+  <div class="oa-shell">
+    <div style="background:linear-gradient(135deg,#0f766e,#134e4a);padding:22px 28px;">
+      <div style="font-size:18px;font-weight:800;color:#fff;">OptionAdvisor — Day trade watchlist</div>
+      <div style="font-size:13px;color:#ccfbf1;margin-top:4px;">{count} {plural} moved WATCH → GO / STRONG GO</div>
+    </div>
+    <div class="oa-body-pad">
+      <p class="oa-intro">
+        Hi <strong>{html.escape(display_name)}</strong>, your saved day-trade watchlist showed a higher conviction
+        reading on {count} {plural} (scanner runs about every 15 minutes during the alert window).
+      </p>
+      <p class="oa-links">
+        <a href="{html.escape(wl_url)}">Open day trade watchlist</a><br>
+        <a href="{html.escape(alerts_url)}">Open day trade alerts</a><br>
+        <a href="{html.escape(engine_url)}">Open day trade scanner</a>
+      </p>
+      <div class="oa-table-wrap">
+        <table class="oa-table" role="presentation">
+          <thead>
+            <tr class="oa-th-row">
+              <th>Ticker</th><th>Change</th><th>Bias</th><th>Bull / Bear</th><th>Session</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>{rows_html}
+          </tbody>
+        </table>
+      </div>
+      <p class="oa-disclaimer">
+        Educational / research screen only — not investment advice. Verify in the app before acting.
+      </p>
+    </div>
+    <div class="oa-footer">Sent to {html.escape(display_name)} &lt;{html.escape(email)}&gt;</div>
+  </div>
+</body>
+</html>"""
+
+
+def _send_day_trade_escalation_email(email: str, user_name: str | None, items: list[dict]) -> dict:
+    if not items:
+        return {"sent": False, "message": "No day-trade escalations to send"}
+    try:
+        html_body = _build_day_trade_escalation_html(email, user_name, items)
+        n = len(items)
+        subject = f"⚡ OptionAdvisor: {n} day-trade WATCH→GO signal{'s' if n != 1 else ''}"
+        used = _deliver_html_email(email, user_name, subject, html_body)
+        return {"sent": True, "message": f"Day-trade alert email sent to {email} ({used})"}
+    except Exception as e:
+        print(f"[day-trade-alert-email] send failed: {e}", flush=True)
+        return {"sent": False, "message": f"Email failed: {str(e)}"}
+
+
+def _scan_user_day_trade_watchlist(user_state: dict) -> None:
+    email = user_state.get("email", "").strip().lower()
+    if not email or user_state.get("role") != "admin":
+        return
+    symbols = user_state.get("day_trade_watchlist") or []
+    if not symbols:
+        return
+
+    user_name = email.split("@")[0] or email
+    escalations: list[dict] = []
+
+    for ti, ticker in enumerate(symbols):
+        if ti:
+            time.sleep(0.6)
+        t = str(ticker).strip().upper()
+        if not t:
+            continue
+        try:
+            r = run_day_trade_scan(t)
+        except Exception as exc:
+            print(f"[day-trade-scan] {email} {t} failed: {exc}", flush=True)
+            continue
+
+        session_date = str((r.metrics or {}).get("session_date") or "").strip()[:10]
+        now_verdict = _norm_day_trade_verdict(r.verdict)
+        prev_row = get_day_trade_watchlist_last(email, t)
+
+        if not prev_row:
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+            continue
+
+        prev_session = (prev_row.get("session_date") or "").strip()[:10]
+        prev_verdict = _norm_day_trade_verdict(prev_row.get("verdict"))
+
+        if prev_session and session_date and prev_session != session_date:
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+            continue
+
+        if prev_verdict == "WATCH" and now_verdict in {"GO", "STRONG GO"}:
+            now_ms = int(time.time() * 1000)
+            alert_id = f"dt-{t}-{now_ms}"
+            escalations.append(
+                {
+                    "id": alert_id,
+                    "ticker": r.ticker,
+                    "companyName": r.company_name,
+                    "previousVerdict": prev_verdict,
+                    "verdict": now_verdict,
+                    "sessionDate": session_date,
+                    "bias": r.bias,
+                    "bullScore": r.bull_score,
+                    "bearScore": r.bear_score,
+                    "reasons": list(r.reasons)[:12],
+                    "metrics": r.metrics,
+                    "detectedAt": now_ms,
+                }
+            )
+
+        upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+
+    if not escalations:
+        return
+
+    result = _send_day_trade_escalation_email(email, user_name, escalations)
+    message = str(result.get("message", ""))
+    sent = bool(result.get("sent"))
+    for row in escalations:
+        row["emailSent"] = sent
+        row["emailMessage"] = message
+        add_day_trade_alert_event(email, row)
 
 
 @app.post("/api/test-email")
@@ -734,6 +1017,7 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
             payload.portfolio,
             advisory_terms_version=payload.advisory_terms_version,
             advisory_accepted_at=payload.advisory_accepted_at,
+            day_trade_watchlist=payload.day_trade_watchlist,
         )
     except ValueError as e:
         msg = str(e)
@@ -1388,6 +1672,8 @@ def _alert_scan_loop() -> None:
                     if idx:
                         time.sleep(2)
                     _scan_user_watchlist_for_alerts(user_state)
+                    time.sleep(2)
+                    _scan_user_day_trade_watchlist(user_state)
         except Exception as exc:
             print(f"[alert-scan] sweep failed: {exc}", flush=True)
         time.sleep(ALERT_SCAN_INTERVAL_SECONDS)
@@ -1397,6 +1683,22 @@ def _alert_scan_loop() -> None:
 def start_alert_scanner() -> None:
     thread = threading.Thread(target=_alert_scan_loop, name="alert-scan-loop", daemon=True)
     thread.start()
+
+
+@app.get("/api/day-trade-alerts/{email}")
+def list_day_trade_alerts_api(email: str, auth_email: str = Depends(require_access_email)):
+    ensure_same_user(auth_email, email)
+    normalized = normalize_email(auth_email)
+    if get_user_state(normalized).get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Day Trade Alerts require administrator access.",
+        )
+    now_ms = int(time.time() * 1000)
+    return {
+        "email": email.strip().lower(),
+        "alerts": list_day_trade_alert_events(email, DAY_TRADE_ALERT_RETENTION_MS, now_ms),
+    }
 
 
 @app.get("/api/alerts/{email}")

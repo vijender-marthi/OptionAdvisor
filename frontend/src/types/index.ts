@@ -156,7 +156,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'forgot-password' | 'reset-password' | 'activate'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'day-trade-alerts' | 'forgot-password' | 'reset-password' | 'activate'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 
@@ -253,6 +253,12 @@ export interface PortfolioPosition {
   account_size_at_entry?: number // account size when position was added
 }
 
+/** Close an open portfolio line fully or partially; pnlPct matches existing closed rows (% of max-profit reference for the contracts closed). */
+export interface ClosePositionPayload {
+  contractsToClose: number
+  pnlPct: number
+}
+
 export interface UserDataState {
   email: string
   role: UserRole
@@ -263,6 +269,26 @@ export interface UserDataState {
   advisory_accepted_at?: string | null
   /** Max watchlist symbols for this account (role + OPTION_ADVISOR_WATCHLIST_MAX_*). */
   watchlist_max?: number
+  /** Admin day-trade alert scan list (max 10); persisted in SQLite. */
+  day_trade_watchlist?: string[]
+}
+
+/** One stored WATCH→GO / WATCH→STRONG GO escalation (see /api/day-trade-alerts). */
+export interface DayTradeAlertEvent {
+  id: string
+  ticker: string
+  companyName?: string
+  previousVerdict: string
+  verdict: string
+  sessionDate?: string
+  bias?: string | null
+  bullScore: number
+  bearScore: number
+  reasons: string[]
+  metrics?: Record<string, unknown>
+  detectedAt: number
+  emailSent: boolean
+  emailMessage?: string
 }
 
 export interface QuoteQualitySummary {

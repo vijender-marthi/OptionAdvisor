@@ -1,7 +1,13 @@
 import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import axios from 'axios'
-import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode } from '../types'
+import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode, ClosePositionPayload } from '../types'
+import {
+  INITIAL_DAY_TRADE_ENGINE_PAGE,
+  INITIAL_DAY_TRADE_WATCHLIST_PAGE,
+  type DayTradeEnginePageState,
+  type DayTradeWatchlistPageState,
+} from '../types/dayTradeUi'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
 import {
   analyzeOptions,
@@ -22,7 +28,7 @@ import {
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import { normalizePortfolioExpiryIso, resolvePortfolioAnalyzeData } from '../utils/portfolioAnalysis'
-import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+import { OA_DAY_TRADE_WATCHLIST_KEY, OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 import { ADVISORY_TERMS_VERSION } from '../constants/advisoryDisclaimer'
 import { MULTI_WEEK_TARGETS, type WeeksOut } from '../data/stockUniverse'
 
@@ -69,6 +75,7 @@ function getHashPage(): Page {
   if (h === 'auto-trade') return 'auto-trade'
   if (h === 'day-trade') return 'day-trade'
   if (h === 'day-trade-watchlist') return 'day-trade-watchlist'
+  if (h === 'day-trade-alerts') return 'day-trade-alerts'
   if (h === 'forgot-password') return 'forgot-password'
   if (h === 'reset-password') return 'reset-password'
   if (h === 'activate') return 'activate'
@@ -176,6 +183,21 @@ interface AppContextValue {
   watchlistNotice: string | null
   clearWatchlistNotice: () => void
 
+  /** Persisted symbols for backend day-trade WATCH→GO alerts (admin-only; max 10). */
+  dayTradeWatchlist: string[]
+  setDayTradeWatchlist: React.Dispatch<React.SetStateAction<string[]>>
+
+  /**
+   * In-memory snapshot of Day Trade Engine page fields so navigation away does not wipe results.
+   * Cleared only on full reload or sign-out / account switch.
+   */
+  dayTradeEngineUI: DayTradeEnginePageState
+  setDayTradeEngineUI: React.Dispatch<React.SetStateAction<DayTradeEnginePageState>>
+
+  /** Same as engine: watchlist scans + expanded panels survive route changes until refresh or logout. */
+  dayTradeWatchlistUI: DayTradeWatchlistPageState
+  setDayTradeWatchlistUI: React.Dispatch<React.SetStateAction<DayTradeWatchlistPageState>>
+
   // Portfolio
   portfolio: PortfolioPosition[]
   addToPortfolio: (rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number) => void
@@ -183,7 +205,7 @@ interface AppContextValue {
   /** Replace editable fields while preserving id, addedAt, status, and close metadata (pnlPct, exitDate). */
   updatePortfolioPosition: (id: string, pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   removeFromPortfolio: (id: string) => void
-  closePosition: (id: string, pnlPct: number) => void
+  closePosition: (id: string, payload: ClosePositionPayload) => void
   isInPortfolio: (ticker: string, strategy: string, expiry: string) => boolean
 
   // Cache
@@ -266,6 +288,44 @@ function activeAlertsOnly(alerts: AlertEntry[], now = Date.now()): AlertEntry[] 
   return alerts.filter(alert => now - alert.detectedAt < ALERT_RETENTION_MS)
 }
 
+/** Legacy browser-only list — migrated to SQLite on first load when server list is empty. */
+function loadStoredDayTradeTickers(max = 10): string[] {
+  try {
+    const raw = localStorage.getItem(OA_DAY_TRADE_WATCHLIST_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw) as unknown
+    if (!Array.isArray(arr)) return []
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const x of arr) {
+      if (typeof x !== 'string') continue
+      const t = x.toUpperCase().trim()
+      if (!t || t.length > 12 || seen.has(t)) continue
+      seen.add(t)
+      out.push(t)
+      if (out.length >= max) break
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+/** Whole contracts for portfolio P&L math (must match PortfolioPage). */
+function portfolioContractCount(raw: unknown): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.max(1, Math.round(n))
+}
+
+function newPortfolioLotId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `pf_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+  }
+}
+
 function getInitialTheme(): 'dark' | 'light' {
   const saved = load<'dark' | 'light' | null>('oa_theme', null)
   if (saved === 'dark' || saved === 'light') return saved
@@ -279,6 +339,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
   const [watchlistMax, setWatchlistMax] = useState(15)
   const [watchlistNotice, setWatchlistNotice] = useState<string | null>(null)
+  const [dayTradeWatchlist, setDayTradeWatchlist] = useState<string[]>([])
+  const [dayTradeEngineUI, setDayTradeEngineUI] = useState<DayTradeEnginePageState>(() => ({
+    ...INITIAL_DAY_TRADE_ENGINE_PAGE,
+  }))
+  const [dayTradeWatchlistUI, setDayTradeWatchlistUI] = useState<DayTradeWatchlistPageState>(() => ({
+    ...INITIAL_DAY_TRADE_WATCHLIST_PAGE,
+  }))
   const [portfolio, setPortfolio]   = useState<PortfolioPosition[]>([])
   const [pendingTicker, setPendingTicker] = useState<string | null>(null)
   const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<PendingAnalysisOptions | null>(null)
@@ -302,6 +369,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [journalEntryCount, setJournalEntryCount] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
   const finderDeepLinkHandledRef = useRef(false)
+  /** Previous signed-in email; used to detect account switch vs first login (day-trade UI resets on switch/sign-out). */
+  const dayTradeSessionEmailRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const curr = user?.email?.trim().toLowerCase() ?? null
+    const prev = dayTradeSessionEmailRef.current
+    if (prev !== null && curr !== prev) {
+      setDayTradeEngineUI({ ...INITIAL_DAY_TRADE_ENGINE_PAGE })
+      setDayTradeWatchlistUI({ ...INITIAL_DAY_TRADE_WATCHLIST_PAGE })
+    }
+    dayTradeSessionEmailRef.current = curr
+  }, [user?.email])
 
   /** Drop stale client-only sessions now that APIs require a Bearer token. */
   useEffect(() => {
@@ -320,6 +399,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { watchlistMaxRef.current = watchlistMax }, [watchlistMax])
   const portfolioRef = useRef(portfolio)
   useEffect(() => { portfolioRef.current = portfolio }, [portfolio])
+  const dayTradeWatchlistRef = useRef(dayTradeWatchlist)
+  useEffect(() => { dayTradeWatchlistRef.current = dayTradeWatchlist }, [dayTradeWatchlist])
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
   const tickerCacheRef = useRef(tickerCache)
@@ -327,10 +408,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const portfolioExpiryFetchRef = useRef<Set<string>>(new Set())
   const portfolioFetchFailuresRef = useRef<Map<string, number>>(new Map())
 
-  // Sync hash (preserve ?token= on activate / reset-password)
+  // Sync hash (preserve ?token= on activate / reset-password; ?ticker= on day-trade email links)
   useEffect(() => {
     if (page === 'ticker') {
       window.location.hash = ''
+      return
+    }
+    if (page === 'day-trade') {
+      const raw = window.location.hash.replace(/^#/, '')
+      const qi = raw.indexOf('?')
+      const pathPart = qi >= 0 ? raw.slice(0, qi) : raw
+      const qs = qi >= 0 ? raw.slice(qi) : ''
+      if (pathPart === 'day-trade' && qs) {
+        window.location.hash = `day-trade${qs}`
+        return
+      }
+      window.location.hash = 'day-trade'
       return
     }
     const seg = window.location.hash.replace(/^#/, '').split('?')[0]
@@ -373,6 +466,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPortfolio([])
         setWatchlistMax(15)
         setWatchlistNotice(null)
+        setDayTradeWatchlist([])
         setUserDataLoaded(false)
         setAdvisoryAcceptedAt(null)
         setAdvisoryTermsVersion(null)
@@ -387,6 +481,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setWatchlist(data.watchlist)
         setPortfolio(data.portfolio)
+        let dt: string[] = Array.isArray(data.day_trade_watchlist)
+          ? data.day_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
+          : []
+        if (dt.length === 0) {
+          const migrated = loadStoredDayTradeTickers()
+          if (migrated.length) dt = migrated
+        }
+        setDayTradeWatchlist(dt.slice(0, 10))
         const wm = Number(data.watchlist_max)
         setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
         setAdvisoryAcceptedAt(data.advisory_accepted_at ?? null)
@@ -404,6 +506,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setWatchlist([])
           setPortfolio([])
           setWatchlistMax(15)
+          setDayTradeWatchlist([])
           setUserDataLoaded(false)
           setAdvisoryAcceptedAt(null)
           setAdvisoryTermsVersion(null)
@@ -422,12 +525,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       advisoryAcceptedAt && advisoryTermsVersion
         ? { advisoryTermsVersion, advisoryAcceptedAt }
         : undefined
-    saveUserData(user.email, watchlist, portfolio, advisory).catch(e => {
+    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist).catch(e => {
       const msg = extractAxiosDetail(e)
       if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
       console.warn('[user-data] save failed:', e)
     })
-  }, [advisoryAcceptedAt, advisoryTermsVersion, portfolio, user?.email, userDataLoaded, watchlist])
+  }, [advisoryAcceptedAt, advisoryTermsVersion, dayTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
     user &&
@@ -443,7 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const data = await saveUserData(email, watchlistRef.current, portfolioRef.current, {
       advisoryTermsVersion: version,
       advisoryAcceptedAt: acceptedAt,
-    })
+    }, dayTradeWatchlistRef.current)
     const wm = Number(data.watchlist_max)
     setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
     setAdvisoryAcceptedAt(data.advisory_accepted_at ?? acceptedAt)
@@ -619,6 +722,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPortfolio([])
     setWatchlistMax(15)
     setWatchlistNotice(null)
+    setDayTradeWatchlist([])
     setUserDataLoaded(false)
     setAdvisoryAcceptedAt(null)
     setAdvisoryTermsVersion(null)
@@ -722,10 +826,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPortfolio(prev => prev.filter(p => p.id !== id))
   }, [])
 
-  const closePosition = useCallback((id: string, pnlPct: number) => {
-    setPortfolio(prev => prev.map(p =>
-      p.id === id ? { ...p, status: 'closed' as const, pnlPct, exitDate: new Date().toISOString() } : p
-    ))
+  const closePosition = useCallback((id: string, payload: ClosePositionPayload) => {
+    const now = new Date().toISOString()
+    setPortfolio(prev => {
+      const idx = prev.findIndex(p => p.id === id && p.status === 'open')
+      if (idx < 0) return prev
+
+      const pos = prev[idx]!
+      const total = portfolioContractCount(pos.contracts)
+      let nClose = Math.round(Number(payload.contractsToClose))
+      if (!Number.isFinite(nClose) || nClose < 1) nClose = 1
+      if (nClose > total) nClose = total
+
+      const pnlPct = Number(payload.pnlPct)
+      const safePct = Number.isFinite(pnlPct) ? pnlPct : 0
+
+      const scaleRemaining = total > 0 ? (total - nClose) / total : 0
+
+      if (nClose >= total) {
+        return prev.map(p =>
+          p.id === id ? { ...p, status: 'closed' as const, pnlPct: safePct, exitDate: now } : p,
+        )
+      }
+
+      const closedNote = `Partial close: ${nClose} of ${total} contracts`
+      const closedNotes = [pos.notes?.trim(), closedNote].filter(Boolean).join(' · ') || undefined
+
+      const closedRow: PortfolioPosition = {
+        ...pos,
+        id: newPortfolioLotId(),
+        contracts: nClose,
+        status: 'closed',
+        pnlPct: safePct,
+        exitDate: now,
+        notes: closedNotes,
+        capital_at_risk:
+          pos.capital_at_risk != null
+            ? Math.round((pos.capital_at_risk * nClose) / total * 100) / 100
+            : undefined,
+      }
+
+      const remaining: PortfolioPosition = {
+        ...pos,
+        contracts: total - nClose,
+        capital_at_risk:
+          pos.capital_at_risk != null
+            ? Math.round(pos.capital_at_risk * scaleRemaining * 100) / 100
+            : undefined,
+      }
+
+      return prev.flatMap((p, i) => (i === idx ? [remaining, closedRow] : [p]))
+    })
   }, [])
 
   const isInPortfolio = useCallback((ticker: string, strategy: string, expiry: string) =>
@@ -1123,6 +1274,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
       userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
       watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, isWatched, watchlistNotice, clearWatchlistNotice,
+      dayTradeWatchlist, setDayTradeWatchlist,
+      dayTradeEngineUI, setDayTradeEngineUI,
+      dayTradeWatchlistUI, setDayTradeWatchlistUI,
       portfolio, addToPortfolio, addManualPosition, updatePortfolioPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
       refreshingTickers, refreshTicker, ensureAnalysisForPortfolioExpiry, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,

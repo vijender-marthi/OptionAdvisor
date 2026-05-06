@@ -22,6 +22,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
+const DayTradeAlertsPage = lazy(() => import('./pages/DayTradeAlertsPage'))
 const DayTradePage = lazy(() => import('./pages/DayTradePage'))
 const DayTradeWatchlistPage = lazy(() => import('./pages/DayTradeWatchlistPage'))
 
@@ -92,6 +93,7 @@ function Router() {
         {renderPage === 'auto-trade' && <AutoTradePage />}
         {renderPage === 'day-trade' && <DayTradePage />}
         {renderPage === 'day-trade-watchlist' && <DayTradeWatchlistPage />}
+        {renderPage === 'day-trade-alerts' && <DayTradeAlertsPage />}
       </Suspense>
     </AppLayout>
   )

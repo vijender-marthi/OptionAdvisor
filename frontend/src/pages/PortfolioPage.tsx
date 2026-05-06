@@ -4,7 +4,7 @@ import {
   DollarSign, Layers, Plus, AlertTriangle, ChevronDown, ChevronUp, FileEdit, RefreshCw, Download,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition } from '../types'
+import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition, ClosePositionPayload } from '../types'
 import { useApp } from '../contexts/AppContext'
 import {
   normalizePortfolioExpiryIso as normalizeExpiryIso,
@@ -654,53 +654,236 @@ function ManualEntryModal({ onClose, onAdd }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Close-position modal
+// Close-position modal (full or partial; % of max profit, realized $, or closing mark)
 // ─────────────────────────────────────────────────────────────────────────────
+
+type ClosePnlMode = 'percent' | 'dollars' | 'mark'
+
+/** Match AppContext.portfolioContractCount rounding. */
+function closeModalContractTotal(pos: PortfolioPosition): number {
+  return normalizedContractCount(pos)
+}
+
+function pnlPctFromRealizedDollars(
+  pos: PortfolioPosition,
+  realizedDollars: number,
+  contractsClosed: number,
+): number {
+  const denom = pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractsClosed
+  if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return 0
+  return (realizedDollars / denom) * 100
+}
+
+/** Cash-style: opening net_credit + closing net (same sign: credit in positive, debit out negative) → realized on the trade. */
+function realizedDollarsFromCloseNetPerShare(
+  pos: PortfolioPosition,
+  closeNetPerShare: number,
+  contractsClosed: number,
+): number {
+  return (pos.net_credit + closeNetPerShare) * SHARES_PER_OPTION_CONTRACT * contractsClosed
+}
 
 function CloseModal({ pos, onClose, onConfirm }: {
   pos: PortfolioPosition
   onClose: () => void
-  onConfirm: (pnlPct: number) => void
+  onConfirm: (payload: ClosePositionPayload) => void
 }) {
+  const total = closeModalContractTotal(pos)
+  const [contractsStr, setContractsStr] = useState(String(total))
+  const [pnlMode, setPnlMode] = useState<ClosePnlMode>('percent')
   const [pnl, setPnl] = useState('')
-  const pnlNum    = parseFloat(pnl)
-  const contractCount = normalizedContractCount(pos)
-  const isDebit   = pos.net_credit < 0
-  const isValid   = pnl !== '' && !isNaN(pnlNum)
-  const dollarPnl = isValid ? (pnlNum / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount : 0
+  const [realizedStr, setRealizedStr] = useState('')
+  const [closeMarkStr, setCloseMarkStr] = useState('')
+
+  useEffect(() => {
+    setContractsStr(String(closeModalContractTotal(pos)))
+    setPnl('')
+    setRealizedStr('')
+    setCloseMarkStr('')
+    setPnlMode('percent')
+  }, [pos.id, pos.contracts])
+
+  const nParsed = Math.round(parseFloat(contractsStr))
+  const contractsFieldValid = contractsStr.trim() !== '' && Number.isFinite(nParsed) && nParsed >= 1 && nParsed <= total
+  const nClose = contractsFieldValid ? Math.min(Math.max(1, nParsed), total) : 1
+
+  const isDebit = pos.net_credit < 0
   const profitLabel = isDebit ? '10× premium target' : 'max profit'
+  const entryNetLabel = isDebit ? 'Net debit (/share)' : 'Net credit (/share)'
+
+  const pnlNum = parseFloat(pnl)
+  const realizedNum = parseFloat(realizedStr)
+  const closeMarkNum = parseFloat(closeMarkStr)
+
+  let pnlPctForSave = 0
+  let previewDollars: number | null = null
+  let canSubmit = false
+
+  if (pnlMode === 'percent') {
+    const valid = contractsFieldValid && pnl !== '' && Number.isFinite(pnlNum)
+    if (valid) {
+      canSubmit = true
+      pnlPctForSave = pnlNum
+      previewDollars = (pnlNum / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * nClose
+    }
+  } else if (pnlMode === 'dollars') {
+    const valid = contractsFieldValid && realizedStr !== '' && Number.isFinite(realizedNum)
+    if (valid) {
+      canSubmit = true
+      previewDollars = realizedNum
+      pnlPctForSave = pnlPctFromRealizedDollars(pos, realizedNum, nClose)
+    }
+  } else {
+    const valid = contractsFieldValid && closeMarkStr !== '' && Number.isFinite(closeMarkNum)
+    if (valid) {
+      canSubmit = true
+      previewDollars = realizedDollarsFromCloseNetPerShare(pos, closeMarkNum, nClose)
+      pnlPctForSave = pnlPctFromRealizedDollars(pos, previewDollars, nClose)
+    }
+  }
+
+  const remaining = total - nClose
 
   return (
-    <div className="portfolio-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="text-base font-bold text-white">Close Position</div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300"><X size={16} /></button>
+    <div className="portfolio-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6 space-y-4 my-auto">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-base font-bold text-white">Close position</div>
+          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-300 shrink-0" aria-label="Dismiss">
+            <X size={16} />
+          </button>
         </div>
-        <div className="bg-gray-800 rounded-xl p-3 text-sm">
-          <div className="text-gray-400 text-xs mb-1">{pos.ticker} · {pos.strategy} · {contractCount} contract{contractCount > 1 ? 's' : ''}</div>
-          <div className="text-gray-200 font-mono">
-            {isDebit ? '10× target' : 'Max profit'}: {fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount)} total
+
+        <div className="bg-gray-800 rounded-xl p-3 text-sm space-y-1">
+          <div className="text-gray-400 text-xs">{pos.ticker} · {pos.strategy}</div>
+          <div className="text-gray-200 font-mono text-sm">
+            Open size: <span className="text-white font-bold">{total}</span> contract{total > 1 ? 's' : ''}
+            {' · '}
+            {isDebit ? '10× target' : 'Max profit'}: {fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT * total)} total
           </div>
-          <div className="text-gray-500 text-xs">{fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT)}/contract{isDebit ? ' (10× premium reference)' : ''}</div>
+          <div className="text-gray-500 text-xs">
+            {entryNetLabel}: <span className="text-gray-300 font-mono">{pos.net_credit >= 0 ? '+' : ''}{pos.net_credit.toFixed(3)}</span>
+            {' '}/share · {fmtDollar(pos.max_profit * SHARES_PER_OPTION_CONTRACT)}/share {isDebit ? '(10× ref)' : 'max profit'}
+          </div>
         </div>
+
         <div>
-          <label className="text-xs font-semibold text-gray-400 block mb-1.5">P&L as % of {profitLabel}</label>
-          <input type="number" value={pnl} onChange={e => setPnl(e.target.value)}
-            placeholder={`e.g. 50 for 50% of ${profitLabel}`}
+          <label className="text-xs font-semibold text-gray-400 block mb-1.5">Contracts to close</label>
+          <input
+            type="number"
+            min={1}
+            max={total}
+            step={1}
+            value={contractsStr}
+            onChange={e => setContractsStr(e.target.value)}
             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 placeholder-gray-600"
           />
-          {isValid && (
-            <div className={`mt-1.5 text-xs font-mono ${dollarPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              ≈ {fmtDollar(dollarPnl, true)} total ({contractCount} contract{contractCount > 1 ? 's' : ''})
-            </div>
-          )}
+          <p className="text-[11px] text-gray-500 mt-1.5">
+            {remaining > 0
+              ? <>
+                  Leaves <span className="text-gray-300 font-mono">{remaining}</span> open on this line (same strikes/expiry).
+                </>
+              : <>
+                  Closing the full open size ({total} contract{total > 1 ? 's' : ''}); this row will move to Closed.
+                </>}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 bg-gray-800 text-gray-300 text-sm rounded-xl hover:bg-gray-700 transition-colors">Cancel</button>
-          <button onClick={() => isValid && onConfirm(pnlNum)} disabled={!isValid}
-            className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors">
-            Confirm Close
+
+        <div>
+          <div className="text-xs font-semibold text-gray-400 mb-2">How to record P&amp;L for these {nClose} contract{nClose > 1 ? 's' : ''}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {(['percent', 'dollars', 'mark'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPnlMode(m)}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
+                  pnlMode === m
+                    ? 'bg-violet-900/60 border-violet-500 text-violet-100'
+                    : 'bg-gray-800/80 border-gray-700 text-gray-400 hover:border-gray-600'
+                }`}
+              >
+                {m === 'percent' ? '% of max profit' : m === 'dollars' ? 'Realized ($)' : 'Closing net (/share)'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {pnlMode === 'percent' && (
+          <div>
+            <label className="text-xs font-semibold text-gray-400 block mb-1.5">P&amp;L as % of {profitLabel}</label>
+            <input
+              type="number"
+              value={pnl}
+              onChange={e => setPnl(e.target.value)}
+              placeholder={`e.g. 50 = 50% of ${profitLabel} on ${nClose} ct`}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 placeholder-gray-600"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Same idea as before: % applies to <span className="text-gray-400">max profit × 100 × ({nClose} contracts)</span>.
+            </p>
+          </div>
+        )}
+
+        {pnlMode === 'dollars' && (
+          <div>
+            <label className="text-xs font-semibold text-gray-400 block mb-1.5">Realized P&amp;L (total $)</label>
+            <input
+              type="number"
+              value={realizedStr}
+              onChange={e => setRealizedStr(e.target.value)}
+              placeholder="e.g. 240 or -120"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 placeholder-gray-600"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Total dollars on this close only ({nClose} contract{nClose > 1 ? 's' : ''}). Positive = profit, negative = loss.
+            </p>
+          </div>
+        )}
+
+        {pnlMode === 'mark' && (
+          <div>
+            <label className="text-xs font-semibold text-gray-400 block mb-1.5">Closing net premium ($/share)</label>
+            <input
+              type="number"
+              value={closeMarkStr}
+              onChange={e => setCloseMarkStr(e.target.value)}
+              placeholder="Same sign as entry: credit in +, debit out −"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 placeholder-gray-600"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Enter the combined net for the spread when you closed, using the <span className="text-gray-400">same sign as {entryNetLabel}</span> above
+              (money received = positive, money paid = negative). We compute realized = (entry + closing net) × 100 × {nClose}.
+            </p>
+          </div>
+        )}
+
+        {previewDollars != null && Number.isFinite(previewDollars) && (
+          <div className={`text-xs font-mono rounded-lg px-3 py-2 border ${
+            previewDollars >= 0 ? 'text-emerald-400 border-emerald-800/60 bg-emerald-950/20' : 'text-red-400 border-red-800/60 bg-red-950/20'
+          }`}>
+            ≈ {fmtDollar(previewDollars, true)} on {nClose} contract{nClose > 1 ? 's' : ''}
+            {pnlMode !== 'percent' && (
+              <span className="text-gray-500"> · stored as {pnlPctForSave.toFixed(2)}% of {profitLabel}</span>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 bg-gray-800 text-gray-300 text-sm rounded-xl hover:bg-gray-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => canSubmit && onConfirm({ contractsToClose: nClose, pnlPct: pnlPctForSave })}
+            disabled={!canSubmit}
+            className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            {remaining > 0 ? `Close ${nClose} · keep ${remaining}` : 'Close all'}
           </button>
         </div>
       </div>
@@ -844,7 +1027,7 @@ function PositionCard({
               <button
                 type="button"
                 onClick={onClose}
-                title="Close position"
+                title="Close contracts (full or partial) and record P&L"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-800 text-emerald-400 text-xs font-semibold rounded-xl transition-colors"
               >
                 <CheckCircle size={12} /> Close
@@ -1355,7 +1538,14 @@ export default function PortfolioPage() {
   return (
     <div className="portfolio-page min-h-screen p-4 md:p-6">
       {closing && (
-        <CloseModal pos={closing} onClose={() => setClosing(null)} onConfirm={pnl => { closePosition(closing.id, pnl); setClosing(null) }} />
+        <CloseModal
+          pos={closing}
+          onClose={() => setClosing(null)}
+          onConfirm={payload => {
+            closePosition(closing.id, payload)
+            setClosing(null)
+          }}
+        />
       )}
       {addingNew && (
         <ManualEntryModal
