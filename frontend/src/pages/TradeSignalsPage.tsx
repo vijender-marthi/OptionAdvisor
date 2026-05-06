@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   ShieldCheck, RefreshCw, AlertTriangle, XCircle,
   CheckCircle2, Clock, BarChart2, Layers,
-  CalendarDays, Loader2, FilterX,
+  CalendarDays, Loader2, FilterX, Info,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
@@ -384,12 +384,20 @@ function UnanalyzedCard({ ticker, companyName, onAnalyze }: {
 type Filter = 'All' | 'GO' | 'CAUTION' | 'NO GO' | 'Not Analyzed'
 type WeekFilter = 'All' | number
 
+const SIGNALS_HEADER_INFO =
+  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 2w · 3w · 4w · 6w · 8w expiry windows — each window gets its own set of verdicts.'
+
+const SIGNALS_MULTI_WEEK_INFO =
+  "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 2, 3, 4, 6, and 8 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
+
 export default function TradeSignalsPage() {
   const { watchlist, tickerCache, requestAnalysis, refreshTicker,
           refreshingTickers, fetchAllWeeks, fetchingAllWeeks, accountSize } = useApp()
   const [filter, setFilter] = useState<Filter>('All')
   const [selectedWeek, setSelectedWeek] = useState<WeekFilter>('All')
   const [refreshingAll, setRefreshingAll] = useState(false)
+  const [signalsHeaderInfoOpen, setSignalsHeaderInfoOpen] = useState(false)
+  const [signalsMultiWeekInfoOpen, setSignalsMultiWeekInfoOpen] = useState(false)
 
   const results = useMemo((): TickerResult[] => {
     return watchlist
@@ -501,11 +509,23 @@ export default function TradeSignalsPage() {
                   <ShieldCheck size={18} className="text-emerald-400" />
                 </div>
                 <h1 className="text-2xl font-bold text-white">Signals</h1>
+                <button
+                  type="button"
+                  onClick={() => setSignalsHeaderInfoOpen(o => !o)}
+                  aria-expanded={signalsHeaderInfoOpen}
+                  aria-controls="signals-header-info"
+                  title={SIGNALS_HEADER_INFO}
+                  className="rounded-lg p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/80"
+                >
+                  <Info size={18} className="shrink-0" aria-hidden />
+                  <span className="sr-only">How this page works</span>
+                </button>
               </div>
-              <p className="text-sm text-gray-500 max-w-xl">
-                10-point pre-trade checklist across all watchlist tickers. Click <strong className="text-gray-300">Fetch All Weeks</strong> on any
-                card to scan the 2w · 3w · 4w · 6w · 8w expiry windows — each window gets its own set of verdicts.
-              </p>
+              {signalsHeaderInfoOpen && (
+                <p id="signals-header-info" className="text-sm text-gray-500 max-w-xl mt-2 leading-relaxed">
+                  {SIGNALS_HEADER_INFO}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end">
               <div className="bg-emerald-950/60 border border-emerald-800 rounded-xl px-3 py-2 text-center min-w-[56px]">
@@ -549,14 +569,27 @@ export default function TradeSignalsPage() {
               </button>
             </div>
           </div>
-          {/* How it works note */}
-          <div className="mt-3 flex items-start gap-2 p-2.5 bg-gray-800/50 rounded-xl border border-gray-700">
-            <Layers size={13} className="text-violet-400 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-gray-500 leading-relaxed">
-              <span className="text-gray-300 font-semibold">How multi-week works:</span> Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting).
-              Use the week dropdown to focus the page on one DTE window. Use the <span className="text-violet-300 font-semibold">refresh</span> button to fetch 2, 3, 4, 6, and 8 week scans for all analyzed tickers.
-              Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched.
-            </p>
+          {/* How multi-week works — details behind info */}
+          <div className="mt-3 rounded-xl border border-gray-700 bg-gray-800/50 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-gray-300">How multi-week works</span>
+              <button
+                type="button"
+                onClick={() => setSignalsMultiWeekInfoOpen(o => !o)}
+                aria-expanded={signalsMultiWeekInfoOpen}
+                aria-controls="signals-multi-week-info"
+                title={SIGNALS_MULTI_WEEK_INFO}
+                className="rounded-lg p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/80"
+              >
+                <Info size={15} className="shrink-0" aria-hidden />
+                <span className="sr-only">How multi-week works — full explanation</span>
+              </button>
+            </div>
+            {signalsMultiWeekInfoOpen && (
+              <p id="signals-multi-week-info" className="text-[11px] text-gray-500 mt-2 leading-relaxed border-t border-gray-700/80 pt-2">
+                {SIGNALS_MULTI_WEEK_INFO}
+              </p>
+            )}
           </div>
         </div>
 

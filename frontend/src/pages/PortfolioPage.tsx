@@ -492,7 +492,23 @@ function ManualPositionEditor({
         </div>
         <div>
           <label className={labelCls}>Contracts *</label>
-          <input type="number" min={1} className={inputCls} value={contracts} onChange={e => setContracts(Math.max(1, parseInt(e.target.value) || 1))} />
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            className={inputCls}
+            value={contracts}
+            onChange={e => {
+              const digits = e.target.value.replace(/\D/g, '')
+              if (digits === '') {
+                setContracts(1)
+                return
+              }
+              const n = parseInt(digits, 10)
+              if (!Number.isFinite(n)) return
+              setContracts(Math.min(9999, Math.max(1, n)))
+            }}
+          />
         </div>
         <div>
           <label className={labelCls}>Stock Price @ Entry *</label>
