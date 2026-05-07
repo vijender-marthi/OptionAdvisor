@@ -2,6 +2,8 @@
 
 OptionAdvisor is a systematic options analysis app for scanning tickers, building options trade candidates, reviewing pre-trade checklist verdicts, tracking watchlist/portfolio state, and surfacing GO-trade alerts.
 
+Planned AI direction (local inference, graph orchestration, strategy-discovery framing): [docs/AI_MODERNIZATION.md](docs/AI_MODERNIZATION.md).
+
 ## Features
 
 - Option analysis for calls, puts, debit spreads, credit spreads, iron condors, and straddles.
