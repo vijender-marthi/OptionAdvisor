@@ -205,8 +205,9 @@ Build AnalyzeResponse → return JSON
 
 - Runs every `ALERT_SCAN_INTERVAL_SECONDS` (default 900 s / 15 min)
 - Market hours only by default (`ALERT_SCAN_MARKET_HOURS_ONLY=true`)
-- For each user with a watchlist: re-analyzes each ticker, checks `_backend_verdict_is_go()`, fires email via `send_alert()` if new GO signal found
-- Sends HTML email via SMTP (configured via `.env`: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_EMAIL, FROM_NAME)
+- For each user with a watchlist: re-analyzes each ticker, checks `_backend_verdict_is_go()`, calls `_send_alert_email(..., request=None)` when a new GO is found — links use `OPTION_ADVISOR_PUBLIC_URL` (required in production), then optional `OPTION_ADVISOR_EMAIL_LINK_BASE`, then `http://localhost:4200`.
+- Sends HTML via SendGrid if configured, else SMTP (see `.env` / `DEPLOY_DIGITALOCEAN.md`).
+- Separate path: SPA may call `POST /api/send-alert` with JWT; `_option_advisor_public_base(request)` prefers `OPTION_ADVISOR_PUBLIC_URL`, else browser `Origin` / `Referer`.
 
 **API routes summary:**
 
@@ -219,7 +220,7 @@ GET  /api/alerts/{email}         List alerts for user (last 24h)
 POST /api/alerts/dismiss         Mark alert dismissed
 POST /api/alerts/clear           Delete all alerts for user
 POST /api/alerts/scan/{email}    Force immediate watchlist scan for one user
-POST /api/send-alert             Send alert email batch (called by scanner)
+POST /api/send-alert             Client-triggered GO alert batch (SPA; links use PUBLIC_URL else Origin)
 POST /api/test-email             Send a test email to verify SMTP config
 GET  /api/email-status           Returns SMTP config status (masked)
 ```

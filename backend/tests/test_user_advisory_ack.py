@@ -47,6 +47,21 @@ class AdvisoryAckTests(unittest.TestCase):
         self.assertEqual(state["advisory_terms_version"], "2")
         self.assertEqual(state["advisory_accepted_at"], "2026-06-01T00:00:00Z")
 
+    def test_save_preserves_alert_email_when_not_sent(self) -> None:
+        storage.save_user_state(
+            "ae@example.com",
+            [{"ticker": "AAPL", "addedAt": "2026-01-01"}],
+            [],
+            alert_email_enabled=False,
+        )
+        storage.save_user_state(
+            "ae@example.com",
+            [{"ticker": "AAPL", "addedAt": "2026-01-01"}, {"ticker": "MSFT", "addedAt": "2026-01-02"}],
+            [],
+        )
+        state = storage.get_user_state("ae@example.com")
+        self.assertFalse(state["alert_email_enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()

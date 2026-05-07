@@ -1,0 +1,332 @@
+/**
+ * Swing-only daily metric charts (backend-aligned series from metrics.chart_series).
+ */
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import type { TooltipProps } from 'recharts'
+import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent'
+import type { SwingTradeChartPoint } from '../api/client'
+
+type Row = {
+  date: string
+  close: number
+  ma20: number | null
+  ma50: number | null
+  rsi: number | null
+  hv20: number | null
+}
+
+type Palette = {
+  axis: string
+  grid: string
+  tick: string
+  tooltipBg: string
+  tooltipBorder: string
+  label: string
+  lineClose: string
+  lineMa20: string
+  lineMa50: string
+  lineRsi: string
+  lineHv: string
+  lineIv: string
+  refMuted: string
+}
+
+const SWING_CHART_PALETTE_FALLBACK: Palette = {
+  axis: '#9ca3af',
+  grid: 'rgba(55, 65, 81, 0.55)',
+  tick: '#6b7280',
+  tooltipBg: 'rgba(17, 24, 39, 0.96)',
+  tooltipBorder: '#374151',
+  label: '#9ca3af',
+  lineClose: '#f3f4f6',
+  lineMa20: '#34d399',
+  lineMa50: '#fbbf24',
+  lineRsi: '#38bdf8',
+  lineHv: '#a78bfa',
+  lineIv: '#f472b6',
+  refMuted: 'rgba(148, 163, 184, 0.5)',
+}
+
+function readPalette(el: HTMLElement): Palette {
+  const s = getComputedStyle(el)
+  const g = (k: string, fb: string) => s.getPropertyValue(k).trim() || fb
+  return {
+    axis: g('--sw-chart-axis', '#9ca3af'),
+    grid: g('--sw-chart-grid', 'rgba(55, 65, 81, 0.55)'),
+    tick: g('--sw-chart-tick', '#6b7280'),
+    tooltipBg: g('--sw-chart-tooltip-bg', 'rgba(17, 24, 39, 0.96)'),
+    tooltipBorder: g('--sw-chart-tooltip-border', '#374151'),
+    label: g('--sw-chart-tooltip-label', '#9ca3af'),
+    lineClose: g('--sw-chart-line-close', '#f3f4f6'),
+    lineMa20: g('--sw-chart-line-ma20', '#34d399'),
+    lineMa50: g('--sw-chart-line-ma50', '#fbbf24'),
+    lineRsi: g('--sw-chart-line-rsi', '#38bdf8'),
+    lineHv: g('--sw-chart-line-hv', '#a78bfa'),
+    lineIv: g('--sw-chart-line-iv', '#f472b6'),
+    refMuted: g('--sw-chart-ref-muted', 'rgba(148, 163, 184, 0.5)'),
+  }
+}
+
+function fmtTickDate(d: string) {
+  const dt = new Date(`${d}T12:00:00`)
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function parseChartPayload(raw: unknown): SwingTradeChartPoint[] | null {
+  if (!raw || typeof raw !== 'object') return null
+  const pts = (raw as { points?: unknown }).points
+  if (!Array.isArray(pts) || pts.length === 0) return null
+  const out: SwingTradeChartPoint[] = []
+  for (const p of pts) {
+    if (!p || typeof p !== 'object') continue
+    const o = p as Record<string, unknown>
+    const d = o.d
+    const c = o.c
+    if (typeof d !== 'string' || typeof c !== 'number' || !Number.isFinite(c)) continue
+    out.push({
+      d,
+      c,
+      ma20: typeof o.ma20 === 'number' ? o.ma20 : o.ma20 === null ? null : undefined,
+      ma50: typeof o.ma50 === 'number' ? o.ma50 : o.ma50 === null ? null : undefined,
+      rsi: typeof o.rsi === 'number' ? o.rsi : o.rsi === null ? null : undefined,
+      hv20: typeof o.hv20 === 'number' ? o.hv20 : o.hv20 === null ? null : undefined,
+    })
+  }
+  return out.length ? out : null
+}
+
+function priceExtent(rows: Row[]): [number, number] {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const r of rows) {
+    lo = Math.min(lo, r.close)
+    hi = Math.max(hi, r.close)
+    if (r.ma20 != null) {
+      lo = Math.min(lo, r.ma20)
+      hi = Math.max(hi, r.ma20)
+    }
+    if (r.ma50 != null) {
+      lo = Math.min(lo, r.ma50)
+      hi = Math.max(hi, r.ma50)
+    }
+  }
+  if (!Number.isFinite(lo)) return [0, 1]
+  const pad = Math.max((hi - lo) * 0.04, hi * 0.006, 0.01)
+  return [lo - pad, hi + pad]
+}
+
+function hvExtent(rows: Row[], impliedIv?: number | null): [number, number] {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const r of rows) {
+    if (r.hv20 != null) {
+      lo = Math.min(lo, r.hv20)
+      hi = Math.max(hi, r.hv20)
+    }
+  }
+  if (impliedIv != null && Number.isFinite(impliedIv)) {
+    lo = Math.min(lo, impliedIv)
+    hi = Math.max(hi, impliedIv)
+  }
+  if (!Number.isFinite(lo)) return [0, 100]
+  const pad = Math.max((hi - lo) * 0.08, 3)
+  return [Math.max(0, lo - pad), hi + pad]
+}
+
+type ChartTooltipProps = TooltipProps<ValueType, NameType> & {
+  pal: Palette
+  mode: 'price' | 'rsi' | 'hv'
+  impliedIv?: number | null
+}
+
+function ChartTooltip({ active, payload, label, pal, mode, impliedIv }: ChartTooltipProps) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload as Row | undefined
+  if (!row?.date) return null
+  const lab = typeof label === 'string' ? fmtTickDate(label) : String(label)
+  return (
+    <div
+      style={{
+        backgroundColor: pal.tooltipBg,
+        border: `1px solid ${pal.tooltipBorder}`,
+        borderRadius: 8,
+        fontSize: 11,
+        padding: '8px 10px',
+        color: pal.axis,
+        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+      }}
+    >
+      <div style={{ color: pal.label, marginBottom: 6 }}>{lab}</div>
+      {mode === 'price' && (
+        <>
+          <div style={{ color: pal.lineClose }}>Close {row.close.toFixed(2)}</div>
+          {row.ma20 != null && <div style={{ color: pal.lineMa20 }}>MA20 {row.ma20.toFixed(2)}</div>}
+          {row.ma50 != null && <div style={{ color: pal.lineMa50 }}>MA50 {row.ma50.toFixed(2)}</div>}
+        </>
+      )}
+      {mode === 'rsi' && (
+        <div style={{ color: pal.lineRsi }}>
+          RSI(14) {row.rsi != null ? row.rsi.toFixed(1) : '—'}
+        </div>
+      )}
+      {mode === 'hv' && (
+        <>
+          {row.hv20 != null && <div style={{ color: pal.lineHv }}>HV20 {row.hv20.toFixed(1)}%</div>}
+          {impliedIv != null && impliedIv > 0 && (
+            <div style={{ color: pal.lineIv, marginTop: 4 }}>Implied IV (spot) {impliedIv.toFixed(1)}%</div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+interface Props {
+  metrics: Record<string, unknown>
+}
+
+export default function SwingTradeMetricCharts({ metrics }: Props) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [pal, setPal] = useState<Palette>(SWING_CHART_PALETTE_FALLBACK)
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const sync = () => setPal(readPalette(el))
+    sync()
+    const mo = new MutationObserver(sync)
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => mo.disconnect()
+  }, [])
+
+  const points = useMemo(() => parseChartPayload(metrics.chart_series), [metrics.chart_series])
+  const impliedIv = typeof metrics.implied_iv_pct === 'number' ? metrics.implied_iv_pct : null
+
+  const data = useMemo<Row[]>(() => {
+    if (!points) return []
+    return points.map(p => ({
+      date: p.d,
+      close: p.c,
+      ma20: p.ma20 ?? null,
+      ma50: p.ma50 ?? null,
+      rsi: p.rsi ?? null,
+      hv20: p.hv20 ?? null,
+    }))
+  }, [points])
+
+  const [pLo, pHi] = useMemo(() => priceExtent(data), [data])
+  const [vLo, vHi] = useMemo(() => hvExtent(data, impliedIv), [data, impliedIv])
+
+  if (data.length === 0) return null
+
+  const hasHv = data.some(r => r.hv20 != null)
+  const showIvLine = impliedIv != null && impliedIv > 0
+
+  return (
+    <div ref={wrapRef} className="swing-trade-metric-charts space-y-4">
+      <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+        Daily context (scan window)
+      </div>
+
+      <div>
+        <div className="text-[10px] font-medium text-gray-500 mb-1">Price · MA20 · MA50</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={pal.grid} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: pal.tick, fontSize: 10 }}
+              tickFormatter={fmtTickDate}
+              minTickGap={28}
+            />
+            <YAxis domain={[pLo, pHi]} width={44} tick={{ fill: pal.tick, fontSize: 10 }} />
+            <Tooltip content={(props: TooltipProps<ValueType, NameType>) => <ChartTooltip {...props} pal={pal} mode="price" />} />
+            <Legend wrapperStyle={{ fontSize: 10, color: pal.axis }} />
+            <Line type="monotone" dataKey="close" name="Close" stroke={pal.lineClose} dot={false} strokeWidth={1.8} />
+            <Line type="monotone" dataKey="ma20" name="MA20" stroke={pal.lineMa20} dot={false} strokeWidth={1.2} connectNulls />
+            <Line type="monotone" dataKey="ma50" name="MA50" stroke={pal.lineMa50} dot={false} strokeWidth={1.2} connectNulls />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div>
+        <div className="text-[10px] font-medium text-gray-500 mb-1">RSI (14)</div>
+        <ResponsiveContainer width="100%" height={130}>
+          <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={pal.grid} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: pal.tick, fontSize: 10 }}
+              tickFormatter={fmtTickDate}
+              minTickGap={28}
+            />
+            <YAxis domain={[0, 100]} width={36} tick={{ fill: pal.tick, fontSize: 10 }} />
+            <Tooltip content={(props: TooltipProps<ValueType, NameType>) => <ChartTooltip {...props} pal={pal} mode="rsi" />} />
+            <ReferenceLine y={30} stroke={pal.refMuted} strokeDasharray="4 4" />
+            <ReferenceLine y={70} stroke={pal.refMuted} strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="rsi" name="RSI" stroke={pal.lineRsi} dot={false} strokeWidth={1.4} connectNulls />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {(hasHv || showIvLine) && (
+        <div>
+          <div className="text-[10px] font-medium text-gray-500 mb-1">HV20 (annualized %) · IV (Yahoo)</div>
+          <ResponsiveContainer width="100%" height={130}>
+            <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={pal.grid} strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: pal.tick, fontSize: 10 }}
+                tickFormatter={fmtTickDate}
+                minTickGap={28}
+              />
+              <YAxis domain={[vLo, vHi]} width={44} tick={{ fill: pal.tick, fontSize: 10 }} />
+              <Tooltip
+                content={(props: TooltipProps<ValueType, NameType>) => (
+                  <ChartTooltip {...props} pal={pal} mode="hv" impliedIv={impliedIv} />
+                )}
+              />
+              <Legend wrapperStyle={{ fontSize: 10, color: pal.axis }} />
+              {hasHv && (
+                <Line
+                  type="monotone"
+                  dataKey="hv20"
+                  name="HV20"
+                  stroke={pal.lineHv}
+                  dot={false}
+                  strokeWidth={1.4}
+                  connectNulls
+                />
+              )}
+              {showIvLine && (
+                <ReferenceLine
+                  y={impliedIv!}
+                  stroke={pal.lineIv}
+                  strokeDasharray="5 4"
+                  label={{
+                    value: 'Implied IV',
+                    position: 'insideTopRight',
+                    fill: pal.lineIv,
+                    fontSize: 10,
+                  }}
+                />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}

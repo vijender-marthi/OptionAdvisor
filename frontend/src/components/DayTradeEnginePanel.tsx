@@ -1,6 +1,7 @@
 import { RefreshCw } from 'lucide-react'
 import type { DayTradeScanResult } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
+import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 
 export function verdictStyle(verdict: string) {
   if (verdict === 'STRONG GO') {
@@ -153,11 +154,14 @@ export default function DayTradeEnginePanel({
   onRefresh,
   refreshing,
   showRefresh = true,
+  onRequestEnterActiveTrade,
 }: {
   result: DayTradeScanResult
   onRefresh?: () => void
   refreshing?: boolean
   showRefresh?: boolean
+  /** When set, shows admin-only CTA to persist this symbol for Day Trade Active monitoring. */
+  onRequestEnterActiveTrade?: () => void
 }) {
   const cfg = verdictStyle(result.verdict)
   const m = result.metrics ?? {}
@@ -180,6 +184,7 @@ export default function DayTradeEnginePanel({
   const orChartHigh = asFiniteNum(m.or_high)
   const orChartLow = asFiniteNum(m.or_low)
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
+  const td = coerceTraderDecision(result.trader_decision ?? null)
 
   return (
     <section className={`rounded-2xl border ${cfg.border} ${cfg.bg} ring-1 ${cfg.ring} p-4 sm:p-5 space-y-4`}>
@@ -230,6 +235,8 @@ export default function DayTradeEnginePanel({
           <p className="text-xs text-rose-300/80 mt-2">Risk filters suggest skipping new exposure today.</p>
         )}
       </div>
+
+      {td ? <DayTradeTraderDecisionExpanded td={td} /> : null}
 
       {chartBars && orChartHigh != null && orChartLow != null && (
         <DayTradeIntradayChart
@@ -336,12 +343,38 @@ export default function DayTradeEnginePanel({
           valueClassName={qqqChg === null ? 'text-gray-200' : signedPctClass(qqqChg)}
         />
         <MetricRow
+          label="SPY (session chg %)"
+          value={m.spy_session_change_pct == null ? '—' : fmtPct(m.spy_session_change_pct)}
+          valueClassName={signedPctClass(asFiniteNum(m.spy_session_change_pct))}
+        />
+        <MetricRow
+          label="QQQ (session chg %)"
+          value={m.qqq_session_change_pct == null ? '—' : fmtPct(m.qqq_session_change_pct)}
+          valueClassName={signedPctClass(asFiniteNum(m.qqq_session_change_pct))}
+        />
+        <MetricRow
           label="VIX"
           value={m.vix == null ? '—' : fmtNum(m.vix, 2)}
           valueClassName={vixClass(vixN)}
         />
         <MetricRow label="1m bars (RTH)" value={String(m.bars_used ?? '—')} />
       </div>
+
+      {onRequestEnterActiveTrade && (
+        <div className="rounded-xl border border-orange-700/35 bg-orange-950/25 px-3 py-3">
+          <p className="text-[11px] text-orange-200/80 mb-2">
+            Save this symbol for the <span className="font-semibold text-orange-100">Day Trade Active</span> monitor
+            (option entry + intraday guidance).
+          </p>
+          <button
+            type="button"
+            onClick={onRequestEnterActiveTrade}
+            className="w-full rounded-xl bg-orange-600/90 hover:bg-orange-500 text-white text-sm font-semibold py-2.5 px-3 transition-colors"
+          >
+            Day Trade Active
+          </button>
+        </div>
+      )}
 
       <div>
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Signal notes</div>

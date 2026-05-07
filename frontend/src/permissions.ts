@@ -13,11 +13,15 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set([
   'day-trade',
   'day-trade-watchlist',
   'day-trade-alerts',
+  'active-trades',
+  'swing-trade',
+  'swing-trade-watchlist',
 ])
 
 /**
  * Finance users get analysis, portfolio, journal, alerts, etc., but not stock-discovery radars.
- * auto-trade plus Day Trading (engine, watchlist, alert feed) are admin-only.
+ * auto-trade, Day Trading (engine, watchlist, alerts, active trades), and Swing Trading
+ * (engine + watchlist) are admin-only pages.
  * Admin and standard users have full navigation (except admin-only pages).
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {

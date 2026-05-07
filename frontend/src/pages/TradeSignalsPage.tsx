@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ShieldCheck, RefreshCw, AlertTriangle, XCircle,
   CheckCircle2, Clock, BarChart2, Layers,
-  CalendarDays, Loader2, FilterX, Info,
+  CalendarDays, Loader2, FilterX, Info, ExternalLink,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
@@ -23,11 +23,29 @@ const VERDICT_CFG: Record<VerdictOrNone, {
   'NONE':    { text: 'text-gray-500',    badge: 'bg-gray-800 border-gray-700 text-gray-500',             icon: <Clock size={12} />, label: 'Not Analyzed' },
 }
 
-function VerdictPill({ v }: { v: VerdictOrNone }) {
+function VerdictPill({ v, onOpenFinder }: { v: VerdictOrNone; onOpenFinder?: () => void }) {
   const c = VERDICT_CFG[v]
+  const inner = <>{c.icon} {v === 'NONE' ? 'N/A' : v}</>
+  const finder = onOpenFinder && (v === 'GO' || v === 'CAUTION')
+  const cls = `inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.badge}`
+  if (finder) {
+    return (
+      <button
+        type="button"
+        onClick={e => {
+          e.stopPropagation()
+          onOpenFinder()
+        }}
+        className={`${cls} cursor-pointer hover:brightness-110 transition-[filter] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/80`}
+        title="Open in Strategy Finder"
+      >
+        {inner}
+      </button>
+    )
+  }
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.badge}`}>
-      {c.icon} {v === 'NONE' ? 'N/A' : v}
+    <span className={cls}>
+      {inner}
     </span>
   )
 }
@@ -42,7 +60,7 @@ function bestVerdict(vs: Verdict[]): VerdictOrNone {
 // ─── Per-week bucket ─────────────────────────────────────────────────────────
 interface WeekBucket {
   weeksOut: number       // MULTI_WEEK_TARGETS
-  label: string          // e.g. '1w', '2w'
+  label: string          // e.g. '2w', '4w'
   dte: number            // actual DTE of the expiry found
   expiry: string         // option expiration / strike date
   recommendations: { rec: Recommendation; verdict: Verdict }[]
@@ -103,6 +121,23 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
   return buckets.sort((a, b) => a.dte - b.dte)
 }
 
+function bestRecForFinder(bucket: WeekBucket): Recommendation | null {
+  if (bucket.recommendations.length === 0) return null
+  const prefer = bucket.recommendations.filter(
+    r => r.verdict === 'GO' || r.verdict === 'CAUTION',
+  )
+  const pool = prefer.length > 0 ? prefer : bucket.recommendations
+  const sorted = [...pool].sort((a, b) => b.rec.scores.total_score - a.rec.scores.total_score)
+  return sorted[0]!.rec
+}
+
+function bucketOneLineSummary(b: WeekBucket): string {
+  const n = b.recommendations.length
+  if (n === 0) return 'No setups in this window.'
+  const top = [...b.recommendations].sort((a, x) => x.rec.scores.total_score - a.rec.scores.total_score)[0]!
+  return `${n} setup${n !== 1 ? 's' : ''} · top score: ${top.rec.strategy} (${top.verdict})`
+}
+
 // ─── Week coverage dots ───────────────────────────────────────────────────────
 function WeekCoverageDots({ buckets, hasFetched }: { buckets: WeekBucket[]; hasFetched: boolean }) {
   const coveredWeeks = new Set(buckets.map(b => b.weeksOut))
@@ -150,16 +185,28 @@ function KellyBadge({ halfKelly }: { halfKelly: number }) {
 }
 
 // ─── Rec row ─────────────────────────────────────────────────────────────────
-function RecRow({ rec, verdict }: { rec: Recommendation; verdict: Verdict }) {
+function RecRow({
+  rec, verdict, ticker, weeksOut, openInFinder,
+}: {
+  rec: Recommendation
+  verdict: Verdict
+  ticker: string
+  weeksOut: number
+  openInFinder: (ticker: string, weeksOut: number, rec: Recommendation) => void
+}) {
   const isCredit = rec.net_credit > 0
   const biasClass = rec.bias.toUpperCase().includes('BULLISH')
     ? 'bg-green-900/30 text-green-400 border-green-800'
     : rec.bias.toUpperCase().includes('BEARISH')
     ? 'bg-red-900/30 text-red-400 border-red-800'
     : 'bg-amber-900/30 text-amber-400 border-amber-800'
+  const canFinder = verdict === 'GO' || verdict === 'CAUTION'
   return (
     <div className="flex items-center gap-2 py-1.5 border-b border-gray-800/50 last:border-0 flex-wrap">
-      <VerdictPill v={verdict} />
+      <VerdictPill
+        v={verdict}
+        onOpenFinder={canFinder ? () => openInFinder(ticker, weeksOut, rec) : undefined}
+      />
       <span className="text-xs font-semibold text-gray-200 min-w-0">{rec.strategy}</span>
       <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${biasClass}`}>
         {rec.bias.includes('Bullish') ? '↑' : rec.bias.includes('Bearish') ? '↓' : '↔'} {rec.bias}
@@ -169,6 +216,18 @@ function RecRow({ rec, verdict }: { rec: Recommendation; verdict: Verdict }) {
       {isCredit && <span className="text-[10px] font-mono text-emerald-500">${(rec.net_credit * 100).toFixed(0)} cr</span>}
       <span className="text-[10px] font-mono text-gray-600">{rec.scores.total_score}/100</span>
       <KellyBadge halfKelly={rec.half_kelly_fraction ?? 0} />
+      {canFinder && (
+        <button
+          type="button"
+          onClick={() => openInFinder(ticker, weeksOut, rec)}
+          className="inline-flex items-center gap-0.5 shrink-0 text-[10px] font-semibold text-violet-400 hover:text-violet-300
+                     border border-violet-700/60 rounded-lg px-1.5 py-0.5 bg-violet-600/10 hover:bg-violet-600/20 transition-colors"
+          title="Open in Strategy Finder"
+        >
+          <ExternalLink size={11} aria-hidden />
+          Finder
+        </button>
+      )}
     </div>
   )
 }
@@ -187,12 +246,14 @@ interface TickerResult {
   bestGoKelly: number   // Half-Kelly fraction of the top-scored GO recommendation across all buckets
 }
 
-function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize }: {
+function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize, openInFinder, showOtherWeekBuckets }: {
   result: TickerResult
   onAnalyze: () => void
   onFetchAllWeeks: () => void
   fetching: boolean
   accountSize: number
+  openInFinder: (ticker: string, weeksOut: number, rec: Recommendation) => void
+  showOtherWeekBuckets: boolean
 }) {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(result.buckets[0]?.dte ?? null)
   const priceUp = result.priceChangePct >= 0
@@ -292,7 +353,7 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize 
               onClick={onFetchAllWeeks}
               disabled={fetching}
               aria-label={fetching ? 'Fetching multi-week windows' : `Fetch multi-week windows for ${result.ticker}`}
-              title={fetching ? 'Fetching…' : 'Fetch multi-week windows (1w–6w)'}
+              title={fetching ? 'Fetching…' : 'Fetch multi-week windows (2w–6w)'}
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800
                          text-gray-400 transition-colors hover:border-violet-600 hover:bg-gray-700 hover:text-violet-300 disabled:opacity-50"
             >
@@ -323,7 +384,14 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize 
             b.dte === expandedWeek && (
               <div key={b.dte}>
                 {b.recommendations.map((r, i) => (
-                  <RecRow key={i} rec={r.rec} verdict={r.verdict} />
+                  <RecRow
+                    key={i}
+                    rec={r.rec}
+                    verdict={r.verdict}
+                    ticker={result.ticker}
+                    weeksOut={b.weeksOut}
+                    openInFinder={openInFinder}
+                  />
                 ))}
                 {b.recommendations.length === 0 && (
                   <div className="text-xs text-gray-600 py-2">No trades passed filters for this window.</div>
@@ -331,6 +399,50 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize 
               </div>
             )
           ))}
+        </div>
+      )}
+
+      {/* Other expiry windows — All Windows filter + multiple buckets (e.g. Fetch All Weeks) */}
+      {showOtherWeekBuckets && result.buckets.length > 1 && (
+        <div className="px-3 pb-3 pt-0.5 border-t border-gray-800/50 space-y-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pt-2">
+            Other expiry windows
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {result.buckets
+              .filter(b => b.dte !== expandedWeek)
+              .map(b => {
+                const topRec = bestRecForFinder(b)
+                const summary = bucketOneLineSummary(b)
+                return (
+                  <div
+                    key={`${b.weeksOut}-${b.dte}-${b.expiry}`}
+                    className="rounded-xl border border-gray-800 bg-gray-800/30 px-3 py-2 flex flex-col gap-1.5 min-w-0"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold text-gray-300">
+                        {b.label} · {formatExpiryDate(b.expiry)} · {b.dte}d
+                      </span>
+                      <VerdictPill v={b.bestVerdict} />
+                    </div>
+                    <p className="text-[10px] text-gray-500 leading-snug line-clamp-2">{summary}</p>
+                    {topRec ? (
+                      <button
+                        type="button"
+                        onClick={() => openInFinder(result.ticker, b.weeksOut, topRec)}
+                        className="self-start inline-flex items-center gap-1 text-[10px] font-semibold text-violet-400 hover:text-violet-300
+                                   border border-violet-700/50 rounded-lg px-2 py-1 bg-violet-600/10 hover:bg-violet-600/20 transition-colors"
+                      >
+                        <ExternalLink size={12} aria-hidden />
+                        Open in Finder
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-gray-600">No trades in this window.</span>
+                    )}
+                  </div>
+                )
+              })}
+          </div>
         </div>
       )}
     </div>
@@ -376,10 +488,10 @@ type Filter = 'All' | 'GO' | 'CAUTION' | 'NO GO' | 'Not Analyzed'
 type WeekFilter = 'All' | number
 
 const SIGNALS_HEADER_INFO =
-  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 1w · 2w · 4w · 6w expiry windows — each window gets its own set of verdicts.'
+  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 2w · 3w · 4w · 6w expiry windows — each window gets its own set of verdicts.'
 
 const SIGNALS_MULTI_WEEK_INFO =
-  "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 1, 2, 4, and 6 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
+  "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 2, 3, 4, and 6 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
 
 export default function TradeSignalsPage() {
   const { watchlist, tickerCache, requestAnalysis, refreshTicker,
@@ -389,6 +501,19 @@ export default function TradeSignalsPage() {
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [signalsHeaderInfoOpen, setSignalsHeaderInfoOpen] = useState(false)
   const [signalsMultiWeekInfoOpen, setSignalsMultiWeekInfoOpen] = useState(false)
+
+  const openSignalInFinder = useCallback((ticker: string, weeksOut: number, rec: Recommendation) => {
+    const sym = ticker.trim().toUpperCase()
+    requestAnalysis(sym, {
+      weeksOut,
+      spreadWidth: 5,
+      strategyMode: 'all',
+      chainExpiry: rec.expiry.trim().slice(0, 10),
+      force: false,
+      focusStrategy: rec.strategy,
+      focusExpiry: rec.expiry,
+    })
+  }, [requestAnalysis])
 
   const results = useMemo((): TickerResult[] => {
     return watchlist
@@ -551,7 +676,7 @@ export default function TradeSignalsPage() {
                 onClick={handleRefreshAll}
                 disabled={refreshingAll}
                 aria-label="Refresh trades — fetch multi-week scans for analyzed tickers"
-                title="Refresh trades (1w–6w scans)"
+                title="Refresh trades (2w–6w scans)"
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 px-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-400 rounded-xl transition-colors disabled:opacity-50"
               >
@@ -589,7 +714,7 @@ export default function TradeSignalsPage() {
           <div className="min-w-[240px]">
               <div className="text-xs font-semibold text-gray-300">Global DTE Window Filter</div>
               <div className="text-[11px] text-gray-600">
-                Select a scan window (1w, 2w, 4w, or 6w), then refresh trades to populate and show that range across all analyzed tickers.
+                Select a scan window (2w, 3w, 4w, or 6w), then refresh trades to populate and show that range across all analyzed tickers.
               </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -702,6 +827,8 @@ export default function TradeSignalsPage() {
                 onFetchAllWeeks={() => fetchAllWeeks(result.ticker)}
                 fetching={fetchingAllWeeks.has(result.ticker) || refreshingTickers.has(result.ticker)}
                 accountSize={accountSize}
+                openInFinder={openSignalInFinder}
+                showOtherWeekBuckets={selectedWeek === 'All'}
               />
             ))}
           </div>

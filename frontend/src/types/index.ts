@@ -141,6 +141,8 @@ export interface TickerCacheEntry {
   chainExpiry?: string | null
   /** Exact expiry snapshots from Portfolio auto-fetch / refresh (YYYY-MM-DD → analyze response). */
   portfolioByExpiry?: Record<string, AnalyzeResponse>
+  /** When each `portfolioByExpiry` snapshot was stored (for TTL / staleness). */
+  portfolioByExpiryFetchedAt?: Record<string, number>
   // Multi-week scan: keyed by weeksOut (MULTI_WEEK_TARGETS) → full response for that expiry window
   multiWeekData?: Record<number, AnalyzeResponse>
   multiWeekTimestamp?: number    // when the multi-week sweep was last run
@@ -156,7 +158,7 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'day-trade-alerts' | 'forgot-password' | 'reset-password' | 'activate'
+export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'day-trade-alerts' | 'active-trades' | 'swing-trade' | 'swing-trade-watchlist' | 'forgot-password' | 'reset-password' | 'activate'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 
@@ -271,6 +273,10 @@ export interface UserDataState {
   watchlist_max?: number
   /** Admin day-trade alert scan list (max 10); persisted in SQLite. */
   day_trade_watchlist?: string[]
+  /** Admin swing-trade watchlist (max 10); persisted in SQLite. */
+  swing_trade_watchlist?: string[]
+  /** When false, backend skips GO / day-trade notification emails for this account. */
+  alert_email_enabled?: boolean
 }
 
 /** One stored WATCH→GO / WATCH→STRONG GO escalation (see /api/day-trade-alerts). */

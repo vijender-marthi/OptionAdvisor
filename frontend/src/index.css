@@ -1302,8 +1302,44 @@ html.light .help-page,
 html.light .settings-page,
 html.light .ai-radar-page,
 html.light .q-radar-page,
-html.light .day-trade-page {
+html.light .day-trade-page,
+html.light .active-trades-page,
+html.light .swing-trade-page,
+html.light .swing-trade-watchlist-page {
   background-color: var(--light-app-canvas);
+}
+
+/* Swing trade metric charts (Recharts) — readable grid/text in light and dark */
+.swing-trade-metric-charts {
+  --sw-chart-axis: #9ca3af;
+  --sw-chart-grid: rgba(55, 65, 81, 0.55);
+  --sw-chart-tick: #6b7280;
+  --sw-chart-tooltip-bg: rgba(17, 24, 39, 0.96);
+  --sw-chart-tooltip-border: #374151;
+  --sw-chart-tooltip-label: #9ca3af;
+  --sw-chart-line-close: #f3f4f6;
+  --sw-chart-line-ma20: #10b981;
+  --sw-chart-line-ma50: #fbbf24;
+  --sw-chart-line-rsi: #38bdf8;
+  --sw-chart-line-hv: #a78bfa;
+  --sw-chart-line-iv: #f472b6;
+  --sw-chart-ref-muted: rgba(148, 163, 184, 0.55);
+}
+
+html.light .swing-trade-metric-charts {
+  --sw-chart-axis: #475569;
+  --sw-chart-grid: rgba(148, 163, 184, 0.45);
+  --sw-chart-tick: #64748b;
+  --sw-chart-tooltip-bg: rgba(255, 255, 255, 0.98);
+  --sw-chart-tooltip-border: #e2e8f0;
+  --sw-chart-tooltip-label: #64748b;
+  --sw-chart-line-close: #0f172a;
+  --sw-chart-line-ma20: #059669;
+  --sw-chart-line-ma50: #d97706;
+  --sw-chart-line-rsi: #0284c7;
+  --sw-chart-line-hv: #7c3aed;
+  --sw-chart-line-iv: #db2777;
+  --sw-chart-ref-muted: rgba(100, 116, 139, 0.45);
 }
 
 html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900 { background-color: var(--light-surface-1); }
@@ -1379,142 +1415,274 @@ html.light :is(.watchlist-page, .trade-signals-page) .bg-red-700.text-white,
 html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600.text-white { color: #ffffff; }
 
 /* Day Trade Engine / Watchlist — light theme (verdict cards, metrics, inputs) */
-html.light .day-trade-page .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
-html.light .day-trade-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light .day-trade-page .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
-html.light .day-trade-page .bg-gray-900\/30 { background-color: var(--light-surface-1-a82); }
-html.light .day-trade-page .bg-gray-950\/50 { background-color: var(--light-surface-1-a90); }
-html.light .day-trade-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .day-trade-page .bg-gray-800\/80 { background-color: var(--light-surface-2-a94); }
-html.light .day-trade-page .hover\:bg-gray-800\/40:hover { background-color: rgba(226, 232, 240, 0.85); }
-html.light .day-trade-page .hover\:bg-gray-800\/50:hover { background-color: rgba(226, 232, 240, 0.9); }
-html.light .day-trade-page .border-gray-800 { border-color: #cbd5e1; }
-html.light .day-trade-page .border-gray-800\/80 { border-color: rgba(148, 163, 184, 0.45); }
-html.light .day-trade-page .border-dashed.border-gray-700 { border-color: #94a3b8; }
-html.light .day-trade-page .border-l.border-gray-800 { border-color: #e2e8f0; }
-html.light .day-trade-page .bg-black\/20 { background-color: rgba(15, 23, 42, 0.06); }
-html.light .day-trade-page input {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/30 { background-color: var(--light-surface-1-a82); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/70 { background-color: var(--light-surface-1-a96); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/60 { background-color: var(--light-surface-2-a90); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600\/20 { background-color: rgba(221, 214, 254, 0.78); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-400 { color: #6d28d9; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-950\/50 { background-color: var(--light-surface-1-a90); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-950\/60 { background-color: var(--light-surface-1-a92); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-700:hover { background-color: #cbd5e1; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800 { background-color: var(--light-surface-2); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/80 { background-color: var(--light-surface-2-a94); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-800\/40:hover { background-color: rgba(226, 232, 240, 0.85); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-800\/50:hover { background-color: rgba(226, 232, 240, 0.9); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-800 { border-color: #cbd5e1; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-800\/80 { border-color: rgba(148, 163, 184, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-dashed.border-gray-700 { border-color: #94a3b8; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l.border-gray-800 { border-color: #e2e8f0; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-black\/20 { background-color: rgba(15, 23, 42, 0.06); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) input {
   background-color: var(--light-input-bg, #f1f5f9);
   border-color: #cbd5e1;
   color: #0f172a;
 }
-html.light .day-trade-page input::placeholder { color: #64748b; }
-html.light .day-trade-page .text-white { color: #0f172a; }
-html.light .day-trade-page .bg-violet-600.text-white,
-html.light .day-trade-page .bg-violet-600 .text-white { color: #ffffff; }
-html.light .day-trade-page .text-gray-100 { color: #0f172a; }
-html.light .day-trade-page .text-gray-200 { color: #1e293b; }
-html.light .day-trade-page .text-gray-300 { color: #1f2937; }
-html.light .day-trade-page .text-gray-400 { color: #334155; }
-html.light .day-trade-page .text-gray-500 { color: #334155; }
-html.light .day-trade-page .border-gray-600 { border-color: #94a3b8; }
-html.light .day-trade-page .border-gray-700 { border-color: #94a3b8; }
-html.light .day-trade-page .text-rose-300 { color: #be123c; }
-html.light .day-trade-page .text-rose-400 { color: #e11d48; }
-html.light .day-trade-page .hover\:text-violet-300:hover { color: #6d28d9; }
-html.light .day-trade-page .hover\:text-rose-400:hover { color: #e11d48; }
-html.light .day-trade-page .hover\:bg-rose-950\/20:hover { background-color: rgba(254, 205, 211, 0.35); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) input::placeholder { color: #64748b; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-white { color: #0f172a; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600.text-white,
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600 .text-white { color: #ffffff; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-100 { color: #0f172a; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-200 { color: #1e293b; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-300 { color: #1f2937; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-400 { color: #334155; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-500 { color: #334155; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600 { border-color: #94a3b8; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-700 { border-color: #94a3b8; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-300 { color: #be123c; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-400 { color: #e11d48; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-violet-300:hover { color: #6d28d9; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-rose-400:hover { color: #e11d48; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-rose-300:hover { color: #be123c; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-rose-950\/20:hover { background-color: rgba(254, 205, 211, 0.35); }
 /* Verdict panel tints */
-html.light .day-trade-page .bg-emerald-950\/70 { background-color: rgba(209, 250, 229, 0.95); }
-html.light .day-trade-page .bg-emerald-950\/60 { background-color: rgba(209, 250, 229, 0.88); }
-html.light .day-trade-page .bg-emerald-950\/25 { background-color: rgba(209, 250, 229, 0.55); }
-html.light .day-trade-page .border-emerald-500\/70 { border-color: rgba(16, 185, 129, 0.65); }
-html.light .day-trade-page .border-emerald-600\/60 { border-color: rgba(5, 150, 105, 0.55); }
-html.light .day-trade-page .border-emerald-800\/40 { border-color: rgba(52, 211, 153, 0.5); }
-html.light .day-trade-page .ring-emerald-400\/35 { --tw-ring-color: rgba(16, 185, 129, 0.35); }
-html.light .day-trade-page .ring-emerald-500\/30 { --tw-ring-color: rgba(16, 185, 129, 0.28); }
-html.light .day-trade-page .ring-emerald-500\/10 { --tw-ring-color: rgba(16, 185, 129, 0.12); }
-html.light .day-trade-page .bg-amber-950\/40 { background-color: rgba(254, 243, 199, 0.85); }
-html.light .day-trade-page .border-amber-600\/50 { border-color: rgba(245, 158, 11, 0.55); }
-html.light .day-trade-page .ring-amber-500\/25 { --tw-ring-color: rgba(245, 158, 11, 0.22); }
-html.light .day-trade-page .bg-rose-950\/50 { background-color: rgba(255, 228, 230, 0.92); }
-html.light .day-trade-page .bg-rose-950\/25 { background-color: rgba(255, 228, 230, 0.55); }
-html.light .day-trade-page .border-rose-600\/50 { border-color: rgba(244, 63, 94, 0.5); }
-html.light .day-trade-page .border-rose-800\/40 { border-color: rgba(251, 113, 133, 0.45); }
-html.light .day-trade-page .ring-rose-500\/30 { --tw-ring-color: rgba(244, 63, 94, 0.25); }
-html.light .day-trade-page .ring-rose-500\/10 { --tw-ring-color: rgba(244, 63, 94, 0.12); }
-html.light .day-trade-page .bg-gray-800\/80 { background-color: rgba(226, 232, 240, 0.92); }
-html.light .day-trade-page .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.45); }
-html.light .day-trade-page .ring-gray-500\/20 { --tw-ring-color: rgba(100, 116, 139, 0.18); }
-html.light .day-trade-page .bg-violet-950\/20 { background-color: rgba(237, 233, 254, 0.72); }
-html.light .day-trade-page .border-violet-900\/40 { border-color: rgba(139, 92, 246, 0.35); }
-html.light .day-trade-page .border-rose-800\/60 { border-color: rgba(251, 113, 133, 0.5); }
-html.light .day-trade-page .bg-rose-950\/30 { background-color: rgba(255, 228, 230, 0.65); }
-html.light .day-trade-page .text-rose-200 { color: #be123c; }
-html.light .day-trade-page .text-rose-300\/80 { color: rgba(190, 18, 60, 0.88); }
-html.light .day-trade-page .text-emerald-200 { color: #065f46; }
-html.light .day-trade-page .text-amber-200 { color: #92400e; }
-html.light .day-trade-page .text-emerald-400\/95 { color: #047857; }
-html.light .day-trade-page .text-emerald-400\/90 { color: #047857; }
-html.light .day-trade-page .text-amber-300\/95 { color: #b45309; }
-html.light .day-trade-page .text-amber-400\/90 { color: #b45309; }
-html.light .day-trade-page .text-amber-400\/85 { color: #b45309; }
-html.light .day-trade-page .text-violet-400\/90 { color: #6d28d9; }
-html.light .day-trade-page .border-amber-800\/40 { border-color: rgba(251, 191, 36, 0.45); }
-html.light .day-trade-page .bg-amber-950\/20 { background-color: rgba(254, 243, 199, 0.5); }
-html.light .day-trade-page .text-amber-200\/70 { color: #92400e; }
-html.light .day-trade-page .text-emerald-600\/80 { color: #047857; }
-html.light .day-trade-page .text-rose-600\/80 { color: #be123c; }
-html.light .day-trade-page .bg-orange-600\/20 { background-color: rgba(255, 237, 213, 0.85); }
-html.light .day-trade-page .text-orange-400 { color: #c2410c; }
-html.light .day-trade-page .text-sky-300\/90 { color: #0369a1; }
-html.light .day-trade-page .text-rose-400\/95 { color: #e11d48; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/70 { background-color: rgba(209, 250, 229, 0.95); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/60 { background-color: rgba(209, 250, 229, 0.88); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/25 { background-color: rgba(209, 250, 229, 0.55); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-500\/70 { border-color: rgba(16, 185, 129, 0.65); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-600\/60 { border-color: rgba(5, 150, 105, 0.55); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-800\/40 { border-color: rgba(52, 211, 153, 0.5); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-400\/35 { --tw-ring-color: rgba(16, 185, 129, 0.35); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-500\/30 { --tw-ring-color: rgba(16, 185, 129, 0.28); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-500\/10 { --tw-ring-color: rgba(16, 185, 129, 0.12); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-950\/40 { background-color: rgba(224, 242, 254, 0.92); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-600\/50 { border-color: rgba(180, 83, 9, 0.42); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-amber-500\/25 { --tw-ring-color: rgba(14, 165, 233, 0.22); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/50 { background-color: rgba(255, 228, 230, 0.92); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/25 { background-color: rgba(255, 228, 230, 0.55); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-600\/50 { border-color: rgba(244, 63, 94, 0.5); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-800\/40 { border-color: rgba(251, 113, 133, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-rose-500\/30 { --tw-ring-color: rgba(244, 63, 94, 0.25); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-rose-500\/10 { --tw-ring-color: rgba(244, 63, 94, 0.12); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/80 { background-color: rgba(226, 232, 240, 0.92); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-gray-500\/20 { --tw-ring-color: rgba(100, 116, 139, 0.18); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-950\/20 { background-color: rgba(237, 233, 254, 0.72); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-violet-900\/40 { border-color: rgba(139, 92, 246, 0.35); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-800\/60 { border-color: rgba(251, 113, 133, 0.5); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/30 { background-color: rgba(255, 228, 230, 0.65); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-200 { color: #be123c; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-300\/80 { color: rgba(190, 18, 60, 0.88); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-200 { color: #065f46; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200 { color: #92400e; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400\/95 { color: #047857; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400\/90 { color: #047857; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-300\/95 { color: #b45309; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-300\/90 { color: #b45309; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-400\/90 { color: #b45309; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-400\/85 { color: #b45309; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-400\/90 { color: #6d28d9; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-800\/40 { border-color: rgba(2, 132, 199, 0.38); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-900\/40 { border-color: rgba(180, 83, 9, 0.4); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-950\/20 { background-color: rgba(241, 245, 249, 0.88); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200\/70 { color: #92400e; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200\/80 { color: #92400e; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-500\/20 { background-color: rgba(186, 230, 253, 0.62); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-amber-500\/30 { --tw-ring-color: rgba(14, 165, 233, 0.28); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-orange-950\/25 { background-color: rgba(224, 242, 254, 0.9); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-orange-700\/35 { border-color: rgba(194, 65, 12, 0.38); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-200\/80 { color: #9a3412; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-100 { color: #431407; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-600\/20 { background-color: rgba(255, 228, 230, 0.72); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-700\/40 { border-color: rgba(190, 18, 60, 0.42); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-600\/80 { color: #047857; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-600\/80 { color: #be123c; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-orange-600\/20 { background-color: rgba(224, 242, 254, 0.78); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-400 { color: #c2410c; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-sky-300\/90 { color: #0369a1; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-400\/95 { color: #e11d48; }
 /* Watchlist verdict pills */
-html.light .day-trade-page .bg-emerald-500\/20 { background-color: rgba(167, 243, 208, 0.65); }
-html.light .day-trade-page .bg-emerald-600\/25 { background-color: rgba(167, 243, 208, 0.58); }
-html.light .day-trade-page .bg-amber-600\/25 { background-color: rgba(253, 230, 138, 0.6); }
-html.light .day-trade-page .bg-rose-600\/25 { background-color: rgba(254, 205, 211, 0.6); }
-html.light .day-trade-page .bg-gray-700\/60 { background-color: rgba(203, 213, 225, 0.85); }
-html.light .day-trade-page .text-emerald-200 { color: #065f46; }
-html.light .day-trade-page .text-emerald-300 { color: #047857; }
-html.light .day-trade-page .text-emerald-400 { color: #047857; }
-html.light .day-trade-page .border-emerald-400\/50 { border-color: rgba(52, 211, 153, 0.55); }
-html.light .day-trade-page .border-emerald-600\/40 { border-color: rgba(5, 150, 105, 0.45); }
-html.light .day-trade-page .border-amber-600\/40 { border-color: rgba(217, 119, 6, 0.45); }
-html.light .day-trade-page .border-rose-600\/40 { border-color: rgba(244, 63, 94, 0.45); }
-html.light .day-trade-page .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.4); }
-html.light .day-trade-page .bg-violet-600 { background-color: #7c3aed; }
-html.light .day-trade-page .hover\:bg-violet-500:hover { background-color: #6d28d9; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-500\/20 { background-color: rgba(167, 243, 208, 0.65); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-600\/25 { background-color: rgba(167, 243, 208, 0.58); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-600\/25 { background-color: rgba(186, 230, 253, 0.58); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-600\/25 { background-color: rgba(254, 205, 211, 0.6); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700\/60 { background-color: rgba(203, 213, 225, 0.85); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-200 { color: #065f46; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-300 { color: #047857; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400 { color: #047857; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-400\/50 { border-color: rgba(52, 211, 153, 0.55); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-600\/40 { border-color: rgba(5, 150, 105, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-600\/40 { border-color: rgba(217, 119, 6, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-600\/40 { border-color: rgba(244, 63, 94, 0.45); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.4); }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600 { background-color: #7c3aed; }
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-violet-500:hover { background-color: #6d28d9; }
 
 /* Day Trade Watchlist row chrome — AH/Pre badges, collapsed panel, hover affordances */
-html.light .day-trade-page .bg-black\/25 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-black\/25 {
   background-color: rgba(15, 23, 42, 0.08);
 }
-html.light .day-trade-page .bg-gray-700\/55 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700\/55 {
   background-color: rgba(241, 245, 249, 0.95);
 }
-html.light .day-trade-page .border-gray-600\/55 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/55 {
   border-color: rgba(100, 116, 139, 0.4);
 }
-html.light .day-trade-page .bg-gray-800\/70 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/70 {
   background-color: rgba(241, 245, 249, 0.88);
 }
-html.light .day-trade-page .border-gray-700\/80 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-700\/80 {
   border-color: rgba(148, 163, 184, 0.52);
 }
-html.light .day-trade-page .bg-violet-500\/18 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-500\/18 {
   background-color: rgba(237, 233, 254, 0.9);
 }
-html.light .day-trade-page .border-violet-500\/35 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-violet-500\/35 {
   border-color: rgba(139, 92, 246, 0.38);
 }
-html.light .day-trade-page .text-violet-200 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-200 {
   color: #5b21b6;
 }
-html.light .day-trade-page .bg-sky-500\/15 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-sky-500\/15 {
   background-color: rgba(224, 242, 254, 0.82);
 }
-html.light .day-trade-page .border-sky-500\/35 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-sky-500\/35 {
   border-color: rgba(14, 165, 233, 0.4);
 }
-html.light .day-trade-page .text-sky-200 {
+/* Swing watchlist expanded row — final_action blue tone gutter */
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l-sky-500 {
+  border-color: #0284c7;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-sky-500\/15 {
+  --tw-ring-color: rgba(14, 165, 233, 0.22);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-sky-500\/25 {
+  --tw-ring-color: rgba(14, 165, 233, 0.28);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-sky-200 {
   color: #0369a1;
 }
-html.light .day-trade-page .text-gray-600 {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-600 {
   color: #475569;
 }
-html.light .day-trade-page .hover\:text-white:hover {
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-white:hover {
   color: #0f172a;
+}
+
+/* Swing Trade engine panel (+ shared) — dividers / WAIT verdict chip */
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .divide-gray-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-gray-700 {
+  --tw-ring-color: rgba(148, 163, 184, 0.5);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700.text-gray-300 {
+  background-color: var(--light-surface-3);
+  color: #475569;
+}
+
+/* Swing watchlist — bias strip in expanded details */
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-emerald-700\/45 {
+  background-color: rgba(209, 250, 229, 0.55);
+  border-color: rgba(5, 150, 105, 0.38);
+  color: #065f46;
+}
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-emerald-700\/45 .text-emerald-400 {
+  color: #047857;
+}
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-rose-700\/45 {
+  background-color: rgba(255, 228, 230, 0.62);
+  border-color: rgba(190, 18, 60, 0.35);
+  color: #9f1239;
+}
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-rose-700\/45 .text-rose-400 {
+  color: #e11d48;
+}
+
+/* Swing Trade Watchlist page — collapsed rows, expanded shells, chips (scoped subtree) */
+html.light .swing-trade-watchlist-page .border-gray-700\/90 {
+  border-color: rgba(148, 163, 184, 0.62);
+}
+html.light .swing-trade-watchlist-page .border-violet-600\/35 {
+  border-color: rgba(139, 92, 246, 0.38);
+}
+html.light .swing-trade-watchlist-page .bg-violet-950\/25 {
+  background-color: rgba(237, 233, 254, 0.78);
+}
+html.light .swing-trade-watchlist-page .text-violet-300\/95 {
+  color: #5b21b6;
+}
+html.light .swing-trade-watchlist-page .bg-gray-950\/40 {
+  background-color: var(--light-surface-1-a82);
+}
+html.light .swing-trade-watchlist-page .bg-amber-950\/30 {
+  background-color: rgba(254, 243, 199, 0.62);
+}
+html.light .swing-trade-watchlist-page .border-l-amber-400 {
+  border-left-color: #f59e0b;
+}
+html.light .swing-trade-watchlist-page .bg-rose-950\/15 {
+  background-color: rgba(255, 228, 230, 0.48);
+}
+html.light .swing-trade-watchlist-page .ring-rose-600\/15 {
+  --tw-ring-color: rgba(225, 29, 72, 0.2);
+}
+html.light .swing-trade-watchlist-page .swing-tone-bar.bg-slate-600\/45 {
+  background-color: rgba(100, 116, 139, 0.42);
+}
+
+/* Swing engine panel — playbook gutter + header opacity (shared with single-symbol page) */
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l-violet-500\/70 {
+  border-left-color: rgba(124, 58, 246, 0.55);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-violet-500\/10 {
+  --tw-ring-color: rgba(139, 92, 246, 0.16);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-300\/90 {
+  color: #5b21b6;
+}
+
+/* Trader decision chips (watchlist + engine panel) — light surfaces */
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-headline {
+  border-color: rgba(139, 92, 246, 0.42) !important;
+  background-color: rgba(237, 233, 254, 0.88) !important;
+  color: #5b21b6 !important;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-expanded {
+  border-color: rgba(139, 92, 246, 0.35);
+  background-color: rgba(237, 233, 254, 0.62);
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-badge--green {
+  border-color: rgba(5, 150, 105, 0.45) !important;
+  background-color: rgba(209, 250, 229, 0.72) !important;
+  color: #047857 !important;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-badge--red {
+  border-color: rgba(244, 63, 94, 0.45) !important;
+  background-color: rgba(255, 228, 230, 0.78) !important;
+  color: #be123c !important;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-badge--orange {
+  border-color: rgba(217, 119, 6, 0.45) !important;
+  background-color: rgba(254, 243, 199, 0.78) !important;
+  color: #92400e !important;
+}
+html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-badge--gray {
+  border-color: rgba(100, 116, 139, 0.4) !important;
+  background-color: rgba(241, 245, 249, 0.9) !important;
+  color: #334155 !important;
 }
 
 /* First-time advisory consent + welcome tour — light theme depth & checkbox */

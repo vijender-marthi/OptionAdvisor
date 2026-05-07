@@ -2,11 +2,15 @@
 SQLite persistence for per-user watchlist and portfolio state.
 """
 import json
+import math
 import os
 import sqlite3
 import time
+import uuid
+from datetime import datetime
 from typing import Any, Optional
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -77,6 +81,56 @@ def _migrate_user_state_day_trade_watchlist(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE user_state ADD COLUMN day_trade_watchlist_json TEXT NOT NULL DEFAULT '[]'"
         )
+
+
+def _migrate_user_state_swing_trade_watchlist(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "swing_trade_watchlist_json" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN swing_trade_watchlist_json TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
+def _migrate_user_state_alert_email_enabled(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "alert_email_enabled" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN alert_email_enabled INTEGER NOT NULL DEFAULT 1"
+        )
+
+
+def _migrate_active_trades_option_columns(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(active_trades)").fetchall()}
+    if "strike" not in cols:
+        conn.execute("ALTER TABLE active_trades ADD COLUMN strike REAL")
+    if "option_expiry" not in cols:
+        conn.execute("ALTER TABLE active_trades ADD COLUMN option_expiry TEXT")
+
+
+def _normalize_option_expiry(raw: Optional[str]) -> Optional[str]:
+    if raw is None:
+        return None
+    s = str(raw).strip()[:10]
+    if not s:
+        return None
+    if len(s) != 10 or s[4] != "-" or s[7] != "-":
+        raise ValueError("expiry must be YYYY-MM-DD")
+    y_str, m_str, d_str = s.split("-")
+    if not (y_str.isdigit() and m_str.isdigit() and d_str.isdigit()):
+        raise ValueError("expiry must be YYYY-MM-DD")
+    y, mo, d = int(y_str), int(m_str), int(d_str)
+    if y < 1990 or y > 2100 or mo < 1 or mo > 12 or d < 1 or d > 31:
+        raise ValueError("expiry must be a valid calendar date")
+    return s
+
+
+def _normalize_strike(raw: Optional[float]) -> Optional[float]:
+    if raw is None:
+        return None
+    v = float(raw)
+    if not math.isfinite(v) or v <= 0:
+        raise ValueError("strike must be a positive number")
+    return v
 
 
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
@@ -156,6 +210,8 @@ def init_db() -> None:
         _migrate_user_state_auth_columns(conn)
         _migrate_user_state_advisory_columns(conn)
         _migrate_user_state_day_trade_watchlist(conn)
+        _migrate_user_state_swing_trade_watchlist(conn)
+        _migrate_user_state_alert_email_enabled(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -205,6 +261,29 @@ def init_db() -> None:
                 PRIMARY KEY (email, alert_id)
             )
             """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS active_trades (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                side TEXT NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_underlying_px REAL,
+                contracts REAL,
+                strike REAL,
+                option_expiry TEXT,
+                notes TEXT,
+                opened_at_ms INTEGER NOT NULL,
+                exited_at_ms INTEGER,
+                raw_json TEXT
+            )
+            """
+        )
+        _migrate_active_trades_option_columns(conn)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_active_trades_email_exit ON active_trades(email, exited_at_ms)"
         )
 
 
@@ -280,8 +359,10 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "watchlist": [],
                 "portfolio": [],
                 "day_trade_watchlist": [],
+                "swing_trade_watchlist": [],
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
+                "alert_email_enabled": True,
             }
         )
 
@@ -290,7 +371,7 @@ def get_user_state(email: str) -> dict[str, Any]:
             """
             SELECT email, watchlist_json, portfolio_json, role,
                    advisory_terms_version, advisory_accepted_at,
-                   day_trade_watchlist_json
+                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled
             FROM user_state
             WHERE email = ?
             """,
@@ -305,8 +386,10 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "watchlist": [],
                 "portfolio": [],
                 "day_trade_watchlist": [],
+                "swing_trade_watchlist": [],
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
+                "alert_email_enabled": True,
             }
         )
 
@@ -316,6 +399,16 @@ def get_user_state(email: str) -> dict[str, Any]:
     except (KeyError, IndexError):
         dt_json = "[]"
     dt_list = _normalize_day_trade_tickers(json.loads(dt_json) if dt_json else [])
+    try:
+        sw_json = row["swing_trade_watchlist_json"]
+    except (KeyError, IndexError):
+        sw_json = "[]"
+    sw_list = _normalize_day_trade_tickers(json.loads(sw_json) if sw_json else [])
+    try:
+        ae_raw = row["alert_email_enabled"]
+        alert_email_enabled = bool(int(ae_raw)) if ae_raw is not None else True
+    except (KeyError, IndexError, TypeError, ValueError):
+        alert_email_enabled = True
     return _state_with_watchlist_max(
         {
             "email": row["email"],
@@ -323,8 +416,10 @@ def get_user_state(email: str) -> dict[str, Any]:
             "watchlist": json.loads(row["watchlist_json"]),
             "portfolio": json.loads(row["portfolio_json"]),
             "day_trade_watchlist": dt_list,
+            "swing_trade_watchlist": sw_list,
             "advisory_terms_version": row["advisory_terms_version"],
             "advisory_accepted_at": row["advisory_accepted_at"],
+            "alert_email_enabled": alert_email_enabled,
         }
     )
 
@@ -334,11 +429,18 @@ def list_user_states() -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT email, watchlist_json, portfolio_json, role,
-                   day_trade_watchlist_json
+                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled
             FROM user_state
             ORDER BY updated_at DESC
             """
         ).fetchall()
+
+    def _alert_email_cell(r: sqlite3.Row) -> bool:
+        try:
+            v = r["alert_email_enabled"]
+            return bool(int(v)) if v is not None else True
+        except (KeyError, IndexError, TypeError, ValueError):
+            return True
 
     return [
         {
@@ -349,6 +451,10 @@ def list_user_states() -> list[dict[str, Any]]:
             "day_trade_watchlist": _normalize_day_trade_tickers(
                 json.loads(row["day_trade_watchlist_json"] or "[]"),
             ),
+            "swing_trade_watchlist": _normalize_day_trade_tickers(
+                json.loads(row["swing_trade_watchlist_json"] or "[]"),
+            ),
+            "alert_email_enabled": _alert_email_cell(row),
         }
         for row in rows
     ]
@@ -362,6 +468,8 @@ def save_user_state(
     advisory_terms_version: Optional[str] = None,
     advisory_accepted_at: Optional[str] = None,
     day_trade_watchlist: Optional[list[str]] = None,
+    swing_trade_watchlist: Optional[list[str]] = None,
+    alert_email_enabled: Optional[bool] = None,
 ) -> dict[str, Any]:
     normalized = normalize_email(email)
     preview = get_user_state(normalized)
@@ -372,6 +480,13 @@ def save_user_state(
         dt_normalized = _normalize_day_trade_tickers(day_trade_watchlist)
     else:
         dt_normalized = _normalize_day_trade_tickers(preview.get("day_trade_watchlist"))
+    if swing_trade_watchlist is not None:
+        sw_normalized = _normalize_day_trade_tickers(swing_trade_watchlist)
+    else:
+        sw_normalized = _normalize_day_trade_tickers(preview.get("swing_trade_watchlist"))
+    ae = bool(preview.get("alert_email_enabled", True))
+    if alert_email_enabled is not None:
+        ae = bool(alert_email_enabled)
 
     with _connect() as conn:
         conn.execute(
@@ -379,9 +494,9 @@ def save_user_state(
             INSERT INTO user_state (
                 email, watchlist_json, portfolio_json, role,
                 advisory_terms_version, advisory_accepted_at,
-                day_trade_watchlist_json, updated_at
+                day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled, updated_at
             )
-            VALUES (?, ?, ?, 'user', ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 watchlist_json = excluded.watchlist_json,
                 portfolio_json = excluded.portfolio_json,
@@ -394,6 +509,8 @@ def save_user_state(
                     user_state.advisory_accepted_at
                 ),
                 day_trade_watchlist_json = excluded.day_trade_watchlist_json,
+                swing_trade_watchlist_json = excluded.swing_trade_watchlist_json,
+                alert_email_enabled = excluded.alert_email_enabled,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -403,6 +520,8 @@ def save_user_state(
                 advisory_terms_version,
                 advisory_accepted_at,
                 json.dumps(dt_normalized),
+                json.dumps(sw_normalized),
+                1 if ae else 0,
             ),
         )
 
@@ -926,6 +1045,181 @@ def delete_journal_entry(email: str, entry_id: str) -> None:
             "DELETE FROM trade_journal WHERE email = ? AND id = ?",
             (normalized, entry_id),
         )
+
+
+def _row_active_trade(row: sqlite3.Row) -> dict[str, Any]:
+    raw = row["raw_json"]
+    extra: dict[str, Any] = json.loads(raw) if raw else {}
+    rk = set(row.keys())
+    core: dict[str, Any] = {
+        "id": row["id"],
+        "email": row["email"],
+        "ticker": str(row["ticker"]).upper().strip(),
+        "side": str(row["side"]).upper().strip(),
+        "entry_price": float(row["entry_price"]),
+        "entry_underlying_px": float(row["entry_underlying_px"])
+        if row["entry_underlying_px"] is not None
+        else None,
+        "contracts": float(row["contracts"]) if row["contracts"] is not None else None,
+        "notes": row["notes"] or "",
+        "opened_at_ms": int(row["opened_at_ms"]),
+        "exited_at_ms": int(row["exited_at_ms"]) if row["exited_at_ms"] is not None else None,
+    }
+    strike_col: Optional[float] = None
+    if "strike" in rk and row["strike"] is not None:
+        strike_col = float(row["strike"])
+    expiry_col: Optional[str] = None
+    if "option_expiry" in rk and row["option_expiry"]:
+        expiry_col = str(row["option_expiry"]).strip()[:10] or None
+    reserved = set(core.keys()) | {"strike", "expiry", "option_expiry"}
+    for k, v in extra.items():
+        if k not in reserved:
+            core[k] = v
+    if strike_col is not None:
+        core["strike"] = strike_col
+    elif extra.get("strike") is not None:
+        try:
+            core["strike"] = float(extra["strike"])
+        except (TypeError, ValueError):
+            pass
+    if expiry_col:
+        core["expiry"] = expiry_col
+        core["option_expiry"] = expiry_col
+    elif extra.get("option_expiry"):
+        ex = str(extra["option_expiry"]).strip()[:10]
+        if ex:
+            core["expiry"] = ex
+            core["option_expiry"] = ex
+    elif extra.get("expiry"):
+        ex = str(extra["expiry"]).strip()[:10]
+        if ex:
+            core["expiry"] = ex
+            core["option_expiry"] = ex
+    return core
+
+
+def insert_active_trade(
+    email: str,
+    *,
+    ticker: str,
+    side: str,
+    entry_price: float,
+    entry_underlying_px: Optional[float] = None,
+    contracts: Optional[float] = None,
+    strike: Optional[float] = None,
+    option_expiry: Optional[str] = None,
+    notes: Optional[str] = None,
+    raw_json_extra: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    normalized = normalize_email(email)
+    t = ticker.upper().strip()
+    if not t or len(t) > 12:
+        raise ValueError("Invalid ticker")
+    sd = side.upper().strip()
+    if sd not in ("CALL", "PUT"):
+        raise ValueError("side must be CALL or PUT")
+    ep = float(entry_price)
+    if ep < 0 or not math.isfinite(ep):
+        raise ValueError("Invalid entry_price")
+    strike_store = _normalize_strike(strike)
+    expiry_store = _normalize_option_expiry(option_expiry)
+    tid = str(uuid.uuid4())
+    now_ms = int(time.time() * 1000)
+    raw_store: dict[str, Any] = dict(raw_json_extra or {})
+    raw_text = json.dumps(raw_store) if raw_store else None
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO active_trades (
+                id, email, ticker, side, entry_price, entry_underlying_px,
+                contracts, strike, option_expiry, notes, opened_at_ms, exited_at_ms, raw_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+            """,
+            (
+                tid,
+                normalized,
+                t,
+                sd,
+                ep,
+                entry_underlying_px,
+                contracts,
+                strike_store,
+                expiry_store,
+                (notes or "").strip() or None,
+                now_ms,
+                raw_text,
+            ),
+        )
+    return get_active_trade(normalized, tid)  # type: ignore[return-value]
+
+
+def get_active_trade(email: str, trade_id: str) -> dict[str, Any] | None:
+    normalized = normalize_email(email)
+    tid = trade_id.strip()
+    if not normalized or not tid:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM active_trades WHERE email = ? AND id = ?
+            """,
+            (normalized, tid),
+        ).fetchone()
+    return _row_active_trade(row) if row else None
+
+
+def list_active_trades_open(email: str) -> list[dict[str, Any]]:
+    normalized = normalize_email(email)
+    if not normalized:
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM active_trades
+            WHERE email = ? AND exited_at_ms IS NULL
+            ORDER BY opened_at_ms DESC
+            """,
+            (normalized,),
+        ).fetchall()
+    return [_row_active_trade(r) for r in rows]
+
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _epoch_ms_to_et_date_iso(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000.0, tz=_ET).date().isoformat()
+
+
+def list_active_trades_open_opened_today_et(
+    email: str, *, ref_epoch_ms: int | None = None
+) -> list[dict[str, Any]]:
+    """Non-exited trades whose ``opened_at_ms`` falls on the America/New_York calendar date of ref (default: now)."""
+    ref = int(time.time() * 1000) if ref_epoch_ms is None else ref_epoch_ms
+    today_et = _epoch_ms_to_et_date_iso(ref)
+    return [
+        r
+        for r in list_active_trades_open(email)
+        if _epoch_ms_to_et_date_iso(int(r["opened_at_ms"])) == today_et
+    ]
+
+
+def exit_active_trade(email: str, trade_id: str) -> bool:
+    normalized = normalize_email(email)
+    tid = trade_id.strip()
+    if not normalized or not tid:
+        return False
+    now_ms = int(time.time() * 1000)
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE active_trades SET exited_at_ms = ?
+            WHERE email = ? AND id = ? AND exited_at_ms IS NULL
+            """,
+            (now_ms, normalized, tid),
+        )
+    return cur.rowcount > 0
 
 
 def _row_to_entry(row) -> dict[str, Any]:

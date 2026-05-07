@@ -51,7 +51,10 @@ def _jwt_days() -> int:
 
 
 def _public_app_url() -> str:
-    return os.getenv("OPTION_ADVISOR_PUBLIC_URL", "http://localhost:4200").rstrip("/")
+    """SPA base for activation / password-reset links (same env resolution as `_option_advisor_public_base(None)`)."""
+    from main import _option_advisor_public_base
+
+    return _option_advisor_public_base(None)
 
 
 def _google_client_id() -> str:

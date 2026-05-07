@@ -69,12 +69,15 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Create backend environment file:
+Create backend environment file. **Set `OPTION_ADVISOR_PUBLIC_URL` to your real HTTPS site** — the 15-minute background scanner sends GO and day-trade alert email with links derived from this value (or from the optional `OPTION_ADVISOR_EMAIL_LINK_BASE`). If it is missing on production, emails still deliver when SMTP/SendGrid is configured, but links default to `http://localhost:4200` and the server logs a one-time warning.
 
 ```bash
 sudo tee /etc/optionadvisor.env >/dev/null <<'EOF'
 OPTION_ADVISOR_DB_PATH=/mnt/optionadvisor-data/option_advisor.sqlite3
+# Required for correct links in scanner emails, activation, and password reset (HTTPS site, no trailing slash).
 OPTION_ADVISOR_PUBLIC_URL=https://optionadvisor.zetayuai.com
+# Optional: if PUBLIC_URL must stay empty for some reason, set this so background scanner emails still get HTTPS links.
+# OPTION_ADVISOR_EMAIL_LINK_BASE=https://optionadvisor.zetayuai.com
 # Optional: comma-separated emails → promote default users to finance role (see storage.effective_user_role).
 OPTION_ADVISOR_FINANCE_EMAILS=
 # Watchlist length caps (defaults: 15 for users/finance, 30 for admins — see storage.watchlist_limit_for_role).
@@ -97,6 +100,8 @@ EOF
 ```
 
 Fill **SendGrid** (`SENDGRID_API_KEY` + verified `SENDGRID_FROM_EMAIL`) or **SMTP** if GO-alert emails should be sent. If both are unset, in-app alerts still work.
+
+**Scanner vs manual send:** The background loop (`_alert_scan_loop` in `main.py`) calls `_send_alert_email` and day-trade mailers **without** an HTTP `Request`, so embeddable links use `OPTION_ADVISOR_PUBLIC_URL` → `OPTION_ADVISOR_EMAIL_LINK_BASE` → `http://localhost:4200`. The SPA’s `POST /api/send-alert` can still use the browser `Origin` when `OPTION_ADVISOR_PUBLIC_URL` is unset (local dev). Production should always set `OPTION_ADVISOR_PUBLIC_URL`.
 
 To grant **admin** (Auto Trade, paper execute): set `user_state.role = 'admin'` for that email in the SQLite DB (`OPTION_ADVISOR_DB_PATH`). Admin is not configured via environment variables.
 
@@ -257,6 +262,8 @@ This repo includes `.github/workflows/deploy-production.yml`. It was never wired
 
 ### What it does
 
+The workflow only builds and copies assets; **environment variables live on the droplet** (e.g. `/etc/optionadvisor.env` per `DEPLOY_DIGITALOCEAN.md`). Ensure production has `OPTION_ADVISOR_PUBLIC_URL` set so background scanner emails do not embed `localhost` links.
+
 - **Manual:** GitHub → **Actions** → **Deploy to production** → **Run workflow** (optional branch/tag input; default `main`).
 - **Automatic:** Pushing a **version tag** matching `v`* (for example `v1.04`) also starts a deploy run.
 
@@ -278,7 +285,7 @@ Use a **dedicated deploy key** for Actions (do not reuse your laptop’s persona
 
 ### One-time droplet setup for CI
 
-1. **`git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
+1. `**git fetch` must work non-interactively** on the server inside `/opt/optionadvisor` (deploy key read-access to GitHub, or HTTPS remote with credentials).
 2. **Passwordless sudo** for the deploy user so the workflow can restart services:
 
 ```bash
@@ -291,7 +298,7 @@ Example (adjust username):
 fluxtrade ALL=(ALL) NOPASSWD: /bin/systemctl restart optionadvisor, /bin/systemctl reload nginx
 ```
 
-3. **`rsync`** to `/var/www/optionadvisor` must succeed **without sudo** for the deploy user (ownership like §10 — e.g. `chown -R fluxtrade:fluxtrade /var/www/optionadvisor`).
+1. `**rsync**` to `/var/www/optionadvisor` must succeed **without sudo** for the deploy user (ownership like §10 — e.g. `chown -R fluxtrade:fluxtrade /var/www/optionadvisor`).
 
 ### Troubleshooting
 
@@ -327,4 +334,3 @@ sudo -n systemctl reload nginx
 ```
 
 You can also run `sudo -n systemctl restart optionadvisor` once to verify the restart rule (brief backend interruption).
-

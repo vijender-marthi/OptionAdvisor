@@ -102,6 +102,14 @@ export default function Sidebar() {
         { id: 'day-trade' as Page, label: 'Day Trade Engine', icon: <Zap size={18} /> },
         { id: 'day-trade-watchlist' as Page, label: 'Day Trade Watchlist', icon: <LayoutList size={18} /> },
         { id: 'day-trade-alerts' as Page, label: 'Day Trade Alerts', icon: <BellRing size={18} /> },
+        { id: 'active-trades' as Page, label: 'Day Trade Active', icon: <Activity size={18} /> },
+      ],
+    },
+    {
+      label: 'Swing Trading',
+      items: [
+        { id: 'swing-trade' as Page, label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+        { id: 'swing-trade-watchlist' as Page, label: 'Swing Trade Watchlist', icon: <LayoutList size={18} /> },
       ],
     },
     {
@@ -139,6 +147,9 @@ export default function Sidebar() {
     { id: 'day-trade', label: 'Day Engine', icon: <Zap size={18} /> },
     { id: 'day-trade-watchlist', label: 'DT Watchlist', icon: <LayoutList size={18} /> },
     { id: 'day-trade-alerts', label: 'DT Alerts', icon: <BellRing size={18} /> },
+    { id: 'active-trades', label: 'Day Trade Active', icon: <Activity size={18} /> },
+    { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+    { id: 'swing-trade-watchlist', label: 'Swing Watchlist', icon: <LayoutList size={18} /> },
     { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
     { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
     { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },

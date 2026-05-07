@@ -4,7 +4,7 @@ import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
-  FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap,
+  FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap, LineChart,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole } from '../permissions'
@@ -278,7 +278,7 @@ const workflowSteps = [
     title: 'Analyze in Strategy Finder',
     icon: <BarChart2 size={16} />,
     color: 'text-sky-400',
-    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (1w–6w: 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
+    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (2w–6w: 2w, 3w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
   },
   {
     step: '4',
@@ -292,7 +292,7 @@ const workflowSteps = [
     title: 'Scan Trade Signals',
     icon: <Radar size={16} />,
     color: 'text-amber-400',
-    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
+    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (2w, 3w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
   },
   {
     step: '6',
@@ -371,7 +371,7 @@ export default function HelpPage() {
               </p>
               <p className="text-xs text-gray-500 mt-3 max-w-3xl border-t border-gray-800/50 pt-3">
                 Documentation matches your account: sections for features you cannot access in the app are hidden
-                (for example, AI Radar for finance-only accounts; Day Trading and Auto Trade for non-administrators).
+                (for example, AI Radar for finance-only accounts; Day Trading, Swing Trading, and Auto Trade for non-administrators).
               </p>
             </div>
           </div>
@@ -770,13 +770,13 @@ export default function HelpPage() {
           <div className="space-y-3 text-sm text-gray-400">
             <p>
               Trade Signals is your signal dashboard — it shows every watchlist ticker with pre-trade
-              verdicts across four DTE scan windows (1w, 2w, 4w, 6w) at a glance.
+              verdicts across four DTE scan windows (2w, 3w, 4w, 6w) at a glance.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 {
                   title: 'Coverage dots',
-                  desc: 'Each ticker shows colored dots for 1w/2w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
+                  desc: 'Each ticker shows colored dots for 2w/3w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
                 },
                 {
                   title: 'Fetch All Weeks',
@@ -798,7 +798,7 @@ export default function HelpPage() {
               ))}
             </div>
             <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: for near-term setups use 1w–2w. For typical monthly front, use 4w. For more time in the trade, use 6w.
+              Tip: for nearer-term setups use 2w–3w. For typical monthly front, use 4w. For more time in the trade, use 6w.
             </p>
           </div>
         </InfoCard>
@@ -1508,7 +1508,57 @@ if HIGH_IV and BEARISH:
             </div>
 
             <div className="rounded-xl border border-amber-700/30 bg-amber-900/10 px-4 py-3 text-xs text-amber-300/90">
-              <span className="font-semibold">⚡ Note:</span> Open <span className="font-semibold">Day Trade Engine</span> or <span className="font-semibold">Day Trade Watchlist</span> from the sidebar (administrator accounts only). Intraday engine — separate from the Options Scanner.
+              <span className="font-semibold">⚡ Note:</span> Open <span className="font-semibold">Day Trade Engine</span> or <span className="font-semibold">Day Trade Watchlist</span> from the sidebar under <span className="font-semibold">Day Trading</span> (administrator accounts only). Intraday engine — separate from the Options Scanner.
+            </div>
+          </div>
+        </InfoCard>
+        )}
+
+        {isAdmin && (
+        <InfoCard icon={<LineChart size={18} />} title="Swing Trading (administrator)">
+          <div className="space-y-4 text-sm text-gray-400">
+            <p>
+              <span className="font-semibold text-gray-200">Swing Trading</span> runs a{' '}
+              <span className="text-gray-200">daily-candle</span> scan geared toward multi-day (often overnight — 2–5 day)
+              setups: moving-average trend and slope, RSI, MACD, short-term momentum and volume versus SPY / VIX context.
+              It complements the Strategy Finder options engine and is{' '}
+              <span className="text-gray-200">different from Day Trading</span>, which uses same-session 1-minute bars, VWAP, and opening-range style inputs.
+            </p>
+
+            <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 px-4 py-3 space-y-2">
+              <div className="text-xs font-semibold text-violet-200">Swing Trade Watchlist</div>
+              <p className="text-xs leading-relaxed">
+                Save up to <span className="text-gray-200 font-semibold">10 symbols</span> on the{' '}
+                <span className="text-gray-200 font-semibold">Swing Trade Watchlist</span> page — persisted on the server for your account like other user data.
+                This surface is restricted to{' '}
+                <span className="text-gray-200 font-semibold">administrators only</span> (same navigation policy as Day Trading).
+              </p>
+            </div>
+
+            <div>
+              <p className="mb-2 font-semibold text-gray-300">Verdict tiers</p>
+              <p className="text-xs text-gray-500 mb-2">
+                The engine labels each scan with one of five tiers (long/short bias is shown separately in the product):
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-lg border border-emerald-500/50 bg-emerald-900/25 px-2 py-1.5 text-[10px] font-bold text-emerald-300 sm:text-xs">STRONG GO</div>
+                <div className="rounded-lg border border-emerald-600/40 bg-emerald-900/20 px-2 py-1.5 text-[10px] font-bold text-emerald-400 sm:text-xs">GO</div>
+                <div className="rounded-lg border border-amber-600/45 bg-amber-900/25 px-2 py-1.5 text-[10px] font-bold text-amber-200 sm:text-xs">WATCH</div>
+                <div className="rounded-lg border border-gray-600/40 bg-gray-700/20 px-2 py-1.5 text-[10px] font-bold text-gray-400 sm:text-xs">WAIT</div>
+                <div className="rounded-lg border border-rose-600/45 bg-rose-900/20 px-2 py-1.5 text-[10px] font-bold text-rose-400 sm:text-xs">NO-GO</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-xs text-amber-200/90 leading-relaxed">
+              This scan is informational and educational only. Nothing here is individualized investment advice, a recommendation to buy or sell, or a forecast of outcomes.
+              Options and swing-style trading involve substantial risk; you alone decide whether and how to act.
+            </div>
+
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/40 px-4 py-3 text-xs text-gray-400">
+              <span className="font-semibold text-gray-300">Where to open it:</span>{' '}
+              In the sidebar, expand <span className="font-semibold text-gray-200">Swing Trading</span> — use{' '}
+              <span className="font-semibold text-gray-200">Swing Trade</span> for a single-symbol scan or{' '}
+              <span className="font-semibold text-gray-200">Swing Trade Watchlist</span> for your saved list (labels match the app).
             </div>
           </div>
         </InfoCard>

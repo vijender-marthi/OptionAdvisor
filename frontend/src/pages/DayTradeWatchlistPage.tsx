@@ -4,6 +4,10 @@ import {
 } from 'lucide-react'
 import { analyzeDayTrade } from '../api/client'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
+import {
+  coerceTraderDecision,
+  DayTradeTraderDecisionChips,
+} from '../components/DayTradeTraderDecision'
 import { useApp } from '../contexts/AppContext'
 import type { DayTradeWatchlistRowState } from '../types/dayTradeUi'
 
@@ -303,6 +307,7 @@ export default function DayTradeWatchlistPage() {
           const banner = metrics ? watchlistBannerQuote(metrics as Record<string, unknown>) : null
           const bull = row.status === 'ok' ? row.result.bull_score : undefined
           const bear = row.status === 'ok' ? row.result.bear_score : undefined
+          const td = row.status === 'ok' ? coerceTraderDecision(row.result.trader_decision ?? null) : null
 
           return (
             <li key={t} className="rounded-2xl border border-gray-800 bg-gray-900/50 overflow-hidden">
@@ -339,6 +344,7 @@ export default function DayTradeWatchlistPage() {
                       <span className="text-rose-400 font-semibold">{bear.toFixed(1)}</span>
                     </span>
                   )}
+                  {td ? <DayTradeTraderDecisionChips td={td} className="basis-full order-last sm:order-none" /> : null}
                   {banner ? (
                     <div className="ml-auto flex items-center gap-2 shrink-0 text-right tabular-nums">
                       <span

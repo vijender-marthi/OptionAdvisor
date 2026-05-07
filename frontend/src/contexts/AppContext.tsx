@@ -8,6 +8,10 @@ import {
   type DayTradeEnginePageState,
   type DayTradeWatchlistPageState,
 } from '../types/dayTradeUi'
+import {
+  INITIAL_SWING_TRADE_WATCHLIST_PAGE,
+  type SwingTradeWatchlistPageState,
+} from '../types/swingTradeUi'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
 import {
   analyzeOptions,
@@ -27,7 +31,10 @@ import {
 } from '../api/client'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
-import { normalizePortfolioExpiryIso, resolvePortfolioAnalyzeData } from '../utils/portfolioAnalysis'
+import {
+  isPortfolioExpiryAnalysisFresh,
+  normalizePortfolioExpiryIso,
+} from '../utils/portfolioAnalysis'
 import { OA_DAY_TRADE_WATCHLIST_KEY, OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 import { ADVISORY_TERMS_VERSION } from '../constants/advisoryDisclaimer'
 import { MULTI_WEEK_TARGETS, type WeeksOut } from '../data/stockUniverse'
@@ -76,6 +83,9 @@ function getHashPage(): Page {
   if (h === 'day-trade') return 'day-trade'
   if (h === 'day-trade-watchlist') return 'day-trade-watchlist'
   if (h === 'day-trade-alerts') return 'day-trade-alerts'
+  if (h === 'active-trades') return 'active-trades'
+  if (h === 'swing-trade') return 'swing-trade'
+  if (h === 'swing-trade-watchlist') return 'swing-trade-watchlist'
   if (h === 'forgot-password') return 'forgot-password'
   if (h === 'reset-password') return 'reset-password'
   if (h === 'activate') return 'activate'
@@ -187,6 +197,10 @@ interface AppContextValue {
   dayTradeWatchlist: string[]
   setDayTradeWatchlist: React.Dispatch<React.SetStateAction<string[]>>
 
+  /** Persisted swing-trade watchlist (admin-only; max 10). */
+  swingTradeWatchlist: string[]
+  setSwingTradeWatchlist: React.Dispatch<React.SetStateAction<string[]>>
+
   /**
    * In-memory snapshot of Day Trade Engine page fields so navigation away does not wipe results.
    * Cleared only on full reload or sign-out / account switch.
@@ -197,6 +211,10 @@ interface AppContextValue {
   /** Same as engine: watchlist scans + expanded panels survive route changes until refresh or logout. */
   dayTradeWatchlistUI: DayTradeWatchlistPageState
   setDayTradeWatchlistUI: React.Dispatch<React.SetStateAction<DayTradeWatchlistPageState>>
+
+  /** Swing watchlist scans + expanded rows survive route changes until explicit refresh/logout/account switch. */
+  swingTradeWatchlistUI: SwingTradeWatchlistPageState
+  setSwingTradeWatchlistUI: React.Dispatch<React.SetStateAction<SwingTradeWatchlistPageState>>
 
   // Portfolio
   portfolio: PortfolioPosition[]
@@ -271,6 +289,9 @@ interface PendingAnalysisOptions {
   /** Lock analyze to this chain expiry (YYYY-MM-DD), e.g. when opening from Alerts. */
   chainExpiry?: string | null
   force?: boolean
+  /** After load, scroll to / expand this recommendation (Strategy Finder). */
+  focusStrategy?: string | null
+  focusExpiry?: string | null
 }
 
 // ─── Persistence helpers ────────────────────────────────────────────────────────
@@ -340,11 +361,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlistMax, setWatchlistMax] = useState(15)
   const [watchlistNotice, setWatchlistNotice] = useState<string | null>(null)
   const [dayTradeWatchlist, setDayTradeWatchlist] = useState<string[]>([])
+  const [swingTradeWatchlist, setSwingTradeWatchlist] = useState<string[]>([])
   const [dayTradeEngineUI, setDayTradeEngineUI] = useState<DayTradeEnginePageState>(() => ({
     ...INITIAL_DAY_TRADE_ENGINE_PAGE,
   }))
   const [dayTradeWatchlistUI, setDayTradeWatchlistUI] = useState<DayTradeWatchlistPageState>(() => ({
     ...INITIAL_DAY_TRADE_WATCHLIST_PAGE,
+  }))
+  const [swingTradeWatchlistUI, setSwingTradeWatchlistUI] = useState<SwingTradeWatchlistPageState>(() => ({
+    ...INITIAL_SWING_TRADE_WATCHLIST_PAGE,
   }))
   const [portfolio, setPortfolio]   = useState<PortfolioPosition[]>([])
   const [pendingTicker, setPendingTicker] = useState<string | null>(null)
@@ -378,6 +403,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (prev !== null && curr !== prev) {
       setDayTradeEngineUI({ ...INITIAL_DAY_TRADE_ENGINE_PAGE })
       setDayTradeWatchlistUI({ ...INITIAL_DAY_TRADE_WATCHLIST_PAGE })
+      setSwingTradeWatchlistUI({ ...INITIAL_SWING_TRADE_WATCHLIST_PAGE })
     }
     dayTradeSessionEmailRef.current = curr
   }, [user?.email])
@@ -401,6 +427,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { portfolioRef.current = portfolio }, [portfolio])
   const dayTradeWatchlistRef = useRef(dayTradeWatchlist)
   useEffect(() => { dayTradeWatchlistRef.current = dayTradeWatchlist }, [dayTradeWatchlist])
+  const swingTradeWatchlistRef = useRef(swingTradeWatchlist)
+  useEffect(() => { swingTradeWatchlistRef.current = swingTradeWatchlist }, [swingTradeWatchlist])
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
   const tickerCacheRef = useRef(tickerCache)
@@ -467,6 +495,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWatchlistMax(15)
         setWatchlistNotice(null)
         setDayTradeWatchlist([])
+        setSwingTradeWatchlist([])
         setUserDataLoaded(false)
         setAdvisoryAcceptedAt(null)
         setAdvisoryTermsVersion(null)
@@ -489,10 +518,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (migrated.length) dt = migrated
         }
         setDayTradeWatchlist(dt.slice(0, 10))
+        let sw: string[] = Array.isArray(data.swing_trade_watchlist)
+          ? data.swing_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
+          : []
+        setSwingTradeWatchlist(sw.slice(0, 10))
         const wm = Number(data.watchlist_max)
         setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
         setAdvisoryAcceptedAt(data.advisory_accepted_at ?? null)
         setAdvisoryTermsVersion(data.advisory_terms_version ?? null)
+        {
+          const serverAlertEmail = data.alert_email_enabled !== false
+          setAlertEmailEnabledState(serverAlertEmail)
+          save('oa_alert_email_enabled', serverAlertEmail)
+        }
         setUser(prev => {
           if (!prev) return prev
           const em = prev.email.trim().toLowerCase()
@@ -507,6 +545,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setPortfolio([])
           setWatchlistMax(15)
           setDayTradeWatchlist([])
+          setSwingTradeWatchlist([])
           setUserDataLoaded(false)
           setAdvisoryAcceptedAt(null)
           setAdvisoryTermsVersion(null)
@@ -525,12 +564,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       advisoryAcceptedAt && advisoryTermsVersion
         ? { advisoryTermsVersion, advisoryAcceptedAt }
         : undefined
-    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist).catch(e => {
+    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled).catch(e => {
       const msg = extractAxiosDetail(e)
       if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
       console.warn('[user-data] save failed:', e)
     })
-  }, [advisoryAcceptedAt, advisoryTermsVersion, dayTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
+  }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
     user &&
@@ -546,7 +585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const data = await saveUserData(email, watchlistRef.current, portfolioRef.current, {
       advisoryTermsVersion: version,
       advisoryAcceptedAt: acceptedAt,
-    }, dayTradeWatchlistRef.current)
+    }, dayTradeWatchlistRef.current, swingTradeWatchlistRef.current, alertEmailEnabledRef.current)
     const wm = Number(data.watchlist_max)
     setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
     setAdvisoryAcceptedAt(data.advisory_accepted_at ?? acceptedAt)
@@ -723,6 +762,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWatchlistMax(15)
     setWatchlistNotice(null)
     setDayTradeWatchlist([])
+    setSwingTradeWatchlist([])
     setUserDataLoaded(false)
     setAdvisoryAcceptedAt(null)
     setAdvisoryTermsVersion(null)
@@ -903,6 +943,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         strategyMode,
         chainExpiry: chainExpiry ?? undefined,
         portfolioByExpiry: old?.portfolioByExpiry,
+        portfolioByExpiryFetchedAt: old?.portfolioByExpiryFetchedAt,
         multiWeekData: old?.multiWeekData,
         multiWeekTimestamp: old?.multiWeekTimestamp,
       }
@@ -1033,7 +1074,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ) => {
     const norm = normalizePortfolioExpiryIso(positionExpiry)
     const inflightKey = `${ticker}|${norm}`
-    if (!opts?.force && resolvePortfolioAnalyzeData(tickerCacheRef.current[ticker], positionExpiry)) return
+    if (!opts?.force && isPortfolioExpiryAnalysisFresh(tickerCacheRef.current[ticker], positionExpiry)) return
     const failedAt = portfolioFetchFailuresRef.current.get(inflightKey)
     if (!opts?.force && failedAt != null && Date.now() - failedAt < 60_000) return
     if (portfolioExpiryFetchRef.current.has(inflightKey)) return
@@ -1050,6 +1091,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode, norm)
       const portfolioByExpiry = { ...(existing?.portfolioByExpiry ?? {}), [norm]: data }
+      const nowSlice = Date.now()
+      const portfolioByExpiryFetchedAt = {
+        ...(existing?.portfolioByExpiryFetchedAt ?? {}),
+        [norm]: nowSlice,
+      }
       const hadPrimary = !!existing?.data
       const entry: TickerCacheEntry = {
         ticker,
@@ -1062,6 +1108,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         multiWeekData: existing?.multiWeekData,
         multiWeekTimestamp: existing?.multiWeekTimestamp,
         portfolioByExpiry,
+        portfolioByExpiryFetchedAt,
       }
 
       tickerCacheRef.current = { ...tickerCacheRef.current, [ticker]: entry }
@@ -1092,6 +1139,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // ONE Yahoo API fetch — used for both cache update AND alert scanning
       const data = await analyzeOptions(ticker, weeksOut, spreadWidth, strategyMode)
+      const chainRaw = data.filters_applied?.chain_expiry
+      const chainNorm = typeof chainRaw === 'string' ? normalizePortfolioExpiryIso(chainRaw) : null
+      let portfolioByExpiry = existing?.portfolioByExpiry
+      let portfolioByExpiryFetchedAt = existing?.portfolioByExpiryFetchedAt
+      if (chainNorm && existing?.portfolioByExpiry?.[chainNorm]) {
+        portfolioByExpiry = { ...existing.portfolioByExpiry, [chainNorm]: data }
+        portfolioByExpiryFetchedAt = {
+          ...(existing.portfolioByExpiryFetchedAt ?? {}),
+          [chainNorm]: Date.now(),
+        }
+      }
       const entry: TickerCacheEntry = {
         ticker,
         data,
@@ -1100,7 +1158,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         spreadWidth,
         strategyMode,
         chainExpiry: undefined,
-        portfolioByExpiry: existing?.portfolioByExpiry,
+        portfolioByExpiry,
+        portfolioByExpiryFetchedAt,
         multiWeekData: existing?.multiWeekData,
         multiWeekTimestamp: existing?.multiWeekTimestamp,
       }
@@ -1275,8 +1334,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
       watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, isWatched, watchlistNotice, clearWatchlistNotice,
       dayTradeWatchlist, setDayTradeWatchlist,
+      swingTradeWatchlist, setSwingTradeWatchlist,
       dayTradeEngineUI, setDayTradeEngineUI,
       dayTradeWatchlistUI, setDayTradeWatchlistUI,
+      swingTradeWatchlistUI, setSwingTradeWatchlistUI,
       portfolio, addToPortfolio, addManualPosition, updatePortfolioPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,
       refreshingTickers, refreshTicker, ensureAnalysisForPortfolioExpiry, lastBgRefresh, isMarketHours, refreshWatchlistForAlerts,

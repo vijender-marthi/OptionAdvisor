@@ -120,6 +120,20 @@ export interface DayTradeChartBar {
   vwap: number
 }
 
+export interface DayTraderDecision {
+  ticker: string
+  market_state: string
+  market_guidance?: string
+  relative_strength: string
+  trader_state: string
+  call_bias: string
+  put_bias: string
+  suggested_action: string
+  decision_message: string
+  risk_warning: string
+  confirmation_needed: string[]
+}
+
 /** Intraday day-trade scan — verdict tiers: STRONG GO, GO, WATCH, NO-GO, WAIT. */
 export interface DayTradeScanResult {
   ticker: string
@@ -131,11 +145,131 @@ export interface DayTradeScanResult {
   reasons: string[]
   /** Includes chart_bars (OHLCV + session VWAP per bar) for visualization. */
   metrics: Record<string, unknown>
+  /** Structured trader interpretation — not a trade signal; confirmation-first framing. */
+  trader_decision?: DayTraderDecision
 }
 
 export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {
   const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim() })
   return data
+}
+
+/** Single daily point in `metrics.chart_series` from POST /api/swing-trade (bounded tail, ~6 months). */
+export interface SwingTradeChartPoint {
+  d: string
+  c: number
+  ma20?: number | null
+  ma50?: number | null
+  rsi?: number | null
+  hv20?: number | null
+}
+
+export interface SwingTradeChartSeriesPayload {
+  max_points: number
+  count: number
+  points: SwingTradeChartPoint[]
+}
+
+/** Daily swing-trade scan — verdict tiers: STRONG GO, GO, WATCH, NO-GO, WAIT. */
+export interface SwingTradeScanResult {
+  ticker: string
+  company_name: string
+  verdict: 'STRONG GO' | 'GO' | 'WATCH' | 'NO-GO' | 'WAIT'
+  bias: 'long' | 'short' | null
+  bull_score: number
+  bear_score: number
+  reasons: string[]
+  /** Includes `chart_series` (daily close, MA20/MA50, RSI(14), HV20 %) for metric charts. */
+  metrics: Record<string, unknown>
+  // ── Decision Quality Layer ─────────────────────────────────────────
+  swing_bias:              string
+  entry_quality:           string
+  risk_level:              string
+  final_action:            string
+  trade_quality_score:     number
+  decision_label:          string
+  decision_message:        string
+  risk_flags:              string[]
+  confirmation_needed:     string[]
+  suggested_expiry_window: string
+  suggested_strategy:      string
+  avoid_reason:            string | null
+  /** Short options-structure hint derived server-side (education only). */
+  playbook_hint:           string
+}
+
+export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
+  const { data } = await api.post<SwingTradeScanResult>('/swing-trade', { ticker: ticker.trim() })
+  return data
+}
+
+/** Backend-computed intraday guidance for a saved day-trade option position (admin-only API). */
+export interface ActiveTradeDecision {
+  state: string
+  action: string
+  message: string
+  badge_tone: 'green' | 'orange' | 'red' | 'gray'
+  risk_warning: string
+  confirmation_needed: string[]
+  trend_direction?: string
+  intraday_snapshot_note?: string
+}
+
+export interface ActiveTradeRow {
+  id: string
+  ticker: string
+  side: 'CALL' | 'PUT'
+  entry_price: number
+  entry_underlying_px?: number | null
+  contracts?: number | null
+  strike?: number | null
+  expiry?: string | null
+  notes: string
+  opened_at_ms: number
+  exited_at_ms?: number | null
+  decision: ActiveTradeDecision | Record<string, unknown>
+  metrics: Record<string, unknown>
+  intraday_error?: string | null
+}
+
+export type ActiveTradeListResult = {
+  trades: ActiveTradeRow[]
+  included_opened_before_today: boolean
+}
+
+export const listActiveTrades = async (): Promise<ActiveTradeListResult> => {
+  const { data } = await api.get<ActiveTradeListResult>('/trades/active')
+  return {
+    trades: data.trades ?? [],
+    included_opened_before_today: Boolean(data.included_opened_before_today),
+  }
+}
+
+export const enterActiveTrade = async (body: {
+  ticker: string
+  side: 'CALL' | 'PUT'
+  entry_price: number
+  entry_underlying_px?: number | null
+  contracts?: number | null
+  strike?: number | null
+  expiry?: string | null
+  notes?: string | null
+}): Promise<{
+  id: string
+  ticker: string
+  side: string
+  entry_price: number
+  opened_at_ms: number
+  notes: string
+  strike?: number | null
+  expiry?: string | null
+}> => {
+  const { data } = await api.post('/trades/enter', body)
+  return data
+}
+
+export const exitActiveTrade = async (tradeId: string): Promise<void> => {
+  await api.post(`/trades/${encodeURIComponent(tradeId)}/exit`)
 }
 
 export const getDayTradeAlerts = async (email: string): Promise<DayTradeAlertEvent[]> => {
@@ -222,6 +356,8 @@ export const saveUserData = async (
   portfolio: PortfolioPosition[],
   advisory?: { advisoryTermsVersion: string; advisoryAcceptedAt: string },
   dayTradeWatchlist?: string[],
+  swingTradeWatchlist?: string[],
+  alertEmailEnabled?: boolean,
 ): Promise<UserDataState> => {
   const body: Record<string, unknown> = { watchlist, portfolio }
   if (advisory) {
@@ -230,6 +366,12 @@ export const saveUserData = async (
   }
   if (dayTradeWatchlist !== undefined) {
     body.day_trade_watchlist = dayTradeWatchlist
+  }
+  if (swingTradeWatchlist !== undefined) {
+    body.swing_trade_watchlist = swingTradeWatchlist
+  }
+  if (alertEmailEnabled !== undefined) {
+    body.alert_email_enabled = alertEmailEnabled
   }
   const { data } = await api.put<UserDataState>(`/user-data/${encodeURIComponent(email)}`, body)
   return data

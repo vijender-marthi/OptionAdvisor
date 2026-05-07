@@ -85,5 +85,5 @@ export const ALL_CATEGORIES: AICategory[] = [
 ]
 
 // Target DTE windows for multi-week analysis
-export const MULTI_WEEK_TARGETS = [1, 2, 4, 6] as const
+export const MULTI_WEEK_TARGETS = [2, 3, 4, 6] as const
 export type WeeksOut = typeof MULTI_WEEK_TARGETS[number]

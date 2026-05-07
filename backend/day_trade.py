@@ -13,6 +13,8 @@ import pandas as pd
 import yfinance as yf
 from zoneinfo import ZoneInfo
 
+from trader_decision import build_trader_decision
+
 ET = ZoneInfo("America/New_York")
 
 Verdict = Literal["STRONG GO", "GO", "WATCH", "NO-GO", "WAIT"]
@@ -43,6 +45,7 @@ class DayTradeScan:
     bear_score: float
     reasons: list[str]
     metrics: dict[str, Any]
+    trader_decision: dict[str, Any]
 
 
 def _ensure_et_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -163,6 +166,17 @@ def _vix_last() -> Optional[float]:
 def _qqq_session_for_date(session_date: str) -> pd.DataFrame:
     try:
         raw = yf.Ticker("QQQ").history(period="5d", interval="1m", auto_adjust=True)
+        if raw is None or raw.empty:
+            return pd.DataFrame()
+        df_et = _ensure_et_index(raw)
+        return _rth_session_on_date(df_et, session_date)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _index_session_for_date(sym: str, session_date: str) -> pd.DataFrame:
+    try:
+        raw = yf.Ticker(sym).history(period="5d", interval="1m", auto_adjust=True)
         if raw is None or raw.empty:
             return pd.DataFrame()
         df_et = _ensure_et_index(raw)
@@ -392,6 +406,9 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
     vix_level = _vix_last()
 
     qqq_sess = _qqq_session_for_date(session_date)
+    spy_sess = _index_session_for_date("SPY", session_date)
+    qqq_session_pct = _intraday_session_return_pct(qqq_sess)
+    spy_session_pct = _intraday_session_return_pct(spy_sess)
     rs_vs_qqq_pct = _rs_vs_qqq_pct(session, qqq_sess)
 
     # RS vs QQQ — scored bidirectionally; also logged as a reason.
@@ -574,12 +591,27 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
         "volume_spike": vol_spike,
         "spy_change_pct": spy_chg,
         "qqq_change_pct": qqq_chg,
+        "spy_session_change_pct": spy_session_pct,
+        "qqq_session_change_pct": qqq_session_pct,
         "vix": vix_level,
         "rs_vs_qqq_pct": rs_vs_qqq_pct,
         "rs_vs_qqq_label": _rs_label(t, rs_vs_qqq_pct) if rs_vs_qqq_pct is not None else None,
         "confidence": conf,
         "chart_bars": chart_bars,
     }
+
+    trader_decision = build_trader_decision(
+        ticker=t,
+        stock_session_pct=session_change_pct,
+        above_vwap=last > vwap_last,
+        bull_score=round(bull, 2),
+        bear_score=round(bear, 2),
+        spy_session_pct=spy_session_pct,
+        qqq_session_pct=qqq_session_pct,
+        spy_daily_pct=spy_chg,
+        qqq_daily_pct=qqq_chg,
+        vix=vix_level,
+    )
 
     return DayTradeScan(
         ticker=t,
@@ -590,4 +622,31 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
         bear_score=round(bear, 2),
         reasons=reasons,
         metrics=metrics,
+        trader_decision=trader_decision,
     )
+
+
+def underlying_intraday_snapshot_for_active_trade(ticker: str) -> dict[str, Any]:
+    """
+    Reuse the full Yahoo 1m RTH path from run_day_trade_scan; flatten metrics for active-trade
+    decision input (underlying spot, VWAP, OR, volume spike, RS vs QQQ).
+    """
+    scan = run_day_trade_scan(ticker)
+    m = scan.metrics
+    return {
+        "ticker": scan.ticker,
+        "company_name": scan.company_name,
+        "metrics": m,
+        "intraday_flat": {
+            "underlying_last": m.get("last_price"),
+            "last_price": m.get("last_price"),
+            "session_change_pct": m.get("session_change_pct"),
+            "vwap": m.get("vwap"),
+            "or_high": m.get("or_high"),
+            "or_low": m.get("or_low"),
+            "or_breakout": m.get("or_breakout"),
+            "momentum_pct": m.get("momentum_pct"),
+            "volume_spike": m.get("volume_spike"),
+            "rs_vs_qqq_pct": m.get("rs_vs_qqq_pct"),
+        },
+    }

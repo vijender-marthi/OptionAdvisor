@@ -1,9 +1,9 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowDown, BarChart2, ChevronDown, ChevronRight, Clock, Flame, Loader2,
-  RefreshCw, Search, ShieldAlert, Zap,
+  RefreshCw, Search, ShieldAlert, X, Zap,
 } from 'lucide-react'
-import { analyzeDayTrade } from '../api/client'
+import { analyzeDayTrade, enterActiveTrade } from '../api/client'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 
@@ -14,8 +14,18 @@ function axiosDetail(e: unknown): string {
 }
 
 export default function DayTradePage() {
-  const { dayTradeEngineUI: ui, setDayTradeEngineUI: setUi } = useApp()
+  const { dayTradeEngineUI: ui, setDayTradeEngineUI: setUi, canAccessPage, navigate } = useApp()
   const { ticker, loading, error, result, glossaryOpen } = ui
+
+  const [enterOpen, setEnterOpen] = useState(false)
+  const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
+  const [entryPrice, setEntryPrice] = useState('')
+  const [contracts, setContracts] = useState('')
+  const [strikeInput, setStrikeInput] = useState('')
+  const [expiryInput, setExpiryInput] = useState('')
+  const [notes, setNotes] = useState('')
+  const [enterSubmitting, setEnterSubmitting] = useState(false)
+  const [enterErr, setEnterErr] = useState<string | null>(null)
 
   useEffect(() => {
     const readHashTicker = () => {
@@ -58,6 +68,76 @@ export default function DayTradePage() {
       }))
     }
   }, [ticker, setUi])
+
+  const openEnterModal = useCallback(() => {
+    if (!result) return
+    const b = result.bias
+    setSide(b === 'short' ? 'PUT' : 'CALL')
+    setEntryPrice('')
+    setContracts('')
+    setStrikeInput('')
+    setExpiryInput('')
+    setNotes('')
+    setEnterErr(null)
+    setEnterOpen(true)
+  }, [result])
+
+  const submitEnter = useCallback(async () => {
+    if (!result) return
+    const ep = parseFloat(entryPrice)
+    if (!Number.isFinite(ep) || ep <= 0) {
+      setEnterErr('Enter a valid option premium (entry price).')
+      return
+    }
+    const lastU = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price as number : undefined
+    let c: number | undefined
+    if (contracts.trim()) {
+      const n = parseFloat(contracts)
+      if (!Number.isFinite(n) || n <= 0) {
+        setEnterErr('Contracts must be a positive number.')
+        return
+      }
+      c = n
+    }
+    let strikeOut: number | undefined
+    if (strikeInput.trim()) {
+      const sk = parseFloat(strikeInput)
+      if (!Number.isFinite(sk) || sk <= 0) {
+        setEnterErr('Strike must be a positive number.')
+        return
+      }
+      strikeOut = sk
+    }
+    let expiryOut: string | undefined
+    if (expiryInput.trim()) {
+      const ex = expiryInput.trim().slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ex)) {
+        setEnterErr('Expiry must be YYYY-MM-DD.')
+        return
+      }
+      expiryOut = ex
+    }
+    setEnterSubmitting(true)
+    setEnterErr(null)
+    try {
+      await enterActiveTrade({
+        ticker: result.ticker,
+        side,
+        entry_price: ep,
+        entry_underlying_px: lastU,
+        contracts: c,
+        strike: strikeOut,
+        expiry: expiryOut,
+        notes: notes.trim() || undefined,
+      })
+      setEnterOpen(false)
+      navigate('active-trades')
+    } catch (e) {
+      setEnterErr(axiosDetail(e))
+    } finally {
+      setEnterSubmitting(false)
+    }
+  }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   return (
     <div className="day-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
@@ -107,7 +187,12 @@ export default function DayTradePage() {
       )}
 
       {result && (
-        <DayTradeEnginePanel result={result} onRefresh={() => void runScan()} refreshing={loading} />
+        <DayTradeEnginePanel
+          result={result}
+          onRefresh={() => void runScan()}
+          refreshing={loading}
+          onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
+        />
       )}
 
       {/* Flow reference */}
@@ -143,6 +228,116 @@ export default function DayTradePage() {
           </div>
         )}
       </section>
+
+      {enterOpen && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <div className="text-base font-bold text-white">Day Trade Active</div>
+              <button
+                type="button"
+                onClick={() => setEnterOpen(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                The <span className="text-gray-400">underlying</span> drives the decision engine (VWAP, opening range,
+                volume). <span className="text-gray-400">Strike</span> and <span className="text-gray-400">expiry</span>{' '}
+                are optional — useful for bookkeeping and future Greeks / P&amp;L tooling.
+              </p>
+              <p className="text-xs text-gray-500">
+                Session tape uses <span className="font-mono text-gray-300">{result.ticker}</span> — log the option
+                premium you paid.
+              </p>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Side</label>
+                <div className="flex gap-2 mt-1">
+                  {(['CALL', 'PUT'] as const).map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSide(s)}
+                      className={`flex-1 rounded-xl py-2 font-semibold border transition-colors ${
+                        side === s
+                          ? 'bg-violet-600 border-violet-500 text-white'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Option entry (premium)</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  inputMode="decimal"
+                  placeholder="e.g. 2.45"
+                  value={entryPrice}
+                  onChange={e => setEntryPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Contracts (optional)</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  inputMode="decimal"
+                  placeholder="1"
+                  value={contracts}
+                  onChange={e => setContracts(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Strike (optional)</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  inputMode="decimal"
+                  placeholder="e.g. 575"
+                  value={strikeInput}
+                  onChange={e => setStrikeInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
+                  Expiry (optional, YYYY-MM-DD)
+                </label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  placeholder="2026-06-20"
+                  value={expiryInput}
+                  onChange={e => setExpiryInput(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Notes (optional)</label>
+                <textarea
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[72px]"
+                  placeholder="Plan / context"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                />
+              </div>
+              {enterErr && (
+                <div className="text-rose-300 text-xs">{enterErr}</div>
+              )}
+              <button
+                type="button"
+                onClick={() => void submitEnter()}
+                disabled={enterSubmitting}
+                className="w-full rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-semibold py-2.5"
+              >
+                {enterSubmitting ? <Loader2 className="inline animate-spin" size={16} /> : null} Save &amp; open Day Trade Active
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

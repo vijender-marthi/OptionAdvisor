@@ -25,6 +25,9 @@ const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 const DayTradeAlertsPage = lazy(() => import('./pages/DayTradeAlertsPage'))
 const DayTradePage = lazy(() => import('./pages/DayTradePage'))
 const DayTradeWatchlistPage = lazy(() => import('./pages/DayTradeWatchlistPage'))
+const ActiveTradesPage = lazy(() => import('./pages/ActiveTradesPage'))
+const SwingTradePage = lazy(() => import('./pages/SwingTradePage'))
+const SwingTradeWatchlistPage = lazy(() => import('./pages/SwingTradeWatchlistPage'))
 
 const GATEWAY_PAGES = new Set([
   'login',
@@ -94,6 +97,9 @@ function Router() {
         {renderPage === 'day-trade' && <DayTradePage />}
         {renderPage === 'day-trade-watchlist' && <DayTradeWatchlistPage />}
         {renderPage === 'day-trade-alerts' && <DayTradeAlertsPage />}
+        {renderPage === 'active-trades' && <ActiveTradesPage />}
+        {renderPage === 'swing-trade' && <SwingTradePage />}
+        {renderPage === 'swing-trade-watchlist' && <SwingTradeWatchlistPage />}
       </Suspense>
     </AppLayout>
   )

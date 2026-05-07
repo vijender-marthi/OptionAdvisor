@@ -231,7 +231,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
         onClick={onFetch}
         disabled={fetching}
         aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
-        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (1w–6w)'}
+        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–6w)'}
         className="inline-flex h-10 w-full lg:w-10 items-center justify-center bg-gray-800 hover:bg-violet-600/20 border border-gray-700
                    hover:border-violet-600 text-gray-400 hover:text-violet-300 rounded-xl
                    transition-colors disabled:opacity-50 shrink-0"
@@ -268,6 +268,8 @@ export default function TickerPage() {
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
+  const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
+  const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
 
   // ── Core analysis function (always hits API) ──────────────────────────────
   const handleAnalyze = async (
@@ -386,6 +388,13 @@ export default function TickerPage() {
         ? rawCe.trim().slice(0, 10)
         : null
       const chainExpiryNorm = chainExpiry && /^\d{4}-\d{2}-\d{2}$/.test(chainExpiry) ? chainExpiry : null
+      const fsRaw = pendingAnalysisOptions?.focusStrategy
+      const feRaw = pendingAnalysisOptions?.focusExpiry
+      const fs = typeof fsRaw === 'string' && fsRaw.trim() ? fsRaw.trim() : ''
+      const fe = typeof feRaw === 'string' && feRaw.trim() ? feRaw.trim().slice(0, 10) : ''
+      pendingRecFocusRef.current =
+        fs && fe && /^\d{4}-\d{2}-\d{2}$/.test(fe) ? { strategy: fs, expiry: fe } : null
+      setScrollFocusRank(null)
       clearPendingTicker()
       if (force) {
         handleAnalyze(pendingTicker, weeksOut, spreadWidth, strategyMode, chainExpiryNorm)
@@ -450,6 +459,21 @@ export default function TickerPage() {
       ? cacheEntry.data
       : cacheEntry.multiWeekData?.[selectedWeeksOut] ?? null
   const displayData = selectedData ?? data
+
+  useEffect(() => {
+    const pending = pendingRecFocusRef.current
+    if (!pending || loading) return
+    const source = selectedData ?? data
+    if (!source?.recommendations?.length) {
+      pendingRecFocusRef.current = null
+      return
+    }
+    const match = source.recommendations.find(
+      r => r.strategy === pending.strategy && r.expiry.trim().slice(0, 10) === pending.expiry,
+    )
+    pendingRecFocusRef.current = null
+    if (match) setScrollFocusRank(match.rank)
+  }, [loading, selectedData, data])
 
   return (
     <div className="ticker-page min-h-screen p-3 sm:p-4 md:p-6">
@@ -668,6 +692,8 @@ export default function TickerPage() {
                     signals={selectedData.signals}
                     onFetchAllWeeks={() => fetchAllWeeks(data.ticker)}
                     fetchingAllWeeks={fetchingAllWeeks.has(data.ticker)}
+                    scrollFocusRank={scrollFocusRank}
+                    onScrollFocusConsumed={() => setScrollFocusRank(null)}
                   />
                 ))
               )}

@@ -82,6 +82,33 @@ class AlertEmailBatchingTests(unittest.TestCase):
             "AAPL-Cash-Secured Put-2026-06-26",
         ])
 
+    def test_watchlist_scan_does_not_call_send_when_alert_email_disabled(self) -> None:
+        data = SimpleNamespace(
+            company_name="Example Co",
+            signals=SimpleNamespace(),
+            recommendations=[_recommendation("Bull Put Spread", "2026-06-19")],
+        )
+        send_calls = 0
+        updated_alert_ids: list[str] = []
+
+        def fake_send(*_args, **_kwargs):
+            nonlocal send_calls
+            send_calls += 1
+            return {"sent": True, "message": "should not run"}
+
+        with patch.object(main, "_get_analysis_with_cache", return_value=data), \
+             patch.object(main, "_backend_verdict_is_go", return_value=True), \
+             patch.object(main, "add_user_alert", return_value=True), \
+             patch.object(main, "_send_alert_email", side_effect=fake_send), \
+             patch.object(main, "update_user_alert_email", side_effect=lambda em, alert_id, *_a: updated_alert_ids.append((em, alert_id))):
+            main._scan_user_watchlist_for_alerts({
+                "email": "quiet@example.com",
+                "watchlist": [{"ticker": "AAPL"}],
+                "alert_email_enabled": False,
+            })
+
+        self.assertEqual(send_calls, 0)
+        self.assertEqual(updated_alert_ids, [("quiet@example.com", "AAPL-Bull Put Spread-2026-06-19")])
 
 if __name__ == "__main__":
     unittest.main()

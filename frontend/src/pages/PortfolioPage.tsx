@@ -6,7 +6,9 @@ import {
 import * as XLSX from 'xlsx'
 import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition, ClosePositionPayload } from '../types'
 import { useApp } from '../contexts/AppContext'
+import ActiveTradesPanel from '../components/ActiveTradesPanel'
 import {
+  isPortfolioExpiryAnalysisFresh,
   normalizePortfolioExpiryIso as normalizeExpiryIso,
   chainExpiryMatchesData as chainExpiryMatches,
   resolvePortfolioAnalyzeData,
@@ -1290,7 +1292,7 @@ function PositionCard({
 export default function PortfolioPage() {
   const {
     portfolio, closePosition, removeFromPortfolio, addManualPosition, updatePortfolioPosition, navigateToTickerAdvisorFresh,
-    refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry,
+    refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry, canAccessPage, navigate,
   } = useApp()
   const [refreshingPositionIds, setRefreshingPositionIds] = useState<Set<string>>(() => new Set())
   const [closing,    setClosing]    = useState<PortfolioPosition | null>(null)
@@ -1365,10 +1367,10 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     if (open.length === 0) return
-    const unresolved = open.some(
-      p => !resolvePortfolioAnalyzeData(tickerCache[p.ticker], p.expiry),
+    const staleOrMissing = open.some(
+      p => !isPortfolioExpiryAnalysisFresh(tickerCache[p.ticker], p.expiry),
     )
-    if (!unresolved) return
+    if (!staleOrMissing) return
     const id = window.setInterval(() => setPortfolioHydratePulse(h => h + 1), 61_000)
     return () => clearInterval(id)
   }, [open, tickerCache])
@@ -1380,7 +1382,7 @@ export default function PortfolioPage() {
       const key = `${pos.ticker}|${normalizeExpiryIso(pos.expiry)}`
       if (seen.has(key)) continue
       seen.add(key)
-      if (resolvePortfolioAnalyzeData(tickerCache[pos.ticker], pos.expiry)) continue
+      if (isPortfolioExpiryAnalysisFresh(tickerCache[pos.ticker], pos.expiry)) continue
       void ensureAnalysisForPortfolioExpiry(pos.ticker, pos.expiry, {
         spreadWidth: Number.isFinite(pos.spread_width) ? Math.round(pos.spread_width) : undefined,
       })
@@ -1648,6 +1650,19 @@ export default function PortfolioPage() {
               <div className="text-sm font-bold text-red-300">{urgentCount} position{urgentCount > 1 ? 's' : ''} require immediate action</div>
               <div className="text-xs text-red-400/80">Check the EXIT NOW signals below — gamma risk or stop-loss triggered.</div>
             </div>
+          </div>
+        )}
+
+        {canAccessPage('active-trades') && (
+          <div className="space-y-2">
+            <ActiveTradesPanel variant="embedded" />
+            <button
+              type="button"
+              onClick={() => navigate('active-trades')}
+              className="text-xs font-semibold text-orange-400/90 hover:text-orange-300"
+            >
+              Open Day Trade Active page
+            </button>
           </div>
         )}
 

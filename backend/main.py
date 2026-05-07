@@ -42,9 +42,13 @@ from models import (
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
     AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
     DayTradeRequest, DayTradeResponse,
+    SwingTradeRequest, SwingTradeResponse,
+    ActiveTradeEnterRequest, ActiveTradeEnterResponse, ActiveTradeOut, ActiveTradeListResponse,
 )
 from analysis import generate_signals
-from day_trade import run_day_trade_scan
+from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade
+from swing_trade import run_swing_trade_scan
+from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
 from storage import (
@@ -65,6 +69,10 @@ from storage import (
     upsert_day_trade_watchlist_last,
     fetch_iv_atm_history_strict_before,
     upsert_iv_atm_snapshot,
+    insert_active_trade,
+    list_active_trades_open_opened_today_et,
+    get_active_trade,
+    exit_active_trade,
 )
 
 # ── SMTP config from environment (optional — email skipped if absent) ─────────
@@ -205,13 +213,28 @@ def _deliver_html_email(to_email: str, to_name: str | None, subject: str, html: 
 
 
 ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
+USER_ALERT_EMAIL_DISABLED_MESSAGE = "Email alerts are turned off in your account settings."
+
+
+def _user_wants_trade_alert_emails(user_state: dict) -> bool:
+    raw = user_state.get("alert_email_enabled")
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    try:
+        return bool(int(raw))
+    except (TypeError, ValueError):
+        return True
+
+
 ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 ALERT_SCAN_WEEKS_OUT = 4
 # Strategy Finder / email deeplink ?weeks= must match frontend MULTI_WEEK_TARGETS
-FINDER_VALID_WEEKS_OUT = frozenset({1, 2, 4, 6})
+FINDER_VALID_WEEKS_OUT = frozenset({2, 3, 4, 6})
 ALERT_SCAN_SPREAD_WIDTH = 5
 
 # User-facing analyze endpoint cache TTL:
@@ -226,6 +249,9 @@ analyze_user_cache_lock = threading.Lock()
 
 analysis_cache_lock = threading.Lock()
 analysis_cache: dict[str, tuple[float, AnalyzeResponse]] = {}
+
+# Tracks whether we logged the background-link warning (see `_option_advisor_public_base`).
+_background_email_default_link_logged = False
 
 app = FastAPI(title="Strategy Finder API", version="2.0")
 init_db()
@@ -448,10 +474,17 @@ def _option_advisor_public_base(request: Request | None = None) -> str:
     """
     Base URL embedded in Strategy Finder GO-alert links (and hash links elsewhere).
 
-    1. OPTION_ADVISOR_PUBLIC_URL when set — required for production **background** scanner emails
-       (no HTTP request), and overrides everything when explicit.
-    2. Else, if ``request`` is set (manual send-alert from the SPA): ``Origin``, then ``Referer``.
-    3. Else ``http://localhost:4200`` (local scanner / dev default).
+    1. ``OPTION_ADVISOR_PUBLIC_URL`` when set — canonical SPA URL; use in production so **background**
+       scanner/day-trade emails (no HTTP request) are not stuck on the localhost default.
+    2. Else, if ``request`` is set (e.g. ``POST /api/send-alert`` from the browser): ``Origin``,
+       then ``Referer``.
+    3. Else ``OPTION_ADVISOR_EMAIL_LINK_BASE`` when set — optional fallback when (1) is unset and
+       there is no request (scanner loop only); does not override the browser Origin for API calls.
+    4. Else ``http://localhost:4200`` (dev default).
+
+    Failure mode: on a production droplet with SMTP/SendGrid set but ``OPTION_ADVISOR_PUBLIC_URL``
+    (and ``OPTION_ADVISOR_EMAIL_LINK_BASE``) unset, **emails still send** but in-app links point at
+    localhost until env is fixed.
     """
     env_raw = os.getenv("OPTION_ADVISOR_PUBLIC_URL", "").strip()
     env = _normalize_public_origin(env_raw)
@@ -461,6 +494,19 @@ def _option_advisor_public_base(request: Request | None = None) -> str:
         from_req = _spa_origin_from_request(request)
         if from_req:
             return from_req
+    email_only = _normalize_public_origin(os.getenv("OPTION_ADVISOR_EMAIL_LINK_BASE", "").strip())
+    if email_only:
+        return email_only
+    if request is None:
+        global _background_email_default_link_logged
+        if not _background_email_default_link_logged:
+            _background_email_default_link_logged = True
+            print(
+                "[email-links] OPTION_ADVISOR_PUBLIC_URL and OPTION_ADVISOR_EMAIL_LINK_BASE are unset; "
+                "background alert emails will use http://localhost:4200 in links. "
+                "Set OPTION_ADVISOR_PUBLIC_URL on production (see DEPLOY_DIGITALOCEAN.md).",
+                flush=True,
+            )
     return "http://localhost:4200"
 
 
@@ -678,6 +724,7 @@ def _build_alert_html(
     <div class="oa-footer" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <span>OptionAdvisor Systematic Engine v2</span>
       <span>Alerts sent to {html.escape(display_name)} &lt;{html.escape(email)}&gt;</span>
+      <span style="flex-basis:100%;">Opened from: {html.escape(public_base)}</span>
     </div>
   </div>
 </body>
@@ -691,6 +738,8 @@ def send_alert(
     auth_email: str = Depends(require_access_email),
 ):
     ensure_same_user(auth_email, req.email)
+    if not _user_wants_trade_alert_emails(get_user_state(req.email)):
+        return {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE}
     return _send_alert_email(req.email, req.alerts, req.user_name, request=http_request)
 
 
@@ -719,9 +768,9 @@ def _send_alert_email(
         return {"sent": False, "message": f"Email failed: {str(e)}"}
 
 
-def _day_trade_app_anchor_links() -> tuple[str, str, str]:
+def _day_trade_app_anchor_links(public_base: str | None = None) -> tuple[str, str, str]:
     """Hash links into the SPA: watchlist, alerts feed, intraday scanner (tickers chosen in UI)."""
-    base = _option_advisor_public_base()
+    base = (public_base if public_base is not None else _option_advisor_public_base()).strip().rstrip("/")
     return (
         f"{base}/#day-trade-watchlist",
         f"{base}/#day-trade-alerts",
@@ -737,9 +786,11 @@ def _build_day_trade_escalation_html(
     email: str,
     user_name: str | None,
     items: list[dict],
+    *,
+    public_base: str,
 ) -> str:
     display_name = (user_name or "").strip() or email
-    wl_url, alerts_url, engine_url = _day_trade_app_anchor_links()
+    wl_url, alerts_url, engine_url = _day_trade_app_anchor_links(public_base)
     rows_html = ""
     for it in items:
         raw_t = str(it.get("ticker", "")).strip().upper()
@@ -836,7 +887,9 @@ def _build_day_trade_escalation_html(
         Educational / research screen only — not investment advice. Verify in the app before acting.
       </p>
     </div>
-    <div class="oa-footer">Sent to {html.escape(display_name)} &lt;{html.escape(email)}&gt;</div>
+    <div class="oa-footer">Sent to {html.escape(display_name)} &lt;{html.escape(email)}&gt;<br>
+      Opened from: {html.escape(public_base)}
+    </div>
   </div>
 </body>
 </html>"""
@@ -846,7 +899,8 @@ def _send_day_trade_escalation_email(email: str, user_name: str | None, items: l
     if not items:
         return {"sent": False, "message": "No day-trade escalations to send"}
     try:
-        html_body = _build_day_trade_escalation_html(email, user_name, items)
+        link_base = _option_advisor_public_base()
+        html_body = _build_day_trade_escalation_html(email, user_name, items, public_base=link_base)
         n = len(items)
         subject = f"⚡ OptionAdvisor: {n} day-trade WATCH→GO signal{'s' if n != 1 else ''}"
         used = _deliver_html_email(email, user_name, subject, html_body)
@@ -919,7 +973,10 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
     if not escalations:
         return
 
-    result = _send_day_trade_escalation_email(email, user_name, escalations)
+    if _user_wants_trade_alert_emails(user_state):
+        result = _send_day_trade_escalation_email(email, user_name, escalations)
+    else:
+        result = {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE}
     message = str(result.get("message", ""))
     sent = bool(result.get("sent"))
     for row in escalations:
@@ -936,6 +993,8 @@ def send_test_email(req: TestEmailRequest):
     email = req.email.strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
+    if not _user_wants_trade_alert_emails(get_user_state(email)):
+        return {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE}
 
     try:
         subject = "OptionAdvisor email test"
@@ -998,10 +1057,20 @@ def email_status():
     }
 
 
+def _mask_admin_only_trade_watchlists(state: dict) -> dict:
+    """Hide day/swing trade watchlists from non-admins (stored fields are admin-only surfaces)."""
+    if state.get("role") == "admin":
+        return state
+    out = dict(state)
+    out["day_trade_watchlist"] = []
+    out["swing_trade_watchlist"] = []
+    return out
+
+
 @app.get("/api/user-data/{email}", response_model=UserDataResponse)
 def get_user_data(email: str, auth_email: str = Depends(require_access_email)):
     ensure_same_user(auth_email, email)
-    return get_user_state(email)
+    return _mask_admin_only_trade_watchlists(get_user_state(email))
 
 
 @app.put("/api/user-data/{email}", response_model=UserDataResponse)
@@ -1010,15 +1079,22 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
     normalized_email = email.strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="Email is required")
+    eff = get_user_state(normalized_email)
+    role = eff.get("role")
+    dt_wl = payload.day_trade_watchlist if role == "admin" else None
+    sw_wl = payload.swing_trade_watchlist if role == "admin" else None
     try:
-        return save_user_state(
+        saved = save_user_state(
             normalized_email,
             payload.watchlist,
             payload.portfolio,
             advisory_terms_version=payload.advisory_terms_version,
             advisory_accepted_at=payload.advisory_accepted_at,
-            day_trade_watchlist=payload.day_trade_watchlist,
+            day_trade_watchlist=dt_wl,
+            swing_trade_watchlist=sw_wl,
+            alert_email_enabled=payload.alert_email_enabled,
         )
+        return _mask_admin_only_trade_watchlists(saved)
     except ValueError as e:
         msg = str(e)
         if msg.startswith("watchlist_limit:"):
@@ -1398,6 +1474,11 @@ def analyze(req: AnalyzeRequest):
     return data
 
 
+def _require_admin_role(auth_email: str, detail: str) -> None:
+    if get_user_state(normalize_email(auth_email)).get("role") != "admin":
+        raise HTTPException(status_code=403, detail=detail)
+
+
 @app.post("/api/day-trade", response_model=DayTradeResponse)
 def day_trade_scan(
     req: DayTradeRequest,
@@ -1408,11 +1489,7 @@ def day_trade_scan(
     verdicts: STRONG GO, GO, WATCH (weak volume), NO-GO, WAIT.
     Restricted to users with the administrator role.
     """
-    if get_user_state(normalize_email(auth_email)).get("role") != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Day Trading requires administrator access.",
-        )
+    _require_admin_role(auth_email, "Day Trading requires administrator access.")
     try:
         r = run_day_trade_scan(req.ticker)
         return DayTradeResponse(
@@ -1424,11 +1501,237 @@ def day_trade_scan(
             bear_score=r.bear_score,
             reasons=r.reasons,
             metrics=r.metrics,
+            trader_decision=r.trader_decision,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
+
+
+@app.post("/api/swing-trade", response_model=SwingTradeResponse)
+def swing_trade_scan(
+    req: SwingTradeRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Swing-trade prototype: daily candles, MA20/MA50 trend, RSI(14), MACD(12/26/9),
+    5-day momentum, volume participation, SPY market context, VIX gate.
+    Verdicts: STRONG GO, GO, WATCH, WAIT, NO-GO with long/short bias.
+    Restricted to users with the administrator role.
+    """
+    _require_admin_role(auth_email, "Swing Trade requires administrator access.")
+    try:
+        r = run_swing_trade_scan(req.ticker)
+        return SwingTradeResponse(
+            ticker=r.ticker,
+            company_name=r.company_name,
+            verdict=r.verdict,
+            bias=r.bias,
+            bull_score=r.bull_score,
+            bear_score=r.bear_score,
+            reasons=r.reasons,
+            metrics=r.metrics,
+            swing_bias=r.swing_bias,
+            entry_quality=r.entry_quality,
+            risk_level=r.risk_level,
+            final_action=r.final_action,
+            trade_quality_score=r.trade_quality_score,
+            decision_label=r.decision_label,
+            decision_message=r.decision_message,
+            risk_flags=r.risk_flags,
+            confirmation_needed=r.confirmation_needed,
+            suggested_expiry_window=r.suggested_expiry_window,
+            suggested_strategy=r.suggested_strategy,
+            avoid_reason=r.avoid_reason,
+            playbook_hint=r.playbook_hint,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from None
+
+
+def _require_admin_intraday_surfaces(auth_email: str) -> None:
+    if get_user_state(normalize_email(auth_email)).get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Day Trading features require administrator access.",
+        )
+
+
+def _market_context_from_day_trade_metrics(m: dict) -> dict:
+    return {
+        "spy_change_pct": m.get("spy_change_pct"),
+        "qqq_change_pct": m.get("qqq_change_pct"),
+        "spy_session_change_pct": m.get("spy_session_change_pct"),
+        "qqq_session_change_pct": m.get("qqq_session_change_pct"),
+        "vix": m.get("vix"),
+    }
+
+
+def _active_trade_out_from_row(
+    row: dict,
+    decision: dict,
+    metrics: dict,
+    intraday_error: str | None,
+) -> ActiveTradeOut:
+    ex = row.get("expiry") if row.get("expiry") else row.get("option_expiry")
+    return ActiveTradeOut(
+        id=row["id"],
+        ticker=row["ticker"],
+        side=row["side"],
+        entry_price=float(row["entry_price"]),
+        entry_underlying_px=row.get("entry_underlying_px"),
+        contracts=row.get("contracts"),
+        strike=row.get("strike"),
+        expiry=str(ex).strip()[:10] if ex else None,
+        notes=str(row.get("notes") or ""),
+        opened_at_ms=int(row["opened_at_ms"]),
+        exited_at_ms=row.get("exited_at_ms"),
+        decision=decision,
+        metrics=metrics,
+        intraday_error=intraday_error,
+    )
+
+
+@app.post("/api/trades/enter", response_model=ActiveTradeEnterResponse)
+def active_trade_enter(
+    req: ActiveTradeEnterRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """Record an option day-trade position for intraday monitoring (copy-only guidance)."""
+    _require_admin_intraday_surfaces(auth_email)
+    email = normalize_email(auth_email)
+    try:
+        row = insert_active_trade(
+            email,
+            ticker=req.ticker,
+            side=req.side,
+            entry_price=req.entry_price,
+            entry_underlying_px=req.entry_underlying_px,
+            contracts=req.contracts,
+            strike=req.strike,
+            option_expiry=req.expiry,
+            notes=req.notes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    ex_out = row.get("expiry") if row.get("expiry") else row.get("option_expiry")
+    return ActiveTradeEnterResponse(
+        id=row["id"],
+        ticker=row["ticker"],
+        side=row["side"],
+        entry_price=row["entry_price"],
+        entry_underlying_px=row.get("entry_underlying_px"),
+        contracts=row.get("contracts"),
+        strike=row.get("strike"),
+        expiry=str(ex_out).strip()[:10] if ex_out else None,
+        notes=str(row.get("notes") or ""),
+        opened_at_ms=int(row["opened_at_ms"]),
+    )
+
+
+@app.get("/api/trades/active", response_model=ActiveTradeListResponse)
+def active_trades_list(
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Open active trades opened on the current US (America/New_York) calendar date, each with embedded
+    latest decision. Prior-calendar-day opens are excluded (``included_opened_before_today`` is false).
+
+    One Yahoo intraday fetch per unique ticker per request (server-side cache in-handler).
+    """
+    _require_admin_intraday_surfaces(auth_email)
+    email = normalize_email(auth_email)
+    rows = list_active_trades_open_opened_today_et(email)
+    per_sym: dict[str, dict] = {}
+    per_err: dict[str, str] = {}
+    for sym in sorted({r["ticker"] for r in rows}):
+        try:
+            per_sym[sym] = underlying_intraday_snapshot_for_active_trade(sym)
+        except (ValueError, RuntimeError) as e:
+            per_err[sym] = str(e)
+        except Exception as e:  # noqa: BLE001 — surface upstream Yahoo failures
+            per_err[sym] = str(e) or type(e).__name__
+    out: list[ActiveTradeOut] = []
+    for row in rows:
+        sym = row["ticker"]
+        if sym in per_sym:
+            snap = per_sym[sym]
+            met = snap["metrics"]
+            dec = build_active_trade_decision(
+                row,
+                _market_context_from_day_trade_metrics(met),
+                snap["intraday_flat"],
+            )
+            out.append(_active_trade_out_from_row(row, dec, met, None))
+            continue
+        stub_intraday = {
+            "underlying_last": None,
+            "last_price": None,
+            "vwap": None,
+            "or_high": None,
+            "or_low": None,
+        }
+        dec = build_active_trade_decision(row, {}, stub_intraday)
+        out.append(_active_trade_out_from_row(row, dec, {}, per_err.get(sym)))
+    return ActiveTradeListResponse(trades=out, included_opened_before_today=False)
+
+
+@app.get("/api/trades/{trade_id}/decision", response_model=ActiveTradeOut)
+def active_trade_decision_one(
+    trade_id: str,
+    auth_email: str = Depends(require_access_email),
+):
+    _require_admin_intraday_surfaces(auth_email)
+    email = normalize_email(auth_email)
+    row = get_active_trade(email, trade_id)
+    if not row or row.get("exited_at_ms") is not None:
+        raise HTTPException(status_code=404, detail="Active trade not found")
+    sym = row["ticker"]
+    try:
+        snap = underlying_intraday_snapshot_for_active_trade(sym)
+        met = snap["metrics"]
+        dec = build_active_trade_decision(
+            row,
+            _market_context_from_day_trade_metrics(met),
+            snap["intraday_flat"],
+        )
+        return _active_trade_out_from_row(row, dec, met, None)
+    except (ValueError, RuntimeError) as e:
+        stub_intraday = {
+            "underlying_last": None,
+            "last_price": None,
+            "vwap": None,
+            "or_high": None,
+            "or_low": None,
+        }
+        dec = build_active_trade_decision(row, {}, stub_intraday)
+        return _active_trade_out_from_row(row, dec, {}, str(e))
+    except Exception as e:  # noqa: BLE001
+        stub_intraday = {
+            "underlying_last": None,
+            "last_price": None,
+            "vwap": None,
+            "or_high": None,
+            "or_low": None,
+        }
+        dec = build_active_trade_decision(row, {}, stub_intraday)
+        return _active_trade_out_from_row(row, dec, {}, str(e) or type(e).__name__)
+
+
+@app.post("/api/trades/{trade_id}/exit")
+def active_trade_exit_api(
+    trade_id: str,
+    auth_email: str = Depends(require_access_email),
+):
+    _require_admin_intraday_surfaces(auth_email)
+    email = normalize_email(auth_email)
+    ok = exit_active_trade(email, trade_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Active trade not found or already exited")
+    return {"ok": True}
 
 
 def _backend_verdict_is_go(rec: RecommendationOut, sig: SignalsOut) -> bool:
@@ -1648,6 +1951,7 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
     if not new_alert_items:
         return
 
+    wants_email = _user_wants_trade_alert_emails(user_state)
     alerts_by_window: dict[str, list[AlertItem]] = defaultdict(list)
     alert_ids_by_window: dict[str, list[str]] = defaultdict(list)
     for alert_id, alert_item in zip(new_alert_ids, new_alert_items):
@@ -1655,7 +1959,10 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
         alert_ids_by_window[alert_item.time_window].append(alert_id)
 
     for time_window, alert_items in alerts_by_window.items():
-        result = _send_alert_email(email, alert_items, user_name)
+        if wants_email:
+            result = _send_alert_email(email, alert_items, user_name)
+        else:
+            result = {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE}
         message = str(result.get("message", ""))
         sent = bool(result.get("sent"))
         for alert_id in alert_ids_by_window[time_window]:

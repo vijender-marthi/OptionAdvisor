@@ -69,6 +69,7 @@ Important values:
 
 ```env
 OPTION_ADVISOR_DB_PATH=/path/to/option_advisor.sqlite3
+OPTION_ADVISOR_PUBLIC_URL=https://your-production-host.example
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-gmail@gmail.com
@@ -77,6 +78,8 @@ SMTP_FROM=your-gmail@gmail.com
 ```
 
 Email is optional. If SMTP values are empty, alerts still appear in the app, but email delivery is skipped.
+
+Set **`OPTION_ADVISOR_PUBLIC_URL`** to your deployed SPA origin (HTTPS, no trailing slash). The 15-minute **background** alert scanner embeds this in GO and day-trade email links; without it, links fall back to `http://localhost:4200` (see optional `OPTION_ADVISOR_EMAIL_LINK_BASE` in `backend/.env.example`).
 
 ## SQLite Storage
 

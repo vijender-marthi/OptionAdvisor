@@ -59,6 +59,10 @@ class UserDataRequest(BaseModel):
     advisory_terms_version: Optional[str] = None
     advisory_accepted_at: Optional[str] = None
     day_trade_watchlist: Optional[list[str]] = None
+    """When omitted, existing SQLite value is preserved (see save_user_state)."""
+    swing_trade_watchlist: Optional[list[str]] = None
+    """When omitted, existing SQLite value is preserved (see save_user_state)."""
+    alert_email_enabled: Optional[bool] = None
 
 
 class UserDataResponse(BaseModel):
@@ -71,8 +75,12 @@ class UserDataResponse(BaseModel):
     advisory_accepted_at: Optional[str] = None
     """Symbols scanned every 15m for day-trade WATCH→GO escalations (admin-only feature)."""
     day_trade_watchlist: list[str] = Field(default_factory=list)
+    """Saved swing-trade symbols (admin-only UI; max 10; no backend alert scan)."""
+    swing_trade_watchlist: list[str] = Field(default_factory=list)
     """Max watchlist length for this account (OPTION_ADVISOR_WATCHLIST_MAX_USER / _ADMIN)."""
     watchlist_max: int = 15
+    """GO / day-trade alert emails (backend scanner and /api/send-alert)."""
+    alert_email_enabled: bool = True
 
 
 class OptionLegOut(BaseModel):
@@ -259,3 +267,82 @@ class DayTradeResponse(BaseModel):
     bear_score: float
     reasons: list[str]
     metrics: dict
+    trader_decision: dict = Field(default_factory=dict)
+
+
+class SwingTradeRequest(BaseModel):
+    ticker: str
+
+
+class SwingTradeResponse(BaseModel):
+    ticker: str
+    company_name: str = ""
+    verdict: str       # STRONG GO | GO | WATCH | NO-GO | WAIT  (v1 scoring engine)
+    bias: Optional[str] = None   # long | short
+    bull_score: float
+    bear_score: float
+    reasons: list[str]
+    metrics: dict
+    # ── Decision Quality Layer (Phase 1) ──────────────────────────────
+    swing_bias:              str           = "NEUTRAL"
+    entry_quality:           str           = "NO_CLEAN_ENTRY"
+    risk_level:              str           = "MEDIUM"
+    final_action:            str           = "NO_TRADE"
+    trade_quality_score:     float         = 0.0
+    decision_label:          str           = "NO_TRADE_WAIT"
+    decision_message:        str           = ""
+    risk_flags:              list[str]     = Field(default_factory=list)
+    confirmation_needed:     list[str]     = Field(default_factory=list)
+    suggested_expiry_window: str           = "No trade"
+    suggested_strategy:      str           = "NO_TRADE"
+    avoid_reason:            Optional[str] = None
+    playbook_hint:           str           = ""
+
+
+class ActiveTradeEnterRequest(BaseModel):
+    ticker: str
+    side: str  # CALL | PUT
+    entry_price: float
+    entry_underlying_px: Optional[float] = None
+    contracts: Optional[float] = None
+    strike: Optional[float] = None
+    expiry: Optional[str] = None  # YYYY-MM-DD; optional bookkeeping / future Greeks
+    notes: Optional[str] = None
+
+
+class ActiveTradeEnterResponse(BaseModel):
+    id: str
+    ticker: str
+    side: str
+    entry_price: float
+    entry_underlying_px: Optional[float] = None
+    contracts: Optional[float] = None
+    strike: Optional[float] = None
+    expiry: Optional[str] = None
+    notes: str = ""
+    opened_at_ms: int
+
+
+class ActiveTradeOut(BaseModel):
+    id: str
+    ticker: str
+    side: str
+    entry_price: float
+    entry_underlying_px: Optional[float] = None
+    contracts: Optional[float] = None
+    strike: Optional[float] = None
+    expiry: Optional[str] = None
+    notes: str = ""
+    opened_at_ms: int
+    exited_at_ms: Optional[int] = None
+    decision: dict = Field(default_factory=dict)
+    metrics: dict = Field(default_factory=dict)
+    intraday_error: Optional[str] = None
+
+
+class ActiveTradeListResponse(BaseModel):
+    trades: list[ActiveTradeOut]
+    included_opened_before_today: bool = Field(
+        default=False,
+        description="False when the list excludes non-exited trades opened before the current US (America/New_York) session calendar date.",
+    )

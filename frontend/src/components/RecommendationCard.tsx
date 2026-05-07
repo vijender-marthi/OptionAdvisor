@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen, Zap } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -13,6 +13,9 @@ interface Props {
   signals: Signals
   onFetchAllWeeks?: () => void
   fetchingAllWeeks?: boolean
+  /** When set to this card's rank, scroll into view once and expand. */
+  scrollFocusRank?: number | null
+  onScrollFocusConsumed?: () => void
 }
 
 
@@ -49,6 +52,7 @@ const BASE_CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
+  scrollFocusRank = null, onScrollFocusConsumed,
 }: Props) {
   const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user, refreshJournalCount, accountSize, setAccountSize } = useApp()
   const [open, setOpen]                       = useState(false)
@@ -159,8 +163,18 @@ export default function RecommendationCard({
   const rrColor = rrRatio <= 2.5 ? 'text-green-400' : rrRatio <= 4 ? 'text-amber-400' : 'text-red-400'
   const evColor = rec.expected_value > 0 ? 'text-green-400' : 'text-red-400'
 
+  useEffect(() => {
+    if (scrollFocusRank !== rec.rank) return
+    setOpen(true)
+    const id = `oa-rec-${rec.rank}`
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      onScrollFocusConsumed?.()
+    })
+  }, [scrollFocusRank, rec.rank, onScrollFocusConsumed])
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <div id={`oa-rec-${rec.rank}`} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden scroll-mt-4">
 
       {/* ── Collapsed summary row (always visible) ── */}
       <button
@@ -251,7 +265,7 @@ export default function RecommendationCard({
                   onClick={e => { e.stopPropagation(); onFetchAllWeeks() }}
                   disabled={fetchingAllWeeks}
                   aria-label={fetchingAllWeeks ? 'Fetching all weeks' : 'Fetch all expiry weeks'}
-                  title={fetchingAllWeeks ? 'Fetching…' : 'Fetch all weeks (1w–6w)'}
+                  title={fetchingAllWeeks ? 'Fetching…' : 'Fetch all weeks (2w–6w)'}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
                              bg-gray-800 border-gray-700 text-gray-400 hover:border-violet-600 hover:text-violet-400 disabled:opacity-50"
                 >
