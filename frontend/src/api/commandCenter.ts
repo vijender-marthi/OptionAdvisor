@@ -189,8 +189,11 @@ export async function createWatchlistXAlert(payload: {
 export async function addWatchlistTicker(payload: {
   ticker: string
   notes?: string
-}): Promise<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>>('/watchlist/add', payload)
+  source?: string
+  watch_reason?: string
+  desired_entry?: number | null
+}): Promise<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>>; duplicate?: boolean }>> {
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>>; duplicate?: boolean }>>('/watchlist/add', payload)
   return data
 }
 

@@ -109,6 +109,16 @@ def _fetch_live_market_summary() -> Optional[dict[str, Any]]:
         if vix_val is not None and vix_val >= 25 and market_context != "MARKET_WEAK":
             risk_status = "Elevated"
 
+        # Confidence score
+        if market_context == "MARKET_SUPPORTIVE" and (vix_val or 0.0) < 20:
+            confidence_score = 82
+        elif market_context == "MARKET_SUPPORTIVE":
+            confidence_score = 68
+        elif market_context == "MARKET_WEAK":
+            confidence_score = 32
+        else:
+            confidence_score = 48
+
         # Best trade style today
         if market_context == "MARKET_SUPPORTIVE" and (vix_val or 0.0) < 25:
             best_style = "Swing"
@@ -147,6 +157,7 @@ def _fetch_live_market_summary() -> Optional[dict[str, Any]]:
             "qqq_trend":        qqq_lbl,
             "vix_risk":         f"{vix_risk} ({vix_str})",
             "risk_status":      risk_status,
+            "confidence_score": confidence_score,
             "ai_coach_summary": coach,
         }
     except Exception:  # noqa: BLE001
@@ -267,6 +278,7 @@ def get_trade_command_center(
         "qqq_trend":        "—",
         "vix_risk":         "—",
         "risk_status":      "—",
+        "confidence_score": 0,
         "ai_coach_summary": "Market data unavailable — check connection.",
     }
     live_mkt = _fetch_live_market_summary()
@@ -875,6 +887,9 @@ def get_positions_center(auth_email: str = Depends(require_access_email)):
 class WatchlistTickerBody(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
     notes: Optional[str] = None
+    source: Optional[str] = None
+    watch_reason: Optional[str] = None
+    desired_entry: Optional[float] = None
 
 
 @command_center_router.post("/watchlist/add")
@@ -884,14 +899,20 @@ def post_watchlist_add(body: WatchlistTickerBody, auth_email: str = Depends(requ
     wl = list(state.get("watchlist") or [])
     t = body.ticker.strip().upper()
     if any(str(x.get("ticker", "")).upper() == t for x in wl if isinstance(x, dict)):
-        return api_envelope({"ok": True, "watchlist": wl})
-    wl.append(
-        {
-            "ticker": t,
-            "addedAt": datetime.now(timezone.utc).date().isoformat(),
-            **({"notes": body.notes.strip()} if body.notes and body.notes.strip() else {}),
-        }
-    )
+        return api_envelope({"ok": True, "watchlist": wl, "duplicate": True})
+    item: dict[str, Any] = {
+        "ticker": t,
+        "addedAt": datetime.now(timezone.utc).date().isoformat(),
+    }
+    if body.notes and body.notes.strip():
+        item["notes"] = body.notes.strip()
+    if body.source:
+        item["source"] = body.source.strip()
+    if body.watch_reason and body.watch_reason.strip():
+        item["watch_reason"] = body.watch_reason.strip()
+    if body.desired_entry is not None:
+        item["desired_entry"] = body.desired_entry
+    wl.append(item)
     try:
         saved = save_user_state(email, wl, state.get("portfolio") or [])
     except ValueError as e:

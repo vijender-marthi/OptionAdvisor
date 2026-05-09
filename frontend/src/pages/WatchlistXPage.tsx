@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Filter,
   LineChart as LineChartIcon,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -24,6 +25,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { createWatchlistXAlert, fetchWatchlistX } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
+import AddTickerModal from '../components/AddTickerModal'
 import type { ApiEnvelope, WatchlistXDecisionBlock, WatchlistXMetrics, WatchlistXPayload, WatchlistXRow } from '../types/commandCenter'
 import {
   getActionButtonClass,
@@ -729,6 +731,7 @@ export default function WatchlistXPage() {
   const deferredSearch = useDeferredValue(searchInput)
   const [showMoreStats, setShowMoreStats] = useState(false)
   const [marketExpanded, setMarketExpanded] = useState(false)
+  const [showAddTicker, setShowAddTicker] = useState(false)
   const moreStatsRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => { saveJson(FAVORITES_KEY, favorites) }, [favorites])
@@ -939,6 +942,7 @@ export default function WatchlistXPage() {
           <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based watchlist for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setShowAddTicker(true)} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><Plus size={16} /> Add Ticker</button>
           <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className={`${getActionButtonClass('alert')} gap-2 rounded-full px-3 py-2 text-sm`}><AlertTriangle size={16} /> Alert Center</button>
           <button type="button" onClick={() => routerNavigate(ROUTES.positions)} className={`${getActionButtonClass('trade')} gap-2 rounded-full px-3 py-2 text-sm`}><BriefcaseBusiness size={16} /> Positions</button>
           <button type="button" onClick={() => void load()} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh</button>
@@ -1189,6 +1193,19 @@ export default function WatchlistXPage() {
           </div>
         </div>
       </section>
+
+      <AddTickerModal
+        open={showAddTicker}
+        onClose={() => setShowAddTicker(false)}
+        onAdded={() => { setNotice({ tone: 'success', message: 'Ticker added successfully.' }); void load() }}
+      />
+
+      {/* Mobile FAB for adding ticker */}
+      <button type="button" onClick={() => setShowAddTicker(true)}
+        className="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-500 sm:hidden"
+      >
+        <Plus size={20} />
+      </button>
 
       <MobileActionTray
         row={activeRow}

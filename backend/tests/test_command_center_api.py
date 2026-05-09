@@ -36,6 +36,12 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertIsNone(env["error"])
 
     def test_trade_command_center_happy_path(self) -> None:
+        storage.save_user_state(
+            "ccc_user@example.com",
+            [{"ticker": "SPY", "addedAt": "2026-05-01", "notes": ""}],
+            [],
+            day_trade_watchlist=["SPY"],
+        )
         r = self.client.get("/api/trade-command-center")
         self.assertEqual(r.status_code, 200)
         body = r.json()
@@ -117,7 +123,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 ],
             )
 
-        def fake_day_scan(ticker: str):
+        def fake_day_scan(ticker: str, **kwargs):
             return SimpleNamespace(
                 ticker=ticker.upper(),
                 verdict="GO",
@@ -127,7 +133,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 trader_decision={"decision_message": "Good intraday structure."},
             )
 
-        def fake_swing_scan(ticker: str):
+        def fake_swing_scan(ticker: str, **kwargs):
             return SimpleNamespace(
                 ticker=ticker.upper(),
                 verdict="GO",
