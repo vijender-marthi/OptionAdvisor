@@ -66,10 +66,10 @@ export function swingEngineWatchlistExpandedAccentBarClass(tone: Tone): string {
 }
 
 export function toneForFinalAction(fa: string): Tone {
-  if (fa === 'STRONG_GO') return 'green'
-  if (fa === 'WATCH_CALL_OR_DEBIT_SPREAD' || fa === 'WATCH_CALL' || fa === 'WATCH_PUT' || fa === 'GO_SMALL') return 'blue'
-  if (fa === 'WAIT_PULLBACK' || fa === 'WAIT_BREAKOUT' || fa === 'WAIT_FOR_BREAKDOWN' || fa === 'AVOID_CHASE') return 'orange'
-  if (fa === 'AVOID_NAKED_CALLS' || fa === 'NO_TRADE') return 'red'
+  if (fa === 'READY' || fa === 'TRADE' || fa === 'STRONG_GO') return 'green'
+  if (fa === 'WATCH' || fa === 'WATCH_CALL_OR_DEBIT_SPREAD' || fa === 'WATCH_CALL' || fa === 'WATCH_PUT' || fa === 'GO_SMALL') return 'blue'
+  if (fa === 'WAIT' || fa === 'WAIT_PULLBACK' || fa === 'WAIT_BREAKOUT' || fa === 'WAIT_FOR_BREAKDOWN' || fa === 'AVOID_CHASE') return 'orange'
+  if (fa === 'AVOID' || fa === 'EXIT' || fa === 'NO_EDGE' || fa === 'AVOID_NAKED_CALLS' || fa === 'NO_TRADE') return 'red'
   return 'gray'
 }
 
@@ -84,6 +84,7 @@ export function toneForRisk(rl: string): Tone {
 export function toneForEntryQuality(eq: string): Tone {
   if (eq === 'GOOD_ENTRY')               return 'green'
   if (eq === 'MARKET_CONFIRMATION_ONLY') return 'gray'
+  if (eq === 'CAUTION_ENTRY') return 'orange'
   if (eq === 'WAIT_PULLBACK' || eq === 'WAIT_BREAKOUT_CONFIRMATION' || eq === 'NO_CLEAN_ENTRY') return 'orange'
   if (eq === 'LATE_ENTRY' || eq === 'BAD_ENTRY' || eq === 'EXTENDED_RISK') return 'red'
   return 'gray'

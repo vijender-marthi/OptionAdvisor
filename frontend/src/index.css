@@ -2,47 +2,201 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Default (dark) theme ───────────────────────────────────── */
+/* ── Theme CSS Custom Properties ─────────────────────────────────────────── */
 :root {
   --app-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --app-font-mono: "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-html,
-body,
-#root {
+/* Dark theme (default) */
+:root, html.dark {
+  color-scheme: dark;
+
+  --surface-canvas: #020617;
+  --surface-page: #020617;
+  --surface-card: #08111f;
+  --surface-elevated: #111c2e;
+  --surface-raised: #1e2b3f;
+  --surface-muted: #334155;
+
+  --text-primary: #f1f5f9;
+  --text-heading: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-muted: #64748b;
+  --text-faint: #475569;
+
+  --border-subtle: rgba(255, 255, 255, 0.04);   /* ultra-soft — dividers, inner chips */
+  --border-default: rgba(148, 163, 184, 0.07);  /* soft card edge */
+  --border-strong: rgba(148, 163, 184, 0.11);   /* slightly stronger, still restrained */
+
+  --hover-bg: #132238;
+  --hover-bg-strong: #23344e;
+
+  --bullish: #34d399;
+  --bullish-bg: rgba(16, 185, 129, 0.15);
+  --bullish-border: rgba(16, 185, 129, 0.4);
+  --bearish: #fb7185;
+  --bearish-bg: rgba(244, 63, 94, 0.15);
+  --bearish-border: rgba(244, 63, 94, 0.4);
+  --warning: #fbbf24;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --warning-border: rgba(245, 158, 11, 0.4);
+  --accent: #a78bfa;
+  --accent-bg: rgba(168, 85, 247, 0.15);
+  --accent-border: rgba(168, 85, 247, 0.4);
+
+  --info: #38bdf8;
+  --info-bg: rgba(56, 189, 248, 0.15);
+  --info-border: rgba(56, 189, 248, 0.4);
+  --neutral: #94a3b8;
+  --neutral-bg: rgba(148, 163, 184, 0.15);
+  --neutral-border: rgba(148, 163, 184, 0.4);
+  --manage: #60a5fa;
+  --manage-bg: rgba(96, 165, 250, 0.15);
+  --manage-border: rgba(96, 165, 250, 0.4);
+  --supportive: #5eead4;
+  --supportive-bg: rgba(13, 148, 136, 0.18);
+  --supportive-border: rgba(45, 212, 191, 0.42);
+  --conflict: #f0abfc;
+  --conflict-bg: rgba(112, 26, 117, 0.28);
+  --conflict-border: rgba(217, 70, 239, 0.42);
+  --extended: #fdba74;
+  --extended-bg: rgba(251, 146, 60, 0.15);
+  --extended-border: rgba(251, 146, 60, 0.4);
+
+  --input-bg: #111c2e;
+  --input-border: #26364d;
+  --input-text: #f1f5f9;
+  --input-placeholder: #475569;
+  --input-focus-border: #8b5cf6;
+  --input-focus-ring: rgba(139, 92, 246, 0.25);
+
+  --chart-axis: #9ca3af;
+  --chart-grid: rgba(55, 65, 81, 0.55);
+  --chart-tick: #6b7280;
+  --chart-tooltip-bg: rgba(17, 24, 39, 0.96);
+  --chart-tooltip-border: #374151;
+  --chart-tooltip-label: #9ca3af;
+  --chart-line-close: #f3f4f6;
+  --chart-line-ma20: #10b981;
+  --chart-line-ma50: #fbbf24;
+  --chart-line-rsi: #38bdf8;
+  --chart-line-hv: #a78bfa;
+  --chart-line-iv: #f472b6;
+  --chart-ref-muted: rgba(148, 163, 184, 0.55);
+}
+
+/* Light theme — clean financial dashboard */
+html.light {
+  color-scheme: light;
+
+  --surface-canvas: #f6f8fb;
+  --surface-page: #f6f8fb;
+  --surface-card: #ffffff;
+  --surface-elevated: #f1f5f9;
+  --surface-raised: #e8ecf4;
+  --surface-muted: #d8e0ea;
+
+  --text-primary: #0f172a;
+  --text-heading: #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+
+  --border-subtle: #e2e8f0;
+  --border-default: #cbd5e1;
+  --border-strong: #94a3b8;
+
+  --hover-bg: #e2e8f0;
+  --hover-bg-strong: #cbd5e1;
+
+  --bullish: #059669;
+  --bullish-bg: #d1fae5;
+  --bullish-border: #6ee7b7;
+  --bearish: #e11d48;
+  --bearish-bg: #ffe4e6;
+  --bearish-border: #fda4af;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --warning-border: #fcd34d;
+  --accent: #6d28d9;
+  --accent-bg: #ede9fe;
+  --accent-border: #a78bfa;
+
+  --info: #0369a1;
+  --info-bg: #e0f2fe;
+  --info-border: #38bdf8;
+  --neutral: #475569;
+  --neutral-bg: #f1f5f9;
+  --neutral-border: #94a3b8;
+  --manage: #1d4ed8;
+  --manage-bg: #dbeafe;
+  --manage-border: #60a5fa;
+  --supportive: #0f766e;
+  --supportive-bg: #ccfbf1;
+  --supportive-border: #5eead4;
+  --conflict: #a21caf;
+  --conflict-bg: #fae8ff;
+  --conflict-border: #f0abfc;
+  --extended: #c2410c;
+  --extended-bg: #fff7ed;
+  --extended-border: #fed7aa;
+
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-text: #0f172a;
+  --input-placeholder: #94a3b8;
+  --input-focus-border: #7c3aed;
+  --input-focus-ring: rgba(124, 58, 246, 0.2);
+
+  --chart-axis: #475569;
+  --chart-grid: rgba(148, 163, 184, 0.45);
+  --chart-tick: #64748b;
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.98);
+  --chart-tooltip-border: #e2e8f0;
+  --chart-tooltip-label: #64748b;
+  --chart-line-close: #0f172a;
+  --chart-line-ma20: #059669;
+  --chart-line-ma50: #d97706;
+  --chart-line-rsi: #0284c7;
+  --chart-line-hv: #7c3aed;
+  --chart-line-iv: #db2777;
+  --chart-ref-muted: rgba(100, 116, 139, 0.45);
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html, body, #root {
   font-family: var(--app-font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* iOS Safari: single scroll surface — outer page must not bounce independently of main */
-html {
-  height: 100%;
-  overflow: hidden;
-}
+html { height: 100%; overflow: hidden; }
 
 body {
-  height: 100%;
-  overflow: hidden;
-  background-color: #030712;
-  color: #f1f5f9;
+  height: 100%; overflow: hidden;
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
   transition: background-color 150ms ease, color 150ms ease;
 }
 
-#root {
-  height: 100%;
-  min-height: 0;
-}
+#root { height: 100%; min-height: 0; }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
+button, input, select, textarea { font: inherit; }
 
+.font-mono { font-family: var(--app-font-mono); }
+
+/* Native scroll tint */
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 4px; }
+html.light ::-webkit-scrollbar-track { background: #c8cedc; }
+html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+/* ── Scroll utilities ────────────────────────────────────────────────────── */
 .mobile-nav-scroll,
 .mobile-tab-scroll,
 .mobile-week-scroll,
@@ -51,15 +205,439 @@ textarea {
   scrollbar-width: none;
   overscroll-behavior: contain;
 }
-
 .mobile-nav-scroll::-webkit-scrollbar,
 .mobile-tab-scroll::-webkit-scrollbar,
 .mobile-week-scroll::-webkit-scrollbar,
-.desktop-sidebar-nav::-webkit-scrollbar {
-  display: none;
+.desktop-sidebar-nav::-webkit-scrollbar { display: none; }
+
+/* ── Dark theme surface overrides ────────────────────────────────────────── */
+html.dark body { background-color: var(--surface-page); }
+html.dark { border-color: var(--border-default); color-scheme: dark; }
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--input-text);
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: var(--input-placeholder); }
+
+/* ── Light theme class remapping (global — no per-page scope duplication) ── */
+html.light body {
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
 }
 
-/* Floating bottom dock shell — no full-bleed bar; capsule chroming is `.mobile-dock-pill`. */
+/* Surface backgrounds */
+html.light .bg-gray-950  { background-color: var(--surface-canvas); }
+html.light .bg-gray-900  { background-color: var(--surface-card); }
+html.light .bg-gray-800  { background-color: var(--surface-elevated); }
+html.light .bg-gray-700  { background-color: var(--surface-raised); }
+html.light .bg-gray-600  { background-color: var(--surface-muted); }
+
+/* Alpha variants */
+html.light .bg-gray-950\/40 { background-color: color-mix(in srgb, var(--surface-card) 85%, transparent); }
+html.light .bg-gray-950\/35 { background-color: color-mix(in srgb, var(--surface-card) 82%, transparent); }
+html.light .bg-gray-950\/80 { background-color: color-mix(in srgb, var(--surface-elevated) 96%, transparent); }
+html.light .bg-gray-900\/80 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
+html.light .bg-gray-900\/70 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
+html.light .bg-gray-900\/60 { background-color: color-mix(in srgb, var(--surface-card) 95%, transparent); }
+html.light .bg-gray-900\/50 { background-color: color-mix(in srgb, var(--surface-card) 92%, transparent); }
+html.light .bg-gray-900\/40 { background-color: color-mix(in srgb, var(--surface-card) 82%, transparent); }
+html.light .bg-gray-900\/30 { background-color: color-mix(in srgb, var(--surface-card) 72%, transparent); }
+html.light .bg-gray-900\/20 { background-color: color-mix(in srgb, var(--surface-card) 62%, transparent); }
+html.light .bg-gray-800\/90 { background-color: color-mix(in srgb, var(--surface-elevated) 96%, transparent); }
+html.light .bg-gray-800\/80 { background-color: color-mix(in srgb, var(--surface-elevated) 94%, transparent); }
+html.light .bg-gray-800\/70 { background-color: color-mix(in srgb, var(--surface-elevated) 90%, transparent); }
+html.light .bg-gray-800\/60 { background-color: color-mix(in srgb, var(--surface-elevated) 95%, transparent); }
+html.light .bg-gray-800\/50 { background-color: color-mix(in srgb, var(--surface-elevated) 90%, transparent); }
+html.light .bg-gray-800\/40 { background-color: color-mix(in srgb, var(--surface-elevated) 80%, transparent); }
+html.light .bg-gray-800\/30 { background-color: color-mix(in srgb, var(--surface-elevated) 70%, transparent); }
+html.light .bg-black\/20 { background-color: rgba(15, 23, 42, 0.06); }
+html.light .bg-black\/25 { background-color: rgba(15, 23, 42, 0.08); }
+
+/* Borders — dark */
+html.dark .border-gray-800  { border-color: var(--border-subtle); }
+html.dark .border-gray-800\/90 { border-color: color-mix(in srgb, var(--border-subtle) 90%, transparent); }
+html.dark .border-gray-800\/80 { border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent); }
+html.dark .border-gray-800\/70 { border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent); }
+html.dark .border-gray-800\/60 { border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent); }
+html.dark .border-gray-800\/50 { border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent); }
+html.dark .border-gray-700  { border-color: var(--border-default); }
+html.dark .border-gray-700\/90 { border-color: color-mix(in srgb, var(--border-default) 90%, transparent); }
+html.dark .border-gray-700\/80 { border-color: color-mix(in srgb, var(--border-default) 80%, transparent); }
+html.dark .border-gray-700\/70 { border-color: color-mix(in srgb, var(--border-default) 70%, transparent); }
+html.dark .border-gray-700\/60 { border-color: color-mix(in srgb, var(--border-default) 60%, transparent); }
+html.dark .border-gray-700\/50 { border-color: color-mix(in srgb, var(--border-default) 50%, transparent); }
+
+/* Borders — light */
+html.light .border-gray-900\/20 { border-color: color-mix(in srgb, var(--surface-card) 20%, transparent); }
+html.light .border-gray-800  { border-color: var(--border-subtle); }
+html.light .border-gray-800\/90 { border-color: color-mix(in srgb, var(--border-subtle) 90%, transparent); }
+html.light .border-gray-800\/80 { border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent); }
+html.light .border-gray-800\/70 { border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent); }
+html.light .border-gray-800\/60 { border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent); }
+html.light .border-gray-800\/50 { border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent); }
+html.light .border-gray-700  { border-color: var(--border-default); }
+html.light .border-gray-700\/90 { border-color: color-mix(in srgb, var(--border-default) 90%, transparent); }
+html.light .border-gray-700\/80 { border-color: color-mix(in srgb, var(--border-default) 80%, transparent); }
+html.light .border-gray-700\/60 { border-color: color-mix(in srgb, var(--border-default) 60%, transparent); }
+html.light .border-gray-700\/50 { border-color: color-mix(in srgb, var(--border-default) 50%, transparent); }
+html.light .border-gray-600  { border-color: var(--border-strong); }
+html.light .border-gray-600\/55 { border-color: color-mix(in srgb, var(--border-strong) 55%, transparent); }
+html.light .border-gray-600\/50 { border-color: color-mix(in srgb, var(--border-strong) 50%, transparent); }
+html.light .border-l.border-gray-800 { border-color: var(--border-subtle); }
+html.light .border-dashed.border-gray-700 { border-color: var(--border-default); }
+
+/* Text */
+html.light .text-white    { color: var(--text-heading); }
+html.light .text-gray-100 { color: var(--text-primary); }
+html.light .text-gray-200 { color: var(--text-secondary); }
+html.light .text-gray-300 { color: var(--text-tertiary); }
+html.light .text-gray-400 { color: var(--text-tertiary); }
+html.light .text-gray-500 { color: var(--text-muted); }
+html.light .text-gray-600 { color: var(--text-muted); }
+html.light .text-gray-700 { color: var(--text-muted); }
+
+html.light .text-xs.text-gray-500,
+html.light .text-xs.text-gray-600 { color: var(--text-muted); }
+html.light .text-sm.text-gray-500,
+html.light .text-sm.text-gray-400 { color: var(--text-tertiary); }
+
+/* Gradient stops */
+html.light .from-gray-900 {
+  --tw-gradient-from: var(--surface-card) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(229 231 235 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+html.light .via-violet-950\/30 {
+  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.75) var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+html.light .to-gray-900 {
+  --tw-gradient-from: var(--surface-canvas) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(209 211 219 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+/* Hover states */
+html.light .hover\:bg-gray-800:hover { background-color: var(--hover-bg); }
+html.light .hover\:bg-gray-700:hover { background-color: var(--hover-bg-strong); }
+html.light .hover\:bg-gray-600:hover { background-color: var(--surface-muted); }
+html.light .hover\:bg-gray-900\/50:hover { background-color: color-mix(in srgb, var(--surface-card) 92%, transparent); }
+html.light .hover\:bg-gray-800\/40:hover { background-color: color-mix(in srgb, var(--surface-elevated) 85%, transparent); }
+html.light .hover\:bg-gray-800\/50:hover { background-color: color-mix(in srgb, var(--surface-elevated) 90%, transparent); }
+html.light .hover\:text-white:hover  { color: var(--text-heading); }
+html.light .hover\:text-gray-200:hover { color: var(--text-secondary); }
+html.light .hover\:text-gray-300:hover { color: var(--text-tertiary); }
+html.dark .hover\:border-gray-600:hover,
+html.dark .hover\:border-gray-700:hover { border-color: var(--border-default); }
+html.light .hover\:border-gray-600:hover,
+html.light .hover\:border-gray-700:hover { border-color: var(--border-strong); }
+
+/* Form controls */
+html.light input,
+html.light select,
+html.light textarea {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--input-text);
+}
+html.light input::placeholder,
+html.light textarea::placeholder { color: var(--input-placeholder); }
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 1px var(--input-focus-ring), 0 8px 18px rgba(15,23,42,0.06);
+}
+
+html.light select option { background-color: #f8fafc; color: var(--input-text); }
+
+/* Divide */
+html.light .divide-gray-800 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border-subtle); }
+
+/* ── Semantic accent text (light theme darkens for contrast) ─────────────── */
+html.light .text-violet-200 { color: #5b21b6; }
+html.light .text-violet-300 { color: #6d28d9; }
+html.light .text-violet-400 { color: #7c3aed; }
+html.light .text-violet-500 { color: #6d28d9; }
+html.light .hover\:text-violet-300:hover { color: #6d28d9; }
+html.light .text-indigo-200 { color: #3730a3; }
+html.light .text-indigo-300 { color: #4f46e5; }
+html.light .text-indigo-400 { color: #4f46e5; }
+html.light .text-blue-300 { color: #2563eb; }
+html.light .text-blue-400 { color: #2563eb; }
+html.light .text-sky-200 { color: #0369a1; }
+html.light .text-sky-300 { color: #0369a1; }
+html.light .hover\:text-sky-300:hover { color: #0369a1; }
+html.light .text-sky-300\/90 { color: #0369a1; }
+html.light .text-sky-400 { color: #0284c7; }
+html.light .text-cyan-300 { color: #0e7490; }
+html.light .text-cyan-400 { color: #0891b2; }
+html.light .text-teal-300 { color: #0f766e; }
+html.light .text-teal-400 { color: #0d9488; }
+html.light .text-emerald-200 { color: #065f46; }
+html.light .text-emerald-300 { color: #065f46; }
+html.light .text-emerald-400 { color: #047857; }
+html.light .text-emerald-500 { color: #047857; }
+html.light .text-green-300 { color: #166534; }
+html.light .text-green-400 { color: #15803d; }
+html.light .text-amber-200 { color: #92400e; }
+html.light .text-amber-300 { color: #b45309; }
+html.light .text-amber-300\/90 { color: #b45309; }
+html.light .text-amber-300\/95 { color: #b45309; }
+html.light .text-amber-400 { color: #d97706; }
+html.light .text-amber-500 { color: #d97706; }
+html.light .text-amber-200\/70 { color: #92400e; }
+html.light .text-amber-200\/80 { color: #92400e; }
+html.light .text-amber-400\/80 { color: #92400e; }
+html.light .text-amber-400\/85 { color: #b45309; }
+html.light .text-amber-400\/90 { color: #b45309; }
+html.light .text-amber-400\/95 { color: #92400e; }
+html.light .text-orange-100 { color: #431407; }
+html.light .text-orange-200\/80 { color: #9a3412; }
+html.light .text-orange-300 { color: #c2410c; }
+html.light .text-orange-400 { color: #c2410c; }
+html.light .text-rose-200 { color: #be123c; }
+html.light .text-rose-300 { color: #be123c; }
+html.light .text-rose-300\/80 { color: rgba(190, 18, 60, 0.88); }
+html.light .hover\:text-rose-300:hover { color: #be123c; }
+html.light .text-rose-400 { color: #e11d48; }
+html.light .text-rose-400\/95 { color: #e11d48; }
+html.light .hover\:text-rose-400:hover { color: #e11d48; }
+html.light .text-red-300 { color: #b91c1c; }
+html.light .text-red-400 { color: #dc2626; }
+html.light .hover\:text-red-400:hover { color: #b91c1c; }
+html.light .text-yellow-400 { color: #a16207; }
+
+/* Badge / Chip backgrounds and borders — semantic */
+html.light .bg-violet-600\/20 { background-color: color-mix(in srgb, var(--accent-bg) 80%, transparent); }
+html.light .bg-violet-600\/30 { background-color: color-mix(in srgb, var(--accent-bg) 90%, transparent); }
+html.light .hover\:bg-violet-600\/30:hover,
+html.light .hover\:bg-violet-600\/40:hover { background-color: color-mix(in srgb, var(--accent-bg) 85%, transparent); }
+html.light .bg-violet-900\/60 { background-color: color-mix(in srgb, var(--accent-bg) 66%, transparent); }
+html.light .bg-violet-900\/50 { background-color: color-mix(in srgb, var(--accent-bg) 58%, transparent); }
+html.light .bg-violet-900\/40 { background-color: color-mix(in srgb, var(--accent-bg) 50%, transparent); }
+html.light .bg-violet-900\/30 { background-color: color-mix(in srgb, var(--accent-bg) 42%, transparent); }
+html.light .bg-violet-900\/20 { background-color: color-mix(in srgb, var(--accent-bg) 34%, transparent); }
+html.light .bg-violet-950\/20 { background-color: color-mix(in srgb, var(--accent-bg) 72%, transparent); }
+html.light .bg-violet-950\/30 { background-color: color-mix(in srgb, var(--accent-bg) 82%, transparent); }
+html.light .bg-violet-950\/50 { background-color: color-mix(in srgb, var(--accent-bg) 85%, transparent); }
+html.light .bg-violet-500\/18 { background-color: color-mix(in srgb, var(--accent-bg) 80%, transparent); }
+html.light .border-violet-700 { border-color: var(--accent-border); }
+html.light .border-violet-700\/50 { border-color: color-mix(in srgb, var(--accent-border) 65%, transparent); }
+html.light .border-violet-700\/60 { border-color: color-mix(in srgb, var(--accent-border) 65%, transparent); }
+html.light .border-violet-600 { border-color: #7c3aed; }
+html.light .border-violet-500\/30 { border-color: color-mix(in srgb, var(--accent-border) 38%, transparent); }
+html.light .border-violet-500\/35 { border-color: color-mix(in srgb, var(--accent-border) 38%, transparent); }
+html.light .border-violet-900\/40 { border-color: color-mix(in srgb, var(--accent-border) 35%, transparent); }
+html.light .hover\:border-violet-600:hover,
+html.light .hover\:border-violet-500:hover { border-color: #8b5cf6; }
+html.light .border-violet-800 { border-color: #8b5cf6; }
+html.light .text-violet-300\/90 { color: #5b21b6; }
+html.light .text-violet-300\/95 { color: #5b21b6; }
+html.light .text-violet-400\/90 { color: #6d28d9; }
+html.light .bg-violet-600.text-white,
+html.light .bg-violet-600 .text-white,
+html.light .bg-violet-700 .text-white,
+html.light .bg-violet-800 .text-white,
+html.light .bg-violet-500.text-white,
+html.light .bg-violet-600.hover\:text-white:hover { color: #ffffff; }
+
+/* BULLISH */
+html.light .bg-emerald-900\/60 { background-color: color-mix(in srgb, var(--bullish-bg) 60%, transparent); }
+html.light .bg-emerald-900\/50 { background-color: color-mix(in srgb, var(--bullish-bg) 55%, transparent); }
+html.light .bg-emerald-900\/40 { background-color: color-mix(in srgb, var(--bullish-bg) 48%, transparent); }
+html.light .bg-emerald-900\/30 { background-color: color-mix(in srgb, var(--bullish-bg) 42%, transparent); }
+html.light .bg-emerald-900\/20 { background-color: color-mix(in srgb, var(--bullish-bg) 34%, transparent); }
+html.light .bg-emerald-900\/15 { background-color: color-mix(in srgb, var(--bullish-bg) 28%, transparent); }
+html.light .bg-emerald-900\/10 { background-color: color-mix(in srgb, var(--bullish-bg) 22%, transparent); }
+html.light .bg-emerald-950\/70 { background-color: color-mix(in srgb, var(--bullish-bg) 95%, transparent); }
+html.light .bg-emerald-950\/60 { background-color: color-mix(in srgb, var(--bullish-bg) 88%, transparent); }
+html.light .bg-emerald-950\/55 { background-color: color-mix(in srgb, var(--bullish-bg) 88%, transparent); }
+html.light .bg-emerald-950\/50 { background-color: color-mix(in srgb, var(--bullish-bg) 62%, transparent); }
+html.light .bg-emerald-950\/40 { background-color: color-mix(in srgb, var(--bullish-bg) 52%, transparent); }
+html.light .bg-emerald-950\/25 { background-color: color-mix(in srgb, var(--bullish-bg) 55%, transparent); }
+html.light .hover\:bg-emerald-900\/40:hover { background-color: color-mix(in srgb, var(--bullish-bg) 58%, transparent); }
+html.light .border-emerald-700 { border-color: var(--bullish-border); }
+html.light .border-emerald-800 { border-color: var(--bullish-border); }
+html.light .border-emerald-900\/40 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .border-emerald-900\/30 { border-color: color-mix(in srgb, var(--bullish-border) 45%, transparent); }
+html.light .border-emerald-400\/50 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .border-emerald-500\/70 { border-color: color-mix(in srgb, var(--bullish-border) 65%, transparent); }
+html.light .border-emerald-600\/40 { border-color: color-mix(in srgb, var(--bullish-border) 45%, transparent); }
+html.light .border-emerald-600\/60 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .border-emerald-700\/45 { border-color: color-mix(in srgb, var(--bullish-border) 45%, transparent); }
+html.light .border-emerald-800\/40 { border-color: color-mix(in srgb, var(--bullish-border) 50%, transparent); }
+html.light .border-emerald-800\/50 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .bg-emerald-500\/20 { background-color: color-mix(in srgb, var(--bullish-bg) 65%, transparent); }
+html.light .bg-emerald-500\/10 { background-color: color-mix(in srgb, var(--bullish-bg) 22%, transparent); }
+html.light .bg-emerald-600\/25 { background-color: color-mix(in srgb, var(--bullish-bg) 58%, transparent); }
+html.light .ring-emerald-400\/35 { --tw-ring-color: color-mix(in srgb, var(--bullish-border) 35%, transparent); }
+html.light .ring-emerald-500\/30 { --tw-ring-color: color-mix(in srgb, var(--bullish-border) 28%, transparent); }
+html.light .ring-emerald-500\/25 { --tw-ring-color: color-mix(in srgb, var(--bullish-border) 32%, transparent); }
+html.light .ring-emerald-500\/10 { --tw-ring-color: color-mix(in srgb, var(--bullish-border) 12%, transparent); }
+html.light .text-emerald-400\/90 { color: #047857; }
+html.light .text-emerald-400\/95 { color: #047857; }
+html.light .text-emerald-600\/80 { color: #047857; }
+html.light .shadow-emerald-900\/20 { box-shadow: 0 1px 8px rgba(16,185,129,0.16); }
+html.light .hover\:bg-emerald-950\/40:hover { background-color: color-mix(in srgb, var(--bullish-bg) 85%, transparent); }
+
+html.light .bg-green-900\/60 { background-color: color-mix(in srgb, var(--bullish-bg) 62%, transparent); }
+html.light .bg-green-900\/50 { background-color: color-mix(in srgb, var(--bullish-bg) 54%, transparent); }
+html.light .bg-green-900\/40 { background-color: color-mix(in srgb, var(--bullish-bg) 48%, transparent); }
+html.light .bg-green-900\/30 { background-color: color-mix(in srgb, var(--bullish-bg) 40%, transparent); }
+html.light .border-green-700 { border-color: #86efac; }
+html.light .border-green-800 { border-color: #86efac; }
+
+/* BEARISH */
+html.light .bg-red-950\/60 { background-color: color-mix(in srgb, var(--bearish-bg) 74%, transparent); }
+html.light .bg-red-950\/50 { background-color: color-mix(in srgb, var(--bearish-bg) 66%, transparent); }
+html.light .bg-red-950\/40 { background-color: color-mix(in srgb, var(--bearish-bg) 56%, transparent); }
+html.light .bg-red-900\/60 { background-color: color-mix(in srgb, var(--bearish-bg) 72%, transparent); }
+html.light .bg-red-900\/50 { background-color: color-mix(in srgb, var(--bearish-bg) 66%, transparent); }
+html.light .bg-red-900\/40 { background-color: color-mix(in srgb, var(--bearish-bg) 58%, transparent); }
+html.light .bg-red-900\/30 { background-color: color-mix(in srgb, var(--bearish-bg) 50%, transparent); }
+html.light .bg-red-900\/20 { background-color: color-mix(in srgb, var(--bearish-bg) 42%, transparent); }
+html.light .bg-red-950\/60 { background-color: color-mix(in srgb, var(--bearish-bg) 74%, transparent); }
+html.light .hover\:bg-red-950\/40:hover { background-color: color-mix(in srgb, var(--bearish-bg) 68%, transparent); }
+html.light .hover\:bg-red-900\/20:hover { background-color: color-mix(in srgb, var(--bearish-bg) 58%, transparent); }
+html.light .border-red-700 { border-color: #f87171; }
+html.light .border-red-800 { border-color: #fca5a5; }
+html.light .border-red-900 { border-color: #fca5a5; }
+html.light .hover\:border-red-700:hover { border-color: #ef4444; }
+
+html.light .bg-rose-900\/40 { background-color: color-mix(in srgb, var(--bearish-bg) 72%, transparent); }
+html.light .bg-rose-950\/50 { background-color: color-mix(in srgb, var(--bearish-bg) 92%, transparent); }
+html.light .bg-rose-950\/30 { background-color: color-mix(in srgb, var(--bearish-bg) 65%, transparent); }
+html.light .bg-rose-950\/25 { background-color: color-mix(in srgb, var(--bearish-bg) 55%, transparent); }
+html.light .bg-rose-950\/15 { background-color: color-mix(in srgb, var(--bearish-bg) 48%, transparent); }
+html.light .bg-rose-600\/20 { background-color: color-mix(in srgb, var(--bearish-bg) 72%, transparent); }
+html.light .hover\:bg-rose-950\/20:hover { background-color: color-mix(in srgb, var(--bearish-bg) 35%, transparent); }
+html.light .border-rose-700 { border-color: #fda4af; }
+html.light .border-rose-700\/45 { border-color: color-mix(in srgb, var(--bearish-border) 45%, transparent); }
+html.light .border-rose-800 { border-color: #fda4af; }
+html.light .border-rose-800\/40 { border-color: color-mix(in srgb, var(--bearish-border) 45%, transparent); }
+html.light .border-rose-800\/60 { border-color: color-mix(in srgb, var(--bearish-border) 50%, transparent); }
+html.light .border-rose-600\/50 { border-color: color-mix(in srgb, var(--bearish-border) 50%, transparent); }
+html.light .border-rose-600\/40 { border-color: color-mix(in srgb, var(--bearish-border) 45%, transparent); }
+html.light .border-rose-700\/40 { border-color: color-mix(in srgb, var(--bearish-border) 42%, transparent); }
+html.light .ring-rose-500\/30 { --tw-ring-color: color-mix(in srgb, var(--bearish-border) 25%, transparent); }
+html.light .ring-rose-500\/10 { --tw-ring-color: color-mix(in srgb, var(--bearish-border) 12%, transparent); }
+html.light .ring-rose-600\/15 { --tw-ring-color: color-mix(in srgb, var(--bearish-border) 20%, transparent); }
+html.light .bg-rose-600\/25 { background-color: color-mix(in srgb, var(--bearish-bg) 60%, transparent); }
+html.light .text-rose-600\/80 { color: #be123c; }
+
+/* WARNING */
+html.light .bg-amber-900\/60 { background-color: color-mix(in srgb, var(--warning-bg) 78%, transparent); }
+html.light .bg-amber-900\/50 { background-color: color-mix(in srgb, var(--warning-bg) 72%, transparent); }
+html.light .bg-amber-900\/40 { background-color: color-mix(in srgb, var(--warning-bg) 64%, transparent); }
+html.light .bg-amber-900\/30 { background-color: color-mix(in srgb, var(--warning-bg) 56%, transparent); }
+html.light .bg-amber-900\/20 { background-color: color-mix(in srgb, var(--warning-bg) 44%, transparent); }
+html.light .bg-amber-950\/60 { background-color: color-mix(in srgb, var(--warning-bg) 76%, transparent); }
+html.light .bg-amber-950\/50 { background-color: color-mix(in srgb, var(--warning-bg) 68%, transparent); }
+html.light .bg-amber-950\/40 { background-color: color-mix(in srgb, var(--warning-bg) 58%, transparent); }
+html.light .bg-amber-950\/30 { background-color: color-mix(in srgb, var(--warning-bg) 62%, transparent); }
+html.light .bg-amber-950\/25 { background-color: color-mix(in srgb, var(--warning-bg) 62%, transparent); }
+html.light .bg-amber-950\/20 { background-color: color-mix(in srgb, var(--warning-bg) 88%, transparent); }
+html.light .bg-amber-500\/20 { background-color: color-mix(in srgb, var(--info-bg) 62%, transparent); }
+html.light .bg-amber-500\/10 { background-color: color-mix(in srgb, var(--info-bg) 22%, transparent); }
+html.light .bg-amber-600\/25 { background-color: color-mix(in srgb, var(--info-bg) 58%, transparent); }
+html.light .border-amber-700 { border-color: #f59e0b; }
+html.light .border-amber-800 { border-color: #fbbf24; }
+html.light .border-amber-800\/50 { border-color: #fbbf24; }
+html.light .border-amber-800\/40 { border-color: color-mix(in srgb, var(--warning-border) 38%, transparent); }
+html.light .border-amber-600\/40 { border-color: color-mix(in srgb, var(--warning-border) 45%, transparent); }
+html.light .border-amber-600\/50 { border-color: color-mix(in srgb, var(--warning-border) 42%, transparent); }
+html.light .border-amber-900\/40 { border-color: color-mix(in srgb, var(--warning-border) 40%, transparent); }
+html.light .border-amber-900\/50 { border-color: color-mix(in srgb, var(--warning-border) 38%, transparent); }
+html.light .ring-amber-500\/25 { --tw-ring-color: color-mix(in srgb, var(--info-border) 28%, transparent); }
+html.light .ring-amber-500\/30 { --tw-ring-color: color-mix(in srgb, var(--info-border) 28%, transparent); }
+
+/* Blue / Info */
+html.light .bg-blue-900\/20 { background-color: color-mix(in srgb, var(--manage-bg) 50%, transparent); }
+html.light .bg-blue-900\/30 { background-color: color-mix(in srgb, var(--manage-bg) 62%, transparent); }
+html.light .bg-blue-900\/40 { background-color: color-mix(in srgb, var(--manage-bg) 72%, transparent); }
+html.light .bg-blue-900\/60 { background-color: color-mix(in srgb, var(--manage-bg) 82%, transparent); }
+html.light .bg-blue-950\/30 { background-color: color-mix(in srgb, var(--manage-bg) 72%, transparent); }
+html.light .bg-blue-950\/40 { background-color: color-mix(in srgb, var(--manage-bg) 82%, transparent); }
+html.light .border-blue-700 { border-color: #60a5fa; }
+html.light .border-blue-800 { border-color: #93c5fd; }
+html.light .border-blue-800\/50 { border-color: color-mix(in srgb, #60a5fa, 38% transparent); }
+html.light .border-blue-900\/50 { border-color: #60a5fa; }
+
+html.light .bg-sky-900\/40 { background-color: color-mix(in srgb, var(--info-bg) 72%, transparent); }
+html.light .bg-sky-500\/15 { background-color: color-mix(in srgb, var(--info-bg) 82%, transparent); }
+html.light .border-sky-500\/35 { border-color: color-mix(in srgb, var(--info-border) 40%, transparent); }
+html.light .border-sky-800 { border-color: #7dd3fc; }
+html.light .border-l-sky-500 { border-color: #0284c7; }
+html.light .ring-sky-500\/15 { --tw-ring-color: color-mix(in srgb, var(--info-border) 22%, transparent); }
+html.light .ring-sky-500\/25 { --tw-ring-color: color-mix(in srgb, var(--info-border) 28%, transparent); }
+
+html.light .bg-cyan-900\/20 { background-color: color-mix(in srgb, var(--info-bg) 72%, transparent); }
+html.light .bg-cyan-900\/40 { background-color: color-mix(in srgb, var(--info-bg) 72%, transparent); }
+html.light .border-cyan-800 { border-color: #67e8f9; }
+html.light .border-cyan-900\/60,
+html.light .border-cyan-900\/50,
+html.light .border-cyan-800,
+html.light .border-cyan-700 { border-color: color-mix(in srgb, #06b6d4, 55% transparent); }
+
+html.light .bg-indigo-950\/40 { background-color: color-mix(in srgb, #e0e7ff, 74% transparent); }
+html.light .bg-indigo-950\/30 { background-color: color-mix(in srgb, #e0e7ff, 62% transparent); }
+html.light .bg-indigo-900\/40 { background-color: color-mix(in srgb, #e0e7ff, 72% transparent); }
+html.light .border-indigo-900 { border-color: #a5b4fc; }
+html.light .border-indigo-800 { border-color: #a5b4fc; }
+html.light .border-indigo-900\/50,
+html.light .border-indigo-800 { border-color: #818cf8; }
+
+html.light .bg-purple-900\/40 { background-color: color-mix(in srgb, #f3e8ff, 75% transparent); }
+html.light .border-purple-700 { border-color: #c084fc; }
+html.light .text-purple-300 { color: #7e22ce; }
+
+html.light .bg-orange-900\/40 { background-color: color-mix(in srgb, #ffedd5, 72% transparent); }
+html.light .bg-orange-950\/25 { background-color: color-mix(in srgb, var(--info-bg) 90%, transparent); }
+html.light .bg-orange-600\/20 { background-color: color-mix(in srgb, var(--info-bg) 78%, transparent); }
+html.light .border-orange-700\/35 { border-color: color-mix(in srgb, #c2410c, 38% transparent); }
+html.light .border-orange-800 { border-color: #fdba74; }
+
+html.light .bg-teal-900\/40 { background-color: color-mix(in srgb, #ccfbf1, 72% transparent); }
+html.light .border-teal-800 { border-color: #5eead4; }
+
+html.light .bg-violet-600 { background-color: #7c3aed; }
+html.light .hover\:bg-violet-500:hover { background-color: #6d28d9; }
+
+/* ── Ring overrides (light) ──────────────────────────────────────────────── */
+html.light .ring-gray-600\/35 { --tw-ring-color: color-mix(in srgb, var(--border-strong) 35%, transparent); }
+html.light .ring-gray-700 { --tw-ring-color: color-mix(in srgb, var(--border-default) 50%, transparent); }
+html.light .ring-gray-500\/20 { --tw-ring-color: color-mix(in srgb, var(--border-strong) 18%, transparent); }
+html.light .focus\:ring-violet-600:focus { --tw-ring-color: color-mix(in srgb, var(--accent-border) 42%, transparent); }
+
+/* ── Page roots ──────────────────────────────────────────────────────────── */
+html.light .alerts-page,
+html.light .watchlist-page,
+html.light .watchlist-hub-page,
+html.light .trade-signals-page,
+html.light .trade-command-center-page,
+html.light .portfolio-page,
+html.light .journal-page,
+html.light .ticker-page,
+html.light .backtest-page,
+html.light .help-page,
+html.light .settings-page,
+html.light .ai-radar-page,
+html.light .q-radar-page,
+html.light .day-trade-page,
+html.light .active-trades-page,
+html.light .swing-trade-page,
+html.light .swing-trade-watchlist-page,
+html.light .watchlistx-page {
+  background-color: var(--surface-canvas);
+}
+
+/* ── Mobile navigation ───────────────────────────────────────────────────── */
 html.dark .mobile-bottom-nav-shell,
 html.light .mobile-bottom-nav-shell {
   background: transparent !important;
@@ -74,10 +652,7 @@ html.dark .mobile-dock-pill {
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-color: rgba(255, 255, 255, 0.14) !important;
-  box-shadow:
-    0 4px 28px rgba(0, 0, 0, 0.5),
-    0 14px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.5), 0 14px 40px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 html.light .mobile-dock-pill {
@@ -85,56 +660,35 @@ html.light .mobile-dock-pill {
   backdrop-filter: blur(40px) saturate(160%);
   -webkit-backdrop-filter: blur(40px) saturate(160%);
   border-color: rgba(15, 23, 42, 0.1) !important;
-  box-shadow:
-    0 4px 24px rgba(15, 23, 42, 0.1),
-    0 12px 36px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.1), 0 12px 36px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
-/* Bottom dock: Finder (ticker) icon — violet + moderate glow (currentColor → Lucide SVG) */
 html.dark .mobile-dock-finder-icon {
   color: #c4b5fd;
-  filter:
-    drop-shadow(0 0 3px rgba(167, 139, 250, 0.55))
-    drop-shadow(0 0 8px rgba(124, 58, 246, 0.28));
+  filter: drop-shadow(0 0 3px rgba(167, 139, 250, 0.55)) drop-shadow(0 0 8px rgba(124, 58, 246, 0.28));
 }
-
 html.light .mobile-dock-finder-icon {
   color: #6d28d9;
-  filter:
-    drop-shadow(0 0 2px rgba(139, 92, 246, 0.45))
-    drop-shadow(0 1px 5px rgba(91, 33, 182, 0.22));
+  filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.45)) drop-shadow(0 1px 5px rgba(91, 33, 182, 0.22));
 }
 
-/* Dark dock: default tab label color (glass active overrides below) */
-html.dark .mobile-nav-item:not(.mobile-nav-glass-active) {
-  color: #94a3b8;
-}
+html.dark .mobile-nav-item:not(.mobile-nav-glass-active) { color: #94a3b8; }
+html.dark .mobile-nav-item:not(.mobile-nav-glass-active):hover { color: #f1f5f9; }
 
-html.dark .mobile-nav-item:not(.mobile-nav-glass-active):hover {
-  color: #f1f5f9;
-}
-
-/* Mobile dock: liquid-glass pill for selected tab (phone + tablet rails) */
 html.dark .mobile-nav-glass-active {
   background: rgba(255, 255, 255, 0.09) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.22) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 4px 22px -6px rgba(124, 58, 246, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 4px 22px -6px rgba(124, 58, 246, 0.42);
   color: #ede9fe !important;
 }
-
 html.light .mobile-nav-glass-active {
   background: rgba(255, 255, 255, 0.58) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(139, 92, 246, 0.42) !important;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    0 2px 16px -4px rgba(91, 33, 182, 0.2);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.92), 0 2px 16px -4px rgba(91, 33, 182, 0.2);
   color: #5b21b6 !important;
 }
 
@@ -142,7 +696,6 @@ html.light .mobile-nav-item:hover {
   background-color: #e2e8f0;
   color: #0f172a;
 }
-
 html.light .mobile-nav-item.bg-violet-600\/20,
 html.light .mobile-nav-item.border-violet-700\/50 {
   background-color: #ede9fe;
@@ -150,110 +703,30 @@ html.light .mobile-nav-item.border-violet-700\/50 {
   color: #5b21b6;
 }
 
-/* Desktop sidebar — profile strip role highlight when document is in light theme */
-html.light .sidebar-profile-card {
-  --tw-ring-offset-shadow: 0 0 #0000;
-  --tw-ring-shadow: 0 0 #0000;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-user {
-  background-color: rgba(241, 245, 249, 0.94);
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14);
-}
-
-html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-name {
-  color: #0f172a;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-email {
-  color: #475569;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-logout {
-  color: #64748b;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-admin {
-  background-color: #fffbeb;
-  border-color: #fbbf24 !important;
-  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.35);
-}
-
-html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-role-tag {
-  color: #b45309;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-name {
-  color: #78350f;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-email {
-  color: #92400e;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-logout {
-  color: #b45309;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-finance {
-  background-color: #ecfdf5;
-  border-color: #34d399 !important;
-  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.28);
-}
-
-html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-role-tag {
-  color: #047857;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-name {
-  color: #065f46;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-email {
-  color: #0f766e;
-}
-
-html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-logout {
-  color: #0d9488;
-}
-
 html.light .mobile-more-menu {
-  background-color: var(--light-surface-1);
+  background-color: var(--surface-card);
   border-color: rgba(148, 163, 184, 0.55);
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
 }
-
-html.light .mobile-more-menu .border-gray-800 {
-  border-color: #cbd5e1;
-}
-
-html.light .mobile-more-menu .text-white {
-  color: #0f172a;
-}
-
-html.light .mobile-more-menu .text-gray-500 {
-  color: #475569;
-}
+html.light .mobile-more-menu .border-gray-800 { border-color: #cbd5e1; }
+html.light .mobile-more-menu .text-white { color: var(--text-heading); }
+html.light .mobile-more-menu .text-gray-500 { color: var(--text-muted); }
 
 html.light .mobile-more-item {
-  background-color: var(--light-surface-2);
+  background-color: var(--surface-elevated);
   border-color: #cbd5e1;
   color: #1f2937;
 }
-
 html.light .mobile-more-item:hover {
   background-color: #e2e8f0;
   border-color: #94a3b8;
   color: #0f172a;
 }
-
 html.light .mobile-more-item.bg-violet-600\/20 {
   background-color: #ede9fe;
   border-color: #8b5cf6;
   color: #5b21b6;
 }
-
 html.light .mobile-floating-menu-button {
   background-color: #7c3aed;
   border-color: #6d28d9;
@@ -261,13 +734,96 @@ html.light .mobile-floating-menu-button {
   box-shadow: 0 16px 32px rgba(91, 33, 182, 0.22);
 }
 
-.font-mono { font-family: var(--app-font-mono); }
+/* ── Desktop sidebar ─────────────────────────────────────────────────────── */
+html.light .sidebar-profile-card {
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+}
+html.light .sidebar-profile-card.sidebar-profile-user {
+  background-color: rgba(241, 245, 249, 0.94);
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14);
+}
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-name { color: #0f172a; }
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-email { color: #475569; }
+html.light .sidebar-profile-card.sidebar-profile-user .sidebar-profile-logout { color: #64748b; }
+html.light .sidebar-profile-card.sidebar-profile-admin {
+  background-color: #fffbeb;
+  border-color: #fbbf24 !important;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.35);
+}
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-role-tag { color: #b45309; }
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-name { color: #78350f; }
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-email { color: #92400e; }
+html.light .sidebar-profile-card.sidebar-profile-admin .sidebar-profile-logout { color: #b45309; }
+html.light .sidebar-profile-card.sidebar-profile-finance {
+  background-color: #ecfdf5;
+  border-color: #34d399 !important;
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.28);
+}
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-role-tag { color: #047857; }
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-name { color: #065f46; }
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-email { color: #0f766e; }
+html.light .sidebar-profile-card.sidebar-profile-finance .sidebar-profile-logout { color: #0d9488; }
 
-/* App page typography: keep primary product screens visually aligned with Watchlist. */
+/* ── Login page ──────────────────────────────────────────────────────────── */
+html.light .login-page {
+  background: linear-gradient(135deg, #d1d5db 0%, #e5e7eb 48%, #d7dbe2 100%);
+  color: #0f172a;
+}
+html.light .login-page .from-gray-900,
+html.light .login-page .to-gray-900 {
+  --tw-gradient-from: #e9ecf2 var(--tw-gradient-from-position);
+  --tw-gradient-to: #dde2ea var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+html.light .login-page .via-violet-950\/30 {
+  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.76) var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+html.light .login-page .border-r.border-gray-800 { border-color: rgba(148,163,184,0.42); }
+html.light .login-page .text-white,
+html.light .login-page .text-gray-100,
+html.light .login-page .text-gray-200 { color: #0f172a; }
+html.light .login-page .text-gray-300,
+html.light .login-page .text-gray-400 { color: #334155; }
+html.light .login-page .text-gray-500,
+html.light .login-page .text-gray-600 { color: #64748b; }
+html.light .login-page .bg-gray-800 { background-color: var(--surface-elevated); }
+html.light .login-page .border-gray-700 { border-color: #cbd5e1; }
+html.light .login-page input {
+  background-color: var(--surface-card);
+  border-color: #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.04);
+}
+html.light .login-page input::placeholder { color: #94a3b8; }
+html.light .login-page input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 1px rgba(139,92,246,0.25), 0 8px 18px rgba(15,23,42,0.06);
+}
+html.light .login-page .bg-violet-900\/60 { background-color: rgba(237,233,254,0.82); }
+html.light .login-page .border-violet-700\/50 { border-color: rgba(139,92,246,0.35); }
+html.light .login-page .bg-red-900\/20 { background-color: rgba(254,226,226,0.72); }
+html.light .login-page .border-red-800 { border-color: #fca5a5; }
+html.light .login-page .text-red-400 { color: #b91c1c; }
+html.light .login-page .bg-violet-600.text-white,
+html.light .login-page .bg-violet-600 .text-white,
+html.light .login-page button.bg-violet-600.text-white { color: #ffffff !important; }
+html.light .login-page .login-auth-tabs {
+  background-color: var(--surface-elevated);
+  border-color: rgba(148, 163, 184, 0.55);
+}
+html.light .login-page .login-auth-tabs button.text-gray-400 { color: #475569 !important; }
+html.light .login-page .login-auth-tabs button.hover\:text-gray-200:hover { color: #0f172a !important; }
+
+/* ── App page typography ─────────────────────────────────────────────────── */
 .portfolio-page,
 .alerts-page,
 .trade-signals-page,
 .watchlist-page,
+.watchlist-hub-page,
+.trade-command-center-page,
 .ticker-page,
 .backtest-page,
 .journal-page,
@@ -275,11 +831,12 @@ html.light .mobile-floating-menu-button {
 .q-radar-page {
   font-family: var(--app-font-sans);
 }
-
 .portfolio-page .font-mono,
 .alerts-page .font-mono,
 .trade-signals-page .font-mono,
 .watchlist-page .font-mono,
+.watchlist-hub-page .font-mono,
+.trade-command-center-page .font-mono,
 .ticker-page .font-mono,
 .backtest-page .font-mono,
 .journal-page .font-mono,
@@ -288,375 +845,100 @@ html.light .mobile-floating-menu-button {
   font-family: var(--app-font-sans);
   letter-spacing: -0.01em;
 }
-
 .portfolio-page .font-bold,
 .alerts-page .font-bold,
 .trade-signals-page .font-bold,
 .watchlist-page .font-bold,
+.watchlist-hub-page .font-bold,
+.trade-command-center-page .font-bold,
 .ticker-page .font-bold,
 .backtest-page .font-bold,
 .journal-page .font-bold,
 .ai-radar-page .font-bold,
-.q-radar-page .font-bold {
-  font-weight: 600;
+.q-radar-page .font-bold { font-weight: 600; }
+
+/* ── Backtest Lab chart SVG classes ──────────────────────────────────────── */
+.backtest-equity-grid,
+.backtest-equity-axis { stroke: #374151; }
+.backtest-equity-tick { stroke: #4b5563; }
+.backtest-equity-label { fill: #9ca3af; }
+.backtest-equity-dot-ring { stroke: #111827; }
+
+html.light .backtest-equity-grid,
+html.light .backtest-equity-axis { stroke: #cbd5e1; }
+html.light .backtest-equity-tick { stroke: #94a3b8; }
+html.light .backtest-equity-label { fill: #64748b; }
+html.light .backtest-equity-dot-ring { stroke: #e2e8f0; }
+
+/* ── Swing trade metric charts (Recharts) ────────────────────────────────── */
+.swing-trade-metric-charts {
+  --sw-chart-axis: var(--chart-axis);
+  --sw-chart-grid: var(--chart-grid);
+  --sw-chart-tick: var(--chart-tick);
+  --sw-chart-tooltip-bg: var(--chart-tooltip-bg);
+  --sw-chart-tooltip-border: var(--chart-tooltip-border);
+  --sw-chart-tooltip-label: var(--chart-tooltip-label);
+  --sw-chart-line-close: var(--chart-line-close);
+  --sw-chart-line-ma20: var(--chart-line-ma20);
+  --sw-chart-line-ma50: var(--chart-line-ma50);
+  --sw-chart-line-rsi: var(--chart-line-rsi);
+  --sw-chart-line-hv: var(--chart-line-hv);
+  --sw-chart-line-iv: var(--chart-line-iv);
+  --sw-chart-ref-muted: var(--chart-ref-muted);
 }
 
-/* Login light mode: polished split-screen contrast without changing dark mode. */
-html.light .login-page {
-  background: linear-gradient(135deg, #d1d5db 0%, #e5e7eb 48%, #d7dbe2 100%);
-  color: #0f172a;
+/* ── Portfolio MTM tiles ─────────────────────────────────────────────────── */
+html.dark .portfolio-page .portfolio-mtm-tile--gain {
+  background-color: rgba(16, 185, 129, 0.09);
+  border-color: rgba(52, 211, 153, 0.28);
 }
-
-html.light .login-page .from-gray-900,
-html.light .login-page .to-gray-900 {
-  --tw-gradient-from: #e9ecf2 var(--tw-gradient-from-position);
-  --tw-gradient-to: #dde2ea var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+html.dark .portfolio-page .portfolio-mtm-tile--loss {
+  background-color: rgba(244, 63, 94, 0.09);
+  border-color: rgba(251, 113, 133, 0.32);
 }
-
-html.light .login-page .via-violet-950\/30 {
-  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.76) var(--tw-gradient-via-position), var(--tw-gradient-to);
+html.dark .portfolio-page .portfolio-mtm-tile--neutral {
+  border-color: rgba(71, 85, 105, 0.48);
 }
-
-html.light .login-page .border-r.border-gray-800 {
-  border-color: rgba(148,163,184,0.42);
+html.light .portfolio-page .portfolio-mtm-tile--gain {
+  background-color: rgba(209, 250, 229, 0.88);
+  border-color: rgba(45, 212, 191, 0.42);
 }
-
-html.light .login-page .text-white,
-html.light .login-page .text-gray-100,
-html.light .login-page .text-gray-200 {
-  color: #0f172a;
+html.light .portfolio-page .portfolio-mtm-tile--loss {
+  background-color: rgba(254, 226, 226, 0.88);
+  border-color: rgba(248, 113, 113, 0.42);
 }
-
-html.light .login-page .text-gray-300,
-html.light .login-page .text-gray-400 {
-  color: #334155;
-}
-
-html.light .login-page .text-gray-500,
-html.light .login-page .text-gray-600 {
-  color: #64748b;
-}
-
-html.light .login-page .bg-gray-800 {
-  background-color: var(--light-surface-2);
-}
-
-html.light .login-page .border-gray-700 {
-  border-color: #cbd5e1;
-}
-
-html.light .login-page input {
-  background-color: var(--light-surface-1);
-  border-color: #cbd5e1;
-  color: #0f172a;
-  box-shadow: 0 1px 0 rgba(15,23,42,0.04);
-}
-
-html.light .login-page input::placeholder {
-  color: #94a3b8;
-}
-
-html.light .login-page input:focus {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 1px rgba(139,92,246,0.25), 0 8px 18px rgba(15,23,42,0.06);
-}
-
-html.light .login-page .bg-violet-900\/60 {
-  background-color: rgba(237,233,254,0.82);
-}
-
-html.light .login-page .border-violet-700\/50 {
-  border-color: rgba(139,92,246,0.35);
-}
-
-html.light .login-page .bg-red-900\/20 {
-  background-color: rgba(254,226,226,0.72);
-}
-
-html.light .login-page .border-red-800 {
-  border-color: #fca5a5;
-}
-
-html.light .login-page .text-red-400 {
-  color: #b91c1c;
-}
-
-/*
- * Login segmented control + violet CTAs: `.login-page .text-white { color: #0f172a }` is meant for
- * headlines on pale surfaces but beats `html.light .bg-violet-600.text-white`, hiding labels on purple.
- */
-html.light .login-page .bg-violet-600.text-white,
-html.light .login-page .bg-violet-600 .text-white,
-html.light .login-page button.bg-violet-600.text-white {
-  color: #ffffff !important;
-}
-
-html.light .login-page .login-auth-tabs {
-  background-color: var(--light-surface-2);
+html.light .portfolio-page .portfolio-mtm-tile--neutral {
+  background-color: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
   border-color: rgba(148, 163, 184, 0.55);
 }
 
-html.light .login-page .login-auth-tabs button.text-gray-400 {
-  color: #475569 !important;
+/* ── Portfolio editor / modal ────────────────────────────────────────────── */
+html.light .portfolio-page .portfolio-position-editor.bg-gray-950\/40,
+html.light .portfolio-page .bg-gray-950\/40 {
+  background-color: color-mix(in srgb, var(--surface-card) 90%, transparent);
+}
+html.light .portfolio-page .portfolio-edit-trigger {
+  background-color: var(--surface-elevated);
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #334155;
+}
+html.light .portfolio-page .portfolio-edit-trigger:hover {
+  background-color: var(--surface-raised);
+  border-color: #a78bfa;
+  color: #5b21b6;
+}
+html.light .portfolio-page .portfolio-modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.42);
 }
 
-html.light .login-page .login-auth-tabs button.hover\:text-gray-200:hover {
-  color: #0f172a !important;
+/* ── Alert item row ──────────────────────────────────────────────────────── */
+html.light .alerts-page .alert-item-row {
+  background-color: var(--surface-elevated);
+  border-color: #cbd5e1;
 }
+html.light .alerts-page .alert-item-row:hover { border-color: #94a3b8; }
 
-html.dark { color-scheme: dark; }
-html.light {
-  color-scheme: light;
-  /* Layered light UI: blue-slate canvas + tinted cards (readable, not stark white). */
-  /* Page canvas: match AppLayout bg-gray-950 in light so Radar and main are seamless. */
-  --light-app-canvas: #d1d5db;
-  --light-surface-1: #eef1f8;
-  --light-surface-2: #e4e9f3;
-  --light-surface-3: #d2d9e8;
-  --light-input-bg: #dce3f0;
-  --light-surface-1-a96: rgba(238, 241, 248, 0.96);
-  --light-surface-1-a95: rgba(238, 241, 248, 0.95);
-  --light-surface-1-a92: rgba(238, 241, 248, 0.92);
-  --light-surface-1-a90: rgba(238, 241, 248, 0.9);
-  --light-surface-1-a82: rgba(238, 241, 248, 0.82);
-  --light-surface-2-a96: rgba(228, 233, 243, 0.96);
-  --light-surface-2-a94: rgba(228, 233, 243, 0.94);
-  --light-surface-2-a90: rgba(228, 233, 243, 0.9);
-  --light-surface-2-a82: rgba(228, 233, 243, 0.82);
-  --light-surface-2-a72: rgba(228, 233, 243, 0.72);
-  --light-surface-2-a58: rgba(228, 233, 243, 0.58);
-}
-
-/* ── Dark theme surface tuning ──────────────────────────────── */
-html.dark body {
-  background-color: #020617;
-  color: #f1f5f9;
-}
-
-html.dark .bg-gray-950 { background-color: #020617; }
-html.dark .bg-gray-900 { background-color: #08111f; }
-html.dark .bg-gray-800 { background-color: #111c2e; }
-html.dark .bg-gray-700 { background-color: #1e2b3f; }
-html.dark .bg-gray-600 { background-color: #334155; }
-
-html.dark .bg-gray-800\/60 { background-color: rgba(17,28,46,0.72); }
-html.dark .bg-gray-800\/50 { background-color: rgba(17,28,46,0.62); }
-html.dark .bg-gray-800\/40 { background-color: rgba(17,28,46,0.52); }
-html.dark .bg-gray-800\/30 { background-color: rgba(17,28,46,0.42); }
-html.dark .bg-gray-900\/50 { background-color: rgba(8,17,31,0.72); }
-html.dark .bg-gray-900\/40 { background-color: rgba(8,17,31,0.62); }
-html.dark .bg-gray-900\/30 { background-color: rgba(8,17,31,0.52); }
-html.dark .bg-gray-900\/20 { background-color: rgba(8,17,31,0.42); }
-
-html.dark .border-gray-800 { border-color: #162235; }
-html.dark .border-gray-700 { border-color: #26364d; }
-html.dark .border-gray-800\/50 { border-color: rgba(22,34,53,0.72); }
-html.dark .border-gray-700\/50 { border-color: rgba(38,54,77,0.72); }
-
-html.dark .hover\:bg-gray-800:hover { background-color: #132238; }
-html.dark .hover\:bg-gray-700:hover { background-color: #23344e; }
-
-/* ── Light mode overrides ───────────────────────────────────── */
-/* Applied when <html class="light"> is set via AppContext      */
-/* Specificity (0,2,0) beats Tailwind's (0,1,0) — no !important needed */
-
-html.light body {
-  background-color: var(--light-app-canvas);
-  color: #0f172a;
-}
-
-/* Page/card/surface backgrounds */
-html.light .bg-gray-950  { background-color: var(--light-app-canvas); }
-html.light .bg-gray-900  { background-color: #e5e7eb; }
-html.light .bg-gray-800  { background-color: #d6d9de; }
-html.light .bg-gray-700  { background-color: #c4c9d1; }
-html.light .bg-gray-600  { background-color: #8f98a6; }
-
-/* Alpha-modifier variants */
-html.light .bg-gray-800\/60 { background-color: rgba(214,217,222,0.95); }
-html.light .bg-gray-800\/50 { background-color: rgba(214,217,222,0.9); }
-html.light .bg-gray-800\/40 { background-color: rgba(214,217,222,0.8); }
-html.light .bg-gray-800\/30 { background-color: rgba(214,217,222,0.7); }
-html.light .bg-gray-900\/50 { background-color: rgba(229,231,235,0.9); }
-html.light .bg-gray-900\/40 { background-color: rgba(229,231,235,0.82); }
-html.light .bg-gray-900\/30 { background-color: rgba(229,231,235,0.72); }
-html.light .bg-gray-900\/20 { background-color: rgba(229,231,235,0.62); }
-
-/* Gradient branding panel */
-html.light .from-gray-900 {
-  --tw-gradient-from: #e5e7eb var(--tw-gradient-from-position);
-  --tw-gradient-to: rgb(229 231 235 / 0) var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
-}
-
-html.light .via-violet-950\/30 {
-  --tw-gradient-to: rgb(237 233 254 / 0) var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), rgb(237 233 254 / 0.75) var(--tw-gradient-via-position), var(--tw-gradient-to);
-}
-
-html.light .to-gray-900 {
-  --tw-gradient-to: #d1d5db var(--tw-gradient-to-position);
-}
-
-/* Borders */
-html.light .border-gray-800  { border-color: #e2e8f0; }
-html.light .border-gray-700  { border-color: #cbd5e1; }
-html.light .border-gray-800\/50 { border-color: rgba(226,232,240,0.75); }
-html.light .border-gray-700\/50 { border-color: rgba(203,213,225,0.75); }
-
-/* Text */
-html.light .text-white    { color: #0f172a; }
-html.light .text-gray-100 { color: #111827; }
-html.light .text-gray-200 { color: #1f2937; }
-html.light .text-gray-300 { color: #334155; }
-html.light .text-gray-400 { color: #475569; }
-html.light .text-gray-500 { color: #64748b; }
-html.light .text-gray-600 { color: #64748b; }
-
-/* Accent text needs darker tones on light surfaces than the dark-theme palette. */
-html.light .text-violet-300 { color: #6d28d9; }
-html.light .text-violet-400 { color: #7c3aed; }
-html.light .text-indigo-300 { color: #4f46e5; }
-html.light .text-indigo-400 { color: #4f46e5; }
-html.light .text-blue-300 { color: #2563eb; }
-html.light .text-blue-400 { color: #2563eb; }
-html.light .text-sky-300 { color: #0369a1; }
-html.light .text-sky-400 { color: #0284c7; }
-html.light .text-cyan-300 { color: #0e7490; }
-html.light .text-cyan-400 { color: #0891b2; }
-html.light .text-teal-300 { color: #0f766e; }
-html.light .text-teal-400 { color: #0d9488; }
-html.light .text-emerald-300 { color: #065f46; }
-html.light .text-emerald-400 { color: #047857; }
-html.light .text-emerald-500 { color: #047857; }
-html.light .text-green-300 { color: #166534; }
-html.light .text-green-400 { color: #15803d; }
-html.light .text-amber-300 { color: #b45309; }
-html.light .text-amber-400 { color: #d97706; }
-html.light .text-orange-300 { color: #c2410c; }
-html.light .text-orange-400 { color: #ea580c; }
-html.light .text-rose-300 { color: #be123c; }
-html.light .text-rose-400 { color: #e11d48; }
-html.light .text-red-300 { color: #b91c1c; }
-html.light .text-red-400 { color: #dc2626; }
-
-/* Keep high-contrast text on saturated action surfaces. */
-html.light .bg-violet-600.text-white,
-html.light .bg-violet-600 .text-white,
-html.light .bg-violet-700 .text-white,
-html.light .bg-violet-800 .text-white {
-  color: #ffffff;
-}
-
-/* Light-theme violet badges, including portfolio strategy labels. */
-html.light .bg-violet-900\/60 { background-color: rgba(237,233,254,0.66); }
-html.light .bg-violet-900\/50 { background-color: rgba(237,233,254,0.58); }
-html.light .bg-violet-900\/40 { background-color: rgba(237,233,254,0.5); }
-html.light .bg-violet-900\/30 { background-color: rgba(237,233,254,0.42); }
-html.light .bg-violet-900\/20 { background-color: rgba(237,233,254,0.34); }
-html.light .border-violet-700 { border-color: #a78bfa; }
-html.light .border-violet-700\/50 { border-color: rgba(167,139,250,0.65); }
-
-/* Light-theme success states: avoid dark-theme green on gray labels. */
-html.light .bg-green-900\/60 { background-color: rgba(187,247,208,0.62); }
-html.light .bg-green-900\/50 { background-color: rgba(187,247,208,0.54); }
-html.light .bg-green-900\/40 { background-color: rgba(187,247,208,0.48); }
-html.light .bg-green-900\/30 { background-color: rgba(187,247,208,0.4); }
-html.light .bg-emerald-950\/60 { background-color: rgba(209,250,229,0.72); }
-html.light .bg-emerald-950\/50 { background-color: rgba(209,250,229,0.62); }
-html.light .bg-emerald-950\/40 { background-color: rgba(209,250,229,0.52); }
-html.light .bg-emerald-900\/60 { background-color: rgba(167,243,208,0.58); }
-html.light .bg-emerald-900\/50 { background-color: rgba(167,243,208,0.5); }
-html.light .bg-emerald-900\/40 { background-color: rgba(167,243,208,0.46); }
-html.light .bg-emerald-900\/30 { background-color: rgba(167,243,208,0.42); }
-html.light .bg-emerald-900\/20 { background-color: rgba(167,243,208,0.34); }
-html.light .bg-emerald-900\/15 { background-color: rgba(167,243,208,0.28); }
-html.light .bg-emerald-900\/10 { background-color: rgba(167,243,208,0.22); }
-
-html.light .border-green-700 { border-color: #86efac; }
-html.light .border-green-800 { border-color: #86efac; }
-html.light .border-emerald-700 { border-color: #34d399; }
-html.light .border-emerald-800 { border-color: #6ee7b7; }
-html.light .border-emerald-900\/40 { border-color: rgba(52,211,153,0.55); }
-html.light .border-emerald-900\/30 { border-color: rgba(52,211,153,0.45); }
-
-/* Light-theme warning/info states for bias cards and IV environment banners. */
-html.light .bg-amber-950\/60 { background-color: rgba(254,243,199,0.76); }
-html.light .bg-amber-950\/50 { background-color: rgba(254,243,199,0.68); }
-html.light .bg-amber-950\/40 { background-color: rgba(254,243,199,0.58); }
-html.light .bg-amber-900\/60 { background-color: rgba(254,243,199,0.78); }
-html.light .bg-amber-900\/50 { background-color: rgba(254,243,199,0.72); }
-html.light .bg-amber-900\/40 { background-color: rgba(254,243,199,0.64); }
-html.light .bg-amber-900\/30 { background-color: rgba(254,243,199,0.56); }
-html.light .bg-amber-900\/20 { background-color: rgba(254,243,199,0.44); }
-html.light .border-amber-700 { border-color: #f59e0b; }
-html.light .border-amber-800 { border-color: #fbbf24; }
-
-html.light .bg-blue-900\/30 { background-color: rgba(219,234,254,0.62); }
-html.light .bg-blue-900\/20 { background-color: rgba(219,234,254,0.5); }
-html.light .bg-blue-900\/40 { background-color: rgba(219,234,254,0.72); }
-html.light .border-blue-700 { border-color: #60a5fa; }
-html.light .border-blue-800 { border-color: #93c5fd; }
-
-html.light .bg-sky-900\/40 { background-color: rgba(224,242,254,0.72); }
-html.light .border-sky-800 { border-color: #7dd3fc; }
-
-html.light .bg-cyan-900\/40 { background-color: rgba(207,250,254,0.72); }
-html.light .border-cyan-800 { border-color: #67e8f9; }
-
-html.light .bg-indigo-950\/40 { background-color: rgba(224,231,255,0.74); }
-html.light .bg-indigo-950\/30 { background-color: rgba(224,231,255,0.62); }
-html.light .bg-indigo-900\/40 { background-color: rgba(224,231,255,0.72); }
-html.light .border-indigo-900 { border-color: #a5b4fc; }
-html.light .border-indigo-800 { border-color: #a5b4fc; }
-html.light .text-indigo-200 { color: #3730a3; }
-
-html.light .bg-orange-900\/40 { background-color: rgba(255,237,213,0.72); }
-html.light .border-orange-800 { border-color: #fdba74; }
-
-html.light .bg-rose-900\/40 { background-color: rgba(255,228,230,0.72); }
-html.light .border-rose-800 { border-color: #fda4af; }
-
-html.light .bg-teal-900\/40 { background-color: rgba(204,251,241,0.72); }
-html.light .border-teal-800 { border-color: #5eead4; }
-
-html.light .bg-red-950\/60 { background-color: rgba(254,226,226,0.74); }
-html.light .bg-red-950\/50 { background-color: rgba(254,226,226,0.66); }
-html.light .bg-red-950\/40 { background-color: rgba(254,226,226,0.56); }
-html.light .bg-red-900\/60 { background-color: rgba(254,226,226,0.72); }
-html.light .bg-red-900\/50 { background-color: rgba(254,226,226,0.66); }
-html.light .bg-red-900\/40 { background-color: rgba(254,226,226,0.58); }
-html.light .bg-red-900\/30 { background-color: rgba(254,226,226,0.5); }
-html.light .bg-red-900\/20 { background-color: rgba(254,226,226,0.42); }
-html.light .border-red-700 { border-color: #f87171; }
-html.light .border-red-800 { border-color: #fca5a5; }
-html.light .border-red-900 { border-color: #fca5a5; }
-
-/* Hover states */
-html.light .hover\:bg-gray-800:hover { background-color: #cfd4dc; }
-html.light .hover\:bg-gray-700:hover { background-color: #bcc3cd; }
-html.light .hover\:bg-gray-600:hover { background-color: #8f98a6; }
-html.light .hover\:text-white:hover  { color: #0f172a; }
-html.light .hover\:text-gray-200:hover { color: #334155; }
-html.light .hover\:text-gray-300:hover { color: #475569; }
-
-/* Form controls */
-html.light input,
-html.light select,
-html.light textarea {
-  background-color: #dadde3;
-  color: #0f172a;
-  border-color: #aeb7c5;
-}
-
-html.light input::placeholder,
-html.light textarea::placeholder {
-  color: #64748b;
-}
-
-/* Collapsed recommendation warning reasons need stronger contrast on light cards. */
+/* ── Recommendation caution reason pill (light theme) ────────────────────── */
 html.light .recommendation-caution-reason {
   display: inline-flex;
   align-items: center;
@@ -669,992 +951,22 @@ html.light .recommendation-caution-reason {
   box-shadow: 0 1px 0 rgba(245, 158, 11, 0.08);
 }
 
-/* AI Radar light mode: clearer card text and softer category surfaces. */
-html.light .ai-radar-page .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light .ai-radar-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a90); }
-html.light .ai-radar-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .ai-radar-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
-html.light .ai-radar-page .border-gray-800,
-html.light .ai-radar-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
-html.light .ai-radar-page .border-gray-700 { border-color: rgba(148,163,184,0.62); }
-html.light .ai-radar-page .hover\:border-gray-700:hover,
-html.light .ai-radar-page .hover\:border-gray-600:hover { border-color: #94a3b8; }
-html.light .ai-radar-page .text-white { color: #0f172a; }
-html.light .ai-radar-page .text-gray-600 { color: #475569; }
-html.light .ai-radar-page .text-gray-500 { color: #334155; }
-html.light .ai-radar-page .text-gray-400 { color: #334155; }
-html.light .ai-radar-page .text-gray-300,
-html.light .ai-radar-page .hover\:text-gray-200:hover { color: #1f2937; }
-html.light .ai-radar-page input {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light .ai-radar-page input::placeholder { color: #64748b; }
-html.light .ai-radar-page .bg-violet-600\/20 { background-color: rgba(221,214,254,0.72); }
-html.light .ai-radar-page .hover\:bg-violet-600\/30:hover { background-color: rgba(196,181,253,0.7); }
-html.light .ai-radar-page .border-violet-700 { border-color: #a78bfa; }
-html.light .ai-radar-page .text-violet-300,
-html.light .ai-radar-page .text-violet-400 { color: #6d28d9; }
-html.light .ai-radar-page .bg-violet-600.text-white,
-html.light .ai-radar-page .bg-blue-700.text-white,
-html.light .ai-radar-page .bg-sky-700.text-white,
-html.light .ai-radar-page .bg-emerald-700.text-white,
-html.light .ai-radar-page .bg-amber-600.text-white,
-html.light .ai-radar-page .bg-orange-700.text-white,
-html.light .ai-radar-page .bg-rose-700.text-white,
-html.light .ai-radar-page .bg-cyan-700.text-white,
-html.light .ai-radar-page .bg-indigo-700.text-white,
-html.light .ai-radar-page .bg-teal-700.text-white,
-html.light .ai-radar-page .bg-violet-600 .text-white,
-html.light .ai-radar-page .bg-blue-700 .text-white,
-html.light .ai-radar-page .bg-sky-700 .text-white,
-html.light .ai-radar-page .bg-emerald-700 .text-white,
-html.light .ai-radar-page .bg-amber-600 .text-white,
-html.light .ai-radar-page .bg-orange-700 .text-white,
-html.light .ai-radar-page .bg-rose-700 .text-white,
-html.light .ai-radar-page .bg-cyan-700 .text-white,
-html.light .ai-radar-page .bg-indigo-700 .text-white,
-html.light .ai-radar-page .bg-teal-700 .text-white {
-  color: #ffffff;
-}
-html.light .ai-radar-page .bg-amber-900\/30 { background-color: #fef3c7; }
-html.light .ai-radar-page .border-amber-700 { border-color: #f59e0b; }
-html.light .ai-radar-page .text-amber-400 { color: #b45309; }
-html.light .ai-radar-page .hover\:text-amber-400:hover { color: #b45309; }
-
-/* Q Radar light mode: quantum/cyan palette needs darker text on light cards. */
-html.light .q-radar-page .border-cyan-900\/60,
-html.light .q-radar-page .border-cyan-900\/50,
-html.light .q-radar-page .border-cyan-800,
-html.light .q-radar-page .border-cyan-700 { border-color: rgba(6,182,212,0.55); }
-html.light .q-radar-page .hover\:border-cyan-700\/60:hover,
-html.light .q-radar-page .hover\:border-cyan-600:hover { border-color: #0891b2; }
-html.light .q-radar-page .bg-cyan-900\/50,
-html.light .q-radar-page .bg-cyan-900\/40,
-html.light .q-radar-page .bg-cyan-900\/30,
-html.light .q-radar-page .bg-cyan-900\/20,
-html.light .q-radar-page .bg-cyan-600\/20 {
-  background-color: rgba(207,250,254,0.76);
-}
-html.light .q-radar-page .hover\:bg-cyan-900\/30:hover {
-  background-color: rgba(165,243,252,0.78);
-}
-html.light .q-radar-page .text-cyan-300,
-html.light .q-radar-page .text-cyan-400 {
-  color: #0e7490;
-}
-html.light .q-radar-page .bg-cyan-700.text-white,
-html.light .q-radar-page .bg-blue-700.text-white,
-html.light .q-radar-page .bg-indigo-700.text-white,
-html.light .q-radar-page .bg-rose-700.text-white,
-html.light .q-radar-page .bg-amber-600.text-white,
-html.light .q-radar-page .bg-teal-700.text-white,
-html.light .q-radar-page .bg-cyan-700 .text-white,
-html.light .q-radar-page .bg-blue-700 .text-white,
-html.light .q-radar-page .bg-indigo-700 .text-white,
-html.light .q-radar-page .bg-rose-700 .text-white,
-html.light .q-radar-page .bg-amber-600 .text-white,
-html.light .q-radar-page .bg-teal-700 .text-white {
-  color: #ffffff;
-}
-html.light .q-radar-page .bg-blue-900\/20,
-html.light .q-radar-page .bg-blue-900\/40 { background-color: rgba(219,234,254,0.74); }
-html.light .q-radar-page .border-blue-900\/50,
-html.light .q-radar-page .border-blue-800 { border-color: #60a5fa; }
-html.light .q-radar-page .text-blue-300,
-html.light .q-radar-page .text-blue-400 { color: #1d4ed8; }
-html.light .q-radar-page .bg-indigo-900\/20,
-html.light .q-radar-page .bg-indigo-900\/40 { background-color: rgba(224,231,255,0.76); }
-html.light .q-radar-page .border-indigo-900\/50,
-html.light .q-radar-page .border-indigo-800 { border-color: #818cf8; }
-html.light .q-radar-page .text-indigo-300,
-html.light .q-radar-page .text-indigo-400 { color: #4338ca; }
-html.light .q-radar-page .bg-teal-900\/20,
-html.light .q-radar-page .bg-teal-900\/40 { background-color: rgba(204,251,241,0.76); }
-html.light .q-radar-page .border-teal-900\/50,
-html.light .q-radar-page .border-teal-800 { border-color: #2dd4bf; }
-html.light .q-radar-page .text-teal-300,
-html.light .q-radar-page .text-teal-400 { color: #0f766e; }
-html.light .q-radar-page .bg-rose-900\/40 { background-color: rgba(255,228,230,0.76); }
-html.light .q-radar-page .border-rose-800 { border-color: #fb7185; }
-html.light .q-radar-page .text-rose-300 { color: #be123c; }
-html.light .q-radar-page .bg-emerald-900\/20 { background-color: rgba(209,250,229,0.72); }
-html.light .q-radar-page .border-emerald-900\/50 { border-color: #34d399; }
-html.light .q-radar-page .text-emerald-400 { color: #047857; }
-html.light .q-radar-page .bg-violet-900\/20 { background-color: rgba(237,233,254,0.76); }
-html.light .q-radar-page .border-violet-900\/50 { border-color: #a78bfa; }
-html.light .q-radar-page .text-violet-400 { color: #6d28d9; }
-html.light .q-radar-page .text-gray-600 { color: #475569; }
-html.light .q-radar-page .text-gray-500,
-html.light .q-radar-page .text-gray-400 { color: #334155; }
-html.light .q-radar-page input {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light .q-radar-page input:focus {
-  border-color: #0891b2;
-  box-shadow: 0 0 0 1px rgba(8,145,178,0.35);
-}
-
-/* Strategy Finder / ticker analyzer light mode: same page + card stack as Alerts. */
-html.light .ticker-page {
-  color: #0f172a;
-}
-html.light .ticker-page h1,
-html.light .ticker-page h2,
-html.light .ticker-page h3 {
-  color: #0f172a;
-  letter-spacing: -0.01em;
-}
-html.light .ticker-page .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light .ticker-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light .ticker-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .ticker-page .bg-gray-800\/60,
-html.light .ticker-page .bg-gray-800\/50,
-html.light .ticker-page .bg-gray-800\/40,
-html.light .ticker-page .bg-gray-800\/30 { background-color: var(--light-surface-2-a94); }
-html.light .ticker-page .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light .ticker-page .border-gray-800 { border-color: #cbd5e1; }
-html.light .ticker-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
-html.light .ticker-page .border-gray-700,
-html.light .ticker-page .border-gray-700\/50,
-html.light .ticker-page .border-gray-700\/60 { border-color: #94a3b8; }
-html.light .ticker-page .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
-html.light .ticker-page .hover\:border-gray-600:hover,
-html.light .ticker-page .hover\:border-gray-500:hover { border-color: #94a3b8; }
-html.light .ticker-page .text-white { color: #0f172a; }
-html.light .ticker-page .text-gray-700 { color: #475569; }
-html.light .ticker-page .text-gray-600 { color: #475569; }
-html.light .ticker-page .text-gray-500 { color: #334155; }
-html.light .ticker-page .text-gray-400 { color: #334155; }
-html.light .ticker-page .text-gray-300,
-html.light .ticker-page .hover\:text-gray-200:hover,
-html.light .ticker-page .hover\:text-white:hover { color: #1f2937; }
-html.light .ticker-page .text-xs.text-gray-500,
-html.light .ticker-page .text-xs.text-gray-600 {
-  color: #475569;
-}
-html.light .ticker-page .text-sm.text-gray-500,
-html.light .ticker-page .text-sm.text-gray-400 {
-  color: #334155;
-}
-html.light .ticker-page .font-semibold,
-html.light .ticker-page .font-bold {
-  letter-spacing: -0.005em;
-}
-
-/* Strategy Finder — strategy mode chips: readable on light surfaces */
-html.light .ticker-page .strategy-mode-picker > span.strategy-mode-heading {
-  color: #0f172a;
-}
-
-html.light .ticker-page .strategy-mode-picker button.bg-gray-800 {
-  color: #0f172a;
-}
-
-html.light .ticker-page .strategy-mode-picker button.bg-gray-800 .strategy-mode-sub {
-  color: #475569;
-}
-
-html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover {
-  color: #0f172a;
-}
-
-html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover .strategy-mode-sub {
-  color: #334155;
-}
-
-html.light .ticker-page .strategy-mode-picker button.bg-violet-600 .strategy-mode-sub {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-html.light .ticker-page .font-mono {
-  font-variant-numeric: tabular-nums;
-}
-html.light .ticker-page input,
-html.light .ticker-page select {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light .ticker-page input.font-mono {
-  font-family: var(--app-font-sans);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-html.light .ticker-page input::placeholder { color: #64748b; }
-html.light .ticker-page table thead tr,
-html.light .ticker-page table th {
-  color: #475569;
-}
-html.light .ticker-page table td {
-  color: #334155;
-}
-html.light .ticker-page .rounded-full,
-html.light .ticker-page .rounded-xl,
-html.light .ticker-page .rounded-2xl {
-  box-shadow: none;
-}
-html.light .ticker-page .bg-violet-600\/20,
-html.light .ticker-page .bg-violet-900\/20,
-html.light .ticker-page .bg-violet-900\/10 { background-color: rgba(221,214,254,0.78); }
-html.light .ticker-page .hover\:bg-violet-600\/20:hover,
-html.light .ticker-page .hover\:bg-violet-600\/25:hover,
-html.light .ticker-page .hover\:bg-violet-600\/30:hover { background-color: rgba(196,181,253,0.72); }
-html.light .ticker-page .border-violet-800,
-html.light .ticker-page .border-violet-700,
-html.light .ticker-page .border-violet-700\/60 { border-color: #8b5cf6; }
-html.light .ticker-page .hover\:border-violet-600:hover,
-html.light .ticker-page .hover\:border-violet-500:hover { border-color: #8b5cf6; }
-html.light .ticker-page .text-violet-200 { color: #5b21b6; }
-html.light .ticker-page .text-violet-300,
-html.light .ticker-page .text-violet-400,
-html.light .ticker-page .text-violet-500,
-html.light .ticker-page .hover\:text-violet-300:hover { color: #6d28d9; }
-html.light .ticker-page .bg-violet-600.text-white,
-html.light .ticker-page .bg-violet-600 .text-white,
-html.light .ticker-page .bg-violet-500.text-white,
-html.light .ticker-page .disabled\:bg-violet-800:disabled {
-  color: #ffffff;
-}
-html.light .ticker-page .bg-blue-900\/20,
-html.light .ticker-page .bg-blue-900\/30,
-html.light .ticker-page .bg-blue-900\/60 { background-color: #dbeafe; }
-html.light .ticker-page .border-blue-700,
-html.light .ticker-page .border-blue-800 { border-color: #60a5fa; }
-html.light .ticker-page .text-blue-300,
-html.light .ticker-page .text-blue-400 { color: #1d4ed8; }
-html.light .ticker-page .bg-amber-900\/20,
-html.light .ticker-page .bg-amber-900\/30,
-html.light .ticker-page .bg-amber-900\/40,
-html.light .ticker-page .bg-amber-950\/50 { background-color: #fef3c7; }
-html.light .ticker-page .border-amber-700,
-html.light .ticker-page .border-amber-800,
-html.light .ticker-page .border-amber-800\/60 { border-color: #d97706; }
-html.light .ticker-page .text-amber-300,
-html.light .ticker-page .text-amber-300\/70,
-html.light .ticker-page .text-amber-400,
-html.light .ticker-page .text-amber-400\/80,
-html.light .ticker-page .text-amber-400\/90,
-html.light .ticker-page .text-amber-600 { color: #92400e; }
-html.light .ticker-page .bg-green-900\/30,
-html.light .ticker-page .bg-green-900\/40,
-html.light .ticker-page .bg-green-900\/60,
-html.light .ticker-page .bg-emerald-900\/20,
-html.light .ticker-page .bg-emerald-900\/50 { background-color: #d1fae5; }
-html.light .ticker-page .border-green-700,
-html.light .ticker-page .border-green-800,
-html.light .ticker-page .border-emerald-800 { border-color: #10b981; }
-html.light .ticker-page .text-green-300,
-html.light .ticker-page .text-green-400,
-html.light .ticker-page .text-emerald-300,
-html.light .ticker-page .text-emerald-400 { color: #047857; }
-html.light .ticker-page .bg-red-900\/20,
-html.light .ticker-page .bg-red-900\/30,
-html.light .ticker-page .bg-red-900\/40,
-html.light .ticker-page .bg-red-950\/50 { background-color: #fee2e2; }
-html.light .ticker-page .border-red-700,
-html.light .ticker-page .border-red-800 { border-color: #ef4444; }
-html.light .ticker-page .text-red-300,
-html.light .ticker-page .text-red-400,
-html.light .ticker-page .text-red-400\/80,
-html.light .ticker-page .hover\:text-red-400:hover { color: #b91c1c; }
-html.light .ticker-page .bg-purple-900\/40 { background-color: rgba(243,232,255,0.75); }
-html.light .ticker-page .border-purple-700 { border-color: #c084fc; }
-html.light .ticker-page .text-purple-300 { color: #7e22ce; }
-html.light .ticker-page .recharts-wrapper text {
-  fill: #475569;
-}
-
-/* Backtest Lab — equity chart SVG (dark defaults; light tuned below). */
-.backtest-equity-grid,
-.backtest-equity-axis { stroke: #374151; }
-.backtest-equity-tick { stroke: #4b5563; }
-.backtest-equity-label { fill: #9ca3af; }
-.backtest-equity-dot-ring { stroke: #111827; }
-
-/* Backtest Lab light mode: Alerts-style surfaces + readable chart chrome. */
-html.light .backtest-page {
-  color: #0f172a;
-}
-html.light .backtest-page .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light .backtest-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light .backtest-page .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
-html.light .backtest-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .backtest-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
-html.light .backtest-page .bg-gray-800\/40 { background-color: var(--light-surface-2-a72); }
-html.light .backtest-page .bg-gray-800\/30 { background-color: var(--light-surface-2-a58); }
-html.light .backtest-page .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light .backtest-page .border-gray-800 { border-color: #cbd5e1; }
-html.light .backtest-page .border-gray-800\/60 { border-color: rgba(148,163,184,0.42); }
-html.light .backtest-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
-html.light .backtest-page .border-gray-700,
-html.light .backtest-page .border-gray-700\/60 { border-color: #94a3b8; }
-html.light .backtest-page .text-white { color: #0f172a; }
-html.light .backtest-page .text-gray-700 { color: #475569; }
-html.light .backtest-page .text-gray-600 { color: #475569; }
-html.light .backtest-page .text-gray-500 { color: #334155; }
-html.light .backtest-page .text-gray-400 { color: #334155; }
-html.light .backtest-page .text-gray-300 { color: #1f2937; }
-html.light .backtest-page .hover\:text-gray-300:hover { color: #1f2937; }
-html.light .backtest-page .hover\:text-white:hover { color: #0f172a; }
-html.light .backtest-page .hover\:text-violet-300:hover { color: #6d28d9; }
-html.light .backtest-page input,
-html.light .backtest-page select {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light .backtest-page input::placeholder { color: #64748b; }
-html.light .backtest-page .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
-html.light .backtest-page .border-violet-700 { border-color: #8b5cf6; }
-html.light .backtest-page .border-violet-600 { border-color: #7c3aed; }
-html.light .backtest-page .text-violet-300,
-html.light .backtest-page .text-violet-400 { color: #6d28d9; }
-html.light .backtest-page .text-violet-700 { color: #5b21b6; }
-html.light .backtest-page .bg-violet-600.text-white,
-html.light .backtest-page .bg-violet-600:hover { color: #ffffff; }
-html.light .backtest-page .bg-red-950\/40 { background-color: rgba(254,226,226,0.56); }
-html.light .backtest-page .border-red-800 { border-color: #ef4444; }
-html.light .backtest-page .text-red-300,
-html.light .backtest-page .text-red-400 { color: #b91c1c; }
-html.light .backtest-page .bg-emerald-900\/40 { background-color: #d1fae5; }
-html.light .backtest-page .border-emerald-700 { border-color: #10b981; }
-html.light .backtest-page .text-emerald-300,
-html.light .backtest-page .text-emerald-400 { color: #047857; }
-html.light .backtest-page .hover\:border-gray-600:hover,
-html.light .backtest-page .hover\:border-gray-500:hover { border-color: #94a3b8; }
-html.light .backtest-page .backtest-equity-grid,
-html.light .backtest-page .backtest-equity-axis { stroke: #cbd5e1; }
-html.light .backtest-page .backtest-equity-tick { stroke: #94a3b8; }
-html.light .backtest-page .backtest-equity-label { fill: #64748b; }
-html.light .backtest-page .backtest-equity-dot-ring { stroke: #e2e8f0; }
-
-/* Portfolio & Journal light mode: layered surfaces (shared tokens). */
-html.light :is(.portfolio-page, .journal-page) .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light :is(.portfolio-page, .journal-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light :is(.portfolio-page, .journal-page) .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light :is(.portfolio-page, .journal-page) .bg-gray-800\/60,
-html.light :is(.portfolio-page, .journal-page) .bg-gray-800\/40 { background-color: var(--light-surface-2-a94); }
-html.light :is(.portfolio-page, .journal-page) .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light :is(.portfolio-page, .journal-page) .border-gray-800,
-html.light :is(.portfolio-page, .journal-page) .border-gray-800\/50 { border-color: rgba(148,163,184,0.42); }
-html.light :is(.portfolio-page, .journal-page) .border-gray-700 { border-color: rgba(148,163,184,0.62); }
-html.light :is(.portfolio-page, .journal-page) .hover\:bg-gray-700:hover,
-html.light :is(.portfolio-page, .journal-page) .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
-html.light :is(.portfolio-page, .journal-page) .text-white { color: #0f172a; }
-html.light :is(.portfolio-page, .journal-page) .text-gray-700 { color: #475569; }
-html.light :is(.portfolio-page, .journal-page) .text-gray-600 { color: #475569; }
-html.light :is(.portfolio-page, .journal-page) .text-gray-500 { color: #334155; }
-html.light :is(.portfolio-page, .journal-page) .text-gray-400 { color: #334155; }
-html.light :is(.portfolio-page, .journal-page) .text-gray-300,
-html.light :is(.portfolio-page, .journal-page) .text-gray-200,
-html.light :is(.portfolio-page, .journal-page) .hover\:text-gray-200:hover,
-html.light :is(.portfolio-page, .journal-page) .hover\:text-gray-300:hover { color: #1f2937; }
-html.light :is(.portfolio-page, .journal-page) input {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light :is(.portfolio-page, .journal-page) input::placeholder { color: #64748b; }
-html.light :is(.portfolio-page, .journal-page) textarea {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light :is(.portfolio-page, .journal-page) textarea::placeholder { color: #64748b; }
-html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/50,
-html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/30,
-html.light :is(.portfolio-page, .journal-page) .bg-violet-900\/20 { background-color: rgba(237,233,254,0.78); }
-html.light :is(.portfolio-page, .journal-page) .border-violet-700 { border-color: #a78bfa; }
-html.light :is(.portfolio-page, .journal-page) .text-violet-300,
-html.light :is(.portfolio-page, .journal-page) .text-violet-400 { color: #6d28d9; }
-html.light :is(.portfolio-page, .journal-page) .bg-violet-600.text-white,
-html.light :is(.portfolio-page, .journal-page) .bg-violet-600 .text-white,
-html.light :is(.portfolio-page, .journal-page) .hover\:bg-violet-500:hover,
-html.light :is(.portfolio-page, .journal-page) .disabled\:bg-gray-700:disabled {
-  color: #ffffff;
-}
-html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/30,
-html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/20,
-html.light :is(.portfolio-page, .journal-page) .bg-emerald-900\/15 { background-color: rgba(209,250,229,0.56); }
-html.light :is(.portfolio-page, .journal-page) .hover\:bg-emerald-900\/40:hover { background-color: rgba(167,243,208,0.58); }
-html.light :is(.portfolio-page, .journal-page) .border-emerald-800,
-html.light :is(.portfolio-page, .journal-page) .border-emerald-900\/40 { border-color: #34d399; }
-html.light :is(.portfolio-page, .journal-page) .text-emerald-300,
-html.light :is(.portfolio-page, .journal-page) .text-emerald-400 { color: #047857; }
-html.light :is(.portfolio-page, .journal-page) .bg-amber-900\/30 { background-color: rgba(254,243,199,0.76); }
-html.light :is(.portfolio-page, .journal-page) .border-amber-800 { border-color: #f59e0b; }
-html.light :is(.portfolio-page, .journal-page) .text-amber-400,
-html.light :is(.portfolio-page, .journal-page) .text-amber-400\/80 { color: #92400e; }
-html.light :is(.portfolio-page, .journal-page) .bg-red-900\/20,
-html.light :is(.portfolio-page, .journal-page) .bg-red-900\/15 { background-color: rgba(254,226,226,0.56); }
-html.light :is(.portfolio-page, .journal-page) .hover\:bg-red-900\/20:hover { background-color: rgba(254,202,202,0.58); }
-html.light :is(.portfolio-page, .journal-page) .border-red-800,
-html.light :is(.portfolio-page, .journal-page) .border-red-900\/40 { border-color: #f87171; }
-html.light :is(.portfolio-page, .journal-page) .text-red-300,
-html.light :is(.portfolio-page, .journal-page) .text-red-400,
-html.light :is(.portfolio-page, .journal-page) .hover\:text-red-400:hover { color: #b91c1c; }
-
-/* Portfolio — Current P&L tile (soft mint/rose on light theme; subtle tint on dark) */
-html.dark .portfolio-page .portfolio-mtm-tile--gain {
-  background-color: rgba(16, 185, 129, 0.09);
-  border-color: rgba(52, 211, 153, 0.28);
-}
-html.dark .portfolio-page .portfolio-mtm-tile--loss {
-  background-color: rgba(244, 63, 94, 0.09);
-  border-color: rgba(251, 113, 133, 0.32);
-}
-html.dark .portfolio-page .portfolio-mtm-tile--neutral {
-  border-color: rgba(71, 85, 105, 0.48);
-}
-
-html.light .portfolio-page .portfolio-mtm-tile--gain {
-  background-color: rgba(209, 250, 229, 0.88);
-  border-color: rgba(45, 212, 191, 0.42);
-}
-html.light .portfolio-page .portfolio-mtm-tile--loss {
-  background-color: rgba(254, 226, 226, 0.88);
-  border-color: rgba(248, 113, 113, 0.42);
-}
-html.light .portfolio-page .portfolio-mtm-tile--neutral {
-  background-color: var(--light-surface-2-a90);
-  border-color: rgba(148, 163, 184, 0.55);
-}
-
-/* Portfolio — manual editor & Edit control (fills gaps vs dark Tailwind alphas / cyan) */
-html.light .portfolio-page .portfolio-position-editor.bg-gray-950\/40,
-html.light .portfolio-page .bg-gray-950\/40 {
-  background-color: var(--light-surface-1-a90);
-}
-html.light .portfolio-page .bg-gray-800\/50 {
-  background-color: var(--light-surface-2-a72);
-}
-html.light .portfolio-page select {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light .portfolio-page select option {
-  background-color: #f8fafc;
-  color: #0f172a;
-}
-html.light .portfolio-page .bg-amber-950\/25 {
-  background-color: rgba(254, 243, 199, 0.62);
-}
-html.light .portfolio-page .border-amber-900\/50 {
-  border-color: rgba(180, 83, 9, 0.38);
-}
-html.light .portfolio-page .text-amber-200 {
-  color: #92400e;
-}
-html.light .portfolio-page .bg-cyan-900\/20 {
-  background-color: rgba(207, 250, 254, 0.72);
-}
-html.light .portfolio-page .hover\:bg-cyan-900\/35:hover {
-  background-color: rgba(165, 243, 252, 0.88);
-}
-html.light .portfolio-page .border-cyan-800 {
-  border-color: #22d3ee;
-}
-html.light .portfolio-page .text-cyan-400 {
-  color: #0e7490;
-}
-html.light .portfolio-page .portfolio-edit-trigger {
-  background-color: var(--light-surface-2);
-  border-color: rgba(148, 163, 184, 0.55);
-  color: #334155;
-}
-html.light .portfolio-page .portfolio-edit-trigger:hover {
-  background-color: var(--light-surface-3);
-  border-color: #a78bfa;
-  color: #5b21b6;
-}
-
-html.light .portfolio-page .portfolio-modal-backdrop {
-  background-color: rgba(15, 23, 42, 0.42);
-}
-
-/* Scrollbar in light mode */
-html.light ::-webkit-scrollbar-track { background: #c8cedc; }
-html.light ::-webkit-scrollbar-thumb { background: #8f98a6; border-radius: 4px; }
-html.light ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-
-/* Help page needs document-style light surfaces instead of dark card colors. */
-html.light .help-page .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light .help-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .help-page .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light .help-page .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
-html.light .help-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a90); }
-html.light .help-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a96); }
-html.light .help-page .bg-gray-800\/50 { background-color: var(--light-surface-2-a90); }
-html.light .help-page .bg-gray-800\/40 { background-color: var(--light-surface-2-a82); }
-html.light .help-page .border-gray-800 { border-color: #cbd5e1; }
-html.light .help-page .border-gray-800\/50 { border-color: rgba(148,163,184,0.45); }
-html.light .help-page .border-gray-700,
-html.light .help-page .border-gray-700\/50 { border-color: rgba(148,163,184,0.55); }
-html.light .help-page .hover\:bg-gray-800\/40:hover { background-color: rgba(226,232,240,0.72); }
-html.light .help-page .text-gray-700 { color: #475569; }
-html.light .help-page .text-gray-600 { color: #475569; }
-html.light .help-page .text-gray-500 { color: #334155; }
-html.light .help-page .text-gray-400 { color: #334155; }
-html.light .help-page .text-gray-300 { color: #1f2937; }
-html.light .help-page .text-yellow-400 { color: #a16207; }
-html.light .help-page .text-amber-300,
-html.light .help-page .text-amber-400 { color: #92400e; }
-html.light .help-page .bg-amber-900\/40,
-html.light .help-page .bg-amber-900\/30,
-html.light .help-page .bg-amber-900\/20 { background-color: #fef3c7; }
-html.light .help-page .border-amber-700,
-html.light .help-page .border-amber-800,
-html.light .help-page .border-amber-800\/50 { border-color: #d97706; }
-html.light .help-page .bg-blue-950\/40 { background-color: #dbeafe; }
-html.light .help-page .border-blue-800\/50 { border-color: #60a5fa; }
-html.light .help-page .bg-violet-950\/40 { background-color: #ede9fe; }
-html.light .help-page .strategy-mode-overrides { color: #334155; }
-html.light .help-page .strategy-mode-overrides .strategy-mode-label {
-  color: #312e81;
-  background-color: #ede9fe;
-  border: 1px solid #c4b5fd;
-  border-radius: 9999px;
-  padding: 0.125rem 0.45rem;
-}
-html.light .help-page .strategy-mode-overrides .strategy-mode-gate {
-  color: #9a3412;
-  background-color: #ffedd5;
-  border: 1px solid #fdba74;
-  border-radius: 9999px;
-  padding: 0.125rem 0.45rem;
-}
-html.light .help-page .strategy-mode-overrides .strategy-mode-note {
-  background-color: #fff7ed;
-  border-color: #fb923c;
-  color: #7c2d12;
-  box-shadow: 0 1px 0 rgba(251,146,60,0.18);
-}
-html.light .help-page .strategy-mode-overrides .strategy-mode-note .font-semibold {
-  color: #7c2d12;
-}
-
-/* Alerts page light mode: high-contrast cards and readable alert badges. */
-html.light .alerts-page .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light .alerts-page .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light .alerts-page .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light .alerts-page .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
-html.light .alerts-page .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light .alerts-page .border-gray-800 { border-color: #cbd5e1; }
-html.light .alerts-page .border-gray-700 { border-color: #94a3b8; }
-html.light .alerts-page .border-emerald-800\/50 { border-color: rgba(16,185,129,0.55); }
-html.light .alerts-page .shadow-emerald-900\/20 { box-shadow: 0 1px 8px rgba(16,185,129,0.16); }
-html.light .alerts-page .text-gray-700 { color: #475569; }
-html.light .alerts-page .text-gray-600 { color: #475569; }
-html.light .alerts-page .text-gray-500 { color: #334155; }
-html.light .alerts-page .text-gray-400 { color: #334155; }
-html.light .alerts-page .text-gray-300 { color: #1f2937; }
-html.light .alerts-page .text-white { color: #0f172a; }
-html.light .alerts-page .alert-item-row {
-  background-color: var(--light-surface-2);
-  border-color: #cbd5e1;
-}
-html.light .alerts-page .alert-item-row:hover {
-  border-color: #94a3b8;
-}
-html.light .alerts-page .bg-emerald-900\/50,
-html.light .alerts-page .bg-emerald-900\/30,
-html.light .alerts-page .bg-emerald-900\/20 { background-color: #d1fae5; }
-html.light .alerts-page .border-emerald-700,
-html.light .alerts-page .border-emerald-800 { border-color: #10b981; }
-html.light .alerts-page .text-emerald-300,
-html.light .alerts-page .text-emerald-400,
-html.light .alerts-page .text-emerald-600 { color: #047857; }
-html.light .alerts-page .bg-red-900\/30 { background-color: #fee2e2; }
-html.light .alerts-page .border-red-800,
-html.light .alerts-page .hover\:border-red-700:hover { border-color: #ef4444; }
-html.light .alerts-page .text-red-300,
-html.light .alerts-page .text-red-400,
-html.light .alerts-page .hover\:text-red-400:hover { color: #b91c1c; }
-html.light .alerts-page .bg-amber-900\/30 { background-color: #fef3c7; }
-html.light .alerts-page .border-amber-800 { border-color: #d97706; }
-html.light .alerts-page .text-amber-300,
-html.light .alerts-page .text-amber-400 { color: #92400e; }
-html.light .alerts-page .bg-blue-950\/30 { background-color: #dbeafe; }
-html.light .alerts-page .border-blue-900\/50 { border-color: #60a5fa; }
-html.light .alerts-page .text-blue-300\/80,
-html.light .alerts-page .text-blue-400 { color: #1d4ed8; }
-html.light .alerts-page .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
-html.light .alerts-page .bg-violet-600\/30,
-html.light .alerts-page .hover\:bg-violet-600\/30:hover { background-color: rgba(196,181,253,0.72); }
-html.light .alerts-page .border-violet-700 { border-color: #8b5cf6; }
-html.light .alerts-page .text-violet-300,
-html.light .alerts-page .text-violet-400 { color: #6d28d9; }
-
-/* Light theme: page roots use same canvas as AI Radar / AppLayout (see --light-app-canvas). */
-html.light .alerts-page,
-html.light .watchlist-page,
-html.light .trade-signals-page,
-html.light .portfolio-page,
-html.light .journal-page,
-html.light .ticker-page,
-html.light .backtest-page,
-html.light .help-page,
-html.light .settings-page,
-html.light .ai-radar-page,
-html.light .q-radar-page,
-html.light .day-trade-page,
-html.light .active-trades-page,
-html.light .swing-trade-page,
-html.light .swing-trade-watchlist-page {
-  background-color: var(--light-app-canvas);
-}
-
-/* Swing trade metric charts (Recharts) — readable grid/text in light and dark */
-.swing-trade-metric-charts {
-  --sw-chart-axis: #9ca3af;
-  --sw-chart-grid: rgba(55, 65, 81, 0.55);
-  --sw-chart-tick: #6b7280;
-  --sw-chart-tooltip-bg: rgba(17, 24, 39, 0.96);
-  --sw-chart-tooltip-border: #374151;
-  --sw-chart-tooltip-label: #9ca3af;
-  --sw-chart-line-close: #f3f4f6;
-  --sw-chart-line-ma20: #10b981;
-  --sw-chart-line-ma50: #fbbf24;
-  --sw-chart-line-rsi: #38bdf8;
-  --sw-chart-line-hv: #a78bfa;
-  --sw-chart-line-iv: #f472b6;
-  --sw-chart-ref-muted: rgba(148, 163, 184, 0.55);
-}
-
-html.light .swing-trade-metric-charts {
-  --sw-chart-axis: #475569;
-  --sw-chart-grid: rgba(148, 163, 184, 0.45);
-  --sw-chart-tick: #64748b;
-  --sw-chart-tooltip-bg: rgba(255, 255, 255, 0.98);
-  --sw-chart-tooltip-border: #e2e8f0;
-  --sw-chart-tooltip-label: #64748b;
-  --sw-chart-line-close: #0f172a;
-  --sw-chart-line-ma20: #059669;
-  --sw-chart-line-ma50: #d97706;
-  --sw-chart-line-rsi: #0284c7;
-  --sw-chart-line-hv: #7c3aed;
-  --sw-chart-line-iv: #db2777;
-  --sw-chart-ref-muted: rgba(100, 116, 139, 0.45);
-}
-
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900 { background-color: var(--light-surface-1); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/60 { background-color: var(--light-surface-2-a94); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-800\/30 { background-color: var(--light-surface-2-a72); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-700 { background-color: var(--light-surface-3); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600 { background-color: #8f98a6; }
-html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800 { border-color: #cbd5e1; }
-html.light :is(.watchlist-page, .trade-signals-page) .border-gray-800\/50 { border-color: rgba(148,163,184,0.38); }
-html.light :is(.watchlist-page, .trade-signals-page) .border-gray-700 { border-color: #94a3b8; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-700 { color: #475569; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-600 { color: #475569; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-500 { color: #334155; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-400 { color: #334155; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-300 { color: #1f2937; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-gray-200 { color: #1f2937; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-white { color: #0f172a; }
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-600:hover { background-color: #8f98a6; }
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-700:hover,
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-gray-800:hover { background-color: #e2e8f0; }
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-600:hover,
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-gray-700:hover { border-color: #94a3b8; }
-html.light :is(.watchlist-page, .trade-signals-page) input,
-html.light :is(.watchlist-page, .trade-signals-page) select {
-  background-color: var(--light-input-bg);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light :is(.watchlist-page, .trade-signals-page) input::placeholder { color: #64748b; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/50,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/60,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/60,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/50,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-950\/40,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/30,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-900\/20 { background-color: #d1fae5; }
-html.light :is(.watchlist-page, .trade-signals-page) .border-emerald-700,
-html.light :is(.watchlist-page, .trade-signals-page) .border-emerald-800 { border-color: #10b981; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-300,
-html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-400,
-html.light :is(.watchlist-page, .trade-signals-page) .text-emerald-500 { color: #047857; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-red-900\/30,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/60,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/50,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-red-950\/40 { background-color: #fee2e2; }
-html.light :is(.watchlist-page, .trade-signals-page) .border-red-800,
-html.light :is(.watchlist-page, .trade-signals-page) .border-red-900,
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:border-red-700:hover { border-color: #ef4444; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-red-300,
-html.light :is(.watchlist-page, .trade-signals-page) .text-red-400 { color: #b91c1c; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-900\/30,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/60,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/50,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-950\/40 { background-color: #fef3c7; }
-html.light :is(.watchlist-page, .trade-signals-page) .border-amber-800,
-html.light :is(.watchlist-page, .trade-signals-page) .border-amber-700 { border-color: #d97706; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-amber-300,
-html.light :is(.watchlist-page, .trade-signals-page) .text-amber-400 { color: #92400e; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600\/20 { background-color: rgba(221,214,254,0.78); }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600\/30,
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-violet-600\/30:hover,
-html.light :is(.watchlist-page, .trade-signals-page) .hover\:bg-violet-600\/40:hover { background-color: rgba(196,181,253,0.72); }
-html.light :is(.watchlist-page, .trade-signals-page) .border-violet-700 { border-color: #8b5cf6; }
-html.light :is(.watchlist-page, .trade-signals-page) .text-violet-300,
-html.light :is(.watchlist-page, .trade-signals-page) .text-violet-400 { color: #6d28d9; }
-html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600.text-white,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-violet-600 .text-white,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-emerald-700.text-white,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-amber-700.text-white,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-red-700.text-white,
-html.light :is(.watchlist-page, .trade-signals-page) .bg-gray-600.text-white { color: #ffffff; }
-
-/* Day Trade Engine / Watchlist — light theme (verdict cards, metrics, inputs) */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/60 { background-color: var(--light-surface-1-a95); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/50 { background-color: var(--light-surface-1-a92); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/40 { background-color: var(--light-surface-1-a82); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/30 { background-color: var(--light-surface-1-a82); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-900\/70 { background-color: var(--light-surface-1-a96); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/60 { background-color: var(--light-surface-2-a90); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600\/20 { background-color: rgba(221, 214, 254, 0.78); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-400 { color: #6d28d9; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-950\/50 { background-color: var(--light-surface-1-a90); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-950\/60 { background-color: var(--light-surface-1-a92); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-700:hover { background-color: #cbd5e1; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800 { background-color: var(--light-surface-2); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/80 { background-color: var(--light-surface-2-a94); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-800\/40:hover { background-color: rgba(226, 232, 240, 0.85); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-gray-800\/50:hover { background-color: rgba(226, 232, 240, 0.9); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-800 { border-color: #cbd5e1; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-800\/80 { border-color: rgba(148, 163, 184, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-dashed.border-gray-700 { border-color: #94a3b8; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l.border-gray-800 { border-color: #e2e8f0; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-black\/20 { background-color: rgba(15, 23, 42, 0.06); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) input {
-  background-color: var(--light-input-bg, #f1f5f9);
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) input::placeholder { color: #64748b; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-white { color: #0f172a; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600.text-white,
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600 .text-white { color: #ffffff; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-100 { color: #0f172a; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-200 { color: #1e293b; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-300 { color: #1f2937; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-400 { color: #334155; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-500 { color: #334155; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600 { border-color: #94a3b8; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-700 { border-color: #94a3b8; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-300 { color: #be123c; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-400 { color: #e11d48; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-violet-300:hover { color: #6d28d9; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-rose-400:hover { color: #e11d48; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-rose-300:hover { color: #be123c; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-rose-950\/20:hover { background-color: rgba(254, 205, 211, 0.35); }
-/* Verdict panel tints */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/70 { background-color: rgba(209, 250, 229, 0.95); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/60 { background-color: rgba(209, 250, 229, 0.88); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-950\/25 { background-color: rgba(209, 250, 229, 0.55); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-500\/70 { border-color: rgba(16, 185, 129, 0.65); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-600\/60 { border-color: rgba(5, 150, 105, 0.55); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-800\/40 { border-color: rgba(52, 211, 153, 0.5); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-400\/35 { --tw-ring-color: rgba(16, 185, 129, 0.35); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-500\/30 { --tw-ring-color: rgba(16, 185, 129, 0.28); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-emerald-500\/10 { --tw-ring-color: rgba(16, 185, 129, 0.12); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-950\/40 { background-color: rgba(224, 242, 254, 0.92); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-600\/50 { border-color: rgba(180, 83, 9, 0.42); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-amber-500\/25 { --tw-ring-color: rgba(14, 165, 233, 0.22); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/50 { background-color: rgba(255, 228, 230, 0.92); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/25 { background-color: rgba(255, 228, 230, 0.55); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-600\/50 { border-color: rgba(244, 63, 94, 0.5); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-800\/40 { border-color: rgba(251, 113, 133, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-rose-500\/30 { --tw-ring-color: rgba(244, 63, 94, 0.25); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-rose-500\/10 { --tw-ring-color: rgba(244, 63, 94, 0.12); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/80 { background-color: rgba(226, 232, 240, 0.92); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-gray-500\/20 { --tw-ring-color: rgba(100, 116, 139, 0.18); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-950\/20 { background-color: rgba(237, 233, 254, 0.72); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-violet-900\/40 { border-color: rgba(139, 92, 246, 0.35); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-800\/60 { border-color: rgba(251, 113, 133, 0.5); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-950\/30 { background-color: rgba(255, 228, 230, 0.65); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-200 { color: #be123c; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-300\/80 { color: rgba(190, 18, 60, 0.88); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-200 { color: #065f46; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200 { color: #92400e; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400\/95 { color: #047857; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400\/90 { color: #047857; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-300\/95 { color: #b45309; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-300\/90 { color: #b45309; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-400\/90 { color: #b45309; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-400\/85 { color: #b45309; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-400\/90 { color: #6d28d9; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-800\/40 { border-color: rgba(2, 132, 199, 0.38); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-900\/40 { border-color: rgba(180, 83, 9, 0.4); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-950\/20 { background-color: rgba(241, 245, 249, 0.88); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200\/70 { color: #92400e; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-amber-200\/80 { color: #92400e; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-500\/20 { background-color: rgba(186, 230, 253, 0.62); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-amber-500\/30 { --tw-ring-color: rgba(14, 165, 233, 0.28); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-orange-950\/25 { background-color: rgba(224, 242, 254, 0.9); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-orange-700\/35 { border-color: rgba(194, 65, 12, 0.38); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-200\/80 { color: #9a3412; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-100 { color: #431407; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-600\/20 { background-color: rgba(255, 228, 230, 0.72); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-700\/40 { border-color: rgba(190, 18, 60, 0.42); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-600\/80 { color: #047857; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-600\/80 { color: #be123c; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-orange-600\/20 { background-color: rgba(224, 242, 254, 0.78); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-orange-400 { color: #c2410c; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-sky-300\/90 { color: #0369a1; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-rose-400\/95 { color: #e11d48; }
-/* Watchlist verdict pills */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-500\/20 { background-color: rgba(167, 243, 208, 0.65); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-emerald-600\/25 { background-color: rgba(167, 243, 208, 0.58); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-amber-600\/25 { background-color: rgba(186, 230, 253, 0.58); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-rose-600\/25 { background-color: rgba(254, 205, 211, 0.6); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700\/60 { background-color: rgba(203, 213, 225, 0.85); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-200 { color: #065f46; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-300 { color: #047857; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-emerald-400 { color: #047857; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-400\/50 { border-color: rgba(52, 211, 153, 0.55); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-emerald-600\/40 { border-color: rgba(5, 150, 105, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-amber-600\/40 { border-color: rgba(217, 119, 6, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-rose-600\/40 { border-color: rgba(244, 63, 94, 0.45); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/50 { border-color: rgba(100, 116, 139, 0.4); }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-600 { background-color: #7c3aed; }
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:bg-violet-500:hover { background-color: #6d28d9; }
-
-/* Day Trade Watchlist row chrome — AH/Pre badges, collapsed panel, hover affordances */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-black\/25 {
-  background-color: rgba(15, 23, 42, 0.08);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700\/55 {
-  background-color: rgba(241, 245, 249, 0.95);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-600\/55 {
-  border-color: rgba(100, 116, 139, 0.4);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-800\/70 {
-  background-color: rgba(241, 245, 249, 0.88);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-gray-700\/80 {
-  border-color: rgba(148, 163, 184, 0.52);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-violet-500\/18 {
-  background-color: rgba(237, 233, 254, 0.9);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-violet-500\/35 {
-  border-color: rgba(139, 92, 246, 0.38);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-200 {
-  color: #5b21b6;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-sky-500\/15 {
-  background-color: rgba(224, 242, 254, 0.82);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-sky-500\/35 {
-  border-color: rgba(14, 165, 233, 0.4);
-}
-/* Swing watchlist expanded row — final_action blue tone gutter */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l-sky-500 {
-  border-color: #0284c7;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-sky-500\/15 {
-  --tw-ring-color: rgba(14, 165, 233, 0.22);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-sky-500\/25 {
-  --tw-ring-color: rgba(14, 165, 233, 0.28);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-sky-200 {
-  color: #0369a1;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-gray-600 {
-  color: #475569;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .hover\:text-white:hover {
-  color: #0f172a;
-}
-
-/* Swing Trade engine panel (+ shared) — dividers / WAIT verdict chip */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .divide-gray-800 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #e2e8f0;
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-gray-700 {
-  --tw-ring-color: rgba(148, 163, 184, 0.5);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .bg-gray-700.text-gray-300 {
-  background-color: var(--light-surface-3);
-  color: #475569;
-}
-
-/* Swing watchlist — bias strip in expanded details */
+/* ── Swing trade engine panel specifics ──────────────────────────────────── */
 html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-emerald-700\/45 {
   background-color: rgba(209, 250, 229, 0.55);
   border-color: rgba(5, 150, 105, 0.38);
   color: #065f46;
 }
-html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-emerald-700\/45 .text-emerald-400 {
-  color: #047857;
-}
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-emerald-700\/45 .text-emerald-400 { color: #047857; }
 html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-rose-700\/45 {
   background-color: rgba(255, 228, 230, 0.62);
   border-color: rgba(190, 18, 60, 0.35);
   color: #9f1239;
 }
-html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-rose-700\/45 .text-rose-400 {
-  color: #e11d48;
-}
+html.light :is(.swing-trade-page, .swing-trade-watchlist-page) .swing-watchlist-bias.border-rose-700\/45 .text-rose-400 { color: #e11d48; }
+html.light .swing-trade-watchlist-page .swing-tone-bar.bg-slate-600\/45 { background-color: rgba(100, 116, 139, 0.42); }
 
-/* Swing Trade Watchlist page — collapsed rows, expanded shells, chips (scoped subtree) */
-html.light .swing-trade-watchlist-page .border-gray-700\/90 {
-  border-color: rgba(148, 163, 184, 0.62);
-}
-html.light .swing-trade-watchlist-page .border-violet-600\/35 {
-  border-color: rgba(139, 92, 246, 0.38);
-}
-html.light .swing-trade-watchlist-page .bg-violet-950\/25 {
-  background-color: rgba(237, 233, 254, 0.78);
-}
-html.light .swing-trade-watchlist-page .text-violet-300\/95 {
-  color: #5b21b6;
-}
-html.light .swing-trade-watchlist-page .bg-gray-950\/40 {
-  background-color: var(--light-surface-1-a82);
-}
-html.light .swing-trade-watchlist-page .bg-amber-950\/30 {
-  background-color: rgba(254, 243, 199, 0.62);
-}
-html.light .swing-trade-watchlist-page .border-l-amber-400 {
-  border-left-color: #f59e0b;
-}
-html.light .swing-trade-watchlist-page .bg-rose-950\/15 {
-  background-color: rgba(255, 228, 230, 0.48);
-}
-html.light .swing-trade-watchlist-page .ring-rose-600\/15 {
-  --tw-ring-color: rgba(225, 29, 72, 0.2);
-}
-html.light .swing-trade-watchlist-page .swing-tone-bar.bg-slate-600\/45 {
-  background-color: rgba(100, 116, 139, 0.42);
-}
-
-/* Swing engine panel — playbook gutter + header opacity (shared with single-symbol page) */
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .border-l-violet-500\/70 {
-  border-left-color: rgba(124, 58, 246, 0.55);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .ring-violet-500\/10 {
-  --tw-ring-color: rgba(139, 92, 246, 0.16);
-}
-html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .text-violet-300\/90 {
-  color: #5b21b6;
-}
-
-/* Trader decision chips (watchlist + engine panel) — light surfaces */
+/* ── Trader decision chips ───────────────────────────────────────────────── */
 html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-trade-trader-headline {
   border-color: rgba(139, 92, 246, 0.42) !important;
   background-color: rgba(237, 233, 254, 0.88) !important;
@@ -1685,10 +997,441 @@ html.light :is(.day-trade-page, .active-trades-page, .swing-trade-page) .day-tra
   color: #334155 !important;
 }
 
-/* First-time advisory consent + welcome tour — light theme depth & checkbox */
+/* ── Modals (light theme) ────────────────────────────────────────────────── */
 html.light .advisory-consent-modal {
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.14);
 }
 html.light .first-login-welcome-modal {
   box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.12);
 }
+
+/* ── Strategy mode overrides ─────────────────────────────────────────────── */
+html.light .ticker-page .strategy-mode-picker > span.strategy-mode-heading { color: #0f172a; }
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800 { color: #0f172a; }
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800 .strategy-mode-sub { color: #475569; }
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover { color: #0f172a; }
+html.light .ticker-page .strategy-mode-picker button.bg-gray-800:hover .strategy-mode-sub { color: #334155; }
+html.light .ticker-page .strategy-mode-picker button.bg-violet-600 .strategy-mode-sub { color: rgba(255, 255, 255, 0.92); }
+
+html.light .help-page .strategy-mode-overrides { color: #334155; }
+html.light .help-page .strategy-mode-overrides .strategy-mode-label {
+  color: #312e81;
+  background-color: #ede9fe;
+  border: 1px solid #c4b5fd;
+  border-radius: 9999px;
+  padding: 0.125rem 0.45rem;
+}
+html.light .help-page .strategy-mode-overrides .strategy-mode-gate {
+  color: #9a3412;
+  background-color: #ffedd5;
+  border: 1px solid #fdba74;
+  border-radius: 9999px;
+  padding: 0.125rem 0.45rem;
+}
+html.light .help-page .strategy-mode-overrides .strategy-mode-note {
+  background-color: #fff7ed;
+  border-color: #fb923c;
+  color: #7c2d12;
+  box-shadow: 0 1px 0 rgba(251,146,60,0.18);
+}
+html.light .help-page .strategy-mode-overrides .strategy-mode-note .font-semibold { color: #7c2d12; }
+
+/* ── Trade Command Center — badges, severity, engines, PL ────────────────── */
+.oa-cc-card { box-shadow: none; }
+html.light .oa-cc-card { box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04); }
+
+.oa-cc-table th,
+.oa-cc-table td { vertical-align: middle; }
+
+.oa-severity-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.oa-severity-badge.oa-severity-critical {
+  background: rgb(127 29 29 / 0.95);
+  color: rgb(254 226 226);
+  border: none;
+}
+html.light .oa-severity-badge.oa-severity-critical {
+  background: #fecaca;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.oa-severity-badge.oa-severity-warning {
+  background: rgb(146 64 14 / 0.95);
+  color: rgb(254 243 199);
+  border: none;
+}
+html.light .oa-severity-badge.oa-severity-warning {
+  background: #fde68a;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+.oa-severity-badge.oa-severity-info {
+  background: rgb(30 58 138 / 0.85);
+  color: rgb(219 234 254);
+  border: none;
+}
+html.light .oa-severity-badge.oa-severity-info {
+  background: #bfdbfe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.oa-engine-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+  border: 1px solid rgba(139, 92, 246, 0.55);
+  color: rgb(196 181 253);
+  background: transparent;
+}
+html.light .oa-engine-badge {
+  border-color: rgba(109, 40, 217, 0.42);
+  color: #6d28d9;
+  background: rgba(237, 233, 254, 0.62);
+}
+
+.oa-signal-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.oa-signal-go {
+  background: rgb(22 101 52 / 0.95);
+  color: rgb(220 252 231);
+  border: none;
+}
+html.light .oa-signal-go {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.oa-signal-avoid {
+  background: rgb(153 27 27 / 0.92);
+  color: rgb(254 226 226);
+  border: none;
+}
+html.light .oa-signal-avoid {
+  background: #ffe4e6;
+  color: #be123c;
+  border: 1px solid #fda4af;
+}
+.oa-signal-watch {
+  background: rgba(124, 58, 237, 0.35);
+  color: rgb(237 233 254);
+  border: none;
+}
+html.light .oa-signal-watch {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #a78bfa;
+}
+.oa-signal-generic {
+  background: rgb(51 65 85 / 0.65);
+  color: rgb(226 232 240);
+  border: none;
+}
+html.light .oa-signal-generic {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.oa-row-go td:first-child {
+  box-shadow: inset 3px 0 0 0 rgb(34 197 94 / 0.85);
+}
+.oa-row-avoid td:first-child {
+  box-shadow: inset 3px 0 0 0 rgb(239 68 68 / 0.85);
+}
+
+.oa-pl-pos { color: rgb(52 211 153); }
+.oa-pl-neg { color: rgb(248 113 113); }
+.oa-pl-muted { color: rgb(148 163 184); }
+
+html.light .oa-cc-page .oa-pl-pos { color: rgb(21 128 61); }
+html.light .oa-cc-page .oa-pl-neg { color: rgb(185 28 28); }
+
+.oa-cc-btn-secondary {
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(55 65 81);
+  color: rgb(209 213 219);
+  background: rgb(17 24 39 / 0.6);
+}
+.oa-cc-btn-secondary:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  color: rgb(221 214 254);
+}
+html.light .oa-cc-btn-secondary {
+  border-color: #94a3b8;
+  color: #334155;
+  background: rgba(238, 241, 248, 0.95);
+}
+html.light .oa-cc-btn-secondary:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #5b21b6;
+  background: rgba(237, 233, 254, 0.88);
+}
+
+/* ── Recharts text color (light mode) ────────────────────────────────────── */
+html.light .ticker-page .recharts-wrapper text { fill: #475569; }
+
+/* ── Ticker page font mono tunables ──────────────────────────────────────── */
+html.light .ticker-page .font-mono { font-variant-numeric: tabular-nums; }
+html.light .ticker-page input.font-mono {
+  font-family: var(--app-font-sans);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+html.light .ticker-page .rounded-full,
+html.light .ticker-page .rounded-xl,
+html.light .ticker-page .rounded-2xl { box-shadow: none; }
+
+/* ── Missing light mode alpha overrides for WatchlistXPage ───── */
+html.light .bg-gray-950\/95 { background-color: color-mix(in srgb, var(--surface-card) 98%, transparent); }
+html.light .bg-gray-950\/82 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
+html.light .bg-gray-950\/65 { background-color: color-mix(in srgb, var(--surface-card) 94%, transparent); }
+html.light .bg-gray-950\/60 { background-color: color-mix(in srgb, var(--surface-card) 92%, transparent); }
+html.light .bg-gray-900\/75 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
+html.light .bg-gray-900\/30 { background-color: color-mix(in srgb, var(--surface-card) 72%, transparent); }
+html.light .bg-gray-800\/40 { background-color: color-mix(in srgb, var(--surface-elevated) 80%, transparent); }
+html.light .border-gray-800\/70 { border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent); }
+html.light .border-gray-800\/60 { border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent); }
+html.light .border-gray-700\/80 { border-color: color-mix(in srgb, var(--border-default) 80%, transparent); }
+html.light .border-gray-700\/70 { border-color: color-mix(in srgb, var(--border-default) 70%, transparent); }
+html.light .border-gray-700\/20 { border-color: color-mix(in srgb, var(--border-default) 20%, transparent); }
+html.light .border-gray-700\/12 { border-color: color-mix(in srgb, var(--border-default) 12%, transparent); }
+html.light .border-gray-800\/20 { border-color: color-mix(in srgb, var(--border-subtle) 20%, transparent); }
+html.light .border-gray-800\/18 { border-color: color-mix(in srgb, var(--border-subtle) 18%, transparent); }
+html.light .border-gray-800\/15 { border-color: color-mix(in srgb, var(--border-subtle) 15%, transparent); }
+html.light .border-gray-800\/12 { border-color: color-mix(in srgb, var(--border-subtle) 12%, transparent); }
+html.light .bg-gray-950\/30 { background-color: color-mix(in srgb, var(--surface-card) 76%, transparent); }
+html.light .bg-gray-950\/25 { background-color: color-mix(in srgb, var(--surface-card) 70%, transparent); }
+html.light .bg-gray-950\/18 { background-color: color-mix(in srgb, var(--surface-card) 62%, transparent); }
+html.light .bg-gray-900\/25 { background-color: color-mix(in srgb, var(--surface-card) 66%, transparent); }
+html.light .bg-violet-500\/12 { background-color: color-mix(in srgb, var(--accent-bg) 72%, transparent); }
+html.light .bg-purple-600.text-white { color: #ffffff; }
+
+/* ── Button variants ─────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 150ms;
+  cursor: pointer;
+  border-width: 1px;
+  border-style: solid;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+html.light .btn:disabled { opacity: 0.45; }
+
+html.dark .btn-analyze {
+  background: linear-gradient(135deg, rgba(91, 33, 182, 0.75), rgba(124, 58, 237, 0.95));
+  color: #f5f3ff;
+  border-color: rgba(167, 139, 250, 0.45);
+}
+html.dark .btn-analyze:hover {
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.9), rgba(139, 92, 246, 1));
+  border-color: rgba(196, 181, 253, 0.65);
+}
+html.light .btn-analyze {
+  background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+  color: #5b21b6;
+  border-color: #c4b5fd;
+}
+html.light .btn-analyze:hover {
+  background: linear-gradient(135deg, #ddd6fe, #c4b5fd);
+  border-color: #a78bfa;
+}
+
+html.dark .btn-trade {
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.62), rgba(91, 33, 182, 0.68));
+  color: #dbeafe;
+  border-color: rgba(96, 165, 250, 0.42);
+}
+html.dark .btn-trade:hover {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.78), rgba(109, 40, 217, 0.78));
+  border-color: rgba(147, 197, 253, 0.58);
+}
+html.light .btn-trade {
+  background: linear-gradient(135deg, #dbeafe, #ede9fe);
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+html.light .btn-trade:hover {
+  background: linear-gradient(135deg, #bfdbfe, #ddd6fe);
+  border-color: #60a5fa;
+}
+
+html.dark .btn-alert {
+  background: linear-gradient(135deg, rgba(154, 52, 18, 0.58), rgba(217, 119, 6, 0.4));
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.38);
+}
+html.dark .btn-alert:hover {
+  background: linear-gradient(135deg, rgba(180, 83, 9, 0.68), rgba(245, 158, 11, 0.5));
+  border-color: rgba(252, 211, 77, 0.55);
+}
+html.light .btn-alert {
+  background: linear-gradient(135deg, #fff7ed, #fffbeb);
+  color: #c2410c;
+  border-color: #fdba74;
+}
+html.light .btn-alert:hover {
+  background: linear-gradient(135deg, #ffedd5, #fef3c7);
+  border-color: #fb923c;
+}
+
+html.dark .btn-surface {
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  border-color: rgba(71, 85, 105, 0.28);
+}
+html.dark .btn-surface:hover {
+  background: rgba(30, 41, 59, 0.88);
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.32);
+}
+html.light .btn-surface {
+  background: rgba(255, 255, 255, 0.96);
+  color: #334155;
+  border-color: #cbd5e1;
+}
+html.light .btn-surface:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+/* Primary — purple filled */
+html.light .btn-primary { background: #7c3aed; color: #fff; border-color: #6d28d9; }
+html.light .btn-primary:hover { background: #6d28d9; border-color: #5b21b6; }
+html.dark .btn-primary { background: #7c3aed; color: #fff; border-color: #6d28d9; }
+html.dark .btn-primary:hover { background: #6d28d9; border-color: #5b21b6; }
+
+/* Secondary — light bg, slate text, subtle border */
+html.light .btn-secondary { background: #fff; color: #334155; border-color: #cbd5e1; }
+html.light .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
+html.dark .btn-secondary { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+html.dark .btn-secondary:hover { background: #1e293b; border-color: #64748b; }
+
+/* Outline — transparent, muted border */
+html.light .btn-outline { background: transparent; color: #64748b; border-color: #e2e8f0; }
+html.light .btn-outline:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }
+html.dark .btn-outline { background: transparent; color: #94a3b8; border-color: #334155; }
+html.dark .btn-outline:hover { background: #1e293b; border-color: #64748b; color: #e2e8f0; }
+
+/* Ghost — transparent, no border */
+html.light .btn-ghost { background: transparent; color: #64748b; border-color: transparent; }
+html.light .btn-ghost:hover { background: #f1f5f9; color: #334155; }
+html.dark .btn-ghost { background: transparent; color: #94a3b8; border-color: transparent; }
+html.dark .btn-ghost:hover { background: #1e293b; color: #e2e8f0; }
+
+/* Danger — soft red */
+html.light .btn-danger { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+html.light .btn-danger:hover { background: #fee2e2; border-color: #fca5a5; }
+html.dark .btn-danger { background: rgba(127, 29, 29, 0.55); color: #fca5a5; border-color: rgba(220, 38, 38, 0.35); }
+html.dark .btn-danger:hover { background: rgba(127, 29, 29, 0.75); border-color: rgba(220, 38, 38, 0.55); }
+
+/* Warning — soft amber */
+html.light .btn-warning { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+html.light .btn-warning:hover { background: #fef3c7; border-color: #fcd34d; }
+html.dark .btn-warning { background: rgba(146, 64, 14, 0.45); color: #fbbf24; border-color: rgba(217, 119, 6, 0.35); }
+html.dark .btn-warning:hover { background: rgba(146, 64, 14, 0.65); border-color: rgba(217, 119, 6, 0.55); }
+
+/* Filter pill — selected */
+html.light .btn-filter-active { background: #7c3aed; color: #fff; border-color: #6d28d9; }
+html.light .btn-filter-active:hover { background: #6d28d9; }
+html.dark .btn-filter-active { background: #7c3aed; color: #fff; border-color: #6d28d9; }
+html.dark .btn-filter-active:hover { background: #6d28d9; }
+
+/* Filter pill — unselected */
+html.light .btn-filter { background: transparent; color: #475569; border-color: #cbd5e1; }
+html.light .btn-filter:hover { background: #f1f5f9; border-color: #94a3b8; color: #1e293b; }
+html.dark .btn-filter { background: transparent; color: #94a3b8; border-color: #334155; }
+html.dark .btn-filter:hover { background: #1e293b; border-color: #64748b; color: #e2e8f0; }
+
+/* Menu dropdown */
+html.dark .menu-dropdown { background: #0f172a; border-color: #334155; }
+html.light .menu-dropdown { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 30px rgba(15,23,42,0.1); }
+html.dark .menu-item { color: #cbd5e1; }
+html.dark .menu-item:hover { background: #1e293b; color: #f1f5f9; }
+html.light .menu-item { color: #475569; }
+html.light .menu-item:hover { background: #f1f5f9; color: #1e293b; }
+html.light .menu-item-danger:hover { color: #dc2626; }
+html.dark .menu-item-danger:hover { color: #fca5a5; }
+
+/* ── Missing gray alpha overrides (TradeCommandCenter + others) ──── */
+html.light .bg-gray-950\/90 { background-color: var(--surface-card); }
+html.light .bg-gray-900\/90 { background-color: var(--surface-card); }
+html.light .bg-gray-900\/40 { background-color: color-mix(in srgb, var(--surface-elevated) 60%, transparent); }
+
+/* ── Trade Command Center — badge tones (light mode) ────────────── */
+html.light .border-emerald-600\/35 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .border-rose-600\/35 { border-color: color-mix(in srgb, var(--bearish-border) 45%, transparent); }
+html.light .border-amber-600\/35 { border-color: color-mix(in srgb, var(--warning-border) 48%, transparent); }
+html.light .border-sky-700\/35 { border-color: color-mix(in srgb, var(--info-border) 40%, transparent); }
+
+/* ── Trade Command Center — notice / error banners (light mode) ──── */
+html.light .bg-emerald-950\/30 { background-color: color-mix(in srgb, var(--bullish-bg) 52%, transparent); }
+html.light .border-emerald-700\/40 { border-color: color-mix(in srgb, var(--bullish-border) 50%, transparent); }
+html.light .bg-amber-950\/30 { background-color: color-mix(in srgb, var(--warning-bg) 56%, transparent); }
+html.light .border-amber-700\/40 { border-color: color-mix(in srgb, var(--warning-border) 50%, transparent); }
+html.light .bg-sky-950\/30 { background-color: color-mix(in srgb, var(--info-bg) 55%, transparent); }
+html.light .border-sky-700\/40 { border-color: color-mix(in srgb, var(--info-border) 50%, transparent); }
+html.light .bg-red-950\/40 { background-color: color-mix(in srgb, var(--bearish-bg) 55%, transparent); }
+html.light .border-red-800 { border-color: var(--bearish-border); }
+
+/* ── Trade Command Center — Market Position Widget tones ────────── */
+html.light .bg-emerald-500\/15 { background-color: color-mix(in srgb, var(--bullish-bg) 72%, transparent); }
+html.light .bg-rose-500\/15 { background-color: color-mix(in srgb, var(--bearish-bg) 72%, transparent); }
+html.light .bg-amber-500\/15 { background-color: color-mix(in srgb, var(--warning-bg) 72%, transparent); }
+html.light .bg-gray-700\/40 { background-color: color-mix(in srgb, var(--surface-raised) 60%, transparent); }
+html.light .border-emerald-600\/40 { border-color: color-mix(in srgb, var(--bullish-border) 55%, transparent); }
+html.light .border-rose-700\/40 { border-color: color-mix(in srgb, var(--bearish-border) 50%, transparent); }
+html.light .border-amber-600\/40 { border-color: color-mix(in srgb, var(--warning-border) 52%, transparent); }
+html.light .border-gray-600\/40 { border-color: color-mix(in srgb, var(--border-strong) 40%, transparent); }
+/* ── Trade Command Center — misc text colors (light mode) ───────── */
+html.light .text-violet-400 { color: #7c3aed; }
+html.light .text-violet-200 { color: #6d28d9; }
+html.light .text-violet-200\/90 { color: #6d28d9; }
+html.light .text-violet-300 { color: #7c3aed; }
+
+/* ── Trade Command Center — chart grid lines (light mode) ────────── */
+html.light .trade-command-center-page .recharts-cartesian-grid line {
+  stroke: #e2e8f0 !important;
+}
+html.light .trade-command-center-page .recharts-text {
+  fill: #64748b !important;
+}
+
+/* ── Trade Command Center — page-level card/label overrides ────── */
+html.light .trade-command-center-page .bg-gray-900\/80 { background-color: var(--surface-card); }
+html.light .trade-command-center-page .bg-gray-900\/90 { background-color: var(--surface-card); }
+html.light .trade-command-center-page .bg-gray-950\/60 { background-color: var(--surface-elevated); }
+html.light .trade-command-center-page .bg-gray-950\/80 { background-color: var(--surface-elevated); }
+html.light .trade-command-center-page .bg-gray-900\/40 { background-color: color-mix(in srgb, var(--surface-elevated) 60%, transparent); }
+html.light .trade-command-center-page .border-dashed.border-gray-700 { border-color: var(--border-default); }
+html.light .trade-command-center-page .border-t.border-gray-800\/70 { border-color: var(--border-subtle); }
+html.light .trade-command-center-page .bg-gray-800 { background-color: var(--surface-elevated); }
+html.light .trade-command-center-page .h-2\.rounded-full.bg-gray-800 { background-color: var(--surface-muted); }
+html.light .trade-command-center-page .bg-amber-500\/5 { background-color: rgba(217, 119, 6, 0.06); }
+html.light .trade-command-center-page .border-amber-700\/25 { border-color: color-mix(in srgb, var(--warning-border) 28%, transparent); }

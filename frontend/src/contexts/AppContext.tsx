@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import axios from 'axios'
 import type { AlertEntry, Page, User, WatchlistItem, PortfolioPosition, Recommendation, TickerCacheEntry, AnalyzeResponse, StrategyMode, ClosePositionPayload } from '../types'
@@ -38,6 +38,8 @@ import {
 import { OA_DAY_TRADE_WATCHLIST_KEY, OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 import { ADVISORY_TERMS_VERSION } from '../constants/advisoryDisclaimer'
 import { MULTI_WEEK_TARGETS, type WeeksOut } from '../data/stockUniverse'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { locationToPage, pageToLocation } from '../routing/paths'
 
 function isWeeksOut(n: number): n is WeeksOut {
   return (MULTI_WEEK_TARGETS as readonly number[]).includes(n)
@@ -61,35 +63,6 @@ function extractAxiosDetail(err: unknown): string | undefined {
       )
       .join(' ')
   return undefined
-}
-
-// ─── Router ────────────────────────────────────────────────────────────────────
-function getHashPage(): Page {
-  const raw = window.location.hash.replace(/^#/, '')
-  const pathPart = raw.split('?')[0].trim()
-  const h = pathPart
-  if (h === 'watchlist') return 'watchlist'
-  if (h === 'portfolio') return 'portfolio'
-  if (h === 'help') return 'help'
-  if (h === 'login') return 'login'
-  if (h === 'ai-stocks') return 'ai-stocks'
-  if (h === 'q-radar') return 'q-radar'
-  if (h === 'backtest') return 'backtest'
-  if (h === 'trade-signals') return 'trade-signals'
-  if (h === 'alerts') return 'alerts'
-  if (h === 'settings') return 'settings'
-  if (h === 'journal') return 'journal'
-  if (h === 'auto-trade') return 'auto-trade'
-  if (h === 'day-trade') return 'day-trade'
-  if (h === 'day-trade-watchlist') return 'day-trade-watchlist'
-  if (h === 'day-trade-alerts') return 'day-trade-alerts'
-  if (h === 'active-trades') return 'active-trades'
-  if (h === 'swing-trade') return 'swing-trade'
-  if (h === 'swing-trade-watchlist') return 'swing-trade-watchlist'
-  if (h === 'forgot-password') return 'forgot-password'
-  if (h === 'reset-password') return 'reset-password'
-  if (h === 'activate') return 'activate'
-  return 'ticker'
 }
 
 // ─── Alert time-window helper ───────────────────────────────────────────────────
@@ -156,6 +129,9 @@ interface AppContextValue {
   // Router
   page: Page
   navigate: (p: Page) => void
+  /** Positions hub tab from URL (`open` | `closed` | `risk`). */
+  positionsTab: string
+  navigatePositionsTab: (tab: string) => void
   /** Go to Strategy Finder with empty form (no restore of last analysis). */
   navigateToTickerAdvisorFresh: () => void
 
@@ -189,6 +165,8 @@ interface AppContextValue {
   watchlistMax: number
   addToWatchlist: (item: Omit<WatchlistItem, 'addedAt'>) => boolean
   removeFromWatchlist: (ticker: string) => void
+  /** Replace notes for an existing watchlist symbol (persists via user-data save). */
+  updateWatchlistNotes: (ticker: string, notes: string) => void
   isWatched: (ticker: string) => boolean
   watchlistNotice: string | null
   clearWatchlistNotice: () => void
@@ -197,7 +175,7 @@ interface AppContextValue {
   dayTradeWatchlist: string[]
   setDayTradeWatchlist: React.Dispatch<React.SetStateAction<string[]>>
 
-  /** Persisted swing-trade watchlist (admin-only; max 10). */
+  /** Persisted swing-trade watchlist (admin-only; max 20). */
   swingTradeWatchlist: string[]
   setSwingTradeWatchlist: React.Dispatch<React.SetStateAction<string[]>>
 
@@ -277,6 +255,8 @@ interface AppContextValue {
   refreshJournalCount: () => Promise<void>
   /** Set badge count from a known list length (e.g. after Journal page fetch) without re-querying. */
   syncJournalEntryCount: (n: number) => void
+  /** Monotonic counter: increments after every successful portfolio save. */
+  portfolioRefreshKey: number
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -355,7 +335,16 @@ function getInitialTheme(): 'dark' | 'light' {
 
 // ─── Provider ──────────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [page, setPage]             = useState<Page>(getHashPage)
+  const location = useLocation()
+  const routerNavigate = useNavigate()
+  const page = useMemo(() => locationToPage(location.pathname), [location.pathname])
+  const positionsTab = useMemo(() => {
+    if (location.pathname !== '/positions') return 'open'
+    const t = new URLSearchParams(location.search).get('tab')?.trim()
+    if (t === 'open' || t === 'closed') return t
+    return 'open'
+  }, [location.pathname, location.search])
+
   const [user, setUser]             = useState<User | null>(() => migrateStoredUser(load<User | null>('oa_user', null)))
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
   const [watchlistMax, setWatchlistMax] = useState(15)
@@ -392,6 +381,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [advisoryAcceptedAt, setAdvisoryAcceptedAt] = useState<string | null>(null)
   const [advisoryTermsVersion, setAdvisoryTermsVersion] = useState<string | null>(null)
   const [journalEntryCount, setJournalEntryCount] = useState(0)
+  /** Monotonic counter incremented after every successful portfolio save.
+   *  Used by Positions Center to refresh summary/KPI data after mutations. */
+  const [portfolioRefreshKey, setPortfolioRefreshKey] = useState(0)
   const loginRefreshEmailRef = useRef<string | null>(null)
   const finderDeepLinkHandledRef = useRef(false)
   /** Previous signed-in email; used to detect account switch vs first login (day-trade UI resets on switch/sign-out). */
@@ -421,8 +413,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Keep refs so interval/async closures always see current values
   const watchlistRef = useRef(watchlist)
   useEffect(() => { watchlistRef.current = watchlist }, [watchlist])
-  const watchlistMaxRef = useRef(watchlistMax)
-  useEffect(() => { watchlistMaxRef.current = watchlistMax }, [watchlistMax])
   const portfolioRef = useRef(portfolio)
   useEffect(() => { portfolioRef.current = portfolio }, [portfolio])
   const dayTradeWatchlistRef = useRef(dayTradeWatchlist)
@@ -436,39 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const portfolioExpiryFetchRef = useRef<Set<string>>(new Set())
   const portfolioFetchFailuresRef = useRef<Map<string, number>>(new Map())
 
-  // Sync hash (preserve ?token= on activate / reset-password; ?ticker= on day-trade email links)
-  useEffect(() => {
-    if (page === 'ticker') {
-      window.location.hash = ''
-      return
-    }
-    if (page === 'day-trade') {
-      const raw = window.location.hash.replace(/^#/, '')
-      const qi = raw.indexOf('?')
-      const pathPart = qi >= 0 ? raw.slice(0, qi) : raw
-      const qs = qi >= 0 ? raw.slice(qi) : ''
-      if (pathPart === 'day-trade' && qs) {
-        window.location.hash = `day-trade${qs}`
-        return
-      }
-      window.location.hash = 'day-trade'
-      return
-    }
-    const seg = window.location.hash.replace(/^#/, '').split('?')[0]
-    if ((page === 'activate' || page === 'reset-password') && seg === page) {
-      return
-    }
-    window.location.hash = page
-  }, [page])
-
-  // Browser back/forward
-  useEffect(() => {
-    const handler = () => setPage(getHashPage())
-    window.addEventListener('hashchange', handler)
-    return () => window.removeEventListener('hashchange', handler)
-  }, [])
-
-  // Persist
+  // ── Router sync (BrowserRouter paths; legacy `#segment` handled in App LegacyHashRedirect) ──
   useEffect(() => { save('oa_user', user) }, [user])
   useEffect(() => { save('oa_cache', tickerCache) }, [tickerCache])
   useEffect(() => { save('oa_alerts', activeAlertsOnly(alerts)) }, [alerts])
@@ -483,6 +441,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       html.classList.add('dark')
     }
   }, [theme])
+
+  // Listen for system color-scheme changes only when user hasn't saved a preference
+  useEffect(() => {
+    const saved = load<'dark' | 'light' | null>('oa_theme', null)
+    if (saved) return
+    const mq = window.matchMedia('(prefers-color-scheme: light)')
+    const handler = (e: MediaQueryListEvent) => {
+      setTheme(e.matches ? 'light' : 'dark')
+    }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   // Load watchlist and portfolio from SQLite for the signed-in email.
   useEffect(() => {
@@ -521,7 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let sw: string[] = Array.isArray(data.swing_trade_watchlist)
           ? data.swing_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
           : []
-        setSwingTradeWatchlist(sw.slice(0, 10))
+        setSwingTradeWatchlist(sw.slice(0, 20))
         const wm = Number(data.watchlist_max)
         setWatchlistMax(Number.isFinite(wm) && wm >= 1 ? Math.floor(wm) : 15)
         setAdvisoryAcceptedAt(data.advisory_accepted_at ?? null)
@@ -564,11 +534,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       advisoryAcceptedAt && advisoryTermsVersion
         ? { advisoryTermsVersion, advisoryAcceptedAt }
         : undefined
-    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled).catch(e => {
-      const msg = extractAxiosDetail(e)
-      if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
-      console.warn('[user-data] save failed:', e)
-    })
+    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
+      .then(() => {
+        setPortfolioRefreshKey(k => k + 1)
+      })
+      .catch(e => {
+        const msg = extractAxiosDetail(e)
+        if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
+        console.warn('[user-data] save failed:', e)
+      })
   }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
@@ -657,7 +631,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [user?.email])
 
   // ── Router ──────────────────────────────────────────────────────────────────
-  const navigate = useCallback((p: Page) => setPage(p), [])
+  const navigate = useCallback(
+    (p: Page) => {
+      routerNavigate(pageToLocation(p))
+    },
+    [routerNavigate],
+  )
+
+  const navigatePositionsTab = useCallback(
+    (tab: string) => {
+      routerNavigate(`/positions?tab=${encodeURIComponent(tab)}`)
+    },
+    [routerNavigate],
+  )
 
   const clearWatchlistNotice = useCallback(() => setWatchlistNotice(null), [])
 
@@ -673,14 +659,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       /* ignore */
     }
     clearPendingTicker()
-    setPage('ticker')
-  }, [clearPendingTicker])
+    routerNavigate('/')
+  }, [clearPendingTicker, routerNavigate])
 
   const requestAnalysis = useCallback((ticker: string, options?: PendingAnalysisOptions) => {
     setPendingTicker(ticker.trim().toUpperCase())
     setPendingAnalysisOptions(options ?? null)
-    setPage('ticker')
-  }, [])
+    routerNavigate('/')
+  }, [routerNavigate])
 
   useEffect(() => {
     if (!user) finderDeepLinkHandledRef.current = false
@@ -767,8 +753,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAdvisoryAcceptedAt(null)
     setAdvisoryTermsVersion(null)
     setJournalEntryCount(0)
-    setPage('login')
-  }, [])
+    routerNavigate('/login', { replace: true })
+  }, [routerNavigate])
 
   const logoutRef = useRef(logout)
   useEffect(() => {
@@ -789,11 +775,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!ticker) return false
     const prev = watchlistRef.current
     if (prev.some(w => w.ticker === ticker)) return true
-    const max = watchlistMaxRef.current
-    if (prev.length >= max) {
-      setWatchlistNotice(`Watchlist is full (${max} symbols max). Remove one to add another.`)
-      return false
-    }
     setWatchlistNotice(null)
     setWatchlist([...prev, { ...item, ticker, addedAt: new Date().toISOString() }])
     return true
@@ -801,6 +782,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const removeFromWatchlist = useCallback((ticker: string) => {
     setWatchlist(prev => prev.filter(w => w.ticker !== ticker))
+  }, [])
+
+  const updateWatchlistNotes = useCallback((ticker: string, notes: string) => {
+    const t = ticker.trim().toUpperCase()
+    const trimmed = notes.trim()
+    setWatchlist(prev =>
+      prev.map(w => (w.ticker === t ? { ...w, notes: trimmed || undefined } : w)),
+    )
   }, [])
 
   const isWatched = useCallback((ticker: string) =>
@@ -843,7 +832,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: `manual-${pos.ticker}-${Date.now()}`,
       addedAt: new Date().toISOString(),
       status: 'open' as const,
-      source: 'manual' as const,
     }, ...prev])
   }, [])
 
@@ -1328,11 +1316,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      page, navigate, navigateToTickerAdvisorFresh,
+      page, navigate, positionsTab, navigatePositionsTab, navigateToTickerAdvisorFresh,
       pendingTicker, pendingAnalysisOptions, requestAnalysis, clearPendingTicker,
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
       userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
-      watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, isWatched, watchlistNotice, clearWatchlistNotice,
+      watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, updateWatchlistNotes, isWatched, watchlistNotice, clearWatchlistNotice,
       dayTradeWatchlist, setDayTradeWatchlist,
       swingTradeWatchlist, setSwingTradeWatchlist,
       dayTradeEngineUI, setDayTradeEngineUI,
@@ -1346,7 +1334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       theme, toggleTheme,
       alertEmailEnabled, setAlertEmailEnabled,
       accountSize, setAccountSize,
-      journalEntryCount, refreshJournalCount, syncJournalEntryCount,
+      journalEntryCount, refreshJournalCount, syncJournalEntryCount, portfolioRefreshKey,
     }}>
       {children}
     </AppContext.Provider>

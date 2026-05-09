@@ -75,7 +75,7 @@ class UserDataResponse(BaseModel):
     advisory_accepted_at: Optional[str] = None
     """Symbols scanned every 15m for day-trade WATCH→GO escalations (admin-only feature)."""
     day_trade_watchlist: list[str] = Field(default_factory=list)
-    """Saved swing-trade symbols (admin-only UI; max 10; no backend alert scan)."""
+    """Saved swing-trade symbols (admin-only UI; max 20; no backend alert scan)."""
     swing_trade_watchlist: list[str] = Field(default_factory=list)
     """Max watchlist length for this account (OPTION_ADVISOR_WATCHLIST_MAX_USER / _ADMIN)."""
     watchlist_max: int = 15
@@ -243,6 +243,15 @@ class AnalyzeResponse(BaseModel):
     price_history: list[PricePoint]
     filters_applied: dict
     quote_quality_summary: QuoteQualitySummary = Field(default_factory=QuoteQualitySummary)
+    market_bias: str = "NEUTRAL"
+    setup_quality: str = "WEAK"
+    execution_readiness: str = "WAIT"
+    final_decision: str = "WAIT"
+    confidence: int = 0
+    reason: str = ""
+    supporting_factors: list[str] = Field(default_factory=list)
+    missing_confirmations: list[str] = Field(default_factory=list)
+    risk_state: str = "MEDIUM"
 
 
 class BacktestRequest(BaseModel):
@@ -268,6 +277,15 @@ class DayTradeResponse(BaseModel):
     reasons: list[str]
     metrics: dict
     trader_decision: dict = Field(default_factory=dict)
+    market_bias: str = "NEUTRAL"
+    setup_quality: str = "WEAK"
+    execution_readiness: str = "WAIT"
+    final_decision: str = "WAIT"
+    confidence: int = 0
+    reason: str = ""
+    supporting_factors: list[str] = Field(default_factory=list)
+    missing_confirmations: list[str] = Field(default_factory=list)
+    risk_state: str = "MEDIUM"
 
 
 class SwingTradeRequest(BaseModel):
@@ -297,6 +315,15 @@ class SwingTradeResponse(BaseModel):
     suggested_strategy:      str           = "NO_TRADE"
     avoid_reason:            Optional[str] = None
     playbook_hint:           str           = ""
+    market_bias:             str           = "NEUTRAL"
+    setup_quality:           str           = "WEAK"
+    execution_readiness:     str           = "WAIT"
+    final_decision:          str           = "WAIT"
+    confidence:              int           = 0
+    reason:                  str           = ""
+    supporting_factors:      list[str]     = Field(default_factory=list)
+    missing_confirmations:   list[str]     = Field(default_factory=list)
+    risk_state:              str           = "MEDIUM"
 
 
 class ActiveTradeEnterRequest(BaseModel):

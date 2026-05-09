@@ -1,6 +1,6 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ChevronDown, ChevronRight, LayoutList, Loader2, Plus, RefreshCw, Trash2, Zap,
+  ChevronDown, ChevronUp, LayoutList, Loader2, Plus, RefreshCw, Trash2, TrendingUp, Zap,
 } from 'lucide-react'
 import { analyzeDayTrade } from '../api/client'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
@@ -9,6 +9,7 @@ import {
   DayTradeTraderDecisionChips,
 } from '../components/DayTradeTraderDecision'
 import { useApp } from '../contexts/AppContext'
+import { useWatchlistHubBinding } from '../contexts/WatchlistHubContext'
 import type { DayTradeWatchlistRowState } from '../types/dayTradeUi'
 
 const MAX_TICKERS = 10
@@ -20,10 +21,9 @@ function axiosDetail(e: unknown): string {
 }
 
 function verdictPillClass(v: string): string {
-  if (v === 'STRONG GO') return 'bg-emerald-500/20 text-emerald-200 border-emerald-400/50'
-  if (v === 'GO') return 'bg-emerald-600/25 text-emerald-300 border-emerald-600/40'
-  if (v === 'WATCH') return 'bg-amber-600/25 text-amber-200 border-amber-600/40'
-  if (v === 'NO-GO') return 'bg-rose-600/25 text-rose-300 border-rose-600/40'
+  if (v === 'READY' || v === 'TRADE') return 'bg-emerald-500/20 text-emerald-200 border-emerald-400/50'
+  if (v === 'WATCH' || v === 'WAIT') return 'bg-amber-600/25 text-amber-200 border-amber-600/40'
+  if (v === 'AVOID' || v === 'EXIT' || v === 'NO_EDGE') return 'bg-rose-600/25 text-rose-300 border-rose-600/40'
   return 'bg-gray-700/60 text-gray-300 border-gray-600/50'
 }
 
@@ -108,7 +108,7 @@ function watchlistBannerQuote(metrics: Record<string, unknown>): {
   return null
 }
 
-export default function DayTradeWatchlistPage() {
+export function DayTradeWatchlistPanel({ embedInHub = false }: { embedInHub?: boolean }) {
   const {
     dayTradeWatchlist: tickers,
     setDayTradeWatchlist,
@@ -117,6 +117,10 @@ export default function DayTradeWatchlistPage() {
     navigate,
   } = useApp()
   const { addInput, expanded, rows, rowBusy, bulkLoading } = dayTradeWatchlistUI
+
+  const addInputRef = useRef<HTMLInputElement>(null)
+  /** Hub mode: Add in tab bar toggles this panel (same pattern as Regular watchlist). */
+  const [showAddForm, setShowAddForm] = useState(false)
 
   useEffect(() => {
     setWtUi(prev => {
@@ -177,7 +181,8 @@ export default function DayTradeWatchlistPage() {
       addInput: '',
       rows: { ...prev.rows, [sym]: { status: 'idle' } },
     }))
-  }, [addInput, tickers, setDayTradeWatchlist, setWtUi])
+    if (embedInHub) setShowAddForm(false)
+  }, [addInput, embedInHub, tickers, setDayTradeWatchlist, setWtUi])
 
   const removeTicker = useCallback(
     (t: string) => {
@@ -221,158 +226,325 @@ export default function DayTradeWatchlistPage() {
     }
   }, [tickers, fetchOne, setWtUi])
 
+  const hubOnAdd = useCallback(() => setShowAddForm(s => !s), [])
+
+  const hubOnRefresh = useCallback(() => {
+    void refreshAll()
+  }, [refreshAll])
+
+  const hubOnExportCsv = useCallback(() => {
+    const lines = ['ticker', ...tickers.map(t => `${t}`)]
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `day-trade-watchlist-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [tickers])
+
+  useWatchlistHubBinding('day', embedInHub, {
+    onAdd: hubOnAdd,
+    onRefresh: hubOnRefresh,
+    refreshDisabled: tickers.length === 0 || bulkLoading,
+    refreshBusy: bulkLoading,
+    addDisabled: tickers.length >= MAX_TICKERS,
+    addActive: showAddForm,
+    onExportCsv: hubOnExportCsv,
+  })
+
+  useEffect(() => {
+    if (embedInHub && showAddForm) queueMicrotask(() => addInputRef.current?.focus())
+  }, [embedInHub, showAddForm])
+
+  const wrapperClass = embedInHub
+    ? 'day-trade-page mx-auto w-full max-w-6xl space-y-6 pb-8'
+    : 'day-trade-page mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 pb-24'
+
   return (
-    <div className="day-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 text-orange-400">
-          <LayoutList size={20} />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-white">Day Trade Watchlist</h1>
-          <p className="text-xs text-gray-500">
-            Up to {MAX_TICKERS} symbols · synced to your account · same engine as{' '}
-            <span className="text-gray-400">Day Trade Engine</span>
-          </p>
-        </div>
-      </div>
-
-      <p className="text-xs text-gray-500 -mt-2">
-        Backend scans this list ~ every 15 minutes (when alerts run) and emails you when a symbol moves{' '}
-        <span className="text-gray-400">WATCH → GO</span> or <span className="text-gray-400">STRONG GO</span>.{' '}
-        <button
-          type="button"
-          onClick={() => navigate('day-trade-alerts')}
-          className="text-violet-400 hover:text-violet-300 font-semibold"
-        >
-          View alert history →
-        </button>
-      </p>
-
-      <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-          <div className="flex-1 min-w-0">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              Add symbol
-            </label>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
-                placeholder="Ticker"
-                value={addInput}
-                onChange={e => setWtUi(prev => ({ ...prev, addInput: e.target.value.toUpperCase() }))}
-                onKeyDown={e => e.key === 'Enter' && addTicker()}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={tickers.length >= MAX_TICKERS}
-              />
-              <button
-                type="button"
-                onClick={addTicker}
-                disabled={tickers.length >= MAX_TICKERS || !addInput.trim()}
-                className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-4 py-3 min-h-[48px]"
-              >
-                <Plus size={18} />
-                Add
-              </button>
+    <div className={wrapperClass}>
+      {!embedInHub && (
+        <>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 text-orange-400">
+              <LayoutList size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">Day Trade Watchlist</h1>
+              <p className="text-xs text-gray-500">
+                Up to {MAX_TICKERS} symbols · synced to your account · same engine as{' '}
+                <span className="text-gray-400">Day Trade Engine</span>
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshAll()}
-            disabled={tickers.length === 0 || bulkLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/80 hover:bg-gray-800 text-gray-200 font-semibold px-4 py-3 min-h-[48px] disabled:opacity-50"
-          >
-            {bulkLoading ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-            Refresh all
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-500 mt-2">
-          {tickers.length} of {MAX_TICKERS} tickers saved (server-backed)
-        </p>
+
+          <p className="text-xs text-gray-500 -mt-2">
+            Backend scans this list ~ every 15 minutes (when alerts run) and emails you when a symbol moves{' '}
+            <span className="text-gray-400">WATCH → GO</span> or <span className="text-gray-400">STRONG GO</span>.{' '}
+            <button
+              type="button"
+              onClick={() => navigate('day-trade-alerts')}
+              className="text-violet-400 hover:text-violet-300 font-semibold"
+            >
+              View alert history →
+            </button>
+          </p>
+        </>
+      )}
+
+      <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
+        {embedInHub ? (
+          <>
+            <p className="text-[11px] text-gray-500">
+              {tickers.length} of {MAX_TICKERS} tickers saved (server-backed)
+            </p>
+            {showAddForm && (
+              <div className="mt-4 bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+                <div className="text-sm font-semibold text-gray-300">Add ticker</div>
+                <div className="flex gap-3 flex-wrap items-center">
+                  <input
+                    ref={addInputRef}
+                    value={addInput}
+                    onChange={e => setWtUi(prev => ({ ...prev, addInput: e.target.value.toUpperCase() }))}
+                    onKeyDown={e => e.key === 'Enter' && addTicker()}
+                    placeholder="AAPL"
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={tickers.length >= MAX_TICKERS}
+                    className="w-28 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white font-mono
+                      text-sm uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addTicker}
+                    disabled={tickers.length >= MAX_TICKERS || !addInput.trim()}
+                    aria-label="Add ticker"
+                    title="Add to watchlist"
+                    className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-xl transition-colors shrink-0"
+                  >
+                    <Plus size={20} strokeWidth={2.5} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="px-4 py-2 bg-gray-800 text-gray-400 text-sm rounded-xl hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="flex-1 min-w-0">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Add ticker
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    ref={addInputRef}
+                    className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
+                    placeholder="Ticker"
+                    value={addInput}
+                    onChange={e => setWtUi(prev => ({ ...prev, addInput: e.target.value.toUpperCase() }))}
+                    onKeyDown={e => e.key === 'Enter' && addTicker()}
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={tickers.length >= MAX_TICKERS}
+                  />
+                  <button
+                    type="button"
+                    onClick={addTicker}
+                    disabled={tickers.length >= MAX_TICKERS || !addInput.trim()}
+                    className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-4 py-3 min-h-[48px]"
+                  >
+                    <Plus size={18} />
+                    Add
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshAll()}
+                disabled={tickers.length === 0 || bulkLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/80 hover:bg-gray-800 text-gray-200 font-semibold px-4 py-3 min-h-[48px] disabled:opacity-50"
+              >
+                {bulkLoading ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                Refresh all
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-2">
+              {tickers.length} of {MAX_TICKERS} tickers saved (server-backed)
+            </p>
+          </>
+        )}
       </section>
 
       {tickers.length === 0 && (
         <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/30 px-4 py-10 text-center text-sm text-gray-500">
-          Add tickers above to track day-trade verdicts side by side.
+          {embedInHub
+            ? 'Click Add in the tab bar to enter a symbol, then confirm here.'
+            : 'Add tickers above to track resolved day-trade decisions side by side.'}
         </div>
       )}
 
-      <ul className="space-y-3">
+      <div className="space-y-2">
+        {tickers.length > 0 && (
+          <div className="hidden sm:flex items-center gap-3 px-4 py-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <div className="w-28 shrink-0">Ticker</div>
+            <div className="w-28 shrink-0">Quote</div>
+            <div className="w-24 shrink-0 hidden sm:block">Decision</div>
+            <div className="w-28 shrink-0 hidden md:block">Bull / Bear</div>
+            <div className="flex-1 min-w-0 hidden lg:block">Context</div>
+            <div className="w-24 shrink-0 hidden sm:flex justify-end text-right">Status</div>
+            <div className="w-24 shrink-0 hidden sm:flex justify-end text-right">Actions</div>
+          </div>
+        )}
         {tickers.map(t => {
           const row = rows[t] ?? { status: 'idle' as const }
-          const verdict =
-            row.status === 'ok' ? row.result.verdict : undefined
+          const verdict = row.status === 'ok' ? row.result.final_decision : undefined
           const metrics = row.status === 'ok' ? row.result.metrics : undefined
           const busy = !!rowBusy[t]
           const banner = metrics ? watchlistBannerQuote(metrics as Record<string, unknown>) : null
           const bull = row.status === 'ok' ? row.result.bull_score : undefined
           const bear = row.status === 'ok' ? row.result.bear_score : undefined
           const td = row.status === 'ok' ? coerceTraderDecision(row.result.trader_decision ?? null) : null
+          const scanning = row.status === 'loading' || busy
+
+          const statusLabel =
+            row.status === 'loading' ? 'Scanning…' : row.status === 'err' ? 'Error' : row.status === 'ok' ? 'Ready' : 'Idle'
 
           return (
-            <li key={t} className="rounded-2xl border border-gray-800 bg-gray-900/50 overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
-                <button
-                  type="button"
-                  onClick={() => onToggleRow(t)}
-                  className="p-1 text-gray-500 hover:text-white shrink-0"
-                  aria-expanded={!!expanded[t]}
-                >
-                  {expanded[t] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                </button>
-                <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap gap-y-1.5">
-                  <span className="font-mono font-bold text-white">{t}</span>
+            <div
+              key={t}
+              className={`bg-gray-900 border rounded-2xl overflow-hidden transition-colors
+                ${scanning ? 'border-blue-800/50' : 'border-gray-800 hover:border-gray-700'}`}
+            >
+              <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
+                <div className="min-w-0 sm:w-28 sm:shrink-0">
+                  <div className="font-semibold text-white text-sm tracking-tight font-mono">{t}</div>
+                  <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">Day trade</div>
+                </div>
+
+                <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
+                  {banner ? (
+                    <>
+                      <div className="text-sm font-semibold text-white font-mono">{banner.price}</div>
+                      <div className={`text-xs font-medium ${pctChangeClass(banner.pct)}`}>{fmtPctSigned(banner.pct)}</div>
+                      <div className="mt-0.5 sm:hidden">
+                        <span className={`text-[9px] font-bold uppercase tracking-wider border rounded px-1.5 py-px ${banner.badgeClass}`}>
+                          {banner.badge}
+                        </span>
+                      </div>
+                    </>
+                  ) : row.status === 'loading' ? (
+                    <Loader2 className="inline-block animate-spin text-gray-500" size={14} />
+                  ) : (
+                    <div className="text-xs text-gray-600">—</div>
+                  )}
+                </div>
+
+                <div className="flex items-center sm:hidden">
                   {verdict ? (
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wide border rounded-full px-2 py-0.5 shrink-0 ${verdictPillClass(verdict)}`}
-                    >
+                    <span className={`text-[10px] font-bold uppercase tracking-wide border rounded-full px-2 py-0.5 ${verdictPillClass(verdict)}`}>
                       {verdict}
                     </span>
-                  ) : row.status === 'loading' ? (
-                    <Loader2 size={14} className="animate-spin text-gray-500" />
-                  ) : null}
-                  {busy && row.status === 'ok' ? (
-                    <Loader2 size={14} className="animate-spin text-gray-500 shrink-0" />
-                  ) : null}
-                  {bull != null && bear != null && (
-                    <span
-                      title="Bull score · Bear score"
-                      className="tabular-nums text-[11px] sm:text-xs shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-gray-800/70 border border-gray-700/80"
-                    >
-                      <span className="text-emerald-400 font-semibold">{bull.toFixed(1)}</span>
-                      <span className="text-gray-500 select-none">/</span>
-                      <span className="text-rose-400 font-semibold">{bear.toFixed(1)}</span>
-                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-600">—</span>
                   )}
-                  {td ? <DayTradeTraderDecisionChips td={td} className="basis-full order-last sm:order-none" /> : null}
-                  {banner ? (
-                    <div className="ml-auto flex items-center gap-2 shrink-0 text-right tabular-nums">
-                      <span
-                        title="Quote context: AH after-hours, Pre pre-market, RTH regular session close"
-                        className={`text-[9px] font-bold uppercase tracking-wider border rounded px-1.5 py-px ${banner.badgeClass}`}
-                      >
-                        {banner.badge}
-                      </span>
-                      <span className="text-sm font-mono font-semibold text-gray-100">{banner.price}</span>
-                      <span className={`text-xs font-mono font-medium min-w-[3.75rem] text-right ${pctChangeClass(banner.pct)}`}>
-                        {fmtPctSigned(banner.pct)}
-                      </span>
+                </div>
+
+                <div className="text-right sm:hidden">
+                  {bull != null && bear != null ? (
+                    <div className="text-xs tabular-nums">
+                      <span className="text-emerald-400 font-semibold">{bull.toFixed(1)}</span>
+                      <span className="text-gray-500"> / </span>
+                      <span className="text-rose-400 font-semibold">{bear.toFixed(1)}</span>
                     </div>
-                  ) : row.status !== 'loading' ? (
-                    <span className="text-xs text-gray-500 ml-auto shrink-0">—</span>
+                  ) : (
+                    <div className="text-xs text-gray-600">—</div>
+                  )}
+                </div>
+
+                <div className="w-24 shrink-0 hidden sm:block">
+                  {verdict ? (
+                    <span className={`inline-flex text-[10px] font-bold uppercase tracking-wide border rounded-full px-2 py-0.5 ${verdictPillClass(verdict)}`}>
+                      {verdict}
+                    </span>
+                  ) : (
+                    <div className="text-xs text-gray-600">—</div>
+                  )}
+                </div>
+
+                <div className="w-28 shrink-0 hidden md:block">
+                  {bull != null && bear != null ? (
+                    <>
+                      <div className="text-sm font-semibold tabular-nums text-white">
+                        <span className="text-emerald-400">{bull.toFixed(1)}</span>
+                        <span className="text-gray-500"> / </span>
+                        <span className="text-rose-400">{bear.toFixed(1)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500">Bull · Bear</div>
+                    </>
+                  ) : (
+                    <div className="text-xs text-gray-600">—</div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 hidden lg:block">
+                  {td ? <DayTradeTraderDecisionChips td={td} className="max-w-full" /> : <span className="text-xs text-gray-600">—</span>}
+                </div>
+
+                <div className="w-28 shrink-0 hidden sm:flex flex-col items-end justify-center gap-0.5 text-right">
+                  <span className="text-xs text-gray-400">{statusLabel}</span>
+                  {banner ? (
+                    <span
+                      title="Quote session"
+                      className={`text-[9px] font-bold uppercase tracking-wider border rounded px-1.5 py-px ${banner.badgeClass}`}
+                    >
+                      {banner.badge}
+                    </span>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => removeTicker(t)}
-                  className="p-2 text-gray-600 hover:text-rose-400 shrink-0"
-                  title="Remove"
-                >
-                  <Trash2 size={16} />
-                </button>
+
+                <div className="col-span-2 flex items-center justify-end gap-1.5 sm:col-span-1 sm:flex sm:shrink-0 sm:w-[7.75rem] sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void fetchOne(t)}
+                    disabled={busy}
+                    aria-label={`Run day-trade scan for ${t}`}
+                    title="Run scan"
+                    className="inline-flex h-9 w-9 items-center justify-center bg-violet-600/20 hover:bg-violet-600/40
+                      border border-violet-700/50 text-violet-300 rounded-xl transition-colors shrink-0 disabled:opacity-40"
+                  >
+                    <TrendingUp size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleRow(t)}
+                    aria-expanded={!!expanded[t]}
+                    title={expanded[t] ? 'Collapse' : 'Expand details'}
+                    className="inline-flex h-9 w-9 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400
+                      hover:text-gray-200 rounded-xl transition-colors shrink-0"
+                  >
+                    {expanded[t] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeTicker(t)}
+                    title={`Remove ${t}`}
+                    className="inline-flex h-9 w-9 items-center justify-center bg-gray-800 hover:bg-red-900/30 border border-gray-700 text-gray-500 hover:text-red-400 rounded-xl transition-colors shrink-0"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                <div className="col-span-2 flex justify-end text-xs text-gray-500 sm:hidden">{statusLabel}</div>
               </div>
+
               {expanded[t] && (
-                <div className="border-t border-gray-800 px-3 sm:px-4 py-4 bg-black/25">
+                <div className="border-t border-gray-800 px-4 py-3 bg-gray-800/30">
                   {row.status === 'err' ? (
                     <p className="text-sm text-rose-300">{row.message}</p>
                   ) : row.status === 'ok' ? (
@@ -396,10 +568,10 @@ export default function DayTradeWatchlistPage() {
                   )}
                 </div>
               )}
-            </li>
+            </div>
           )
         })}
-      </ul>
+      </div>
 
       <button
         type="button"
@@ -410,4 +582,8 @@ export default function DayTradeWatchlistPage() {
       </button>
     </div>
   )
+}
+
+export default function DayTradeWatchlistPage() {
+  return <DayTradeWatchlistPanel />
 }

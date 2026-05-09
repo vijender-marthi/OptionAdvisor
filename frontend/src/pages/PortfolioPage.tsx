@@ -1,12 +1,22 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useLayoutEffect, useRef, type RefObject, type MutableRefObject } from 'react'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Briefcase, TrendingUp, TrendingDown, CheckCircle, Clock, Trash2, X,
   DollarSign, Layers, Plus, AlertTriangle, ChevronDown, ChevronUp, FileEdit, RefreshCw, Download,
+  Loader2, XCircle,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition, ClosePositionPayload } from '../types'
+import type { AnalyzeResponse, OptionLeg, OptionRow, PortfolioPosition, ClosePositionPayload, TickerCacheEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
 import ActiveTradesPanel from '../components/ActiveTradesPanel'
+import OpenPositionsFeedTable, {
+  dayTradeToneBadgeClass,
+  type OpenPositionsFeedRow,
+} from '../components/OpenPositionsFeedTable'
+import { PositionCategoryPill } from '../components/PositionHubCard'
+import { exitActiveTrade, listActiveTrades, type ActiveTradeRow } from '../api/client'
+import { inferPortfolioHubCategory } from '../utils/positionCategory'
 import {
   isPortfolioExpiryAnalysisFresh,
   normalizePortfolioExpiryIso as normalizeExpiryIso,
@@ -899,6 +909,7 @@ function CloseModal({ pos, onClose, onConfirm }: {
 
 function PositionCard({
   pos,
+  hubCategory,
   onClose,
   onRemove,
   onUpdateQuotes,
@@ -906,6 +917,8 @@ function PositionCard({
   onSaveEditedPosition,
 }: {
   pos: PortfolioPosition
+  /** Positions hub: Regular vs Swing (day trades use a separate card). */
+  hubCategory?: 'regular' | 'swing'
   onClose: () => void
   onRemove: () => void
   /** Refetch chain/quotes for this open position's ticker + expiry */
@@ -985,6 +998,7 @@ function PositionCard({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-lg font-bold text-white font-mono">{pos.ticker}</span>
+              {hubCategory ? <PositionCategoryPill kind={hubCategory} /> : null}
               <span className="text-xs bg-violet-900/50 text-violet-300 border border-violet-700 px-2 py-0.5 rounded-full font-semibold">{pos.strategy}</span>
               {isManual && (
                 <span className="text-xs bg-gray-800 text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">manual</span>
@@ -1289,24 +1303,283 @@ function PositionCard({
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function PortfolioPage() {
+/** Standalone Portfolio page (`/portfolio` fallback) vs embedded Positions Center tabs */
+export type PortfolioContentMode = 'standalone' | 'positions-open' | 'positions-closed' | 'positions-open-merged'
+
+const ACTIVE_TRADES_POLL_MS = 900_000
+
+export type PositionsHubFilters = {
+  tradeStyle: 'all' | 'day' | 'swing' | 'regular'
+  typeFilter: 'all' | 'options' | 'stocks' | 'spreads'
+  riskFilter: 'all' | 'low' | 'medium' | 'high'
+}
+
+/** Wire Positions Center header Download control to the same export logic as standalone portfolio. */
+export type PositionsHubExportHandles = {
+  anchorRef: RefObject<HTMLButtonElement | null>
+  toggleRef: MutableRefObject<{ toggle: () => void } | null>
+  onCanExportChange: (can: boolean) => void
+  onMenuOpenChange?: (open: boolean) => void
+}
+
+type MergedOpenRow =
+  | { kind: 'portfolio'; pos: PortfolioPosition; category: ReturnType<typeof inferPortfolioHubCategory> }
+  | { kind: 'day'; trade: ActiveTradeRow }
+
+function portfolioTypeKind(pos: PortfolioPosition): 'options' | 'stocks' | 'spreads' {
+  const n = pos.legs?.length ?? 0
+  if (n >= 2) return 'spreads'
+  if (n > 0) return 'options'
+  return 'stocks'
+}
+
+function dayTradeTypeKind(row: ActiveTradeRow): 'options' | 'stocks' | 'spreads' {
+  if (row.strike != null && row.strike > 0) return 'options'
+  return 'stocks'
+}
+
+function dayTradeRiskTier(row: ActiveTradeRow): 'low' | 'medium' | 'high' {
+  const d = row.decision as { badge_tone?: string }
+  const t = d.badge_tone ?? 'gray'
+  if (t === 'red') return 'high'
+  if (t === 'orange') return 'medium'
+  return 'low'
+}
+
+function portfolioRiskTier(pos: PortfolioPosition, tickerCache: Record<string, TickerCacheEntry>): 'low' | 'medium' | 'high' {
+  const entry = tickerCache[pos.ticker]
+  const resolved = resolvePortfolioAnalyzeData(entry, pos.expiry)
+  const evalDollar = openPositionEvalDollar(pos, resolved)
+  const s = getExitSuggestion(pos, evalDollar)
+  if (s.level === 'EXIT_NOW' || s.level === 'EXPIRED') return 'high'
+  if (s.level === 'MANAGE' || s.level === 'ROLL') return 'medium'
+  return 'low'
+}
+
+function mergedRowMatchesFilters(
+  row: MergedOpenRow,
+  f: PositionsHubFilters,
+  tickerCache: Record<string, TickerCacheEntry>,
+): boolean {
+  if (f.tradeStyle !== 'all') {
+    if (f.tradeStyle === 'day') {
+      if (row.kind !== 'day') return false
+    } else if (row.kind === 'day') {
+      return false
+    } else if (row.kind === 'portfolio') {
+      if (f.tradeStyle === 'swing' && row.category !== 'swing') return false
+      if (f.tradeStyle === 'regular' && row.category !== 'regular') return false
+    }
+  }
+  if (f.typeFilter !== 'all') {
+    if (row.kind === 'day') {
+      if (f.typeFilter === 'spreads') return false
+      if (dayTradeTypeKind(row.trade) !== f.typeFilter) return false
+    } else if (portfolioTypeKind(row.pos) !== f.typeFilter) {
+      return false
+    }
+  }
+  if (f.riskFilter !== 'all') {
+    const tier = row.kind === 'day' ? dayTradeRiskTier(row.trade) : portfolioRiskTier(row.pos, tickerCache)
+    if (tier !== f.riskFilter) return false
+  }
+  return true
+}
+
+function asActiveTradeDecision(row: ActiveTradeRow) {
+  const d = row.decision as {
+    state?: string
+    action?: string
+    message?: string
+    badge_tone?: string
+    risk_warning?: string
+    confirmation_needed?: string[]
+  }
+  return d
+}
+
+function buildMergedOpenRows(dayTrades: ActiveTradeRow[], openPositions: PortfolioPosition[]): MergedOpenRow[] {
+  const dayRows: MergedOpenRow[] = [...dayTrades]
+    .sort((a, b) => b.opened_at_ms - a.opened_at_ms)
+    .map(trade => ({ kind: 'day' as const, trade }))
+  const pfRows: MergedOpenRow[] = [...openPositions]
+    .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime())
+    .map(pos => ({
+      kind: 'portfolio' as const,
+      pos,
+      category: inferPortfolioHubCategory(pos),
+    }))
+  return [...dayRows, ...pfRows]
+}
+
+export function PortfolioPageContent({
+  mode,
+  hubFilters,
+  positionsHubExport,
+}: {
+  mode: PortfolioContentMode
+  hubFilters?: PositionsHubFilters
+  positionsHubExport?: PositionsHubExportHandles
+}) {
   const {
     portfolio, closePosition, removeFromPortfolio, addManualPosition, updatePortfolioPosition, navigateToTickerAdvisorFresh,
-    refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry, canAccessPage, navigate,
+    refreshingTickers, tickerCache, ensureAnalysisForPortfolioExpiry, canAccessPage,
   } = useApp()
   const [refreshingPositionIds, setRefreshingPositionIds] = useState<Set<string>>(() => new Set())
   const [closing,    setClosing]    = useState<PortfolioPosition | null>(null)
   const [addingNew,  setAddingNew]  = useState(false)
-  const [filter,     setFilter]     = useState<'all' | 'open' | 'closed'>('open')
+  const [filter,     setFilter]     = useState<'all' | 'open' | 'closed'>(
+    mode === 'positions-closed' ? 'closed' : 'open',
+  )
   const [refreshingPortfolio, setRefreshingPortfolio] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [hubExportPortalPos, setHubExportPortalPos] = useState<{ top: number; left: number } | null>(null)
+  const hubExportMenuRef = useRef<HTMLDivElement | null>(null)
+  const toggleExportMenu = useCallback(() => {
+    setExportOpen(o => !o)
+  }, [])
+  const [activeDayTrades, setActiveDayTrades] = useState<ActiveTradeRow[]>([])
+  const [activeDayTradesLoading, setActiveDayTradesLoading] = useState(false)
+  const [activeExitingId, setActiveExitingId] = useState<string | null>(null)
+  const [focusedPortfolioDetailId, setFocusedPortfolioDetailId] = useState<string | null>(null)
   const [portfolioHydratePulse, setPortfolioHydratePulse] = useState(0)
+  const embedded = mode !== 'standalone'
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    const add = searchParams.get('add')
+    if (add === 'manual' || add === '1') {
+      setAddingNew(true)
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev)
+          next.delete('add')
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }, [searchParams, setSearchParams])
+  const effectiveFilter: 'all' | 'open' | 'closed' =
+    mode === 'positions-open' || mode === 'positions-open-merged'
+      ? 'open'
+      : mode === 'positions-closed'
+        ? 'closed'
+        : filter
 
   const open   = portfolio.filter(p => p.status === 'open')
   const closed = portfolio.filter(p => p.status === 'closed')
-  const shown  = filter === 'all' ? portfolio : filter === 'open' ? open : closed
+  const shown  = effectiveFilter === 'all' ? portfolio : effectiveFilter === 'open' ? open : closed
+
+  useLayoutEffect(() => {
+    if (!embedded || !positionsHubExport) return
+    positionsHubExport.toggleRef.current = { toggle: toggleExportMenu }
+    positionsHubExport.onCanExportChange(shown.length > 0)
+    return () => {
+      positionsHubExport.toggleRef.current = null
+    }
+  }, [embedded, positionsHubExport, shown.length, toggleExportMenu])
+
+  useEffect(() => {
+    positionsHubExport?.onMenuOpenChange?.(exportOpen)
+  }, [exportOpen, positionsHubExport])
+
+  useEffect(() => {
+    if (!positionsHubExport) setExportOpen(false)
+  }, [positionsHubExport])
+
+  useLayoutEffect(() => {
+    if (!exportOpen || !embedded || !positionsHubExport) {
+      setHubExportPortalPos(null)
+      return
+    }
+    const el = positionsHubExport.anchorRef.current
+    if (!el) {
+      setHubExportPortalPos(null)
+      return
+    }
+    const r = el.getBoundingClientRect()
+    const menuWidth = 176
+    setHubExportPortalPos({
+      top: r.bottom + 8,
+      left: Math.max(8, r.right - menuWidth),
+    })
+  }, [exportOpen, embedded, positionsHubExport])
+
+  useEffect(() => {
+    if (!exportOpen || !embedded || !positionsHubExport) return
+    const onPointerDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (positionsHubExport.anchorRef.current?.contains(t)) return
+      if (hubExportMenuRef.current?.contains(t)) return
+      setExportOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [exportOpen, embedded, positionsHubExport])
+
   const openTickers = Array.from(new Set(open.map(p => p.ticker).filter(Boolean)))
   const portfolioRefreshActive = refreshingPortfolio || openTickers.some(ticker => refreshingTickers.has(ticker))
+
+  const hubFilterResolved: PositionsHubFilters = hubFilters ?? {
+    tradeStyle: 'all',
+    typeFilter: 'all',
+    riskFilter: 'all',
+  }
+
+  const loadActiveDayTrades = useCallback(async () => {
+    if (mode !== 'positions-open-merged' || !canAccessPage('active-trades')) return
+    setActiveDayTradesLoading(true)
+    try {
+      const { trades } = await listActiveTrades()
+      setActiveDayTrades(trades)
+    } catch {
+      setActiveDayTrades([])
+    } finally {
+      setActiveDayTradesLoading(false)
+    }
+  }, [mode, canAccessPage])
+
+  useEffect(() => {
+    void loadActiveDayTrades()
+  }, [loadActiveDayTrades])
+
+  useEffect(() => {
+    if (mode !== 'positions-open-merged' || !canAccessPage('active-trades')) return
+    const id = window.setInterval(() => void loadActiveDayTrades(), ACTIVE_TRADES_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [mode, canAccessPage, loadActiveDayTrades])
+
+  const mergedOpenRows = useMemo(() => {
+    if (mode !== 'positions-open-merged') return null
+    return buildMergedOpenRows(activeDayTrades, open)
+  }, [mode, activeDayTrades, open])
+
+  const mergedOpenFiltered = useMemo(() => {
+    if (!mergedOpenRows) return null
+    return mergedOpenRows.filter(r => mergedRowMatchesFilters(r, hubFilterResolved, tickerCache))
+  }, [mergedOpenRows, hubFilterResolved, tickerCache])
+
+  useEffect(() => {
+    if (!focusedPortfolioDetailId) return
+    const stillHere = mergedOpenFiltered?.some(
+      r => r.kind === 'portfolio' && r.pos.id === focusedPortfolioDetailId,
+    )
+    if (!stillHere) setFocusedPortfolioDetailId(null)
+  }, [mergedOpenFiltered, focusedPortfolioDetailId])
+
+  const handleExitActiveTrade = useCallback(
+    async (id: string) => {
+      setActiveExitingId(id)
+      try {
+        await exitActiveTrade(id)
+        await loadActiveDayTrades()
+      } finally {
+        setActiveExitingId(null)
+      }
+    },
+    [loadActiveDayTrades],
+  )
 
   // Urgent positions (EXIT_NOW / EXPIRED) — shown in alert banner
   const urgentCount = useMemo(() =>
@@ -1364,6 +1637,140 @@ export default function PortfolioPage() {
       })
     }
   }, [ensureAnalysisForPortfolioExpiry])
+
+  const openFeedTableRows = useMemo((): OpenPositionsFeedRow[] => {
+    if (!mergedOpenFiltered || mode !== 'positions-open-merged') return []
+    const out: OpenPositionsFeedRow[] = []
+    for (const row of mergedOpenFiltered) {
+      if (row.kind === 'day') {
+        const t = row.trade
+        const d = asActiveTradeDecision(t)
+        const contracts = t.contracts != null && t.contracts > 0 ? String(Math.round(t.contracts)) : '—'
+        const strikeBit = t.strike != null && t.strike > 0 ? ` $${Number(t.strike).toFixed(0)}` : ''
+        const strategy = `${t.side}${strikeBit}`
+        const tone = typeof d.badge_tone === 'string' ? d.badge_tone : 'gray'
+        const badge = (
+          <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${dayTradeToneBadgeClass(tone)}`}>
+            {d.state ?? '—'}
+          </span>
+        )
+        const secParts = [d.message, t.intraday_error ? `Tape: ${t.intraday_error}` : '', d.risk_warning].filter(Boolean) as string[]
+        out.push({
+          key: `dt-${t.id}`,
+          categoryKind: 'day',
+          ticker: t.ticker,
+          strategy,
+          contracts,
+          expiry: t.expiry?.trim() || '—',
+          entryRef: `$${t.entry_price.toFixed(2)}`,
+          guidancePrimary: (
+            <div className="flex flex-wrap items-center gap-2">
+              {badge}
+              {d.action ? <span className="text-xs font-semibold text-violet-300">{d.action}</span> : null}
+            </div>
+          ),
+          guidanceSecondary: secParts.length ? secParts.join(' · ') : null,
+          actions: (
+            <button
+              type="button"
+              onClick={() => void handleExitActiveTrade(t.id)}
+              disabled={activeExitingId === t.id}
+              title="Exit day trade"
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-600 px-2 py-1 text-[11px] font-semibold text-gray-400 hover:text-rose-300 hover:border-rose-600 disabled:opacity-50"
+            >
+              {activeExitingId === t.id ? <Loader2 size={12} className="animate-spin shrink-0" /> : <XCircle size={12} className="shrink-0" />}
+              Exit
+            </button>
+          ),
+        })
+        continue
+      }
+
+      const pos = row.pos
+      if (pos.status !== 'open') continue
+
+      const contractCount = normalizedContractCount(pos)
+      const analyzeData = resolvePortfolioAnalyzeData(tickerCache[pos.ticker], pos.expiry)
+      const mtmDollar = analyzeData
+        ? markToMarketPositionDollars(pos.legs, analyzeData, pos.expiry, contractCount)
+        : null
+      const suggestionEval = openPositionEvalDollar(pos, analyzeData)
+      const suggestion = getExitSuggestion(pos, suggestionEval)
+
+      const categoryKind = row.category === 'swing' ? 'swing' : 'regular'
+      const busy = refreshingPositionIds.has(pos.id)
+
+      out.push({
+        key: `pf-${pos.id}`,
+        categoryKind,
+        ticker: pos.ticker,
+        strategy: pos.strategy,
+        contracts: String(contractCount),
+        expiry: pos.expiry,
+        entryRef: `$${pos.entryPrice.toFixed(2)}`,
+        guidancePrimary:
+          mtmDollar != null ? (
+            <span className={`font-mono font-semibold tabular-nums ${mtmDollar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {fmtDollar(mtmDollar, true)}
+            </span>
+          ) : (
+            <span className="text-gray-500 tabular-nums">—</span>
+          ),
+        guidanceSecondary:
+          suggestion.level !== 'HOLD' ? `${suggestion.title}: ${suggestion.reason}` : null,
+        actions: (
+          <div className="flex flex-wrap justify-end gap-1">
+            <button
+              type="button"
+              onClick={() =>
+                setFocusedPortfolioDetailId(id => (id === pos.id ? null : pos.id))
+              }
+              title="Expand full portfolio card"
+              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${focusedPortfolioDetailId === pos.id ? 'border-violet-500 text-violet-300 bg-violet-950/40' : 'border-gray-600 text-gray-400 hover:border-violet-600 hover:text-violet-300'}`}
+            >
+              Card
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleUpdatePositionCard(pos)}
+              disabled={busy}
+              title="Refresh quotes"
+              className="inline-flex items-center gap-1 rounded-lg border border-cyan-800/70 px-2 py-1 text-[11px] font-semibold text-cyan-400 hover:bg-cyan-950/35 disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={busy ? 'animate-spin shrink-0' : 'shrink-0'} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setClosing(pos)}
+              title="Close position"
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-800/70 px-2 py-1 text-[11px] font-semibold text-emerald-400 hover:bg-emerald-950/30"
+            >
+              <CheckCircle size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => removeFromPortfolio(pos.id)}
+              title="Remove"
+              className="inline-flex items-center justify-center rounded-lg border border-gray-700 px-2 py-1 text-gray-500 hover:border-red-800 hover:text-red-400"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ),
+      })
+    }
+    return out
+  }, [
+    mergedOpenFiltered,
+    mode,
+    tickerCache,
+    handleExitActiveTrade,
+    activeExitingId,
+    removeFromPortfolio,
+    handleUpdatePositionCard,
+    refreshingPositionIds,
+    focusedPortfolioDetailId,
+  ])
 
   useEffect(() => {
     if (open.length === 0) return
@@ -1469,8 +1876,8 @@ export default function PortfolioPage() {
       { wch: 44 }, { wch: 22 }, { wch: 12 }, { wch: 18 }, { wch: 18 },
     ]
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Portfolio ${filter}`)
-    XLSX.writeFile(workbook, `optionadvisor-portfolio-${filter}-${date}.xlsx`, {
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Portfolio ${effectiveFilter}`)
+    XLSX.writeFile(workbook, `optionadvisor-portfolio-${effectiveFilter}-${date}.xlsx`, {
       bookType: 'xlsx',
       compression: true,
     })
@@ -1508,7 +1915,7 @@ export default function PortfolioPage() {
     doc.setFontSize(14)
     doc.text('OptionAdvisor Portfolio', 36, 32)
     doc.setFontSize(9)
-    doc.text(`View: ${filter} | Exported: ${date} | Positions: ${rows.length}`, 36, 48)
+    doc.text(`View: ${effectiveFilter} | Exported: ${date} | Positions: ${rows.length}`, 36, 48)
 
     autoTable(doc, {
       head: [headers],
@@ -1533,12 +1940,12 @@ export default function PortfolioPage() {
       margin: { left: 36, right: 36 },
     })
 
-    doc.save(`optionadvisor-portfolio-${filter}-${date}.pdf`)
+    doc.save(`optionadvisor-portfolio-${effectiveFilter}-${date}.pdf`)
     setExportOpen(false)
   }
 
   return (
-    <div className="portfolio-page min-h-screen p-4 md:p-6">
+    <>
       {closing && (
         <CloseModal
           pos={closing}
@@ -1555,95 +1962,127 @@ export default function PortfolioPage() {
           onAdd={pos => { addManualPosition(pos); setAddingNew(false) }}
         />
       )}
+      {exportOpen && embedded && positionsHubExport != null && hubExportPortalPos != null
+        ? createPortal(
+            <div
+              ref={hubExportMenuRef}
+              role="menu"
+              className="fixed z-[200] w-44 overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-xl"
+              style={{ top: hubExportPortalPos.top, left: hubExportPortalPos.left }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleExportXlsx}
+                className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-emerald-300"
+              >
+                Export XLSX
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleExportPdf}
+                className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-amber-300"
+              >
+                Export PDF
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="max-w-6xl mx-auto space-y-5">
 
-        {/* Header — column on mobile so actions stay right-aligned; row + space-between from sm */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Briefcase className="text-violet-400" size={22} /> Portfolio
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {open.length} open · {totalOpenContracts} contracts{urgentCount > 0 ? ` · ` : ''}
-              {urgentCount > 0 && <span className="text-red-400 font-semibold">{urgentCount} need immediate attention</span>}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setExportOpen(open => !open)}
-                disabled={shown.length === 0}
-                aria-label="Export portfolio"
-                aria-expanded={exportOpen}
-                aria-haspopup="menu"
-                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
+        {/* Header — standalone `/portfolio` only (Positions Center supplies page & tab titles) */}
+        {!embedded && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Briefcase className="text-violet-400" size={22} /> Portfolio
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {open.length} open · {totalOpenContracts} contracts{urgentCount > 0 ? ` · ` : ''}
+                {urgentCount > 0 && (
+                  <span className="text-red-400 font-semibold">{urgentCount} need immediate attention</span>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={toggleExportMenu}
+                  disabled={shown.length === 0}
+                  aria-label="Export portfolio"
+                  aria-expanded={exportOpen}
+                  aria-haspopup="menu"
+                  className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
                            text-gray-300 hover:text-emerald-300 hover:border-emerald-700 rounded-xl
                            transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title="Export"
-              >
-                <Download size={18} />
-              </button>
-              {exportOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-full top-1/2 z-20 ml-2 w-44 -translate-y-1/2 overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-xl
-                             max-[420px]:left-auto max-[420px]:right-0 max-[420px]:top-full max-[420px]:ml-0 max-[420px]:mt-2 max-[420px]:translate-y-0"
+                  title="Export"
                 >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={handleExportXlsx}
-                    className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-emerald-300"
+                  <Download size={18} />
+                </button>
+                {exportOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-full top-1/2 z-20 ml-2 w-44 -translate-y-1/2 overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-xl
+                             max-[420px]:left-auto max-[420px]:right-0 max-[420px]:top-full max-[420px]:ml-0 max-[420px]:mt-2 max-[420px]:translate-y-0"
                   >
-                    Export XLSX
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={handleExportPdf}
-                    className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-amber-300"
-                  >
-                    Export PDF
-                  </button>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={handleRefreshPortfolio}
-              disabled={openTickers.length === 0 || portfolioRefreshActive}
-              aria-label="Refresh latest prices for open positions"
-              className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleExportXlsx}
+                      className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-emerald-300"
+                    >
+                      Export XLSX
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleExportPdf}
+                      className="w-full px-3 py-2 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-amber-300"
+                    >
+                      Export PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleRefreshPortfolio}
+                disabled={openTickers.length === 0 || portfolioRefreshActive}
+                aria-label="Refresh latest prices for open positions"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700
                          text-gray-300 hover:text-cyan-300 hover:border-cyan-700 rounded-xl
                          transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-              title="Refresh"
-            >
-              <RefreshCw size={18} className={portfolioRefreshActive ? 'animate-spin' : ''} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setAddingNew(true)}
-              aria-label="Add trade manually"
-              className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 rounded-xl transition-colors shrink-0"
-              title="Add trade"
-            >
-              <Plus size={20} strokeWidth={2.5} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToTickerAdvisorFresh()}
-              title="New Analysis"
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              <TrendingUp size={14} /> New Analysis
-            </button>
+                title="Refresh"
+              >
+                <RefreshCw size={18} className={portfolioRefreshActive ? 'animate-spin' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddingNew(true)}
+                aria-label="Add trade manually"
+                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600 text-gray-300 hover:text-violet-300 rounded-xl transition-colors shrink-0"
+                title="Add trade"
+              >
+                <Plus size={20} strokeWidth={2.5} />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateToTickerAdvisorFresh()}
+                title="New Analysis"
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                <TrendingUp size={14} /> New Analysis
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Urgent alert banner */}
-        {urgentCount > 0 && (
+        {/* Urgent alert banner (standalone Portfolio only — Positions Center uses top KPIs / feeds) */}
+        {urgentCount > 0 && mode !== 'positions-closed' && !embedded && (
           <div className="bg-red-900/30 border border-red-700 rounded-2xl px-4 py-3 flex items-center gap-3">
             <AlertTriangle size={16} className="text-red-400 shrink-0" />
             <div>
@@ -1653,21 +2092,14 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {canAccessPage('active-trades') && (
+        {canAccessPage('active-trades') && mode !== 'positions-closed' && mode !== 'positions-open-merged' && (
           <div className="space-y-2">
             <ActiveTradesPanel variant="embedded" />
-            <button
-              type="button"
-              onClick={() => navigate('active-trades')}
-              className="text-xs font-semibold text-orange-400/90 hover:text-orange-300"
-            >
-              Open Day Trade Active page
-            </button>
           </div>
         )}
 
-        {/* Summary stats */}
-        {portfolio.length > 0 && (
+        {/* Summary stats (standalone only — KPI strip lives on Positions Center) */}
+        {portfolio.length > 0 && !embedded && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Open Positions',  value: String(open.length),        color: 'text-violet-400' },
@@ -1685,8 +2117,8 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* Filter tabs */}
-        {portfolio.length > 0 && (
+        {/* Filter tabs (standalone Portfolio only — Positions Center uses its own tabs) */}
+        {portfolio.length > 0 && !embedded && (
           <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit">
             {(['open', 'closed', 'all'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
@@ -1698,23 +2130,29 @@ export default function PortfolioPage() {
         )}
 
         {/* Empty state */}
-        {portfolio.length === 0 && (
+        {portfolio.length === 0 && (mode !== 'positions-open-merged' || (activeDayTrades.length === 0 && !activeDayTradesLoading)) && (
           <div className="text-center py-20 space-y-3">
             <div className="text-5xl">💼</div>
             <div className="text-lg font-semibold text-gray-300">No positions yet</div>
             <div className="text-gray-500 text-sm max-w-sm mx-auto">
-              Add trades manually or run an analysis and add a recommendation directly to the portfolio.
+              {mode === 'positions-open-merged' && canAccessPage('active-trades') ? (
+                <>Add portfolio trades here, or open day trades from the Day Trade Engine — they appear in this same feed when active.</>
+              ) : (
+                <>Add trades manually or run an analysis and add a recommendation directly to the portfolio.</>
+              )}
             </div>
             <div className="flex items-center justify-center gap-3 mt-4">
-              <button
-                type="button"
-                onClick={() => setAddingNew(true)}
-                aria-label="Add trade manually"
-                title="Add trade manually"
-                className="inline-flex h-11 w-11 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded-xl transition-colors"
-              >
-                <Plus size={22} strokeWidth={2.5} />
-              </button>
+              {!embedded ? (
+                <button
+                  type="button"
+                  onClick={() => setAddingNew(true)}
+                  aria-label="Add trade manually"
+                  title="Add trade manually"
+                  className="inline-flex h-11 w-11 items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded-xl transition-colors"
+                >
+                  <Plus size={22} strokeWidth={2.5} />
+                </button>
+              ) : null}
               <button onClick={() => navigateToTickerAdvisorFresh()}
                 className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors">
                 Analyze a Ticker
@@ -1725,36 +2163,114 @@ export default function PortfolioPage() {
 
         {/* Positions */}
         <div className="space-y-3">
-          {shown.map(pos => (
-            <PositionCard
-              key={pos.id}
-              pos={pos}
-              onClose={() => setClosing(pos)}
-              onRemove={() => removeFromPortfolio(pos.id)}
-              onUpdateQuotes={pos.status === 'open' ? () => handleUpdatePositionCard(pos) : undefined}
-              onSaveEditedPosition={(id, payload) => updatePortfolioPosition(id, payload)}
-            />
-          ))}
+          {mode === 'positions-open-merged' && mergedOpenFiltered ? (
+            <>
+              <OpenPositionsFeedTable
+                rows={openFeedTableRows}
+                emptyMessage={
+                  mergedOpenRows && mergedOpenFiltered.length === 0 && mergedOpenRows.length > 0
+                    ? 'No rows match the current filters. Set Trade Style, Type, or Risk to All.'
+                    : 'No open portfolio positions or active day trades in this feed yet.'
+                }
+              />
+              {focusedPortfolioDetailId
+                ? (() => {
+                    const pos = open.find(p => p.id === focusedPortfolioDetailId)
+                    if (!pos) return null
+                    const cat = inferPortfolioHubCategory(pos)
+                    return (
+                      <div className="rounded-2xl border border-gray-800 bg-gray-950/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-gray-500">Portfolio detail</span>
+                          <button
+                            type="button"
+                            className="text-xs text-gray-400 hover:text-white"
+                            onClick={() => setFocusedPortfolioDetailId(null)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                        <PositionCard
+                          pos={pos}
+                          hubCategory={cat}
+                          onClose={() => setClosing(pos)}
+                          onRemove={() => removeFromPortfolio(pos.id)}
+                          onUpdateQuotes={pos.status === 'open' ? () => handleUpdatePositionCard(pos) : undefined}
+                          isUpdatingQuotes={refreshingPositionIds.has(pos.id)}
+                          onSaveEditedPosition={(id, payload) => updatePortfolioPosition(id, payload)}
+                        />
+                      </div>
+                    )
+                  })()
+                : null}
+            </>
+          ) : (
+              shown.map(pos => (
+                <PositionCard
+                  key={pos.id}
+                  pos={pos}
+                  onClose={() => setClosing(pos)}
+                  onRemove={() => removeFromPortfolio(pos.id)}
+                  onUpdateQuotes={pos.status === 'open' ? () => handleUpdatePositionCard(pos) : undefined}
+                  isUpdatingQuotes={refreshingPositionIds.has(pos.id)}
+                  onSaveEditedPosition={(id, payload) => updatePortfolioPosition(id, payload)}
+                />
+              ))
+          )}
         </div>
 
-        {shown.length === 0 && portfolio.length > 0 && (
+        {shown.length === 0 && portfolio.length > 0 && mode !== 'positions-open-merged' && (
           <div className="text-center py-10 text-gray-500 text-sm">
-            No {filter} positions.
-            {filter === 'open' && closed.length > 0 && (
+            No {effectiveFilter} positions.
+            {effectiveFilter === 'open' && closed.length > 0 && (
               <span className="block mt-1 text-xs">
-                You have {closed.length} closed position{closed.length === 1 ? '' : 's'} in the Closed tab.
+                You have {closed.length} closed position{closed.length === 1 ? '' : 's'}
+                {embedded ? ' — use the Closed tab above.' : ' in the Closed tab.'}
+              </span>
+            )}
+            {effectiveFilter === 'closed' && open.length > 0 && (
+              <span className="block mt-1 text-xs">
+                You have {open.length} open position{open.length === 1 ? '' : 's'}
+                {embedded ? ' — use the Open tab above.' : ' in the Open tab.'}
               </span>
             )}
           </div>
         )}
 
         {/* Disclaimer */}
-        <div className="text-center text-xs text-gray-600 py-2 border-t border-gray-800/50">
-          <DollarSign size={11} className="inline mr-1" />
-          Open positions show <span className="text-gray-300">Current P&amp;L</span> in the metrics row (green/red tile): option mids vs entry mids, scaled by{' '}
-          <span className="font-mono text-gray-300">{SHARES_PER_OPTION_CONTRACT}</span> shares per contract × your contract count. Not your broker&apos;s mark — see Help for formulas.
-        </div>
+        {mode !== 'positions-closed' && (
+          <div className="text-center text-xs text-gray-600 py-2 border-t border-gray-800/50">
+            <DollarSign size={11} className="inline mr-1" />
+            Open positions show <span className="text-gray-300">Current P&amp;L</span> in the metrics row (green/red tile): option mids vs entry mids, scaled by{' '}
+            <span className="font-mono text-gray-300">{SHARES_PER_OPTION_CONTRACT}</span> shares per contract × your contract count. Not your broker&apos;s mark — see Help for formulas.
+          </div>
+        )}
       </div>
+    </>
+  )
+}
+
+export default function PortfolioPage() {
+  return (
+    <div className="portfolio-page min-h-screen p-4 md:p-6">
+      <PortfolioPageContent mode="standalone" />
     </div>
   )
+}
+
+/** Full legacy portfolio UI embedded in Positions Center (Open / Closed tabs). */
+export function PortfolioPositionsSection({
+  variant,
+  mergeActiveTrades,
+  hubFilters,
+  positionsHubExport,
+}: {
+  variant: 'open' | 'closed'
+  mergeActiveTrades?: boolean
+  hubFilters?: PositionsHubFilters
+  positionsHubExport?: PositionsHubExportHandles
+}) {
+  const mode: PortfolioContentMode =
+    variant === 'open' && mergeActiveTrades ? 'positions-open-merged' : variant === 'open' ? 'positions-open' : 'positions-closed'
+  return <PortfolioPageContent mode={mode} hubFilters={hubFilters} positionsHubExport={positionsHubExport} />
 }

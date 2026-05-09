@@ -4,7 +4,7 @@ import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 
 export function verdictStyle(verdict: string) {
-  if (verdict === 'STRONG GO') {
+  if (verdict === 'READY' || verdict === 'STRONG GO') {
     return {
       bg: 'bg-emerald-950/70',
       border: 'border-emerald-500/70',
@@ -12,15 +12,7 @@ export function verdictStyle(verdict: string) {
       ring: 'ring-emerald-400/35',
     }
   }
-  if (verdict === 'GO') {
-    return {
-      bg: 'bg-emerald-950/60',
-      border: 'border-emerald-600/60',
-      text: 'text-emerald-300',
-      ring: 'ring-emerald-500/30',
-    }
-  }
-  if (verdict === 'WATCH') {
+  if (verdict === 'WATCH' || verdict === 'GO') {
     return {
       bg: 'bg-amber-950/40',
       border: 'border-amber-600/50',
@@ -28,7 +20,7 @@ export function verdictStyle(verdict: string) {
       ring: 'ring-amber-500/25',
     }
   }
-  if (verdict === 'NO-GO') {
+  if (verdict === 'AVOID' || verdict === 'EXIT' || verdict === 'NO-GO') {
     return {
       bg: 'bg-rose-950/50',
       border: 'border-rose-600/50',
@@ -148,6 +140,34 @@ function rsSessionClass(rs: number | null): string {
   return 'text-gray-300'
 }
 
+function decisionBadgeClass(value: string): string {
+  const v = value.toUpperCase()
+  if (v === 'READY' || v === 'TRADE') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+  if (v === 'WATCH' || v === 'WAIT') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'AVOID' || v === 'EXIT' || v === 'NO_EDGE') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  if (v === 'BULLISH') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'BEARISH') return 'border-rose-600/35 bg-rose-500/10 text-rose-200'
+  if (v === 'MIXED') return 'border-sky-700/35 bg-sky-500/10 text-sky-200'
+  if (v === 'STRONG' || v === 'GOOD') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'FAIR' || v === 'WEAK') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'POOR') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  if (v === 'LOW') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'MEDIUM') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'HIGH' || v === 'EXTREME') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  return 'border-gray-700/40 bg-gray-800/80 text-gray-200'
+}
+
+function DecisionCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-gray-800/90 bg-black/20 px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${decisionBadgeClass(value)}`}>
+        {value || '—'}
+      </div>
+    </div>
+  )
+}
+
 /** Full verdict + metrics + notes — same content as the Day Trade Engine result card. */
 export default function DayTradeEnginePanel({
   result,
@@ -163,7 +183,7 @@ export default function DayTradeEnginePanel({
   /** When set, shows admin-only CTA to persist this symbol for Day Trade Active monitoring. */
   onRequestEnterActiveTrade?: () => void
 }) {
-  const cfg = verdictStyle(result.verdict)
+  const cfg = verdictStyle(result.final_decision)
   const m = result.metrics ?? {}
   const vwapDist = asFiniteNum(m.vwap_dist_pct)
   const mom = asFiniteNum(m.momentum_pct)
@@ -179,7 +199,6 @@ export default function DayTradeEnginePanel({
       ? (confRaw as Record<string, string>)
       : null
   const confOrder = ['trend_strength', 'breakout_quality', 'volume_confirmation', 'market_alignment', 'risk'] as const
-  const verdictShort = result.verdict.length > 6
   const chartBars = parseChartBars(m.chart_bars)
   const orChartHigh = asFiniteNum(m.or_high)
   const orChartLow = asFiniteNum(m.or_low)
@@ -206,35 +225,47 @@ export default function DayTradeEnginePanel({
       </div>
 
       <div className="text-center py-2">
-        <div
-          className={`font-black tracking-tight ${cfg.text} ${verdictShort ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}
-        >
-          {result.verdict}
-        </div>
-        {(result.verdict === 'STRONG GO' || result.verdict === 'GO' || result.verdict === 'WATCH') && result.bias && (
-          <div className="text-sm text-gray-300 mt-2">
-            Bias:{' '}
-            <span
-              className={`font-bold ${
-                result.bias === 'long' ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {result.bias === 'long' ? 'Long / bullish' : 'Short / bearish'}
-            </span>
-            <span className="text-gray-500 block text-xs mt-1">
-              {result.bias === 'long'
-                ? 'Directional context for long delta (e.g. stock long, long calls, short puts).'
-                : 'Directional context for short delta (e.g. stock short, long puts, short calls).'}
-            </span>
-          </div>
-        )}
-        {result.verdict === 'WAIT' && (
-          <p className="text-xs text-gray-500 mt-2">No clear edge — stand aside or wait for a cleaner setup.</p>
-        )}
-        {result.verdict === 'NO-GO' && (
-          <p className="text-xs text-rose-300/80 mt-2">Risk filters suggest skipping new exposure today.</p>
-        )}
+        <div className={`font-black tracking-tight text-3xl sm:text-4xl ${cfg.text}`}>{result.final_decision}</div>
+        <p className="mt-2 text-sm text-gray-300">{result.reason || 'No clean trigger yet.'}</p>
+        <p className="mt-1 text-[11px] text-gray-500">
+          Market bias does not equal execution. Engine score: <span className="text-gray-300">{result.verdict}</span>
+        </p>
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DecisionCell label="Market Bias" value={result.market_bias} />
+        <DecisionCell label="Setup Quality" value={result.setup_quality} />
+        <DecisionCell label="Execution Readiness" value={result.execution_readiness} />
+        <DecisionCell label="Final Decision" value={result.final_decision} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-gray-500">
+            <span>Confidence</span>
+            <span className="font-semibold text-gray-300">{result.confidence}%</span>
+          </div>
+          <div className="mt-2 h-2 rounded-full bg-gray-800">
+            <div
+              className={`${result.confidence >= 70 ? 'bg-emerald-400' : result.confidence >= 45 ? 'bg-amber-400' : 'bg-rose-400'} h-2 rounded-full`}
+              style={{ width: `${Math.max(0, Math.min(100, result.confidence))}%` }}
+            />
+          </div>
+        </div>
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Risk State</div>
+          <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${decisionBadgeClass(result.risk_state)}`}>
+            {result.risk_state}
+          </div>
+        </div>
+      </div>
+
+      {result.missing_confirmations.length > 0 && (
+        <div className="rounded-xl border border-amber-700/30 bg-amber-950/20 px-3 py-3">
+          <div className="text-[10px] uppercase tracking-wide text-amber-200/80">Missing Confirmations</div>
+          <p className="mt-1 text-sm text-amber-100/90">{result.missing_confirmations.join(' · ')}</p>
+        </div>
+      )}
 
       {td ? <DayTradeTraderDecisionExpanded td={td} /> : null}
 

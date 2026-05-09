@@ -114,7 +114,7 @@ function PositionsTable({ positions, onClose }: {
   return (
     <div className="space-y-2">
       <div className="hidden sm:grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_1fr_1fr_0.7fr] gap-3 px-4 py-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-        <div>Symbol</div>
+        <div>Ticker</div>
         <div className="text-right">Qty</div>
         <div className="text-right">Avg Entry</div>
         <div className="text-right">Current</div>
@@ -192,7 +192,7 @@ function OrdersTable({ orders, onCancel }: {
   return (
     <div className="space-y-2">
       <div className="hidden sm:grid grid-cols-[1.5fr_0.9fr_0.6fr_0.7fr_0.9fr_1fr_0.7fr] gap-3 px-4 py-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">
-        <div>Symbol</div>
+        <div>Ticker</div>
         <div>Status</div>
         <div className="text-right">Qty</div>
         <div className="text-right">Filled</div>

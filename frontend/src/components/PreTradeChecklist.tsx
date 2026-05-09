@@ -531,7 +531,7 @@ export default function PreTradeChecklist({ rec, signals }: Props) {
 
       {/* ── Expanded detail ── */}
       {expanded && (
-        <div className="border-t border-white/10 px-3 py-3 space-y-4">
+        <div className="border-t border-white/[0.04] px-3 py-3 space-y-4">
 
           {/* Verdict banner */}
           <div className={`p-2.5 rounded-lg border ${vs.bg} ${vs.border}`}>

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useLayoutEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
@@ -6,35 +7,40 @@ import LoginPage from './pages/LoginPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import ActivatePage from './pages/ActivatePage'
-import { canAccessPage } from './permissions'
+import { locationToPage } from './routing/paths'
 
 const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
 const TickerPage = lazy(() => import('./pages/TickerPage'))
-const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
-const PortfolioPage = lazy(() => import('./pages/PortfolioPage'))
+const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
+const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
+const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const HelpPage = lazy(() => import('./pages/HelpPage'))
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
 const QRadarPage = lazy(() => import('./pages/QRadarPage'))
 const BacktestPage = lazy(() => import('./pages/BacktestPage'))
 const TradeSignalsPage = lazy(() => import('./pages/TradeSignalsPage'))
-const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 const DayTradeAlertsPage = lazy(() => import('./pages/DayTradeAlertsPage'))
 const DayTradePage = lazy(() => import('./pages/DayTradePage'))
-const DayTradeWatchlistPage = lazy(() => import('./pages/DayTradeWatchlistPage'))
-const ActiveTradesPage = lazy(() => import('./pages/ActiveTradesPage'))
 const SwingTradePage = lazy(() => import('./pages/SwingTradePage'))
-const SwingTradeWatchlistPage = lazy(() => import('./pages/SwingTradeWatchlistPage'))
+const UnifiedWatchlistPage = lazy(() => import('./pages/UnifiedWatchlistPage'))
+const WatchlistXPage = lazy(() => import('./pages/WatchlistXPage'))
 
-const GATEWAY_PAGES = new Set([
-  'login',
-  'forgot-password',
-  'reset-password',
-  'activate',
-])
+function PositionsRoute() {
+  const [params] = useSearchParams()
+  const tab = params.get('tab')?.trim() ?? 'open'
+  if (tab === 'watchlist') {
+    return <Navigate to="/watchlistx" replace />
+  }
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <PositionsCenterPage />
+    </Suspense>
+  )
+}
 
 function RouteFallback() {
   return (
@@ -47,69 +53,125 @@ function RouteFallback() {
   )
 }
 
-function Router() {
-  const { page, user, navigate } = useApp()
-
-  useEffect(() => {
-    if (!user && !GATEWAY_PAGES.has(page)) navigate('login')
-  }, [user, page, navigate])
-
-  useEffect(() => {
-    if (user && (page === 'login' || page === 'forgot-password' || page === 'reset-password')) {
-      navigate('ticker')
+/** Migrates legacy `#watchlist`-style URLs to BrowserRouter paths (301-equivalent client redirect). */
+function LegacyHashRedirect() {
+  const navigate = useNavigate()
+  useLayoutEffect(() => {
+    const raw = window.location.hash.replace(/^#/, '').trim()
+    if (!raw) return
+    const qi = raw.indexOf('?')
+    const seg = qi >= 0 ? raw.slice(0, qi) : raw
+    const qs = qi >= 0 ? raw.slice(qi) : ''
+    const redirects: Record<string, string> = {
+      watchlist: '/watchlistx',
+      portfolio: '/positions?tab=open',
+      ticker: '/strategy-finder',
+      dashboard: '/trade-command-center',
+      alerts: '/alerts',
+      discovery: '/strategy-finder',
+      scanner: '/strategy-finder',
     }
-  }, [user, page, navigate])
+    const target = redirects[seg] ?? `/${seg}${qs}`
+    navigate(target, { replace: true })
+  }, [navigate])
+  return null
+}
 
-  useEffect(() => {
-    if (!user) return
-    if (!canAccessPage(user.role, page)) navigate('ticker')
-  }, [user, page, navigate])
+function LoginRoute() {
+  const { user } = useApp()
+  if (user) return <Navigate to="/trade-command-center" replace />
+  return <LoginPage />
+}
 
-  if (page === 'activate') return <ActivatePage />
+function RequireAuth() {
+  const { user } = useApp()
+  if (!user) return <Navigate to="/login" replace />
+  return <Outlet />
+}
 
-  if (!user) {
-    if (page === 'forgot-password') return <ForgotPasswordPage />
-    if (page === 'reset-password') return <ResetPasswordPage />
-    return <LoginPage />
-  }
+function RoleGuard() {
+  const { user, canAccessPage } = useApp()
+  const { pathname } = useLocation()
+  const page = locationToPage(pathname)
+  if (!user) return <Outlet />
+  if (!canAccessPage(page)) return <Navigate to="/trade-command-center" replace />
+  return <Outlet />
+}
 
-  if (page === 'login' || page === 'forgot-password' || page === 'reset-password') {
-    return <RouteFallback />
-  }
-
-  const renderPage = canAccessPage(user.role, page) ? page : 'ticker'
-
+function SuspensedOutlet() {
   return (
-    <AppLayout>
-      <Suspense fallback={<RouteFallback />}>
-        {renderPage === 'ticker' && <TickerPage />}
-        {renderPage === 'watchlist' && <WatchlistPage />}
-        {renderPage === 'portfolio' && <PortfolioPage />}
-        {renderPage === 'help' && <HelpPage />}
-        {renderPage === 'ai-stocks' && <AIStocksPage />}
-        {renderPage === 'q-radar' && <QRadarPage />}
-        {renderPage === 'backtest' && <BacktestPage />}
-        {renderPage === 'trade-signals' && <TradeSignalsPage />}
-        {renderPage === 'alerts' && <AlertsPage />}
-        {renderPage === 'settings' && <SettingsPage />}
-        {renderPage === 'journal' && <JournalPage />}
-        {renderPage === 'auto-trade' && <AutoTradePage />}
-        {renderPage === 'day-trade' && <DayTradePage />}
-        {renderPage === 'day-trade-watchlist' && <DayTradeWatchlistPage />}
-        {renderPage === 'day-trade-alerts' && <DayTradeAlertsPage />}
-        {renderPage === 'active-trades' && <ActiveTradesPage />}
-        {renderPage === 'swing-trade' && <SwingTradePage />}
-        {renderPage === 'swing-trade-watchlist' && <SwingTradeWatchlistPage />}
-      </Suspense>
-    </AppLayout>
+    <Suspense fallback={<RouteFallback />}>
+      <Outlet />
+    </Suspense>
+  )
+}
+
+function ShellRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginRoute />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/activate" element={<ActivatePage />} />
+
+      <Route path="/day-trade-watchlist" element={<Navigate to="/watchlistx?source=day" replace />} />
+      <Route path="/swing-trade-watchlist" element={<Navigate to="/watchlistx?source=swing" replace />} />
+      <Route path="/portfolio" element={<Navigate to="/positions?tab=open" replace />} />
+      <Route path="/dashboard" element={<Navigate to="/trade-command-center" replace />} />
+      <Route path="/discovery" element={<Navigate to="/strategy-finder" replace />} />
+      <Route path="/scanner" element={<Navigate to="/strategy-finder" replace />} />
+      <Route path="/ticker" element={<Navigate to="/strategy-finder" replace />} />
+
+      <Route element={<RequireAuth />}>
+        <Route element={<RoleGuard />}>
+          <Route element={<AppLayout />}>
+            <Route element={<SuspensedOutlet />}>
+              <Route path="/" element={<Navigate to="/trade-command-center" replace />} />
+              <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
+              <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
+              <Route path="/strategy-finder" element={<TickerPage />} />
+              <Route path="/positions" element={<PositionsRoute />} />
+              <Route path="/alerts" element={<AlertCenterPage />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/ai-stocks" element={<AIStocksPage />} />
+              <Route path="/q-radar" element={<QRadarPage />} />
+              <Route path="/backtest" element={<BacktestPage />} />
+              <Route path="/trade-signals" element={<TradeSignalsPage />} />
+              <Route path="/journal" element={<JournalPage />} />
+              <Route path="/auto-trade" element={<AutoTradePage />} />
+              <Route path="/watchlistx" element={<WatchlistXPage />} />
+              <Route path="/watchlist" element={<UnifiedWatchlistPage />} />
+              <Route path="/day-trade" element={<DayTradePage />} />
+              <Route path="/day-trade-alerts" element={<DayTradeAlertsPage />} />
+              <Route path="/active-trades" element={<Navigate to="/positions?tab=open&style=day" replace />} />
+              <Route path="/swing-trade" element={<SwingTradePage />} />
+            </Route>
+          </Route>
+        </Route>
+      </Route>
+
+      <Route path="*" element={<Navigate to="/trade-command-center" replace />} />
+    </Routes>
+  )
+}
+
+function AppBody() {
+  return (
+    <>
+      <LegacyHashRedirect />
+      <ShellRoutes />
+    </>
   )
 }
 
 export default function App() {
   const inner = (
-    <AppProvider>
-      <Router />
-    </AppProvider>
+    <BrowserRouter>
+      <AppProvider>
+        <AppBody />
+      </AppProvider>
+    </BrowserRouter>
   )
   if (!googleClientId) return inner
   return <GoogleOAuthProvider clientId={googleClientId}>{inner}</GoogleOAuthProvider>

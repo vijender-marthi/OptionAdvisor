@@ -7,7 +7,7 @@
  * Color rules:
  *   Green   STRONG_GO / QUALITY_LONG / GOOD_ENTRY
  *   Blue    WATCH_CALL_OR_DEBIT_SPREAD / WATCH_CALL / WATCH_PUT / GO_SMALL
- *   Orange  WAIT_PULLBACK / AVOID_CHASE / WAIT_BREAKOUT / EXTENDED
+ *   Orange  WAIT_PULLBACK / AVOID_CHASE / WAIT_BREAKOUT / EXTENDED / CAUTION_ENTRY
  *   Red     AVOID_NAKED_CALLS / NO_TRADE / HIGH / VERY_HIGH risk
  *   Gray    MARKET_CONFIRMATION_ONLY / NO_TRADE_WAIT / NEUTRAL
  */
@@ -35,6 +35,34 @@ interface Props {
   result: SwingTradeScanResult
   onRefresh: () => void
   refreshing: boolean
+}
+
+function resolverBadgeClass(value: string): string {
+  const v = value.toUpperCase()
+  if (v === 'READY' || v === 'TRADE') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+  if (v === 'WATCH' || v === 'WAIT') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'AVOID' || v === 'EXIT' || v === 'NO_EDGE') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  if (v === 'BULLISH') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'BEARISH') return 'border-rose-600/35 bg-rose-500/10 text-rose-200'
+  if (v === 'MIXED') return 'border-sky-700/35 bg-sky-500/10 text-sky-200'
+  if (v === 'STRONG' || v === 'GOOD') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'FAIR' || v === 'WEAK') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'POOR') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  if (v === 'LOW') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
+  if (v === 'MEDIUM') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+  if (v === 'HIGH' || v === 'EXTREME') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+  return 'border-gray-700/40 bg-gray-800/80 text-gray-200'
+}
+
+function ResolverCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-gray-800/90 bg-black/20 px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${resolverBadgeClass(value)}`}>
+        {formatSwingEngineLabel(value)}
+      </div>
+    </div>
+  )
 }
 
 function Badge({ text, tone }: { text: string; tone: Tone }) {
@@ -112,9 +140,8 @@ export default function SwingTradeEnginePanel({ result, onRefresh, refreshing }:
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Main action badge */}
-          <span className={`rounded-full px-3 py-1 text-xs font-bold tracking-wide ${TONE_ACTION_BADGE[actionTone]}`}>
-            {formatSwingEngineLabel(result.final_action)}
+          <span className={`rounded-full px-3 py-1 text-xs font-bold tracking-wide ${resolverBadgeClass(result.final_decision)}`}>
+            {formatSwingEngineLabel(result.final_decision)}
           </span>
           <button
             type="button"
@@ -128,8 +155,46 @@ export default function SwingTradeEnginePanel({ result, onRefresh, refreshing }:
         </div>
       </div>
 
+      <div className="px-4 py-3 border-b border-gray-800 bg-gray-950/25 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ResolverCell label="Market Bias" value={result.market_bias} />
+          <ResolverCell label="Setup Quality" value={result.setup_quality} />
+          <ResolverCell label="Execution Readiness" value={result.execution_readiness} />
+          <ResolverCell label="Final Decision" value={result.final_decision} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-gray-500">
+              <span>Confidence</span>
+              <span className="font-semibold text-gray-300">{result.confidence}%</span>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-gray-800">
+              <div
+                className={`${result.confidence >= 70 ? 'bg-emerald-400' : result.confidence >= 45 ? 'bg-amber-400' : 'bg-rose-400'} h-2 rounded-full`}
+                style={{ width: `${Math.max(0, Math.min(100, result.confidence))}%` }}
+              />
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Risk State</div>
+            <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${resolverBadgeClass(result.risk_state)}`}>
+              {formatSwingEngineLabel(result.risk_state)}
+            </div>
+          </div>
+        </div>
+        <p className="text-sm text-gray-300">{result.reason || result.decision_message}</p>
+        {result.missing_confirmations.length > 0 ? (
+          <p className="text-xs text-amber-200/90">
+            Missing confirmations: {result.missing_confirmations.join(' · ')}
+          </p>
+        ) : null}
+      </div>
+
       {/* ── Secondary badges strip ────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-800 bg-gray-900/30">
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-none ${TONE_ACTION_BADGE[actionTone]}`}>
+          {formatSwingEngineLabel(result.final_action)}
+        </span>
         {secondaryBadges.map((item, i) => (
           <span key={`${item.label}-${item.text}`} className="contents">
             {i > 0 ? <span className="text-gray-800 text-xs">·</span> : null}

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { AlertEmailItem, AlertEntry, AnalyzeResponse, DayTradeAlertEvent, PortfolioPosition, StrategyMode, UserDataState, WatchlistItem } from '../types'
 
-const api = axios.create({ baseURL: '/api' })
+export const api = axios.create({ baseURL: '/api' })
 
 export const OA_ACCESS_TOKEN_KEY = 'oa_access_token'
 
@@ -147,6 +147,15 @@ export interface DayTradeScanResult {
   metrics: Record<string, unknown>
   /** Structured trader interpretation — not a trade signal; confirmation-first framing. */
   trader_decision?: DayTraderDecision
+  market_bias: string
+  setup_quality: string
+  execution_readiness: string
+  final_decision: string
+  confidence: number
+  reason: string
+  supporting_factors: string[]
+  missing_confirmations: string[]
+  risk_state: string
 }
 
 export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {
@@ -196,6 +205,15 @@ export interface SwingTradeScanResult {
   avoid_reason:            string | null
   /** Short options-structure hint derived server-side (education only). */
   playbook_hint:           string
+  market_bias:            string
+  setup_quality:          string
+  execution_readiness:    string
+  final_decision:         string
+  confidence:             number
+  reason:                 string
+  supporting_factors:     string[]
+  missing_confirmations:  string[]
+  risk_state:             string
 }
 
 export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {

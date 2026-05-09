@@ -42,10 +42,10 @@ export default function LoginPage() {
       if (mode === 'signup') {
         const res = await registerWithPassword(name, cleanEmail, password)
         setInfo(res.message)
-        if (!res.needs_activation) navigate('ticker')
+        if (!res.needs_activation) navigate('trade-command-center')
       } else {
         await loginWithPassword(cleanEmail, password)
-        navigate('ticker')
+        navigate('trade-command-center')
       }
     } catch (err: unknown) {
       const detail =
@@ -172,7 +172,7 @@ export default function LoginPage() {
                   setLoading(true)
                   try {
                     await loginWithGoogleCredential(cred.credential)
-                    navigate('ticker')
+                    navigate('trade-command-center')
                   } catch (err: unknown) {
                     const detail =
                       err && typeof err === 'object' && 'response' in err

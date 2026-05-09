@@ -1,0 +1,1207 @@
+import axios from 'axios'
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  BarChart3,
+  BellPlus,
+  BriefcaseBusiness,
+  BrainCircuit,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  LineChart as LineChartIcon,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Star,
+  Trash2,
+  X,
+} from 'lucide-react'
+import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { createWatchlistXAlert, fetchWatchlistX } from '../api/commandCenter'
+import { useApp } from '../contexts/AppContext'
+import { ROUTES } from '../routing/routes'
+import type { ApiEnvelope, WatchlistXDecisionBlock, WatchlistXMetrics, WatchlistXPayload, WatchlistXRow } from '../types/commandCenter'
+import {
+  getActionButtonClass,
+  getAgreementBadgeClass,
+  getBiasBadgeClass,
+  getDecisionBadgeClass,
+  getMarketContextBadgeClass,
+  getMetricChipAppearance,
+  getTrendTextClass,
+  getRiskTextClass,
+} from '../utils/semanticTrading'
+
+type SourceFilter = 'all' | 'day' | 'swing' | 'regular'
+type SortField =
+  | 'engine_agreement'
+  | 'trend'
+  | 'price_change'
+  | 'rsi'
+  | 'relative_strength'
+  | 'trend_score'
+  | 'volume'
+  | 'bull_bear'
+  | 'iv_rank'
+type NoticeTone = 'info' | 'success' | 'warning'
+type StateFilter = 'all' | 'ready' | 'watch' | 'wait' | 'avoid' | 'conflict' | 'manage' | 'extended'
+type AgreementFilter = 'all' | 'strong_agreement' | 'partial_agreement' | 'conflict' | 'extended' | 'no_edge' | 'manage'
+type TrendFilter = 'all' | 'bullish' | 'neutral' | 'bearish'
+
+const FAVORITES_KEY = 'oa_watchlistx_favorites_v1'
+const FILTERS_EXPANDED_KEY = 'oa_watchlistx_filters_expanded_v1'
+
+const SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
+  { value: 'engine_agreement', label: 'Engine agreement' },
+  { value: 'price_change', label: '% change' },
+  { value: 'rsi', label: 'RSI' },
+  { value: 'relative_strength', label: 'Relative strength' },
+  { value: 'trend_score', label: 'Trend score' },
+  { value: 'volume', label: 'Volume ratio' },
+  { value: 'bull_bear', label: 'Bull/Bear score' },
+  { value: 'iv_rank', label: 'IV rank' },
+  { value: 'trend', label: 'Trend' },
+]
+
+const SOURCE_OPTIONS: Array<{ value: SourceFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'day', label: 'Day' },
+  { value: 'swing', label: 'Swing' },
+  { value: 'regular', label: 'Regular' },
+]
+
+const STATE_OPTIONS: Array<{ value: StateFilter; label: string }> = [
+  { value: 'all', label: 'All states' },
+  { value: 'ready', label: 'READY' },
+  { value: 'watch', label: 'WATCH' },
+  { value: 'wait', label: 'WAIT' },
+  { value: 'avoid', label: 'AVOID' },
+  { value: 'conflict', label: 'CONFLICT' },
+  { value: 'manage', label: 'MANAGE' },
+  { value: 'extended', label: 'EXTENDED' },
+]
+
+const AGREEMENT_OPTIONS: Array<{ value: AgreementFilter; label: string }> = [
+  { value: 'all', label: 'All agreement' },
+  { value: 'strong_agreement', label: 'Strong agreement' },
+  { value: 'partial_agreement', label: 'Partial agreement' },
+  { value: 'conflict', label: 'Conflict' },
+  { value: 'extended', label: 'Extended' },
+  { value: 'no_edge', label: 'No edge' },
+  { value: 'manage', label: 'Manage' },
+]
+
+const TREND_OPTIONS: Array<{ value: TrendFilter; label: string }> = [
+  { value: 'all', label: 'All trends' },
+  { value: 'bullish', label: 'Bullish' },
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'bearish', label: 'Bearish' },
+]
+
+const PRIMARY_STATE_OPTIONS: Array<{ value: StateFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'ready', label: 'Ready' },
+  { value: 'watch', label: 'Watch' },
+  { value: 'wait', label: 'Wait' },
+  { value: 'avoid', label: 'Avoid' },
+  { value: 'conflict', label: 'Conflict' },
+  { value: 'extended', label: 'Extended' },
+]
+
+const PRIMARY_AGREEMENT_OPTIONS: Array<{ value: AgreementFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'strong_agreement', label: 'Strong' },
+  { value: 'partial_agreement', label: 'Partial' },
+  { value: 'conflict', label: 'Conflict' },
+  { value: 'no_edge', label: 'No Edge' },
+]
+
+const PRIMARY_SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
+  { value: 'engine_agreement', label: 'Agreement' },
+  { value: 'price_change', label: 'Price Change' },
+  { value: 'trend', label: 'Trend' },
+  { value: 'rsi', label: 'RSI' },
+  { value: 'volume', label: 'Volume' },
+]
+
+function FilterPillGroup<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  className = '',
+}: {
+  label: string
+  options: Array<{ value: T; label: string }>
+  value: T
+  onChange: (value: T) => void
+  className?: string
+}) {
+  return (
+    <div className={`min-w-[10rem] flex-1 space-y-2 ${className}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              value === option.value ? 'bg-violet-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted hover:text-secondary'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function saveJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore */
+  }
+}
+
+function axiosErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { detail?: unknown } | undefined
+    if (typeof data?.detail === 'string') return data.detail
+    if (err.response?.status === 401) return 'Session expired — sign in again.'
+    return err.message || 'Request failed'
+  }
+  if (err instanceof Error) return err.message
+  return 'Failed to load WatchlistX'
+}
+
+function fmtPrice(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '\u2014'
+  return `$${value.toFixed(2)}`
+}
+
+function fmtPct(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '\u2014'
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)}%`
+}
+
+function fmtDayChange(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '\u2014'
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)}`
+}
+
+function fmtNumber(value?: number | null, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return '\u2014'
+  return value.toFixed(digits)
+}
+
+function fmtDate(value?: string): string {
+  if (!value) return '\u2014'
+  const ts = Date.parse(value)
+  if (!Number.isFinite(ts)) return value
+  return new Date(ts).toLocaleDateString()
+}
+
+function fmtRelativeTime(value?: string): string {
+  if (!value) return '\u2014'
+  const ts = Date.parse(value)
+  if (!Number.isFinite(ts)) return '\u2014'
+  const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000))
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.round(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.round(diffHr / 24)
+  return `${diffDay}d ago`
+}
+
+function sourceChipClass(source: string): string {
+  if (source === 'day') return 'border-semantic-bullish-border bg-semantic-bullish-bg text-semantic-bullish'
+  if (source === 'swing') return 'border-semantic-info-border bg-semantic-info-bg text-semantic-info'
+  return 'border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
+}
+
+function signalClass(value: string): string {
+  return getDecisionBadgeClass(value)
+}
+
+function agreementBadgeClass(value: string): string {
+  return getAgreementBadgeClass(value)
+}
+
+function trendClass(value: string): string {
+  return getTrendTextClass(value)
+}
+
+function riskClass(value: string): string {
+  return getRiskTextClass(value)
+}
+
+function normalizeTrendFilter(value: string): TrendFilter {
+  const trend = value.toLowerCase()
+  if (trend.includes('up') || trend.includes('bull')) return 'bullish'
+  if (trend.includes('down') || trend.includes('bear')) return 'bearish'
+  return 'neutral'
+}
+
+function normalizeAgreementBadge(row: WatchlistXRow): string {
+  const raw = String(row.agreement_badge || '').trim().toUpperCase()
+  if (raw) return raw
+  const state = String(row.agreement_state || '').trim().toUpperCase()
+  if (state === 'CONFLICT') return 'CONFLICT'
+  if (state === 'EXTENDED') return 'EXTENDED'
+  if (state === 'MANAGE') return 'MANAGE'
+  if (state === 'AVOID') return 'NO_EDGE'
+  return 'PARTIAL_AGREEMENT'
+}
+
+function decisionSummary(decision: WatchlistXDecisionBlock): string {
+  const parts = [decision.market_bias, decision.setup_quality, decision.execution_readiness]
+    .map(part => String(part || '').trim())
+    .filter(Boolean)
+  return parts.length ? parts.join(' \u00b7 ') : 'No decision context yet'
+}
+
+function marketContextTone(value?: string | null): string {
+  return getMarketContextBadgeClass(String(value || ''))
+}
+
+function matchesStateFilter(row: WatchlistXRow, stateFilter: StateFilter, sourceFilter: SourceFilter): boolean {
+  if (stateFilter === 'all') return true
+  const target = sourceFilter === 'all'
+    ? row.agreement_state
+    : sourceFilter === 'day'
+      ? row.day_decision
+      : sourceFilter === 'swing'
+        ? row.swing_decision
+        : row.regular_decision
+  return String(target || '').trim().toLowerCase() === stateFilter
+}
+
+function matchesAgreementFilter(row: WatchlistXRow, agreementFilter: AgreementFilter): boolean {
+  if (agreementFilter === 'all') return true
+  return normalizeAgreementBadge(row).toLowerCase() === agreementFilter
+}
+
+function metricValue(metrics: WatchlistXMetrics | undefined, key: keyof WatchlistXMetrics): number | null {
+  const value = metrics?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function WatchlistSparkline({ points, height = 180 }: { points: Array<{ date: string; close: number }>; height?: number }) {
+  if (!points.length) {
+    return <div className="flex h-[160px] items-center justify-center text-sm text-gray-500">No chart data yet.</div>
+  }
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={points}>
+          <Tooltip
+            contentStyle={{ backgroundColor: 'var(--chart-tooltip-bg)', border: '1px solid var(--chart-tooltip-border)', borderRadius: 16 }}
+            labelStyle={{ color: 'var(--chart-tooltip-label)' }}
+            formatter={(value: number) => [`$${Number(value).toFixed(2)}`, 'Close']}
+          />
+          <Line type="monotone" dataKey="close" stroke="#38bdf8" strokeWidth={2.25} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function StatusPill({ value, agreement = false }: { value: string; agreement?: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+        agreement ? agreementBadgeClass(value) : signalClass(value)
+      }`}
+    >
+      {value.replace(/_/g, ' ')}
+    </span>
+  )
+}
+
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="flex items-baseline gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+      <div className={`text-base font-bold tabular-nums ${tone}`}>{value}</div>
+    </div>
+  )
+}
+
+function CompactChip({
+  label,
+  value,
+  tone = 'text-white',
+  chrome = 'border-semantic-neutral-border bg-semantic-neutral-bg',
+}: {
+  label: string
+  value: string
+  tone?: string
+  chrome?: string
+}) {
+  return (
+    <div className={`rounded-lg border px-2 py-1 leading-none ${chrome}`}>
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-0.5 text-xs font-semibold ${tone}`}>{value}</div>
+    </div>
+  )
+}
+
+function SourcePill({ source, decision, emphasized = true }: { source: string; decision: string; emphasized?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded-lg border font-bold uppercase ${emphasized ? 'px-1.5 py-0.5 text-[10px] tracking-wide' : 'px-1 py-0.5 text-[9px] tracking-normal opacity-55'} ${sourceChipClass(source)}`}>
+      {source}
+      <span className="opacity-60">/</span>
+      <span className="font-extrabold">{decision}</span>
+    </span>
+  )
+}
+
+function DecisionPanel({ title, decision }: { title: string; decision: WatchlistXDecisionBlock }) {
+  return (
+    <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-heading">{title}</div>
+          <div className="mt-0.5 truncate text-[10px] text-muted">{decisionSummary(decision)}</div>
+        </div>
+        <StatusPill value={decision.final_decision} />
+      </div>
+      <div className="mt-2 space-y-2">
+        <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted">Reason</div>
+          <div className="mt-1 text-xs text-secondary">{decision.reason || 'No reason provided.'}</div>
+        </div>
+        <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted">Risk</div>
+          <div className={`mt-1 text-xs font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_state || 'MEDIUM'}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExpandedAnalysis({
+  row,
+  alertBusy,
+  onAnalyze,
+  onViewChart,
+  onCreateAlert,
+  onAddToPositions,
+}: {
+  row: WatchlistXRow
+  alertBusy: boolean
+  onAnalyze: () => void
+  onViewChart: () => void
+  onCreateAlert: () => void
+  onAddToPositions: () => void
+}) {
+  return (
+    <div className="min-w-0 space-y-3 border-t border-border/25 px-4 py-3">
+      <div className="min-w-0 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-3">
+          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-heading">
+              <LineChartIcon size={14} className="text-info" />
+              Price action
+            </div>
+            <div className="mt-2">
+              <WatchlistSparkline points={row.chart_points} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-heading">
+              <BrainCircuit size={14} className="text-accent" />
+              AI coach
+            </div>
+            <div className="mt-2 text-xs leading-5 text-secondary">{row.ai_summary}</div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">Agreement reason</div>
+                <div className="mt-1 text-xs text-secondary">{row.agreement_reason}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">Suggested action</div>
+                <div className="mt-1 text-xs text-secondary">
+                  {row.regular.reason || row.swing.reason || row.day.reason || 'Re-check before acting.'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">Notes</div>
+                <div className="mt-1 text-xs text-secondary">{row.notes?.trim() || 'No notes yet.'}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted">Added</div>
+                <div className="mt-1 text-xs text-secondary">{fmtDate(row.added_at)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
+            <div className="text-xs font-semibold text-heading">Actions</div>
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
+                <BarChart3 size={13} />
+                Analyze
+              </button>
+              <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
+                <BriefcaseBusiness size={13} />
+                Add Trade
+              </button>
+              <button type="button" onClick={onCreateAlert} disabled={alertBusy} title={alertBusy ? 'Creating alert\u2026' : 'Create alert'} className={`${getActionButtonClass('alert')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
+                <BellPlus size={13} />
+                {alertBusy ? 'Creating\u2026' : 'Alert'}
+              </button>
+              <button type="button" onClick={onViewChart} className={`${getActionButtonClass('surface')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
+                <ArrowUpRight size={13} />
+                Ticker detail
+              </button>
+            </div>
+          </div>
+          <DecisionPanel title="Day" decision={row.day} />
+          <DecisionPanel title="Swing" decision={row.swing} />
+          <DecisionPanel title="Regular" decision={row.regular} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const WatchlistCard = memo(function WatchlistCard({
+  row,
+  isOpen,
+  isFavorite,
+  alertBusy,
+  sourceFilter,
+  onToggle,
+  onAnalyze,
+  onViewChart,
+  onCreateAlert,
+  onAddToPositions,
+  onOpenAlerts,
+  onFavorite,
+  onRemove,
+}: {
+  row: WatchlistXRow
+  isOpen: boolean
+  isFavorite: boolean
+  alertBusy: boolean
+  sourceFilter: SourceFilter
+  onAnalyze: () => void
+  onViewChart: () => void
+  onCreateAlert: () => void
+  onAddToPositions: () => void
+  onOpenAlerts: () => void
+  onFavorite: () => void
+  onRemove: () => void
+  onToggle: (id: string) => void
+}) {
+  const metrics = row.metrics
+  const agreementBadge = normalizeAgreementBadge(row)
+  const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
+  const trendTone = trendClass(row.trend)
+  const marketContext = metrics?.market_context || 'MARKET_MIXED'
+  const rsiAppearance = getMetricChipAppearance('rsi', metricValue(metrics, 'rsi'))
+  const rsAppearance = getMetricChipAppearance('relative_strength', metricValue(metrics, 'relative_strength'))
+  const volumeAppearance = getMetricChipAppearance('volume_ratio', metricValue(metrics, 'volume_ratio'))
+  const ivAppearance = getMetricChipAppearance('iv_rank', metricValue(metrics, 'iv_rank'))
+  const trendAppearance = getMetricChipAppearance('trend', null, row.trend)
+  const updatedLabel = row.cache_age_seconds != null && Number.isFinite(row.cache_age_seconds)
+    ? `${Math.max(0, Math.round(row.cache_age_seconds))}s ago`
+    : 'cached'
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const handleToggle = useCallback(() => onToggle(row.id), [onToggle, row.id])
+
+  return (
+    <article
+      className={`w-full max-w-full rounded-2xl border transition duration-200 ${
+        isOpen
+          ? 'border-sky-500/20 shadow-[0_10px_24px_rgba(2,6,23,0.18)]'
+          : 'border-gray-800/20 hover:border-gray-700/20'
+      }`}
+    >
+      <div className="min-w-0 space-y-2.5 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={onViewChart} className="font-mono text-base font-semibold tracking-tight text-heading hover:text-info">
+                {row.ticker}
+              </button>
+              <button
+                type="button"
+                onClick={onFavorite}
+                title={isFavorite ? 'Unfavorite' : 'Favorite'}
+                className={`-ml-0.5 ${isFavorite ? 'text-amber-300' : 'text-gray-500 hover:text-amber-300'}`}
+              >
+                <Star size={12} className={isFavorite ? 'fill-current' : ''} />
+              </button>
+              {row.sector && (
+                <span className="rounded-md border border-gray-700/12 bg-gray-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+                  {row.sector}
+                </span>
+              )}
+              <StatusPill value={agreementBadge} agreement />
+            </div>
+            <div className="mt-0.5 truncate text-sm text-tertiary">{row.company_name || row.ticker}</div>
+          </div>
+          <div className="shrink-0 text-right leading-tight">
+            <div className="font-mono text-lg font-semibold text-heading">{fmtPrice(row.price)}</div>
+            <div className={`text-xs font-semibold ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
+            <div className="mt-0.5 text-[9px] text-muted">{updatedLabel}</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1">
+          <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />
+          <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />
+          <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
+          <span className="text-muted">·</span>
+          <span className={`inline-flex items-center rounded-lg border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${marketContextTone(marketContext)}`}>
+            {String(marketContext).replace(/_/g, ' ')}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-1">
+          <CompactChip label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} tone={rsiAppearance.value} chrome={rsiAppearance.container} />
+          <CompactChip label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} tone={rsAppearance.value} chrome={rsAppearance.container} />
+          <CompactChip label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} tone={volumeAppearance.value} chrome={volumeAppearance.container} />
+          <CompactChip label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} tone={ivAppearance.value} chrome={ivAppearance.container} />
+          <CompactChip label="Trend" value={row.trend || 'NEUTRAL'} tone={trendTone} chrome={trendAppearance.container} />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-xs text-secondary transition hover:bg-gray-800/40"
+        >
+          <Sparkles size={11} className="shrink-0 text-violet-300" />
+          <span className="min-w-0 flex-1 line-clamp-2">{row.ai_summary}</span>
+          {isOpen ? <ChevronUp size={13} className="shrink-0" /> : <ChevronDown size={13} className="shrink-0" />}
+        </button>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1 px-2 py-1 text-[11px]`}>
+            <BarChart3 size={12} />
+            Analyze
+          </button>
+          <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} gap-1 px-2 py-1 text-[11px]`}>
+            <BriefcaseBusiness size={12} />
+            Trade
+          </button>
+          <button type="button" onClick={onCreateAlert} disabled={alertBusy} title={alertBusy ? 'Creating alert\u2026' : 'Create alert'} className={`${getActionButtonClass('alert')} gap-1 px-2 py-1 text-[11px]`}>
+            <BellPlus size={12} />
+            {alertBusy ? 'Creating\u2026' : 'Alert'}
+          </button>
+          <div className="relative ml-auto">
+            <button
+              type="button"
+              onClick={e => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                if (menuPos) { setMenuPos(null); return }
+                const menuWidth = 176
+                const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
+                setMenuPos({ top: rect.bottom + 4, left })
+              }}
+              className={`${getActionButtonClass('surface')} gap-1 px-2 py-1 text-[11px]`}
+            >
+              <span>More</span>
+              <ChevronDown size={11} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {menuPos && createPortal(
+        <div className="fixed inset-0 z-50" onClick={() => setMenuPos(null)}>
+          <div
+            className="menu-dropdown absolute w-44 rounded-xl border py-1 shadow-lg"
+            style={{ top: menuPos.top, left: menuPos.left }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button type="button" onClick={() => { onViewChart(); setMenuPos(null) }} className="menu-item flex w-full items-center gap-2 px-3 py-1.5 text-xs">
+              <ArrowUpRight size={13} /> Ticker detail
+            </button>
+            <button type="button" onClick={onOpenAlerts} className="menu-item flex w-full items-center gap-2 px-3 py-1.5 text-xs">
+              <BellPlus size={13} /> {row.alerts_count} alert{row.alerts_count === 1 ? '' : 's'}
+            </button>
+            <button type="button" onClick={() => { onRemove(); setMenuPos(null) }} className="menu-item menu-item-danger flex w-full items-center gap-2 px-3 py-1.5 text-xs">
+              <Trash2 size={13} /> Remove
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isOpen ? (
+        <ExpandedAnalysis
+          row={row}
+          alertBusy={alertBusy}
+          onAnalyze={onAnalyze}
+          onViewChart={onViewChart}
+          onCreateAlert={onCreateAlert}
+          onAddToPositions={onAddToPositions}
+        />
+      ) : null}
+    </article>
+  )
+})
+
+function MobileActionTray({
+  row,
+  isFavorite,
+  alertBusy,
+  isOpen,
+  onAnalyze,
+  onAddToPositions,
+  onCreateAlert,
+  onFavorite,
+  onRemove,
+  onToggle,
+}: {
+  row: WatchlistXRow | null
+  isFavorite: boolean
+  alertBusy: boolean
+  isOpen: boolean
+  onAnalyze: () => void
+  onAddToPositions: () => void
+  onCreateAlert: () => void
+  onFavorite: () => void
+  onRemove: () => void
+  onToggle: () => void
+}) {
+  if (!row) return null
+  return (
+    <div className="sm:hidden fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-border/18 bg-surface-card/95 p-3 shadow-[0_14px_32px_rgba(2,6,23,0.22)] backdrop-blur">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-sm font-semibold text-heading">{row.ticker}</div>
+          <div className="truncate text-xs text-tertiary">{row.company_name}</div>
+        </div>
+        <StatusPill value={normalizeAgreementBadge(row)} agreement />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1 rounded-xl px-2 py-2 text-xs`}>Analyze</button>
+        <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} gap-1 rounded-xl px-2 py-2 text-xs`}>Add Trade</button>
+        <button type="button" onClick={onCreateAlert} disabled={alertBusy} className={`${getActionButtonClass('alert')} gap-1 rounded-xl px-2 py-2 text-xs`}>{alertBusy ? 'Busy\u2026' : 'Alert'}</button>
+        <button type="button" onClick={onFavorite} className={`${getActionButtonClass('surface')} gap-1 rounded-xl px-2 py-2 text-xs`}>{isFavorite ? 'Unfavorite' : 'Favorite'}</button>
+        <button type="button" onClick={onRemove} className="btn btn-danger gap-1 rounded-xl px-2 py-2 text-xs">Remove</button>
+        <button type="button" onClick={onToggle} className={`${getActionButtonClass('surface')} gap-1 rounded-xl px-2 py-2 text-xs`}>{isOpen ? 'Collapse' : 'Expand'}</button>
+      </div>
+    </div>
+  )
+}
+
+
+export default function WatchlistXPage() {
+  const routerNavigate = useNavigate()
+  const { requestAnalysis, removeFromWatchlist } = useApp()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [env, setEnv] = useState<ApiEnvelope<WatchlistXPayload> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ tone: NoticeTone; message: string } | null>(null)
+  const [alertBusy, setAlertBusy] = useState<Record<string, boolean>>({})
+  const [filtersExpanded, setFiltersExpanded] = useState<boolean>(() => loadJson<boolean>(FILTERS_EXPANDED_KEY, false))
+  const [searchInput, setSearchInput] = useState(searchParams.get('q')?.trim() ?? '')
+  const [favorites, setFavorites] = useState<string[]>(() => loadJson<string[]>(FAVORITES_KEY, []))
+  const deferredSearch = useDeferredValue(searchInput)
+  const [showMoreStats, setShowMoreStats] = useState(false)
+  const [marketExpanded, setMarketExpanded] = useState(false)
+  const moreStatsRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => { saveJson(FAVORITES_KEY, favorites) }, [favorites])
+  useEffect(() => { saveJson(FILTERS_EXPANDED_KEY, filtersExpanded) }, [filtersExpanded])
+
+  const favoriteSet = useMemo(() => new Set(favorites.map(item => item.toUpperCase())), [favorites])
+
+  const sourceFilter = useMemo<SourceFilter>(() => {
+    const raw = searchParams.get('source')?.trim().toLowerCase()
+    return raw === 'day' || raw === 'swing' || raw === 'regular' ? raw : 'all'
+  }, [searchParams])
+
+  const stateFilter = useMemo<StateFilter>(() => {
+    const raw = searchParams.get('state')?.trim().toLowerCase()
+    return STATE_OPTIONS.some(o => o.value === raw) ? (raw as StateFilter) : 'all'
+  }, [searchParams])
+
+  const agreementFilter = useMemo<AgreementFilter>(() => {
+    const raw = searchParams.get('agreement')?.trim().toLowerCase()
+    return AGREEMENT_OPTIONS.some(o => o.value === raw) ? (raw as AgreementFilter) : 'all'
+  }, [searchParams])
+
+  const trendFilter = useMemo<TrendFilter>(() => {
+    const raw = searchParams.get('trend_filter')?.trim().toLowerCase()
+    return TREND_OPTIONS.some(o => o.value === raw) ? (raw as TrendFilter) : 'all'
+  }, [searchParams])
+
+  const sectorFilter = searchParams.get('sector')?.trim() || 'all'
+
+  const sortBy = useMemo<SortField>(() => {
+    const raw = searchParams.get('sort_by')?.trim().toLowerCase()
+    return SORT_OPTIONS.some(o => o.value === raw) ? (raw as SortField) : 'engine_agreement'
+  }, [searchParams])
+
+  const sortDir = searchParams.get('sort_dir') === 'asc' ? 'asc' : 'desc'
+  const page = Math.max(1, Number(searchParams.get('page') || '1') || 1)
+  const pageSize = Math.max(10, Math.min(100, Number(searchParams.get('page_size') || '24') || 24))
+
+  useEffect(() => {
+    const urlSearch = searchParams.get('q')?.trim() ?? ''
+    if (urlSearch !== searchInput) setSearchInput(urlSearch)
+  }, [searchInput, searchParams])
+
+  useEffect(() => {
+    const current = searchParams.get('q')?.trim() ?? ''
+    if (current === deferredSearch.trim()) return
+    const next = new URLSearchParams(searchParams)
+    const value = deferredSearch.trim()
+    if (value) next.set('q', value)
+    else next.delete('q')
+    next.set('page', '1')
+    setSearchParams(next, { replace: true })
+  }, [deferredSearch, searchParams, setSearchParams])
+
+  const setParam = useCallback(
+    (key: string, value: string | null, resetPage = false) => {
+      const next = new URLSearchParams(searchParams)
+      if (value == null || value === '') next.delete(key)
+      else next.set(key, value)
+      if (resetPage) next.set('page', '1')
+      setSearchParams(next)
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const next = await fetchWatchlistX({
+        search: searchParams.get('q')?.trim() || undefined,
+        source: sourceFilter === 'all' ? undefined : sourceFilter,
+        sort_by: sortBy,
+        sort_dir: sortDir,
+        page,
+        page_size: pageSize,
+      })
+      setEnv(next)
+    } catch (err) {
+      setError(axiosErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [page, pageSize, searchParams, sortBy, sortDir, sourceFilter])
+
+  useEffect(() => { void load() }, [load])
+
+  const payload = env?.data
+  const rows = payload?.rows ?? []
+  const summary = payload?.summary ?? { total: 0, ready: 0, watch: 0, extended: 0, avoid: 0, conflict: 0, manage: 0, alerts: 0, strong_bullish: 0, strong_bearish: 0 }
+  const aiSummary = payload?.ai_summary ?? { headline: 'No watchlist items yet', message: 'Add tickers to start the unified watchlist pipeline.', best_focus: 'Use Strategy Finder, day trade, or swing trade flows to seed tickers.', counts: {} }
+  const pagination = payload?.pagination ?? { page: 1, page_size: pageSize, total: 0, total_pages: 1 }
+
+  const sectors = useMemo(() => {
+    return [...new Set(rows.map(r => r.sector).filter((s): s is string => Boolean(s && s !== 'N/A')))].sort((a, b) => a.localeCompare(b))
+  }, [rows])
+
+  const visibleRows = useMemo(() => {
+    return rows.filter(row => {
+      if (!matchesStateFilter(row, stateFilter, sourceFilter)) return false
+      if (!matchesAgreementFilter(row, agreementFilter)) return false
+      if (trendFilter !== 'all' && normalizeTrendFilter(row.trend) !== trendFilter) return false
+      if (sectorFilter !== 'all' && (row.sector || 'N/A') !== sectorFilter) return false
+      return true
+    })
+  }, [agreementFilter, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
+
+  const engineCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    const getVal = (row: WatchlistXRow): string => {
+      if (sourceFilter === 'all') return String(row.agreement_state || '').toLowerCase()
+      if (sourceFilter === 'day') return String(row.day_decision || '').toLowerCase()
+      if (sourceFilter === 'swing') return String(row.swing_decision || '').toLowerCase()
+      return String(row.regular_decision || '').toLowerCase()
+    }
+    for (const row of rows) {
+      const val = getVal(row)
+      counts[val] = (counts[val] || 0) + 1
+    }
+    return counts
+  }, [rows, sourceFilter])
+
+  const marketStrip = useMemo(() => {
+    const row = visibleRows[0] || rows[0]
+    const dayMetrics = row?.day.metrics as Record<string, unknown> | undefined
+    return {
+      marketContext: row?.metrics?.market_context || 'MARKET_MIXED',
+      spyBias: typeof dayMetrics?.spy_bias === 'string' ? dayMetrics.spy_bias : '',
+      qqqBias: typeof dayMetrics?.qqq_bias === 'string' ? dayMetrics.qqq_bias : '',
+      fetchedAt: env?.fetched_at,
+    }
+  }, [env?.fetched_at, rows, visibleRows])
+
+  const activeRow = useMemo(
+    () => visibleRows.find(row => row.id === expandedId) ?? rows.find(row => row.id === expandedId) ?? null,
+    [expandedId, rows, visibleRows],
+  )
+
+  const clearAllFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('source')
+    next.delete('state')
+    next.delete('agreement')
+    next.delete('trend_filter')
+    next.delete('sector')
+    next.set('page', '1')
+    setSearchParams(next)
+  }, [searchParams, setSearchParams])
+
+  // Source filter is shown in the engine tab bar — omit from chip strip to avoid duplication
+  const activeFilters = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onRemove: () => void }> = []
+    if (stateFilter !== 'all') chips.push({ key: 'state', label: STATE_OPTIONS.find(o => o.value === stateFilter)?.label ?? stateFilter.toUpperCase(), onRemove: () => setParam('state', null, true) })
+    if (agreementFilter !== 'all') chips.push({ key: 'agreement', label: AGREEMENT_OPTIONS.find(o => o.value === agreementFilter)?.label ?? agreementFilter, onRemove: () => setParam('agreement', null, true) })
+    if (trendFilter !== 'all') chips.push({ key: 'trend', label: TREND_OPTIONS.find(o => o.value === trendFilter)?.label ?? trendFilter, onRemove: () => setParam('trend_filter', null, true) })
+    if (sectorFilter !== 'all') chips.push({ key: 'sector', label: sectorFilter, onRemove: () => setParam('sector', null, true) })
+    return chips
+  }, [stateFilter, agreementFilter, trendFilter, sectorFilter, setParam])
+
+  const noticeClass =
+    notice?.tone === 'success'
+      ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-100'
+      : notice?.tone === 'warning'
+        ? 'border-amber-500/25 bg-amber-500/12 text-amber-100'
+        : 'border-sky-500/25 bg-sky-500/12 text-sky-100'
+
+  const engineLabel = sourceFilter === 'all' ? 'Overall' : sourceFilter.charAt(0).toUpperCase() + sourceFilter.slice(1)
+  const sourceSubtitle = sourceFilter === 'all' ? 'All engines in one view' : `Filtering by ${sourceFilter} engine decision`
+
+  const toggleExpanded = useCallback((id: string) => { setExpandedId(cur => (cur === id ? null : id)) }, [])
+  const toggleFavorite = useCallback((ticker: string) => {
+    const norm = ticker.toUpperCase()
+    setFavorites(cur => cur.map(t => t.toUpperCase()).includes(norm) ? cur.filter(t => t.toUpperCase() !== norm) : [...cur, norm])
+  }, [])
+  const handleAnalyze = useCallback((ticker: string) => requestAnalysis(ticker), [requestAnalysis])
+  const handleTickerDetail = useCallback((row: WatchlistXRow) => routerNavigate(row.actions.chart_url || row.actions.analyze_url || '/'), [routerNavigate])
+  const handleAddToPositions = useCallback((row: WatchlistXRow) => {
+    if (!row.actions.positions_url) { setNotice({ tone: 'info', message: `${row.ticker} add-trade route is not wired yet.` }); return }
+    routerNavigate(row.actions.positions_url)
+  }, [routerNavigate])
+  const handleOpenAlerts = useCallback((row: WatchlistXRow) => routerNavigate(row.actions.alerts_url || ROUTES.alerts), [routerNavigate])
+  const handleCreateAlert = useCallback(async (row: WatchlistXRow) => {
+    setAlertBusy(cur => ({ ...cur, [row.id]: true }))
+    try {
+      await createWatchlistXAlert({ ticker: row.ticker, agreement_state: row.agreement_state, message: `${row.ticker} ${row.agreement_state.toLowerCase()} watchlist alert`, recommended_action: row.agreement_reason })
+      setNotice({ tone: 'success', message: `${row.ticker} alert created in Alert Center.` })
+    } catch (err) {
+      setNotice({ tone: 'warning', message: axiosErrorMessage(err) })
+    } finally {
+      setAlertBusy(cur => ({ ...cur, [row.id]: false }))
+    }
+  }, [])
+  const handleRemove = useCallback((row: WatchlistXRow) => {
+    if (!row.sources.includes('regular')) { setNotice({ tone: 'info', message: `${row.ticker} is only coming from Day/Swing sources. Unified-source removal is still a TODO.` }); return }
+    removeFromWatchlist(row.ticker)
+    setExpandedId(cur => (cur === row.id ? null : cur))
+    setNotice({ tone: 'success', message: row.sources.length > 1 ? `${row.ticker} was removed from the regular watchlist but still exists in other engine sources.` : `${row.ticker} was removed from the watchlist.` })
+  }, [removeFromWatchlist])
+
+  return (
+    <div className="watchlistx-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-heading sm:text-3xl">WatchlistX</h1>
+            <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based watchlist for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className={`${getActionButtonClass('alert')} gap-2 rounded-full px-3 py-2 text-sm`}><AlertTriangle size={16} /> Alert Center</button>
+          <button type="button" onClick={() => routerNavigate(ROUTES.positions)} className={`${getActionButtonClass('trade')} gap-2 rounded-full px-3 py-2 text-sm`}><BriefcaseBusiness size={16} /> Positions</button>
+          <button type="button" onClick={() => void load()} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+        </div>
+      </header>
+
+      {notice ? (
+        <div className={`flex items-start justify-between gap-3 rounded-[24px] border px-4 py-3 text-sm ${noticeClass}`}>
+          <div>{notice.message}</div>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-current/80 hover:text-current"><X size={16} /></button>
+        </div>
+      ) : null}
+
+      <section className="flex flex-wrap items-center gap-2">
+        <SummaryCard label="Total" value={String(rows.length)} tone="text-heading" />
+        <SummaryCard label="Ready" value={String(engineCounts.ready ?? 0)} tone="text-semantic-bullish" />
+        <SummaryCard label="Conflict" value={String(engineCounts.conflict ?? 0)} tone="text-semantic-conflict" />
+        <SummaryCard label="Alerts" value={String(summary.alerts ?? rows.reduce((c, row) => c + row.alerts_count, 0))} tone="text-semantic-info" />
+        <div className="relative">
+          <button ref={moreStatsRef} type="button" onClick={() => setShowMoreStats(o => !o)}
+            className="inline-flex items-center gap-1 rounded-lg border border-border/25 bg-surface-muted px-2.5 py-2 text-xs font-semibold text-muted hover:text-secondary transition-colors"
+          >
+            More Stats <ChevronDown size={12} className={`transition-transform ${showMoreStats ? 'rotate-180' : ''}`} />
+          </button>
+          {showMoreStats && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowMoreStats(false)} />
+              <div className="absolute right-0 top-full z-30 mt-1.5 w-44 rounded-xl border border-border/25 bg-surface-card p-2 shadow-lg">
+                {[
+                  { label: 'Watch', value: engineCounts.watch ?? 0, tone: 'text-semantic-warning' },
+                  { label: 'Wait', value: engineCounts.wait ?? 0, tone: 'text-semantic-warning' },
+                  { label: 'Avoid', value: engineCounts.avoid ?? 0, tone: 'text-semantic-bearish' },
+                  { label: 'Extended', value: engineCounts.extended ?? 0, tone: 'text-semantic-extended' },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-surface-muted/30">
+                    <span className="text-muted">{item.label}</span>
+                    <span className={`font-semibold tabular-nums ${item.tone}`}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* ── Filter bar ── */}
+      <section className="sticky top-3 z-20 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-3 shadow-sm">
+
+        {/* Top control row — always visible */}
+        <div className="flex flex-wrap items-center gap-2">
+
+          {/* Search */}
+          <label className="flex min-w-[10rem] flex-1 items-center gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5">
+            <Search size={14} className="text-muted" />
+            <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search ticker or company…" className="w-full bg-transparent text-sm text-primary outline-none placeholder:text-muted" />
+          </label>
+
+          {/* Engine tabs: All / Day / Swing / Regular */}
+          <div className="flex gap-1 overflow-x-auto">
+            {SOURCE_OPTIONS.map(opt => (
+              <button key={opt.value} type="button"
+                onClick={() => setParam('source', opt.value === 'all' ? null : opt.value, true)}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  sourceFilter === opt.value ? 'bg-violet-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
+                }`}
+              >{opt.label}</button>
+            ))}
+          </div>
+
+          {/* Sort + direction */}
+          <label className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-2 py-1.5 text-xs text-secondary">
+            <select value={sortBy} onChange={e => setParam('sort_by', e.target.value, true)} className="bg-transparent text-primary outline-none text-xs">
+              {PRIMARY_SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button type="button" onClick={() => setParam('sort_dir', sortDir === 'asc' ? 'desc' : 'asc')} className="ml-1 text-muted hover:text-secondary">
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </button>
+          </label>
+
+          {/* Expand / Collapse Filters */}
+          <button type="button" onClick={() => setFiltersExpanded(o => !o)}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              filtersExpanded
+                ? 'border-violet-500/30 bg-violet-500/10 text-violet-400'
+                : 'border-slate-200 dark:border-white/[0.08] text-muted hover:text-secondary'
+            }`}
+          >
+            <Filter size={12} />
+            {filtersExpanded
+              ? <><ChevronUp size={11} className="shrink-0" />Collapse Filters</>
+              : <><ChevronDown size={11} className="shrink-0" />Expand Filters</>}
+            {activeFilters.length > 0 && <span className="h-2 w-2 rounded-full bg-violet-500 shrink-0" />}
+          </button>
+        </div>
+
+        {/* Advanced filter panel — smoothly collapses via grid-rows trick */}
+        <div className={`grid overflow-hidden transition-all duration-200 ease-in-out ${filtersExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="min-h-0">
+            <div className="border-t border-slate-100 dark:border-white/[0.05] pt-3 space-y-3">
+
+              {/* Pill filter groups */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <FilterPillGroup
+                  label="Overall State"
+                  options={PRIMARY_STATE_OPTIONS}
+                  value={stateFilter === 'manage' ? 'all' : stateFilter}
+                  onChange={value => setParam('state', value === 'all' ? null : value, true)}
+                />
+                <FilterPillGroup
+                  label="Agreement"
+                  options={PRIMARY_AGREEMENT_OPTIONS}
+                  value={PRIMARY_AGREEMENT_OPTIONS.some(o => o.value === agreementFilter) ? agreementFilter : 'all'}
+                  onChange={value => setParam('agreement', value === 'all' ? null : value, true)}
+                />
+                <FilterPillGroup
+                  label="Trend"
+                  options={TREND_OPTIONS}
+                  value={trendFilter}
+                  onChange={value => setParam('trend_filter', value === 'all' ? null : value, true)}
+                />
+              </div>
+
+              {/* Selects row: Sector, Page Size, Clear */}
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1 min-w-[140px]">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Sector</div>
+                  <label className="flex items-center rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-2 py-1.5 text-xs">
+                    <select value={sectorFilter} onChange={e => setParam('sector', e.target.value === 'all' ? null : e.target.value, true)} className="bg-transparent text-primary outline-none text-xs">
+                      <option value="all">All sectors</option>
+                      {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Page Size</div>
+                  <label className="flex items-center rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-2 py-1.5 text-xs">
+                    <select value={String(pageSize)} onChange={e => setParam('page_size', e.target.value, true)} className="bg-transparent text-primary outline-none text-xs">
+                      {[24, 48, 96].map(size => <option key={size} value={String(size)}>{size} cards</option>)}
+                    </select>
+                  </label>
+                </div>
+                <button type="button" onClick={clearAllFilters}
+                  className="rounded-lg border border-slate-200 dark:border-white/[0.08] px-3 py-1.5 text-xs font-semibold text-muted hover:text-secondary transition-colors">
+                  Clear all
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* Active filter chips */}
+        {activeFilters.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.05]">
+            {activeFilters.map(chip => (
+              <span key={chip.key} className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-400">
+                {chip.label}
+                <button type="button" onClick={chip.onRemove} className="hover:text-white"><X size={11} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── Market context strip ── */}
+      <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${marketContextTone(marketStrip.marketContext)}`}>
+              {String(marketStrip.marketContext).replace(/_/g, ' ')}
+            </span>
+            <span className="text-[11px] text-muted whitespace-nowrap">
+              {engineCounts.ready ?? 0} ready · {engineCounts.conflict ?? 0} conflict
+            </span>
+            <span className="hidden sm:inline text-xs text-tertiary truncate max-w-[280px]">{aiSummary.headline}</span>
+          </div>
+          <button type="button" onClick={() => setMarketExpanded(o => !o)}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 text-[11px] font-semibold text-muted hover:text-secondary transition-colors"
+          >
+            {marketExpanded ? 'Less' : 'Details'} <ChevronDown size={11} className={`transition-transform ${marketExpanded ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+        {marketExpanded && (
+          <div className="mt-3 space-y-2 border-t border-slate-100 dark:border-white/[0.05] pt-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {marketStrip.spyBias ? <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getBiasBadgeClass(marketStrip.spyBias)}`}>SPY {marketStrip.spyBias}</span> : null}
+              {marketStrip.qqqBias ? <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getBiasBadgeClass(marketStrip.qqqBias)}`}>QQQ {marketStrip.qqqBias}</span> : null}
+              <span className="text-[10px] text-muted">{sourceSubtitle}</span>
+            </div>
+            <p className="text-xs leading-5 text-secondary">{aiSummary.message}</p>
+            <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-slate-800/30 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-muted">AI focus</div>
+              <div className="mt-1 text-xs text-secondary">{aiSummary.best_focus}</div>
+              <div className="mt-1 text-[10px] text-muted">Updated {fmtRelativeTime(marketStrip.fetchedAt)}</div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 pb-24 sm:pb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold text-heading">Unified watchlist cards</div>
+            <div className="text-sm text-muted">
+              Showing {visibleRows.length} {engineLabel.toLowerCase()} {stateFilter === 'all' ? 'setups' : `${stateFilter.toUpperCase()} setups`}. Client-side filter — no backend call.
+            </div>
+          </div>
+          <div className="text-sm text-muted">Page {pagination.page} of {pagination.total_pages} · {pagination.total} tickers</div>
+        </div>
+
+        {loading ? (
+          <div className="rounded-[28px] border border-gray-800/12 bg-gray-950/30 px-4 py-16 text-center text-sm text-gray-400">
+            <div className="inline-flex items-center gap-2"><RefreshCw size={16} className="animate-spin" /> Loading unified watchlist\u2026</div>
+          </div>
+        ) : error ? (
+          <div className="rounded-[28px] border border-rose-500/20 bg-rose-500/10 px-4 py-14 text-center text-sm text-rose-100">
+            <div>{error}</div>
+            <button type="button" onClick={() => void load()} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
+          </div>
+        ) : visibleRows.length === 0 ? (
+          <div className="rounded-[28px] border border-dashed border-gray-700/12 bg-gray-950/18 px-4 py-16 text-center">
+            <div className="text-lg font-semibold text-gray-200">No cards match the current filters</div>
+            <div className="mt-2 text-sm text-gray-500">Try a different state, agreement, trend, or sector combination.</div>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {visibleRows.map(row => {
+              const isOpen = expandedId === row.id
+              const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
+              return (
+                <WatchlistCard key={row.id} row={row} sourceFilter={sourceFilter}
+                  isOpen={isOpen} isFavorite={isFavorite} alertBusy={Boolean(alertBusy[row.id])}
+                  onToggle={toggleExpanded} onAnalyze={() => handleAnalyze(row.ticker)}
+                  onViewChart={() => handleTickerDetail(row)} onCreateAlert={() => void handleCreateAlert(row)}
+                  onAddToPositions={() => handleAddToPositions(row)} onOpenAlerts={() => handleOpenAlerts(row)}
+                  onFavorite={() => toggleFavorite(row.ticker)} onRemove={() => handleRemove(row)}
+                />
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-border/25 bg-gray-950/25 px-4 py-3 text-sm">
+          <div className="text-gray-500">Search, sorting, source filtering, analyze routing, add-trade flow, alert creation, and alert-center deep links remain intact.</div>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={pagination.page <= 1} onClick={() => setParam('page', String(Math.max(1, pagination.page - 1)))} className={`${getActionButtonClass('surface')} gap-2 rounded-xl px-3 py-2 text-sm`}>Previous</button>
+            <button type="button" disabled={pagination.page >= pagination.total_pages} onClick={() => setParam('page', String(Math.min(pagination.total_pages, pagination.page + 1)))} className={`${getActionButtonClass('surface')} gap-2 rounded-xl px-3 py-2 text-sm`}>Next</button>
+          </div>
+        </div>
+      </section>
+
+      <MobileActionTray
+        row={activeRow}
+        isFavorite={activeRow ? favoriteSet.has(activeRow.ticker.toUpperCase()) : false}
+        alertBusy={activeRow ? Boolean(alertBusy[activeRow.id]) : false}
+        isOpen={Boolean(activeRow && expandedId === activeRow.id)}
+        onAnalyze={() => { if (activeRow) handleAnalyze(activeRow.ticker) }}
+        onAddToPositions={() => { if (activeRow) handleAddToPositions(activeRow) }}
+        onCreateAlert={() => { if (activeRow) void handleCreateAlert(activeRow) }}
+        onFavorite={() => { if (activeRow) toggleFavorite(activeRow.ticker) }}
+        onRemove={() => { if (activeRow) handleRemove(activeRow) }}
+        onToggle={() => { if (activeRow) toggleExpanded(activeRow.id) }}
+      />
+    </div>
+  )
+}

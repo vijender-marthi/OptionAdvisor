@@ -98,6 +98,18 @@ export interface Signals {
   ext_market_type?: string        // "pre" | "post" | ""
 }
 
+export interface ResolvedTradeDecision {
+  market_bias: string
+  setup_quality: string
+  execution_readiness: string
+  final_decision: string
+  confidence: number
+  reason: string
+  supporting_factors: string[]
+  missing_confirmations: string[]
+  risk_state: string
+}
+
 export interface OptionRow {
   strike: number
   last_price: number
@@ -158,7 +170,32 @@ export function cacheAge(entry: TickerCacheEntry): number {
 
 // ─── App-level state types ──────────────────────────────────
 
-export type Page = 'ticker' | 'watchlist' | 'portfolio' | 'help' | 'ai-stocks' | 'q-radar' | 'trade-signals' | 'alerts' | 'settings' | 'login' | 'backtest' | 'journal' | 'auto-trade' | 'day-trade' | 'day-trade-watchlist' | 'day-trade-alerts' | 'active-trades' | 'swing-trade' | 'swing-trade-watchlist' | 'forgot-password' | 'reset-password' | 'activate'
+export type Page =
+  | 'ticker'
+  | 'trade-command-center'
+  | 'ai-coach'
+  | 'positions'
+  | 'alert-center'
+  | 'watchlist'
+  | 'portfolio'
+  | 'help'
+  | 'ai-stocks'
+  | 'q-radar'
+  | 'trade-signals'
+  | 'settings'
+  | 'login'
+  | 'backtest'
+  | 'journal'
+  | 'auto-trade'
+  | 'day-trade'
+  | 'day-trade-watchlist'
+  | 'day-trade-alerts'
+  | 'active-trades'
+  | 'swing-trade'
+  | 'swing-trade-watchlist'
+  | 'forgot-password'
+  | 'reset-password'
+  | 'activate'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 
@@ -242,7 +279,7 @@ export interface PortfolioPosition {
   addedAt: string          // ISO date string
   entryPrice: number       // stock price when added
   status: 'open' | 'closed'
-  source?: 'recommendation' | 'manual'  // how it was added
+  source?: 'recommendation' | 'manual' | 'day' | 'swing' | 'regular'  // how it was added / trade style
   pnlPct?: number          // user-entered close P&L %
   exitDate?: string        // ISO date string when closed
   notes?: string           // free-form notes (e.g. "mistaken entry")
@@ -273,7 +310,7 @@ export interface UserDataState {
   watchlist_max?: number
   /** Admin day-trade alert scan list (max 10); persisted in SQLite. */
   day_trade_watchlist?: string[]
-  /** Admin swing-trade watchlist (max 10); persisted in SQLite. */
+  /** Admin swing-trade watchlist (max 20); persisted in SQLite. */
   swing_trade_watchlist?: string[]
   /** When false, backend skips GO / day-trade notification emails for this account. */
   alert_email_enabled?: boolean
@@ -321,6 +358,15 @@ export interface AnalyzeResponse {
   price_history: PricePoint[]
   filters_applied: Record<string, unknown>
   quote_quality_summary?: QuoteQualitySummary
+  market_bias: string
+  setup_quality: string
+  execution_readiness: string
+  final_decision: string
+  confidence: number
+  reason: string
+  supporting_factors: string[]
+  missing_confirmations: string[]
+  risk_state: string
 }
 
 // ─── Backtesting ────────────────────────────────────────────

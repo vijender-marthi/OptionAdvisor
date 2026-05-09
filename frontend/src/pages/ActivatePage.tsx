@@ -5,7 +5,9 @@ import ThemeToggle from '../components/ThemeToggle'
 import CopyrightFooter from '../components/CopyrightFooter'
 import { useApp } from '../contexts/AppContext'
 
-function tokenFromHash(): string {
+function tokenFromLocation(): string {
+  const q = new URLSearchParams(window.location.search).get('token')
+  if (q?.trim()) return q.trim()
   const raw = window.location.hash.replace(/^#/, '')
   const qs = raw.split('?')[1]
   return new URLSearchParams(qs || '').get('token')?.trim() ?? ''
@@ -47,7 +49,7 @@ export default function ActivatePage() {
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      const token = tokenFromHash()
+      const token = tokenFromLocation()
       if (!token) {
         setStatus('err')
         setMessage('Missing activation token.')

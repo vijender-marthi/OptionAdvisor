@@ -1,0 +1,15 @@
+- Read /ai-context before major changes
+- Keep UI thin
+- Backend owns all calculations, frontend is pure display
+- Do not create duplicate pages if existing pages can be upgraded
+- Preserve existing API compatibility
+- Use TypeScript types
+- Use FastAPI response models
+- Follow dark trading dashboard style
+- Use CSS custom properties for theme tokens. Light/dark themes defined via CSS variables in `:root`/`html.dark`/`html.light`. Tailwind classes (`bg-gray-900`, etc.) auto-adapt. Adding a new color? Check `/frontend/src/index.css` theme tokens first.
+- Use `color-mix()` for alpha variants instead of hardcoding opacity values
+- Use semantic theme tokens : `bg-surface-card`, `text-text-primary`, `border-border-subtle` when possible from tailwind.config.js
+- Use badges, cards, expandable rows
+- Avoid clutter
+- Never auto‑execute real trades
+- Paper trade or human approval only

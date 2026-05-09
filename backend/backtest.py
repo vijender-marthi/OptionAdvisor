@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 import warnings
 
+import bar_cache
+
 warnings.filterwarnings("ignore")
 
 
@@ -659,14 +661,12 @@ def run_backtest(
       profit_factor, max_drawdown, sharpe_ratio,
       by_strategy, equity_curve, trades
     """
-    import yfinance as yf
-
     # Download price history with 400-day lookback for signal computation
     lookback = (pd.Timestamp(start_date) - pd.Timedelta(days=420)).strftime('%Y-%m-%d')
     try:
-        hist_raw = yf.Ticker(ticker).history(
-            start=lookback, end=end_date, auto_adjust=True
-        )
+        hist_raw = bar_cache.get_history(ticker, start=lookback, end=end_date, auto_adjust=True)
+        if hist_raw is None or hist_raw.empty:
+            raise ValueError("empty result")
     except Exception as e:
         return {'error': f'Failed to download data for {ticker}: {e}'}
 

@@ -1,4 +1,5 @@
 import { useState, FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BarChart2 } from 'lucide-react'
 import { authForgotPassword } from '../api/client'
 import ThemeToggle from '../components/ThemeToggle'
@@ -7,6 +8,7 @@ import { useApp } from '../contexts/AppContext'
 
 export default function ForgotPasswordPage() {
   const { navigate } = useApp()
+  const routerNavigate = useNavigate()
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -26,8 +28,7 @@ export default function ForgotPasswordPage() {
       const res = await authForgotPassword(clean)
       setMessage(res.message)
       if (res.dev_reset_token) {
-        window.location.hash = `reset-password?token=${encodeURIComponent(res.dev_reset_token)}`
-        navigate('reset-password')
+        routerNavigate(`/reset-password?token=${encodeURIComponent(res.dev_reset_token)}`, { replace: true })
         return
       }
     } catch {

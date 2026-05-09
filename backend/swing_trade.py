@@ -9,20 +9,22 @@ Separates *bias* (bull/bear score) from *entry quality*, *risk level*,
 and the final trader action.  Uses only indicators available from daily
 candles — optional Yahoo `impliedVolatility` + earnings calendar for playbook hints.
 
-Market context (SPY + QQQ bias) is fetched once per 5 minutes and cached
-at module level to avoid repeating 2 extra yfinance calls on every request.
+Market context (SPY + QQQ bias) is fetched via bar_cache (TTL-managed).
+All yfinance calls are routed through bar_cache — no direct yf usage.
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import math
-from typing import Any, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import pandas as pd
-import yfinance as yf
+# yfinance is NOT imported here — all data goes through bar_cache
 
+import bar_cache
 from analysis import build_hv_series, compute_hv, compute_iv_rank
 
 Verdict = Literal["STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"]
@@ -66,6 +68,22 @@ _MARKET_ETFS: frozenset[str] = frozenset({"SPY", "QQQ", "IWM", "DIA"})
 # ── Module-level market-context cache (5-minute TTL) ──────────────────
 _MKT_CACHE: dict[str, Any] = {}
 _MKT_CACHE_TTL = 300  # seconds
+
+# ── Per-ticker swing scan result cache ────────────────────────────────
+_SWING_SCAN_TTL_MARKET = 90    # seconds during market hours
+_SWING_SCAN_TTL_OFF    = 600   # seconds off hours
+_swing_scan_cache: Dict[str, Tuple[float, "SwingTradeScan"]] = {}
+_swing_scan_lock = threading.Lock()
+
+
+def _swing_scan_ttl() -> int:
+    from zoneinfo import ZoneInfo as _ZI
+    dt = datetime.fromtimestamp(time.time(), tz=_ZI("America/New_York"))
+    if dt.weekday() >= 5:
+        return _SWING_SCAN_TTL_OFF
+    minutes = dt.hour * 60 + dt.minute
+    in_market = 9 * 60 + 30 <= minutes < 16 * 60
+    return _SWING_SCAN_TTL_MARKET if in_market else _SWING_SCAN_TTL_OFF
 
 
 # ── Dataclass ─────────────────────────────────────────────────────────
@@ -163,9 +181,11 @@ def _volume_trend(
     return "mixed", ratio
 
 
-def _vix_last() -> Optional[float]:
+def _vix_last(force_refresh: bool = False) -> Optional[float]:
+    """Return VIX last close, via bar_cache (TTL managed there)."""
     try:
-        h = yf.Ticker("^VIX").history(period="10d", interval="1d")
+        h = bar_cache.get_history("^VIX", period="10d", interval="1d",
+                                   force_refresh=force_refresh)
         if h is None or h.empty:
             return None
         return round(float(h["Close"].iloc[-1]), 2)
@@ -221,7 +241,7 @@ def _get_market_bias_raw(ticker: str) -> str:
     Used exclusively for market context (SPY, QQQ).
     """
     try:
-        raw = yf.Ticker(ticker).history(period="4mo", interval="1d", auto_adjust=True)
+        raw = bar_cache.get_history(ticker, period="4mo", interval="1d", auto_adjust=True)
         if raw is None or len(raw) < MIN_BARS:
             return "NEUTRAL"
         raw   = raw.sort_index().dropna(subset=["Close"])
@@ -362,12 +382,6 @@ def _build_decision_message(
             f"{ticker} has {direction} trend, but earnings are {days_str}. "
             "Naked calls risk severe IV crush after the report. "
             "Avoid or use a tight debit spread. Wait for post-earnings base if needed."
-        )
-
-    if decision_label == "BULLISH_BUT_IV_RISK":
-        return (
-            f"{ticker} trend is {bias_str}, but implied volatility is elevated. "
-            "Prefer debit spreads over naked calls to limit vega exposure."
         )
 
     if decision_label == "WEAK_SETUP":
@@ -642,7 +656,9 @@ def build_swing_trade_decision(
         final_action   = "STRONG_GO"
 
     elif trade_quality_score >= 6.5:
-        entry_quality  = "GOOD_ENTRY"
+        # CAUTION_ENTRY when risk is already flagged HIGH (IV, VIX, extension flags),
+        # GOOD_ENTRY only when risk is LOW or MEDIUM.
+        entry_quality  = "GOOD_ENTRY" if risk_level in ("LOW", "MEDIUM") else "CAUTION_ENTRY"
         decision_label = "QUALITY_LONG"
         final_action   = "WATCH_CALL_OR_DEBIT_SPREAD" if is_bullish else "WATCH_PUT"
 
@@ -669,9 +685,7 @@ def build_swing_trade_decision(
         confirmation_needed.append("Wait for broad market recovery before taking long calls")
 
     # ── 9. Suggested strategy ──────────────────────────────────────────
-    if final_action in ("NO_TRADE",) and "EARNINGS_IMMINENT" in risk_flags:
-        suggested_strategy = "NO_TRADE"
-    elif final_action == "AVOID_NAKED_CALLS":
+    if final_action == "AVOID_NAKED_CALLS":
         # Spreads are safer when earnings imminent — still valid trade, just limited
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif final_action == "NO_TRADE":
@@ -808,13 +822,15 @@ def _implied_iv_pct_from_info(info: dict[str, Any]) -> Optional[float]:
     return round(float(x), 2)
 
 
-def _next_earnings_calendar_days(stock: yf.Ticker, asof: date) -> Optional[int]:
+def _next_earnings_calendar_days(ticker: str, asof: date, force_refresh: bool = False) -> Optional[int]:
     """
     Calendar days from `asof` (last daily bar date) to the next scheduled earnings date
     from Yahoo's calendar, when available. None if unknown or date is in the past.
+
+    Uses bar_cache.get_calendar — no direct yf call.
     """
     try:
-        cal = stock.calendar
+        cal = bar_cache.get_calendar(ticker, force_refresh=force_refresh)
         if not isinstance(cal, dict):
             return None
         ed = cal.get("Earnings Date") or cal.get("Earnings Timestamp")
@@ -1031,22 +1047,37 @@ def build_swing_chart_series(
 
 # ── Main scanner ──────────────────────────────────────────────────────
 
-def run_swing_trade_scan(ticker: str) -> SwingTradeScan:
+def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTradeScan:
+    """
+    Run swing-trade scan for *ticker*.
+
+    Parameters
+    ----------
+    ticker        : equity symbol (case-insensitive)
+    force_refresh : bypass per-ticker result cache and shared VIX cache
+    """
     t = ticker.upper().strip()
     if not t or len(t) > 12:
         raise ValueError("Invalid ticker symbol.")
 
-    stock = yf.Ticker(t)
+    # --- per-ticker scan result cache ---
+    if not force_refresh:
+        with _swing_scan_lock:
+            entry = _swing_scan_cache.get(t)
+            if entry and time.time() - entry[0] < _swing_scan_ttl():
+                return entry[1]
+
     try:
-        info = stock.info or {}
+        info = bar_cache.get_info(t, force_refresh=force_refresh)
         company = (info.get("longName") or info.get("shortName") or t)[:120]
     except Exception:
         info = {}
         company = t
 
-    # Daily candles
+    # Daily candles — via bar_cache
     try:
-        raw = stock.history(period="6mo", interval="1d", auto_adjust=True)
+        raw = bar_cache.get_history(t, period="6mo", interval="1d", auto_adjust=True,
+                                    force_refresh=force_refresh)
     except Exception as e:
         raise RuntimeError(f"Daily data fetch failed: {e}") from e
 
@@ -1083,7 +1114,7 @@ def run_swing_trade_scan(ticker: str) -> SwingTradeScan:
     )
 
     vol_label, vol_ratio = _volume_trend(close, vol)
-    vix_level            = _vix_last()
+    vix_level            = _vix_last(force_refresh=force_refresh)
     session_date         = str(raw.index[-1].date()) if hasattr(raw.index[-1], "date") else str(raw.index[-1])
 
     # Distance metrics
@@ -1101,7 +1132,7 @@ def run_swing_trade_scan(ticker: str) -> SwingTradeScan:
     iv_rank_opt: Optional[float] = None
     if implied_iv_pct is not None:
         iv_rank_opt = compute_iv_rank(hv_series, implied_iv_pct)
-    earnings_within_days = _next_earnings_calendar_days(stock, asof_date)
+    earnings_within_days = _next_earnings_calendar_days(t, asof_date, force_refresh=force_refresh)
 
     # ── Market context (cached) ────────────────────────────────────────
     spy_bias, qqq_bias, market_context = _get_market_context_cached()
@@ -1344,7 +1375,7 @@ def run_swing_trade_scan(ticker: str) -> SwingTradeScan:
     )
     metrics["playbook_hint"] = playbook_hint
 
-    return SwingTradeScan(
+    scan = SwingTradeScan(
         ticker=t,
         company_name=company,
         verdict=verdict,
@@ -1368,3 +1399,6 @@ def run_swing_trade_scan(ticker: str) -> SwingTradeScan:
         avoid_reason=decision["avoid_reason"],
         playbook_hint=playbook_hint,
     )
+    with _swing_scan_lock:
+        _swing_scan_cache[t] = (time.time(), scan)
+    return scan

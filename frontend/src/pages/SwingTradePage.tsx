@@ -53,7 +53,7 @@ export default function SwingTradePage() {
 
       {/* Ticker input */}
       <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Symbol</label>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             ref={inputRef}
@@ -126,11 +126,9 @@ export default function SwingTradePage() {
               <li><span className="text-gray-400 font-semibold">SPY context</span> — SPY vs own MA20 (±0.5 pt)</li>
             </ul>
             <div className="space-y-1">
-              <p><span className="text-emerald-400 font-semibold">STRONG GO</span> — winning side ≥ 8.0 and lead ≥ 4.0 pts</p>
-              <p><span className="text-green-400 font-semibold">GO</span> — winning side ≥ 5.5 and lead ≥ 3.0 pts</p>
-              <p><span className="text-amber-400 font-semibold">WATCH</span> — moderate signal, mixed or RSI extreme</p>
-              <p><span className="text-rose-400 font-semibold">NO-GO</span> — VIX ≥ 35 (multi-day exposure risk)</p>
-              <p><span className="text-gray-400 font-semibold">WAIT</span> — insufficient edge in either direction</p>
+              <p><span className="text-emerald-400 font-semibold">Market bias</span> explains the trend direction, but the decision card separates that from entry quality and execution readiness.</p>
+              <p><span className="text-amber-300 font-semibold">WAIT / WATCH</span> means the trend can still be constructive while the entry is not ready yet.</p>
+              <p><span className="text-rose-300 font-semibold">AVOID / NO EDGE</span> means risk, pricing, or structure is still too poor to trust.</p>
             </div>
             <p className="text-amber-200/70 border border-amber-800/40 bg-amber-950/20 rounded-lg px-3 py-2 leading-relaxed">
               <Flame size={12} className="inline mr-1" />

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  TrendingUp, Star, Briefcase, LogOut, ChevronLeft, ChevronRight, FlaskConical,
-  User, BarChart2, HelpCircle, Brain, ShieldCheck, Activity, Bell, Settings, Atom,
-  Moon, Sun, Menu, BookOpen, Zap, LayoutList, BellRing,
+  TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
+  User, FlaskConical, Activity, Bell, Settings,
+  Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -80,7 +80,7 @@ const MOBILE_BOTTOM_NAV_SHELL_TABLET =
   'mobile-bottom-nav-shell fixed inset-x-0 bottom-0 z-40 pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 px-8 sm:px-10 hidden sm:block xl:hidden'
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, watchlist, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage } = useApp()
+  const { page, navigate, user, logout, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
 
@@ -90,44 +90,29 @@ export default function Sidebar() {
 
   const navGroups: NavGroup[] = [
     {
+      label: 'Home',
+      items: [
+        { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
+        { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
+        { id: 'watchlist', label: 'WatchlistX', icon: <Star size={18} /> },
+        { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+      ],
+    },
+    {
       label: 'Analyze',
       items: [
-        { id: 'ticker',        label: 'Strategy Finder', icon: <TrendingUp size={18} /> },
-        { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={18} /> },
+        { id: 'ticker', label: 'Strategy Finder', icon: <Search size={18} /> },
+        { id: 'trade-signals', label: 'Signals', icon: <Radar size={18} /> },
+        { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
+        { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
       ],
     },
     {
-      label: 'Day Trading',
+      label: 'Tools',
       items: [
-        { id: 'day-trade' as Page, label: 'Day Trade Engine', icon: <Zap size={18} /> },
-        { id: 'day-trade-watchlist' as Page, label: 'Day Trade Watchlist', icon: <LayoutList size={18} /> },
-        { id: 'day-trade-alerts' as Page, label: 'Day Trade Alerts', icon: <BellRing size={18} /> },
-        { id: 'active-trades' as Page, label: 'Day Trade Active', icon: <Activity size={18} /> },
-      ],
-    },
-    {
-      label: 'Swing Trading',
-      items: [
-        { id: 'swing-trade' as Page, label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-        { id: 'swing-trade-watchlist' as Page, label: 'Swing Trade Watchlist', icon: <LayoutList size={18} /> },
-      ],
-    },
-    {
-      label: 'Track',
-      items: [
-        { id: 'watchlist', label: 'Watchlist', icon: <Star size={18} />,      badge: watchlist.length || undefined },
-        { id: 'portfolio', label: 'Portfolio', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'journal',   label: 'Journal',   icon: <BookOpen size={18} />,  badge: journalEntryCount || undefined },
-        { id: 'alerts',    label: 'Alerts',    icon: <Bell size={18} />,      badge: unreadAlertCount || undefined },
-        ...(canAccessPage('auto-trade') ? [{ id: 'auto-trade' as const, label: 'Auto Trade', icon: <Zap size={18} /> }] : []),
-      ],
-    },
-    {
-      label: 'Discover',
-      items: [
-        { id: 'ai-stocks', label: 'AI Radar',    icon: <Brain         size={18} /> },
-        { id: 'q-radar',   label: 'Q Radar',    icon: <Atom          size={18} /> },
-        { id: 'backtest',  label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+        { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+        { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+        { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
       ],
     },
   ]
@@ -135,26 +120,19 @@ export default function Sidebar() {
   const w = collapsed ? 'w-16' : 'w-56'
   /** Bottom rail (< xl docked): fixed five tabs — order matches product priority. */
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'portfolio',     label: 'Portfolio', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'trade-signals', label: 'Signals',   icon: <ShieldCheck size={23} /> },
-    { id: 'ticker',        label: 'Finder',    icon: <TrendingUp size={34} strokeWidth={2} /> },
-    { id: 'watchlist',     label: 'Watchlist', icon: <Star size={23} />,       badge: watchlist.length || undefined },
-    { id: 'alerts',        label: 'Alerts',    icon: <Bell size={23} />,      badge: unreadAlertCount || undefined },
+    { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
+    { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
+    { id: 'watchlist', label: 'Watchlist', icon: <Star size={23} /> },
+    { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
+    { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'journal',    label: 'Journal',    icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'auto-trade', label: 'Auto Trade', icon: <Zap     size={18} /> },
-    { id: 'day-trade', label: 'Day Engine', icon: <Zap size={18} /> },
-    { id: 'day-trade-watchlist', label: 'DT Watchlist', icon: <LayoutList size={18} /> },
-    { id: 'day-trade-alerts', label: 'DT Alerts', icon: <BellRing size={18} /> },
-    { id: 'active-trades', label: 'Day Trade Active', icon: <Activity size={18} /> },
+    { id: 'trade-signals', label: 'Signals', icon: <Radar size={18} /> },
+    { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-    { id: 'swing-trade-watchlist', label: 'Swing Watchlist', icon: <LayoutList size={18} /> },
-    { id: 'ai-stocks', label: 'AI Radar', icon: <Brain         size={18} /> },
-    { id: 'q-radar',   label: 'Q Radar',  icon: <Atom          size={18} /> },
-    { id: 'backtest',  label: 'Backtest', icon: <FlaskConical  size={18} /> },
-    { id: 'settings',  label: 'Settings',   icon: <Settings size={18} /> },
-    { id: 'help',      label: 'Help',     icon: <HelpCircle size={18} /> },
+    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
   ]
 
   const visibleNavGroups = navGroups
@@ -205,7 +183,6 @@ export default function Sidebar() {
         <div className="mobile-nav-scroll flex w-full touch-manipulation flex-nowrap items-stretch gap-0 px-1 py-1 sm:px-2 sm:py-1.5">
           {visibleMobilePrimaryItems.map(item => {
             const active = page === item.id
-            const isTradeSignals = item.id === 'trade-signals'
             const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
             return (
               <button
@@ -224,11 +201,6 @@ export default function Sidebar() {
                     <span className="mobile-dock-finder-icon inline-flex">{item.icon}</span>
                   ) : (
                     item.icon
-                  )}
-                  {isTradeSignals && (
-                    <span className="absolute -right-2.5 -top-1.5 whitespace-nowrap rounded border border-violet-600/50 bg-violet-600/35 px-[3px] text-[7px] font-bold leading-snug text-violet-100">
-                      Live
-                    </span>
                   )}
                   {countBadge !== null && (
                     <span className="absolute -right-2 -top-1 min-w-[0.875rem] rounded-full bg-violet-700 px-0.5 text-center text-[8px] font-semibold leading-[14px] text-violet-100 tabular-nums">
@@ -251,12 +223,12 @@ export default function Sidebar() {
       {/* Logo */}
       <div className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-800 shrink-0 ${collapsed ? 'justify-center' : ''}`}>
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
-          <BarChart2 size={16} className="text-white" />
+          <LayoutDashboard size={16} className="text-white" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-semibold text-white leading-tight">QuantPilot</span>
+              <span className="text-sm font-semibold text-white leading-tight">OptionAdvisor</span>
               <BetaProductTag />
             </div>
             <div className="text-[10px] text-gray-500 leading-tight">Systematic Engine v2</div>
@@ -277,7 +249,6 @@ export default function Sidebar() {
             <div className="space-y-0.5">
               {group.items.map(item => {
                 const active = page === item.id
-                const isTradeSignals = item.id === 'trade-signals'
                 const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                 return (
                   <button
@@ -294,11 +265,6 @@ export default function Sidebar() {
                     {!collapsed && (
                       <>
                         <span className="min-w-0 flex-1 text-left truncate">{item.label}</span>
-                        {isTradeSignals && (
-                          <span className="shrink-0 bg-violet-700/30 text-violet-300 border border-violet-700/50 text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
-                            Live
-                          </span>
-                        )}
                         {countBadge !== null && (
                           <span className="shrink-0 bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none tabular-nums">
                             {countBadge}
@@ -306,8 +272,8 @@ export default function Sidebar() {
                         )}
                       </>
                     )}
-                    {collapsed && (countBadge !== null || isTradeSignals) && (
-                      <span className={`absolute top-1 right-1 rounded-full ${isTradeSignals ? 'w-2 h-2 bg-violet-400' : 'w-2 h-2 bg-violet-500'}`} />
+                    {collapsed && countBadge !== null && (
+                      <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-500" />
                     )}
                   </button>
                 )
@@ -317,34 +283,8 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom: settings + user */}
+      {/* Bottom: theme · profile · market status */}
       <div className="border-t border-gray-800 p-1.5 space-y-0.5 shrink-0">
-        <button
-          onClick={() => navigate('settings')}
-          title="Settings"
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
-            ${page === 'settings'
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
-              : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
-            } ${collapsed ? 'justify-center' : ''}`}
-        >
-          <Settings size={18} className="shrink-0" />
-          {!collapsed && <span>Settings</span>}
-        </button>
-
-        <button
-          onClick={() => navigate('help')}
-          title="Help"
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all
-            ${page === 'help'
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
-              : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300 border border-transparent'
-            } ${collapsed ? 'justify-center' : ''}`}
-        >
-          <HelpCircle size={18} className="shrink-0" />
-          {!collapsed && <span>Help</span>}
-        </button>
-
         <ThemeToggle collapsed={collapsed} className="w-full !py-2" />
 
         {user && (
@@ -459,7 +399,6 @@ export default function Sidebar() {
                 <div className="grid grid-cols-2 gap-2">
                   {[...visibleMobilePrimaryItems, ...visibleMobileMoreItems].map(item => {
                     const active = page === item.id
-                    const isTradeSignals = item.id === 'trade-signals'
                     const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                     return (
                       <button
@@ -472,14 +411,9 @@ export default function Sidebar() {
                             ? 'border-violet-700/50 bg-violet-600/20 text-violet-300'
                             : 'border-gray-800 bg-gray-800/60 text-gray-300 hover:border-gray-700 hover:bg-gray-800'
                         }`}
-                      >
+                        >
                         <span className="shrink-0">{item.icon}</span>
                         <span className="min-w-0 truncate">{item.label}</span>
-                        {isTradeSignals && (
-                          <span className="shrink-0 ml-auto rounded-full border border-violet-700/50 bg-violet-700/30 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-violet-300">
-                            Live
-                          </span>
-                        )}
                         {countBadge !== null && (
                           <span className="shrink-0 ml-auto min-w-[1.15rem] rounded-full bg-violet-700 px-1 text-center text-[9px] leading-4 text-violet-100 tabular-nums">
                             {countBadge}

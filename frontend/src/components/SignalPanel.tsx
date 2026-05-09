@@ -25,7 +25,7 @@ function RsiGauge({ rsi }: { rsi: number }) {
         <div className="absolute left-0 top-0 h-full w-[30%] bg-green-900/60 rounded-l-full" />
         <div className="absolute right-0 top-0 h-full w-[30%] bg-red-900/60 rounded-r-full" />
         <div
-          className="absolute top-0 w-3 h-3 rounded-full border-2 border-white shadow"
+          className="absolute top-0 w-3 h-3 rounded-full border border-border/60 shadow-sm"
           style={{ left: `calc(${pct}% - 6px)`, backgroundColor: color }}
         />
       </div>

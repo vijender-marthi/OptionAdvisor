@@ -1,0 +1,17 @@
+export const ROUTES = {
+  home: '/trade-command-center',
+  tradeCommandCenter: '/trade-command-center',
+  strategyFinder: '/strategy-finder',
+  dayTrade: '/day-trade',
+  swingTrade: '/swing-trade',
+  swingWatchlist: '/watchlistx?source=swing',
+  regularTrade: '/trade-signals',
+  signals: '/trade-signals',
+  aiCoach: '/ai-coach',
+  journal: '/journal',
+  settings: '/settings',
+  positions: '/positions?tab=open',
+  watchlist: '/watchlistx',
+  alerts: '/alerts',
+  dayTradeAlerts: '/day-trade-alerts',
+} as const

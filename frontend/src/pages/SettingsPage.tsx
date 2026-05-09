@@ -107,6 +107,9 @@ export default function SettingsPage() {
   return (
     <div className="settings-page min-h-screen p-4 md:p-6">
       <div className="max-w-2xl mx-auto space-y-6">
+      <div className="rounded-xl border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-300">
+        Additional account and workspace controls will appear here — notifications and email below are live today.
+      </div>
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-100 tracking-tight">Settings</h1>

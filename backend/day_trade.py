@@ -1,21 +1,45 @@
 """
 Intraday day-trade signal prototype using Yahoo 1m bars + market context.
 Not execution advice — research / educational scoring.
+
+All Yahoo Finance data is routed through bar_cache — no direct yf calls.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any, Literal, Optional
+import threading
+import time
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from zoneinfo import ZoneInfo
 
+import bar_cache
 from trader_decision import build_trader_decision
 
 ET = ZoneInfo("America/New_York")
+
+# ---------------------------------------------------------------------------
+# Per-ticker scan result cache (bar_cache handles bar-level caching)
+# ---------------------------------------------------------------------------
+_SCAN_CACHE_TTL_MARKET = 90   # per-ticker scan result during market hours
+_SCAN_CACHE_TTL_OFF    = 600  # per-ticker scan result off hours
+
+_scan_cache: Dict[str, Tuple[float, "DayTradeScan"]] = {}
+_scan_lock  = threading.Lock()
+
+
+def _scan_cache_ttl() -> int:
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZI
+    dt = _dt.fromtimestamp(time.time(), tz=_ZI("America/New_York"))
+    if dt.weekday() >= 5:
+        return _SCAN_CACHE_TTL_OFF
+    minutes = dt.hour * 60 + dt.minute
+    in_market = 9 * 60 + 30 <= minutes < 16 * 60
+    return _SCAN_CACHE_TTL_MARKET if in_market else _SCAN_CACHE_TTL_OFF
 
 Verdict = Literal["STRONG GO", "GO", "WATCH", "NO-GO", "WAIT"]
 Bias = Optional[Literal["long", "short"]]
@@ -138,10 +162,10 @@ def _info_opt_float(info: dict[str, Any], key: str) -> Optional[float]:
     return x if math.isfinite(x) else None
 
 
-def _index_change_pct(sym: str) -> Optional[float]:
+def _index_change_pct(sym: str, force_refresh: bool = False) -> Optional[float]:
+    """Session-to-session % change for an index ticker, via bar_cache."""
     try:
-        t = yf.Ticker(sym)
-        h = t.history(period="5d", interval="1d")
+        h = bar_cache.get_history(sym, period="5d", interval="1d", force_refresh=force_refresh)
         if h is None or len(h) < 2:
             return None
         a = float(h["Close"].iloc[-2])
@@ -153,9 +177,10 @@ def _index_change_pct(sym: str) -> Optional[float]:
         return None
 
 
-def _vix_last() -> Optional[float]:
+def _vix_last(force_refresh: bool = False) -> Optional[float]:
+    """Latest VIX close, via bar_cache."""
     try:
-        h = yf.Ticker("^VIX").history(period="5d", interval="1d")
+        h = bar_cache.get_history("^VIX", period="5d", interval="1d", force_refresh=force_refresh)
         if h is None or h.empty:
             return None
         return round(float(h["Close"].iloc[-1]), 2)
@@ -163,9 +188,11 @@ def _vix_last() -> Optional[float]:
         return None
 
 
-def _qqq_session_for_date(session_date: str) -> pd.DataFrame:
+def _qqq_session_for_date(session_date: str, force_refresh: bool = False) -> pd.DataFrame:
+    """QQQ 1m RTH bars for session_date, via bar_cache."""
     try:
-        raw = yf.Ticker("QQQ").history(period="5d", interval="1m", auto_adjust=True)
+        raw = bar_cache.get_history("QQQ", period="5d", interval="1m", auto_adjust=True,
+                                    force_refresh=force_refresh)
         if raw is None or raw.empty:
             return pd.DataFrame()
         df_et = _ensure_et_index(raw)
@@ -174,9 +201,11 @@ def _qqq_session_for_date(session_date: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _index_session_for_date(sym: str, session_date: str) -> pd.DataFrame:
+def _index_session_for_date(sym: str, session_date: str, force_refresh: bool = False) -> pd.DataFrame:
+    """1m RTH bars for index *sym* on session_date, via bar_cache."""
     try:
-        raw = yf.Ticker(sym).history(period="5d", interval="1m", auto_adjust=True)
+        raw = bar_cache.get_history(sym, period="5d", interval="1m", auto_adjust=True,
+                                    force_refresh=force_refresh)
         if raw is None or raw.empty:
             return pd.DataFrame()
         df_et = _ensure_et_index(raw)
@@ -231,26 +260,28 @@ def _confidence_block(
     volume_confirmation = "STRONG" if vol_spike else "WEAK"
 
     # Market alignment vs directional bias
+    # Thresholds: ≥0.3% both indexes = genuinely supportive tape;
+    # ≤-0.4% either = meaningfully headwind.
     market_alignment = "MEDIUM"
     if bias == "long":
         if spy_chg is not None and qqq_chg is not None:
-            if spy_chg >= 0.08 and qqq_chg >= 0.08:
+            if spy_chg >= 0.3 and qqq_chg >= 0.3:
                 market_alignment = "STRONG"
             elif spy_chg <= -0.4 or qqq_chg <= -0.4:
                 market_alignment = "WEAK"
             else:
                 market_alignment = "MEDIUM"
-        elif spy_chg is not None and spy_chg >= 0.1:
+        elif spy_chg is not None and spy_chg >= 0.3:
             market_alignment = "STRONG"
     elif bias == "short":
         if spy_chg is not None and qqq_chg is not None:
-            if spy_chg <= -0.08 and qqq_chg <= -0.08:
+            if spy_chg <= -0.3 and qqq_chg <= -0.3:
                 market_alignment = "STRONG"
             elif spy_chg >= 0.4 or qqq_chg >= 0.4:
                 market_alignment = "WEAK"
             else:
                 market_alignment = "MEDIUM"
-        elif spy_chg is not None and spy_chg <= -0.1:
+        elif spy_chg is not None and spy_chg <= -0.3:
             market_alignment = "STRONG"
 
     # Risk
@@ -274,22 +305,43 @@ def _confidence_block(
     }
 
 
-def run_day_trade_scan(ticker: str) -> DayTradeScan:
-    body: list[str] = []
+def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan:
+    """
+    Run intraday day-trade scan for *ticker*.
+
+    Parameters
+    ----------
+    ticker        : equity symbol (case-insensitive)
+    force_refresh : bypass per-ticker scan cache and shared index caches
+    """
     t = ticker.upper().strip()
     if not t or len(t) > 12:
         raise ValueError("Invalid ticker")
 
+    # --- per-ticker scan result cache ---
+    if not force_refresh:
+        with _scan_lock:
+            entry = _scan_cache.get(t)
+            if entry and time.time() - entry[0] < _scan_cache_ttl():
+                return entry[1]
+
+    # _fr is a local alias so the force_refresh flag is available at the call
+    # sites below without needing a module-level sentinel (which would be
+    # unsafe under concurrent requests).
+    _fr = force_refresh
+
+    body: list[str] = []
+
     try:
-        stock = yf.Ticker(t)
-        info = stock.info or {}
+        info = bar_cache.get_info(t, force_refresh=_fr)
         company = (info.get("longName") or info.get("shortName") or t)[:120]
     except Exception:
         company = t
         info = {}
 
     try:
-        raw = stock.history(period="5d", interval="1m", auto_adjust=True)
+        raw = bar_cache.get_history(t, period="5d", interval="1m", auto_adjust=True,
+                                    force_refresh=_fr)
     except Exception as e:
         raise RuntimeError(f"Intraday fetch failed: {e}") from e
 
@@ -401,12 +453,12 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
             "lower conviction, higher reversal risk (e.g. gaps, headline risk)."
         )
 
-    spy_chg = _index_change_pct("SPY")
-    qqq_chg = _index_change_pct("QQQ")
-    vix_level = _vix_last()
+    spy_chg   = _index_change_pct("SPY", force_refresh=_fr)
+    qqq_chg   = _index_change_pct("QQQ", force_refresh=_fr)
+    vix_level = _vix_last(force_refresh=_fr)
 
-    qqq_sess = _qqq_session_for_date(session_date)
-    spy_sess = _index_session_for_date("SPY", session_date)
+    qqq_sess = _qqq_session_for_date(session_date, force_refresh=_fr)
+    spy_sess = _index_session_for_date("SPY", session_date, force_refresh=_fr)
     qqq_session_pct = _intraday_session_return_pct(qqq_sess)
     spy_session_pct = _intraday_session_return_pct(spy_sess)
     rs_vs_qqq_pct = _rs_vs_qqq_pct(session, qqq_sess)
@@ -613,7 +665,7 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
         vix=vix_level,
     )
 
-    return DayTradeScan(
+    scan = DayTradeScan(
         ticker=t,
         company_name=company,
         verdict=verdict,
@@ -624,6 +676,9 @@ def run_day_trade_scan(ticker: str) -> DayTradeScan:
         metrics=metrics,
         trader_decision=trader_decision,
     )
+    with _scan_lock:
+        _scan_cache[t] = (time.time(), scan)
+    return scan
 
 
 def underlying_intraday_snapshot_for_active_trade(ticker: str) -> dict[str, Any]:

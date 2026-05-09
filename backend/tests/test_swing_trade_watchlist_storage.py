@@ -31,11 +31,12 @@ class SwingTradeWatchlistStorageTests(unittest.TestCase):
         state = storage.get_user_state("sw@example.com")
         self.assertEqual(state["swing_trade_watchlist"], ["NVDA", "AAPL"])
 
-        many = [f"T{i}" for i in range(20)]
+        many = [f"T{i}" for i in range(25)]
         storage.save_user_state("sw@example.com", [], [], swing_trade_watchlist=many)
         state2 = storage.get_user_state("sw@example.com")
-        self.assertEqual(len(state2["swing_trade_watchlist"]), 10)
+        self.assertEqual(len(state2["swing_trade_watchlist"]), 20)
         self.assertEqual(state2["swing_trade_watchlist"][0], "T0")
+        self.assertEqual(state2["swing_trade_watchlist"][19], "T19")
 
 
 if __name__ == "__main__":

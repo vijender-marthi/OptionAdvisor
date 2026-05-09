@@ -5,7 +5,9 @@ import ThemeToggle from '../components/ThemeToggle'
 import CopyrightFooter from '../components/CopyrightFooter'
 import { useApp } from '../contexts/AppContext'
 
-function tokenFromHash(): string {
+function tokenFromLocation(): string {
+  const q = new URLSearchParams(window.location.search).get('token')
+  if (q?.trim()) return q.trim()
   const raw = window.location.hash.replace(/^#/, '')
   const qs = raw.split('?')[1]
   return new URLSearchParams(qs || '').get('token')?.trim() ?? ''
@@ -21,10 +23,14 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    setToken(tokenFromHash())
-    const onHash = () => setToken(tokenFromHash())
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    setToken(tokenFromLocation())
+    const onLoc = () => setToken(tokenFromLocation())
+    window.addEventListener('hashchange', onLoc)
+    window.addEventListener('popstate', onLoc)
+    return () => {
+      window.removeEventListener('hashchange', onLoc)
+      window.removeEventListener('popstate', onLoc)
+    }
   }, [])
 
   const handleSubmit = async (e: FormEvent) => {

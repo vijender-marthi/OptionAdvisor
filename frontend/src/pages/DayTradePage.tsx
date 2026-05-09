@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, BarChart2, ChevronDown, ChevronRight, Clock, Flame, Loader2,
   RefreshCw, Search, ShieldAlert, X, Zap,
@@ -15,6 +16,7 @@ function axiosDetail(e: unknown): string {
 
 export default function DayTradePage() {
   const { dayTradeEngineUI: ui, setDayTradeEngineUI: setUi, canAccessPage, navigate } = useApp()
+  const [searchParams] = useSearchParams()
   const { ticker, loading, error, result, glossaryOpen } = ui
 
   const [enterOpen, setEnterOpen] = useState(false)
@@ -28,22 +30,24 @@ export default function DayTradePage() {
   const [enterErr, setEnterErr] = useState<string | null>(null)
 
   useEffect(() => {
-    const readHashTicker = () => {
-      const raw = window.location.hash.replace(/^#/, '')
-      const qi = raw.indexOf('?')
-      if (qi < 0) return
-      const sp = new URLSearchParams(raw.slice(qi))
-      const t = sp.get('ticker')?.trim().toUpperCase()
+    const readTicker = () => {
+      let t = searchParams.get('ticker')?.trim().toUpperCase()
+      if (!t) {
+        const raw = window.location.hash.replace(/^#/, '')
+        const qi = raw.indexOf('?')
+        if (qi >= 0) {
+          const sp = new URLSearchParams(raw.slice(qi))
+          t = sp.get('ticker')?.trim().toUpperCase()
+        }
+      }
       if (t && t.length <= 12) {
-        setUi(cur =>
-          cur.ticker.trim() === t ? cur : { ...cur, ticker: t },
-        )
+        setUi(cur => (cur.ticker.trim() === t ? cur : { ...cur, ticker: t }))
       }
     }
-    readHashTicker()
-    window.addEventListener('hashchange', readHashTicker)
-    return () => window.removeEventListener('hashchange', readHashTicker)
-  }, [setUi])
+    readTicker()
+    window.addEventListener('hashchange', readTicker)
+    return () => window.removeEventListener('hashchange', readTicker)
+  }, [searchParams, setUi])
 
   const runScan = useCallback(async () => {
     const sym = ticker.trim().toUpperCase()
@@ -153,7 +157,7 @@ export default function DayTradePage() {
 
       {/* Scan */}
       <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Symbol</label>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
@@ -223,7 +227,8 @@ export default function DayTradePage() {
             </p>
             <ul className="space-y-2">
               <li className="flex gap-2"><Clock size={14} className="shrink-0 text-gray-600" /> Most recent trading day in the feed is analyzed if today has no session yet.</li>
-              <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-gray-600" /> <span className="text-gray-400">STRONG GO / GO / WATCH</span> = tiered edge (volume + RS gate STRONG; medium GO; weak volume → WATCH); <span className="text-gray-400">NO-GO</span> = veto; <span className="text-gray-400">WAIT</span> = no edge.</li>
+              <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-gray-600" /> <span className="text-gray-400">Market bias</span> tells you whether the tape is supportive. <span className="text-gray-400">Execution readiness</span> tells you whether the trigger is actually there.</li>
+              <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-gray-600" /> The page now resolves everything into <span className="text-gray-400">READY / WAIT / WATCH / AVOID</span> so a bullish tape does not get mistaken for an immediate entry.</li>
             </ul>
           </div>
         )}

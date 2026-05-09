@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Star, Trash2, TrendingUp, RefreshCw, Plus, Search,
   Database, Clock, AlertTriangle, CheckCircle, ChevronUp, ChevronDown, Layers,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
+import { useWatchlistHubBinding } from '../contexts/WatchlistHubContext'
 import { isCacheFresh, cacheAge } from '../types'
 import type { TickerCacheEntry, WatchlistItem } from '../types'
 import { TICKER_CATEGORY_MAP, CATEGORY_BADGE, ALL_CATEGORIES } from '../data/stockUniverse'
@@ -275,7 +276,7 @@ function TickerRow({
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
-export default function WatchlistPage() {
+export function OptionsWatchlistPanel({ embedded = false }: { embedded?: boolean }) {
   const {
     watchlist, watchlistMax, removeFromWatchlist, addToWatchlist,
     requestAnalysis, getCached, refreshTicker, refreshingTickers, lastBgRefresh, refreshWatchlistForAlerts,
@@ -383,17 +384,35 @@ export default function WatchlistPage() {
     refreshWatchlistForAlerts()
   }
 
-  return (
-    <div className="watchlist-page min-h-screen p-4 md:p-6">
-      <div className="max-w-6xl mx-auto space-y-5">
+  const hubOnAdd = useCallback(() => setShowAdd(s => !s), [])
+  const hubOnRefresh = useCallback(() => {
+    refreshWatchlistForAlerts()
+  }, [refreshWatchlistForAlerts])
 
+  useWatchlistHubBinding('options', embedded, {
+    onAdd: hubOnAdd,
+    onRefresh: hubOnRefresh,
+    refreshDisabled: cachedCount === 0 || anyRefreshing,
+    refreshBusy: anyRefreshing,
+    addActive: showAdd,
+  })
+
+  const outer = (
+    <>
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
-              <Star className="text-amber-400" size={22} />
-              Watchlist
-            </h1>
+            {!embedded ? (
+              <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+                <Star className="text-amber-400" size={22} />
+                Watchlist
+              </h1>
+            ) : (
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Star className="text-amber-400" size={20} />
+                Regular watchlist
+              </h2>
+            )}
             <div className="flex items-center gap-3 mt-0.5">
               <span className="text-sm text-gray-500">
                 {watchlist.length} of {watchlistMax} ticker{watchlist.length !== 1 ? 's' : ''}
@@ -415,32 +434,34 @@ export default function WatchlistPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {cachedCount > 0 && (
+          {!embedded ? (
+            <div className="flex items-center gap-2">
+              {cachedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={refreshAll}
+                  disabled={anyRefreshing}
+                  aria-label="Refresh all cached watchlist tickers"
+                  title="Refresh"
+                  className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
+                             text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
+                             transition-colors disabled:opacity-50 shrink-0"
+                >
+                  <RefreshCw size={18} className={anyRefreshing ? 'animate-spin' : ''} />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={refreshAll}
-                disabled={anyRefreshing}
-                aria-label="Refresh all cached watchlist tickers"
-                title="Refresh"
-                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
-                           text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl
-                           transition-colors disabled:opacity-50 shrink-0"
+                onClick={() => setShowAdd(s => !s)}
+                aria-label={showAdd ? 'Close add ticker form' : 'Add ticker to watchlist'}
+                title={showAdd ? 'Close' : 'Add ticker'}
+                className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
+                           text-white rounded-xl transition-colors shrink-0"
               >
-                <RefreshCw size={18} className={anyRefreshing ? 'animate-spin' : ''} />
+                <Plus size={20} strokeWidth={2.5} />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowAdd(s => !s)}
-              aria-label={showAdd ? 'Close add ticker form' : 'Add ticker to watchlist'}
-              title={showAdd ? 'Close' : 'Add ticker'}
-              className="inline-flex h-10 w-10 items-center justify-center bg-violet-600 hover:bg-violet-500
-                         text-white rounded-xl transition-colors shrink-0"
-            >
-              <Plus size={20} strokeWidth={2.5} />
-            </button>
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Add ticker form */}
@@ -572,7 +593,26 @@ export default function WatchlistPage() {
             Prices auto-refresh every 15 minutes for analyzed tickers
           </div>
         )}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-5 w-full">
+        {outer}
+      </div>
+    )
+  }
+
+  return (
+    <div className="watchlist-page min-h-screen p-4 md:p-6">
+      <div className="max-w-6xl mx-auto space-y-5">
+        {outer}
       </div>
     </div>
   )
+}
+
+export default function WatchlistPage() {
+  return <OptionsWatchlistPanel />
 }

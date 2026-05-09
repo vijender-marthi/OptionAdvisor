@@ -40,7 +40,7 @@ export default function FirstLoginHelpModal() {
       title: 'Review GO alerts',
       body: 'The Alerts page shows trades that pass the pre-trade checklist. Email alerts can be enabled with SendGrid or SMTP in server settings.',
       action: 'View Alerts',
-      page: 'alerts',
+      page: 'alert-center',
     },
     {
       icon: <Briefcase size={22} />,

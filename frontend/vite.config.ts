@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Production: configure nginx (or your static host) with `try_files $uri $uri/ /index.html`
+// so deep links like `/trade-command-center` and `/watchlist` serve the SPA.
+
 export default defineConfig({
   plugins: [react()],
   server: {

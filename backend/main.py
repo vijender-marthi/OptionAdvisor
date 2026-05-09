@@ -6,7 +6,6 @@ Run: uvicorn main:app --reload --port 9000
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from math import erf, log, sqrt
@@ -14,12 +13,14 @@ from dataclasses import asdict
 import smtplib
 import os
 import json
+import logging
 import threading
 import time
 from collections import defaultdict
 import html
 import urllib.error
 import urllib.request
+from typing import Any
 from urllib.parse import quote, urlparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -28,6 +29,7 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 from pathlib import Path
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 ENV_PATH = Path(__file__).with_name(".env")
 load_dotenv(ENV_PATH)
@@ -45,13 +47,21 @@ from models import (
     SwingTradeRequest, SwingTradeResponse,
     ActiveTradeEnterRequest, ActiveTradeEnterResponse, ActiveTradeOut, ActiveTradeListResponse,
 )
+import bar_cache
+from bar_cache import get_history as _bc_hist, get_info as _bc_info
+from bar_cache import get_option_dates as _bc_opt_dates, get_option_chain as _bc_chain
 from analysis import generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade
 from swing_trade import run_swing_trade_scan
+from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
+from command_center_router import command_center_router, api_envelope
+from decision_resolver import resolve_trade_decision
 from storage import (
+    alert_center_active_counts_by_ticker,
+    alert_center_create,
     add_user_alert,
     add_day_trade_alert_event,
     clear_user_alerts,
@@ -234,7 +244,7 @@ ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true")
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 ALERT_SCAN_WEEKS_OUT = 4
 # Strategy Finder / email deeplink ?weeks= must match frontend MULTI_WEEK_TARGETS
-FINDER_VALID_WEEKS_OUT = frozenset({2, 3, 4, 6})
+FINDER_VALID_WEEKS_OUT = frozenset({0, 1, 2, 4, 6})
 ALERT_SCAN_SPREAD_WIDTH = 5
 
 # User-facing analyze endpoint cache TTL:
@@ -272,6 +282,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(command_center_router, prefix="/api")
 
 
 def safe_float(val, default=0.0) -> float:
@@ -1116,16 +1127,7 @@ def _analyze_ticker(
     ticker = ticker.upper().strip()
 
     try:
-        # yfinance's history() goes through cache_get() which is an in-process LRU cache.
-        # Clearing it forces a fresh HTTP fetch so we never serve yesterday's close as today's price.
-        try:
-            from yfinance.data import YfData
-            YfData.cache_get.cache_clear()
-        except Exception:
-            pass  # not critical — carry on if internals change in a future yfinance version
-
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="1y")
+        hist = _bc_hist(ticker, period="1y", force_refresh=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch data: {str(e)}")
 
@@ -1137,9 +1139,9 @@ def _analyze_ticker(
 
     # Options chain
     try:
-        opt_dates = stock.options
-    except:
-        opt_dates = []
+        opt_dates = _bc_opt_dates(ticker)
+    except Exception:
+        opt_dates = ()
 
     if not opt_dates:
         raise HTTPException(status_code=404, detail=f"No options available for '{ticker}'")
@@ -1177,15 +1179,13 @@ def _analyze_ticker(
             )
 
     try:
-        chain = stock.option_chain(target_expiry)
-        calls_raw = chain.calls.copy()
-        puts_raw = chain.puts.copy()
+        calls_raw, puts_raw = _bc_chain(ticker, target_expiry)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch options chain: {str(e)}")
 
     # Info
     try:
-        info = stock.info
+        info = _bc_info(ticker)
         company_name = info.get("longName", ticker)
         sector = info.get("sector", "N/A")
         market_cap = format_market_cap(float(info.get("marketCap", 0) or 0))
@@ -1366,6 +1366,13 @@ def _analyze_ticker(
         puts_chain_out,
         live_price > 0,
     )
+    resolved = resolve_trade_decision(
+        {
+            "engine_type": "regular",
+            "signals": signals_out,
+            "recommendations": recs_out,
+        }
+    )
 
     return AnalyzeResponse(
         ticker=ticker,
@@ -1392,6 +1399,15 @@ def _analyze_ticker(
             "strategy_mode": strategy_mode,
         },
         quote_quality_summary=quote_quality_summary,
+        market_bias=resolved.market_bias,
+        setup_quality=resolved.setup_quality,
+        execution_readiness=resolved.execution_readiness,
+        final_decision=resolved.final_decision,
+        confidence=resolved.confidence,
+        reason=resolved.reason,
+        supporting_factors=resolved.supporting_factors,
+        missing_confirmations=resolved.missing_confirmations,
+        risk_state=resolved.risk_state,
     )
 
 
@@ -1445,6 +1461,241 @@ def _user_analyze_ttl() -> int:
     return ANALYZE_CACHE_TTL_MARKET_HOURS if in_market else ANALYZE_CACHE_TTL_OFF_HOURS
 
 
+def _watchlistx_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+
+    def ensure_item(ticker: str, *, source: str, notes: str | None = None, added_at: str | None = None) -> None:
+        t = str(ticker or "").strip().upper()
+        if not t:
+            return
+        item = merged.get(t)
+        if item is None:
+            item = {
+                "ticker": t,
+                "id": f"wlx-{t}",
+                "notes": (notes or "").strip() or None,
+                "added_at": added_at or "",
+                "sources": [],
+            }
+            merged[t] = item
+        if source not in item["sources"]:
+            item["sources"].append(source)
+        if not item.get("notes") and notes and notes.strip():
+            item["notes"] = notes.strip()
+        if not item.get("added_at") and added_at:
+            item["added_at"] = added_at
+
+    for raw in state.get("watchlist") or []:
+        if not isinstance(raw, dict):
+            continue
+        ensure_item(
+            str(raw.get("ticker", "")),
+            source="regular",
+            notes=str(raw.get("notes", "") or ""),
+            added_at=str(raw.get("addedAt", "") or ""),
+        )
+    for t in state.get("day_trade_watchlist") or []:
+        ensure_item(str(t), source="day")
+    for t in state.get("swing_trade_watchlist") or []:
+        ensure_item(str(t), source="swing")
+
+    return sorted(merged.values(), key=lambda x: (str(x.get("ticker") or "")))
+
+
+def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str = "", reason: str = "") -> dict[str, Any]:
+    reason_text = str(reason or "")
+    if decision is None:
+        final_decision = "WATCH"
+    else:
+        resolved = str(decision.final_decision or "").upper()
+        if resolved in {"EXIT", "SCALE_OUT", "MANAGE"}:
+            final_decision = "MANAGE"
+        elif resolved in {"AVOID", "NO_EDGE"}:
+            final_decision = "AVOID"
+        elif resolved == "READY":
+            final_decision = "READY"
+        elif "extended" in reason_text.lower():
+            final_decision = "EXTENDED"
+        else:
+            final_decision = "WATCH"
+
+    if decision is None:
+        return {
+            "engine": label,
+            "market_bias": "NEUTRAL",
+            "setup_quality": "WEAK",
+            "execution_readiness": "WAIT",
+            "final_decision": final_decision,
+            "confidence": 0,
+            "reason": reason_text or f"{label.title()} evaluation unavailable.",
+            "supporting_factors": [],
+            "missing_confirmations": [],
+            "risk_state": "MEDIUM",
+            "raw_signal": raw_signal,
+        }
+    return {
+        "engine": label,
+        "market_bias": decision.market_bias,
+        "setup_quality": decision.setup_quality,
+        "execution_readiness": decision.execution_readiness,
+        "final_decision": final_decision,
+        "confidence": decision.confidence,
+        "reason": decision.reason or reason_text,
+        "supporting_factors": list(decision.supporting_factors or []),
+        "missing_confirmations": list(decision.missing_confirmations or []),
+        "risk_state": decision.risk_state,
+        "raw_signal": raw_signal,
+    }
+
+
+def _watchlistx_agreement_state(
+    *,
+    ticker: str,
+    decisions: list[str],
+    setup_qualities: list[str],
+    reasons: list[str],
+    in_portfolio: bool,
+) -> tuple[str, str]:
+    normalized = [str(x or "").upper() for x in decisions if str(x or "").strip()]
+    unique = set(normalized)
+    joined_reasons = " ".join(str(x or "").lower() for x in reasons)
+    if in_portfolio:
+        return "MANAGE", f"{ticker} is already in positions. Keep the watchlist row in manage mode."
+    if "EXIT" in unique or "MANAGE" in unique:
+        return "MANAGE", f"{ticker} has an active risk-management condition."
+    if "AVOID" in unique and ("READY" in unique or "WATCH" in unique or "WAIT" in unique):
+        return "CONFLICT", f"{ticker} has conflicting engine decisions."
+    if "extended" in joined_reasons or any(str(x).upper() == "WEAK" for x in setup_qualities if x):
+        if "WATCH" in unique or "WAIT" in unique:
+            return "EXTENDED", f"{ticker} has trend interest, but at least one engine sees extension or weak confirmation."
+    if unique and unique.issubset({"AVOID", "NO_EDGE"}):
+        return "AVOID", f"{ticker} does not have enough aligned edge right now."
+    if "READY" in unique and not ({"AVOID", "NO_EDGE"} & unique):
+        return "READY", f"{ticker} has aligned setups across the active engines."
+    if "WATCH" in unique or "WAIT" in unique:
+        return "WATCH", f"{ticker} has potential, but still needs confirmation before entry."
+    return "WATCH", f"{ticker} needs more confirmation before it graduates to a ready state."
+
+
+def _watchlistx_agreement_badge(
+    *,
+    decisions: list[str],
+    reasons: list[str],
+    in_portfolio: bool,
+) -> str:
+    normalized = [str(x or "").upper() for x in decisions if str(x or "").strip()]
+    unique = set(normalized)
+    joined_reasons = " ".join(str(x or "").lower() for x in reasons)
+    ready_count = sum(1 for value in normalized if value == "READY")
+    watch_count = sum(1 for value in normalized if value in {"WATCH", "WAIT"})
+
+    if in_portfolio or "EXIT" in unique or "MANAGE" in unique:
+        return "MANAGE"
+    if "AVOID" in unique and ({"READY", "WATCH", "WAIT", "EXTENDED"} & unique):
+        return "CONFLICT"
+    if "CONFLICT" in unique:
+        return "CONFLICT"
+    if "EXTENDED" in unique or "extended" in joined_reasons:
+        return "EXTENDED"
+    if unique and unique.issubset({"AVOID", "NO_EDGE"}):
+        return "NO_EDGE"
+    if ready_count >= 2 and not ({"AVOID", "NO_EDGE"} & unique):
+        return "STRONG_AGREEMENT"
+    if ready_count >= 1 or watch_count >= 1:
+        return "PARTIAL_AGREEMENT"
+    return "NO_EDGE"
+
+
+def _watchlistx_sort_key(row: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
+    metrics = row.get("metrics") or {}
+    if sort_by == "price_change":
+        return (float(row.get("price_change_pct") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "rsi":
+        return (float(row.get("rsi") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "relative_strength":
+        return (float(row.get("relative_strength") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "trend_score":
+        return (float(metrics.get("trend_score") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "volume":
+        return (float(metrics.get("volume_ratio") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "bull_bear":
+        bull = float(metrics.get("bull_score") or 0.0)
+        bear = float(metrics.get("bear_score") or 0.0)
+        return (abs(bull - bear), str(row.get("ticker") or ""))
+    if sort_by == "iv_rank":
+        return (float(metrics.get("iv_rank") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "engine_agreement":
+        rank = {"READY": 5, "WATCH": 4, "EXTENDED": 3, "MANAGE": 2, "CONFLICT": 1, "AVOID": 0}
+        return (rank.get(str(row.get("agreement_state") or "").upper(), -1), str(row.get("ticker") or ""))
+    if sort_by == "trend":
+        rank = {"STRONG_UPTREND": 5, "UPTREND": 4, "BULLISH": 3, "NEUTRAL": 2, "BEARISH": 1, "DOWNTREND": 0}
+        return (rank.get(str(row.get("trend") or "").upper(), 2), str(row.get("ticker") or ""))
+    return (str(row.get("ticker") or ""),)
+
+
+def _watchlistx_ai_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(rows)
+    ready = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "READY")
+    watch = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "WATCH")
+    extended = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "EXTENDED")
+    conflict = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "CONFLICT")
+    avoid = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "AVOID")
+
+    if ready > 0:
+        best_focus = "Press the names where at least two engines are aligned and the final agreement is READY."
+    elif conflict > 0:
+        best_focus = "Let the conflict rows breathe. Trend and execution are disagreeing more than usual."
+    else:
+        best_focus = "Stay patient. Most names are still in WATCH or EXTENDED mode."
+
+    headline = f"{ready} ready, {watch} watch, {conflict} conflict, {avoid} avoid"
+    if total == 0:
+        headline = "No watchlist items yet"
+        best_focus = "Add tickers to start the unified evaluation pipeline."
+
+    message = (
+        "Unified WatchlistX separates market bias from actual execution readiness. "
+        "A bullish backdrop only becomes actionable when setup quality and agreement line up."
+    )
+    if extended > 0:
+        message += f" {extended} ticker{'s are' if extended != 1 else ' is'} extended and should be treated as confirmation-only."
+
+    return {
+        "headline": headline,
+        "message": message,
+        "best_focus": best_focus,
+        "counts": {
+            "total": total,
+            "ready": ready,
+            "watch": watch,
+            "extended": extended,
+            "conflict": conflict,
+            "avoid": avoid,
+        },
+    }
+
+
+def _watchlistx_market_context_label(day_metrics: dict[str, Any], swing_metrics: dict[str, Any]) -> str:
+    swing_label = str(swing_metrics.get("market_context") or "").strip().upper()
+    if swing_label:
+        return swing_label
+    spy_bias = str(day_metrics.get("spy_bias") or "").strip().upper()
+    qqq_bias = str(day_metrics.get("qqq_bias") or "").strip().upper()
+    if spy_bias and qqq_bias and spy_bias == qqq_bias:
+        if "BULL" in spy_bias:
+            return "MARKET_SUPPORTIVE"
+        if "BEAR" in spy_bias:
+            return "MARKET_WEAK"
+    return "MARKET_MIXED"
+
+
+class WatchlistXAlertCreateBody(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=12)
+    agreement_state: str = "WATCH"
+    message: str = ""
+    recommended_action: str = ""
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     """
@@ -1474,6 +1725,408 @@ def analyze(req: AnalyzeRequest):
     return data
 
 
+@app.get("/api/watchlistx")
+def get_watchlistx(
+    auth_email: str = Depends(require_access_email),
+    search: str | None = None,
+    source: str | None = None,
+    sort_by: str = "engine_agreement",
+    sort_dir: str = "desc",
+    page: int = 1,
+    page_size: int = 25,
+    refresh: bool = False,
+):
+    import time as _time
+    _t0 = _time.time()
+
+    email = normalize_email(auth_email)
+    state = get_user_state(email)
+    source_items = _watchlistx_source_items(state)
+    source_filter = str(source or "").strip().lower()
+    if source_filter in {"day", "swing", "regular"}:
+        source_items = [
+            item for item in source_items
+            if source_filter in {str(src or "").strip().lower() for src in (item.get("sources") or [])}
+        ]
+    portfolio_tickers = {
+        str(item.get("ticker", "")).strip().upper()
+        for item in (state.get("portfolio") or [])
+        if isinstance(item, dict) and str(item.get("status", "open")).lower() == "open"
+    }
+
+    # Bulk-prefetch quotes into the shared cache before the engine loop.
+    # This fills the quote cache so engine calls that read from it find a
+    # warm entry and do not independently re-fetch the same ticker.
+    all_tickers = [
+        str(item.get("ticker") or "").strip().upper()
+        for item in source_items
+        if item.get("ticker")
+    ]
+    _prefetched_quotes, _cache_meta = _get_quotes(all_tickers, force_refresh=refresh)
+    alert_counts = alert_center_active_counts_by_ticker(email, all_tickers)
+
+    rows: list[dict[str, Any]] = []
+    for item in source_items:
+        ticker = str(item.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+
+        regular_data: AnalyzeResponse | None = None
+        regular_decision = None
+        day_decision = None
+        swing_decision = None
+        regular_reason = ""
+        day_reason = ""
+        swing_reason = ""
+        regular_raw = ""
+        day_raw = ""
+        swing_raw = ""
+        day_metrics: dict[str, Any] = {}
+        swing_metrics: dict[str, Any] = {}
+        day_scan = None
+        swing_scan = None
+
+        try:
+            regular_data = _get_analysis_with_cache(ticker, weeks_out=4, spread_width=None, strategy_mode="all", force_refresh=refresh)
+            regular_decision = resolve_trade_decision(
+                {"engine_type": "regular", "signals": regular_data.signals, "recommendations": regular_data.recommendations}
+            )
+            regular_reason = regular_data.reason
+            regular_raw = regular_data.final_decision
+        except Exception as exc:  # noqa: BLE001
+            regular_reason = f"Regular evaluation unavailable: {exc}"
+
+        try:
+            day_scan = run_day_trade_scan(ticker, force_refresh=refresh)
+            day_decision = resolve_trade_decision(
+                {
+                    "engine_type": "day",
+                    "ticker": day_scan.ticker,
+                    "verdict": day_scan.verdict,
+                    "bias": day_scan.bias,
+                    "reasons": day_scan.reasons,
+                    "metrics": day_scan.metrics,
+                    "trader_decision": day_scan.trader_decision,
+                }
+            )
+            day_metrics = dict(day_scan.metrics or {})
+            day_reason = day_decision.reason
+            day_raw = day_scan.verdict
+        except Exception as exc:  # noqa: BLE001
+            day_reason = f"Day evaluation unavailable: {exc}"
+
+        try:
+            swing_scan = run_swing_trade_scan(ticker, force_refresh=refresh)
+            swing_decision = resolve_trade_decision(
+                {
+                    "engine_type": "swing",
+                    "ticker": swing_scan.ticker,
+                    "verdict": swing_scan.verdict,
+                    "bias": swing_scan.bias,
+                    "reasons": swing_scan.reasons,
+                    "metrics": swing_scan.metrics,
+                    "swing_bias": swing_scan.swing_bias,
+                    "entry_quality": swing_scan.entry_quality,
+                    "risk_level": swing_scan.risk_level,
+                    "final_action": swing_scan.final_action,
+                    "trade_quality_score": swing_scan.trade_quality_score,
+                    "decision_message": swing_scan.decision_message,
+                    "confirmation_needed": swing_scan.confirmation_needed,
+                    "avoid_reason": swing_scan.avoid_reason,
+                }
+            )
+            swing_metrics = dict(swing_scan.metrics or {})
+            swing_reason = swing_decision.reason
+            swing_raw = swing_scan.final_action
+        except Exception as exc:  # noqa: BLE001
+            swing_reason = f"Swing evaluation unavailable: {exc}"
+
+        price = float(getattr(regular_data.signals, "current_price", 0.0) or 0.0) if regular_data else 0.0
+        day_change = float(getattr(regular_data.signals, "price_change", 0.0) or 0.0) if regular_data else 0.0
+        change_pct = float(getattr(regular_data.signals, "price_change_pct", 0.0) or 0.0) if regular_data else 0.0
+        trend = str(getattr(regular_data.signals, "trend", "NEUTRAL") or "NEUTRAL") if regular_data else "NEUTRAL"
+        rsi = float(getattr(regular_data.signals, "rsi", 0.0) or 0.0) if regular_data else 0.0
+        relative_strength = float(day_metrics.get("rs_vs_qqq_pct") or 0.0)
+        sector = str(getattr(regular_data, "sector", "") or "").strip() if regular_data else ""
+        iv_rank = float(getattr(regular_data.signals, "iv_rank", 0.0) or 0.0) if regular_data else 0.0
+
+        # Enrich price from quote cache if regular engine returned 0
+        _q = _prefetched_quotes.get(ticker)
+        if _q and not price and _q.price:
+            price = _q.price
+            change_pct = _q.change_percent
+        _row_cache_age = round(_q.cache_age_seconds, 1) if _q else 0.0
+        _row_quote_source = _q.source if _q else "unavailable"
+        regular_payload = _watchlistx_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
+        day_payload = _watchlistx_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
+        swing_payload = _watchlistx_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
+        agreement_state, agreement_reason = _watchlistx_agreement_state(
+            ticker=ticker,
+            decisions=[
+                day_payload["final_decision"],
+                swing_payload["final_decision"],
+                regular_payload["final_decision"],
+            ],
+            setup_qualities=[
+                day_payload["setup_quality"],
+                swing_payload["setup_quality"],
+                regular_payload["setup_quality"],
+            ],
+            reasons=[
+                day_payload["reason"],
+                swing_payload["reason"],
+                regular_payload["reason"],
+            ],
+            in_portfolio=ticker in portfolio_tickers,
+        )
+        agreement_badge = _watchlistx_agreement_badge(
+            decisions=[
+                day_payload["final_decision"],
+                swing_payload["final_decision"],
+                regular_payload["final_decision"],
+            ],
+            reasons=[
+                day_payload["reason"],
+                swing_payload["reason"],
+                regular_payload["reason"],
+            ],
+            in_portfolio=ticker in portfolio_tickers,
+        )
+        dominant_bull = float(
+            getattr(swing_scan, "bull_score", 0.0) if swing_scan is not None else getattr(day_scan, "bull_score", 0.0)
+        )
+        dominant_bear = float(
+            getattr(swing_scan, "bear_score", 0.0) if swing_scan is not None else getattr(day_scan, "bear_score", 0.0)
+        )
+        trend_score = float(
+            getattr(swing_scan, "trade_quality_score", 0.0)
+            if swing_scan is not None and getattr(swing_scan, "trade_quality_score", None) is not None
+            else swing_payload.get("confidence") or regular_payload.get("confidence") or 0.0
+        )
+        row_metrics = {
+            "rsi": round(rsi, 2),
+            "relative_strength": round(relative_strength, 2),
+            "volume_ratio": round(float(swing_metrics.get("volume_ratio") or 0.0), 2) if swing_metrics.get("volume_ratio") is not None else None,
+            "iv_rank": round(iv_rank, 2) if iv_rank else None,
+            "bull_score": round(dominant_bull, 2) if dominant_bull else None,
+            "bear_score": round(dominant_bear, 2) if dominant_bear else None,
+            "trend_score": round(trend_score, 2) if trend_score else None,
+            "market_context": _watchlistx_market_context_label(day_metrics, swing_metrics),
+        }
+
+        chart_points = []
+        if regular_data:
+            chart_points = [{"date": point.date, "close": point.close} for point in regular_data.price_history[-30:]]
+
+        row = {
+            "id": item.get("id") or f"wlx-{ticker}",
+            "ticker": ticker,
+            "company_name": getattr(regular_data, "company_name", ticker) if regular_data else ticker,
+            "sector": sector or "N/A",
+            "price": round(price, 2) if price else 0.0,
+            "price_change": round(day_change, 2),
+            "price_change_pct": round(change_pct, 2),
+            "trend": trend,
+            "rsi": round(rsi, 2),
+            "relative_strength": round(relative_strength, 2),
+            "day_decision": day_payload["final_decision"],
+            "swing_decision": swing_payload["final_decision"],
+            "regular_decision": regular_payload["final_decision"],
+            "agreement_state": agreement_state,
+            "agreement_badge": agreement_badge,
+            "agreement_reason": agreement_reason,
+            "alerts_count": int(alert_counts.get(ticker, 0)),
+            "sources": item.get("sources") or [],
+            "notes": item.get("notes"),
+            "added_at": item.get("added_at") or "",
+            "cache_age_seconds": _row_cache_age,
+            "quote_source": _row_quote_source,
+            "metrics": row_metrics,
+            "ai_summary": (
+                f"Day is {day_payload['final_decision']}, Swing is {swing_payload['final_decision']}, "
+                f"Regular is {regular_payload['final_decision']}. {agreement_reason}"
+            ),
+            "chart_points": chart_points,
+            "day": {**day_payload, "metrics": day_metrics},
+            "swing": {**swing_payload, "metrics": swing_metrics},
+            "regular": {
+                **regular_payload,
+                "strategy": regular_data.recommendations[0].strategy if regular_data and regular_data.recommendations else "",
+                "bias": regular_data.recommendations[0].bias if regular_data and regular_data.recommendations else "",
+            },
+            "actions": {
+                "analyze_url": f"/?ticker={ticker}",
+                "chart_url": f"/?ticker={ticker}",
+                "positions_url": f"/positions?tab=open&add=manual&ticker={ticker}",
+                "alerts_url": f"/alerts?ticker={ticker}",
+            },
+        }
+        rows.append(row)
+
+    query = (search or "").strip().upper()
+    if query:
+        rows = [
+            row for row in rows
+            if query in str(row.get("ticker", "")).upper()
+            or query in str(row.get("company_name", "")).upper()
+        ]
+
+    sort_key = sort_by.strip().lower()
+    reverse = sort_dir.strip().lower() != "asc"
+    rows.sort(key=lambda row: _watchlistx_sort_key(row, sort_key), reverse=reverse)
+
+    total = len(rows)
+    page = max(1, int(page))
+    page_size = max(10, min(100, int(page_size)))
+    start = (page - 1) * page_size
+    end = start + page_size
+    paged_rows = rows[start:end]
+
+    _elapsed_ms = round((_time.time() - _t0) * 1000)
+    logging.getLogger(__name__).info(
+        "WATCHLISTX_LOAD ticker_count=%d cache_hits=%d cache_misses=%d "
+        "yahoo_fetch_count=%d elapsed_ms=%d force_refresh=%s",
+        len(all_tickers),
+        _cache_meta.get("cache_hits", 0),
+        _cache_meta.get("cache_misses", 0),
+        _cache_meta.get("cache_misses", 0),  # each miss = one Yahoo batch call
+        _elapsed_ms,
+        refresh,
+    )
+
+    return api_envelope(
+        {
+            "summary": {
+                "total": total,
+                "ready": sum(1 for row in rows if row["agreement_state"] == "READY"),
+                "watch": sum(1 for row in rows if row["agreement_state"] == "WATCH"),
+                "extended": sum(1 for row in rows if row["agreement_state"] == "EXTENDED"),
+                "avoid": sum(1 for row in rows if row["agreement_state"] == "AVOID"),
+                "conflict": sum(1 for row in rows if row["agreement_state"] == "CONFLICT"),
+                "manage": sum(1 for row in rows if row["agreement_state"] == "MANAGE"),
+                "alerts": sum(int(row.get("alerts_count") or 0) for row in rows),
+                "strong_bullish": sum(
+                    1
+                    for row in rows
+                    if "STRONG_BULLISH" in {
+                        str(row.get("day", {}).get("market_bias") or "").upper(),
+                        str(row.get("swing", {}).get("market_bias") or "").upper(),
+                        str(row.get("regular", {}).get("market_bias") or "").upper(),
+                    }
+                    or str(row.get("trend") or "").upper() == "STRONG_UPTREND"
+                ),
+                "strong_bearish": sum(
+                    1
+                    for row in rows
+                    if "STRONG_BEARISH" in {
+                        str(row.get("day", {}).get("market_bias") or "").upper(),
+                        str(row.get("swing", {}).get("market_bias") or "").upper(),
+                        str(row.get("regular", {}).get("market_bias") or "").upper(),
+                    }
+                    or str(row.get("trend") or "").upper() == "STRONG_DOWNTREND"
+                ),
+            },
+            "ai_summary": _watchlistx_ai_summary(rows),
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": max(1, (total + page_size - 1) // page_size),
+            },
+            "sort": {"sort_by": sort_key, "sort_dir": "desc" if reverse else "asc"},
+            "cache": {
+                "used_cache": _cache_meta.get("used_cache", False),
+                "cache_hits": _cache_meta.get("cache_hits", 0),
+                "cache_misses": _cache_meta.get("cache_misses", 0),
+                "force_refresh": refresh,
+                "oldest_cache_age_seconds": _cache_meta.get("oldest_cache_age_seconds", 0.0),
+                "source": _cache_meta.get("source", "unknown"),
+                "elapsed_ms": _elapsed_ms,
+            },
+            "rows": paged_rows,
+        },
+        stale=False,
+    )
+
+
+@app.post("/api/watchlistx/refresh")
+def refresh_watchlistx(
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Force-refresh the WatchlistX quote cache and engine scan caches for the
+    user's current watchlist tickers.  Returns the same payload as GET
+    /api/watchlistx?refresh=true but via an explicit POST so the frontend
+    can distinguish intentional refreshes from page loads.
+    """
+    import time as _time
+    _t0 = _time.time()
+
+    email = normalize_email(auth_email)
+    state = get_user_state(email)
+    source_items = _watchlistx_source_items(state)
+    all_tickers = [
+        str(item.get("ticker") or "").strip().upper()
+        for item in source_items
+        if item.get("ticker")
+    ]
+    # Warm the quote cache first so downstream engine calls find entries
+    _prefetched_quotes, _cache_meta = _get_quotes(all_tickers, force_refresh=True)
+
+    logging.getLogger(__name__).info(
+        "WATCHLISTX_REFRESH ticker_count=%d yahoo_fetch_count=%d elapsed_ms=%d",
+        len(all_tickers),
+        _cache_meta.get("cache_misses", 0),
+        round((_time.time() - _t0) * 1000),
+    )
+
+    return api_envelope(
+        {
+            "ok": True,
+            "refreshed_tickers": all_tickers,
+            "cache": {
+                "cache_hits": _cache_meta.get("cache_hits", 0),
+                "cache_misses": _cache_meta.get("cache_misses", 0),
+                "force_refresh": True,
+                "oldest_cache_age_seconds": _cache_meta.get("oldest_cache_age_seconds", 0.0),
+                "source": _cache_meta.get("source", "yahoo_live"),
+                "elapsed_ms": round((_time.time() - _t0) * 1000),
+            },
+        }
+    )
+
+
+@app.post("/api/watchlistx/alerts")
+def create_watchlistx_alert(
+    body: WatchlistXAlertCreateBody,
+    auth_email: str = Depends(require_access_email),
+):
+    email = normalize_email(auth_email)
+    ticker = body.ticker.strip().upper()
+    state = str(body.agreement_state or "WATCH").strip().upper()
+    severity = "CRITICAL" if state in {"AVOID", "CONFLICT"} else "WARNING" if state in {"WATCH", "EXTENDED", "MANAGE"} else "INFO"
+    signal = "AVOID" if state in {"AVOID", "CONFLICT"} else "WATCH" if state in {"WATCH", "EXTENDED"} else "EXIT" if state == "MANAGE" else "GO"
+    title = body.message.strip() or f"{ticker} watchlist follow-up"
+    recommended_action = body.recommended_action.strip() or "Review the unified watchlist row before acting."
+    alert_id = alert_center_create(
+        email,
+        alert_group="regular_trade",
+        severity=severity,
+        engine="REGULAR",
+        signal=signal,
+        title=title,
+        body=recommended_action,
+        meta={
+            "ticker": ticker,
+            "alert_type": "WATCHLISTX_MANUAL",
+            "engine_type": "REGULAR",
+            "recommended_action": recommended_action,
+            "reason": title,
+        },
+    )
+    return api_envelope({"ok": True, "id": alert_id})
+
+
 def _require_admin_role(auth_email: str, detail: str) -> None:
     if get_user_state(normalize_email(auth_email)).get("role") != "admin":
         raise HTTPException(status_code=403, detail=detail)
@@ -1492,6 +2145,17 @@ def day_trade_scan(
     _require_admin_role(auth_email, "Day Trading requires administrator access.")
     try:
         r = run_day_trade_scan(req.ticker)
+        resolved = resolve_trade_decision(
+            {
+                "engine_type": "day",
+                "ticker": r.ticker,
+                "verdict": r.verdict,
+                "bias": r.bias,
+                "reasons": r.reasons,
+                "metrics": r.metrics,
+                "trader_decision": r.trader_decision,
+            }
+        )
         return DayTradeResponse(
             ticker=r.ticker,
             company_name=r.company_name,
@@ -1502,6 +2166,15 @@ def day_trade_scan(
             reasons=r.reasons,
             metrics=r.metrics,
             trader_decision=r.trader_decision,
+            market_bias=resolved.market_bias,
+            setup_quality=resolved.setup_quality,
+            execution_readiness=resolved.execution_readiness,
+            final_decision=resolved.final_decision,
+            confidence=resolved.confidence,
+            reason=resolved.reason,
+            supporting_factors=resolved.supporting_factors,
+            missing_confirmations=resolved.missing_confirmations,
+            risk_state=resolved.risk_state,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -1523,6 +2196,24 @@ def swing_trade_scan(
     _require_admin_role(auth_email, "Swing Trade requires administrator access.")
     try:
         r = run_swing_trade_scan(req.ticker)
+        resolved = resolve_trade_decision(
+            {
+                "engine_type": "swing",
+                "ticker": r.ticker,
+                "verdict": r.verdict,
+                "bias": r.bias,
+                "reasons": r.reasons,
+                "metrics": r.metrics,
+                "swing_bias": r.swing_bias,
+                "entry_quality": r.entry_quality,
+                "risk_level": r.risk_level,
+                "final_action": r.final_action,
+                "trade_quality_score": r.trade_quality_score,
+                "decision_message": r.decision_message,
+                "confirmation_needed": r.confirmation_needed,
+                "avoid_reason": r.avoid_reason,
+            }
+        )
         return SwingTradeResponse(
             ticker=r.ticker,
             company_name=r.company_name,
@@ -1545,6 +2236,15 @@ def swing_trade_scan(
             suggested_strategy=r.suggested_strategy,
             avoid_reason=r.avoid_reason,
             playbook_hint=r.playbook_hint,
+            market_bias=resolved.market_bias,
+            setup_quality=resolved.setup_quality,
+            execution_readiness=resolved.execution_readiness,
+            final_decision=resolved.final_decision,
+            confidence=resolved.confidence,
+            reason=resolved.reason,
+            supporting_factors=resolved.supporting_factors,
+            missing_confirmations=resolved.missing_confirmations,
+            risk_state=resolved.risk_state,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -2145,11 +2845,11 @@ def _refresh_entry(entry: dict) -> dict:
     ticker_str = entry["ticker"]
 
     try:
-        tkr = yf.Ticker(ticker_str)
-
         if today > expiry_dt:
             # Expired: compute intrinsic P&L from closing price on/after expiry date
-            hist = tkr.history(
+            # Date-range fetches bypass bar_cache (unbounded key space) — still direct
+            hist = _bc_hist(
+                ticker_str,
                 start=entry["expiry"],
                 end=(expiry_dt + pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
                 auto_adjust=True,
@@ -2179,10 +2879,10 @@ def _refresh_entry(entry: dict) -> dict:
                 )
         else:
             # Still open: mark-to-market
-            info = tkr.info
+            info = _bc_info(ticker_str)
             S = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
             if S <= 0:
-                hist = tkr.history(period="5d", auto_adjust=True)
+                hist = _bc_hist(ticker_str, period="5d", auto_adjust=True)
                 S = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
             if S > 0:
                 dte_remain = (expiry_dt - today).days

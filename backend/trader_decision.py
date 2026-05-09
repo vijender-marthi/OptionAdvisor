@@ -104,7 +104,9 @@ def build_trader_decision(
         qqq_mkt = qqq_daily_pct
     market_state = _market_state(spy_mkt, qqq_mkt)
     market_guidance = _market_guidance(market_state)
-    rel = _relative_strength_label(stock_session_pct, qqq_session_pct)
+    # Use the same fallback QQQ value used for market_state so RS doesn't silently
+    # return NEUTRAL whenever intraday session data is unavailable.
+    rel = _relative_strength_label(stock_session_pct, qqq_mkt)
 
     # --- Broad market rows (SPY / QQQ as watchlist items) ---
     if t in ("SPY", "QQQ"):
