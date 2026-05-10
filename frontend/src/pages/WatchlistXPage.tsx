@@ -379,6 +379,36 @@ function SourcePill({ source, decision, emphasized = true }: { source: string; d
   )
 }
 
+function SignalQualityBadge({ quality }: { quality: string }) {
+  const q = String(quality || '').toUpperCase()
+  if (!q) return null
+  const qClass = q === 'STRONG GO' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+    q === 'GO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
+    'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${qClass}`}>{quality}</span>
+}
+
+function ExecTimingBadge({ timing }: { timing: string }) {
+  const t = String(timing || '').toUpperCase()
+  if (!t) return null
+  const tClass = t === 'ENTER NOW' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+    t === 'WATCH' ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300' :
+    t === 'WAIT FOR PULLBACK' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' :
+    t === 'STAND ASIDE' ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' :
+    'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tClass}`}>{timing}</span>
+}
+
+function RiskCatBadge({ category }: { category: string }) {
+  const c = String(category || '').toUpperCase()
+  if (!c) return null
+  const cClass = c === 'LOW' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' :
+    c === 'MODERATE' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' :
+    c === 'EXTENDED' ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300' :
+    'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cClass}`}>{category}</span>
+}
+
 function DecisionPanel({ title, decision }: { title: string; decision: WatchlistXDecisionBlock }) {
   return (
     <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
@@ -389,6 +419,11 @@ function DecisionPanel({ title, decision }: { title: string; decision: Watchlist
         </div>
         <StatusPill value={decision.final_decision} />
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <SignalQualityBadge quality={decision.signal_quality || ''} />
+        <ExecTimingBadge timing={decision.execution_timing || ''} />
+        <RiskCatBadge category={decision.risk_category || decision.risk_state || ''} />
+      </div>
       <div className="mt-2 space-y-2">
         <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reason</div>
@@ -396,7 +431,7 @@ function DecisionPanel({ title, decision }: { title: string; decision: Watchlist
         </div>
         <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Risk</div>
-          <div className={`mt-1 text-sm font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_state || 'MEDIUM'}</div>
+          <div className={`mt-1 text-sm font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_category || decision.risk_state || 'MEDIUM'}</div>
         </div>
       </div>
     </div>
@@ -768,10 +803,18 @@ export default function WatchlistXPage() {
   const page = Math.max(1, Number(searchParams.get('page') || '1') || 1)
   const pageSize = Math.max(10, Math.min(100, Number(searchParams.get('page_size') || '24') || 24))
 
+  // Sync URL → local state only when the 'q' param itself changes (e.g. browser back/forward).
+  // BUG FIX: removed `searchInput` from deps — having it there caused the effect to fire on
+  // every keystroke, read the still-stale URL (deferredSearch hadn't committed yet) and reset
+  // the field back to '' immediately after the user typed a character.
+  const prevUrlQRef = useRef(searchParams.get('q')?.trim() ?? '')
   useEffect(() => {
-    const urlSearch = searchParams.get('q')?.trim() ?? ''
-    if (urlSearch !== searchInput) setSearchInput(urlSearch)
-  }, [searchInput, searchParams])
+    const urlQ = searchParams.get('q')?.trim() ?? ''
+    if (urlQ !== prevUrlQRef.current) {
+      prevUrlQRef.current = urlQ
+      setSearchInput(urlQ)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const current = searchParams.get('q')?.trim() ?? ''
@@ -799,8 +842,11 @@ export default function WatchlistXPage() {
     setLoading(true)
     setError(null)
     try {
+      // BUG FIX: search is now client-side only — do NOT pass it here.
+      // Passing search in the URL caused searchParams to change on every keystroke
+      // (via the deferredSearch effect), which recreated `load` and triggered a
+      // redundant backend fetch for each character typed.
       const next = await fetchWatchlistX({
-        search: searchParams.get('q')?.trim() || undefined,
         source: sourceFilter === 'all' ? undefined : sourceFilter,
         sort_by: sortBy,
         sort_dir: sortDir,
@@ -813,7 +859,7 @@ export default function WatchlistXPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, searchParams, sortBy, sortDir, sourceFilter])
+  }, [page, pageSize, sortBy, sortDir, sourceFilter])
 
   useEffect(() => { void load() }, [load])
 
@@ -828,14 +874,21 @@ export default function WatchlistXPage() {
   }, [rows])
 
   const visibleRows = useMemo(() => {
+    // Client-side search: filter by ticker or company name without any backend call.
+    const q = deferredSearch.trim().toLowerCase()
     return rows.filter(row => {
+      if (q) {
+        const tickerMatch = row.ticker.toLowerCase().includes(q)
+        const nameMatch = String(row.company_name ?? '').toLowerCase().includes(q)
+        if (!tickerMatch && !nameMatch) return false
+      }
       if (!matchesStateFilter(row, stateFilter, sourceFilter)) return false
       if (!matchesAgreementFilter(row, agreementFilter)) return false
       if (trendFilter !== 'all' && normalizeTrendFilter(row.trend) !== trendFilter) return false
       if (sectorFilter !== 'all' && (row.sector || 'N/A') !== sectorFilter) return false
       return true
     })
-  }, [agreementFilter, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
+  }, [deferredSearch, agreementFilter, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
 
   const engineCounts = useMemo(() => {
     const counts: Record<string, number> = {}

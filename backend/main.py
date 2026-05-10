@@ -1408,6 +1408,9 @@ def _analyze_ticker(
         supporting_factors=resolved.supporting_factors,
         missing_confirmations=resolved.missing_confirmations,
         risk_state=resolved.risk_state,
+        signal_quality=resolved.signal_quality or "",
+        execution_timing=resolved.execution_timing or "",
+        risk_category=resolved.risk_category or "",
     )
 
 
@@ -1532,6 +1535,9 @@ def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str =
             "missing_confirmations": [],
             "risk_state": "MEDIUM",
             "raw_signal": raw_signal,
+            "signal_quality": "",
+            "execution_timing": "",
+            "risk_category": "",
         }
     return {
         "engine": label,
@@ -1545,6 +1551,9 @@ def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str =
         "missing_confirmations": list(decision.missing_confirmations or []),
         "risk_state": decision.risk_state,
         "raw_signal": raw_signal,
+        "signal_quality": getattr(decision, "signal_quality", "") or "",
+        "execution_timing": getattr(decision, "execution_timing", "") or "",
+        "risk_category": getattr(decision, "risk_category", "") or "",
     }
 
 
@@ -2175,6 +2184,9 @@ def day_trade_scan(
             supporting_factors=resolved.supporting_factors,
             missing_confirmations=resolved.missing_confirmations,
             risk_state=resolved.risk_state,
+            signal_quality=resolved.signal_quality or "",
+            execution_timing=resolved.execution_timing or "",
+            risk_category=resolved.risk_category or "",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -2245,6 +2257,9 @@ def swing_trade_scan(
             supporting_factors=resolved.supporting_factors,
             missing_confirmations=resolved.missing_confirmations,
             risk_state=resolved.risk_state,
+            signal_quality=resolved.signal_quality or "",
+            execution_timing=resolved.execution_timing or "",
+            risk_category=resolved.risk_category or "",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

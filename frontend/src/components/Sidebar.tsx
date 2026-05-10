@@ -127,6 +127,7 @@ export default function Sidebar() {
       label: 'Support',
       items: [
         { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
+        { id: 'trading-glossary', label: 'Trading Glossary', icon: <BookOpen size={18} /> },
       ],
     },
   ]

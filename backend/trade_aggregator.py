@@ -11,6 +11,7 @@ main.py imports command_center_router which now imports trade_aggregator.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import uuid
@@ -19,6 +20,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger(__name__)
 
 import bar_cache
 
@@ -253,6 +256,9 @@ def decision_payload(
             "missing_confirmations": [],
             "risk_state":          "MEDIUM",
             "raw_signal":          raw_signal,
+            "signal_quality":      "",
+            "execution_timing":    "",
+            "risk_category":       "",
         }
     return {
         "engine":              label,
@@ -266,6 +272,9 @@ def decision_payload(
         "missing_confirmations": list(decision.missing_confirmations or []),
         "risk_state":          decision.risk_state,
         "raw_signal":          raw_signal,
+        "signal_quality":      decision.signal_quality or "",
+        "execution_timing":    decision.execution_timing or "",
+        "risk_category":       decision.risk_category or "",
     }
 
 
@@ -363,8 +372,12 @@ def run_all_engines_cached(ticker: str) -> dict:
     with _agg_cache_lock:
         entry = _agg_cache.get(key)
         if entry and now - entry[0] < _cache_ttl():
+            log.debug("AGG_CACHE hit ticker=%s age=%.0fs", key, now - entry[0])
             return entry[1]
+    t0 = time.perf_counter()
     result = _compute_ticker_engines(key)
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    log.info("AGG_CACHE miss ticker=%s computed=%dms", key, elapsed_ms)
     with _agg_cache_lock:
         _agg_cache[key] = (time.time(), result)
     return result
@@ -529,6 +542,9 @@ def build_command_center_payload(
                 "supporting_factors":    list(p.get("supporting_factors") or []),
                 "missing_confirmations": list(p.get("missing_confirmations") or []),
                 "risk_state":            p.get("risk_state") or "MEDIUM",
+                "signal_quality":        p.get("signal_quality") or "",
+                "execution_timing":      p.get("execution_timing") or "",
+                "risk_category":         p.get("risk_category") or "",
             })
 
     # Rows with NO_EDGE are omitted from the visible recommendation list
@@ -588,6 +604,9 @@ def build_command_center_payload(
                 "supporting_factors":    [],
                 "missing_confirmations": [],
                 "risk_state":            "MEDIUM",
+                "signal_quality":        "",
+                "execution_timing":      "",
+                "risk_category":         "",
             })
             continue
 
@@ -628,6 +647,9 @@ def build_command_center_payload(
             "supporting_factors":    list(top.get("supporting_factors") or []),
             "missing_confirmations": list(top.get("missing_confirmations") or []),
             "risk_state":            top.get("risk_state") or "MEDIUM",
+            "signal_quality":        top.get("signal_quality") or "",
+            "execution_timing":      top.get("execution_timing") or "",
+            "risk_category":         top.get("risk_category") or "",
         })
 
     # ── Conflicts ─────────────────────────────────────────────────────────────
@@ -776,6 +798,9 @@ def _empty_payload(
             "supporting_factors":    [],
             "missing_confirmations": ["Watchlist tickers"],
             "risk_state":            "MEDIUM",
+            "signal_quality":        "",
+            "execution_timing":      "",
+            "risk_category":         "",
         }
         for eng_key in ("day", "swing", "regular")
     ]

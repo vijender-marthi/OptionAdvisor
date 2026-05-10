@@ -405,6 +405,22 @@ def compute_kelly_metrics(expected_value: float, max_loss: float) -> tuple[float
     )
 
 
+def expected_stock_move(price: float, iv_pct: float, dte: int, multiplier: float = 3.0) -> float:
+    """
+    Realistic expected stock move ($) based on IV, DTE, and sigma multiplier.
+
+    Model: move = price x (IV x sqrt(DTE/365) x multiplier)
+
+    multiplier=3.0 covers ~99.7% of outcomes (3 sigma under lognormal).
+    Used to replace the old arbitrary cost*10 with a data-driven max_profit.
+    """
+    if price <= 0 or iv_pct <= 0 or dte <= 0:
+        return round(price * 0.05, 2) if price > 0 else 0.0
+    years = dte / 365.0
+    move_frac = (iv_pct / 100.0) * sqrt(years) * multiplier
+    return round(price * move_frac, 2)
+
+
 def directional_drift(directional_bias: str, bias_confidence: int) -> float:
     """
     Annualized drift for real-world lognormal EV on long premium trades.
@@ -763,13 +779,19 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
         bias_confidence=signals.bias_confidence,
     )
     ev_per_contract = round(ev * 100, 0)
+    dte = days_to_expiry(expiry)
+    move = expected_stock_move(price, leg.iv, dte)
+    upside_price = price + move
+    approx_intrinsic = max(upside_price - leg.strike, 0.0)
+    realistic_max_profit = round(max(approx_intrinsic, cost * 2.0), 2)
+    rr = round(cost / realistic_max_profit, 2) if realistic_max_profit > 0 else 99.0
 
     return dict(
         strategy="Long Call", bias="Bullish",
-        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        legs=[leg], expiry=expiry, dte=dte,
         net_credit=-cost, spread_width=0,
-        max_profit=cost * 10, max_loss=cost,
-        risk_reward_ratio=round(max_loss / (cost * 10), 2),
+        max_profit=realistic_max_profit, max_loss=cost,
+        risk_reward_ratio=rr,
         credit_pct_of_width=0,
         breakeven_lower=be, breakeven_upper=999,
         short_leg_delta=leg.delta, prob_of_profit=rop,
@@ -784,10 +806,11 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
             f"IV rank {signals.iv_rank:.0f}% ({signals.iv_environment}) — "
             f"{'options are relatively cheap for buying.' if signals.iv_rank < 45 else 'note: elevated IV increases cost.'} "
             f"Long call at ${leg.strike} breaks even at ${be}. "
+            f"Expected {dte}D move: ${move:.2f} (3σ). Max profit ≈ ${realistic_max_profit:.2f}/share. "
             f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
             f"drift ({signals.bias_confidence}% confidence)."
         ),
-        exit_plan=generate_exit_plan("Long Call", cost * 10, -cost, expiry, days_to_expiry(expiry)),
+        exit_plan=generate_exit_plan("Long Call", realistic_max_profit, -cost, expiry, dte),
     )
 
 
@@ -817,13 +840,19 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
         bias_confidence=signals.bias_confidence,
     )
     ev_per_contract = round(ev * 100, 0)
+    dte = days_to_expiry(expiry)
+    move = expected_stock_move(price, leg.iv, dte)
+    downside_price = price - move
+    approx_intrinsic = max(leg.strike - downside_price, 0.0)
+    realistic_max_profit = round(max(approx_intrinsic, cost * 2.0), 2)
+    rr = round(cost / realistic_max_profit, 2) if realistic_max_profit > 0 else 99.0
 
     return dict(
         strategy="Long Put", bias="Bearish",
-        legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
+        legs=[leg], expiry=expiry, dte=dte,
         net_credit=-cost, spread_width=0,
-        max_profit=cost * 10, max_loss=cost,
-        risk_reward_ratio=round(cost / (cost * 10), 2),
+        max_profit=realistic_max_profit, max_loss=cost,
+        risk_reward_ratio=rr,
         credit_pct_of_width=0,
         breakeven_lower=0, breakeven_upper=be,
         short_leg_delta=abs(leg.delta), prob_of_profit=rop,
@@ -835,10 +864,11 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
             f"RSI {signals.rsi} ({signals.rsi_signal}). "
             f"MACD: {signals.macd_crossover} crossover. "
             f"Long put at ${leg.strike} — break even below ${be}. "
+            f"Expected {dte}D move: ${move:.2f} (3σ). Max profit ≈ ${realistic_max_profit:.2f}/share. "
             f"Black-Scholes EV: {'+' if ev > 0 else ''}{ev_per_contract:.0f}/contract using {signals.directional_bias.lower()} "
             f"drift ({signals.bias_confidence}% confidence)."
         ),
-        exit_plan=generate_exit_plan("Long Put", cost * 10, -cost, expiry, days_to_expiry(expiry)),
+        exit_plan=generate_exit_plan("Long Put", realistic_max_profit, -cost, expiry, dte),
     )
 
 
@@ -1127,12 +1157,22 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
         bias_confidence=signals.bias_confidence,
     )
 
+    dte = days_to_expiry(expiry)
+    move = expected_stock_move(price, avg_iv, dte)
+    upside_price = price + move
+    downside_price = price - move
+    call_intrinsic = max(upside_price - call_leg.strike, 0.0)
+    put_intrinsic = max(put_leg.strike - downside_price, 0.0)
+    total_intrinsic = call_intrinsic + put_intrinsic
+    realistic_max_profit = round(max(total_intrinsic, total_cost * 2.0), 2)
+    rr = round(total_cost / realistic_max_profit, 2) if realistic_max_profit > 0 else 99.0
+
     return dict(
         strategy="Long Straddle", bias="Neutral (Volatile)",
-        legs=[call_leg, put_leg], expiry=expiry, dte=days_to_expiry(expiry),
+        legs=[call_leg, put_leg], expiry=expiry, dte=dte,
         net_credit=-total_cost, spread_width=0,
-        max_profit=total_cost * 10, max_loss=total_cost,
-        risk_reward_ratio=round(total_cost / (total_cost * 10), 2),
+        max_profit=realistic_max_profit, max_loss=total_cost,
+        risk_reward_ratio=rr,
         credit_pct_of_width=0,
         breakeven_lower=be_lower, breakeven_upper=be_upper,
         short_leg_delta=0.50, prob_of_profit=rop,
@@ -1142,11 +1182,11 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
         rationale=(
             f"Neutral bias but expecting a large move. IV rank {signals.iv_rank:.0f}% "
             f"({'options cheap — good time to buy vol.' if signals.iv_rank < 40 else 'note: elevated IV makes straddle expensive.'}) "
-            f"Costs ${total_cost:.2f}/share. Needs a move {'larger' if signals.current_iv > 30 else 'of at least'} "
-            f"${total_cost:.2f} ({round(total_cost/price*100,1)}%) to be profitable by expiry. "
+            f"Costs ${total_cost:.2f}/share. {dte}D expected move: ${move:.2f} (3σ). "
+            f"Max profit ≈ ${realistic_max_profit:.2f}/share. "
             f"Profit zone outside ${be_lower} – ${be_upper}."
         ),
-        exit_plan=generate_exit_plan("Long Straddle", total_cost * 10, -total_cost, expiry, days_to_expiry(expiry)),
+        exit_plan=generate_exit_plan("Long Straddle", realistic_max_profit, -total_cost, expiry, dte),
     )
 
 
@@ -1546,9 +1586,10 @@ def run_engine(
             candidates_raw.append(t)
 
     # Covered / naked short options — only in 'all' or 'short_or_covered' mode.
-    # In 'all' mode we also deduplicate: if a defined-risk spread already covers the same
-    # directional thesis, suppress the naked/covered equivalent so the list stays focused.
-    # (Bull Put Spread and Short Put are both bull/neutral credit plays — show the safer one.)
+    # Stock-ownership strategies (Covered Call, Covered Put) are NEVER suppressed by
+    # spread presence — they serve different purposes (income on held shares / cash
+    # versus defined-risk credit).  Only naked single-leg sells that are economically
+    # equivalent to an existing spread are suppressed.
     #
     # Covered Call: stock ownership assumed; sell OTM call to collect premium (neutral-bullish).
     # Covered Put (cash-secured): reserve cash; sell OTM put to collect premium (neutral-bullish).
@@ -1556,18 +1597,20 @@ def run_engine(
     exp_covered = exp_credit if days_to_expiry(exp_credit) >= 14 else \
         pick_expiry_by_dte(option_dates, 14, dte_hi + 14) or exp_credit
 
-    # In 'all' mode suppress naked/covered if a spread already covers that directional thesis.
+    # In 'all' mode suppress naked single-leg sells if a spread already covers the same
+    # directional thesis with defined risk.  Stock-ownership strategies (Covered Call,
+    # Covered Put) are exempt — they are not naked premium sells.
     # In 'short_or_covered' mode always build them (no spreads were built above).
     _suppress_bull_naked = bull_spread_built and strategy_mode == 'all'
     _suppress_bear_naked = bear_spread_built and strategy_mode == 'all'
 
-    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:
+    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK:
         c, p = get_chain(exp_covered)
         t = _build_covered_call(signals, c, exp_covered)
         if t:
             candidates_raw.append(t)
 
-    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:
+    if exp_covered and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK:
         c, p = get_chain(exp_covered)
         t = _build_covered_put(signals, p, exp_covered)
         if t:
@@ -1575,7 +1618,9 @@ def run_engine(
 
     # Standalone short options (naked single-leg sells, margin required).
     # Short Put: neutral-bullish + HIGH_IV — sell OTM put, profit if stock holds.
+    #   Suppressed when Bull Put Spread already built (same directional thesis, defined-risk version exists).
     # Short Call: neutral-bearish + HIGH_IV — sell OTM call, profit if stock stays flat/falls.
+    #   Suppressed when Bear Call Spread already built.
     # ⚠️  Short Call has unlimited risk; a strong bearish signal is required.
     # NOTE: these use exp_credit (weeks_out-anchored) NOT exp_covered.
     if exp_credit and BUILD_SHORT_COVERED and not BEARISH and CREDIT_IV_OK and not _suppress_bull_naked:

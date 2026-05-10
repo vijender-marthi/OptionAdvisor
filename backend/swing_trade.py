@@ -1045,6 +1045,94 @@ def build_swing_chart_series(
     return {"max_points": cap, "count": len(points), "points": points}
 
 
+# ── Option liquidity helper ───────────────────────────────────────────
+
+def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float]:
+    """
+    Compute option liquidity score (0-10) from near-the-money option chain data.
+
+    Score components:
+      - Bid-ask spread (0-4): lower = more liquid
+      - Open interest    (0-3): higher = more liquid
+      - Volume           (0-2): higher = more liquid
+      - Strike density   (0-1): more strikes = better chain
+
+    Returns None when option data is unavailable (ticker may not have
+    exchange-traded options).  Score < 4 triggers LOW_OPTION_LIQUIDITY
+    in the decision quality layer.
+    """
+    try:
+        opt_dates = list(bar_cache.get_option_dates(ticker) or [])
+        if not opt_dates:
+            return None
+
+        # Pick ~4-week expiry (30 DTE sweet spot, ±2 weeks)
+        now = datetime.now()
+        target_dte = 30
+        best_expiry = None
+        best_diff = 999
+        for d in opt_dates:
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            dte = (dt - now.date()).days if hasattr(dt, "date") else (dt - now).days
+            if 14 <= dte <= 60:
+                diff = abs(dte - target_dte)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_expiry = d
+        if best_expiry is None:
+            best_expiry = opt_dates[min(2, len(opt_dates) - 1)]
+
+        calls_raw, puts_raw = bar_cache.get_option_chain(ticker, best_expiry)
+        if calls_raw is None or puts_raw is None:
+            return None
+
+        lo = price * 0.80
+        hi = price * 1.20
+        calls = calls_raw[(calls_raw["strike"] >= lo) & (calls_raw["strike"] <= hi)].copy()
+        puts  = puts_raw[(puts_raw["strike"]  >= lo) & (puts_raw["strike"]  <= hi)].copy()
+        if calls.empty and puts.empty:
+            return None
+
+        combined = pd.concat([calls, puts])
+        spreads: list[float] = []
+        ois: list[int] = []
+        vols: list[int] = []
+
+        for _, row in combined.iterrows():
+            bid = float(row.get("bid", 0) or 0)
+            ask = float(row.get("ask", 0) or 0)
+            oi  = int(row.get("openInterest", 0) or 0)
+            vol = int(row.get("volume", 0) or 0)
+            if bid > 0 and ask > 0:
+                mid = (bid + ask) / 2
+                if mid > 0:
+                    spreads.append((ask - bid) / mid * 100)
+            ois.append(oi)
+            vols.append(vol)
+
+        if not spreads:
+            return None
+
+        avg_spread = sum(spreads) / len(spreads)
+        max_oi     = max(ois)
+        total_vol  = sum(vols)
+
+        score = 0.0
+        if avg_spread <= 5.0:       score += 4.0
+        elif avg_spread <= 10.0:    score += 2.0
+        elif avg_spread <= 15.0:    score += 1.0
+        if max_oi >= 1000:          score += 3.0
+        elif max_oi >= 500:         score += 2.0
+        elif max_oi >= 100:         score += 1.0
+        if total_vol >= 500:        score += 2.0
+        elif total_vol >= 100:      score += 1.0
+        if len(combined) >= 4:      score += 1.0
+
+        return round(min(10.0, score), 1)
+    except Exception:
+        return None
+
+
 # ── Main scanner ──────────────────────────────────────────────────────
 
 def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTradeScan:
@@ -1343,6 +1431,9 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "chart_series": chart_series,
     }
 
+    # ── Option liquidity score (activates LOW_OPTION_LIQUIDITY gate) ──
+    option_liquidity_score = _compute_option_liquidity_score(t, last)
+
     # ── Decision Quality Layer ─────────────────────────────────────────
     decision = build_swing_trade_decision(
         ticker=t,
@@ -1358,7 +1449,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         vol_label=vol_label,
         earnings_within_days=earnings_within_days,
         iv_rank=iv_rank_opt,
-        option_liquidity_score=None,
+        option_liquidity_score=option_liquidity_score,
         near_resistance=None,
         gap_percent=None,
     )

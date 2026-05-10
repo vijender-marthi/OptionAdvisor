@@ -21,3 +21,9 @@ class ResolvedTradeDecision(BaseModel):
     supporting_factors: list[str] = Field(default_factory=list)
     missing_confirmations: list[str] = Field(default_factory=list)
     risk_state: RiskState = "MEDIUM"
+
+    # Three-axis display fields (added 2026-05): separate opportunity quality
+    # from timing and risk to eliminate contradictory UX (e.g. STRONG GO + AVOID).
+    signal_quality: str = ""         # "STRONG GO" | "GO" | "READY" | ""
+    execution_timing: str = ""       # "ENTER NOW" | "WAIT FOR PULLBACK" | "WATCH" | "STAND ASIDE" | "MANAGE" | ""
+    risk_category: str = ""          # "LOW" | "MODERATE" | "EXTENDED" | "HIGH" | ""

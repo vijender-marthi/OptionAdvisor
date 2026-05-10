@@ -108,6 +108,9 @@ export interface ResolvedTradeDecision {
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
+  signal_quality: string
+  execution_timing: string
+  risk_category: string
 }
 
 export interface OptionRow {
@@ -179,6 +182,7 @@ export type Page =
   | 'watchlist'
   | 'portfolio'
   | 'help'
+  | 'trading-glossary'
   | 'ai-stocks'
   | 'q-radar'
   | 'trade-signals'
@@ -367,6 +371,9 @@ export interface AnalyzeResponse {
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
+  signal_quality: string
+  execution_timing: string
+  risk_category: string
 }
 
 // ─── Backtesting ────────────────────────────────────────────

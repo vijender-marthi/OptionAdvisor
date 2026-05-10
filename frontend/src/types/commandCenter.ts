@@ -69,6 +69,9 @@ export interface TradeCommandCenterEngine {
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
+  signal_quality: string
+  execution_timing: string
+  risk_category: string
 }
 
 export interface TradeCommandCenterRecommendation {
@@ -94,6 +97,9 @@ export interface TradeCommandCenterRecommendation {
   supporting_factors?: string[]
   missing_confirmations?: string[]
   risk_state?: string
+  signal_quality?: string
+  execution_timing?: string
+  risk_category?: string
 }
 
 export interface TradeCommandCenterConflict {
@@ -161,6 +167,9 @@ export interface WatchlistXDecisionBlock {
   metrics?: Record<string, unknown>
   strategy?: string
   bias?: string
+  signal_quality?: string
+  execution_timing?: string
+  risk_category?: string
 }
 
 export interface WatchlistXMetrics {

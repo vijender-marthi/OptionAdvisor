@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, ShieldCheck, HelpCircle } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -479,6 +479,7 @@ interface Props {
 
 export default function PreTradeChecklist({ rec, signals }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [showBiasHelp, setShowBiasHelp] = useState(false)
 
   const items   = buildChecklist(rec, signals)
   const verdict = deriveVerdict(items)
@@ -551,7 +552,12 @@ export default function PreTradeChecklist({ rec, signals }: Props) {
                       <div className={`text-xs font-semibold ${
                         item.status === 'pass' ? 'text-emerald-300' :
                         item.status === 'warn' ? 'text-amber-300' : 'text-red-300'
-                      }`}>
+                      }`}
+                        title={item.label === 'Bias Confidence'
+                          ? 'Measures how strongly the engine believes the directional setup is supported by trend, momentum, volume, and market context.'
+                          : item.label === 'Range Conditions'
+                          ? 'Checks whether the stock is range-bound or trending. Range-bound conditions support neutral strategies like iron condors.'
+                          : undefined}>
                         {item.label}
                       </div>
                       <div className="text-xs text-gray-500 leading-relaxed mt-0.5">{item.detail}</div>
@@ -559,6 +565,37 @@ export default function PreTradeChecklist({ rec, signals }: Props) {
                   </div>
                 ))}
               </div>
+
+              {cat === 'Directional Bias' && grpItems.some(i => i.label === 'Bias Confidence' && (i.status === 'warn' || i.status === 'fail')) && (
+                <div className="mt-1.5">
+                  <button
+                    onClick={() => setShowBiasHelp(o => !o)}
+                    className="flex items-center gap-1 text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
+                  >
+                    <HelpCircle size={12} />
+                    {showBiasHelp ? 'Hide explanation' : 'More about Bias Confidence'}
+                  </button>
+                  {showBiasHelp && (
+                    <div className="mt-1.5 p-2.5 rounded-lg bg-gray-800/60 border border-gray-700 text-xs space-y-1.5">
+                      <p className="font-semibold text-gray-300">What Bias Confidence measures</p>
+                      <p className="text-gray-400">
+                        A score showing how strongly the engine believes the directional setup is valid, based on
+                        trend alignment, momentum, volume, and market context.
+                      </p>
+                      <div className="grid gap-1 pt-1 text-gray-400">
+                        <div><span className="text-emerald-400 font-semibold">80–100%:</span> Strong conviction — multiple trend systems agree. Full position sizing is reasonable.</div>
+                        <div><span className="text-amber-400 font-semibold">30–60%:</span> Weak conviction — trend exists but lacks alignment. Consider smaller size or wider strikes.</div>
+                        <div><span className="text-red-400 font-semibold">0–30%:</span> Very weak — directional signal is unreliable. Mitigate with wider OTM strikes or a non-directional strategy.</div>
+                      </div>
+                      <p className="text-gray-500 pt-1">
+                        Low confidence does not mean the trade will fail — it means the directional setup lacks
+                        strong confirmation. Wider strikes, smaller size, or non-directional strategies (iron condor,
+                        straddle) can still work.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 

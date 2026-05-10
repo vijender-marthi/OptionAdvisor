@@ -11,9 +11,13 @@ reference but is no longer called by any endpoint.
 """
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -260,8 +264,10 @@ def get_trade_command_center(
     always live regardless of the stale flag.
     """
     email = normalize_email(auth_email)
+    t0 = time.perf_counter()
 
     # ── Live engine aggregation ────────────────────────────────────────────────
+    t_eng = time.perf_counter()
     payload = build_command_center_payload(
         email=email,
         engine_filter=engine,
@@ -269,6 +275,7 @@ def get_trade_command_center(
         direction_filter=direction,
         risk_filter=risk,
     )
+    ms_eng = int((time.perf_counter() - t_eng) * 1000)
 
     # ── Live market summary overlay ────────────────────────────────────────────
     _stub_market_summary: dict[str, Any] = {
@@ -281,9 +288,19 @@ def get_trade_command_center(
         "confidence_score": 0,
         "ai_coach_summary": "Market data unavailable — check connection.",
     }
+    t_mkt = time.perf_counter()
     live_mkt = _fetch_live_market_summary()
+    ms_mkt = int((time.perf_counter() - t_mkt) * 1000)
     stale    = live_mkt is None   # True only when Yahoo Finance is unreachable
     payload["market_summary"] = {**_stub_market_summary, **(live_mkt or {})}
+
+    ms_total = int((time.perf_counter() - t0) * 1000)
+    ticker_count = len(payload.get("recommendations") or []) // 3 or 0
+    log.info(
+        "TRADE_COMMAND_CENTER_LOAD elapsed=%dms engine_agg=%dms market_summary=%dms "
+        "stale=%s tickers_approx=%d",
+        ms_total, ms_eng, ms_mkt, stale, ticker_count,
+    )
 
     # ── Trend-strength chart from live market data ────────────────────────────
     if live_mkt and "charts" in payload:

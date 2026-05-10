@@ -252,6 +252,9 @@ class AnalyzeResponse(BaseModel):
     supporting_factors: list[str] = Field(default_factory=list)
     missing_confirmations: list[str] = Field(default_factory=list)
     risk_state: str = "MEDIUM"
+    signal_quality: str = ""
+    execution_timing: str = ""
+    risk_category: str = ""
 
 
 class BacktestRequest(BaseModel):
@@ -286,6 +289,9 @@ class DayTradeResponse(BaseModel):
     supporting_factors: list[str] = Field(default_factory=list)
     missing_confirmations: list[str] = Field(default_factory=list)
     risk_state: str = "MEDIUM"
+    signal_quality: str = ""
+    execution_timing: str = ""
+    risk_category: str = ""
 
 
 class SwingTradeRequest(BaseModel):
@@ -324,6 +330,9 @@ class SwingTradeResponse(BaseModel):
     supporting_factors:      list[str]     = Field(default_factory=list)
     missing_confirmations:   list[str]     = Field(default_factory=list)
     risk_state:              str           = "MEDIUM"
+    signal_quality:          str           = ""
+    execution_timing:        str           = ""
+    risk_category:           str           = ""
 
 
 class ActiveTradeEnterRequest(BaseModel):

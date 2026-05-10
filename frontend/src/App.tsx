@@ -16,6 +16,7 @@ const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
 const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const HelpPage = lazy(() => import('./pages/HelpPage'))
+const TradingGlossaryPage = lazy(() => import('./pages/TradingGlossary'))
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
 const QRadarPage = lazy(() => import('./pages/QRadarPage'))
 const BacktestPage = lazy(() => import('./pages/BacktestPage'))
@@ -133,6 +134,7 @@ function ShellRoutes() {
               <Route path="/positions" element={<PositionsRoute />} />
               <Route path="/alerts" element={<AlertCenterPage />} />
               <Route path="/help" element={<HelpPage />} />
+              <Route path="/trading-glossary" element={<TradingGlossaryPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/ai-stocks" element={<AIStocksPage />} />
               <Route path="/q-radar" element={<QRadarPage />} />

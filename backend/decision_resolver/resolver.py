@@ -61,6 +61,45 @@ def _risk_state_from_text(*values: Any) -> str:
     return "MEDIUM"
 
 
+def _signal_quality_from_setup(quality: str) -> str:
+    q = str(quality or "").upper()
+    if q == "STRONG":
+        return "STRONG GO"
+    if q in ("GOOD", "FAIR"):
+        return "GO"
+    if q == "WEAK":
+        return "READY"
+    return ""
+
+
+def _execution_timing_from_decision(fd: str) -> str:
+    f = str(fd or "").upper()
+    if f in ("READY", "TRADE"):
+        return "ENTER NOW"
+    if f == "WATCH":
+        return "WATCH"
+    if f == "WAIT":
+        return "WAIT FOR PULLBACK"
+    if f == "AVOID":
+        return "STAND ASIDE"
+    if f in ("EXIT", "MANAGE", "SCALE_OUT"):
+        return "MANAGE"
+    return ""
+
+
+def _risk_category_from_state(rs: str) -> str:
+    r = str(rs or "").upper()
+    if r == "LOW":
+        return "LOW"
+    if r == "MEDIUM":
+        return "MODERATE"
+    if r == "HIGH":
+        return "EXTENDED"
+    if r == "EXTREME":
+        return "HIGH"
+    return ""
+
+
 def _humanize_confirmation(item: str) -> str:
     raw = str(item or "").strip()
     if not raw:
@@ -173,6 +212,17 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     reasons = _as_list(_get(engine_analysis, "reasons"))
     supporting = reasons[:4]
 
+    # ── Three-axis display fields ────────────────────────────────────────
+    dt_signal_raw = verdict
+    if dt_signal_raw in {"STRONG GO"} or (breakout_quality == "GOOD" and trend_strength == "HIGH"):
+        dt_signal = "STRONG GO"
+    elif dt_signal_raw in {"GO"} or (breakout_quality == "GOOD" or trend_strength in {"HIGH", "MEDIUM"}):
+        dt_signal = "GO"
+    elif dt_signal_raw in {"WATCH"}:
+        dt_signal = "READY"
+    else:
+        dt_signal = ""
+
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
@@ -188,6 +238,9 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
         supporting_factors=supporting,
         missing_confirmations=missing,
         risk_state=risk_state,
+        signal_quality=dt_signal,
+        execution_timing=_execution_timing_from_decision(final_decision),
+        risk_category=_risk_category_from_state(risk_state),
     )
 
 
@@ -243,6 +296,16 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         final_decision = "WATCH"
         execution = "WATCH"
 
+    # ── Three-axis display fields ────────────────────────────────────────
+    if trade_quality_score >= 8.5:
+        sw_signal = "STRONG GO"
+    elif trade_quality_score >= 6.5:
+        sw_signal = "GO"
+    elif trade_quality_score >= 5.0:
+        sw_signal = "READY"
+    else:
+        sw_signal = ""
+
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
@@ -258,6 +321,9 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         supporting_factors=reasons[:4],
         missing_confirmations=missing,
         risk_state=risk_state,
+        signal_quality=sw_signal,
+        execution_timing=_execution_timing_from_decision(final_decision),
+        risk_category=_risk_category_from_state(risk_state),
     )
 
 
@@ -356,6 +422,16 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
     bias_conf_pct = bias_conf * 100.0 if bias_conf <= 1.0 else bias_conf
     confidence = (total_score / 30.0) * 70.0 + min(30.0, max(0.0, bias_conf_pct * 0.3))
 
+    # ── Three-axis display fields ────────────────────────────────────────
+    if total_score >= 26:
+        rg_signal = "STRONG GO"
+    elif total_score >= 20:
+        rg_signal = "GO"
+    elif total_score >= 14:
+        rg_signal = "READY"
+    else:
+        rg_signal = ""
+
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
@@ -366,6 +442,9 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
         supporting_factors=supporting,
         missing_confirmations=missing,
         risk_state=risk_state,
+        signal_quality=rg_signal,
+        execution_timing=_execution_timing_from_decision(final_decision),
+        risk_category=_risk_category_from_state(risk_state),
     )
 
 

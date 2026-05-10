@@ -36,6 +36,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['VWAP held after the open', 'Semis are leading'],
         missing_confirmations: [],
         risk_state: 'HIGH',
+        signal_quality: 'STRONG GO',
+        execution_timing: 'WATCH',
+        risk_category: 'HIGH',
       },
       {
         engine_type: 'swing',
@@ -55,6 +58,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Relative strength is improving', 'Trend is intact'],
         missing_confirmations: ['Breakout confirmation'],
         risk_state: 'MEDIUM',
+        signal_quality: 'GO',
+        execution_timing: 'WATCH',
+        risk_category: 'MODERATE',
       },
       {
         engine_type: 'regular',
@@ -74,6 +80,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Stable uptrend', 'Defined-risk structure'],
         missing_confirmations: [],
         risk_state: 'MEDIUM',
+        signal_quality: 'GO',
+        execution_timing: 'ENTER NOW',
+        risk_category: 'MODERATE',
       },
     ],
     recommendations: [
@@ -100,6 +109,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['VWAP held after the open', 'Semis are leading'],
         missing_confirmations: [],
         risk_state: 'HIGH',
+        signal_quality: 'STRONG GO',
+        execution_timing: 'ENTER NOW',
+        risk_category: 'HIGH',
       },
       {
         id: 'tsla-swing-go',
@@ -124,6 +136,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Relative strength is improving', 'Trend is intact'],
         missing_confirmations: ['Breakout confirmation'],
         risk_state: 'MEDIUM',
+        signal_quality: 'GO',
+        execution_timing: 'WATCH',
+        risk_category: 'MODERATE',
       },
       {
         id: 'avgo-swing-go',
@@ -148,6 +163,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Trend is constructive', 'Relative strength is healthy'],
         missing_confirmations: ['Cheaper implied volatility'],
         risk_state: 'HIGH',
+        signal_quality: 'GO',
+        execution_timing: 'WATCH',
+        risk_category: 'HIGH',
       },
       {
         id: 'msft-regular-trade',
@@ -172,6 +190,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Stable uptrend', 'Defined-risk structure'],
         missing_confirmations: [],
         risk_state: 'MEDIUM',
+        signal_quality: 'GO',
+        execution_timing: 'ENTER NOW',
+        risk_category: 'MODERATE',
       },
       {
         id: 'avgo-regular-iv',
@@ -196,6 +217,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Trend remains bullish'],
         missing_confirmations: ['Cheaper implied volatility'],
         risk_state: 'HIGH',
+        signal_quality: 'READY',
+        execution_timing: 'STAND ASIDE',
+        risk_category: 'HIGH',
       },
       {
         id: 'tsla-day-avoid',
@@ -220,6 +244,9 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         supporting_factors: ['Higher-timeframe trend is still constructive'],
         missing_confirmations: ['Breakout confirmation', 'Volume confirmation'],
         risk_state: 'HIGH',
+        signal_quality: 'READY',
+        execution_timing: 'STAND ASIDE',
+        risk_category: 'HIGH',
       },
     ],
     conflicts: [

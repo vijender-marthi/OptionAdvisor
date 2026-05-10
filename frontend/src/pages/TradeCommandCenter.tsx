@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -101,6 +101,37 @@ function EngineBadge({ engine }: { engine: string }) {
 function RiskBadge({ risk }: { risk: string }) {
   const tone = toneFromText(risk)
   return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${badgeClass(tone)}`}>{risk}</span>
+}
+
+/* Three-axis display badges — split opportunity quality, timing, and risk */
+function SignalQualityBadge({ quality }: { quality: string }) {
+  const q = String(quality || '').toUpperCase()
+  if (!q) return null
+  const qClass = q === 'STRONG GO' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+    q === 'GO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
+    'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${qClass}`}>{quality}</span>
+}
+
+function ExecTimingBadge({ timing }: { timing: string }) {
+  const t = String(timing || '').toUpperCase()
+  if (!t) return null
+  const tClass = t === 'ENTER NOW' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+    t === 'WATCH' ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300' :
+    t === 'WAIT FOR PULLBACK' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' :
+    t === 'STAND ASIDE' ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' :
+    'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tClass}`}>{timing}</span>
+}
+
+function RiskCatBadge({ category }: { category: string }) {
+  const c = String(category || '').toUpperCase()
+  if (!c) return null
+  const cClass = c === 'LOW' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' :
+    c === 'MODERATE' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' :
+    c === 'EXTENDED' ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300' :
+    'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300'
+  return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cClass}`}>{category}</span>
 }
 
 function formatCoachMessage(msg: string): ReactNode {
@@ -428,7 +459,13 @@ export default function TradeCommandCenter() {
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null)
   const [actionNotice, setActionNotice] = useState<{ tone: 'success' | 'warning' | 'info'; text: string } | null>(null)
 
+  // Stale-load guard: React StrictMode double-fires effects in dev; without this the page
+  // makes two identical backend calls on mount. The counter lets us discard the response
+  // from any load that was superseded by a newer one before it completed.
+  const loadSeqRef = useRef(0)
+
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current
     setLoading(true)
     setFetchError(null)
     try {
@@ -438,12 +475,14 @@ export default function TradeCommandCenter() {
         direction: direction || undefined,
         risk: risk || undefined,
       })
+      if (seq !== loadSeqRef.current) return   // stale — a newer load already fired
       setEnv(nextEnv)
     } catch (err) {
+      if (seq !== loadSeqRef.current) return
       setEnv(null)
       setFetchError(axiosErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [direction, engine, risk, signal])
 
@@ -625,8 +664,12 @@ export default function TradeCommandCenter() {
                            <span className="text-[10px] text-slate-500 hidden sm:inline">{card.timeframe || '—'}</span>
                          </div>
                          <div className="flex items-center gap-2 shrink-0">
-                           <SignalBadge signal={String(card.final_decision || card.signal || '—')} />
-                           <span className="text-xs font-bold text-white">{confPct}%</span>
+                            <div className="flex items-center gap-1">
+                              <SignalQualityBadge quality={card.signal_quality || ''} />
+                              <ExecTimingBadge timing={card.execution_timing || ''} />
+                              <RiskCatBadge category={card.risk_category || ''} />
+                            </div>
+                            <span className="text-xs font-bold text-white">{confPct}%</span>
                          </div>
                        </div>
                        <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-700/30">
@@ -758,8 +801,11 @@ export default function TradeCommandCenter() {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                               <EngineBadge engine={rec.engine_type} />
-                              <SignalBadge signal={rec.final_decision || rec.signal} />
-                              <RiskBadge risk={String(rec.risk_level || 'Unknown')} />
+                              <div className="flex items-center gap-1">
+                                <SignalQualityBadge quality={rec.signal_quality || ''} />
+                                <ExecTimingBadge timing={rec.execution_timing || ''} />
+                                <RiskCatBadge category={rec.risk_category || ''} />
+                              </div>
                             </div>
                             <div className="mt-2 text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
                             <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
@@ -775,10 +821,10 @@ export default function TradeCommandCenter() {
                             <div className="text-[11px] uppercase tracking-wide text-slate-500">Market Bias</div>
                             <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
                           </div>
-                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Readiness</div>
-                            <div className="mt-1"><SignalBadge signal={String(rec.execution_readiness || rec.final_decision || '—')} /></div>
-                          </div>
+                            <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Execution</div>
+                              <div className="mt-1"><ExecTimingBadge timing={String(rec.execution_timing || rec.execution_readiness || '—')} /></div>
+                            </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
@@ -851,7 +897,11 @@ export default function TradeCommandCenter() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono font-semibold text-slate-900 dark:text-white">{rec.ticker}</span>
                           <EngineBadge engine={rec.engine_type} />
-                          <SignalBadge signal={rec.final_decision || rec.signal} />
+                          <div className="flex items-center gap-1">
+                            <SignalQualityBadge quality={rec.signal_quality || ''} />
+                            <ExecTimingBadge timing={rec.execution_timing || ''} />
+                            <RiskCatBadge category={rec.risk_category || ''} />
+                          </div>
                         </div>
                         <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
                         <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Avoid for now.'}</div>
@@ -869,14 +919,12 @@ export default function TradeCommandCenter() {
                     <tr className="border-b border-slate-100 dark:border-white/[0.05] text-left text-[11px] uppercase tracking-wide text-slate-500">
                       <th className="px-3 py-2">Ticker</th>
                       <th className="px-3 py-2">Engine</th>
-                      <th className="px-3 py-2">Signal</th>
+                      <th className="px-3 py-2">Setup</th>
+                      <th className="px-3 py-2">Timing</th>
+                      <th className="px-3 py-2">Risk</th>
                       <th className="px-3 py-2">Direction</th>
                       <th className="px-3 py-2">Strategy</th>
-                      <th className="px-3 py-2">Entry</th>
-                      <th className="px-3 py-2">Target</th>
-                      <th className="px-3 py-2">Stop</th>
                       <th className="px-3 py-2">Expiry</th>
-                      <th className="px-3 py-2">Risk</th>
                       <th className="px-3 py-2">Reason</th>
                     </tr>
                   </thead>
@@ -885,14 +933,12 @@ export default function TradeCommandCenter() {
                       <tr key={`table-${rec.id}`} className="border-b border-slate-100 dark:border-white/[0.05] align-top">
                         <td className="px-3 py-3 font-semibold text-slate-900 dark:text-white">{rec.ticker}</td>
                         <td className="px-3 py-3"><EngineBadge engine={rec.engine_type} /></td>
-                        <td className="px-3 py-3"><SignalBadge signal={rec.final_decision || rec.signal} /></td>
+                        <td className="px-3 py-3"><SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} /></td>
+                        <td className="px-3 py-3"><ExecTimingBadge timing={rec.execution_timing || rec.execution_readiness || ''} /></td>
+                        <td className="px-3 py-3"><RiskCatBadge category={rec.risk_category || rec.risk_state || ''} /></td>
                         <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.direction || '—'}</td>
                         <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.strategy || '—'}</td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.entry_zone || '—'}</td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.target || '—'}</td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.stop_loss || '—'}</td>
                         <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.expiry || '—'}</td>
-                        <td className="px-3 py-3"><RiskBadge risk={String(rec.risk_level || 'Unknown')} /></td>
                         <td className="max-w-sm px-3 py-3 text-slate-500">{rec.reason || '—'}</td>
                       </tr>
                     ))}

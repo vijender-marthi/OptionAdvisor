@@ -25,6 +25,8 @@ export function locationToPage(pathname: string): Page {
       return 'alert-center'
     case 'help':
       return 'help'
+    case 'trading-glossary':
+      return 'trading-glossary'
     case 'settings':
       return 'settings'
     case 'ai-stocks':
@@ -83,6 +85,8 @@ export function pageToLocation(p: Page): string {
       return '/alerts'
     case 'help':
       return '/help'
+    case 'trading-glossary':
+      return '/trading-glossary'
     case 'settings':
       return '/settings'
     case 'ai-stocks':
