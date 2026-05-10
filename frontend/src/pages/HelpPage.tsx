@@ -1582,6 +1582,81 @@ if HIGH_IV and BEARISH:
           </InfoCard>
         )}
 
+        {/* Reserve Signal / 52W High */}
+        <InfoCard icon={<TrendingUp size={18} />} title="Reserve Signal — 52W High Indicator">
+          <div className="space-y-3 text-sm text-gray-400">
+            <p>
+              The <span className="text-gray-200 font-semibold">Reserve Signal</span> card in the Trade Command Center
+              dashboard shows SPY&apos;s market position relative to two benchmarks: its <span className="text-gray-200">200-day moving average</span>{' '}
+              and its <span className="text-gray-200">52-week high</span>. The 52W High section measures how far the current price sits from the
+              highest price reached in the last 52 weeks.
+            </p>
+
+            <div className="rounded-xl border border-gray-700/60 bg-gray-800/40 px-3 py-2.5 space-y-2">
+              <div className="font-semibold text-gray-200 text-xs">Formula</div>
+              <div className="font-mono text-xs text-gray-400 bg-gray-800/60 rounded-lg px-3 py-2">
+                distance = ((currentPrice − high52w) / high52w) × 100
+              </div>
+              <p className="text-xs text-gray-500">
+                A negative value means price is below the 52-week peak. A positive value means price has broken above
+                the prior 52-week high (breakout).
+              </p>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-200 mb-1">Display states</div>
+            <div className="grid gap-2">
+              {[
+                {
+                  state: 'At 52W High',
+                  when: 'Within 0.5% of the high',
+                  bar: 'Green, 100% full',
+                  color: 'text-emerald-400',
+                  label: 'At 52W High · 0.0% below peak',
+                },
+                {
+                  state: 'Near High',
+                  when: '0.5% – 5% below the high',
+                  bar: 'Amber, 55–95% full',
+                  color: 'text-amber-400',
+                  label: 'Near High · 2.3% below peak',
+                },
+                {
+                  state: 'Far Below High',
+                  when: 'More than 5% below the high',
+                  bar: 'Gray, 5–50% full',
+                  color: 'text-gray-400',
+                  label: '12.4% below 52W high',
+                },
+                {
+                  state: 'Breaking Above',
+                  when: 'Price exceeds the prior 52W high',
+                  bar: 'Green, 100% full',
+                  color: 'text-emerald-400',
+                  label: '+1.8% above prior high',
+                },
+              ].map(item => (
+                <div key={item.state} className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-semibold ${item.color}`}>{item.state}</span>
+                    <span className="text-[10px] text-gray-500">— {item.when}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                    <span>Bar: {item.bar}</span>
+                    <span className="text-gray-600">|</span>
+                    <span>Shows: <span className={item.color}>{item.label}</span></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
+              No backend changes needed — the indicator computes entirely from existing <span className="font-mono text-gray-400">spy_price</span> and{' '}
+              <span className="font-mono text-gray-400">high_52w</span> fields. Hover the &quot;52w High&quot; label for a tooltip
+              explaining the metric.
+            </p>
+          </div>
+        </InfoCard>
+
         {/* Risk */}
         <InfoCard icon={<ShieldCheck size={18} />} title="Risk Warnings">
           <div className="space-y-3 text-sm text-gray-400">

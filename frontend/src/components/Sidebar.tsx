@@ -3,7 +3,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
-  BrainCircuit,
+  BrainCircuit, HelpCircle,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -121,6 +121,12 @@ export default function Sidebar() {
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
         { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
+      ],
+    },
+    {
+      label: 'Support',
+      items: [
+        { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
       ],
     },
   ]
