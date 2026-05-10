@@ -1115,6 +1115,7 @@ html.light .oa-engine-badge {
   background: rgb(22 101 52 / 0.95);
   color: rgb(220 252 231);
   border: none;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
 }
 html.light .oa-signal-go {
   background: #d1fae5;
@@ -1435,3 +1436,197 @@ html.light .trade-command-center-page .bg-gray-800 { background-color: var(--sur
 html.light .trade-command-center-page .h-2\.rounded-full.bg-gray-800 { background-color: var(--surface-muted); }
 html.light .trade-command-center-page .bg-amber-500\/5 { background-color: rgba(217, 119, 6, 0.06); }
 html.light .trade-command-center-page .border-amber-700\/25 { border-color: color-mix(in srgb, var(--warning-border) 28%, transparent); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Trade Command Center — professional dashboard
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Hero ──────────────────────────────────────────────────────── */
+.tcc-hero {
+  background: var(--tcc-hero-bg, #0f172a);
+  border: 1px solid rgba(71,85,105,0.15);
+}
+html.light .tcc-hero {
+  --tcc-hero-bg: #ffffff;
+}
+.tcc-hero-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--tcc-hero-title-color, #f1f5f9);
+}
+html.light .tcc-hero-title {
+  --tcc-hero-title-color: #0f172a;
+}
+
+/* ── Section accent bars ───────────────────────────────────────── */
+.tcc-section-accent {
+  position: relative;
+}
+.tcc-section-accent::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  pointer-events: none;
+}
+.tcc-section-accent-hero::before  { background: #6366f1; }
+.tcc-section-accent-engines::before { background: #14b8a6; }
+.tcc-section-accent-opps::before   { background: #10b981; }
+.tcc-section-accent-conflicts::before { background: #f59e0b; }
+.tcc-section-accent-charts::before  { background: #8b5cf6; }
+.tcc-section-accent-alerts::before  { background: #0ea5e9; }
+
+/* ── Cards ─────────────────────────────────────────────────────── */
+.tcc-card {
+  background: var(--tcc-card-bg, #0f172a);
+  border: 1px solid rgba(71,85,105,0.15);
+  border-radius: 0.75rem;
+  transition: border-color 200ms ease;
+}
+html.light .tcc-card {
+  --tcc-card-bg: #ffffff;
+}
+
+/* ── Stat card variants ────────────────────────────────────────── */
+.tcc-stat-primary {
+  background: var(--tcc-stat-primary-bg, #1e293b);
+  border: 1px solid rgba(71,85,105,0.15);
+  border-radius: 0.75rem;
+}
+html.light .tcc-stat-primary {
+  --tcc-stat-primary-bg: #f8fafc;
+}
+.tcc-stat-secondary {
+  background: var(--tcc-stat-secondary-bg, #0f172a);
+  border: 1px solid rgba(71,85,105,0.1);
+  border-radius: 0.75rem;
+}
+html.light .tcc-stat-secondary {
+  --tcc-stat-secondary-bg: #ffffff;
+}
+
+/* ── AI Coach ──────────────────────────────────────────────────── */
+.tcc-coach {
+  background: var(--tcc-coach-bg, #1e293b);
+  border: 1px solid rgba(71,85,105,0.12);
+  border-radius: 0.75rem;
+}
+html.light .tcc-coach {
+  --tcc-coach-bg: #f8fafc;
+}
+
+/* ── Avoid card ────────────────────────────────────────────────── */
+.tcc-avoid-card {
+  background: var(--tcc-avoid-bg, #1a1111);
+  border: 1px solid rgba(239,68,68,0.15);
+  border-radius: 0.75rem;
+}
+html.light .tcc-avoid-card {
+  --tcc-avoid-bg: #fef2f2;
+}
+
+/* ── Opportunity ribbon ────────────────────────────────────────── */
+.tcc-ribbon-ready {
+  border-left: 3px solid rgba(16,185,129,0.5);
+}
+.tcc-ribbon-avoid {
+  border-left: 3px solid rgba(239,68,68,0.4);
+}
+
+/* ── Data emphasis ─────────────────────────────────────────────── */
+.tcc-value-hero  { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.tcc-value-xl    { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.tcc-value-lg    { font-size: 1.125rem; font-weight: 600; }
+.tcc-value-stat  { font-size: 1rem; font-weight: 700; }
+
+/* ── Section label ─────────────────────────────────────────────── */
+.tcc-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tcc-label-color, #64748b);
+}
+html.light .tcc-label {
+  --tcc-label-color: #64748b;
+}
+
+/* ── Section divider ───────────────────────────────────────────── */
+.tcc-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.tcc-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(71,85,105,0.15);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Dashboard widgets — compact professional meters
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Widget card shared ────────────────────────────────────────── */
+.tcc-widget-card {
+  background: var(--tcc-widget-bg, #1e293b);
+  border: 1px solid rgba(71,85,105,0.12);
+  border-radius: 0.75rem;
+  padding: 0.875rem;
+}
+html.light .tcc-widget-card {
+  --tcc-widget-bg: #f8fafc;
+}
+
+/* ── Alert Pressure Bar ────────────────────────────────────────── */
+.tcc-alert-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: rgba(30,41,59,0.4);
+  position: relative;
+}
+.tcc-alert-bar-segment {
+  height: 100%;
+  transition: opacity 300ms ease;
+}
+.tcc-alert-bar-segment.quiet    { background: rgba(34,197,94,0.2); }
+.tcc-alert-bar-segment.watch    { background: rgba(59,130,246,0.2); }
+.tcc-alert-bar-segment.active   { background: rgba(245,158,11,0.25); }
+.tcc-alert-bar-segment.elevated { background: rgba(249,115,22,0.25); }
+.tcc-alert-bar-segment.critical { background: rgba(239,68,68,0.25); }
+.tcc-alert-bar-segment.active-fill  { background: rgba(245,158,11,0.6); }
+.tcc-alert-bar-segment.elevated-fill { background: rgba(249,115,22,0.6); }
+.tcc-alert-bar-segment.critical-fill { background: rgba(239,68,68,0.6); }
+.tcc-alert-bar-active {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 2px;
+  background: rgba(255,255,255,0.7);
+  transition: left 600ms ease;
+  border-radius: 2px;
+}
+
+/* ── Market Breadth ────────────────────────────────────────────── */
+.tcc-breadth-bar {
+  display: flex;
+  height: 0.375rem;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.tcc-breadth-advancing {
+  background: #22c55e;
+  opacity: 0.6;
+  transition: width 600ms ease;
+}
+.tcc-breadth-declining {
+  background: #ef4444;
+  opacity: 0.6;
+  transition: width 600ms ease;
+}

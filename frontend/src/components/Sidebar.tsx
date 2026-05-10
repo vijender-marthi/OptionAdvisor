@@ -3,6 +3,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
+  BrainCircuit,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -105,6 +106,13 @@ export default function Sidebar() {
         { id: 'trade-signals', label: 'Signals', icon: <Radar size={18} /> },
         { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+      ],
+    },
+    {
+      label: 'Discovery',
+      items: [
+        { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
+        { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
       ],
     },
     {

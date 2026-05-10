@@ -659,13 +659,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       /* ignore */
     }
     clearPendingTicker()
-    routerNavigate('/')
+    routerNavigate('/strategy-finder')
   }, [clearPendingTicker, routerNavigate])
 
   const requestAnalysis = useCallback((ticker: string, options?: PendingAnalysisOptions) => {
     setPendingTicker(ticker.trim().toUpperCase())
     setPendingAnalysisOptions(options ?? null)
-    routerNavigate('/')
+    routerNavigate('/strategy-finder')
   }, [routerNavigate])
 
   useEffect(() => {

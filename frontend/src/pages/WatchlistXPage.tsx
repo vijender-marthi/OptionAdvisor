@@ -145,7 +145,7 @@ function FilterPillGroup<T extends string>({
 }) {
   return (
     <div className={`min-w-[10rem] flex-1 space-y-2 ${className}`}>
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {options.map(option => (
           <button
@@ -332,7 +332,7 @@ function WatchlistSparkline({ points, height = 180 }: { points: Array<{ date: st
 function StatusPill({ value, agreement = false }: { value: string; agreement?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
         agreement ? agreementBadgeClass(value) : signalClass(value)
       }`}
     >
@@ -344,8 +344,8 @@ function StatusPill({ value, agreement = false }: { value: string; agreement?: b
 function SummaryCard({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
     <div className="flex items-baseline gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
-      <div className={`text-base font-bold tabular-nums ${tone}`}>{value}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`text-base font-bold tabular-nums tracking-tight ${tone}`}>{value}</div>
     </div>
   )
 }
@@ -363,15 +363,15 @@ function CompactChip({
 }) {
   return (
     <div className={`rounded-lg border px-2 py-1 leading-none ${chrome}`}>
-      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-0.5 text-xs font-semibold ${tone}`}>{value}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-0.5 text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   )
 }
 
 function SourcePill({ source, decision, emphasized = true }: { source: string; decision: string; emphasized?: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-0.5 rounded-lg border font-bold uppercase ${emphasized ? 'px-1.5 py-0.5 text-[10px] tracking-wide' : 'px-1 py-0.5 text-[9px] tracking-normal opacity-55'} ${sourceChipClass(source)}`}>
+    <span className={`inline-flex items-center gap-0.5 rounded-lg border font-bold uppercase ${emphasized ? 'px-1.5 py-0.5 text-[11px] tracking-wide' : 'px-1 py-0.5 text-[10px] tracking-normal opacity-55'} ${sourceChipClass(source)}`}>
       {source}
       <span className="opacity-60">/</span>
       <span className="font-extrabold">{decision}</span>
@@ -381,22 +381,22 @@ function SourcePill({ source, decision, emphasized = true }: { source: string; d
 
 function DecisionPanel({ title, decision }: { title: string; decision: WatchlistXDecisionBlock }) {
   return (
-    <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
+    <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-heading">{title}</div>
-          <div className="mt-0.5 truncate text-[10px] text-muted">{decisionSummary(decision)}</div>
+          <div className="text-sm font-semibold text-heading">{title}</div>
+          <div className="mt-0.5 truncate text-[11px] text-muted">{decisionSummary(decision)}</div>
         </div>
         <StatusPill value={decision.final_decision} />
       </div>
       <div className="mt-2 space-y-2">
-        <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted">Reason</div>
-          <div className="mt-1 text-xs text-secondary">{decision.reason || 'No reason provided.'}</div>
+        <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reason</div>
+          <div className="mt-1 text-sm text-secondary">{decision.reason || 'No reason provided.'}</div>
         </div>
-        <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted">Risk</div>
-          <div className={`mt-1 text-xs font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_state || 'MEDIUM'}</div>
+        <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Risk</div>
+          <div className={`mt-1 text-sm font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_state || 'MEDIUM'}</div>
         </div>
       </div>
     </div>
@@ -419,11 +419,11 @@ function ExpandedAnalysis({
   onAddToPositions: () => void
 }) {
   return (
-    <div className="min-w-0 space-y-3 border-t border-border/25 px-4 py-3">
+    <div className="min-w-0 space-y-3 border-t border-slate-100 dark:border-white/[0.05] px-4 py-3">
       <div className="min-w-0 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-3">
-          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-heading">
+          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-heading">
               <LineChartIcon size={14} className="text-info" />
               Price action
             </div>
@@ -431,37 +431,37 @@ function ExpandedAnalysis({
               <WatchlistSparkline points={row.chart_points} />
             </div>
           </div>
-          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-heading">
+          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-heading">
               <BrainCircuit size={14} className="text-accent" />
               AI coach
             </div>
-            <div className="mt-2 text-xs leading-5 text-secondary">{row.ai_summary}</div>
+            <div className="mt-2 text-sm leading-5 text-secondary">{row.ai_summary}</div>
             <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">Agreement reason</div>
-                <div className="mt-1 text-xs text-secondary">{row.agreement_reason}</div>
+              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Agreement reason</div>
+                <div className="mt-1 text-sm text-secondary">{row.agreement_reason}</div>
               </div>
-              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">Suggested action</div>
+              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Suggested action</div>
                 <div className="mt-1 text-xs text-secondary">
                   {row.regular.reason || row.swing.reason || row.day.reason || 'Re-check before acting.'}
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">Notes</div>
-                <div className="mt-1 text-xs text-secondary">{row.notes?.trim() || 'No notes yet.'}</div>
+              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Notes</div>
+                <div className="mt-1 text-sm text-secondary">{row.notes?.trim() || 'No notes yet.'}</div>
               </div>
-              <div className="rounded-lg border border-gray-800/15 bg-gray-900/25 p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted">Added</div>
-                <div className="mt-1 text-xs text-secondary">{fmtDate(row.added_at)}</div>
+              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Added</div>
+                <div className="mt-1 text-sm text-secondary">{fmtDate(row.added_at)}</div>
               </div>
             </div>
           </div>
         </div>
         <div className="space-y-3">
-          <div className="rounded-xl border border-gray-800/18 bg-gray-950/25 p-3">
-            <div className="text-xs font-semibold text-heading">Actions</div>
+          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
+            <div className="text-sm font-semibold text-heading">Actions</div>
             <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
               <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
                 <BarChart3 size={13} />
@@ -535,105 +535,103 @@ const WatchlistCard = memo(function WatchlistCard({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const handleToggle = useCallback(() => onToggle(row.id), [onToggle, row.id])
 
+  const accentBorder =
+    agreementBadge === 'STRONG_BULLISH' ? 'border-l-emerald-500'
+    : agreementBadge === 'PARTIAL_AGREEMENT' ? 'border-l-sky-400'
+    : agreementBadge === 'CONFLICT' ? 'border-l-fuchsia-500'
+    : (agreementBadge === 'NO_EDGE' || agreementBadge === 'AVOID') ? 'border-l-rose-500'
+    : (agreementBadge === 'EXTENDED' || agreementBadge === 'MANAGE') ? 'border-l-amber-400'
+    : 'border-l-slate-300 dark:border-l-slate-600'
+
   return (
-    <article
-      className={`w-full max-w-full rounded-2xl border transition duration-200 ${
-        isOpen
-          ? 'border-sky-500/20 shadow-[0_10px_24px_rgba(2,6,23,0.18)]'
-          : 'border-gray-800/20 hover:border-gray-700/20'
-      }`}
-    >
-      <div className="min-w-0 space-y-2.5 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={onViewChart} className="font-mono text-base font-semibold tracking-tight text-heading hover:text-info">
-                {row.ticker}
-              </button>
-              <button
-                type="button"
-                onClick={onFavorite}
-                title={isFavorite ? 'Unfavorite' : 'Favorite'}
-                className={`-ml-0.5 ${isFavorite ? 'text-amber-300' : 'text-gray-500 hover:text-amber-300'}`}
-              >
-                <Star size={12} className={isFavorite ? 'fill-current' : ''} />
-              </button>
-              {row.sector && (
-                <span className="rounded-md border border-gray-700/12 bg-gray-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary">
-                  {row.sector}
-                </span>
-              )}
-              <StatusPill value={agreementBadge} agreement />
-            </div>
-            <div className="mt-0.5 truncate text-sm text-tertiary">{row.company_name || row.ticker}</div>
-          </div>
-          <div className="shrink-0 text-right leading-tight">
-            <div className="font-mono text-lg font-semibold text-heading">{fmtPrice(row.price)}</div>
-            <div className={`text-xs font-semibold ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
-            <div className="mt-0.5 text-[9px] text-muted">{updatedLabel}</div>
-          </div>
-        </div>
+    <article className={`w-full rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 transition-shadow border-l-[3px] ${accentBorder}`}>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />
-          <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />
-          <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
-          <span className="text-muted">·</span>
-          <span className={`inline-flex items-center rounded-lg border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${marketContextTone(marketContext)}`}>
-            {String(marketContext).replace(/_/g, ' ')}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap gap-1">
-          <CompactChip label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} tone={rsiAppearance.value} chrome={rsiAppearance.container} />
-          <CompactChip label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} tone={rsAppearance.value} chrome={rsAppearance.container} />
-          <CompactChip label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} tone={volumeAppearance.value} chrome={volumeAppearance.container} />
-          <CompactChip label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} tone={ivAppearance.value} chrome={ivAppearance.container} />
-          <CompactChip label="Trend" value={row.trend || 'NEUTRAL'} tone={trendTone} chrome={trendAppearance.container} />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleToggle}
-          className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-xs text-secondary transition hover:bg-gray-800/40"
-        >
-          <Sparkles size={11} className="shrink-0 text-violet-300" />
-          <span className="min-w-0 flex-1 line-clamp-2">{row.ai_summary}</span>
-          {isOpen ? <ChevronUp size={13} className="shrink-0" /> : <ChevronDown size={13} className="shrink-0" />}
-        </button>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1 px-2 py-1 text-[11px]`}>
-            <BarChart3 size={12} />
-            Analyze
-          </button>
-          <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} gap-1 px-2 py-1 text-[11px]`}>
-            <BriefcaseBusiness size={12} />
-            Trade
-          </button>
-          <button type="button" onClick={onCreateAlert} disabled={alertBusy} title={alertBusy ? 'Creating alert\u2026' : 'Create alert'} className={`${getActionButtonClass('alert')} gap-1 px-2 py-1 text-[11px]`}>
-            <BellPlus size={12} />
-            {alertBusy ? 'Creating\u2026' : 'Alert'}
-          </button>
-          <div className="relative ml-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button type="button" onClick={onViewChart} className="font-mono text-base font-bold tracking-tight text-heading hover:text-info">
+              {row.ticker}
+            </button>
             <button
               type="button"
-              onClick={e => {
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                if (menuPos) { setMenuPos(null); return }
-                const menuWidth = 176
-                const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
-                setMenuPos({ top: rect.bottom + 4, left })
-              }}
-              className={`${getActionButtonClass('surface')} gap-1 px-2 py-1 text-[11px]`}
+              onClick={onFavorite}
+              title={isFavorite ? 'Unfavorite' : 'Favorite'}
+              className={`-ml-0.5 ${isFavorite ? 'text-amber-300' : 'text-gray-500 hover:text-amber-300'}`}
             >
-              <span>More</span>
-              <ChevronDown size={11} />
+              <Star size={12} className={isFavorite ? 'fill-current' : ''} />
             </button>
+            <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />
+            <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />
+            <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
+            <StatusPill value={agreementBadge} agreement />
           </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-muted">
+            <span className="text-secondary">{row.company_name || row.ticker}</span>
+            {row.sector && <span className="opacity-60">{row.sector}</span>}
+            <span className="opacity-40">&middot;</span>
+            <span className={`font-semibold ${marketContextTone(marketContext)}`}>{String(marketContext).replace(/_/g, ' ')}</span>
+            <span className="opacity-40">&middot;</span>
+            <span>{updatedLabel}</span>
+          </div>
+        </div>
+
+        {/* Price hero */}
+        <div className="shrink-0 text-right">
+          <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
+          <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
         </div>
       </div>
 
+      {/* Metrics chips */}
+      <div className="flex flex-wrap gap-1 px-3 pb-2">
+        <CompactChip label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} tone={rsiAppearance.value} chrome={rsiAppearance.container} />
+        <CompactChip label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} tone={rsAppearance.value} chrome={rsAppearance.container} />
+        <CompactChip label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} tone={volumeAppearance.value} chrome={volumeAppearance.container} />
+        <CompactChip label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} tone={ivAppearance.value} chrome={ivAppearance.container} />
+        <CompactChip label="Trend" value={row.trend || 'NEUTRAL'} tone={trendTone} chrome={trendAppearance.container} />
+      </div>
+
+      {/* AI insight strip */}
+      <div className="flex items-start gap-1.5 px-3 pb-2 text-sm text-secondary">
+        <Sparkles size={11} className="mt-px shrink-0 text-violet-400" />
+        <p className="min-w-0 leading-snug line-clamp-2">{row.ai_summary}</p>
+      </div>
+
+      {/* Action footer */}
+      <div className="flex items-center gap-1 border-t border-slate-100 dark:border-white/[0.05] px-3 py-1.5">
+        <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} px-2 py-0.5 text-[10px]`}>
+          Analyze
+        </button>
+        <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} px-2 py-0.5 text-[10px]`}>
+          Trade
+        </button>
+        <button type="button" onClick={onCreateAlert} disabled={alertBusy} className={`${getActionButtonClass('alert')} px-2 py-0.5 text-[10px]`}>
+          {alertBusy ? 'Creating…' : 'Alert'}
+        </button>
+        <div className="relative ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={e => {
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              if (menuPos) { setMenuPos(null); return }
+              const menuWidth = 176
+              const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
+              setMenuPos({ top: rect.bottom + 4, left })
+            }}
+            className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
+          >
+            More<ChevronDown size={10} />
+          </button>
+          <button
+            type="button"
+            onClick={handleToggle}
+            className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
+          >
+            {isOpen ? <><ChevronUp size={10} />Less</> : <><ChevronDown size={10} />Details</>}
+          </button>
+        </div>
+      </div>
       {menuPos && createPortal(
         <div className="fixed inset-0 z-50" onClick={() => setMenuPos(null)}>
           <div
@@ -694,10 +692,10 @@ function MobileActionTray({
 }) {
   if (!row) return null
   return (
-    <div className="sm:hidden fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-border/18 bg-surface-card/95 p-3 shadow-[0_14px_32px_rgba(2,6,23,0.22)] backdrop-blur">
+    <div className="sm:hidden fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-3 shadow-[0_14px_32px_rgba(2,6,23,0.22)] backdrop-blur">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-mono text-sm font-semibold text-heading">{row.ticker}</div>
+          <div className="font-mono text-base font-bold text-heading">{row.ticker}</div>
           <div className="truncate text-xs text-tertiary">{row.company_name}</div>
         </div>
         <StatusPill value={normalizeAgreementBadge(row)} agreement />
@@ -936,7 +934,7 @@ export default function WatchlistXPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-heading sm:text-3xl">WatchlistX</h1>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">WatchlistX</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
           </div>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based watchlist for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
@@ -1154,7 +1152,7 @@ export default function WatchlistXPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-[28px] border border-gray-800/12 bg-gray-950/30 px-4 py-16 text-center text-sm text-gray-400">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/50 px-4 py-16 text-center text-sm text-gray-400">
             <div className="inline-flex items-center gap-2"><RefreshCw size={16} className="animate-spin" /> Loading unified watchlist\u2026</div>
           </div>
         ) : error ? (
@@ -1163,7 +1161,7 @@ export default function WatchlistXPage() {
             <button type="button" onClick={() => void load()} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
           </div>
         ) : visibleRows.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed border-gray-700/12 bg-gray-950/18 px-4 py-16 text-center">
+          <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
             <div className="text-lg font-semibold text-gray-200">No cards match the current filters</div>
             <div className="mt-2 text-sm text-gray-500">Try a different state, agreement, trend, or sector combination.</div>
           </div>
@@ -1185,7 +1183,7 @@ export default function WatchlistXPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-border/25 bg-gray-950/25 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm">
           <div className="text-gray-500">Search, sorting, source filtering, analyze routing, add-trade flow, alert creation, and alert-center deep links remain intact.</div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pagination.page <= 1} onClick={() => setParam('page', String(Math.max(1, pagination.page - 1)))} className={`${getActionButtonClass('surface')} gap-2 rounded-xl px-3 py-2 text-sm`}>Previous</button>

@@ -291,7 +291,7 @@ function sourceStyleBadge(kind: 'day' | 'swing' | 'regular') {
 function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
-      <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-200 dark:border-white/[0.1] bg-white dark:bg-slate-900 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shadow-xl" onClick={e => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -351,7 +351,7 @@ function PositionFormFields({
   const cc = parseInt(form.contractCount) || 0
   const legsComplete = def ? def.legs.every((_, i) => strikesNum[i] > 0 && premiumsNum[i] > 0) : false
 
-  const inputCls = 'mt-1 w-full rounded-lg border border-slate-300 dark:border-white/[0.12] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-slate-400 dark:placeholder:text-slate-500'
+  const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
   const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
 
   return (
@@ -367,7 +367,7 @@ function PositionFormFields({
           {TRADE_SOURCE_OPTIONS.map(s => (
             <button key={s.id} type="button" onClick={() => onChange({ tradeSource: s.id })}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                form.tradeSource === s.id ? 'bg-violet-600 text-white' : 'bg-surface-muted/30 text-muted hover:text-secondary'
+                form.tradeSource === s.id ? 'bg-violet-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted hover:text-secondary'
               }`}
             >{s.label}</button>
           ))}
@@ -418,7 +418,7 @@ function PositionFormFields({
             <div className="space-y-2">
               <div className="text-xs font-semibold text-secondary uppercase tracking-wide">Option Legs</div>
               {def.legs.map((tmpl, i) => (
-                <div key={i} className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-slate-800/50 p-3 space-y-2">
+                <div key={i} className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 p-3 space-y-2">
                   <div className={`text-xs font-bold ${tmpl.action === 'BUY' ? 'text-semantic-bullish' : 'text-semantic-bearish'}`}>
                     {tmpl.action} {tmpl.option_type} — {tmpl.label}
                   </div>
@@ -442,7 +442,7 @@ function PositionFormFields({
           )}
 
           {legsComplete && (
-            <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-mono space-y-1">
+            <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-mono space-y-1">
               <div className="text-slate-500 dark:text-slate-400 font-sans font-semibold text-[10px] uppercase tracking-wide mb-2">Computed</div>
               <div className="flex gap-4 flex-wrap">
                 <span className={metrics.netCredit >= 0 ? 'text-semantic-bullish' : 'text-semantic-bearish'}>
@@ -525,7 +525,7 @@ function TradingPositionCard({
             : 'border-l-slate-300 dark:border-l-slate-700'
 
   return (
-    <article className={`w-full rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow border-l-[3px] ${accentBorder}`}>
+    <article className={`w-full rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 transition-shadow border-l-[3px] ${accentBorder}`}>
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
@@ -533,7 +533,7 @@ function TradingPositionCard({
         {/* Left: identity */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-sm font-bold tracking-tight text-heading">{pos.ticker}</span>
+            <span className="font-mono text-base font-bold tracking-tight text-heading">{pos.ticker}</span>
             {sourceStyleBadge(sourceKind)}
             <AIStatusBadge status={aiStatus} />
             {isExpiringSoon && (
@@ -562,10 +562,10 @@ function TradingPositionCard({
         <div className="shrink-0 text-right">
           {displayPnl ? (
             <>
-              <div className={`font-mono text-xl font-bold tabular-nums leading-tight ${pnlColor}`}>
+              <div className={`font-mono text-xl font-bold tabular-nums leading-tight tracking-tight ${pnlColor}`}>
                 {displayPnl.pnl >= 0 ? '+' : ''}{fmtUsd(displayPnl.pnl)}
               </div>
-              <div className={`text-[11px] font-semibold tabular-nums ${pnlColor}`}>
+              <div className={`text-[11px] font-semibold tabular-nums tracking-tight ${pnlColor}`}>
                 {displayPnl.pnl_pct >= 0 ? '+' : ''}{displayPnl.pnl_pct.toFixed(2)}%
               </div>
               <div className="mt-1 flex gap-1 justify-end">
@@ -576,8 +576,8 @@ function TradingPositionCard({
             </>
           ) : pos.status === 'open' ? (
             <>
-              <div className="font-mono text-base font-bold text-heading leading-tight">{fmtUsd(pos.entryPrice)}</div>
-              <div className="text-[10px] text-muted">entry</div>
+              <div className="font-mono text-base font-bold text-heading leading-tight tracking-tight">{fmtUsd(pos.entryPrice)}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">entry</div>
             </>
           ) : null}
         </div>
@@ -609,10 +609,10 @@ function TradingPositionCard({
 
       {/* ── Expanded details ── */}
       {expanded && (
-        <div className="border-t border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/30 px-3 py-3 space-y-3 rounded-b-xl">
+        <div className="border-t border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
 
           {/* AI guidance */}
-          <div className="flex items-start gap-1.5 text-xs text-secondary">
+          <div className="flex items-start gap-1.5 text-sm text-secondary">
             <BrainCircuit size={13} className="mt-px shrink-0 text-violet-400" />
             <p className="leading-snug">{guidance}</p>
           </div>
@@ -685,7 +685,7 @@ function TradingPositionCard({
             </div>
           )}
 
-          {pos.notes && <p className="text-[11px] text-secondary italic">{pos.notes}</p>}
+          {pos.notes && <p className="text-sm text-secondary italic">{pos.notes}</p>}
         </div>
       )}
     </article>
@@ -704,8 +704,8 @@ function KpiCard({
   sub?: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+    <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
       <div className={`text-base font-bold tabular-nums mt-0.5 ${valueClass}`}>{value}</div>
       {sub ? <div className="text-[11px] mt-0.5 tabular-nums">{sub}</div> : null}
     </div>
@@ -893,7 +893,7 @@ export default function PositionsCenter() {
     <div className="oa-cc-page positions-center-page max-w-[1600px] mx-auto px-4 py-6 space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-heading">Positions Center</h1>
+          <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Positions Center</h1>
           <p className="text-sm text-tertiary mt-1">AI-managed portfolio overview across all trading styles.</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 w-full sm:w-auto">
@@ -960,9 +960,22 @@ export default function PositionsCenter() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 text-sm">
-              <Search size={14} className="text-muted" />
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search ticker..." className="w-32 sm:w-40 bg-transparent text-sm text-primary outline-none placeholder:text-muted" />
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm">
+              <Filter size={14} className="shrink-0 text-secondary" />
+               <select value={tradeStyle} onChange={e => setTradeStyle(e.target.value as FilterStyle)} className="bg-transparent outline-none text-sm text-primary font-medium cursor-pointer">
+                <option value="all">All Types</option>
+                <option value="day">Day</option>
+                <option value="swing">Swing</option>
+                <option value="regular">Regular</option>
+              </select>
+            </label>
+            <label className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-2 py-1.5 text-xs text-secondary">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as FilterType)} className="bg-transparent outline-none text-xs font-semibold cursor-pointer">
+                <option value="all">All</option>
+                <option value="options">Options</option>
+                <option value="stocks">Stocks</option>
+                <option value="spreads">Spreads</option>
+              </select>
             </label>
             <button type="button" onClick={() => setFilterOpen(o => !o)} className={`${getActionButtonClass('surface')} gap-2 rounded-lg px-3 py-1.5 text-sm relative`}>
               <Filter size={14} />
@@ -986,14 +999,14 @@ export default function PositionsCenter() {
         </div>
 
         {filterOpen && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4 shadow-sm">
+          <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Trade Style</div>
                 <div className="flex flex-wrap gap-1.5">
                   {(['all', 'day', 'swing', 'regular'] as const).map(s => (
                     <button key={s} type="button" onClick={() => setTradeStyle(s)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${tradeStyle === s ? 'bg-violet-600 text-white' : 'bg-surface-muted/30 text-muted hover:text-secondary'}`}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${tradeStyle === s ? 'bg-violet-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted hover:text-secondary'}`}
                     >{s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
                   ))}
                 </div>
@@ -1003,7 +1016,7 @@ export default function PositionsCenter() {
                 <div className="flex flex-wrap gap-1.5">
                   {(['all', 'options', 'stocks', 'spreads'] as const).map(t => (
                     <button key={t} type="button" onClick={() => setTypeFilter(t)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${typeFilter === t ? 'bg-violet-600 text-white' : 'bg-surface-muted/30 text-muted hover:text-secondary'}`}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${typeFilter === t ? 'bg-violet-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted hover:text-secondary'}`}
                     >{t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}</button>
                   ))}
                 </div>
@@ -1013,7 +1026,7 @@ export default function PositionsCenter() {
                 <div className="flex flex-wrap gap-1.5">
                   {(['all', 'low', 'medium', 'high'] as const).map(r => (
                     <button key={r} type="button" onClick={() => setRiskFilter(r)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${riskFilter === r ? 'bg-violet-600 text-white' : 'bg-surface-muted/30 text-muted hover:text-secondary'}`}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${riskFilter === r ? 'bg-violet-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted hover:text-secondary'}`}
                     >{r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}</button>
                   ))}
                 </div>
@@ -1036,24 +1049,8 @@ export default function PositionsCenter() {
               : 'Try adjusting filters or search query.'}
           </p>
         </div>
-      ) : filtered.length <= 3 ? (
-        <div className="space-y-3">
-          {filtered.map(pos => (
-            <TradingPositionCard
-              key={pos.id}
-              pos={pos}
-              pnlData={perPositionPnl[pos.id] ?? null}
-              expanded={expandedId === pos.id}
-              onToggle={() => toggleExpanded(pos.id)}
-              onClose={() => handleClose(pos)}
-              onManage={() => handleManage(pos)}
-              onRoll={() => setNotice({ message: 'Roll action not wired yet' })}
-              onAlert={() => setNotice({ message: 'Alert action not wired yet' })}
-            />
-          ))}
-        </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map(pos => (
             <TradingPositionCard
               key={pos.id}
@@ -1197,7 +1194,7 @@ function AddPositionModal({
   return (
     <ModalOverlay onClose={onClose}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
-        <h2 className="text-base font-bold text-heading">Add Position</h2>
+        <h2 className="text-lg font-bold tracking-tight text-heading">Add Position</h2>
         <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
       </div>
       <form onSubmit={handleSubmit}>
@@ -1335,7 +1332,7 @@ function EditPositionModal({
   return (
     <ModalOverlay onClose={onClose}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
-        <h2 className="text-base font-bold text-heading">Edit Position</h2>
+        <h2 className="text-lg font-bold tracking-tight text-heading">Edit Position</h2>
         <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
       </div>
       <form onSubmit={handleSubmit}>

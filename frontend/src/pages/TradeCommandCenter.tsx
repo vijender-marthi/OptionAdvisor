@@ -5,12 +5,15 @@ import {
   ArrowRight,
   BarChart3,
   BellRing,
+  BrainCircuit,
   BriefcaseBusiness,
   ChevronDown,
   ChevronUp,
   RefreshCw,
   ShieldAlert,
   TrendingUp,
+  LayoutGrid,
+  Gauge,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -29,6 +32,14 @@ import { fetchMarketPosition, fetchTradeCommandCenter } from '../api/commandCent
 import type { MarketPositionData } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
+import GaugeMeter from '../components/GaugeMeter'
+import SignalRing from '../components/SignalRing'
+import SparklineCard from '../components/SparklineCard'
+import RiskGauge from '../components/RiskGauge'
+import HeatmapWidget from '../components/HeatmapWidget'
+import CoachSummaryCard from '../components/CoachSummaryCard'
+import MarketIntelligenceStrip from '../components/MarketIntelligenceStrip'
+import ReserveSignalCard from '../components/ReserveSignalCard'
 import type {
   ApiEnvelope,
   TradeCommandCenterActivity,
@@ -59,10 +70,10 @@ function toneFromText(value: string): 'bullish' | 'bearish' | 'neutral' | 'warni
 }
 
 function badgeClass(tone: 'bullish' | 'bearish' | 'neutral' | 'warning'): string {
-  if (tone === 'bullish') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (tone === 'bearish') return 'border-rose-600/35 bg-rose-500/10 text-rose-200'
-  if (tone === 'warning') return 'border-amber-600/35 bg-amber-500/10 text-amber-200'
-  return 'border-sky-700/35 bg-sky-500/10 text-sky-200'
+  if (tone === 'bullish') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  if (tone === 'bearish') return 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+  if (tone === 'warning') return 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  return 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
 }
 
 function fmtTimestamp(value?: string): string {
@@ -92,20 +103,8 @@ function RiskBadge({ risk }: { risk: string }) {
   return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${badgeClass(tone)}`}>{risk}</span>
 }
 
-function ConfidenceMeter({ value }: { value: number }) {
-  const safe = Math.max(0, Math.min(100, value))
-  const tone = safe >= 70 ? 'bg-emerald-400' : safe >= 45 ? 'bg-amber-400' : 'bg-rose-400'
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-gray-500">
-        <span>Confidence</span>
-        <span className="font-semibold text-gray-300">{safe}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-gray-800">
-        <div className={`h-2 rounded-full ${tone}`} style={{ width: `${safe}%` }} />
-      </div>
-    </div>
-  )
+function formatCoachMessage(msg: string): ReactNode {
+  return msg.split('\n\n').map((p, i) => <p key={i} className="mb-2 last:mb-0">{p}</p>)
 }
 
 function routeForEngine(engineType: string): { href: string; label: string } {
@@ -139,6 +138,62 @@ function isAvoid(rec: TradeCommandCenterRecommendation): boolean {
 function summaryNumber(raw: unknown): number {
   const n = Number(raw)
   return Number.isFinite(n) ? n : 0
+}
+
+function marketModeToValue(mode: string): number {
+  const m = mode.toLowerCase()
+  if (m.includes('euphoric')) return 90
+  if (m.includes('bull')) return 72
+  if (m.includes('neutral')) return 50
+  if (m.includes('defensive')) return 25
+  if (m.includes('bear')) return 10
+  return 50
+}
+
+function trendToValue(trend: string): number {
+  const t = trend.toLowerCase()
+  if (t.includes('strong') && t.includes('bull')) return 85
+  if (t.includes('bull')) return 70
+  if (t.includes('neutral')) return 50
+  if (t.includes('bear')) return 30
+  if (t.includes('strong') && t.includes('bear')) return 15
+  return 50
+}
+
+function riskToValue(risk: string): number {
+  const r = risk.toLowerCase()
+  if (r.includes('panic')) return 92
+  if (r.includes('high') || r.includes('extreme')) return 75
+  if (r.includes('elevated')) return 55
+  if (r.includes('contained')) return 30
+  if (r.includes('calm')) return 10
+  return 50
+}
+
+function exposureFromMarket(market: Record<string, unknown>): { bullish: number; bearish: number; cash: number } {
+  const mode = String(market.market_mode ?? '').toLowerCase()
+  const risk = String(market.risk_status ?? '').toLowerCase()
+  if (mode.includes('euphoric')) return { bullish: 70, bearish: 5, cash: 25 }
+  if (mode.includes('bull')) return { bullish: 60, bearish: 10, cash: 30 }
+  if (mode.includes('defensive')) return { bullish: 20, bearish: 45, cash: 35 }
+  if (mode.includes('bear')) return { bullish: 15, bearish: 55, cash: 30 }
+  if (risk.includes('high') || risk.includes('extreme')) return { bullish: 25, bearish: 40, cash: 35 }
+  return { bullish: 40, bearish: 20, cash: 40 }
+}
+
+function toneColor(value: string): string {
+  const t = value.toLowerCase()
+  if (t.includes('bull')) return 'text-emerald-400'
+  if (t.includes('bear') || t.includes('risk')) return 'text-rose-400'
+  if (t.includes('elevated') || t.includes('high')) return 'text-amber-400'
+  return 'text-sky-400'
+}
+
+function readinessColor(value: number): string {
+  if (value >= 80) return '#22c55e'
+  if (value >= 60) return '#3b82f6'
+  if (value >= 40) return '#f59e0b'
+  return '#ef4444'
 }
 
 function buildFallbackConflicts(recommendations: TradeCommandCenterRecommendation[]): TradeCommandCenterConflict[] {
@@ -227,19 +282,25 @@ function SummaryCard({
   label,
   value,
   tone,
+  emphasis = 'normal',
 }: {
   label: string
   value: string
   tone: 'bullish' | 'bearish' | 'neutral' | 'warning'
+  emphasis?: 'high' | 'normal'
 }) {
+  const cardCls = emphasis === 'high'
+    ? 'rounded-xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-slate-900 p-4 shadow-sm'
+    : 'rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 p-3.5'
+  const valCls = emphasis === 'high' ? 'text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1.5' : 'text-sm font-semibold text-slate-900 dark:text-white mt-1'
   return (
-    <div className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+    <div className={cardCls}>
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
-          <div className="mt-2 text-sm font-semibold text-gray-100">{value || '—'}</div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">{label}</div>
+          <div className={valCls}>{value || '—'}</div>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(tone)}`}>
+        <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeClass(tone)}`}>
           {tone}
         </span>
       </div>
@@ -249,10 +310,10 @@ function SummaryCard({
 
 function ChartShell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
       <div className="mb-3">
-        <div className="text-sm font-semibold text-gray-100">{title}</div>
-        <div className="text-xs text-gray-500">{subtitle}</div>
+        <div className="text-sm font-semibold text-slate-900 dark:text-white">{title}</div>
+        <div className="text-xs text-slate-500">{subtitle}</div>
       </div>
       {children}
     </div>
@@ -290,13 +351,13 @@ function MarketPositionWidget() {
 
   if (mpLoading) {
     return (
-      <div className="mt-4 flex items-center gap-2 border-t border-gray-800/70 pt-4 text-xs text-gray-600">
+      <div className="mt-4 flex items-center gap-2 border-t border-slate-100 dark:border-white/[0.05] pt-4 text-xs text-slate-500">
         <RefreshCw size={11} className="animate-spin" /> Loading market position…
       </div>
     )
   }
   if (mpError || !mpData) {
-    return <div className="mt-4 border-t border-gray-800/70 pt-4 text-xs text-gray-600">Market position unavailable</div>
+    return <div className="mt-4 border-t border-slate-100 dark:border-white/[0.05] pt-4 text-xs text-slate-500">Market position unavailable</div>
   }
 
   const tone = mpData.signal_tone
@@ -309,36 +370,36 @@ function MarketPositionWidget() {
   const ddBarColor = mpData.drawdown_pct >= 8 ? 'bg-emerald-500' : 'bg-gray-600'
 
   return (
-    <div className="mt-4 border-t border-gray-800/70 pt-4">
+    <div className="mt-4 border-t border-slate-100 dark:border-white/[0.05] pt-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <TrendingUp size={11} className="text-violet-400" aria-hidden />
           Portfolio Reserve Signal
         </div>
         <div className="flex items-center gap-1.5 text-xs font-mono">
-          <span className="text-gray-500">SPY</span>
-          <span className="font-bold text-gray-100">${mpData.spy_price.toFixed(2)}</span>
-          <span className="text-[10px] text-gray-700">|</span>
-          <span className="text-[10px] text-gray-600">200-MA ${mpData.ma200.toFixed(0)}</span>
+          <span className="text-slate-500 dark:text-slate-400">SPY</span>
+          <span className="font-bold text-slate-900 dark:text-white">${mpData.spy_price.toFixed(2)}</span>
+          <span className="text-[10px] text-slate-300 dark:text-slate-600">|</span>
+          <span className="text-[10px] text-slate-500">200-MA ${mpData.ma200.toFixed(0)}</span>
         </div>
       </div>
 
       <div className="mb-3 space-y-2">
         <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 shrink-0 font-medium text-gray-500">vs 200-day MA</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
+          <span className="w-24 shrink-0 font-semibold text-slate-500 dark:text-slate-400">vs 200-day MA</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/30">
             <div className={`h-full rounded-full ${maBarColor}`} style={{ width: `${maBarPct}%` }} />
           </div>
-          <span className="w-14 text-right font-mono text-xs font-semibold text-sky-300">
+          <span className="w-14 text-right font-mono text-xs font-bold text-sky-600 dark:text-sky-300">
             {mpData.dist_200ma_pct >= 0 ? '+' : ''}{mpData.dist_200ma_pct.toFixed(1)}%
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 shrink-0 font-medium text-gray-500">Off 52w High</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-800">
+          <span className="w-24 shrink-0 font-semibold text-slate-500 dark:text-slate-400">Off 52w High</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/30">
             <div className={`h-full rounded-full ${ddBarColor}`} style={{ width: `${ddBarPct}%` }} />
           </div>
-          <span className="w-14 text-right font-mono text-xs font-semibold text-emerald-300">
+          <span className="w-14 text-right font-mono text-xs font-bold text-emerald-600 dark:text-emerald-300">
             -{mpData.drawdown_pct.toFixed(1)}%
           </span>
         </div>
@@ -347,7 +408,7 @@ function MarketPositionWidget() {
       <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${signalCls}`}>
         <span className={`h-2 w-2 flex-none rounded-full ${dotCls}`} aria-hidden />
         <span className="flex-1 text-xs font-semibold leading-snug">{mpData.signal_label}</span>
-        <span className="whitespace-nowrap font-mono text-[10px] text-gray-600">25% reserve rule</span>
+        <span className="whitespace-nowrap font-mono text-[10px] text-slate-500">25% reserve rule</span>
       </div>
     </div>
   )
@@ -441,11 +502,11 @@ export default function TradeCommandCenter() {
         : 'border-sky-700/40 bg-sky-950/30 text-sky-200'
 
   return (
-    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-7xl space-y-6 px-4 py-6 pb-28 md:p-6">
+    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-7xl space-y-8 px-4 py-6 pb-28 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Trade Command Center</h1>
-          <p className="mt-1 max-w-3xl text-sm text-gray-500">
+          <h1 className="tcc-hero-title text-3xl">Trade Command Center</h1>
+          <p className="mt-1.5 max-w-3xl text-sm text-gray-500">
             One decision dashboard for market regime, engine trust, actionable setups, conflicts, alerts, and recent activity.
             {env?.stale ? <span className="text-amber-400"> Live market summary unavailable, using cached defaults.</span> : null}
           </p>
@@ -463,9 +524,9 @@ export default function TradeCommandCenter() {
       </div>
 
       {actionNotice ? (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${noticeClass}`}>
+        <div className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${noticeClass}`}>
           <div className="flex items-start justify-between gap-3">
-            <span>{actionNotice.text}</span>
+            <span className="font-medium">{actionNotice.text}</span>
             <button type="button" className="text-xs font-semibold opacity-80 hover:opacity-100" onClick={() => setActionNotice(null)}>
               Dismiss
             </button>
@@ -474,7 +535,7 @@ export default function TradeCommandCenter() {
       ) : null}
 
       {loading && !env ? (
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted">
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-6 text-sm text-slate-500">
           <RefreshCw size={16} className="animate-spin text-violet-400" />
           Loading Trade Command Center…
         </div>
@@ -492,117 +553,142 @@ export default function TradeCommandCenter() {
 
       {!(loading && !env && !fetchError) && payload ? (
         <>
-          <section className="rounded-3xl border border-gray-800 bg-gray-950/90 p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <TrendingUp size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-white">Market Command Summary</h2>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <SummaryCard label="Market Mode" value={String(market.market_mode ?? '—')} tone={toneFromText(String(market.market_mode ?? ''))} />
-              <SummaryCard label="Best Style Today" value={String(market.best_style_today ?? '—')} tone={toneFromText(String(market.best_style_today ?? ''))} />
-              <SummaryCard label="SPY Trend" value={String(market.spy_trend ?? '—')} tone={toneFromText(String(market.spy_trend ?? ''))} />
-              <SummaryCard label="QQQ Trend" value={String(market.qqq_trend ?? '—')} tone={toneFromText(String(market.qqq_trend ?? ''))} />
-              <SummaryCard label="VIX Risk" value={String(market.vix_risk ?? '—')} tone={toneFromText(String(market.vix_risk ?? ''))} />
-              <SummaryCard label="Overall Risk" value={String(market.risk_status ?? '—')} tone={toneFromText(String(market.risk_status ?? ''))} />
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.9fr]">
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/80 p-4">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500">AI Coach Summary</div>
-                <p className="mt-2 text-sm leading-relaxed text-gray-200">{String(market.ai_coach_summary ?? 'No coach message yet.')}</p>
-                <div className="mt-4">
-                  <ConfidenceMeter value={confidenceScore} />
-                </div>
+          {/* ═══ HERO — Market Command Summary ═══ */}
+          <section className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-5 md:p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <TrendingUp size={16} className="text-violet-400" />
+                <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Market Command Summary</h2>
               </div>
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/80 p-4">
-                <MarketPositionWidget />
+              {env?.fetched_at ? <span className="text-[10px] text-gray-600">Updated {new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
+            </div>
+            <div className="grid gap-4 xs:grid-cols-2 md:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
+                <GaugeMeter value={marketModeToValue(String(market.market_mode ?? ''))} label="Market Regime" states={['Bearish','Defensive','Neutral','Bullish','Euphoric']} />
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
+                <SparklineCard label="SPY Trend" value={String(market.spy_trend ?? '—')} trend={String(market.spy_trend ?? '').toLowerCase()} />
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
+                <SparklineCard label="QQQ Trend" value={String(market.qqq_trend ?? '—')} trend={String(market.qqq_trend ?? '').toLowerCase()} />
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
+                <RiskGauge value={riskToValue(String(market.vix_risk ?? ''))} label="VIX Risk" currentLabel={String(market.vix_risk ?? '—')} subtitle={String(market.best_style_today ?? '')} />
+              </div>
+            </div>
+            <div className="mt-4">
+              <MarketIntelligenceStrip market={market} />
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.5fr] items-start">
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
+                <HeatmapWidget />
+              </div>
+              <div className="grid gap-4">
+                <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-5">
+                  <CoachSummaryCard
+                    message={String(market.ai_coach_summary ?? 'No coach message yet.')}
+                    confidence={confidenceScore}
+                    mode={String(market.market_mode ?? 'neutral')}
+                  />
+                </div>
+                <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-5 space-y-4">
+                  <ReserveSignalCard />
+                </div>
               </div>
             </div>
           </section>
 
+          {/* ═══ ENGINES — Engine Health ═══ */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
-              <BarChart3 size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-white">Engine Health / Engine Bias</h2>
+              <BarChart3 size={18} className="text-teal-400" />
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Health / Engine Bias</h2>
             </div>
+            <div className="border-t border-slate-100 dark:border-white/[0.05]" />
             <div className="grid gap-4 xl:grid-cols-3">
               {engines.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-8 text-center text-sm text-gray-500">
+                <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                   No engine snapshots from API yet.
                 </div>
               ) : (
                 engines.map((card: TradeCommandCenterEngine) => {
-                  const route = routeForEngine(String(card.engine_type || ''))
-                  const topTicker = String(card.top_recommendation?.ticker || '').toUpperCase()
-                  return (
-                    <div key={`${card.engine_type}-${topTicker}`} className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-semibold text-white">{String(card.engine_type || '').toUpperCase()}</div>
-                          <div className="text-xs text-gray-500">{card.timeframe || '—'}</div>
-                        </div>
-                        <SignalBadge signal={String(card.final_decision || card.signal || '—')} />
-                      </div>
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Market Bias</div>
-                          <div className="mt-1 text-gray-100">{card.market_bias || '—'}</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
-                          <div className="mt-1"><SignalBadge signal={String(card.execution_readiness || '—')} /></div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Risk</div>
-                          <div className="mt-1"><RiskBadge risk={String(card.risk_level || 'Unknown')} /></div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Signal Count</div>
-                          <div className="mt-1 text-lg font-semibold text-gray-100">{summaryNumber(card.signal_count)}</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Top Ticker</div>
-                          <div className="mt-1 font-semibold text-violet-300">{topTicker || '—'}</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-wide text-gray-500">Best Use Case</div>
-                          <div className="mt-1 text-gray-200">{card.best_use_case || '—'}</div>
-                        </div>
-                      </div>
-                      <p className="mt-4 text-sm leading-relaxed text-gray-300">{card.reason || card.summary || card.top_recommendation?.reason || 'No engine summary yet.'}</p>
-                      {card.missing_confirmations.length > 0 ? (
-                        <p className="mt-2 text-xs text-amber-200/90">Waiting on: {card.missing_confirmations.join(' · ')}</p>
-                      ) : null}
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => navigate(route.href)}
-                          className="btn btn-primary gap-2 rounded-lg px-3 py-2 text-sm"
-                        >
-                          {route.label}
-                          <ArrowRight size={14} />
-                        </button>
-                        {topTicker ? (
-                          <button
-                            type="button"
-                            onClick={() => requestAnalysis(topTicker)}
-                            className="btn btn-outline gap-2 rounded-lg px-3 py-2 text-sm"
-                          >
-                            View {topTicker}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })
+                   const route = routeForEngine(String(card.engine_type || ''))
+                   const topTicker = String(card.top_recommendation?.ticker || '').toUpperCase()
+                   const confPct = confidenceNumber(card.confidence)
+                   const confColor = readinessColor(confPct)
+                   const sigCount = summaryNumber(card.signal_count)
+                   return (
+                     <div key={`${card.engine_type}-${topTicker}`} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3.5 shadow-sm">
+                       <div className="flex items-center justify-between gap-2">
+                         <div className="flex items-center gap-2 min-w-0">
+                           <span className="text-base font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
+                           <span className="text-[10px] text-slate-500 hidden sm:inline">{card.timeframe || '—'}</span>
+                         </div>
+                         <div className="flex items-center gap-2 shrink-0">
+                           <SignalBadge signal={String(card.final_decision || card.signal || '—')} />
+                           <span className="text-xs font-bold text-white">{confPct}%</span>
+                         </div>
+                       </div>
+                       <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-700/30">
+                         <div
+                           className="h-full rounded-full transition-all duration-500"
+                           style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }}
+                         />
+                       </div>
+                       <div className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2">
+                         <span>{card.market_bias || '—'}</span>
+                         <span className="text-slate-300 dark:text-slate-600">•</span>
+                         <RiskBadge risk={String(card.risk_level || 'Unknown')} />
+                         <span className="text-slate-300 dark:text-slate-600">•</span>
+                         <span>{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
+                       </div>
+                       {topTicker || card.best_use_case ? (
+                         <div className="mt-2 text-sm">
+                           {topTicker ? <span className="font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span> : null}
+                           {topTicker && card.best_use_case ? <span className="text-slate-300 dark:text-slate-600 mx-1">•</span> : null}
+                           {card.best_use_case ? <span className="text-slate-900 dark:text-slate-100">{card.best_use_case}</span> : null}
+                         </div>
+                       ) : null}
+                       <p className="mt-2.5 text-xs text-slate-700 dark:text-slate-300 leading-relaxed line-clamp-2">
+                         {card.reason || card.summary || card.top_recommendation?.reason || 'No engine summary yet.'}
+                       </p>
+                       {card.missing_confirmations.length > 0 ? (
+                         <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-200/70 font-medium truncate">
+                           Waiting: {card.missing_confirmations.join(' · ')}
+                         </p>
+                       ) : null}
+                       <div className="mt-3 flex flex-wrap gap-1.5">
+                         <button
+                           type="button"
+                           onClick={() => navigate(route.href)}
+                           className="btn btn-primary gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
+                         >
+                           Details
+                           <ArrowRight size={12} />
+                         </button>
+                         {topTicker ? (
+                           <button
+                             type="button"
+                             onClick={() => requestAnalysis(topTicker)}
+                             className="btn btn-outline gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
+                           >
+                             {topTicker}
+                           </button>
+                         ) : null}
+                       </div>
+                     </div>
+                   )
+                 })
               )}
             </div>
           </section>
 
+          {/* ═══ OPPORTUNITIES ═══ */}
           <section className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <BriefcaseBusiness size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-white">Actionable Trade Opportunities</h2>
+                <BriefcaseBusiness size={18} className="text-emerald-400" />
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Trade Opportunities</h2>
               </div>
               <button
                 type="button"
@@ -612,20 +698,21 @@ export default function TradeCommandCenter() {
                 {showAllRecommendations ? 'Hide full table' : 'Show all recommendations'}
               </button>
             </div>
+            <div className="border-t border-slate-100 dark:border-white/[0.05]" />
 
-            <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
-              <label className="text-xs text-muted">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
+              <label className="text-xs text-slate-500">
                 Engine Type
-                <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-36 rounded-lg border border-border bg-surface-elevated px-2 py-1.5 text-sm text-primary">
+                <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="day">Day</option>
                   <option value="swing">Swing</option>
                   <option value="regular">Regular</option>
                 </select>
               </label>
-              <label className="text-xs text-muted">
+              <label className="text-xs text-slate-500">
                 Signal
-                <select value={signal} onChange={e => setSignal(e.target.value)} className="mt-1 block w-36 rounded-lg border border-border bg-surface-elevated px-2 py-1.5 text-sm text-primary">
+                <select value={signal} onChange={e => setSignal(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="READY">READY</option>
                   <option value="WATCH">WATCH</option>
@@ -634,9 +721,9 @@ export default function TradeCommandCenter() {
                   <option value="NO_EDGE">NO_EDGE</option>
                 </select>
               </label>
-              <label className="text-xs text-muted">
+              <label className="text-xs text-slate-500">
                 Direction
-                <select value={direction} onChange={e => setDirection(e.target.value)} className="mt-1 block w-36 rounded-lg border border-border bg-surface-elevated px-2 py-1.5 text-sm text-primary">
+                <select value={direction} onChange={e => setDirection(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="call">Call</option>
                   <option value="put">Put</option>
@@ -644,9 +731,9 @@ export default function TradeCommandCenter() {
                   <option value="stock">Stock</option>
                 </select>
               </label>
-              <label className="text-xs text-muted">
+              <label className="text-xs text-slate-500">
                 Risk
-                <select value={risk} onChange={e => setRisk(e.target.value)} className="mt-1 block w-32 rounded-lg border border-border bg-surface-elevated px-2 py-1.5 text-sm text-primary">
+                <select value={risk} onChange={e => setRisk(e.target.value)} className="mt-1 block w-32 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -658,63 +745,63 @@ export default function TradeCommandCenter() {
             <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr]">
               <div className="grid gap-4 lg:grid-cols-2">
                 {actionable.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-8 text-center text-sm text-gray-500">
+                  <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                     No actionable opportunities for the current filters.
                   </div>
                 ) : (
                   actionable.map(rec => {
                     const expanded = expandedOpportunityId === rec.id
                     return (
-                      <div key={rec.id} className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+                      <div key={rec.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-base font-bold text-gray-100">{rec.ticker}</span>
+                              <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                               <EngineBadge engine={rec.engine_type} />
                               <SignalBadge signal={rec.final_decision || rec.signal} />
                               <RiskBadge risk={String(rec.risk_level || 'Unknown')} />
                             </div>
-                            <div className="mt-2 text-sm font-semibold text-violet-200">{rec.strategy}</div>
-                            <div className="text-xs text-gray-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
+                            <div className="mt-2 text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
+                            <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Confidence</div>
-                            <div className="text-sm font-semibold text-gray-100">{String(rec.confidence || '—')}</div>
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Confidence</div>
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white">{String(rec.confidence || '—')}</div>
                           </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Market Bias</div>
-                            <div className="mt-1 text-gray-100">{rec.market_bias || '—'}</div>
+                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Market Bias</div>
+                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
                           </div>
-                          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Readiness</div>
+                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Readiness</div>
                             <div className="mt-1"><SignalBadge signal={String(rec.execution_readiness || rec.final_decision || '—')} /></div>
                           </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Entry</div>
-                            <div className="mt-1 text-gray-100">{rec.entry_zone || '—'}</div>
+                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
+                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div>
                           </div>
-                          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Target</div>
-                            <div className="mt-1 text-gray-100">{rec.target || '—'}</div>
+                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
+                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target || '—'}</div>
                           </div>
-                          <div className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500">Stop</div>
-                            <div className="mt-1 text-gray-100">{rec.stop_loss || '—'}</div>
+                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
+                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss || '—'}</div>
                           </div>
                         </div>
 
-                        <p className={`mt-4 text-sm leading-relaxed text-gray-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.reason || 'No reason from API.'}</p>
-                        <p className={`mt-2 text-sm leading-relaxed text-violet-200/90 ${expanded ? '' : 'line-clamp-2'}`}>
+                        <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.reason || 'No reason from API.'}</p>
+                        <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-2'}`}>
                           Recommended action: {rec.recommended_action || rec.action_label || 'Review details before acting.'}
                         </p>
                         {rec.missing_confirmations && rec.missing_confirmations.length > 0 ? (
-                          <p className={`mt-2 text-xs text-amber-200/90 ${expanded ? '' : 'line-clamp-1'}`}>
+                          <p className={`mt-2 text-xs text-amber-700/90 dark:text-amber-200/90 ${expanded ? '' : 'line-clamp-1'}`}>
                             Waiting on: {rec.missing_confirmations.join(' · ')}
                           </p>
                         ) : null}
@@ -750,24 +837,24 @@ export default function TradeCommandCenter() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-950/10 border-l-[3px] border-l-rose-500 p-4 md:p-5">
                 <div className="mb-3 flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-amber-300" />
-                  <h3 className="text-sm font-semibold text-white">Avoid Right Now</h3>
+                  <AlertTriangle size={16} className="text-rose-300" />
+                  <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">Avoid Right Now</h3>
                 </div>
                 <div className="space-y-3">
                   {avoids.length === 0 ? (
-                    <div className="text-sm text-gray-500">No avoid list items under the current filters.</div>
+                    <div className="text-sm text-slate-500">No avoid list items under the current filters.</div>
                   ) : (
                     avoids.map(rec => (
-                      <div key={`avoid-${rec.id}`} className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+                      <div key={`avoid-${rec.id}`} className="rounded-lg border border-rose-100 dark:border-rose-900/20 bg-white dark:bg-slate-900/80 p-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono font-semibold text-gray-100">{rec.ticker}</span>
+                          <span className="font-mono font-semibold text-slate-900 dark:text-white">{rec.ticker}</span>
                           <EngineBadge engine={rec.engine_type} />
                           <SignalBadge signal={rec.final_decision || rec.signal} />
                         </div>
-                        <div className="mt-2 text-sm text-gray-300">{rec.reason || 'No reason from API.'}</div>
-                        <div className="mt-2 text-xs text-amber-200">Action: {rec.recommended_action || rec.action_label || 'Avoid for now.'}</div>
+                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
+                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Avoid for now.'}</div>
                       </div>
                     ))
                   )}
@@ -776,10 +863,10 @@ export default function TradeCommandCenter() {
             </div>
 
             {showAllRecommendations ? (
-              <div className="overflow-x-auto rounded-2xl border border-gray-800 bg-gray-900/90">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900">
                 <table className="min-w-[1080px] w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-800 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                    <tr className="border-b border-slate-100 dark:border-white/[0.05] text-left text-[11px] uppercase tracking-wide text-slate-500">
                       <th className="px-3 py-2">Ticker</th>
                       <th className="px-3 py-2">Engine</th>
                       <th className="px-3 py-2">Signal</th>
@@ -795,18 +882,18 @@ export default function TradeCommandCenter() {
                   </thead>
                   <tbody>
                     {recommendations.map(rec => (
-                      <tr key={`table-${rec.id}`} className="border-b border-gray-800/70 align-top">
-                        <td className="px-3 py-3 font-semibold text-gray-100">{rec.ticker}</td>
+                      <tr key={`table-${rec.id}`} className="border-b border-slate-100 dark:border-white/[0.05] align-top">
+                        <td className="px-3 py-3 font-semibold text-slate-900 dark:text-white">{rec.ticker}</td>
                         <td className="px-3 py-3"><EngineBadge engine={rec.engine_type} /></td>
                         <td className="px-3 py-3"><SignalBadge signal={rec.final_decision || rec.signal} /></td>
-                        <td className="px-3 py-3 text-gray-300">{rec.direction || '—'}</td>
-                        <td className="px-3 py-3 text-gray-300">{rec.strategy || '—'}</td>
-                        <td className="px-3 py-3 text-gray-300">{rec.entry_zone || '—'}</td>
-                        <td className="px-3 py-3 text-gray-300">{rec.target || '—'}</td>
-                        <td className="px-3 py-3 text-gray-300">{rec.stop_loss || '—'}</td>
-                        <td className="px-3 py-3 text-gray-300">{rec.expiry || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.direction || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.strategy || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.entry_zone || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.target || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.stop_loss || '—'}</td>
+                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.expiry || '—'}</td>
                         <td className="px-3 py-3"><RiskBadge risk={String(rec.risk_level || 'Unknown')} /></td>
-                        <td className="max-w-sm px-3 py-3 text-gray-500">{rec.reason || '—'}</td>
+                        <td className="max-w-sm px-3 py-3 text-slate-500">{rec.reason || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -818,42 +905,42 @@ export default function TradeCommandCenter() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <ShieldAlert size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-white">Engine Conflict Panel</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Conflict Panel</h2>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {conflicts.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-8 text-center text-sm text-gray-500">
+                <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                   No engine conflicts reported right now.
                 </div>
               ) : (
                 conflicts.map(conflict => (
-                  <div key={conflict.id} className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+                  <div key={conflict.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-base font-bold text-gray-100">{conflict.ticker}</span>
+                          <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{conflict.ticker}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
                             {conflict.state.replace(/_/g, ' ')}
                           </span>
                         </div>
-                        <div className="mt-2 text-sm text-gray-300">{conflict.summary}</div>
+                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{conflict.summary}</div>
                       </div>
                     </div>
                     <div className="mt-4 space-y-2 text-sm">
                       {conflict.signals.map(row => (
-                        <div key={`${conflict.id}-${row.engine_type}`} className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-2">
+                        <div key={`${conflict.id}-${row.engine_type}`} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <EngineBadge engine={row.engine_type} />
                             <SignalBadge signal={row.signal} />
                           </div>
-                          {row.note ? <div className="mt-2 text-gray-400">{row.note}</div> : null}
+                          {row.note ? <div className="mt-2 text-slate-500">{row.note}</div> : null}
                         </div>
                       ))}
                     </div>
                     <div className="mt-4 rounded-xl border border-amber-700/25 bg-amber-500/5 p-3">
-                      <div className="text-[11px] uppercase tracking-wide text-amber-200/80">Resolution</div>
-                      <div className="mt-1 text-sm text-gray-200">{conflict.resolution}</div>
-                      <div className="mt-2 text-sm text-amber-200">Suggested action: {conflict.suggested_action}</div>
+                      <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Resolution</div>
+                      <div className="mt-1 text-sm text-slate-800 dark:text-slate-200">{conflict.resolution}</div>
+                      <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">Suggested action: {conflict.suggested_action}</div>
                     </div>
                   </div>
                 ))
@@ -864,7 +951,7 @@ export default function TradeCommandCenter() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <BarChart3 size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-white">Market Graphs / Trend Visuals</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</h2>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               <ChartShell title="SPY vs QQQ Trend Strength" subtitle="Lightweight trend conviction view from the command-center payload.">
@@ -934,10 +1021,10 @@ export default function TradeCommandCenter() {
                   {(charts?.style_allocation ?? []).map(entry => (
                     <div key={entry.label} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-300">{entry.label}</span>
-                        <span className="font-semibold text-gray-100">{entry.value}%</span>
+                        <span className="text-slate-700 dark:text-slate-300">{entry.label}</span>
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">{entry.value}%</span>
                       </div>
-                      <div className="h-2 rounded-full bg-gray-800">
+                      <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
                         <div className="h-2 rounded-full bg-violet-400" style={{ width: `${Math.max(0, Math.min(100, entry.value))}%` }} />
                       </div>
                     </div>
@@ -948,11 +1035,94 @@ export default function TradeCommandCenter() {
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-            <div className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+            <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
               <div className="mb-4 flex items-center gap-2">
                 <BellRing size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-white">Risk &amp; Alert Snapshot</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Risk &amp; Alert Snapshot</h2>
               </div>
+
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Alert Pressure</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{
+                    color: (() => {
+                      const a = alertsSummary
+                      const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
+                      if (total >= 8) return '#ef4444'
+                      if (total >= 5) return '#f97316'
+                      if (total >= 3) return '#f59e0b'
+                      if (total >= 1) return '#3b82f6'
+                      return '#22c55e'
+                    })(),
+                  }}>
+                    {(() => {
+                      const a = alertsSummary
+                      const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
+                      if (total >= 8) return 'Critical'
+                      if (total >= 5) return 'Elevated'
+                      if (total >= 3) return 'Active'
+                      if (total >= 1) return 'Watch'
+                      return 'Quiet'
+                    })()}
+                  </span>
+                </div>
+                <div className="tcc-alert-bar">
+                  <div className="tcc-alert-bar-segment quiet" style={{ width: '20%' }} />
+                  <div className="tcc-alert-bar-segment watch" style={{ width: '20%' }} />
+                  <div className={`tcc-alert-bar-segment active ${alertsSummary.active_alerts >= 3 ? 'active-fill' : ''}`} style={{ width: '20%' }} />
+                  <div className={`tcc-alert-bar-segment elevated ${alertsSummary.critical_alerts >= 2 || alertsSummary.positions_requiring_exit > 0 ? 'elevated-fill' : ''}`} style={{ width: '20%' }} />
+                  <div className={`tcc-alert-bar-segment critical ${alertsSummary.critical_alerts >= 3 || alertsSummary.positions_requiring_exit >= 2 ? 'critical-fill' : ''}`} style={{ width: '20%' }} />
+                  {(() => {
+                    const a = alertsSummary
+                    const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
+                    const pct = Math.min(90, Math.max(5, total * 10))
+                    return <div className="tcc-alert-bar-active" style={{ left: `${pct}%` }} />
+                  })()}
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Breadth</span>
+                  <span className="text-[10px] text-gray-500">{(() => {
+                    const mode = String(market.market_mode ?? '').toLowerCase()
+                    if (mode.includes('bull') || mode.includes('euphoric')) return 'Bullish bias'
+                    if (mode.includes('bear') || mode.includes('defensive')) return 'Bearish bias'
+                    return 'Mixed'
+                  })()}</span>
+                </div>
+                <div className="tcc-breadth-bar">
+                  <div
+                    className="tcc-breadth-advancing"
+                    style={{ width: `${(() => {
+                      const mode = String(market.market_mode ?? '').toLowerCase()
+                      if (mode.includes('euphoric')) return 72
+                      if (mode.includes('bull')) return 62
+                      if (mode.includes('neutral')) return 52
+                      if (mode.includes('defensive')) return 38
+                      if (mode.includes('bear')) return 28
+                      return 50
+                    })()}%` }}
+                  />
+                  <div
+                    className="tcc-breadth-declining"
+                    style={{ width: `${(() => {
+                      const mode = String(market.market_mode ?? '').toLowerCase()
+                      if (mode.includes('euphoric')) return 28
+                      if (mode.includes('bull')) return 38
+                      if (mode.includes('neutral')) return 48
+                      if (mode.includes('defensive')) return 62
+                      if (mode.includes('bear')) return 72
+                      return 50
+                    })()}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex justify-between text-[10px] text-gray-600">
+                  <span>Adv.</span>
+                  <span>Dec.</span>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 {[
                   ['Active alerts', alertsSummary.active_alerts],
@@ -961,9 +1131,9 @@ export default function TradeCommandCenter() {
                   ['Near expiry trades', alertsSummary.near_expiry_trades],
                   ['High IV warnings', alertsSummary.high_iv_warnings],
                 ].map(([label, raw]) => (
-                  <div key={label} className="rounded-xl border border-gray-800 bg-gray-950/60 px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
-                    <div className="mt-1 text-2xl font-semibold text-gray-100">{summaryNumber(raw)}</div>
+                  <div key={label} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
+                    <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{summaryNumber(raw)}</div>
                   </div>
                 ))}
               </div>
@@ -977,27 +1147,27 @@ export default function TradeCommandCenter() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-800 bg-gray-900/90 p-4">
+            <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
               <div className="mb-4 flex items-center gap-2">
                 <RefreshCw size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-white">Recent Decisions / Activity</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Decisions / Activity</h2>
               </div>
               <div className="space-y-3">
                 {recentActivity.length === 0 ? (
-                  <div className="text-sm text-gray-500">No recent activity from the API yet.</div>
+                  <div className="text-sm text-slate-500">No recent activity from the API yet.</div>
                 ) : (
                   recentActivity.map((item: TradeCommandCenterActivity) => (
-                    <div key={item.id} className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
+                    <div key={item.id} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 p-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-semibold text-gray-100">{item.ticker}</span>
+                        <span className="font-mono font-semibold text-slate-900 dark:text-white">{item.ticker}</span>
                         <EngineBadge engine={item.engine_type} />
                         <SignalBadge signal={item.signal} />
                       </div>
-                      <div className="mt-2 text-sm text-gray-300">
+                      <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
                         {item.action_taken ? `${item.action_taken} · ` : ''}
                         {item.message || 'Decision update'}
                       </div>
-                      <div className="mt-2 text-[11px] text-gray-500">{fmtTimestamp(item.timestamp)}</div>
+                      <div className="mt-2 text-[11px] text-slate-500">{fmtTimestamp(item.timestamp)}</div>
                     </div>
                   ))
                 )}
