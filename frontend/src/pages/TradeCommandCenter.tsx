@@ -20,9 +20,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -1140,28 +1137,51 @@ export default function TradeCommandCenter() {
               </ChartShell>
 
               <ChartShell title="Risk Distribution" subtitle="Current opportunity mix by risk tier.">
-                <div className="h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={charts?.risk_distribution ?? []}
-                        dataKey="value"
-                        nameKey="label"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={82}
-                        paddingAngle={3}
-                      >
-                        {(charts?.risk_distribution ?? []).map((entry, index) => {
-                          const label = String(entry.label || '').toLowerCase()
-                          const fill = label === 'low' ? '#34d399' : label === 'medium' ? '#f59e0b' : '#ef4444'
-                          return <Cell key={`${entry.label}-${index}`} fill={fill} />
-                        })}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="space-y-4">
+                  {(() => {
+                    const data = charts?.risk_distribution ?? []
+                    const total = data.reduce((s, r) => s + (r.value || 0), 0)
+                    const riskColors: Record<string, string> = { low: '#34d399', medium: '#f59e0b', high: '#ef4444' }
+                    const riskLabels: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' }
+                    return (
+                      <>
+                        {total > 0 ? (
+                          <div className="flex h-10 rounded-lg overflow-hidden">
+                            {['low', 'medium', 'high'].map(key => {
+                              const entry = data.find(d => String(d.label || '').toLowerCase() === key)
+                              const val = entry?.value || 0
+                              const pct = total > 0 ? Math.round((val / total) * 100) : 0
+                              const color = riskColors[key]
+                              return (
+                                <div key={key} className="flex flex-col items-center justify-center text-white transition-all" style={{ width: `${pct}%`, backgroundColor: color, minWidth: pct > 0 ? '8px' : '0' }}>
+                                  {pct >= 12 ? <span className="text-[11px] font-bold">{key.charAt(0).toUpperCase() + key.slice(1)}</span> : null}
+                                  {pct >= 12 ? <span className="text-[9px] opacity-80">{val}</span> : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs text-slate-500">No risk data</div>
+                        )}
+                        <div className="grid grid-cols-3 gap-2">
+                          {['low', 'medium', 'high'].map(key => {
+                            const entry = data.find(d => String(d.label || '').toLowerCase() === key)
+                            const val = entry?.value || 0
+                            const pct = total > 0 ? Math.round((val / total) * 100) : 0
+                            const color = riskColors[key]
+                            return (
+                              <div key={key} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 p-2 text-center">
+                                <div className="w-2 h-2 rounded-full mx-auto mb-1" style={{ backgroundColor: color }} />
+                                <div className="text-xs font-semibold text-slate-900 dark:text-white">{val}</div>
+                                <div className="text-[10px] text-slate-500">{riskLabels[key]}</div>
+                                <div className="text-[10px] text-slate-400">{pct}%</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </ChartShell>
 
