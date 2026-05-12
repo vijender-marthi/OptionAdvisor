@@ -23,7 +23,7 @@ import {
 import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { createWatchlistXAlert, fetchWatchlistX } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES } from '../routing/routes'
+import { ROUTES, getEngineRoute } from '../routing/routes'
 import AddTickerModal from '../components/AddTickerModal'
 import type { ApiEnvelope, WatchlistXDecisionBlock, WatchlistXMetrics, WatchlistXPayload, WatchlistXRow } from '../types/commandCenter'
 import {
@@ -451,9 +451,11 @@ function OptionRiskPill({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DecisionPanel({ title, decision }: { title: string; decision: WatchlistXDecisionBlock }) {
+function DecisionPanel({ title, decision, ticker }: { title: string; decision: WatchlistXDecisionBlock; ticker?: string }) {
+  const navigate = useNavigate()
   const optionRisk = decision.option_risk_context
   const showOptionRisk = decision.engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
+  const engineRoute = ticker ? getEngineRoute(title.toLowerCase(), ticker) : null
 
   return (
     <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
@@ -511,6 +513,12 @@ function DecisionPanel({ title, decision }: { title: string; decision: Watchlist
               </div>
             ) : null}
           </div>
+        ) : null}
+        {engineRoute ? (
+          <button type="button" onClick={() => navigate(engineRoute)} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
+            Open {title} Engine
+            <ArrowUpRight size={13} />
+          </button>
         ) : null}
       </div>
     </div>
@@ -595,9 +603,9 @@ function ExpandedAnalysis({
               </button>
             </div>
           </div>
-          <DecisionPanel title="Day" decision={row.day} />
-          <DecisionPanel title="Swing" decision={row.swing} />
-          <DecisionPanel title="Regular" decision={row.regular} />
+          <DecisionPanel title="Day" decision={row.day} ticker={row.ticker} />
+          <DecisionPanel title="Swing" decision={row.swing} ticker={row.ticker} />
+          <DecisionPanel title="Regular" decision={row.regular} ticker={row.ticker} />
         </div>
       </div>
     </div>
@@ -1307,7 +1315,7 @@ export default function WatchlistXPage() {
             <div className="mt-2 text-sm text-gray-500">Try a different state, agreement, trend, or sector combination.</div>
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4">
             {visibleRows.map(row => {
               const isOpen = expandedId === row.id
               const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
