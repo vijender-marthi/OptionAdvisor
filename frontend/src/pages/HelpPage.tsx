@@ -6,7 +6,7 @@ import {
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
   FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap, LineChart,
   Menu, X, Search, Copy, LayoutDashboard, GitBranch, RefreshCw, Gauge,
-  Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert,
+  Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert, Award, Ban,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole } from '../permissions'
@@ -1645,6 +1645,52 @@ export default function HelpPage() {
                 </div>
               </div>
             </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 12B — GOLDEN RULES
+             ═══════════════════════════════════════════════════════ */}
+          <section id="golden-rules" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Award size={18} className="text-amber-400" />
+              Golden Rules
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Hard rules that override any signal or suggestion. These protect your account from the most common options trading mistakes.</p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DocCard icon={<Ban size={15} />} title="Never Hold Options <14 DTE Through Earnings">
+                <p className="text-xs text-gray-400 leading-relaxed">Earnings events cause IV crush and gap risk. Options with less than 14 DTE cannot absorb the volatility collapse. Close before earnings or choose a further expiry.</p>
+              </DocCard>
+              <DocCard icon={<Ban size={15} />} title="Never Buy at Market Open (6:30–6:45 AM PST)">
+                <p className="text-xs text-gray-400 leading-relaxed">The first 15 minutes capture overnight order imbalances, spreads are widest, and false breakouts are common. Wait for the opening range to establish before entering.</p>
+              </DocCard>
+              <DocCard icon={<Ban size={15} />} title="Never Average Down on Losing Options">
+                <p className="text-xs text-gray-400 leading-relaxed">Adding to a losing option position doubles down on a thesis that has already failed. Unlike stocks, options have finite life and accelerating time decay. Cut losses, do not average.</p>
+              </DocCard>
+              <DocCard icon={<Target size={15} />} title="Always Have a Profit Target AND Stop Loss Before Entering">
+                <p className="text-xs text-gray-400 leading-relaxed">Define your exit before your entry. Know exactly where you take profit and where you cut the loss. If you cannot define both levels, the trade is not ready.</p>
+              </DocCard>
+              <DocCard icon={<Layers size={15} />} title="Always Scale Out — Never Sell Everything at Once">
+                <p className="text-xs text-gray-400 leading-relaxed">Selling in pieces lets you capture extended moves while locking in gains. Use the profit-taking plan: +50% → stop to breakeven, +100% → sell half, +150% → sell another quarter, +200%+ → trail the rest.</p>
+              </DocCard>
+              <DocCard icon={<Clock size={15} />} title="Trading Windows (PST)">
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  <strong className="text-gray-300">Best entry:</strong> 6:45–7:30 AM PST<br />
+                  <strong className="text-gray-300">Avoid:</strong> 8:30–10:00 AM PST (lunch dead zone)<br />
+                  <strong className="text-gray-300">Power hour:</strong> 12:00–12:45 PM PST<br />
+                  <strong className="text-gray-300">Exit by:</strong> 12:45 PM PST for day trades
+                </p>
+              </DocCard>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-800/30 bg-amber-950/20 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-200/90 leading-relaxed">
+                  These rules are not suggestions. If any signal engine recommends a trade that violates one of these rules, the trade is automatically rejected regardless of score, confidence, or EV.
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* ═══════════════════════════════════════════════════════
