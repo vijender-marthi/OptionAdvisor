@@ -803,7 +803,7 @@ export default function TradeCommandCenter() {
               </label>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr]">
+            <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr] items-start">
               <div className="grid gap-4">
                 {actionable.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
@@ -936,31 +936,33 @@ export default function TradeCommandCenter() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-950/10 border-l-[3px] border-l-rose-500 p-4 md:p-5">
-                <div className="mb-3 flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-rose-300" />
-                  <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">AVOID — High-Risk or Conflicting Tickers</h3>
-                </div>
-                <div className="space-y-3">
-                  {avoids.length === 0 ? (
-                    <div className="text-sm text-slate-500">No AVOID signals under current filters — all scanned tickers are WATCH or better.</div>
-                  ) : (
-                    avoids.map(rec => (
-                      <div key={`avoid-${rec.id}`} className="rounded-lg border border-rose-100 dark:border-rose-900/20 bg-white dark:bg-slate-900/80 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono font-semibold text-slate-900 dark:text-white">{rec.ticker}</span>
-                          <EngineBadge engine={rec.engine_type} />
-                          <div className="flex items-center gap-1">
-                            <SignalQualityBadge quality={rec.signal_quality || ''} />
-                            <ExecTimingBadge timing={rec.execution_timing || ''} />
-                            <RiskCatBadge category={rec.risk_category || ''} />
+              <div className="sticky top-4 self-start space-y-4">
+                <div className="rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-950/10 border-l-[3px] border-l-rose-500 p-4 md:p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-rose-300" />
+                    <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">AVOID — High-Risk or Conflicting Tickers</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {avoids.length === 0 ? (
+                      <div className="text-sm text-slate-500">No AVOID signals under current filters — all scanned tickers are WATCH or better.</div>
+                    ) : (
+                      avoids.map(rec => (
+                        <div key={`avoid-${rec.id}`} className="rounded-lg border border-rose-100 dark:border-rose-900/20 bg-white dark:bg-slate-900/80 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono font-semibold text-slate-900 dark:text-white">{rec.ticker}</span>
+                            <EngineBadge engine={rec.engine_type} />
+                            <div className="flex items-center gap-1">
+                              <SignalQualityBadge quality={rec.signal_quality || ''} />
+                              <ExecTimingBadge timing={rec.execution_timing || ''} />
+                              <RiskCatBadge category={rec.risk_category || ''} />
+                            </div>
                           </div>
+                          <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
+                          <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Stand aside — re-evaluate if signal flips to WATCH above key resistance.'}</div>
                         </div>
-                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
-                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Stand aside — re-evaluate if signal flips to WATCH above key resistance.'}</div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
