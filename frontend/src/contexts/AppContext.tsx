@@ -738,9 +738,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) finderDeepLinkHandledRef.current = false
   }, [user])
 
-  /** Email alert links: ?ticker=SYM&weeks=4&expiry=YYYY-MM-DD — consume before TickerPage localStorage restore. */
+  /** Email alert deep links: ?ticker=SYM&weeks=4&expiry=YYYY-MM-DD on strategy-finder or root.
+   *  Must NOT fire on engine-specific pages (day-trade, swing-trade, trade-signals) where
+   *  ticker is legitimately used for that engine's scan. */
   useLayoutEffect(() => {
     if (!user || finderDeepLinkHandledRef.current) return
+    const pathname = window.location.pathname
+    const isEnginePage = pathname.startsWith('/day-trade') || pathname.startsWith('/swing-trade') || pathname.startsWith('/trade-signals')
+    if (isEnginePage) return
+
     const params = new URLSearchParams(window.location.search)
     const raw = params.get('ticker')
     const ticker = typeof raw === 'string' ? raw.trim().toUpperCase() : ''

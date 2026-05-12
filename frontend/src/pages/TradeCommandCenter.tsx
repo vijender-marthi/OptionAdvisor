@@ -31,7 +31,7 @@ import {
 import { fetchMarketPosition, fetchTradeCommandCenter } from '../api/commandCenter'
 import type { MarketPositionData } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES, getEngineRoute } from '../routing/routes'
+import { ROUTES, getEngineRoute, routeForEngine, getDetailsRoute } from '../routing/routes'
 import GaugeMeter from '../components/GaugeMeter'
 import SignalRing from '../components/SignalRing'
 import SparklineCard from '../components/SparklineCard'
@@ -136,28 +136,6 @@ function RiskCatBadge({ category }: { category: string }) {
 
 function formatCoachMessage(msg: string): ReactNode {
   return msg.split('\n\n').map((p, i) => <p key={i} className="mb-2 last:mb-0">{p}</p>)
-}
-
-function routeForEngine(engineType: string, ticker?: string): string {
-  const key = engineType.trim().toLowerCase()
-  const from = encodeURIComponent(ROUTES.tradeCommandCenter)
-  const sep = ticker ? '&' : '?'
-  if (key === 'day') {
-    const base = ticker ? `${ROUTES.dayTrade}?ticker=${encodeURIComponent(ticker)}` : ROUTES.dayTrade
-    return `${base}${sep}from=${from}`
-  }
-  if (key === 'swing') {
-    const base = ticker ? `${ROUTES.swingTrade}?ticker=${encodeURIComponent(ticker)}` : ROUTES.swingTrade
-    return `${base}${sep}from=${from}`
-  }
-  const base = ticker ? `${ROUTES.strategyFinder}?ticker=${encodeURIComponent(ticker)}` : ROUTES.strategyFinder
-  return `${base}${sep}from=${from}`
-}
-
-function getDetailsRoute(rec: TradeCommandCenterRecommendation): string {
-  const key = (rec.engine_type || '').trim().toLowerCase()
-  const base = getEngineRoute(key, rec.ticker)
-  return `${base}&from=${encodeURIComponent(ROUTES.tradeCommandCenter)}`
 }
 
 function confidenceNumber(raw: string | number | undefined): number {
@@ -473,6 +451,7 @@ export default function TradeCommandCenter() {
   const [showAllRecommendations, setShowAllRecommendations] = useState(false)
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null)
   const [actionNotice, setActionNotice] = useState<{ tone: 'success' | 'warning' | 'info'; text: string } | null>(null)
+  const [expandedEngine, setExpandedEngine] = useState<string | null>(null)
 
   // Stale-load guard: React StrictMode double-fires effects in dev; without this the page
   // makes two identical backend calls on mount. The counter lets us discard the response
@@ -652,14 +631,14 @@ export default function TradeCommandCenter() {
             </div>
           </section>
 
-          {/* ═══ ENGINES — Engine Health ═══ */}
+           {/* ═══ ENGINES — Engine Health ═══ */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <BarChart3 size={18} className="text-teal-400" />
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Trust &amp; Directional Bias</h2>
             </div>
             <div className="border-t border-slate-100 dark:border-white/[0.05]" />
-            <div className="grid gap-4 xl:grid-cols-3">
+            <div className="flex flex-col gap-2">
               {engines.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                   No engine data loaded — check that the backend is running and the last scan completed successfully.
@@ -670,72 +649,79 @@ export default function TradeCommandCenter() {
                    const confPct = confidenceNumber(card.confidence)
                    const confColor = readinessColor(confPct)
                    const sigCount = summaryNumber(card.signal_count)
+                   const engKey = String(card.engine_type || '').toLowerCase()
+                   const isExpanded = expandedEngine === engKey
+                   const detailRoute = topTicker ? routeForEngine(engKey, topTicker) : null
                    return (
-                      <div key={`${card.engine_type}-${topTicker}`} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3.5 shadow-sm">
-                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
-                          <div className="flex items-center justify-between gap-2 sm:contents">
-                            <span className="text-base font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
-                            <span className="text-xs font-bold text-white sm:hidden">{(card as any).display_confidence ?? confPct}%</span>
+                      <div key={engKey}>
+                        <button type="button" onClick={() => setExpandedEngine(isExpanded ? null : engKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <div className="flex shrink-0 items-center gap-2 min-w-[140px]">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap">{card.timeframe || '—'}</span>
                           </div>
-                          <span className="text-[10px] text-slate-500">{card.timeframe || '—'}</span>
-                          <div className="flex flex-wrap items-center gap-1">
+                          <div className="flex items-center gap-2 min-w-[80px]">
+                            <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-slate-700/30">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }} />
+                            </div>
+                            <span className="text-[11px] font-bold text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                            <span className="text-[11px] text-slate-400 whitespace-nowrap">{card.market_bias || '—'}</span>
+                            <RiskBadge risk={String(card.risk_level || 'Unknown')} />
                             <SignalQualityBadge quality={card.signal_quality || ''} />
                             <ExecTimingBadge timing={card.execution_timing || ''} />
                             <RiskCatBadge category={card.risk_category || ''} />
-                            <span className="text-xs font-bold text-white hidden sm:inline" title={(card as any).risk_reason || ''}>{(card as any).display_confidence ?? confPct}%</span>
+                            <span className="text-[11px] text-slate-500 whitespace-nowrap">{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
                           </div>
-                        </div>
-                       <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-700/30">
-                         <div
-                           className="h-full rounded-full transition-all duration-500"
-                           style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }}
-                         />
-                       </div>
-                       <div className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2">
-                         <span>{card.market_bias || '—'}</span>
-                          <span className="text-slate-300 dark:text-slate-600">•</span>
-                          <RiskBadge risk={String(card.risk_level || 'Unknown')} />
-                          <span className="text-slate-300 dark:text-slate-600">•</span>
-                          <span>{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
-                          {(card as any).risk_reason ? <span className="text-[10px] text-amber-500/70 italic truncate max-w-[120px]" title={(card as any).risk_reason}>{(card as any).risk_reason}</span> : null}
-                       </div>
-                       {topTicker || card.best_use_case ? (
-                         <div className="mt-2 text-sm">
-                           {topTicker ? <span className="font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span> : null}
-                           {topTicker && card.best_use_case ? <span className="text-slate-300 dark:text-slate-600 mx-1">•</span> : null}
-                           {card.best_use_case ? <span className="text-slate-900 dark:text-slate-100">{card.best_use_case}</span> : null}
-                         </div>
-                       ) : null}
-                       <p className="mt-2.5 text-xs text-slate-700 dark:text-slate-300 leading-relaxed line-clamp-2">
-                         {card.reason || card.summary || card.top_recommendation?.reason || 'Engine returned no thesis — wait for next scan cycle before acting.'}
-                       </p>
-                       {card.missing_confirmations.length > 0 ? (
-                         <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-200/70 font-medium truncate">
-                           Waiting: {card.missing_confirmations.join(' · ')}
-                         </p>
-                       ) : null}
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              disabled={!topTicker}
-                              onClick={() => navigate(routeForEngine(String(card.engine_type || ''), topTicker || undefined))}
-                              className={`btn gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${topTicker ? 'btn-primary' : 'btn-disabled cursor-not-allowed opacity-40'}`}
-                              title={topTicker ? `View ${String(card.engine_type || '').toUpperCase()} details` : 'No ticker available for this engine'}
-                            >
-                              Details
-                              <ArrowRight size={12} />
-                            </button>
                           {topTicker ? (
-                            <button
-                              type="button"
-                              onClick={() => requestAnalysis(topTicker)}
-                              className="btn btn-outline gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
-                            >
-                              {topTicker}
-                            </button>
+                            <span className="ml-auto shrink-0 text-xs font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span>
                           ) : null}
-                        </div>
-                     </div>
+                          <span className="shrink-0 text-slate-400 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                            <ChevronDown size={16} />
+                          </span>
+                        </button>
+                        {isExpanded && (
+                          <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                              {card.setup_quality ? (
+                                <div><span className="text-slate-500">Setup Quality</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.setup_quality}</span></div>
+                              ) : null}
+                              {card.execution_readiness ? (
+                                <div><span className="text-slate-500">Execution Readiness</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.execution_readiness}</span></div>
+                              ) : null}
+                              {card.final_decision ? (
+                                <div><span className="text-slate-500">Final Decision</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.final_decision}</span></div>
+                              ) : null}
+                              {card.risk_state ? (
+                                <div><span className="text-slate-500">Risk State</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.risk_state}</span></div>
+                              ) : null}
+                            </div>
+                            {card.reason || card.summary ? (
+                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{card.reason || card.summary}</p>
+                            ) : null}
+                            {card.risk_reason ? (
+                              <p className="text-xs text-amber-600/80 dark:text-amber-300/70 italic">{card.risk_reason}</p>
+                            ) : null}
+                            {card.missing_confirmations.length > 0 ? (
+                              <p className="text-[10px] text-amber-700 dark:text-amber-200/70 font-medium">Waiting: {card.missing_confirmations.join(' · ')}</p>
+                            ) : null}
+                            {card.explanation && Object.keys(card.explanation).length > 0 ? (
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/30 px-3 py-2 space-y-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">AI Explanation</span>
+                                {Object.entries(card.explanation).map(([k, v]) => (
+                                  <p key={k} className="text-xs text-slate-700 dark:text-slate-300"><span className="font-medium capitalize">{k.replace(/_/g, ' ')}:</span> {v}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                            {detailRoute ? (
+                              <button type="button" onClick={() => navigate(detailRoute)} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
+                                Open {String(card.engine_type || '').toUpperCase()} Engine
+                                <ArrowRight size={14} />
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
                    )
                  })
               )}
@@ -810,7 +796,7 @@ export default function TradeCommandCenter() {
                 ) : (
                   actionable.map(rec => {
                     const expanded = expandedOpportunityId === rec.id
-                    const detailsRoute = getDetailsRoute(rec)
+                    const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
                     return (
                       <div key={rec.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
                         <div className="flex items-start justify-between gap-3">
