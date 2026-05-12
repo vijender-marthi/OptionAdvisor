@@ -941,6 +941,7 @@ export default function PositionsCenter() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [closingId, setClosingId] = useState<string | null>(null)
+  const [reviewingClosedId, setReviewingClosedId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -1082,7 +1083,11 @@ export default function PositionsCenter() {
   }, [closePosition, toggleExpanded])
 
   const handleManage = useCallback((pos: PortfolioPosition) => {
-    setEditingId(pos.id)
+    if (pos.status === 'closed') {
+      setReviewingClosedId(pos.id)
+    } else {
+      setEditingId(pos.id)
+    }
   }, [])
 
   const handleEdit = useCallback((id: string) => {
@@ -1102,6 +1107,11 @@ export default function PositionsCenter() {
     if (!editingId) return null
     return portfolio.find(p => p.id === editingId) ?? null
   }, [editingId, portfolio])
+
+  const reviewingClosedPos = useMemo(() => {
+    if (!reviewingClosedId) return null
+    return portfolio.find(p => p.id === reviewingClosedId) ?? null
+  }, [reviewingClosedId, portfolio])
 
   const closingPos = useMemo(() => {
     if (!closingId) return null
@@ -1328,7 +1338,99 @@ export default function PositionsCenter() {
           onClose={() => setEditingId(null)}
         />
       )}
+
+      {reviewingClosedPos && (
+        <ClosedPositionReviewModal
+          pos={reviewingClosedPos}
+          onSave={(id, patch) => {
+            updatePortfolioPosition(id, patch)
+            setReviewingClosedId(null)
+            setNotice({ message: 'Close details saved.' })
+          }}
+          onClose={() => setReviewingClosedId(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function ClosedPositionReviewModal({
+  pos,
+  onSave,
+  onClose,
+}: {
+  pos: PortfolioPosition
+  onSave: (id: string, patch: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
+  onClose: () => void
+}) {
+  const [exitPrice, setExitPrice] = useState(pos.exit_price != null ? String(pos.exit_price) : '')
+  const [pnlPct, setPnlPct] = useState(pos.realized_pnl_percent != null ? String(pos.realized_pnl_percent) : (pos.pnlPct != null ? String(pos.pnlPct) : ''))
+  const [closeNotes, setCloseNotes] = useState(pos.close_notes ?? pos.notes ?? '')
+
+  const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
+  const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const parsedExitPrice = parseFloat(exitPrice)
+    const parsedPnlPct = parseFloat(pnlPct)
+    onSave(pos.id, {
+      ...pos,
+      exit_price: Number.isFinite(parsedExitPrice) && parsedExitPrice > 0 ? parsedExitPrice : pos.exit_price,
+      realized_pnl_percent: Number.isFinite(parsedPnlPct) ? parsedPnlPct : pos.realized_pnl_percent,
+      pnlPct: Number.isFinite(parsedPnlPct) ? parsedPnlPct : pos.pnlPct,
+      close_notes: closeNotes.trim() || undefined,
+      exitDate: pos.exitDate,
+    })
+  }
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
+        <h2 className="text-lg font-bold tracking-tight text-heading">Review Closed Position</h2>
+        <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
+      </div>
+
+      <div className="px-6 py-4 space-y-1 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-100 dark:border-white/[0.07]">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-heading text-base">{pos.ticker}</span>
+          <span className="text-xs text-muted">{pos.strategy}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${getBiasBadgeClass(pos.bias)}`}>{pos.bias}</span>
+        </div>
+        <div className="text-xs text-muted">
+          {pos.contracts} contract{pos.contracts !== 1 ? 's' : ''} · Entry {fmtUsd(pos.entryPrice)}
+          {pos.exitDate && <> · Closed {new Date(pos.exitDate).toLocaleDateString()}</>}
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label className={labelCls}>
+              Close Price ($)
+              <input type="number" step="any" min={0} placeholder="e.g. 1.85" value={exitPrice}
+                onChange={e => setExitPrice(e.target.value)} className={inputCls} />
+            </label>
+            <label className={labelCls}>
+              Realized P&L %
+              <input type="number" step="any" placeholder="e.g. 50" value={pnlPct}
+                onChange={e => setPnlPct(e.target.value)} className={inputCls} />
+              <span className="text-[10px] text-muted mt-0.5 block">% of max profit captured</span>
+            </label>
+          </div>
+          <label className={labelCls}>
+            Close Notes
+            <textarea rows={2} placeholder="Optional close notes…" value={closeNotes}
+              onChange={e => setCloseNotes(e.target.value)}
+              className={`${inputCls} resize-none`} />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
+          <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>
+          <button type="submit" className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold`}>Save Close Details</button>
+        </div>
+      </form>
+    </ModalOverlay>
   )
 }
 

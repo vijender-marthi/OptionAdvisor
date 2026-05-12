@@ -166,6 +166,8 @@ interface AppContextValue {
   watchlistMax: number
   addToWatchlist: (item: Omit<WatchlistItem, 'addedAt'>) => boolean
   removeFromWatchlist: (ticker: string) => Promise<void>
+  /** Remove a ticker from the regular watchlist AND day/swing watchlists in one call. */
+  removeFromAllWatchlists: (ticker: string) => void
   /** Replace notes for an existing watchlist symbol (persists via user-data save). */
   updateWatchlistNotes: (ticker: string, notes: string) => void
   isWatched: (ticker: string) => boolean
@@ -853,6 +855,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWatchlist(prev => prev.filter(w => w.ticker !== ticker))
   }, [])
 
+  const removeFromAllWatchlists = useCallback((ticker: string) => {
+    const norm = ticker.trim().toUpperCase()
+    setWatchlist(prev => prev.filter(w => w.ticker !== norm))
+    setDayTradeWatchlist(prev => prev.filter(t => t.toUpperCase() !== norm))
+    setSwingTradeWatchlist(prev => prev.filter(t => t.toUpperCase() !== norm))
+  }, [])
+
   const updateWatchlistNotes = useCallback((ticker: string, notes: string) => {
     const t = ticker.trim().toUpperCase()
     const trimmed = notes.trim()
@@ -1409,7 +1418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingTicker, pendingAnalysisOptions, requestAnalysis, clearPendingTicker,
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
       userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
-      watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, updateWatchlistNotes, isWatched, watchlistNotice, clearWatchlistNotice,
+      watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, removeFromAllWatchlists, updateWatchlistNotes, isWatched, watchlistNotice, clearWatchlistNotice,
       dayTradeWatchlist, setDayTradeWatchlist,
       swingTradeWatchlist, setSwingTradeWatchlist,
       dayTradeEngineUI, setDayTradeEngineUI,

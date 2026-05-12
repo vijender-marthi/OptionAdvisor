@@ -807,7 +807,7 @@ function MobileActionTray({
 
 export default function WatchlistXPage() {
   const routerNavigate = useNavigate()
-  const { requestAnalysis, removeFromWatchlist } = useApp()
+  const { requestAnalysis, removeFromAllWatchlists } = useApp()
   const [searchParams, setSearchParams] = useSearchParams()
   const [env, setEnv] = useState<ApiEnvelope<WatchlistXPayload> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1053,12 +1053,11 @@ export default function WatchlistXPage() {
     }
   }, [])
   const handleRemove = useCallback((row: WatchlistXRow) => {
-    if (!row.sources.includes('regular')) { setNotice({ tone: 'info', message: `${row.ticker} is only coming from Day/Swing sources. Unified-source removal is still a TODO.` }); return }
-    removeFromWatchlist(row.ticker)
+    removeFromAllWatchlists(row.ticker)
     setEnv(cur => cur && cur.data ? { ...cur, data: { ...cur.data, rows: cur.data.rows.filter(r => r.id !== row.id) } } : cur)
     setExpandedId(cur => (cur === row.id ? null : cur))
-    setNotice({ tone: 'success', message: row.sources.length > 1 ? `${row.ticker} was removed from Signal Feed but still exists in other engine sources.` : `${row.ticker} was removed from Signal Feed.` })
-  }, [removeFromWatchlist])
+    setNotice({ tone: 'success', message: `${row.ticker} removed from watchlist.` })
+  }, [removeFromAllWatchlists])
 
   return (
     <div className="watchlistx-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
