@@ -12,6 +12,7 @@ import {
   ChevronUp,
   EyeOff,
   Filter,
+  Info,
   LineChart as LineChartIcon,
   Plus,
   RefreshCw,
@@ -832,6 +833,7 @@ export default function WatchlistXPage() {
   const [showAddTicker, setShowAddTicker] = useState(false)
   const moreStatsRef = useRef<HTMLButtonElement>(null)
   const [ignoredData, setIgnoredData] = useState<IgnoredData>(loadIgnored)
+  const [showInfo, setShowInfo] = useState(false)
   const [showIgnored, setShowIgnored] = useState(false)
   const [onlyIgnored, setOnlyIgnored] = useState(false)
 
@@ -1074,8 +1076,17 @@ export default function WatchlistXPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Signal Feed</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
+            <div className="relative">
+              <button type="button" onClick={() => setShowInfo(!showInfo)} className="text-gray-500 hover:text-gray-300 transition-colors">
+                <Info size={16} />
+              </button>
+              {showInfo && (
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2.5 text-xs text-gray-600 dark:text-gray-400 shadow-lg">
+                  Card-based Signal Feed for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.
+                </div>
+              )}
+            </div>
           </div>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based Signal Feed for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className={`${getActionButtonClass('alert')} gap-2 rounded-full px-3 py-2 text-sm`}><AlertTriangle size={16} /> Alert Center</button>
