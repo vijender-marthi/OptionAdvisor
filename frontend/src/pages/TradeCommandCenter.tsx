@@ -804,7 +804,7 @@ export default function TradeCommandCenter() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr]">
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4">
                 {actionable.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                     No READY or TRADE signals match the current filters — widen engine/direction filters or wait for next scan cycle.
