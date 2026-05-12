@@ -314,7 +314,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     vwap = metrics.get("vwap")
     or_high = metrics.get("or_high")
     or_low = metrics.get("or_low")
-    or_breakout = metrics.get("or_breakout", "inside")
+    or_breakout  = metrics.get("or_breakout", "inside")
+    or_historical = metrics.get("or_historical", "contained")
     volume_spike = bool(metrics.get("volume_spike", False))
     momentum_pct = metrics.get("momentum_pct", 0)
     bidir = str(bias or "").lower()
@@ -510,11 +511,22 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             "condition": "Volume exceeds mid-session baseline",
         })
 
+    # When price historically broke out but has since retraced inside OR, flag it.
+    failed_breakout = (
+        or_historical == "broke_up"   and or_breakout == "inside" and bidir == "long"  or
+        or_historical == "broke_down" and or_breakout == "inside" and bidir == "short"
+    )
+
     return {
         "state": state,
         "summary": summary,
         "action": action,
         "avoid": avoid,
+        "failed_breakout_warning": (
+            "Price broke out of the Opening Range earlier this session but has since retraced inside. "
+            "Treat any re-entry with extra caution — failed breakout risk is elevated."
+            if failed_breakout else None
+        ),
         "pending_confirmations": confirmations,
         "current_price": last_price,
         "vwap": vwap,
@@ -604,11 +616,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     except (TypeError, ValueError):
         vwap_candidate = float("nan")
     vwap_last = _finite_price(vwap_candidate, last)
+    # Track whether VWAP fell back to last (meaning real VWAP was not computable).
+    _vwap_is_real = math.isfinite(vwap_candidate) and vwap_candidate > 0
 
     n_or = min(OR_MINUTES, len(session))
     or_seg = session.iloc[:n_or]
     or_high = float(or_seg["High"].max())
-    or_low = float(or_seg["Low"].min())
+    or_low  = float(or_seg["Low"].min())
+
+    # Track whether price REACHED outside the OR at any point this session
+    # (separate from the current end-of-session position).
+    session_high = float(session["High"].max())
+    session_low  = float(session["Low"].min())
+    or_was_broken_up   = session_high > or_high
+    or_was_broken_down = session_low  < or_low
 
     mom_bars = min(11, len(session) - 1)
     c0 = float(session["Close"].iloc[-mom_bars])
@@ -642,8 +663,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     v_last = float(vol_ser.iloc[-1])
     vol_spike = avg_vol > 0 and v_last >= VOL_SPIKE_RATIO * avg_vol
 
-    vwap_dist_pct = round((last / vwap_last - 1.0) * 100, 3) if vwap_last > 0 else 0.0
+    # Guard: vwap_last is always finite (falls back to last), but track unreliability.
+    vwap_dist_pct = round((last / vwap_last - 1.0) * 100, 3) if (math.isfinite(vwap_last) and vwap_last > 0) else 0.0
 
+    # Current price position vs OR bounds (end-of-session check).
     if last > or_high:
         or_state = "above"
     elif last < or_low:
@@ -651,10 +674,21 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     else:
         or_state = "inside"
 
+    # Historical OR breakout flag: did price REACH outside the OR at any point,
+    # even if it has since retraced back inside?
+    if or_was_broken_up:
+        or_historical = "broke_up"
+    elif or_was_broken_down:
+        or_historical = "broke_down"
+    else:
+        or_historical = "contained"
+
     bull = 0.0
     bear = 0.0
 
-    if last > vwap_last:
+    if not _vwap_is_real:
+        body.append("VWAP could not be computed (zero-volume session) — VWAP signals suppressed.")
+    elif last > vwap_last:
         bull += 2.0
         body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%).")
     elif last < vwap_last:
@@ -701,14 +735,37 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     rs_vs_qqq_pct = _rs_vs_qqq_pct(session, qqq_sess)
 
     # RS vs QQQ — scored bidirectionally; also logged as a reason.
+    # SPY/QQQ divergence guard: positive RS while BOTH indexes are down > 0.5%
+    # intraday may signal a short-squeeze / isolated move rather than genuine strength.
+    _both_indexes_down  = (spy_session_pct is not None and spy_session_pct <= -0.5) and \
+                          (qqq_session_pct is not None and qqq_session_pct <= -0.5)
+    _both_indexes_up    = (spy_session_pct is not None and spy_session_pct >= 0.5) and \
+                          (qqq_session_pct is not None and qqq_session_pct >= 0.5)
+
     if rs_vs_qqq_pct is not None:
         body.append(_rs_label(t, rs_vs_qqq_pct))
         if rs_vs_qqq_pct >= 0.5:
-            bull += 1.0
-            body.append(f"Strong RS vs QQQ (+{rs_vs_qqq_pct:.2f}%) adds bullish weight.")
+            if _both_indexes_down:
+                # Stock outperforming a falling market — cap the RS bonus (squeeze risk).
+                bull += 0.5
+                body.append(
+                    f"RS vs QQQ +{rs_vs_qqq_pct:.2f}% BUT both SPY and QQQ are down intraday "
+                    "— possible short-squeeze; RS bonus halved."
+                )
+            else:
+                bull += 1.0
+                body.append(f"Strong RS vs QQQ (+{rs_vs_qqq_pct:.2f}%) adds bullish weight.")
         elif rs_vs_qqq_pct <= -0.5:
-            bear += 1.0
-            body.append(f"Weak RS vs QQQ ({rs_vs_qqq_pct:.2f}%) adds bearish weight.")
+            if _both_indexes_up:
+                # Stock lagging a rising market — cap the RS penalty (sector rotation risk).
+                bear += 0.5
+                body.append(
+                    f"RS vs QQQ {rs_vs_qqq_pct:.2f}% BUT both SPY and QQQ are up intraday "
+                    "— possible sector rotation; RS penalty halved."
+                )
+            else:
+                bear += 1.0
+                body.append(f"Weak RS vs QQQ ({rs_vs_qqq_pct:.2f}%) adds bearish weight.")
 
     if spy_chg is not None:
         body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
@@ -875,7 +932,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
         "or_high": round(or_high, 4),
         "or_low": round(or_low, 4),
         "or_breakout": or_state,
+        "or_historical": or_historical,
         "or_minutes": OR_MINUTES,
+        "vwap_reliable": _vwap_is_real,
         "momentum_pct": momentum_pct,
         "volume_spike": vol_spike,
         "spy_change_pct": spy_chg,

@@ -12,12 +12,15 @@ This is the core systematic logic. Every trade candidate goes through:
 Only trades that pass ALL hard filters are returned.
 """
 
+import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from math import erf, log, sqrt
 from typing import Optional
 from analysis import MarketSignals, OptionLeg, TradeCandidate
+
+log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -287,6 +290,11 @@ def find_strike_by_delta(df: pd.DataFrame, target_delta_range: tuple,
         otm_df = df[df["strike"] <= price]
 
     if otm_df.empty:
+        log.debug(
+            "find_strike_by_delta: no %s strikes found for target_delta=%s price=%.2f "
+            "(chain has %d rows, none qualify as OTM)",
+            option_type, target_delta_range, price, len(df),
+        )
         return None
 
     best = otm_df.iloc[(otm_df["strike"] - target_strike).abs().argsort()[:1]]

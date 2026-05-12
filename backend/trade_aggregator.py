@@ -434,6 +434,8 @@ def _compute_ticker_engines(ticker: str) -> dict:
         )
         regular_payload.update(regular_norm)
 
+    cross_engine_conflict = _detect_cross_engine_conflict(day_scan, swing_scan)
+
     return {
         "day":                    day_payload,
         "swing":                  swing_payload,
@@ -441,6 +443,58 @@ def _compute_ticker_engines(ticker: str) -> dict:
         "regular_data":           regular_data,
         "day_metrics":            day_metrics,
         "swing_suggested_strategy": swing_scan.suggested_strategy if swing_scan else "",
+        "cross_engine_conflict":  cross_engine_conflict,
+    }
+
+
+def _detect_cross_engine_conflict(day_scan: Any, swing_scan: Any) -> Optional[dict]:
+    """
+    Detect when the day engine and swing engine have opposite directional biases
+    for the same ticker.  Returns a conflict descriptor or None when there is no
+    conflict (or either engine is unavailable / has no bias).
+
+    Conflict levels:
+      HARD  — opposite biases AND both engines are GO or stronger (clear contradiction)
+      SOFT  — opposite biases but at least one engine is WATCH or WAIT
+    """
+    if day_scan is None or swing_scan is None:
+        return None
+
+    day_bias   = str(getattr(day_scan,   "bias",   None) or "").lower()
+    swing_bias = str(getattr(swing_scan, "bias",   None) or "").lower()
+
+    if not day_bias or not swing_bias:
+        return None
+    if day_bias == swing_bias:
+        return None
+
+    # Opposite biases detected
+    day_verdict   = str(getattr(day_scan,   "verdict", "") or "").upper()
+    swing_verdict = str(getattr(swing_scan, "verdict", "") or "").upper()
+
+    _go_verdicts = {"STRONG GO", "STRONG-GO", "GO"}
+    both_active = day_verdict in _go_verdicts and swing_verdict in _go_verdicts
+    level = "HARD" if both_active else "SOFT"
+
+    msg = (
+        f"Day engine signals {day_bias.upper()} ({day_verdict}) while "
+        f"Swing engine signals {swing_bias.upper()} ({swing_verdict}). "
+        f"{'Both engines are active — trading both sides would result in opposing positions.' if both_active else 'One engine is not yet active — monitor before acting.'}"
+    )
+
+    log.warning(
+        "CROSS_ENGINE_CONFLICT ticker=%s day=%s(%s) swing=%s(%s) level=%s",
+        getattr(day_scan, "ticker", "?"),
+        day_bias, day_verdict, swing_bias, swing_verdict, level,
+    )
+
+    return {
+        "level":         level,
+        "day_bias":      day_bias,
+        "day_verdict":   day_verdict,
+        "swing_bias":    swing_bias,
+        "swing_verdict": swing_verdict,
+        "message":       msg,
     }
 
 

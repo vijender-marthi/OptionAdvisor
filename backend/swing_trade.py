@@ -50,24 +50,33 @@ STRONG_DIFF      = 4.0
 VIX_NO_GO        = 35.0
 VIX_CAUTION      = 25.0
 
-# RSI extremes → cap STRONG GO
-RSI_OVERBOUGHT   = 75.0
-RSI_OVERSOLD     = 25.0
+# RSI extremes → cap STRONG GO and downgrade verdict + decision layer
+# RSI_OVERBOUGHT / RSI_OVERSOLD are the HARD caps used consistently in both
+# the verdict layer (caps STRONG GO → WATCH) and the decision layer
+# (flags as is_extended → score penalty + WAIT_PULLBACK entry quality).
+# RSI_OB_WARN / RSI_OS_WARN are kept as SOFTER thresholds for confirmation
+# messages only — they must be <= RSI_OVERBOUGHT / >= RSI_OVERSOLD.
+RSI_OVERBOUGHT   = 73.0   # unified hard cap (verdict + decision layers)
+RSI_OVERSOLD     = 27.0   # unified hard cap (verdict + decision layers)
 
 # Decision layer: extension thresholds
 EXT_5D_WARN      = 8.0    # 5-day move (%) that flags extended
 EXT_5D_HARD      = 12.0   # 5-day move (%) that triggers AVOID_CHASE
 EXT_MA20_WARN    = 8.0    # % distance from MA20 that flags extended
-RSI_OB_WARN      = 72.0   # RSI threshold for overbought warning (softer than full cap)
-RSI_OS_WARN      = 28.0   # RSI threshold for oversold warning (softer than full cap)
+RSI_OB_WARN      = RSI_OVERBOUGHT   # kept for backward compat — same as hard cap
+RSI_OS_WARN      = RSI_OVERSOLD     # kept for backward compat — same as hard cap
 GAP_HARD         = 3.0    # today's gap % triggering LATE_ENTRY
 
 # Market ETFs — classified as context tickers, not normal stock picks
 _MARKET_ETFS: frozenset[str] = frozenset({"SPY", "QQQ", "IWM", "DIA"})
 
-# ── Module-level market-context cache (5-minute TTL) ──────────────────
+# ── Module-level market-context cache ─────────────────────────────────
+# During market hours SPY/QQQ can move meaningfully in minutes, so use a
+# tighter TTL (60s) to avoid stale context biasing back-to-back scans.
+# Off-hours the context is stable — 5 minutes is fine.
 _MKT_CACHE: dict[str, Any] = {}
-_MKT_CACHE_TTL = 300  # seconds
+_MKT_CACHE_TTL_MARKET = 60    # seconds during RTH
+_MKT_CACHE_TTL_OFF    = 300   # seconds off-hours
 
 # ── Per-ticker swing scan result cache ────────────────────────────────
 _SWING_SCAN_TTL_MARKET = 90    # seconds during market hours
@@ -223,8 +232,8 @@ def _base_risk_level(
     if vix_level is not None and vix_level >= 28:
         return "HIGH"
     # Extension on the active side
-    ext_long  = is_bullish  and (rsi_val > 75 or dist_ma20_pct > 12 or mom_5d_pct > 12)
-    ext_short = not is_bullish and (rsi_val < 25 or dist_ma20_pct < -12 or mom_5d_pct < -12)
+    ext_long  = is_bullish  and (rsi_val > RSI_OVERBOUGHT or dist_ma20_pct > 12 or mom_5d_pct > 12)
+    ext_short = not is_bullish and (rsi_val < RSI_OVERSOLD or dist_ma20_pct < -12 or mom_5d_pct < -12)
     if ext_long or ext_short:
         return "HIGH"
     if vix_level is not None and vix_level >= VIX_CAUTION:
@@ -294,10 +303,22 @@ def _get_market_context() -> tuple[str, str, str]:
     return spy_bias, qqq_bias, ctx
 
 
+def _mkt_cache_ttl() -> float:
+    """Return appropriate TTL: 60s during RTH, 300s off-hours."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZI
+    dt = _dt.now(tz=_ZI("America/New_York"))
+    if dt.weekday() >= 5:
+        return _MKT_CACHE_TTL_OFF
+    minutes = dt.hour * 60 + dt.minute
+    in_market = 9 * 60 + 30 <= minutes < 16 * 60
+    return _MKT_CACHE_TTL_MARKET if in_market else _MKT_CACHE_TTL_OFF
+
+
 def _get_market_context_cached() -> tuple[str, str, str]:
-    """5-minute cached wrapper around _get_market_context."""
+    """TTL-adaptive cached wrapper around _get_market_context (60s RTH, 300s off-hours)."""
     now = time.monotonic()
-    if _MKT_CACHE.get("ts", 0.0) + _MKT_CACHE_TTL > now:
+    if _MKT_CACHE.get("ts", 0.0) + _mkt_cache_ttl() > now:
         return (
             _MKT_CACHE["spy_bias"],
             _MKT_CACHE["qqq_bias"],
@@ -1626,6 +1647,19 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     ma50 = float(ma50_series.iloc[-1])
     last = float(close.iloc[-1])
 
+    # Guard: MA values must be finite and positive before any division.
+    # Insufficient data or all-NaN close series would produce NaN here.
+    if not (math.isfinite(ma20) and ma20 > 0):
+        raise ValueError(
+            f"MA20 is not finite for '{t}' — likely insufficient price history. "
+            f"Got ma20={ma20!r}."
+        )
+    if not (math.isfinite(ma50) and ma50 > 0):
+        raise ValueError(
+            f"MA50 is not finite for '{t}' — likely insufficient price history. "
+            f"Got ma50={ma50!r}."
+        )
+
     rsi_ser = _rsi(close)
     rsi_val = float(rsi_ser.iloc[-1])
 
@@ -1645,9 +1679,9 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     vix_level            = _vix_last(force_refresh=force_refresh)
     session_date         = str(raw.index[-1].date()) if hasattr(raw.index[-1], "date") else str(raw.index[-1])
 
-    # Distance metrics
-    dist_ma20_pct = round((last / ma20 - 1.0) * 100, 2) if ma20 > 0 else 0.0
-    dist_ma50_pct = round((last / ma50 - 1.0) * 100, 2) if ma50 > 0 else 0.0
+    # Distance metrics (MA guards above already ensured ma20/ma50 are finite and > 0)
+    dist_ma20_pct = round((last / ma20 - 1.0) * 100, 2)
+    dist_ma50_pct = round((last / ma50 - 1.0) * 100, 2)
 
     idx_last = raw.index[-1]
     asof_date = idx_last.date() if hasattr(idx_last, "date") else pd.Timestamp(idx_last).date()

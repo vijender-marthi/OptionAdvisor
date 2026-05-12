@@ -146,6 +146,25 @@ def _execution_bias_regular(rec: Optional[dict]) -> str:
 # Day engine normalizer
 # ---------------------------------------------------------------------------
 
+def _day_score_to_norm(raw: float) -> int:
+    """
+    Map raw day bull/bear score (0–~9.5) to 0-100 anchored on engine thresholds:
+      GO_THRESHOLD  = 4.5  →  ~60
+      STRONG_BULL   = 7.0  →  ~85
+      Max practical = 9.5  → 100
+
+    VIX thresholds differ intentionally across engines:
+      Day:   VIX_NO_GO=40, VIX_CAUTION=30  (intraday — same-day close)
+      Swing: VIX_NO_GO=35, VIX_CAUTION=25  (overnight — higher overnight risk)
+    These asymmetric gates are correct; do not "unify" them.
+    """
+    if raw >= 7.0:
+        return min(100, int(round(85 + (raw - 7.0) / 2.5 * 15)))
+    if raw >= 4.5:
+        return int(round(60 + (raw - 4.5) / 2.5 * 25))
+    return int(round(raw / 4.5 * 60))
+
+
 def normalize_day_score(
     *,
     bull_score: float,
@@ -159,7 +178,7 @@ def normalize_day_score(
 ) -> dict:
     """Normalize a Day trade engine result."""
     raw = max(float(bull_score or 0.0), float(bear_score or 0.0))
-    norm_score = min(int(round(raw * 10)), 100)
+    norm_score = _day_score_to_norm(raw)
 
     vix_in = float(metrics.get("vix") or 0) or None
 
@@ -198,6 +217,8 @@ def normalize_day_score(
 def _day_verdict_to_state(verdict: str, vix: Optional[float]) -> str:
     v = verdict.upper().replace("_", "-").replace(" ", "-")
 
+    # Day engine intentionally uses higher VIX gates than swing (40/30 vs 35/25)
+    # because intraday trades close same day — overnight gap risk is absent.
     if vix is not None and vix >= 40:
         return "AVOID"
 
@@ -220,6 +241,22 @@ def _day_verdict_to_state(verdict: str, vix: Optional[float]) -> str:
 # Swing engine normalizer
 # ---------------------------------------------------------------------------
 
+def _swing_score_to_norm(raw: float) -> int:
+    """
+    Map swing trade_quality_score (0–10, clamped by engine) to 0-100 anchored on thresholds:
+      GO_THRESHOLD     = 5.5  →  ~60
+      STRONG_THRESHOLD = 8.0  →  ~85
+      Max              = 10   → 100
+
+    Comparable to _day_score_to_norm: both engines' GO signals map to ~60.
+    """
+    if raw >= 8.0:
+        return min(100, int(round(85 + (raw - 8.0) / 2.0 * 15)))
+    if raw >= 5.5:
+        return int(round(60 + (raw - 5.5) / 2.5 * 25))
+    return int(round(raw / 5.5 * 60))
+
+
 def normalize_swing_score(
     *,
     trade_quality_score: Optional[float],
@@ -237,7 +274,7 @@ def normalize_swing_score(
 ) -> dict:
     """Normalize a Swing trade engine result."""
     raw = float(trade_quality_score or 0.0)
-    norm_score = min(int(round(raw * 10)), 100)
+    norm_score = _swing_score_to_norm(raw)
 
     _metrics = metrics or {}
     vix_in = float(_metrics.get("vix") or 0) or None
@@ -397,3 +434,49 @@ def _regular_score_to_state(top_candidate: Optional[dict], total_score: float) -
     if total_score >= 15:
         return "WAIT"
     return "NO-GO"
+
+
+# ---------------------------------------------------------------------------
+# Cross-engine confidence block normalizer
+# ---------------------------------------------------------------------------
+
+def normalize_confidence_block(engine: str, raw_conf: Optional[dict]) -> dict:
+    """
+    Return a unified confidence structure with consistent field names across engines.
+
+    Day engine produces:   trend_strength, breakout_quality, volume_confirmation,
+                           market_alignment, risk
+    Swing engine produces: trend_quality, momentum_health, volume_participation, risk
+
+    This function maps both to a common schema so the frontend can use one layout.
+    Missing fields from either engine are filled with None.
+    """
+    c = raw_conf or {}
+    if engine == "day":
+        return {
+            "trend_strength":       c.get("trend_strength"),
+            "trend_quality":        c.get("trend_strength"),        # alias
+            "breakout_quality":     c.get("breakout_quality"),
+            "volume_confirmation":  c.get("volume_confirmation"),
+            "volume_participation": c.get("volume_confirmation"),   # alias
+            "market_alignment":     c.get("market_alignment"),
+            "momentum_health":      None,                           # day engine N/A
+            "risk":                 c.get("risk"),
+        }
+    if engine == "swing":
+        return {
+            "trend_strength":       c.get("trend_quality"),         # alias
+            "trend_quality":        c.get("trend_quality"),
+            "breakout_quality":     None,                           # swing engine N/A
+            "volume_confirmation":  c.get("volume_participation"),  # alias
+            "volume_participation": c.get("volume_participation"),
+            "market_alignment":     None,                           # swing engine N/A
+            "momentum_health":      c.get("momentum_health"),
+            "risk":                 c.get("risk"),
+        }
+    # Regular engine has no confidence block
+    return {k: None for k in (
+        "trend_strength", "trend_quality", "breakout_quality",
+        "volume_confirmation", "volume_participation",
+        "market_alignment", "momentum_health", "risk",
+    )}
