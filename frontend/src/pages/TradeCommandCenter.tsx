@@ -451,7 +451,7 @@ export default function TradeCommandCenter() {
   const [showAllRecommendations, setShowAllRecommendations] = useState(false)
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null)
   const [actionNotice, setActionNotice] = useState<{ tone: 'success' | 'warning' | 'info'; text: string } | null>(null)
-  const [expandedEngine, setExpandedEngine] = useState<string | null>(null)
+  const [expandedEngines, setExpandedEngines] = useState<Set<string>>(new Set())
 
   // Stale-load guard: React StrictMode double-fires effects in dev; without this the page
   // makes two identical backend calls on mount. The counter lets us discard the response
@@ -650,13 +650,29 @@ export default function TradeCommandCenter() {
                    const confColor = readinessColor(confPct)
                    const sigCount = summaryNumber(card.signal_count)
                    const engKey = String(card.engine_type || '').toLowerCase()
-                   const isExpanded = expandedEngine === engKey
+                   const isExpanded = expandedEngines.has(engKey)
                    const detailRoute = topTicker ? routeForEngine(engKey, topTicker) : null
+
+                   const engineAccent = engKey === 'day' ? 'text-orange-500 border-orange-500/30 bg-orange-50 dark:bg-orange-950/20' :
+                     engKey === 'swing' ? 'text-violet-500 border-violet-500/30 bg-violet-50 dark:bg-violet-950/20' :
+                     'text-teal-500 border-teal-500/30 bg-teal-50 dark:bg-teal-950/20'
+                   const buttonAccent = engKey === 'day' ? 'bg-orange-600 hover:bg-orange-500' :
+                     engKey === 'swing' ? 'bg-violet-600 hover:bg-violet-500' :
+                     'bg-teal-600 hover:bg-teal-500'
+
+                   function qualityColor(v: string): string {
+                     const u = v.toUpperCase()
+                     if (u === 'GOOD' || u === 'READY' || u === 'HIGH') return 'text-green-600 dark:text-green-400'
+                     if (u === 'WATCH' || u === 'MEDIUM' || u === 'FAIR') return 'text-amber-600 dark:text-amber-400'
+                     if (u === 'AVOID' || u === 'WEAK' || u === 'LOW' || u === 'WAIT') return 'text-red-600 dark:text-red-400'
+                     return 'text-slate-900 dark:text-white'
+                   }
+
                    return (
                       <div key={engKey}>
-                        <button type="button" onClick={() => setExpandedEngine(isExpanded ? null : engKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <button type="button" onClick={() => setExpandedEngines(prev => { const next = new Set(prev); isExpanded ? next.delete(engKey) : next.add(engKey); return next })} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                           <div className="flex shrink-0 items-center gap-2 min-w-[140px]">
-                            <span className="text-sm font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
+                            <span className={`text-sm font-bold ${engKey === 'day' ? 'text-orange-600 dark:text-orange-400' : engKey === 'swing' ? 'text-violet-600 dark:text-violet-400' : 'text-teal-600 dark:text-teal-400'}`}>{String(card.engine_type || '').toUpperCase()}</span>
                             <span className="text-[10px] text-slate-500 whitespace-nowrap">{card.timeframe || '—'}</span>
                           </div>
                           <div className="flex items-center gap-2 min-w-[80px]">
@@ -681,19 +697,19 @@ export default function TradeCommandCenter() {
                           </span>
                         </button>
                         {isExpanded && (
-                          <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
+                          <div className={`rounded-b-xl border-x border-b px-4 pb-4 pt-2 -mt-1 space-y-3 ${engineAccent}`}>
                             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                               {card.setup_quality ? (
-                                <div><span className="text-slate-500">Setup Quality</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.setup_quality}</span></div>
+                                <div><span className="text-slate-500">Setup Quality</span><span className={`ml-2 font-medium ${qualityColor(card.setup_quality)}`}>{card.setup_quality}</span></div>
                               ) : null}
                               {card.execution_readiness ? (
-                                <div><span className="text-slate-500">Execution Readiness</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.execution_readiness}</span></div>
+                                <div><span className="text-slate-500">Execution Readiness</span><span className={`ml-2 font-medium ${qualityColor(card.execution_readiness)}`}>{card.execution_readiness}</span></div>
                               ) : null}
                               {card.final_decision ? (
-                                <div><span className="text-slate-500">Final Decision</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.final_decision}</span></div>
+                                <div><span className="text-slate-500">Final Decision</span><span className={`ml-2 font-medium ${qualityColor(card.final_decision)}`}>{card.final_decision}</span></div>
                               ) : null}
                               {card.risk_state ? (
-                                <div><span className="text-slate-500">Risk State</span><span className="ml-2 font-medium text-slate-900 dark:text-white">{card.risk_state}</span></div>
+                                <div><span className="text-slate-500">Risk State</span><span className={`ml-2 font-medium ${qualityColor(card.risk_state)}`}>{card.risk_state}</span></div>
                               ) : null}
                             </div>
                             {card.reason || card.summary ? (
@@ -706,7 +722,7 @@ export default function TradeCommandCenter() {
                               <p className="text-[10px] text-amber-700 dark:text-amber-200/70 font-medium">Waiting: {card.missing_confirmations.join(' · ')}</p>
                             ) : null}
                             {card.explanation && Object.keys(card.explanation).length > 0 ? (
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/30 px-3 py-2 space-y-1">
+                              <div className="rounded-lg border border-slate-200 dark:border-white/[0.06] bg-white/50 dark:bg-slate-800/40 px-3 py-2 space-y-1">
                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">AI Explanation</span>
                                 {Object.entries(card.explanation).map(([k, v]) => (
                                   <p key={k} className="text-xs text-slate-700 dark:text-slate-300"><span className="font-medium capitalize">{k.replace(/_/g, ' ')}:</span> {v}</p>
@@ -714,7 +730,7 @@ export default function TradeCommandCenter() {
                               </div>
                             ) : null}
                             {detailRoute ? (
-                              <button type="button" onClick={() => navigate(detailRoute)} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
+                              <button type="button" onClick={() => navigate(detailRoute)} className={`inline-flex items-center gap-1.5 rounded-lg text-white font-semibold px-3 py-2 text-xs transition-colors ${buttonAccent}`}>
                                 Open {String(card.engine_type || '').toUpperCase()} Engine
                                 <ArrowRight size={14} />
                               </button>
