@@ -1053,21 +1053,38 @@ export default function TradeCommandCenter() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</h2>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
-              <ChartShell title="SPY vs QQQ Trend Strength" subtitle="Lightweight trend conviction view from the command-center payload.">
-                <div className="h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={charts?.trend_strength ?? []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="label" stroke="#6b7280" />
-                      <YAxis stroke="#6b7280" domain={[0, 100]} />
-                      <Tooltip />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                        {(charts?.trend_strength ?? []).map((entry, index) => (
-                          <Cell key={`${entry.label}-${index}`} fill={toneFromText(String(entry.tone ?? 'neutral')) === 'bullish' ? '#34d399' : '#60a5fa'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+              <ChartShell title="SPY vs QQQ Trend Strength" subtitle="Trend conviction and direction for the two major indices.">
+                <div className="space-y-4">
+                  {(charts?.trend_strength ?? []).map(entry => {
+                    const val = Math.min(100, Math.max(0, entry.value))
+                    const isBullish = toneFromText(String(entry.tone ?? 'neutral')) === 'bullish'
+                    const fillColor = isBullish ? '#34d399' : '#60a5fa'
+                    const bgColor = isBullish ? 'bg-emerald-500/10' : 'bg-blue-500/10'
+                    const textColor = isBullish ? 'text-emerald-400' : 'text-blue-400'
+                    const label = entry.tone ? String(entry.tone).toUpperCase() : isBullish ? 'BULLISH' : 'BEARISH'
+                    return (
+                      <div key={entry.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-slate-900 dark:text-white">{entry.label}</span>
+                          <span className={`text-xs font-bold ${textColor}`}>{label}</span>
+                        </div>
+                        <div className="relative h-8 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          <div className="absolute inset-0 flex items-center justify-center z-10">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white drop-shadow-sm">{val}/100</span>
+                          </div>
+                          <div className="h-full rounded-lg transition-all duration-500" style={{ width: `${val}%`, backgroundColor: fillColor, opacity: 0.75 }} />
+                        </div>
+                        <div className="flex justify-between mt-0.5 text-[10px] text-slate-500">
+                          <span>Bearish</span>
+                          <span>Neutral</span>
+                          <span>Bullish</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {(charts?.trend_strength ?? []).length === 0 && (
+                    <div className="h-20 flex items-center justify-center text-xs text-slate-500">No trend data available.</div>
+                  )}
                 </div>
               </ChartShell>
 
