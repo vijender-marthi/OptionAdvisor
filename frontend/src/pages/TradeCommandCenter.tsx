@@ -670,30 +670,30 @@ export default function TradeCommandCenter() {
 
                    return (
                       <div key={engKey}>
-                        <button type="button" onClick={() => setExpandedEngines(prev => { const next = new Set(prev); isExpanded ? next.delete(engKey) : next.add(engKey); return next })} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex shrink-0 items-center gap-2 min-w-[140px]">
-                            <span className={`text-sm font-bold ${engKey === 'day' ? 'text-orange-600 dark:text-orange-400' : engKey === 'swing' ? 'text-violet-600 dark:text-violet-400' : 'text-teal-600 dark:text-teal-400'}`}>{String(card.engine_type || '').toUpperCase()}</span>
-                            <span className="text-[10px] text-slate-500 whitespace-nowrap">{card.timeframe || '—'}</span>
+                         <button type="button" onClick={() => setExpandedEngines(prev => { const next = new Set(prev); isExpanded ? next.delete(engKey) : next.add(engKey); return next })} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs sm:text-sm font-bold ${engKey === 'day' ? 'text-orange-600 dark:text-orange-400' : engKey === 'swing' ? 'text-violet-600 dark:text-violet-400' : 'text-teal-600 dark:text-teal-400'}`}>{String(card.engine_type || '').toUpperCase()}</span>
+                            <span className="text-[9px] sm:text-[10px] text-slate-500 whitespace-nowrap">{card.timeframe || '—'}</span>
                           </div>
-                          <div className="flex items-center gap-2 min-w-[80px]">
-                            <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-slate-700/30">
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-1.5 w-12 sm:w-16 rounded-full bg-slate-100 dark:bg-slate-700/30">
                               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }} />
                             </div>
-                            <span className="text-[11px] font-bold text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                            <span className="text-[11px] text-slate-400 whitespace-nowrap">{card.market_bias || '—'}</span>
+                          <div className="flex flex-wrap items-center gap-1 min-w-0">
+                            <span className="text-[10px] sm:text-[11px] text-slate-400 whitespace-nowrap">{card.market_bias || '—'}</span>
                             <RiskBadge risk={String(card.risk_level || 'Unknown')} />
                             <SignalQualityBadge quality={card.signal_quality || ''} />
                             <ExecTimingBadge timing={card.execution_timing || ''} />
                             <RiskCatBadge category={card.risk_category || ''} />
-                            <span className="text-[11px] text-slate-500 whitespace-nowrap">{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
+                            <span className="text-[10px] sm:text-[11px] text-slate-500 whitespace-nowrap">{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
                           </div>
                           {topTicker ? (
-                            <span className="ml-auto shrink-0 text-xs font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span>
+                            <span className="ml-auto shrink-0 text-[10px] sm:text-xs font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span>
                           ) : null}
                           <span className="shrink-0 text-slate-400 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                            <ChevronDown size={16} />
+                            <ChevronDown size={14} />
                           </span>
                         </button>
                         {isExpanded && (
@@ -749,7 +749,7 @@ export default function TradeCommandCenter() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <BriefcaseBusiness size={18} className="text-emerald-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">READY / TRADE Setups — Confirmed Edge + Timing</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Setups — Ready to Trade</h2>
               </div>
               <button
                 type="button"
@@ -804,7 +804,7 @@ export default function TradeCommandCenter() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr] items-start">
-              <div className="grid gap-4">
+                <div className="grid gap-2">
                 {actionable.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                     No READY or TRADE signals match the current filters — widen engine/direction filters or wait for next scan cycle.
@@ -813,123 +813,114 @@ export default function TradeCommandCenter() {
                   actionable.map(rec => {
                     const expanded = expandedOpportunityId === rec.id
                     const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
+                    const recKey = rec.id
                     return (
-                      <div key={rec.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <EngineBadge engine={rec.engine_type} />
-                              <div className="flex items-center gap-1">
-                                <SignalQualityBadge quality={rec.signal_quality || ''} />
-                                <ExecTimingBadge timing={rec.execution_timing || ''} />
-                                <RiskCatBadge category={rec.risk_category || ''} />
-                              </div>
+                      <div key={recKey}>
+                        <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                            <EngineBadge engine={rec.engine_type} />
+                            <SignalQualityBadge quality={rec.signal_quality || ''} />
+                            <ExecTimingBadge timing={rec.execution_timing || ''} />
+                            <RiskCatBadge category={rec.risk_category || ''} />
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="text-right">
+                              <div className="text-[10px] uppercase tracking-wide text-slate-500">Signal</div>
+                              <div className="text-xs font-semibold text-slate-900 dark:text-white">{String(rec.display_confidence || rec.confidence || '—')}</div>
                             </div>
-                            <div className="mt-2 text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
+                            <span className="text-slate-400 transition-transform duration-200" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                              <ChevronDown size={16} />
+                            </span>
+                          </div>
+                        </button>
+                        {expanded && (
+                          <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
+                            <div className="text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
                             <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Signal Strength</div>
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white" title={rec.risk_reason || ''}>{String(rec.display_confidence || rec.confidence || '—')}</div>
-                          </div>
-                        </div>
 
-                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Regime Bias</div>
-                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
-                          </div>
-                            <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry Timing</div>
-                              <div className="mt-1"><ExecTimingBadge timing={String(rec.execution_timing || rec.execution_readiness || '—')} /></div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Regime Bias</div>
+                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
+                              </div>
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry Timing</div>
+                                <div className="mt-1"><ExecTimingBadge timing={String(rec.execution_timing || rec.execution_readiness || '—')} /></div>
+                              </div>
                             </div>
-                        </div>
 
-                        {(rec.execution_fields && rec.execution_fields.length > 0) ? (
-                          <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                            {rec.execution_fields.map((ef: { label: string; value: string }, i: number) => (
-                              <div key={i} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2 min-w-[100px] flex-1">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">{ef.label}</div>
-                                <div className="mt-1 text-slate-900 dark:text-slate-100 font-medium">{ef.value}</div>
+                            {(rec.execution_fields && rec.execution_fields.length > 0) ? (
+                              <div className="flex flex-wrap gap-2 text-sm">
+                                {rec.execution_fields.map((ef: { label: string; value: string }, i: number) => (
+                                  <div key={i} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2 min-w-[100px] flex-1">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">{ef.label}</div>
+                                    <div className="mt-1 text-slate-900 dark:text-slate-100 font-medium">{ef.value}</div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        ) : (rec.entry_zone || rec.target || rec.stop_loss) ? (
-                          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                            {rec.entry_zone ? (
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
-                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone}</div>
+                            ) : (rec.entry_zone || rec.target || rec.stop_loss) ? (
+                              <div className="grid grid-cols-3 gap-3 text-sm">
+                                {rec.entry_zone ? (
+                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
+                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone}</div>
+                                  </div>
+                                ) : null}
+                                {rec.target ? (
+                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
+                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target}</div>
+                                  </div>
+                                ) : null}
+                                {rec.stop_loss ? (
+                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
+                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss}</div>
+                                  </div>
+                                ) : null}
                               </div>
                             ) : null}
-                            {rec.target ? (
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
-                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target}</div>
-                              </div>
-                            ) : null}
-                            {rec.stop_loss ? (
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
-                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss}</div>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
 
-                        {rec.explanation?.summary ? (
-                          <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.explanation.summary}</p>
-                        ) : (
-                          <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.reason || 'No reason from API.'}</p>
-                        )}
-                        {rec.explanation?.recommended_action ? (
-                          <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-1'}`}>
-                            {rec.explanation.recommended_action}
-                          </p>
-                        ) : (
-                          <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-2'}`}>
-                            {rec.recommended_action || rec.action_label || 'Verify entry trigger, stop, and target before sizing in.'}
-                          </p>
-                        )}
-                        {rec.risk_reason ? (
-                          <p className="mt-1 text-xs text-amber-600/80 dark:text-amber-300/70 italic" title="Risk reason">{rec.risk_reason}</p>
-                        ) : null}
-                        {(rec.engine_type || '').toLowerCase() === 'day' && rec.option_risk_context?.option_execution_warning ? (
-                          <div className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/15 dark:text-amber-200/90">
-                            <span className="font-semibold">Option execution:</span> {rec.option_risk_context.option_execution_warning}
-                          </div>
-                        ) : null}
-                        {rec.missing_confirmations && rec.missing_confirmations.length > 0 ? (
-                          <p className={`mt-2 text-xs ${(rec.engine_type || '').toLowerCase() === 'day' ? 'text-orange-700/90 dark:text-orange-200/90' : 'text-amber-700/90 dark:text-amber-200/90'} ${expanded ? '' : 'line-clamp-1'}`}>
-                            {(rec.engine_type || '').toLowerCase() === 'day'
-                              ? `WAIT — confirming: ${rec.missing_confirmations.slice(0, 2).join(', ')}${rec.missing_confirmations.length > 2 ? '…' : ''} before entry is valid.`
-                              : `PENDING — needs: ${rec.missing_confirmations.join(' · ')} to align before acting.`}
-                          </p>
-                        ) : null}
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button type="button" className="btn btn-primary gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleAddToPositions(rec)}>
-                            Add to Positions
-                          </button>
-                          <button type="button" className="btn btn-warning gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleCreateAlert(rec.ticker)}>
-                            Create Alert
-                          </button>
-                          <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => navigate(detailsRoute)}>
-                            View Details
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline gap-1 rounded-lg px-2 py-1 text-xs"
-                            onClick={() => setExpandedOpportunityId(expanded ? null : rec.id)}
-                          >
-                            {expanded ? (
-                              <span className="inline-flex items-center gap-1"><ChevronUp size={14} /> Less</span>
+                            {rec.explanation?.summary ? (
+                              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{rec.explanation.summary}</p>
                             ) : (
-                              <span className="inline-flex items-center gap-1"><ChevronDown size={14} /> More</span>
+                              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</p>
                             )}
-                          </button>
-                        </div>
+                            {rec.explanation?.recommended_action ? (
+                              <p className="text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90">{rec.explanation.recommended_action}</p>
+                            ) : (
+                              <p className="text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90">{rec.recommended_action || rec.action_label || 'Verify entry trigger, stop, and target before sizing in.'}</p>
+                            )}
+                            {rec.risk_reason ? (
+                              <p className="text-xs text-amber-600/80 dark:text-amber-300/70 italic">{rec.risk_reason}</p>
+                            ) : null}
+                            {(rec.engine_type || '').toLowerCase() === 'day' && rec.option_risk_context?.option_execution_warning ? (
+                              <div className="rounded-lg border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/15 dark:text-amber-200/90">
+                                <span className="font-semibold">Option execution:</span> {rec.option_risk_context.option_execution_warning}
+                              </div>
+                            ) : null}
+                            {rec.missing_confirmations && rec.missing_confirmations.length > 0 ? (
+                              <p className={`text-xs ${(rec.engine_type || '').toLowerCase() === 'day' ? 'text-orange-700/90 dark:text-orange-200/90' : 'text-amber-700/90 dark:text-amber-200/90'}`}>
+                                {(rec.engine_type || '').toLowerCase() === 'day'
+                                  ? `WAIT — confirming: ${rec.missing_confirmations.slice(0, 2).join(', ')}${rec.missing_confirmations.length > 2 ? '…' : ''} before entry is valid.`
+                                  : `PENDING — needs: ${rec.missing_confirmations.join(' · ')} to align before acting.`}
+                              </p>
+                            ) : null}
+
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-white/[0.05]">
+                              <button type="button" className="btn btn-primary gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleAddToPositions(rec)}>
+                                Add to Positions
+                              </button>
+                              <button type="button" className="btn btn-warning gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleCreateAlert(rec.ticker)}>
+                                Create Alert
+                              </button>
+                              <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => navigate(detailsRoute)}>
+                                View Details
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })
