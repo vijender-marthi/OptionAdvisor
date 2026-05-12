@@ -320,6 +320,10 @@ interface FormState {
   notes: string
   legStrikes: string[]
   legPremiums: string[]
+  target1: string
+  target2: string
+  breakout: string
+  stopLoss: string
 }
 
 function emptyForm(): FormState {
@@ -333,6 +337,10 @@ function emptyForm(): FormState {
     notes: '',
     legStrikes: ['', '', '', ''],
     legPremiums: ['', '', '', ''],
+    target1: '',
+    target2: '',
+    breakout: '',
+    stopLoss: '',
   }
 }
 
@@ -471,6 +479,32 @@ function PositionFormFields({
         </>
       )}
 
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelCls}>Target 1
+            <input value={form.target1} onChange={e => onChange({ target1: e.target.value })} placeholder="e.g. 225"
+              className={inputCls} />
+          </label>
+        </div>
+        <div>
+          <label className={labelCls}>Target 2
+            <input value={form.target2} onChange={e => onChange({ target2: e.target.value })} placeholder="e.g. 240"
+              className={inputCls} />
+          </label>
+        </div>
+        <div>
+          <label className={labelCls}>Breakout
+            <input value={form.breakout} onChange={e => onChange({ breakout: e.target.value })} placeholder="e.g. 215"
+              className={inputCls} />
+          </label>
+        </div>
+        <div>
+          <label className={labelCls}>Stop Loss
+            <input value={form.stopLoss} onChange={e => onChange({ stopLoss: e.target.value })} placeholder="e.g. 195"
+              className={inputCls} />
+          </label>
+        </div>
+      </div>
       <div>
         <label className={labelCls}>Notes
           <textarea value={form.notes} onChange={e => onChange({ notes: e.target.value })} rows={2}
@@ -1836,6 +1870,10 @@ function EditPositionModal({
       notes: pos.notes ?? '',
       legStrikes: strikes,
       legPremiums: premiums,
+      target1: pos.target1 != null ? String(pos.target1) : '',
+      target2: pos.target2 != null ? String(pos.target2) : '',
+      breakout: pos.breakout != null ? String(pos.breakout) : '',
+      stopLoss: pos.stopLoss != null ? String(pos.stopLoss) : '',
     }
   })
 
@@ -1914,6 +1952,10 @@ function EditPositionModal({
         half_kelly_fraction: pos.half_kelly_fraction,
         edge_ratio: pos.edge_ratio,
         account_size_at_entry: pos.account_size_at_entry,
+        target1: form.target1 !== '' ? parseFloat(form.target1) : undefined,
+        target2: form.target2 !== '' ? parseFloat(form.target2) : undefined,
+        breakout: form.breakout !== '' ? parseFloat(form.breakout) : undefined,
+        stopLoss: form.stopLoss !== '' ? parseFloat(form.stopLoss) : undefined,
         ...closeDetails,
       })
       return
@@ -1964,6 +2006,10 @@ function EditPositionModal({
       edge_ratio: pos.edge_ratio,
       account_size_at_entry: pos.account_size_at_entry,
       notes: form.notes.trim() || undefined,
+      target1: form.target1 !== '' ? parseFloat(form.target1) : undefined,
+      target2: form.target2 !== '' ? parseFloat(form.target2) : undefined,
+      breakout: form.breakout !== '' ? parseFloat(form.breakout) : undefined,
+      stopLoss: form.stopLoss !== '' ? parseFloat(form.stopLoss) : undefined,
       ...closeDetails,
     })
   }

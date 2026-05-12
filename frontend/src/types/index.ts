@@ -309,6 +309,12 @@ export interface PortfolioPosition {
   close_notes?: string          // close-specific notes
   pnl_overridden?: boolean      // whether P&L was manually overridden
   pnl_override_reason?: string  // why P&L was overridden
+
+  // Execution map
+  target1?: number        // first profit target price
+  target2?: number        // second profit target price
+  breakout?: number       // breakout trigger level
+  stopLoss?: number       // stop loss level
 }
 
 export const EXIT_REASON_OPTIONS = [
