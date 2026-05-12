@@ -255,6 +255,10 @@ class AnalyzeResponse(BaseModel):
     signal_quality: str = ""
     execution_timing: str = ""
     risk_category: str = ""
+    explanation: dict = Field(default_factory=dict)
+    risk_reason: str = ""
+    display_confidence: int = 0
+    execution_fields: list[dict] = Field(default_factory=list)
 
 
 class BacktestRequest(BaseModel):
@@ -292,6 +296,12 @@ class DayTradeResponse(BaseModel):
     signal_quality: str = ""
     execution_timing: str = ""
     risk_category: str = ""
+    explanation: dict = Field(default_factory=dict)
+    risk_reason: str = ""
+    display_confidence: int = 0
+    execution_fields: list[dict] = Field(default_factory=list)
+    entry_guidance: dict = Field(default_factory=dict)
+    option_risk_context: dict = Field(default_factory=dict)
 
 
 class SwingTradeRequest(BaseModel):
@@ -333,6 +343,13 @@ class SwingTradeResponse(BaseModel):
     signal_quality:          str           = ""
     execution_timing:        str           = ""
     risk_category:           str           = ""
+    expected_holding_period: str           = ""
+    recommended_contract_duration: str     = ""
+    explanation: dict = Field(default_factory=dict)
+    risk_reason: str = ""
+    display_confidence: int = 0
+    execution_fields: list[dict] = Field(default_factory=list)
+    entry_guidance: dict = Field(default_factory=dict)
 
 
 class ActiveTradeEnterRequest(BaseModel):

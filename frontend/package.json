@@ -8,7 +8,11 @@
     "test:backend": "../backend/test.sh",
     "test": "npm run test:backend && tsc --noEmit",
     "build": "npm run test:backend && tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate:engine": "cd ../backend && python3 tests/run_engine_regression.py",
+    "validate:ui": "tsc --noEmit",
+    "validate": "npm run validate:engine && npm run validate:ui",
+    "validate:full": "npm run validate:engine && npm run test:backend && tsc --noEmit && vite build"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",

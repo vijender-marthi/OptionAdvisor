@@ -111,6 +111,10 @@ export interface ResolvedTradeDecision {
   signal_quality: string
   execution_timing: string
   risk_category: string
+  explanation: Record<string, string>
+  risk_reason: string
+  display_confidence: number
+  execution_fields: Array<{ label: string; value: string }>
 }
 
 export interface OptionRow {
@@ -182,7 +186,6 @@ export type Page =
   | 'watchlist'
   | 'portfolio'
   | 'help'
-  | 'trading-glossary'
   | 'ai-stocks'
   | 'q-radar'
   | 'trade-signals'
@@ -199,7 +202,9 @@ export type Page =
   | 'swing-trade-watchlist'
   | 'forgot-password'
   | 'reset-password'
+  | 'trading-glossary'
   | 'activate'
+  | 'my-tickers'
 
 export type UserRole = 'admin' | 'user' | 'finance'
 
@@ -294,12 +299,43 @@ export interface PortfolioPosition {
   edge_ratio?: number            // EV / max_loss at entry
   capital_at_risk?: number       // contracts × max_loss × 100 (actual $ at risk)
   account_size_at_entry?: number // account size when position was added
+
+  // Close details
+  exit_price?: number           // exit price per share/contract
+  exit_debit_credit?: number    // exit debit/credit per share
+  realized_pnl?: number         // realized P&L in $
+  realized_pnl_percent?: number // realized P&L %
+  exit_reason?: string          // reason for exit
+  close_notes?: string          // close-specific notes
+  pnl_overridden?: boolean      // whether P&L was manually overridden
+  pnl_override_reason?: string  // why P&L was overridden
 }
 
-/** Close an open portfolio line fully or partially; pnlPct matches existing closed rows (% of max-profit reference for the contracts closed). */
+export const EXIT_REASON_OPTIONS = [
+  'Profit target hit',
+  'Stop loss',
+  'Expiry risk',
+  'Manual exit',
+  'Trimmed risk',
+  'Strategy invalidated',
+  'Assignment risk',
+  'Other',
+] as const
+
+export type ExitReason = typeof EXIT_REASON_OPTIONS[number]
+
+/** Close an open portfolio line fully or partially. */
 export interface ClosePositionPayload {
   contractsToClose: number
-  pnlPct: number
+  exit_price?: number
+  exit_debit_credit?: number
+  close_date?: string       // ISO date string, defaults to now
+  realized_pnl?: number
+  realized_pnl_percent?: number
+  exit_reason?: string
+  close_notes?: string
+  pnl_overridden?: boolean
+  pnl_override_reason?: string
 }
 
 export interface UserDataState {
@@ -374,6 +410,10 @@ export interface AnalyzeResponse {
   signal_quality: string
   execution_timing: string
   risk_category: string
+  explanation: Record<string, string>
+  risk_reason: string
+  display_confidence: number
+  execution_fields: Array<{ label: string; value: string }>
 }
 
 // ─── Backtesting ────────────────────────────────────────────

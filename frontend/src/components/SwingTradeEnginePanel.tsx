@@ -1,20 +1,8 @@
-/**
- * SwingTradeEnginePanel — Decision Quality Layer UI
- *
- * Main badge = final_action  (not raw score verdict)
- * Secondary badges = swing_bias  |  entry_quality  |  risk_level
- * Expandable section = decision message, strategy, expiry, confirmations, risk flags
- * Color rules:
- *   Green   STRONG_GO / QUALITY_LONG / GOOD_ENTRY
- *   Blue    WATCH_CALL_OR_DEBIT_SPREAD / WATCH_CALL / WATCH_PUT / GO_SMALL
- *   Orange  WAIT_PULLBACK / AVOID_CHASE / WAIT_BREAKOUT / EXTENDED / CAUTION_ENTRY
- *   Red     AVOID_NAKED_CALLS / NO_TRADE / HIGH / VERY_HIGH risk
- *   Gray    MARKET_CONFIRMATION_ONLY / NO_TRADE_WAIT / NEUTRAL
- */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   RefreshCw, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight,
   ShieldAlert, AlertTriangle, CheckCircle2, Clock, Layers,
+  BarChart2, PlusCircle, Bell, Search, Star, Info,
 } from 'lucide-react'
 import type { SwingTradeScanResult } from '../api/client'
 import {
@@ -30,70 +18,72 @@ import {
   type Tone,
 } from '../utils/swingTradeEngineBadges'
 import SwingTradeMetricCharts from './SwingTradeMetricCharts'
+import { ROUTES } from '../routing/routes'
+import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass } from '../utils/semanticTrading'
 
 interface Props {
   result: SwingTradeScanResult
   onRefresh: () => void
   refreshing: boolean
+  onRequestEnterActiveTrade?: () => void
+  onOpenStrategyFinder?: () => void
+  onOpenCommandCenter?: () => void
+  onCreateAlert?: () => void
+  onAddToWatchlist?: () => void
+  onViewSignals?: () => void
 }
 
 function resolverBadgeClass(value: string): string {
   const v = value.toUpperCase()
-  if (v === 'READY' || v === 'TRADE') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-  if (v === 'WATCH' || v === 'WAIT') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'AVOID' || v === 'EXIT' || v === 'NO_EDGE') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  if (v === 'BULLISH') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'BEARISH') return 'border-rose-600/35 bg-rose-500/10 text-rose-200'
-  if (v === 'MIXED') return 'border-sky-700/35 bg-sky-500/10 text-sky-200'
-  if (v === 'STRONG' || v === 'GOOD') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'FAIR' || v === 'WEAK') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'POOR') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  if (v === 'LOW') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'MEDIUM') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'HIGH' || v === 'EXTREME') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  return 'border-gray-700/40 bg-gray-800/80 text-gray-200'
+  if (v.includes('MARKET') || v.includes('BULL') || v.includes('BEAR') || v.includes('MIXED')) return getMarketContextBadgeClass(v)
+  return getDecisionBadgeClass(v)
 }
 
-function ResolverCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-gray-800/90 bg-black/20 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${resolverBadgeClass(value)}`}>
-        {formatSwingEngineLabel(value)}
-      </div>
-    </div>
-  )
+function actionLabel(finalAction: string): string {
+  const ready = ['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE']
+  const watch = ['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT']
+  const wait = ['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE']
+  const avoid = ['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE']
+  if (ready.includes(finalAction)) return 'READY'
+  if (watch.includes(finalAction)) return 'WATCH'
+  if (wait.includes(finalAction)) return 'WAIT'
+  if (avoid.includes(finalAction)) return 'AVOID'
+  return 'WAIT'
+}
+
+function actionTone(finalAction: string): 'green' | 'blue' | 'orange' | 'red' {
+  const ready = ['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE']
+  const watch = ['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT']
+  const wait = ['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE']
+  const avoid = ['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE']
+  if (ready.includes(finalAction)) return 'green'
+  if (watch.includes(finalAction)) return 'blue'
+  if (wait.includes(finalAction)) return 'orange'
+  if (avoid.includes(finalAction)) return 'red'
+  return 'orange'
+}
+
+function actionButtonClass(tone: 'green' | 'blue' | 'orange' | 'red'): string {
+  if (tone === 'green' || tone === 'blue') return getActionButtonClass('trade')
+  if (tone === 'orange' || tone === 'red') return getActionButtonClass('surface')
+  return getActionButtonClass('surface')
 }
 
 function Badge({ text, tone }: { text: string; tone: Tone }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-none ${TONE_BADGE[tone]}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${TONE_BADGE[tone]}`}>
       {formatSwingEngineLabel(text)}
     </span>
-  )
-}
-
-function ScoreBar({ label, value, tone }: { label: string; value: number; tone: Tone }) {
-  const pct  = Math.min(100, (Math.max(0, value) / 11) * 100)
-  const fill = tone === 'green' ? 'bg-emerald-500' : tone === 'orange' ? 'bg-amber-500' : tone === 'red' ? 'bg-rose-500' : 'bg-sky-500'
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 shrink-0 text-gray-500 font-semibold uppercase tracking-wide">{label}</span>
-      <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${fill}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="w-8 text-right font-mono text-gray-300 tabular-nums">{value.toFixed(1)}</span>
-    </div>
   )
 }
 
 function RiskFlagPill({ flag }: { flag: string }) {
   const isHard = flag.includes('EARNINGS') || flag.includes('LIQUIDITY') || flag === 'IV_VERY_HIGH'
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
       isHard
-        ? 'bg-rose-900/40 text-rose-300 border border-rose-700/40'
-        : 'bg-amber-900/30 text-amber-300 border border-amber-700/30'
+        ? getDecisionBadgeClass('AVOID')
+        : getDecisionBadgeClass('WATCH')
     }`}>
       {isHard ? <ShieldAlert size={10} /> : <AlertTriangle size={10} />}
       {formatSwingEngineLabel(flag)}
@@ -101,48 +91,755 @@ function RiskFlagPill({ flag }: { flag: string }) {
   )
 }
 
-export default function SwingTradeEnginePanel({ result, onRefresh, refreshing }: Props) {
+function ExecMapRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  if (!value || value === '—' || value === 'No trade' || value === '') return null
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wide text-gray-500">{label}</span>
+      <span className={`text-xs font-semibold font-mono tabular-nums ${tone || 'text-gray-200'}`}>{value}</span>
+    </div>
+  )
+}
+
+function SignalRow({ label, value }: { label: string; value: { text: string; tone: Tone } | null }) {
+  if (!value) return null
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
+      <span className="text-[11px] text-gray-500 font-medium">{label}</span>
+      <Badge text={value.text} tone={value.tone} />
+    </div>
+  )
+}
+
+// ── Helpers to derive structured data from the result ────────────────
+
+type SignalMap = Record<string, { text: string; tone: Tone } | null>
+
+function computeSignalBreakdown(result: SwingTradeScanResult, m: Record<string, unknown>): SignalMap {
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
+  const ma50 = typeof m.ma50 === 'number' ? m.ma50 : null
+  const volLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const hv = typeof m.hv_20 === 'number' ? m.hv_20 : null
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
+  const mom5d = typeof m.momentum_5d_pct === 'number' ? m.momentum_5d_pct : null
+  const marketCtx = typeof m.market_context === 'string' ? m.market_context : null
+  const isBull = result.bias === 'long'
+
+  // Trend
+  let trend: { text: string; tone: Tone } | null = null
+  if (ma20 != null && ma50 != null) {
+    if (ma20 > ma50) {
+      trend = isBull ? { text: 'Bullish', tone: 'green' } : { text: 'Bearish', tone: 'green' }
+    } else {
+      trend = isBull ? { text: 'Bearish', tone: 'red' } : { text: 'Bullish', tone: 'red' }
+    }
+  }
+
+  // Momentum
+  let momentum: { text: string; tone: Tone } | null = null
+  if (rsiVal != null) {
+    if ((isBull && rsiVal >= 50) || (!isBull && rsiVal <= 50)) {
+      momentum = { text: 'Strong', tone: 'green' }
+    } else if ((isBull && rsiVal >= 40) || (!isBull && rsiVal <= 60)) {
+      momentum = { text: 'Moderate', tone: 'blue' }
+    } else {
+      momentum = { text: 'Weak', tone: 'red' }
+    }
+  }
+
+  // Volume
+  const volUp = volLabel.includes('bull') || volLabel.includes('expanding')
+  const volDown = volLabel.includes('bear') || volLabel.includes('low')
+  const volume: { text: string; tone: Tone } | null = volUp
+    ? { text: 'Confirmed', tone: 'green' }
+    : volDown
+    ? { text: 'Weak', tone: 'red' }
+    : { text: 'Mixed', tone: 'orange' }
+
+  // RSI label
+  let rsiDisplay: { text: string; tone: Tone } | null = null
+  if (rsiVal != null) {
+    if ((isBull && rsiVal <= 70 && rsiVal >= 50) || (!isBull && rsiVal >= 30 && rsiVal <= 50)) {
+      rsiDisplay = { text: `Healthy (${rsiVal.toFixed(0)})`, tone: 'green' }
+    } else if ((isBull && rsiVal > 70) || (!isBull && rsiVal < 30)) {
+      rsiDisplay = { text: `Extended (${rsiVal.toFixed(0)})`, tone: 'orange' }
+    } else {
+      rsiDisplay = { text: `${rsiVal.toFixed(0)}`, tone: 'blue' }
+    }
+  }
+
+  // Liquidity
+  const hasLiqRisk = result.risk_flags.some(f => f.includes('LIQUIDITY'))
+  const liquidity: { text: string; tone: Tone } | null = hasLiqRisk
+    ? { text: 'Poor', tone: 'red' }
+    : { text: 'Strong', tone: 'green' }
+
+  // IV Context
+  let ivCtx: { text: string; tone: Tone } | null = null
+  if (iv != null) {
+    if (iv >= 40) {
+      ivCtx = { text: `High (${iv.toFixed(0)}%)`, tone: 'orange' }
+    } else if (iv >= 25) {
+      ivCtx = { text: `Moderate (${iv.toFixed(0)}%)`, tone: 'blue' }
+    } else {
+      ivCtx = { text: `Low (${iv.toFixed(0)}%)`, tone: 'green' }
+    }
+  } else if (hv != null) {
+    if (hv >= 35) {
+      ivCtx = { text: `High (${hv.toFixed(0)}%)`, tone: 'orange' }
+    } else if (hv >= 20) {
+      ivCtx = { text: `Moderate (${hv.toFixed(0)}%)`, tone: 'blue' }
+    } else {
+      ivCtx = { text: `Low (${hv.toFixed(0)}%)`, tone: 'green' }
+    }
+  }
+
+  // Market Alignment
+  let market: { text: string; tone: Tone } | null = null
+  if (marketCtx === 'MARKET_SUPPORTIVE') {
+    market = { text: 'Positive', tone: 'green' }
+  } else if (marketCtx === 'MARKET_WEAK') {
+    market = { text: 'Negative', tone: 'red' }
+  } else if (marketCtx === 'MARKET_MIXED') {
+    market = { text: 'Mixed', tone: 'orange' }
+  }
+
+  // Extension
+  let extension: { text: string; tone: Tone } | null = null
+  if (distMA20 != null) {
+    const absDist = Math.abs(distMA20)
+    if (absDist > 5) {
+      extension = { text: 'High', tone: 'orange' }
+    } else if (absDist > 2) {
+      extension = { text: 'Moderate', tone: 'blue' }
+    } else {
+      extension = { text: 'Low', tone: 'green' }
+    }
+  } else if (mom5d != null) {
+    const absMom = Math.abs(mom5d)
+    if (absMom > 5) {
+      extension = { text: 'High', tone: 'orange' }
+    } else if (absMom > 2) {
+      extension = { text: 'Moderate', tone: 'blue' }
+    } else {
+      extension = { text: 'Low', tone: 'green' }
+    }
+  }
+
+  return {
+    trend, momentum, volume, rsi: rsiDisplay,
+    liquidity, iv_context: ivCtx,
+    market_alignment: market, extension,
+  }
+}
+
+type ReasoningBlock = {
+  title: string
+  items: string[]
+  tone: 'emerald' | 'amber' | 'sky' | 'violet'
+}
+
+function computeReasoning(
+  result: SwingTradeScanResult,
+  m: Record<string, unknown>,
+): ReasoningBlock[] {
+  const blocks: ReasoningBlock[] = []
+  const isBull = result.bias === 'long'
+  const isBear = result.bias === 'short'
+  const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
+  const ma50 = typeof m.ma50 === 'number' ? m.ma50 : null
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const marketCtx = typeof m.market_context === 'string' ? m.market_context : null
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const hv = typeof m.hv_20 === 'number' ? m.hv_20 : null
+  const volLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
+
+  // WHY THIS TRADE
+  const whyTrade: string[] = []
+  if (ma20 != null && ma50 != null) {
+    whyTrade.push(ma20 > ma50 ? 'MA20 above MA50 — uptrend intact' : 'MA20 below MA50 — downtrend')
+  }
+  if (marketCtx === 'MARKET_SUPPORTIVE') {
+    whyTrade.push(isBull ? 'Market context supportive' : 'Market context supportive of downside')
+  } else if (marketCtx === 'MARKET_WEAK') {
+    whyTrade.push(isBull ? 'Weak market — counter-trend risk' : 'Market weak — tailwind for bearish')
+  }
+  if (volLabel.includes('bull') || volLabel.includes('expanding')) {
+    whyTrade.push('Volume confirms direction')
+  }
+  if (rsiVal != null) {
+    if (isBull && rsiVal >= 50 && rsiVal <= 70) whyTrade.push('RSI in healthy bullish range')
+    if (isBear && rsiVal <= 50 && rsiVal >= 30) whyTrade.push('RSI in healthy bearish range')
+  }
+  if (result.supporting_factors.length > 0) {
+    whyTrade.push(...result.supporting_factors.slice(0, 2))
+  }
+  if (whyTrade.length === 0 && result.reason) {
+    whyTrade.push(result.reason)
+  }
+  if (whyTrade.length > 0) {
+    blocks.push({ title: 'WHY THIS TRADE', items: whyTrade, tone: 'emerald' })
+  }
+
+  // WHY THIS STRUCTURE
+  const whyStruct: string[] = []
+  if (result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE') {
+    whyStruct.push(`${formatSwingEngineLabel(result.suggested_strategy)} selected for current conditions`)
+  }
+  const ivVal = iv ?? hv
+  if (ivVal != null) {
+    if (ivVal >= 35) {
+      whyStruct.push('IV elevated — buying calls/puts offers convexity')
+    } else if (ivVal >= 20) {
+      whyStruct.push('IV moderate — directional premium reasonable')
+    } else {
+      whyStruct.push('IV low — premium cheap for directional exposure')
+    }
+  }
+  if (result.playbook_hint) {
+    whyStruct.push(result.playbook_hint)
+  }
+  if (result.recommended_contract_duration) {
+    whyStruct.push(`Contract duration: ${result.recommended_contract_duration} DTE`)
+  }
+  if (whyStruct.length > 0) {
+    blocks.push({ title: 'WHY THIS STRUCTURE', items: whyStruct, tone: 'violet' })
+  }
+
+  // EXECUTION CONDITIONS
+  const execConds: string[] = []
+  if (result.entry_quality === 'GOOD_ENTRY') {
+    execConds.push('Entry quality is GOOD — conditions align')
+  } else if (result.entry_quality === 'CAUTION_ENTRY') {
+    execConds.push('Caution entry — reduce size')
+  } else if (result.entry_quality === 'WAIT_PULLBACK') {
+    execConds.push('Wait for pullback confirmation before entry')
+    if (isBull && rsiVal != null && rsiVal > 60) execConds.push('RSI elevated — wait for cooling')
+  } else if (result.entry_quality === 'LATE_ENTRY' || result.entry_quality === 'EXTENDED_RISK') {
+    execConds.push('Stock is extended — avoid chasing')
+  }
+  if (result.confirmation_needed.length > 0) {
+    execConds.push(...result.confirmation_needed.slice(0, 2))
+  }
+  if (execConds.length === 0) {
+    if (isBull) execConds.push('Monitor for entry trigger confirmation')
+    else execConds.push('Wait for clearer entry signal')
+  }
+  blocks.push({ title: 'EXECUTION CONDITIONS', items: execConds, tone: 'sky' })
+
+  // RISK NOTES
+  const riskNotes: string[] = []
+  if (result.risk_flags.length > 0) {
+    result.risk_flags.slice(0, 3).forEach(f => {
+      riskNotes.push(formatSwingEngineLabel(f))
+    })
+  }
+  if (rsiVal != null) {
+    if ((isBull && rsiVal > 70) || (!isBull && rsiVal < 30)) {
+      riskNotes.push(`${isBull ? 'RSI overbought' : 'RSI oversold'} (${rsiVal.toFixed(0)})`)
+    }
+  }
+  if (result.avoid_reason) {
+    riskNotes.push(result.avoid_reason)
+  }
+  if (riskNotes.length === 0) {
+    riskNotes.push('No material risk flags — standard position management applies')
+  }
+  blocks.push({ title: 'RISK NOTES', items: riskNotes, tone: 'amber' })
+
+  return blocks
+}
+
+type RiskPanelItem = {
+  label: string
+  value: string
+  tone: 'green' | 'amber' | 'red' | 'gray'
+}
+
+function computeRiskPanel(result: SwingTradeScanResult, m: Record<string, unknown>): RiskPanelItem[] {
+  const items: RiskPanelItem[] = []
+  const isBull = result.bias === 'long'
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const hasEarnings = result.risk_flags.some(f => f.includes('EARNINGS'))
+  const hasLiqRisk = result.risk_flags.some(f => f.includes('LIQUIDITY'))
+  const hasVixExtreme = result.risk_flags.some(f => f.includes('VIX_EXTREME'))
+  const hasVixElevated = result.risk_flags.some(f => f.includes('VIX_ELEVATED'))
+
+  // Risk Level
+  items.push({
+    label: 'Overall Risk',
+    value: formatSwingEngineLabel(result.risk_level),
+    tone: result.risk_level === 'LOW' ? 'green' : result.risk_level === 'MEDIUM' ? 'amber' : 'red',
+  })
+
+  // Theta Risk
+  const dte = result.suggested_expiry_window
+  const shortDte = dte.includes('3') || dte.includes('short')
+  items.push({
+    label: 'Theta Risk',
+    value: shortDte ? 'Elevated' : 'Manageable',
+    tone: shortDte ? 'amber' : 'green',
+  })
+
+  // IV Crush Risk
+  if (iv != null) {
+    items.push({
+      label: 'IV Crush Risk',
+      value: iv > 50 ? 'Elevated' : iv > 30 ? 'Moderate' : 'Low',
+      tone: iv > 50 ? 'red' : iv > 30 ? 'amber' : 'green',
+    })
+  } else {
+    items.push({ label: 'IV Crush Risk', value: 'Moderate', tone: 'amber' })
+  }
+
+  // Extension Risk
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? Math.abs(m.dist_ma20_pct) : null
+  if (distMA20 != null) {
+    items.push({
+      label: 'Extension Risk',
+      value: distMA20 > 5 ? 'High' : distMA20 > 2 ? 'Moderate' : 'Low',
+      tone: distMA20 > 5 ? 'red' : distMA20 > 2 ? 'amber' : 'green',
+    })
+  }
+
+  // Liquidity Risk
+  items.push({
+    label: 'Liquidity Risk',
+    value: hasLiqRisk ? 'Poor' : 'Adequate',
+    tone: hasLiqRisk ? 'red' : 'green',
+  })
+
+  // Earnings Risk
+  items.push({
+    label: 'Earnings Risk',
+    value: hasEarnings ? 'Imminent' : 'Clear',
+    tone: hasEarnings ? 'red' : 'green',
+  })
+
+  // VIX risk
+  if (hasVixExtreme) {
+    items.push({ label: 'VIX Risk', value: 'Extreme', tone: 'red' })
+  } else if (hasVixElevated) {
+    items.push({ label: 'VIX Risk', value: 'Elevated', tone: 'amber' })
+  }
+
+  return items
+}
+
+// ── Execution Plan helpers ──────────────────────────────────────────
+
+type MA20Context = { label: string; tone: string }
+
+function ma20ContextLabel(distPct: number): MA20Context {
+  const abs = Math.abs(distPct)
+  if (abs < 2) return { label: 'IDEAL', tone: 'text-semantic-bullish' }
+  if (abs < 5) return { label: 'SLIGHTLY EXTENDED', tone: 'text-semantic-warning' }
+  if (abs < 8) return { label: 'EXTENDED', tone: 'text-semantic-extended' }
+  return { label: 'OVEREXTENDED', tone: 'text-semantic-bearish' }
+}
+
+type ExecPlan = { preferred: string; aggressive: string; avoid: string; management: string }
+
+function computeExecPlan(result: SwingTradeScanResult, m: Record<string, unknown>): ExecPlan {
+  const entryDecision = m.entry_decision as { conservative?: string; aggressive?: string; best_setup?: string } | undefined
+  const execPersonality = m.execution_personality as { suitable_for?: string[]; not_ideal_for?: string[] } | undefined
+
+  if (entryDecision?.conservative || entryDecision?.aggressive) {
+    return {
+      preferred: entryDecision.best_setup || entryDecision.conservative || 'No clear preferred entry',
+      aggressive: entryDecision.aggressive || 'Not recommended',
+      avoid: execPersonality?.not_ideal_for?.length
+        ? `Not ideal for: ${execPersonality.not_ideal_for.join(', ')}`
+        : 'Entering without confirmation',
+      management: result.entry_quality === 'GOOD_ENTRY'
+        ? 'Standard position management — trail below MA20'
+        : 'Wait for confirmation — avoid FOMO entries',
+    }
+  }
+
+  const isBull = result.bias === 'long'
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const absDist = distMA20 != null ? Math.abs(distMA20) : null
+  const eq = result.entry_quality
+
+  if (isBull) {
+    const preferred = absDist != null && absDist < 3
+      ? 'Pullback hold above MA20 with volume confirmation'
+      : eq === 'GOOD_ENTRY'
+        ? 'Current levels acceptable — execute with defined stop'
+        : 'Wait for pullback to MA20 support zone'
+
+    const aggressive = absDist != null && absDist < 3
+      ? 'Breakout continuation above recent high with volume'
+      : absDist != null && absDist < 6
+        ? 'Entry on strength if volume confirms breakout above resistance'
+        : 'Do not chase — wait for pullback'
+
+    const avoid = absDist != null && absDist > 5
+      ? `Chasing >${absDist.toFixed(0)}% extension above MA20`
+      : rsiVal != null && rsiVal > 70
+        ? 'Entry with RSI overbought at current level'
+        : 'Entering without volume confirmation'
+
+    const management = absDist != null && absDist > 6
+      ? `Protect profits if extension exceeds 8%`
+      : eq === 'WAIT_PULLBACK'
+        ? 'Wait for pullback — avoid FOMO entries'
+        : 'Standard position management — trail below MA20'
+
+    return { preferred, aggressive, avoid, management }
+  }
+
+  return {
+    preferred: 'Monitor for breakdown confirmation below support',
+    aggressive: 'Entry on breakdown with volume confirmation',
+    avoid: 'Counter-trend buying before breakdown confirmed',
+    management: 'Trail above resistance on bearish position',
+  }
+}
+
+type ExecLevels = {
+  pullbackZone: string | null
+  breakoutTrigger: string | null
+  riskBelow: string | null
+  firstTarget: string | null
+  stretchTarget: string | null
+}
+
+function computeExecLevels(result: SwingTradeScanResult, m: Record<string, unknown>): ExecLevels {
+  const lastPrice = typeof m.last_price === 'number' ? m.last_price : null
+  const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
+  const mom5d = typeof m.momentum_5d_pct === 'number' ? m.momentum_5d_pct : null
+  const isBull = result.bias === 'long'
+
+  const empty = { pullbackZone: null, breakoutTrigger: null, riskBelow: null, firstTarget: null, stretchTarget: null }
+  if (lastPrice == null) return empty
+
+  const mom = mom5d != null ? Math.abs(mom5d) / 100 : 0.05
+
+  if (isBull) {
+    const pbLow = ma20 != null ? ma20 * 0.98 : lastPrice * 0.97
+    const pbHigh = ma20 != null ? ma20 * 1.015 : lastPrice * 0.995
+    return {
+      pullbackZone: `${pbLow.toFixed(2)}–${pbHigh.toFixed(2)}`,
+      breakoutTrigger: `$${(lastPrice * 1.015).toFixed(2)}`,
+      riskBelow: ma20 != null ? `$${(ma20 * 0.96).toFixed(2)}` : `$${(lastPrice * 0.95).toFixed(2)}`,
+      firstTarget: `$${(lastPrice * (1 + mom / 2)).toFixed(2)}`,
+      stretchTarget: `$${(lastPrice * (1 + mom)).toFixed(2)}`,
+    }
+  }
+
+  return {
+    pullbackZone: ma20 != null ? `${(ma20 * 1.01).toFixed(2)}–${(ma20 * 1.025).toFixed(2)}` : `${(lastPrice * 1.005).toFixed(2)}–${(lastPrice * 1.03).toFixed(2)}`,
+    breakoutTrigger: `$${(lastPrice * 0.985).toFixed(2)}`,
+    riskBelow: ma20 != null ? `$${(ma20 * 1.04).toFixed(2)}` : `$${(lastPrice * 1.05).toFixed(2)}`,
+    firstTarget: `$${(lastPrice * (1 - mom / 2)).toFixed(2)}`,
+    stretchTarget: `$${(lastPrice * (1 - mom)).toFixed(2)}`,
+  }
+}
+
+function computeRiskExplanation(result: SwingTradeScanResult, m: Record<string, unknown>): string {
+  const isBull = result.bias === 'long'
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
+  const absDist = distMA20 != null ? Math.abs(distMA20) : null
+  const rl = result.risk_level
+  const eq = result.entry_quality
+  const hasEarnings = result.risk_flags.some(f => f.includes('EARNINGS'))
+
+  if (rl === 'LOW') {
+    if (absDist != null && absDist < 2) return 'Low risk because trend aligned and pullback support nearby.'
+    return 'Low risk — trend supportive, entry conditions favorable.'
+  }
+  if (rl === 'MEDIUM') {
+    if (absDist != null && absDist > 3) return `Medium risk due to extension above MA20 despite strong trend quality.`
+    if (eq === 'CAUTION_ENTRY') return 'Medium risk — entry quality requires caution, manage position size.'
+    return 'Medium risk — monitor for confirmation before adding exposure.'
+  }
+  if (absDist != null && absDist > 6) return `High risk because ${isBull ? 'momentum strong but extension elevated' : 'significant deviation from trend structure'}.`
+  if (hasEarnings) return 'High risk due to imminent earnings event.'
+  return 'High risk — consider defined-risk strategies and reduced size.'
+}
+
+function computeTradeManagement(result: SwingTradeScanResult, m: Record<string, unknown>): string[] {
+  const isBull = result.bias === 'long'
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
+  const absDist = distMA20 != null ? Math.abs(distMA20) : null
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const volLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
+  const marketCtx = typeof m.market_context === 'string' ? m.market_context : null
+  const items: string[] = []
+
+  if (isBull) {
+    if (absDist != null && absDist < 3) items.push('If breakout succeeds: trail stop below MA20')
+    if (rsiVal != null && rsiVal > 65) items.push('If RSI cools toward 50: wait for pullback support to hold')
+    if (absDist != null && absDist > 6) items.push('If extension exceeds 8%: protect profits, tighten stops')
+    if (volLabel.includes('low') || volLabel.includes('bear')) items.push('If volume weakens further: avoid adding size')
+    if (marketCtx === 'MARKET_WEAK') items.push('Market weak: reduce size, wait for broader confirmation')
+    if (marketCtx === 'MARKET_SUPPORTIVE') items.push('Market supportive: maintain position within risk limits')
+    items.push('If price loses MA20: reduce size, reassess structure')
+  } else {
+    if (rsiVal != null && rsiVal < 35) items.push('If RSI bounces above 40: cover short, wait for re-entry')
+    if (marketCtx === 'MARKET_WEAK') items.push('Market tailwind active: hold bearish position')
+    if (marketCtx === 'MARKET_SUPPORTIVE') items.push('Market supportive of bulls: reduce bearish exposure')
+    items.push('If price reclaims MA20: reduce size, reassess')
+  }
+  if (items.length === 0) items.push('Standard position management: define stop before entry, maintain R/R discipline')
+  return items
+}
+
+function computeStructureReasoning(result: SwingTradeScanResult, m: Record<string, unknown>): string[] {
+  const strategy = result.suggested_strategy
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const hv = typeof m.hv_20 === 'number' ? m.hv_20 : null
+  const ivVal = iv ?? hv
+  const strats: Record<string, string[]> = {
+    LONG_CALL: [
+      'Upside expansion expected with strong trend momentum',
+      ivVal != null && ivVal > 35 ? 'IV elevated — convexity favors long premium' : 'IV acceptable for directional exposure',
+      'Momentum strong — spread cap may limit upside',
+      'Defined loss limited to premium paid',
+    ],
+    CALL_DEBIT_SPREAD: [
+      ivVal != null && ivVal > 35 ? 'IV elevated — spread reduces cost and defines risk' : 'Moderate IV — spread lowers cost basis',
+      'Moderate upside expected — structure matches outlook',
+      'Defined risk protects against IV crush and gap risk',
+      'Max loss limited to debit paid',
+    ],
+    LONG_PUT: [
+      'Downside momentum favors directional put exposure',
+      ivVal != null && ivVal > 35 ? 'IV elevated — premium pricing reflects elevated risk' : 'IV reasonable for protective positioning',
+    ],
+    PUT_DEBIT_SPREAD: [
+      'Bearish outlook with defined risk',
+      ivVal != null && ivVal > 35 ? 'IV supports spread structure — defined risk preferred' : 'Defined risk aligns with moderate downside view',
+    ],
+  }
+  if (strategy && strats[strategy]) return strats[strategy]
+  return ['Standard structure selected for current conditions']
+}
+
+function computeExecutionSummary(result: SwingTradeScanResult, m: Record<string, unknown>): string {
+  const isBull = result.bias === 'long'
+  const eq = result.entry_quality
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
+  const absDist = distMA20 != null ? Math.abs(distMA20) : null
+  const marketCtx = typeof m.market_context === 'string' ? m.market_context : null
+  const rsiVal = typeof m.rsi === 'number' ? m.rsi : null
+  const sq = result.setup_quality
+
+  const shouldEnter = m.should_enter_now as string | undefined
+  const rrQuality = m.rr_quality as string | undefined
+  const pullbackProb = m.pullback_probability as string | undefined
+  const marketPhaseField = m.market_phase as string | undefined
+
+  const parts: string[] = []
+
+  if (sq === 'STRONG' || sq === 'GOOD') parts.push(isBull ? 'Strong trend continuation setup.' : 'Strong breakdown structure.')
+  else if (sq === 'FAIR') parts.push('Moderate setup quality.')
+  else parts.push('Setup quality is weak — exercise caution.')
+
+  if (marketPhaseField) {
+    parts.push(`Market phase: ${marketPhaseField.replace(/_/g, ' ').toLowerCase()}.`)
+  } else {
+    const rsiOk = isBull ? (rsiVal != null && rsiVal >= 45 && rsiVal <= 70) : (rsiVal != null && rsiVal <= 55 && rsiVal >= 30)
+    if (rsiOk) parts.push('Momentum supportive.')
+    else if (rsiVal != null) parts.push('Momentum less supportive at current levels.')
+  }
+
+  if (shouldEnter === 'YES') {
+    parts.push('Entry conditions favorable — can enter now.')
+  } else if (shouldEnter === 'CONDITIONAL') {
+    parts.push('Entry conditional — wait for confirmation triggers.')
+  } else if (shouldEnter === 'NO') {
+    parts.push('Do not enter at current levels — wait for better setup.')
+  } else if (eq === 'GOOD_ENTRY') {
+    parts.push('Entry quality remains good.')
+  } else if (eq === 'CAUTION_ENTRY' || eq === 'INTRADAY_CAUTION') {
+    parts.push('Entry requires caution — reduce size.')
+  } else if (eq === 'WAIT_PULLBACK') {
+    parts.push('Wait for pullback before entry.')
+  }
+
+  if (pullbackProb) {
+    parts.push(`Pullback probability: ${pullbackProb.toLowerCase()}.`)
+  } else if (absDist != null && absDist > 4) {
+    parts.push('Extension above MA20 increases chase risk. Prefer pullback entries.')
+  } else if (absDist != null && absDist > 2) {
+    parts.push('Extension is moderate — manage entry timing.')
+  }
+
+  if (rrQuality) {
+    parts.push(`Risk/reward quality: ${rrQuality.toLowerCase()}.`)
+  } else if (marketCtx === 'MARKET_WEAK') {
+    parts.push('Weak market context — prefer reduced size and defined risk.')
+  } else if (marketCtx === 'MARKET_SUPPORTIVE' && isBull) {
+    parts.push('Market context supportive of bullish positioning.')
+  }
+
+  return parts.join(' ')
+}
+
+function computeBestNextAction(result: SwingTradeScanResult, m: Record<string, unknown>, execPlan: ExecPlan): string {
+  const shouldEnter = String(m.should_enter_now || '').toUpperCase()
+  if (shouldEnter === 'YES') return execPlan.preferred
+  if (shouldEnter === 'CONDITIONAL') return result.confirmation_needed[0] || execPlan.preferred
+  if (result.final_decision === 'AVOID' || result.final_action === 'NO_TRADE') {
+    return result.avoid_reason || execPlan.avoid
+  }
+  if (result.final_decision === 'WATCH' || result.final_decision === 'WAIT') {
+    return result.confirmation_needed[0] || execPlan.preferred
+  }
+  return execPlan.preferred
+}
+
+function computeAlternativeStructureNote(result: SwingTradeScanResult, m: Record<string, unknown>): string {
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const strategy = String(result.suggested_strategy || '')
+  if (strategy === 'LONG_CALL') {
+    return iv != null && iv >= 35
+      ? 'Long Call is still acceptable, but shift toward a debit spread if premium expands further.'
+      : 'Debit spread is not required unless premium becomes expensive or extension increases.'
+  }
+  if (strategy === 'CALL_DEBIT_SPREAD') {
+    return 'Spread preferred here because it limits premium outlay and reduces damage if momentum stalls.'
+  }
+  if (strategy === 'LONG_PUT') {
+    return iv != null && iv >= 35
+      ? 'Long Put works, but a put debit spread can improve efficiency if implied volatility keeps climbing.'
+      : 'Long Put remains acceptable while downside momentum stays clean.'
+  }
+  if (strategy === 'PUT_DEBIT_SPREAD') {
+    return 'Spread structure is favored because risk is defined while still keeping bearish participation.'
+  }
+  return 'Use the selected structure only while the current execution conditions remain valid.'
+}
+
+function buildStepWalkthrough(result: SwingTradeScanResult, m: Record<string, unknown>, execPlan: ExecPlan): string[] {
+  const marketCtx = typeof m.market_context === 'string' ? m.market_context : ''
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? Math.abs(m.dist_ma20_pct) : null
+  const iv = typeof m.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+  const shouldEnter = String(m.should_enter_now || '').toUpperCase()
+  const steps: string[] = []
+
+  steps.push(marketCtx === 'MARKET_SUPPORTIVE' ? 'Market is supportive.' : marketCtx === 'MARKET_WEAK' ? 'Market is fighting the setup.' : 'Market context is mixed.')
+  steps.push(
+    distMA20 != null && distMA20 > 5
+      ? `${result.ticker} trend is constructive but extended.`
+      : `${result.ticker} trend structure is aligned for a swing setup.`,
+  )
+  steps.push(
+    result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE'
+      ? `${formatSwingEngineLabel(result.suggested_strategy)} is preferred${iv != null ? ` because IV is ${iv >= 40 ? 'elevated' : iv >= 25 ? 'moderate' : 'low'}.` : '.'}`
+      : 'No preferred options structure is ready yet.',
+  )
+  steps.push(
+    shouldEnter === 'YES'
+      ? 'Entry is allowed now, but cleaner pullbacks still improve risk/reward.'
+      : shouldEnter === 'CONDITIONAL'
+        ? 'Entry is conditional, so wait for confirmation before committing size.'
+        : 'Entry is not ready yet, so patience matters more than prediction.',
+  )
+  steps.push(execPlan.management || 'Protect profits if extension increases and reduce risk if price loses MA20.')
+  return steps
+}
+
+function ma20Display(distPct: number): { text: string; cls: string } {
+  const ctx = ma20ContextLabel(distPct)
+  const sign = distPct >= 0 ? '+' : ''
+  return { text: `${sign}${distPct.toFixed(1)}% ${ctx.label}`, cls: ctx.tone }
+}
+
+function toneForExecMap(label: string): string {
+  const v = label.toUpperCase()
+  if (v === 'READY' || v === 'GOOD' || v === 'LOW' || v === 'STRONG') return 'text-semantic-bullish'
+  if (v === 'WATCH' || v === 'WAIT' || v === 'MEDIUM' || v === 'MODERATE') return 'text-semantic-warning'
+  if (v === 'AVOID' || v === 'HIGH' || v === 'EXTREME' || v === 'POOR') return 'text-semantic-bearish'
+  return 'text-secondary'
+}
+
+// ── Main Component ──────────────────────────────────────────────────
+
+export default function SwingTradeEnginePanel({
+  result, onRefresh, refreshing,
+  onRequestEnterActiveTrade,
+  onOpenStrategyFinder,
+  onOpenCommandCenter,
+  onCreateAlert,
+  onAddToWatchlist,
+  onViewSignals,
+}: Props) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [signalsOpen, setSignalsOpen] = useState(false)
+  const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
+  const [chartTab, setChartTab] = useState<'price' | 'rsi' | 'hv' | 'volume'>('price')
+  const signalsSectionRef = useRef<HTMLDivElement | null>(null)
 
-  const actionTone  = toneForFinalAction(result.final_action)
-  const m           = result.metrics as Record<string, unknown>
+  const m = result.metrics as Record<string, unknown>
+  const ringTone = toneForFinalAction(result.final_action)
+  const execLabel = actionLabel(result.final_action)
+  const execTone: 'green' | 'blue' | 'orange' | 'red' = actionTone(result.final_action)
+
   const secondaryBadges = swingEngineSecondaryBadgeItems(result)
   const playbookHint = playbookHintFromResult(result)
+  const signalMap = computeSignalBreakdown(result, m)
+  const reasoning = computeReasoning(result, m)
+  const riskPanel = computeRiskPanel(result, m)
 
-  const lastPrice   = typeof m.last_price === 'number' ? m.last_price : null
-  const mom5d       = typeof m.momentum_5d_pct === 'number' ? m.momentum_5d_pct : null
-  const vix         = typeof m.vix === 'number' ? m.vix : null
+  const lastPrice = typeof m.last_price === 'number' ? m.last_price : null
+  const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
+  const ma50 = typeof m.ma50 === 'number' ? m.ma50 : null
   const sessionDate = typeof m.session_date === 'string' ? m.session_date : null
-  const spyBias     = typeof m.spy_bias === 'string' ? m.spy_bias : null
-  const qqqBias     = typeof m.qqq_bias === 'string' ? m.qqq_bias : null
+  const spyBias = typeof m.spy_bias === 'string' ? m.spy_bias : null
+  const qqqBias = typeof m.qqq_bias === 'string' ? m.qqq_bias : null
+  const distMA20 = typeof m.dist_ma20_pct === 'number' ? m.dist_ma20_pct : null
 
-  const isLong  = result.bias === 'long'
+  const isBull = result.bias === 'long'
   const isShort = result.bias === 'short'
 
-  return (
-    <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[actionTone]}`}>
+  const biasBadge = secondaryBadges.find(b => b.label === 'Bias')
+  const entryBadge = secondaryBadges.find(b => b.label === 'Entry')
+  const riskBadge = secondaryBadges.find(b => b.label === 'Risk')
+  const marketBadge = secondaryBadges.find(b => b.label === 'Market')
 
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={`flex-none w-2.5 h-2.5 rounded-full animate-pulse ${TONE_DOT[actionTone]}`} />
+  const execPlan = computeExecPlan(result, m)
+  const execLevels = computeExecLevels(result, m)
+  const riskExplanation = computeRiskExplanation(result, m)
+  const tradeMgmt = computeTradeManagement(result, m)
+  const structureReasoning = computeStructureReasoning(result, m)
+  const execSummary = computeExecutionSummary(result, m)
+  const bestNextAction = computeBestNextAction(result, m, execPlan)
+  const alternativeStructureNote = computeAlternativeStructureNote(result, m)
+  const walkthroughSteps = buildStepWalkthrough(result, m, execPlan)
+  const distMA20Display = distMA20 != null ? ma20Display(distMA20) : null
+  const marketSupportive = typeof m.market_context === 'string' ? m.market_context : ''
+  const marketPhase = typeof m.market_phase === 'string' ? m.market_phase : result.setup_quality
+  const pullbackProb = typeof m.pullback_probability === 'string' ? m.pullback_probability : ''
+  const rrQuality = typeof m.rr_quality === 'string' ? m.rr_quality : ''
+  const executionPersonality = m.execution_personality as { suitable_for?: string[]; not_ideal_for?: string[] } | undefined
+  const entryDecision = m.entry_decision as { conservative?: string; aggressive?: string; best_setup?: string } | undefined
+  const contextualAlerts = Array.isArray(m.contextual_alerts) ? m.contextual_alerts as Array<{ type?: string; message?: string; condition?: string }> : []
+  const volumeRatio = typeof m.volume_ratio === 'number' ? m.volume_ratio : null
+  const volumeLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
+
+  return (
+    <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
+      <div className="px-4 pt-4 pb-4 border-b border-gray-800 space-y-4">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-lg font-bold text-white font-mono">{result.ticker}</span>
-              {result.company_name && (
-                <span className="text-xs text-gray-500 truncate max-w-[180px]">{result.company_name}</span>
-              )}
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2.5">
+              <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
+              {result.company_name ? <span className="truncate text-xs text-gray-500 max-w-[220px]">{result.company_name}</span> : null}
             </div>
-            {sessionDate && (
-              <div className="text-[10px] text-gray-600">{sessionDate}</div>
-            )}
+            <div className="mt-1 text-sm text-gray-300">
+              {formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} · {result.bias === 'short' ? 'Bearish' : 'Bullish'} swing setup
+            </div>
+            {sessionDate ? <div className="mt-1 text-[10px] text-gray-600">{sessionDate}</div> : null}
           </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold tracking-wide ${resolverBadgeClass(result.final_decision)}`}>
-            {formatSwingEngineLabel(result.final_decision)}
-          </span>
           <button
             type="button"
             onClick={onRefresh}
@@ -153,133 +850,358 @@ export default function SwingTradeEnginePanel({ result, onRefresh, refreshing }:
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
+            <div className="mt-1"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span></div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
+            <div className="mt-1"><Badge text={result.risk_level} tone={riskBadge?.tone || toneForFinalAction(result.risk_level)} /></div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
+            <div className="mt-1"><Badge text={marketSupportive || marketBadge?.text || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} /></div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Signal Strength</div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{Math.min(result.confidence, 95)} / 100</div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Structure</div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Expected Hold</div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{result.expected_holding_period || '3–5 trading days'}</div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+            <BarChart2 size={12} />
+            AI Coach Summary
+          </div>
+          <p className="text-xs text-gray-200 leading-relaxed">{execSummary}</p>
+          <div className="text-[11px] text-semantic-accent leading-relaxed">
+            Best next action: {bestNextAction}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onRequestEnterActiveTrade ? (
+            <button type="button" onClick={onRequestEnterActiveTrade} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${execTone === 'green' ? actionButtonClass(execTone) : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+              <PlusCircle size={14} />
+              Add to Positions
+            </button>
+          ) : null}
+          {onCreateAlert ? (
+            <button type="button" onClick={onCreateAlert} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${getActionButtonClass('alert')}`}>
+              <Bell size={14} />
+              Create Alert
+            </button>
+          ) : null}
+          {onOpenStrategyFinder ? (
+            <button type="button" onClick={onOpenStrategyFinder} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}>
+              <BarChart2 size={13} />
+              Strategy Finder
+            </button>
+          ) : null}
+          {onOpenCommandCenter ? (
+            <button type="button" onClick={onOpenCommandCenter} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
+              <Layers size={13} />
+              Command Center
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setSignalsOpen(true)
+              signalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              onViewSignals?.()
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
+          >
+            <Search size={13} />
+            View Signals
+          </button>
+          {onAddToWatchlist ? (
+            <button type="button" onClick={onAddToWatchlist} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
+              <Star size={13} />
+              Add to Watchlist
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="px-4 py-3 border-b border-gray-800 bg-gray-950/25 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <ResolverCell label="Market Bias" value={result.market_bias} />
-          <ResolverCell label="Setup Quality" value={result.setup_quality} />
-          <ResolverCell label="Execution Readiness" value={result.execution_readiness} />
-          <ResolverCell label="Final Decision" value={result.final_decision} />
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 1</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Market &amp; Price Context</h2>
+          <p className="mt-1 text-xs text-gray-400">Is the market helping or fighting this trade?</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-gray-500">
-              <span>Confidence</span>
-              <span className="font-semibold text-gray-300">{result.confidence}%</span>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <ExecMapRow label="Current Price" value={lastPrice != null ? `$${lastPrice.toFixed(2)}` : ''} />
+          <ExecMapRow label="Market Strength" value={formatSwingEngineLabel(result.market_bias || result.swing_bias)} tone={toneForExecMap(result.market_bias || result.swing_bias)} />
+          <ExecMapRow label="SPY Support" value={spyBias ? formatSwingEngineLabel(spyBias) : ''} tone={toneForExecMap(spyBias || '')} />
+          <ExecMapRow label="QQQ Support" value={qqqBias ? formatSwingEngineLabel(qqqBias) : ''} tone={toneForExecMap(qqqBias || '')} />
+          <ExecMapRow label="Dist. to MA20" value={distMA20Display ? distMA20Display.text : ''} tone={distMA20Display?.cls} />
+          <ExecMapRow label="Trend Phase" value={formatSwingEngineLabel(marketPhase || 'NEUTRAL')} tone={toneForExecMap(marketPhase || '')} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {biasBadge ? <Badge text={biasBadge.text} tone={biasBadge.tone} /> : null}
+          <Badge text={marketSupportive || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} />
+          {entryBadge ? <Badge text={entryBadge.text} tone={entryBadge.tone} /> : null}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 2</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Technical Analysis</h2>
+          <p className="mt-1 text-xs text-gray-400">Trend, momentum, extension, and volatility should all support the trade.</p>
+        </div>
+
+        <div ref={signalsSectionRef} className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+          <SignalRow label="Trend" value={signalMap.trend} />
+          <SignalRow label="Momentum" value={signalMap.momentum} />
+          <SignalRow label="RSI" value={signalMap.rsi} />
+          <SignalRow label="Volume" value={signalMap.volume} />
+          <SignalRow label="Liquidity" value={signalMap.liquidity} />
+          <SignalRow label="IV Context" value={signalMap.iv_context} />
+          <SignalRow label="Market Align" value={signalMap.market_alignment} />
+          <SignalRow label="Extension" value={signalMap.extension} />
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          {ma20 != null ? <ExecMapRow label="MA20" value={`$${ma20.toFixed(2)}`} /> : null}
+          {ma50 != null ? <ExecMapRow label="MA50" value={`$${ma50.toFixed(2)}`} /> : null}
+          {typeof m.rsi === 'number' ? <ExecMapRow label="RSI" value={Number(m.rsi).toFixed(1)} tone={Number(m.rsi) >= 70 ? 'text-semantic-bearish' : Number(m.rsi) >= 50 ? 'text-semantic-bullish' : 'text-semantic-warning'} /> : null}
+          {typeof m.implied_iv_pct === 'number' ? <ExecMapRow label="IV" value={`${Number(m.implied_iv_pct).toFixed(0)}%`} tone={Number(m.implied_iv_pct) > 40 ? 'text-semantic-bearish' : Number(m.implied_iv_pct) > 25 ? 'text-semantic-warning' : 'text-semantic-bullish'} /> : null}
+          {typeof m.hv_20 === 'number' ? <ExecMapRow label="HV20" value={`${Number(m.hv_20).toFixed(0)}%`} tone="text-semantic-accent" /> : null}
+          {volumeRatio != null ? <ExecMapRow label="Volume Ratio" value={`${volumeRatio.toFixed(2)}x`} tone={volumeRatio > 1.5 ? 'text-semantic-bullish' : volumeRatio > 0.7 ? 'text-semantic-warning' : 'text-semantic-bearish'} /> : null}
+        </div>
+
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setChartsOpen(v => !v)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+          >
+            <span>
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Decision Charts</div>
+              <div className="text-xs text-gray-400 mt-0.5">Charts support the setup, but they do not replace the decision rules.</div>
+            </span>
+            {chartsOpen ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
+          </button>
+          {chartsOpen ? (
+            <div className="border-t border-gray-800 px-3 py-3 space-y-3">
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ['price', 'Price + MA20/MA50'],
+                  ['rsi', 'RSI'],
+                  ['hv', 'IV/HV'],
+                  ['volume', 'Volume'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setChartTab(value as 'price' | 'rsi' | 'hv' | 'volume')}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                      chartTab === value
+                        ? 'border border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
+                        : 'border border-border bg-gray-800 text-secondary hover:bg-gray-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <SwingTradeMetricCharts metrics={m} mode={chartTab === 'hv' ? 'hv' : chartTab} />
+              {chartTab === 'volume' && volumeLabel ? (
+                <div className="text-xs text-gray-400">Volume context: {volumeLabel}</div>
+              ) : null}
             </div>
-            <div className="mt-2 h-2 rounded-full bg-gray-800">
-              <div
-                className={`${result.confidence >= 70 ? 'bg-emerald-400' : result.confidence >= 45 ? 'bg-amber-400' : 'bg-rose-400'} h-2 rounded-full`}
-                style={{ width: `${Math.max(0, Math.min(100, result.confidence))}%` }}
-              />
+          ) : null}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 3</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Execution Map</h2>
+          <p className="mt-1 text-xs text-gray-400">Where would I enter, where am I wrong, and where is the target?</p>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          <ExecMapRow label="Pullback Zone" value={execLevels.pullbackZone || ''} tone="text-semantic-info" />
+          <ExecMapRow label="Breakout Trigger" value={execLevels.breakoutTrigger || ''} tone="text-semantic-bullish" />
+          <ExecMapRow label="Risk Below" value={execLevels.riskBelow || ''} tone="text-semantic-bearish" />
+          <ExecMapRow label="First Target" value={execLevels.firstTarget || ''} tone="text-semantic-bullish" />
+          <ExecMapRow label="Stretch Target" value={execLevels.stretchTarget || ''} tone="text-semantic-warning" />
+          <ExecMapRow label="DTE Window" value={result.suggested_expiry_window && result.suggested_expiry_window !== 'No trade' ? result.suggested_expiry_window : ''} />
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 4</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Strategy Selection</h2>
+          <p className="mt-1 text-xs text-gray-400">Choose the structure that best matches momentum, IV context, and risk appetite.</p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Selected Structure</div>
+            <div className="text-base font-bold text-gray-100">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</div>
+            <div className="text-xs text-semantic-accent">{alternativeStructureNote}</div>
+            {result.recommended_contract_duration ? (
+              <div className="text-[11px] text-gray-500 font-mono">Contract duration: {result.recommended_contract_duration} DTE</div>
+            ) : null}
+            <ul className="space-y-1 pt-1">
+              {structureReasoning.map((item, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed">
+                  <span className="mt-1.5 h-1 w-1 rounded-full bg-semantic-accent shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="grid gap-2">
+            {reasoning.map(block => {
+              const borderMap = {
+                emerald: 'border-l-emerald-600/50',
+                amber: 'border-l-amber-600/50',
+                sky: 'border-l-sky-600/50',
+                violet: 'border-l-violet-600/50',
+              }
+              const dotMap = {
+                emerald: 'bg-emerald-500',
+                amber: 'bg-semantic-warning',
+                sky: 'bg-semantic-info',
+                violet: 'bg-semantic-accent',
+              }
+              return (
+                <div key={block.title} className={`rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2.5 border-l-2 ${borderMap[block.tone]}`}>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">{block.title}</div>
+                  <ul className="space-y-0.5">
+                    {block.items.map((item, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed">
+                        <span className={`mt-1.5 h-1 w-1 rounded-full ${dotMap[block.tone]} shrink-0`} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 5</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Final Decision</h2>
+          <p className="mt-1 text-xs text-gray-400">Translate setup quality into a trader action, not just a market opinion.</p>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span>
+              <Badge text={result.final_decision} tone={execTone} />
+              {pullbackProb ? <Badge text={`Pullback ${pullbackProb}`} tone={pullbackProb === 'HIGH' ? 'orange' : pullbackProb === 'LOW' ? 'green' : 'blue'} /> : null}
+              {rrQuality ? <Badge text={`R/R ${rrQuality}`} tone={rrQuality === 'STRONG' ? 'green' : rrQuality === 'MODERATE' ? 'orange' : 'red'} /> : null}
+            </div>
+            <div className="text-sm text-gray-200 leading-relaxed">{result.decision_message || bestNextAction}</div>
+            {result.avoid_reason ? (
+              <div className="flex items-start gap-1.5 text-xs text-semantic-bearish bg-semantic-bearish-bg border border-semantic-bearish-border rounded-lg px-3 py-2">
+                <ShieldAlert size={12} className="shrink-0 mt-0.5" />
+                {result.avoid_reason}
+              </div>
+            ) : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Conservative Trader</div>
+                <div className="mt-1 text-xs text-gray-300">{entryDecision?.conservative || execPlan.preferred}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Aggressive Trader</div>
+                <div className="mt-1 text-xs text-gray-300">{entryDecision?.aggressive || execPlan.aggressive}</div>
+              </div>
+            </div>
+            {executionPersonality ? (
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Trader Profile</div>
+                {executionPersonality.suitable_for?.length ? <div className="mt-1 text-xs text-semantic-bullish">Best for: {executionPersonality.suitable_for.join(', ')}</div> : null}
+                {executionPersonality.not_ideal_for?.length ? <div className="mt-1 text-xs text-semantic-warning">Avoid for: {executionPersonality.not_ideal_for.join(', ')}</div> : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">AI Decision Walkthrough</div>
+            <div className="space-y-1.5">
+              {walkthroughSteps.map((step, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-gray-200 leading-relaxed">
+                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-semantic-accent-border bg-semantic-accent-bg text-[10px] font-bold text-semantic-accent shrink-0">{i + 1}</span>
+                  <span>{step}</span>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Risk State</div>
-            <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${resolverBadgeClass(result.risk_state)}`}>
-              {formatSwingEngineLabel(result.risk_state)}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 6</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Trade Management Plan</h2>
+          <p className="mt-1 text-xs text-gray-400">Plan the response before the trade moves, not after.</p>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          {riskPanel.map(item => (
+            <div key={item.label} className="flex items-center justify-between gap-2 rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+              <span className="text-[10px] text-gray-500 font-medium">{item.label}</span>
+              <span className={`text-xs font-semibold ${
+                item.tone === 'green' ? 'text-semantic-bullish' : item.tone === 'amber' ? 'text-semantic-warning' : item.tone === 'red' ? 'text-semantic-bearish' : 'text-secondary'
+              }`}>{item.value}</span>
             </div>
+          ))}
+        </div>
+        <div className="rounded-lg bg-gray-800/30 border border-gray-800/70 px-3 py-2 space-y-2">
+          <div className="text-xs text-gray-400 leading-relaxed">{riskExplanation}</div>
+          <div className="space-y-1.5">
+            {tradeMgmt.map((item, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs text-gray-300 leading-relaxed">
+                <span className="mt-1.5 h-1 w-1 rounded-full bg-semantic-accent shrink-0" />
+                {item}
+              </div>
+            ))}
           </div>
         </div>
-        <p className="text-sm text-gray-300">{result.reason || result.decision_message}</p>
-        {result.missing_confirmations.length > 0 ? (
-          <p className="text-xs text-amber-200/90">
-            Missing confirmations: {result.missing_confirmations.join(' · ')}
-          </p>
+        {contextualAlerts.length > 0 ? (
+          <div className="rounded-lg border border-semantic-warning-border bg-semantic-warning-bg px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-semantic-warning">Alert Recommendations</div>
+            <div className="mt-1 space-y-1">
+              {contextualAlerts.map((alert, i) => (
+                <div key={`${alert.type || 'alert'}-${i}`} className="text-xs text-semantic-warning">
+                  {alert.message || alert.condition || alert.type || 'Alert condition available'}
+                </div>
+              ))}
+            </div>
+          </div>
         ) : null}
       </div>
 
-      {/* ── Secondary badges strip ────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-800 bg-gray-900/30">
-        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-none ${TONE_ACTION_BADGE[actionTone]}`}>
-          {formatSwingEngineLabel(result.final_action)}
-        </span>
-        {secondaryBadges.map((item, i) => (
-          <span key={`${item.label}-${item.text}`} className="contents">
-            {i > 0 ? <span className="text-gray-800 text-xs">·</span> : null}
-            <div className="flex items-center gap-1.5">
-              {item.label === 'Bias' ? (
-                <>
-                  {isLong && <TrendingUp size={12} className="text-emerald-400" />}
-                  {isShort && <TrendingDown size={12} className="text-rose-400" />}
-                  {!result.bias && <Minus size={12} className="text-gray-500" />}
-                </>
-              ) : null}
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">{item.label}</span>
-              <Badge text={item.text} tone={item.tone} />
-            </div>
-          </span>
-        ))}
-      </div>
-
-      {/* ── Options playbook (server-derived) ───────────────────────── */}
-      {playbookHint ? (
-        <div className="swing-options-playbook px-4 py-3 border-b border-gray-800 border-l-4 border-l-violet-500/70 bg-violet-950/20">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-violet-300/90 mb-1.5 flex items-center gap-1.5">
-            <Layers size={10} className="shrink-0 opacity-90" />
-            Options playbook
-          </div>
-          <p className="text-sm text-gray-200 leading-relaxed">
-            {playbookHint}
-          </p>
-        </div>
-      ) : null}
-
-      {/* ── Score bars + price strip ──────────────────────────────── */}
-      <div className="px-4 py-3 border-b border-gray-800 space-y-2.5">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-3 text-xs">
-            {lastPrice !== null && (
-              <span className="font-mono text-gray-300 font-semibold">${lastPrice.toFixed(2)}</span>
-            )}
-            {mom5d !== null && (
-              <span className={`font-semibold ${mom5d >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                5d {mom5d >= 0 ? '+' : ''}{mom5d.toFixed(2)}%
-              </span>
-            )}
-            {vix !== null && (
-              <span className={`font-semibold ${vix >= 30 ? 'text-rose-400' : vix >= 20 ? 'text-amber-400' : 'text-gray-500'}`}>
-                VIX {vix.toFixed(1)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 text-[10px] text-gray-600">
-            <Layers size={10} />
-            <span>Quality {result.trade_quality_score}/10</span>
-          </div>
-        </div>
-        <ScoreBar label="Bull" value={result.bull_score} tone={result.bull_score >= result.bear_score ? 'green' : 'gray'} />
-        <ScoreBar label="Bear" value={result.bear_score} tone={result.bear_score > result.bull_score ? 'red' : 'gray'} />
-        <div className="pt-2 border-t border-gray-800/80">
-          <SwingTradeMetricCharts metrics={m} />
-        </div>
-      </div>
-
-      {/* ── Decision message (always visible) ────────────────────── */}
-      {result.decision_message && (
-        <div className="px-4 py-3 border-b border-gray-800">
-          <p className="text-sm text-gray-300 leading-relaxed">{result.decision_message}</p>
-          {result.avoid_reason && (
-            <div className="mt-2 flex items-start gap-1.5 text-xs text-rose-300 bg-rose-950/30 border border-rose-800/40 rounded-lg px-3 py-2">
-              <ShieldAlert size={12} className="shrink-0 mt-0.5" />
-              {result.avoid_reason}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Risk flags (always visible when non-empty) ───────────── */}
-      {result.risk_flags.length > 0 && (
+      {result.risk_flags.length > 0 ? (
         <div className="px-4 py-2.5 border-b border-gray-800">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-1.5">Risk Flags</div>
           <div className="flex flex-wrap gap-1.5">
             {result.risk_flags.map(f => <RiskFlagPill key={f} flag={f} />)}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* ── Expandable trade details ──────────────────────────────── */}
       <button
         type="button"
         onClick={() => setDetailOpen(v => !v)}
@@ -289,89 +1211,86 @@ export default function SwingTradeEnginePanel({ result, onRefresh, refreshing }:
         {detailOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
 
-      {detailOpen && (
+      {detailOpen ? (
         <div className="px-4 py-3 border-b border-gray-800 space-y-3 text-xs">
-          {/* Strategy + expiry */}
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl bg-gray-800/60 px-3 py-2.5">
               <div className="text-[9px] uppercase tracking-wide text-gray-600 mb-0.5">Suggested Strategy</div>
-              <div className={`text-sm font-bold ${result.suggested_strategy === 'NO_TRADE' ? 'text-gray-500' : 'text-gray-100'}`}>
-                {formatSwingEngineLabel(result.suggested_strategy)}
-              </div>
+              <div className={`text-sm font-bold ${result.suggested_strategy === 'NO_TRADE' ? 'text-gray-500' : 'text-gray-100'}`}>{formatSwingEngineLabel(result.suggested_strategy)}</div>
             </div>
             <div className="rounded-xl bg-gray-800/60 px-3 py-2.5">
               <div className="text-[9px] uppercase tracking-wide text-gray-600 mb-0.5">Suggested Expiry</div>
-              <div className={`text-sm font-bold ${result.suggested_expiry_window === 'No trade' ? 'text-gray-500' : 'text-gray-100'}`}>
-                {result.suggested_expiry_window}
-              </div>
+              <div className={`text-sm font-bold ${result.suggested_expiry_window === 'No trade' ? 'text-gray-500' : 'text-gray-100'}`}>{result.suggested_expiry_window}</div>
             </div>
           </div>
-
-          {/* Market context detail */}
-          {(spyBias || qqqBias) && (
+          {(spyBias || qqqBias) ? (
             <div className="rounded-xl bg-gray-800/40 px-3 py-2 space-y-1">
               <div className="text-[9px] uppercase tracking-wide text-gray-600 mb-0.5">Market Context</div>
-              {spyBias && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">SPY bias</span>
-                  <Badge text={spyBias} tone={toneForBias(spyBias)} />
-                </div>
-              )}
-              {qqqBias && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">QQQ bias</span>
-                  <Badge text={qqqBias} tone={toneForBias(qqqBias)} />
-                </div>
-              )}
+              {spyBias ? <div className="flex justify-between items-center"><span className="text-gray-500">SPY bias</span><Badge text={spyBias} tone={toneForBias(spyBias)} /></div> : null}
+              {qqqBias ? <div className="flex justify-between items-center"><span className="text-gray-500">QQQ bias</span><Badge text={qqqBias} tone={toneForBias(qqqBias)} /></div> : null}
             </div>
-          )}
-
-          {/* Confirmation needed */}
-          {result.confirmation_needed.length > 0 && (
+          ) : null}
+          {result.confirmation_needed.length > 0 ? (
             <div>
               <div className="text-[9px] uppercase tracking-wide text-gray-600 mb-1.5">Confirmation Needed</div>
               <div className="space-y-1">
                 {result.confirmation_needed.map((c, i) => (
                   <div key={i} className="flex items-start gap-2 text-gray-400 leading-relaxed">
-                    <Clock size={11} className="shrink-0 mt-0.5 text-amber-500" />
+                    <Clock size={11} className="shrink-0 mt-0.5 text-semantic-warning" />
                     {c}
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
 
-      {/* ── Expandable signals list ───────────────────────────────── */}
       <button
         type="button"
         onClick={() => setSignalsOpen(v => !v)}
-        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 hover:bg-gray-800/40 transition-colors"
+        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 hover:bg-gray-800/40 border-b border-gray-800 transition-colors"
       >
         <span>Raw Signals ({result.reasons.length})</span>
         {signalsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
 
-      {signalsOpen && (
+      {signalsOpen ? (
         <div className="px-4 pb-4 pt-1 space-y-1.5">
           {result.reasons.map((r, i) => {
-            const isBull = r.startsWith('STRONG GO') || r.startsWith('GO —') || r.includes('bullish') || r.includes('above')
-            const isBear = r.startsWith('NO-GO') || r.includes('bearish') || r.includes('below') || r.includes('oversold') || r.includes('overbought')
+            const bullishReason = r.startsWith('STRONG GO') || r.startsWith('GO —') || r.includes('bullish') || r.includes('above')
+            const bearishReason = r.startsWith('NO-GO') || r.includes('bearish') || r.includes('below') || r.includes('oversold') || r.includes('overbought')
             return (
               <div key={i} className="flex items-start gap-2 text-xs text-gray-400 leading-relaxed">
-                {isBull && !isBear
-                  ? <CheckCircle2 size={12} className="shrink-0 mt-0.5 text-emerald-500" />
-                  : isBear && !isBull
-                  ? <ShieldAlert size={12} className="shrink-0 mt-0.5 text-rose-500" />
-                  : <Minus size={12} className="shrink-0 mt-0.5 text-gray-600" />
-                }
+                {bullishReason && !bearishReason ? (
+                  <CheckCircle2 size={12} className="shrink-0 mt-0.5 text-semantic-bullish" />
+                ) : bearishReason && !bullishReason ? (
+                  <ShieldAlert size={12} className="shrink-0 mt-0.5 text-semantic-bearish" />
+                ) : (
+                  <Minus size={12} className="shrink-0 mt-0.5 text-gray-600" />
+                )}
                 <span>{r}</span>
               </div>
             )
           })}
         </div>
-      )}
+      ) : null}
+
+      <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-950/25">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-600">
+          <span>Quality {result.trade_quality_score}/10</span>
+          <span className="text-gray-800">|</span>
+          <span>Bias: {formatSwingEngineLabel(result.swing_bias)}</span>
+          <span className="text-gray-800">|</span>
+          <span>Risk: {formatSwingEngineLabel(result.risk_state)}</span>
+          {result.setup_quality ? (
+            <>
+              <span className="text-gray-800">|</span>
+              <span>Setup: {formatSwingEngineLabel(result.setup_quality)}</span>
+            </>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

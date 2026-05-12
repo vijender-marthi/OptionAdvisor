@@ -676,12 +676,17 @@ function closeModalContractTotal(pos: PortfolioPosition): number {
   return normalizedContractCount(pos)
 }
 
+/** Cost-basis reference per contract: for debit strategies use |net_credit|, for credit use max_profit. */
+function costBasisRefPerShare(pos: PortfolioPosition): number {
+  return pos.net_credit < 0 ? Math.abs(pos.net_credit) : pos.max_profit
+}
+
 function pnlPctFromRealizedDollars(
   pos: PortfolioPosition,
   realizedDollars: number,
   contractsClosed: number,
 ): number {
-  const denom = pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractsClosed
+  const denom = costBasisRefPerShare(pos) * SHARES_PER_OPTION_CONTRACT * contractsClosed
   if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return 0
   return (realizedDollars / denom) * 100
 }
@@ -736,7 +741,7 @@ function CloseModal({ pos, onClose, onConfirm }: {
     if (valid) {
       canSubmit = true
       pnlPctForSave = pnlNum
-      previewDollars = (pnlNum / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * nClose
+      previewDollars = (pnlNum / 100) * costBasisRefPerShare(pos) * SHARES_PER_OPTION_CONTRACT * nClose
     }
   } else if (pnlMode === 'dollars') {
     const valid = contractsFieldValid && realizedStr !== '' && Number.isFinite(realizedNum)
@@ -891,7 +896,7 @@ function CloseModal({ pos, onClose, onConfirm }: {
           </button>
           <button
             type="button"
-            onClick={() => canSubmit && onConfirm({ contractsToClose: nClose, pnlPct: pnlPctForSave })}
+            onClick={() => canSubmit && onConfirm({ contractsToClose: nClose, realized_pnl_percent: pnlPctForSave, realized_pnl: previewDollars ?? undefined })}
             disabled={!canSubmit}
             className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
           >
@@ -957,7 +962,7 @@ function PositionCard({
     }
   }
 
-  const realisedDollar = pos.pnlPct != null ? (pos.pnlPct / 100) * pos.max_profit * SHARES_PER_OPTION_CONTRACT * contractCount : null
+  const realisedDollar = pos.pnlPct != null ? (pos.pnlPct / 100) * costBasisRefPerShare(pos) * SHARES_PER_OPTION_CONTRACT * contractCount : null
 
   const suggestion = !isClosed ? getExitSuggestion(pos, suggestionEval) : null
   const sStyle     = suggestion ? SUGGESTION_STYLE[suggestion.level] : null

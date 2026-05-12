@@ -1,0 +1,47 @@
+{
+  "name": "Day Trade — NO-GO due to high VIX",
+  "engine_type": "day",
+  "input": {
+    "ticker": "SPY",
+    "verdict": "NO-GO",
+    "bias": null,
+    "reasons": [
+      "VIX very high (42.5) — avoiding new day-trade entry",
+      "No clear intraday edge"
+    ],
+    "metrics": {
+      "vix": 42.5,
+      "vwap": 478.00,
+      "last_price": 476.50,
+      "or_high": 479.20,
+      "or_low": 476.00,
+      "or_breakout": "below",
+      "momentum_pct": -0.22,
+      "volume_spike": true,
+      "confidence": {
+        "trend_strength": "LOW",
+        "breakout_quality": "WEAK",
+        "volume_confirmation": "WEAK",
+        "market_alignment": "WEAK",
+        "risk": "HIGH"
+      }
+    },
+    "trader_decision": {
+      "market_state": "RISK_OFF",
+      "decision_message": "VIX very high — avoiding new day-trade entry.",
+      "confirmation_needed": ["VIX below 30", "market stabilization"]
+    }
+  },
+  "expected": {
+    "market_bias": "BEARISH",
+    "setup_quality": "POOR",
+    "final_decision": "AVOID",
+    "execution_timing": "STAND ASIDE",
+    "risk_state": "HIGH",
+    "risk_category": "EXTENDED",
+    "confidence_max": 45,
+    "missing_confirmations": [],
+    "must_not_contain": ["ENTER NOW", "READY"],
+    "explanation_contains": ["not favorable"]
+  }
+}

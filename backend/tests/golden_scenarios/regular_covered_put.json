@@ -1,0 +1,43 @@
+{
+  "name": "Regular Trade — Covered Put, income on bearish bias",
+  "engine_type": "regular",
+  "input": {
+    "signals": {
+      "directional_bias": "Bearish",
+      "trend": "downtrend",
+      "iv_rank": 35,
+      "bias_confidence": 0.70,
+      "iv_environment": "normal",
+      "volatility_regime": "normal",
+      "current_price": 80.00
+    },
+    "recommendations": [
+      {
+        "strategy": "Covered Put",
+        "bias": "Bearish",
+        "net_credit": 1.50,
+        "expected_value": 0.18,
+        "edge_ratio": 0.09,
+        "dte": 25,
+        "passes_liquidity_filter": true,
+        "passes_rr_filter": true,
+        "warnings": [],
+        "scores": {"total_score": 21},
+        "max_profit": 1.50,
+        "max_loss": 78.50,
+        "breakeven_lower": 78.50,
+        "breakeven_upper": 0
+      }
+    ]
+  },
+  "expected": {
+    "market_bias": "BEARISH",
+    "setup_quality": "GOOD",
+    "final_decision": "READY",
+    "execution_timing": "ENTER NOW",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": [],
+    "explanation_contains": ["premium", "assignment"],
+    "execution_fields_present": ["Premium", "Effective Buy"]
+  }
+}

@@ -13,6 +13,7 @@ storage.DB_PATH = Path(_tmp.name) / "ccc_command_center_test.sqlite3"
 storage.init_db()
 
 from auth_routes import require_access_email  # noqa: E402
+import command_center_router as command_center_router_module  # noqa: E402
 from command_center_router import api_envelope  # noqa: E402
 import main as main_module  # noqa: E402
 from main import app  # noqa: E402
@@ -42,7 +43,63 @@ class CommandCenterApiTests(unittest.TestCase):
             [],
             day_trade_watchlist=["SPY"],
         )
-        r = self.client.get("/api/trade-command-center")
+        fake_payload = {
+            "engines": [{
+                "engine_type": "day",
+                "timeframe": "same day",
+                "best_use_case": "fast momentum",
+                "signal": "READY",
+                "signal_count": 1,
+                "top_recommendation": {"ticker": "SPY", "reason": "Momentum aligned.", "risk_warning": "Manage intraday risk."},
+                "risk_level": "medium",
+                "summary": "Momentum aligned.",
+                "market_bias": "BULLISH",
+                "setup_quality": "GOOD",
+                "execution_readiness": "READY",
+                "final_decision": "READY",
+                "confidence": 78,
+                "reason": "Momentum aligned.",
+                "supporting_factors": ["Above VWAP"],
+                "missing_confirmations": [],
+                "risk_state": "MEDIUM",
+            }],
+            "recommendations": [{
+                "id": "day:SPY",
+                "ticker": "SPY",
+                "engine_type": "day",
+                "direction": "call",
+                "strategy": "Long Call",
+                "signal": "GO",
+                "market_bias": "BULLISH",
+                "setup_quality": "GOOD",
+                "execution_readiness": "READY",
+                "final_decision": "READY",
+                "confidence": 78,
+                "reason": "Momentum aligned.",
+                "supporting_factors": ["Above VWAP"],
+                "missing_confirmations": [],
+                "risk_state": "MEDIUM",
+            }],
+            "conflicts": [],
+            "alerts_summary": {"active_alerts": 0, "critical_alerts": 0, "positions_requiring_exit": 0, "near_expiry_trades": 0, "high_iv_warnings": 0},
+            "recent_activity": [],
+            "charts": {"signal_distribution": []},
+        }
+        fake_market = {
+            "market_mode": "Bullish trend",
+            "best_style_today": "Swing",
+            "spy_trend": "Bullish",
+            "qqq_trend": "Bullish",
+            "vix_risk": "LOW (15.2)",
+            "risk_status": "Constructive",
+            "confidence_score": 74,
+            "ai_coach_summary": "SPY and QQQ supportive.",
+        }
+        with (
+            patch.object(command_center_router_module, "build_command_center_payload", return_value=fake_payload),
+            patch.object(command_center_router_module, "_fetch_live_market_summary", return_value=fake_market),
+        ):
+            r = self.client.get("/api/trade-command-center")
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertIsNone(body.get("error"))
@@ -77,6 +134,41 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertGreaterEqual(d["summary"]["total"], 5)
         self.assertEqual(d["summary"]["active"], len([x for x in d["alerts"] if x["status"] == "ACTIVE"]))
 
+    def test_alerts_endpoint_syncs_legacy_user_alerts_into_alert_center(self) -> None:
+        legacy_alert = {
+            "id": "NVDA-Covered-Call-2026-06-19",
+            "ticker": "NVDA",
+            "companyName": "NVIDIA Corporation",
+            "strategy": "Covered Call",
+            "bias": "Neutral/Bullish",
+            "expiry": "2026-06-19",
+            "dte": 38,
+            "weeksOut": 4,
+            "score": 88,
+            "maxProfit": 5.25,
+            "maxLoss": 12.0,
+            "netCredit": 1.05,
+            "pop": 0.72,
+            "ev": 0.84,
+            "detectedAt": 1778508619313,
+            "timeWindow": "10:00 AM – 10:15 AM PT",
+            "emailSent": True,
+            "dismissed": False,
+        }
+        storage.add_user_alert("ccc_user@example.com", legacy_alert, email_sent=True)
+
+        r = self.client.get("/api/alerts", params={"active_only": True})
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        rows = body["data"]["alerts"]
+        ids = {row["id"] for row in rows}
+        self.assertIn("legacy-watchlist:NVDA-Covered-Call-2026-06-19", ids)
+        synced = next(row for row in rows if row["id"] == "legacy-watchlist:NVDA-Covered-Call-2026-06-19")
+        self.assertEqual(synced["ticker"], "NVDA")
+        self.assertEqual(synced["engine_type"], "REGULAR")
+        self.assertEqual(synced["signal"], "GO")
+        self.assertEqual(synced["status"], "ACTIVE")
+
     def test_positions_center_unifies_trade_watchlists(self) -> None:
         storage.save_user_state(
             "ccc_user@example.com",
@@ -100,13 +192,74 @@ class CommandCenterApiTests(unittest.TestCase):
         )
         self.assertEqual(data["summary"]["watchlist_count"], 4)
 
+    def test_day_trade_endpoint_exposes_entry_guidance_and_option_risk_context(self) -> None:
+        fake_scan = SimpleNamespace(
+            ticker="NVDA",
+            company_name="NVIDIA Corporation",
+            verdict="GO",
+            bias="long",
+            bull_score=7.2,
+            bear_score=2.1,
+            reasons=["Above VWAP", "Opening range breakout confirmed"],
+            metrics={"vix": 18.4, "momentum_pct": 1.1},
+            trader_decision={"decision_message": "VWAP and momentum aligned."},
+            entry_guidance={
+                "state": "ENTRY_ACTIVE",
+                "action": "Enter on confirmed VWAP hold above the opening range.",
+                "pending_confirmations": [],
+                "should_enter_now": "YES",
+            },
+            option_risk_context={
+                "theta_risk": "HIGH",
+                "gamma_risk": "HIGH",
+                "iv_risk": "MEDIUM",
+                "liquidity_risk": "LOW",
+                "suggested_contract_window": "0DTE",
+                "option_execution_warning": "Signal is strong, but 0DTE theta/gamma risk is high. Use smaller size and confirm VWAP hold.",
+            },
+        )
+        fake_resolved = SimpleNamespace(
+            market_bias="BULLISH",
+            setup_quality="GOOD",
+            execution_readiness="READY",
+            final_decision="READY",
+            confidence=82,
+            reason="Intraday structure is aligned.",
+            supporting_factors=["Above VWAP"],
+            missing_confirmations=[],
+            risk_state="MEDIUM",
+            signal_quality="GO",
+            execution_timing="ENTER NOW",
+            risk_category="MODERATE",
+            explanation={"recommended_action": "Enter with confirmation"},
+            risk_reason="0DTE options require tighter execution.",
+            display_confidence=84,
+            execution_fields=[{"label": "VWAP", "value": "$901.20"}],
+        )
+
+        with (
+            patch.object(main_module, "run_day_trade_scan", return_value=fake_scan),
+            patch.object(main_module, "resolve_trade_decision", return_value=fake_resolved),
+        ):
+            r = self.client.post("/api/day-trade", json={"ticker": "NVDA"})
+
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["ticker"], "NVDA")
+        self.assertEqual(body["entry_guidance"]["state"], "ENTRY_ACTIVE")
+        self.assertEqual(body["option_risk_context"]["theta_risk"], "HIGH")
+        self.assertEqual(body["option_risk_context"]["suggested_contract_window"], "0DTE")
+
     def test_watchlistx_unifies_engine_rows_and_paginates(self) -> None:
         storage.save_user_state(
             "ccc_user@example.com",
-            [{"ticker": "avgo", "addedAt": "2026-04-01", "notes": "regular note"}],
+            [],
             [{"ticker": "TSLA", "status": "open"}],
-            day_trade_watchlist=["nvda"],
-            swing_trade_watchlist=["tsla"],
+            my_tickers=[
+                {"symbol": "AVGO", "trade_types": ["regular"], "company_name": "Broadcom Inc.", "is_active": True, "added_date": "2026-04-01"},
+                {"symbol": "NVDA", "trade_types": ["day", "swing"], "company_name": "NVIDIA Corp.", "is_active": True, "added_date": "2026-04-01"},
+                {"symbol": "TSLA", "trade_types": ["swing"], "company_name": "Tesla Inc.", "is_active": True, "added_date": "2026-04-01"},
+            ],
         )
 
         def fake_regular(_ticker: str, **_kwargs):
@@ -131,6 +284,17 @@ class CommandCenterApiTests(unittest.TestCase):
                 reasons=["Above VWAP"],
                 metrics={"rs_vs_qqq_pct": 1.7},
                 trader_decision={"decision_message": "Good intraday structure."},
+                bull_score=6.0,
+                bear_score=2.0,
+                entry_guidance={"should_enter_now": "YES", "state": "ENTRY_ACTIVE"},
+                option_risk_context={
+                    "theta_risk": "HIGH",
+                    "gamma_risk": "HIGH",
+                    "iv_risk": "MEDIUM",
+                    "liquidity_risk": "LOW",
+                    "suggested_contract_window": "0DTE",
+                    "option_execution_warning": "Signal is strong, but 0DTE gamma risk is high. Use smaller size and confirm VWAP hold.",
+                },
             )
 
         def fake_swing_scan(ticker: str, **kwargs):
@@ -148,6 +312,8 @@ class CommandCenterApiTests(unittest.TestCase):
                 decision_message="Trend continuation remains healthy.",
                 confirmation_needed=[],
                 avoid_reason=None,
+                bull_score=8.0,
+                bear_score=1.5,
             )
 
         def fake_resolve(payload: dict):
@@ -212,7 +378,8 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertEqual(row["swing_decision"], "WATCH")
         self.assertEqual(row["regular_decision"], "READY")
         self.assertEqual(row["agreement_state"], "READY")
-        self.assertEqual(row["sources"], ["day"])
+        self.assertEqual(row["sources"], ["day", "swing"])
+        self.assertEqual(row["day"]["option_risk_context"]["theta_risk"], "HIGH")
         self.assertIn("analyze_url", row["actions"])
 
 

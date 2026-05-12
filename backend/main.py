@@ -20,7 +20,7 @@ from collections import defaultdict
 import html
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote, urlparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -57,7 +57,7 @@ from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
-from command_center_router import command_center_router, api_envelope
+from command_center_router import command_center_router, api_envelope, _seed_default_my_tickers
 from decision_resolver import resolve_trade_decision
 from storage import (
     alert_center_active_counts_by_ticker,
@@ -84,6 +84,7 @@ from storage import (
     get_active_trade,
     exit_active_trade,
 )
+from score_normalizer import normalize_day_score, normalize_regular_score, normalize_swing_score
 
 # ── SMTP config from environment (optional — email skipped if absent) ─────────
 def _smtp_config() -> dict:
@@ -1411,6 +1412,10 @@ def _analyze_ticker(
         signal_quality=resolved.signal_quality or "",
         execution_timing=resolved.execution_timing or "",
         risk_category=resolved.risk_category or "",
+        explanation=dict(resolved.explanation or {}),
+        risk_reason=resolved.risk_reason or "",
+        display_confidence=int(resolved.display_confidence or 0),
+        execution_fields=list(resolved.execution_fields or []),
     )
 
 
@@ -1488,19 +1493,14 @@ def _watchlistx_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
         if not item.get("added_at") and added_at:
             item["added_at"] = added_at
 
-    for raw in state.get("watchlist") or []:
-        if not isinstance(raw, dict):
+    for mt in state.get("my_tickers") or []:
+        sym = str(mt.get("symbol", "") or "").strip().upper()
+        if not sym:
             continue
-        ensure_item(
-            str(raw.get("ticker", "")),
-            source="regular",
-            notes=str(raw.get("notes", "") or ""),
-            added_at=str(raw.get("addedAt", "") or ""),
-        )
-    for t in state.get("day_trade_watchlist") or []:
-        ensure_item(str(t), source="day")
-    for t in state.get("swing_trade_watchlist") or []:
-        ensure_item(str(t), source="swing")
+        types = mt.get("trade_types") or ["regular"]
+        company = str(mt.get("company_name", "") or "")
+        for src in types:
+            ensure_item(sym, source=src, notes=company)
 
     return sorted(merged.values(), key=lambda x: (str(x.get("ticker") or "")))
 
@@ -1538,6 +1538,18 @@ def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str =
             "signal_quality": "",
             "execution_timing": "",
             "risk_category": "",
+            "explanation": {},
+            "risk_reason": "",
+            "display_confidence": 0,
+            "execution_fields": [],
+            "raw_engine_score": 0.0,
+            "normalized_score": 0,
+            "normalized_state": "",
+            "confidence_band": "LOW",
+            "execution_bias": "NO_CLEAN_ENTRY",
+            "risk_band": "MEDIUM",
+            "normalized_reason": "",
+            "engine_score_breakdown": {},
         }
     return {
         "engine": label,
@@ -1554,6 +1566,18 @@ def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str =
         "signal_quality": getattr(decision, "signal_quality", "") or "",
         "execution_timing": getattr(decision, "execution_timing", "") or "",
         "risk_category": getattr(decision, "risk_category", "") or "",
+        "explanation": dict(getattr(decision, "explanation", {}) or {}),
+        "risk_reason": getattr(decision, "risk_reason", "") or "",
+        "display_confidence": int(getattr(decision, "display_confidence", 0) or 0),
+        "execution_fields": list(getattr(decision, "execution_fields", []) or []),
+        "raw_engine_score": 0.0,
+        "normalized_score": 0,
+        "normalized_state": "",
+        "confidence_band": "LOW",
+        "execution_bias": "NO_CLEAN_ENTRY",
+        "risk_band": "MEDIUM",
+        "normalized_reason": "",
+        "engine_score_breakdown": {},
     }
 
 
@@ -1633,6 +1657,11 @@ def _watchlistx_sort_key(row: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
         return (abs(bull - bear), str(row.get("ticker") or ""))
     if sort_by == "iv_rank":
         return (float(metrics.get("iv_rank") or 0.0), str(row.get("ticker") or ""))
+    if sort_by == "normalized_score":
+        day_score = int(row.get("day", {}).get("normalized_score") or 0)
+        swing_score = int(row.get("swing", {}).get("normalized_score") or 0)
+        regular_score = int(row.get("regular", {}).get("normalized_score") or 0)
+        return (max(day_score, swing_score, regular_score), str(row.get("ticker") or ""))
     if sort_by == "engine_agreement":
         rank = {"READY": 5, "WATCH": 4, "EXTENDED": 3, "MANAGE": 2, "CONFLICT": 1, "AVOID": 0}
         return (rank.get(str(row.get("agreement_state") or "").upper(), -1), str(row.get("ticker") or ""))
@@ -1750,6 +1779,9 @@ def get_watchlistx(
 
     email = normalize_email(auth_email)
     state = get_user_state(email)
+    if not state.get("my_tickers"):
+        _seed_default_my_tickers(email)
+        state = get_user_state(email)
     source_items = _watchlistx_source_items(state)
     source_filter = str(source or "").strip().lower()
     if source_filter in {"day", "swing", "regular"}:
@@ -1869,6 +1901,58 @@ def get_watchlistx(
         regular_payload = _watchlistx_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
         day_payload = _watchlistx_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
         swing_payload = _watchlistx_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
+
+        # ── Attach day-trade option risk context ───────────────────────────────
+        if day_scan is not None:
+            day_payload["option_risk_context"] = day_scan.option_risk_context
+
+        # ── Apply cross-engine score normalization ──────────────────────────────
+        if day_scan is not None and day_decision is not None:
+            day_payload.update(normalize_day_score(
+                bull_score=day_scan.bull_score,
+                bear_score=day_scan.bear_score,
+                verdict=str(day_scan.verdict or ""),
+                metrics=day_metrics,
+                decision_confidence=int(day_decision.confidence or 0),
+                decision_risk_state=str(day_decision.risk_state or "MEDIUM"),
+                entry_guidance=day_scan.entry_guidance,
+                reasons=day_scan.reasons,
+            ))
+        if swing_scan is not None and swing_decision is not None:
+            swing_payload.update(normalize_swing_score(
+                trade_quality_score=swing_scan.trade_quality_score,
+                verdict=str(swing_scan.verdict or ""),
+                final_action=str(swing_scan.final_action or ""),
+                entry_quality=str(swing_scan.entry_quality or ""),
+                risk_level=str(swing_scan.risk_level or "MEDIUM"),
+                swing_bias=str(swing_scan.swing_bias or ""),
+                decision_confidence=int(swing_decision.confidence or 0),
+                decision_risk_state=str(swing_decision.risk_state or "MEDIUM"),
+                metrics=swing_scan.metrics,
+                bull_score=swing_scan.bull_score,
+                bear_score=swing_scan.bear_score,
+                reasons=swing_scan.reasons,
+            ))
+        if regular_decision is not None:
+            top_rec = regular_data.recommendations[0] if regular_data and regular_data.recommendations else None
+            regular_payload.update(normalize_regular_score(
+                top_candidate={
+                    "scores": {"total_score": getattr(top_rec, "total_score", 0) or 0} if top_rec else {},
+                    "expected_value": getattr(top_rec, "expected_value", 0) if top_rec else 0,
+                    "edge_ratio": getattr(top_rec, "edge_ratio", 0) if top_rec else 0,
+                    "dte": getattr(top_rec, "dte", 0) if top_rec else 0,
+                    "passes_liquidity_filter": getattr(top_rec, "passes_liquidity_filter", False) if top_rec else False,
+                    "passes_rr_filter": getattr(top_rec, "passes_rr_filter", False) if top_rec else False,
+                } if top_rec else None,
+                signals={"bias_confidence": getattr(regular_data.signals, "bias_confidence", 0) if regular_data else 0,
+                         "iv_rank": getattr(regular_data.signals, "iv_rank", 0) if regular_data else 0,
+                         "iv_environment": getattr(regular_data.signals, "iv_environment", "") if regular_data else "",
+                         } if regular_data else None,
+                decision_confidence=int(regular_decision.confidence or 0),
+                decision_risk_state=str(regular_decision.risk_state or "MEDIUM"),
+                decision_reason=regular_reason,
+            ))
+
         agreement_state, agreement_reason = _watchlistx_agreement_state(
             ticker=ticker,
             decisions=[
@@ -1957,7 +2041,12 @@ def get_watchlistx(
             ),
             "chart_points": chart_points,
             "day": {**day_payload, "metrics": day_metrics},
-            "swing": {**swing_payload, "metrics": swing_metrics},
+            "swing": {
+                **swing_payload,
+                "metrics": swing_metrics,
+                "expected_holding_period": getattr(swing_scan, "expected_holding_period", "") or "",
+                "recommended_contract_duration": getattr(swing_scan, "recommended_contract_duration", "") or "",
+            },
             "regular": {
                 **regular_payload,
                 "strategy": regular_data.recommendations[0].strategy if regular_data and regular_data.recommendations else "",
@@ -2136,11 +2225,6 @@ def create_watchlistx_alert(
     return api_envelope({"ok": True, "id": alert_id})
 
 
-def _require_admin_role(auth_email: str, detail: str) -> None:
-    if get_user_state(normalize_email(auth_email)).get("role") != "admin":
-        raise HTTPException(status_code=403, detail=detail)
-
-
 @app.post("/api/day-trade", response_model=DayTradeResponse)
 def day_trade_scan(
     req: DayTradeRequest,
@@ -2149,9 +2233,7 @@ def day_trade_scan(
     """
     Intraday prototype: 1m RTH, VWAP / OR / momentum / volume + RS vs QQQ session + confidence block;
     verdicts: STRONG GO, GO, WATCH (weak volume), NO-GO, WAIT.
-    Restricted to users with the administrator role.
     """
-    _require_admin_role(auth_email, "Day Trading requires administrator access.")
     try:
         r = run_day_trade_scan(req.ticker)
         resolved = resolve_trade_decision(
@@ -2187,6 +2269,12 @@ def day_trade_scan(
             signal_quality=resolved.signal_quality or "",
             execution_timing=resolved.execution_timing or "",
             risk_category=resolved.risk_category or "",
+            explanation=dict(resolved.explanation or {}),
+            risk_reason=resolved.risk_reason or "",
+            display_confidence=int(resolved.display_confidence or 0),
+            execution_fields=list(resolved.execution_fields or []),
+            entry_guidance=dict(r.entry_guidance or {}),
+            option_risk_context=dict(r.option_risk_context or {}),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -2203,9 +2291,7 @@ def swing_trade_scan(
     Swing-trade prototype: daily candles, MA20/MA50 trend, RSI(14), MACD(12/26/9),
     5-day momentum, volume participation, SPY market context, VIX gate.
     Verdicts: STRONG GO, GO, WATCH, WAIT, NO-GO with long/short bias.
-    Restricted to users with the administrator role.
     """
-    _require_admin_role(auth_email, "Swing Trade requires administrator access.")
     try:
         r = run_swing_trade_scan(req.ticker)
         resolved = resolve_trade_decision(
@@ -2260,6 +2346,12 @@ def swing_trade_scan(
             signal_quality=resolved.signal_quality or "",
             execution_timing=resolved.execution_timing or "",
             risk_category=resolved.risk_category or "",
+            expected_holding_period=str(getattr(r, "expected_holding_period", "") or ""),
+            recommended_contract_duration=str(getattr(r, "recommended_contract_duration", "") or ""),
+            explanation=dict(resolved.explanation or {}),
+            risk_reason=resolved.risk_reason or "",
+            display_confidence=int(resolved.display_confidence or 0),
+            execution_fields=list(resolved.execution_fields or []),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -2828,6 +2920,22 @@ class JournalNotesRequest(_BM):
     notes: str
 
 
+class JournalUpdateRequest(_BM):
+    strategy: Optional[str] = None
+    bias: Optional[str] = None
+    underlying_entry: Optional[float] = None
+    expiry: Optional[str] = None
+    entry_date: Optional[str] = None
+    net_credit: Optional[float] = None
+    max_profit: Optional[float] = None
+    max_loss: Optional[float] = None
+    prob_of_profit: Optional[float] = None
+    expected_value: Optional[float] = None
+    total_score: Optional[int] = None
+    company_name: Optional[str] = None
+    notes: Optional[str] = None
+
+
 def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:
     """
     Mark-to-market P&L per share using Black-Scholes.
@@ -2994,6 +3102,18 @@ def journal_notes(email: str, entry_id: str, req: JournalNotesRequest, auth_emai
     ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
     update_journal_entry(normalized, entry_id, notes=req.notes)
+    return {"ok": True}
+
+
+@app.patch("/api/journal/{email}/{entry_id}/update")
+def journal_update(email: str, entry_id: str, req: JournalUpdateRequest, auth_email: str = Depends(require_access_email)):
+    """Update editable fields on a journal entry (strategy, bias, entry price, etc.)."""
+    ensure_same_user(auth_email, email)
+    normalized = email.strip().lower()
+    fields = {k: v for k, v in req.dict(exclude_none=True).items()}
+    if not fields:
+        return {"ok": True}
+    update_journal_entry(normalized, entry_id, **fields)
     return {"ok": True}
 
 

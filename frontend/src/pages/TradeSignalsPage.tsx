@@ -10,6 +10,8 @@ import type { Verdict } from '../components/PreTradeChecklist'
 import type { Recommendation, AnalyzeResponse } from '../types'
 import { cacheAge } from '../types'
 import { TICKER_CATEGORY_MAP, CATEGORY_BADGE, MULTI_WEEK_TARGETS } from '../data/stockUniverse'
+import { fetchMyTickers } from '../api/commandCenter'
+import type { MyTickerEntry } from '../api/commandCenter'
 
 // ─── Verdict style ───────────────────────────────────────────────────────────
 type VerdictOrNone = Verdict | 'NONE'
@@ -488,19 +490,24 @@ type Filter = 'All' | 'GO' | 'CAUTION' | 'NO GO' | 'Not Analyzed'
 type WeekFilter = 'All' | number
 
 const SIGNALS_HEADER_INFO =
-  '10-point pre-trade checklist across all watchlist tickers. Click Fetch All Weeks on any card to scan the 0w · 1w · 2w · 4w · 6w expiry windows — each window gets its own set of verdicts.'
+  'Card-based Signal Feed for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.'
 
 const SIGNALS_MULTI_WEEK_INFO =
   "How multi-week works: Each ticker's initial analysis uses one expiry (the one closest to your selected weeks-out setting). Use the week dropdown to focus the page on one DTE window. Use the refresh button to fetch 0, 1, 2, 4, and 6 week scans for all analyzed tickers. Green = GO, Amber = CAUTION, Red = NO GO, Gray = not fetched."
 
 export default function TradeSignalsPage() {
-  const { watchlist, tickerCache, requestAnalysis, refreshTicker,
+  const { tickerCache, requestAnalysis, refreshTicker,
           refreshingTickers, fetchAllWeeks, fetchingAllWeeks, accountSize } = useApp()
+  const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [filter, setFilter] = useState<Filter>('All')
   const [selectedWeek, setSelectedWeek] = useState<WeekFilter>('All')
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [signalsHeaderInfoOpen, setSignalsHeaderInfoOpen] = useState(false)
   const [signalsMultiWeekInfoOpen, setSignalsMultiWeekInfoOpen] = useState(false)
+
+  useEffect(() => {
+    fetchMyTickers().then(res => setMyTickers(res.data?.tickers || [])).catch(() => {})
+  }, [])
 
   const openSignalInFinder = useCallback((ticker: string, weeksOut: number, rec: Recommendation) => {
     const sym = ticker.trim().toUpperCase()
@@ -516,9 +523,10 @@ export default function TradeSignalsPage() {
   }, [requestAnalysis])
 
   const results = useMemo((): TickerResult[] => {
-    return watchlist
-      .map(w => {
-        const entry = tickerCache[w.ticker]
+    return myTickers
+      .map(mt => {
+        const sym = mt.symbol
+        const entry = tickerCache[sym]
         if (!entry) return null
         const buckets = collectWeekBuckets(entry)
         const allVerdicts = buckets.flatMap(b => b.recommendations.map(r => r.verdict))
@@ -531,7 +539,7 @@ export default function TradeSignalsPage() {
         const bestGoKelly = goRecs[0]?.rec.half_kelly_fraction ?? 0
 
         return {
-          ticker: w.ticker,
+          ticker: sym,
           companyName: entry.data.company_name,
           sector: entry.data.sector,
           currentPrice: entry.data.signals.current_price,
@@ -548,9 +556,9 @@ export default function TradeSignalsPage() {
         const order: Record<VerdictOrNone, number> = { 'GO': 0, 'CAUTION': 1, 'NO GO': 2, 'NONE': 3 }
         return order[a.topVerdict] - order[b.topVerdict]
       })
-  }, [watchlist, tickerCache])
+  }, [myTickers, tickerCache])
 
-  const unanalyzed = watchlist.filter(w => !tickerCache[w.ticker])
+  const unanalyzed = myTickers.filter(mt => !tickerCache[mt.symbol])
 
   const weekOptions = useMemo(() => {
     const counts = new Map<number, number>()
@@ -604,10 +612,10 @@ export default function TradeSignalsPage() {
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true)
-    for (const w of watchlist) {
-      if (!tickerCache[w.ticker]) continue
-      if (selectedWeek === 'All') await refreshTicker(w.ticker)
-      await fetchAllWeeks(w.ticker)
+    for (const mt of myTickers) {
+      if (!tickerCache[mt.symbol]) continue
+      if (selectedWeek === 'All') await refreshTicker(mt.symbol)
+      await fetchAllWeeks(mt.symbol)
     }
     setRefreshingAll(false)
   }
@@ -624,7 +632,7 @@ export default function TradeSignalsPage() {
                 <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-700 flex items-center justify-center">
                   <ShieldCheck size={18} className="text-emerald-400" />
                 </div>
-                <h1 className="text-2xl font-bold text-white">Signals</h1>
+                <h1 className="text-2xl font-bold text-white">Best Trades</h1>
                 <button
                   type="button"
                   onClick={() => setSignalsHeaderInfoOpen(o => !o)}
@@ -805,11 +813,11 @@ export default function TradeSignalsPage() {
         </div>
 
         {/* Empty states */}
-        {watchlist.length === 0 && (
+        {myTickers.length === 0 && (
           <div className="text-center py-20 text-gray-500">
             <ShieldCheck size={40} className="mx-auto mb-3 opacity-20" />
-            <div className="font-semibold text-gray-400">No tickers on your watchlist yet</div>
-            <div className="text-xs mt-1">Add tickers via Watchlist or click Watch on any AI Radar card.</div>
+            <div className="font-semibold text-gray-400">No tickers in My Tickers yet</div>
+            <div className="text-xs mt-1">Add tickers via My Tickers page to start seeing trade signals.</div>
           </div>
         )}
 
@@ -844,9 +852,9 @@ export default function TradeSignalsPage() {
                 Not Yet Analyzed ({unanalyzed.length})
               </div>
             )}
-            {unanalyzed.map(w => (
-              <UnanalyzedCard key={w.ticker} ticker={w.ticker} companyName={w.companyName}
-                onAnalyze={() => requestAnalysis(w.ticker)} />
+            {unanalyzed.map(mt => (
+              <UnanalyzedCard key={mt.symbol} ticker={mt.symbol} companyName={mt.company_name}
+                onAnalyze={() => requestAnalysis(mt.symbol)} />
             ))}
           </div>
         )}

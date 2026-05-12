@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import math
 import threading
 import time
+
 from typing import Any, Dict, Literal, Optional, Tuple
 
 import numpy as np
@@ -17,6 +18,7 @@ import pandas as pd
 from zoneinfo import ZoneInfo
 
 import bar_cache
+from day_option_risk import build_day_option_risk_context
 from trader_decision import build_trader_decision
 
 ET = ZoneInfo("America/New_York")
@@ -70,6 +72,8 @@ class DayTradeScan:
     reasons: list[str]
     metrics: dict[str, Any]
     trader_decision: dict[str, Any]
+    entry_guidance: dict[str, Any]
+    option_risk_context: dict[str, Any]
 
 
 def _ensure_et_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -302,6 +306,239 @@ def _confidence_block(
         "volume_confirmation": volume_confirmation,
         "market_alignment": market_alignment,
         "risk": risk,
+    }
+
+
+def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str]) -> dict:
+    last_price = metrics.get("last_price")
+    vwap = metrics.get("vwap")
+    or_high = metrics.get("or_high")
+    or_low = metrics.get("or_low")
+    or_breakout = metrics.get("or_breakout", "inside")
+    volume_spike = bool(metrics.get("volume_spike", False))
+    momentum_pct = metrics.get("momentum_pct", 0)
+    bidir = str(bias or "").lower()
+
+    confirmations = list(trader_decision.get("confirmation_needed") or [])
+
+    state = "MONITORING"
+    summary = "Entry conditions are being monitored."
+    action = "Review the setup before entry."
+    avoid = "Standard risk management applies."
+
+    if bidir == "long":
+        if last_price is not None and vwap is not None and last_price < vwap:
+            state = "WAIT_FOR_VWAP_HOLD"
+            summary = "Strong setup, but entry should wait for VWAP hold."
+            action = "Wait for price to reclaim VWAP and hold above it for confirmation."
+            avoid = "Avoid entering while price is below VWAP."
+        elif or_breakout == "inside":
+            state = "WAIT_FOR_BREAKOUT"
+            summary = "Price is inside the opening range \u2014 waiting for breakout."
+            action = "Enter only after price breaks above Opening Range High with volume confirmation."
+            avoid = "Do not enter while price is inside the opening range."
+        elif not volume_spike:
+            state = "WAIT_FOR_VOLUME"
+            summary = "Breakout detected but volume confirmation is pending."
+            action = "Wait for volume spike to confirm the breakout before entry."
+            avoid = "Avoid chasing a low-volume breakout."
+        else:
+            state = "ENTRY_ACTIVE"
+            summary = "Entry window is active. Price is above VWAP, breakout is confirmed, and momentum is supported."
+            action = "Entry conditions met. Consider scaling in with defined stop."
+            avoid = ""
+    elif bidir == "short":
+        if last_price is not None and vwap is not None and last_price > vwap:
+            state = "WAIT_FOR_VWAP_BREAK"
+            summary = "Bearish setup, but entry should wait for VWAP breakdown."
+            action = "Wait for price to break below VWAP and hold under it for confirmation."
+            avoid = "Avoid entering while price is above VWAP."
+        elif or_breakout == "inside":
+            state = "WAIT_FOR_BREAKDOWN"
+            summary = "Price is inside the opening range \u2014 waiting for breakdown."
+            action = "Enter only after price breaks below Opening Range Low with volume confirmation."
+            avoid = "Do not enter while price is inside the opening range."
+        elif not volume_spike:
+            state = "WAIT_FOR_VOLUME"
+            summary = "Breakdown detected but volume confirmation is pending."
+            action = "Wait for volume spike to confirm the breakdown before entry."
+            avoid = "Avoid chasing a low-volume breakdown."
+        else:
+            state = "ENTRY_ACTIVE"
+            summary = "Entry window is active. Price is below VWAP, breakdown is confirmed, and momentum is supported."
+            action = "Entry conditions met. Consider scaling in with defined stop."
+            avoid = ""
+
+    scalp_target = None
+    if last_price is not None:
+        if bidir == "long":
+            scalp_target = round(last_price * 1.015, 2)
+        elif bidir == "short":
+            scalp_target = round(last_price * 0.985, 2)
+
+    pullback_zone = ""
+    if vwap is not None and last_price is not None:
+        lo, hi = min(vwap, last_price), max(vwap, last_price)
+        pullback_zone = f"{lo:.2f}\u2013{hi:.2f}"
+
+    risk_below = or_low if bidir == "long" else or_high
+
+    # ── Derived execution guidance ────────────────────────────────────
+    abs_mom = abs(momentum_pct) if momentum_pct else 0.0
+    vwap_dist = metrics.get("vwap_dist_pct", 0.0)
+    vwap_dist_abs = abs(vwap_dist) if vwap_dist else 0.0
+
+    # Market phase
+    if or_breakout != "inside" and volume_spike and abs_mom > 0.15:
+        day_market_phase = "MOMENTUM_EXPANSION"
+    elif or_breakout != "inside" and volume_spike:
+        day_market_phase = "OPENING_RANGE_BREAKOUT"
+    elif or_breakout != "inside" and not volume_spike:
+        day_market_phase = "LOW_VOLUME_BREAKOUT"
+    elif or_breakout == "inside":
+        day_market_phase = "CONSOLIDATION"
+    elif vwap_dist_abs > 0.5 and bidir == "long" and vwap_dist < 0:
+        day_market_phase = "VWAP_RECLAIM_ATTEMPT"
+    elif vwap_dist_abs > 0.5 and bidir == "short" and vwap_dist > 0:
+        day_market_phase = "VWAP_RECLAIM_ATTEMPT"
+    else:
+        day_market_phase = "RANGE_BOUND"
+
+    # Pullback probability
+    pullback_score = 0
+    pullback_reasons: list[str] = []
+    if vwap_dist_abs > 0.3:
+        pullback_score += 6
+        pullback_reasons.append(f"price {vwap_dist_abs:.1f}% from VWAP")
+    if abs_mom > 0.15:
+        pullback_score += 7
+        pullback_reasons.append("strong momentum suggests pullback risk")
+    elif abs_mom > 0.08:
+        pullback_score += 4
+        pullback_reasons.append("elevated momentum")
+    if not volume_spike:
+        pullback_score += 3
+    if state in ("WAIT_FOR_VWAP_HOLD", "WAIT_FOR_VWAP_BREAK"):
+        pullback_score += 5
+
+    if pullback_score >= 8:
+        pullback_prob = "HIGH"
+    elif pullback_score >= 5:
+        pullback_prob = "MODERATE"
+    else:
+        pullback_prob = "LOW"
+
+    # Should enter now
+    if state == "ENTRY_ACTIVE":
+        should_now = "YES"
+    elif state in ("WAIT_FOR_VOLUME",):
+        should_now = "CONDITIONAL"
+    else:
+        should_now = "NO"
+
+    # Execution personality
+    exec_suitable: list[str] = []
+    exec_not_ideal: list[str] = []
+    if state == "ENTRY_ACTIVE" and volume_spike:
+        exec_suitable = ["momentum scalpers", "breakout day traders"]
+        exec_not_ideal = ["late-session momentum chasers", "conservative entries"]
+    elif state == "ENTRY_ACTIVE":
+        exec_suitable = ["active day traders"]
+        exec_not_ideal = ["conservative entries"]
+    elif state in ("WAIT_FOR_VOLUME",):
+        exec_suitable = ["patient breakout traders"]
+        exec_not_ideal = ["aggressive momentum entries"]
+    elif state in ("WAIT_FOR_BREAKOUT", "WAIT_FOR_BREAKDOWN"):
+        exec_suitable = ["range-breakout traders"]
+        exec_not_ideal = ["scalpers", "momentum chasers"]
+    elif state in ("WAIT_FOR_VWAP_HOLD", "WAIT_FOR_VWAP_BREAK"):
+        exec_suitable = ["VWAP-reclaim traders"]
+        exec_not_ideal = ["aggressive entries before VWAP confirmation"]
+    else:
+        exec_suitable = ["patient day traders"]
+        exec_not_ideal = ["momentum entries"]
+
+    # Entry decision sections
+    direction_word = "bullish" if bidir == "long" else "bearish"
+    if state == "ENTRY_ACTIVE":
+        if vwap is not None and last_price is not None:
+            conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
+        else:
+            conservative = "Wait for pullback to support with volume confirmation."
+        if or_high is not None:
+            aggressive = f"Continuation above ORH ({or_high:.2f}) with expanding volume."
+        else:
+            aggressive = "Continuation on momentum follow-through with expanding volume."
+        best_setup = f"{direction_word.capitalize()} continuation with defined stop below recent swing low."
+    elif state in ("WAIT_FOR_VOLUME",):
+        conservative = "Wait for volume spike to confirm breakout before entry."
+        aggressive = "Not recommended — wait for volume confirmation."
+        best_setup = "Breakout with volume spike above ORH/ORL threshold."
+    elif "VWAP" in state:
+        if vwap is not None:
+            conservative = f"Wait for price to reclaim and hold VWAP ({vwap:.2f})."
+            aggressive = "Only above VWAP with volume expansion for long entries."
+            best_setup = f"Pullback to VWAP with {direction_word} continuation setup."
+        else:
+            conservative = "Wait for price to reclaim VWAP."
+            aggressive = "Not recommended until VWAP hold."
+            best_setup = "No clear setup yet — monitor for VWAP interaction."
+    else:
+        conservative = "Wait for opening range breakout or VWAP hold."
+        aggressive = "Not recommended at current levels."
+        best_setup = "No clear day trade setup yet."
+
+    # Contextual alerts
+    day_alerts: list[dict[str, str]] = []
+    if state == "ENTRY_ACTIVE" and or_high is not None:
+        day_alerts.append({
+            "type": "CONTINUATION_WATCH",
+            "message": f"{direction_word.capitalize()} continuation above ORH ({or_high:.2f}) with volume",
+            "condition": "Expanding volume on breakout above ORH",
+        })
+    if vwap is not None and state in ("WAIT_FOR_VWAP_HOLD", "WAIT_FOR_VWAP_BREAK"):
+        side = "reclaim" if bidir == "long" else "break below"
+        day_alerts.append({
+            "type": "VWAP_WATCH",
+            "message": f"Price {side} VWAP ({vwap:.2f}) with volume confirmation",
+            "condition": "Price crosses VWAP with expanding volume",
+        })
+    if not volume_spike and or_breakout != "inside":
+        day_alerts.append({
+            "type": "VOLUME_WATCH",
+            "message": "Volume spike needed to confirm directional move",
+            "condition": "Volume exceeds mid-session baseline",
+        })
+
+    return {
+        "state": state,
+        "summary": summary,
+        "action": action,
+        "avoid": avoid,
+        "pending_confirmations": confirmations,
+        "current_price": last_price,
+        "vwap": vwap,
+        "price_vs_vwap_pct": metrics.get("vwap_dist_pct"),
+        "opening_range_high": or_high,
+        "opening_range_low": or_low,
+        "breakout_level": or_high if bidir == "long" else or_low,
+        "pullback_zone": pullback_zone,
+        "risk_below": risk_below,
+        "scalp_target": scalp_target,
+        # New execution guidance fields
+        "day_market_phase": day_market_phase,
+        "pullback_probability": pullback_prob,
+        "should_enter_now": should_now,
+        "execution_personality": {
+            "suitable_for": exec_suitable,
+            "not_ideal_for": exec_not_ideal,
+        },
+        "entry_decision": {
+            "conservative": conservative,
+            "aggressive": aggressive,
+            "best_setup": best_setup,
+        },
+        "contextual_alerts": day_alerts,
     }
 
 
@@ -665,6 +902,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
         vix=vix_level,
     )
 
+    entry_guidance = build_day_entry_guidance(metrics, trader_decision, bias)
+
+    option_risk_context = build_day_option_risk_context(t, info)
+
     scan = DayTradeScan(
         ticker=t,
         company_name=company,
@@ -675,6 +916,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
         reasons=reasons,
         metrics=metrics,
         trader_decision=trader_decision,
+        entry_guidance=entry_guidance,
+        option_risk_context=option_risk_context,
     )
     with _scan_lock:
         _scan_cache[t] = (time.time(), scan)

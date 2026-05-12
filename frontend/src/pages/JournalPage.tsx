@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
   AlertTriangle, DollarSign, BarChart3, Filter,
 } from 'lucide-react'
-import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry } from '../api/client'
+import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
 
@@ -62,6 +62,19 @@ const EXIT_LABELS: Record<string, string> = {
   '5DTE':        '5 DTE Exit',
   EXPIRY:        'Expired',
   MANUAL:        'Manual Close',
+}
+
+// ─── Price diff helper ───────────────────────────────────────────────────────
+
+function PriceDiff({ current, entry }: { current: number; entry: number }) {
+  const diff = current - entry
+  const pct = entry !== 0 ? (diff / entry) * 100 : 0
+  const color = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-gray-400'
+  return (
+    <span className={`font-mono font-semibold ${color}`}>
+      {diff >= 0 ? '+' : ''}${diff.toFixed(2)}&nbsp;({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)
+    </span>
+  )
 }
 
 // ─── Stat card ───────────────────────────────────────────────────────────────
@@ -173,17 +186,22 @@ function EntryCard({
   onClose,
   onDeleteConfirm,
   onNotesSave,
+  onUpdate,
 }: {
   entry: JournalEntry
   onClose: (id: string, reason: string, notes: string) => Promise<void>
   onDeleteConfirm: (id: string) => void
   onNotesSave: (id: string, notes: string) => Promise<void>
+  onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showClose, setShowClose] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesText, setNotesText] = useState(entry.notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [savingField, setSavingField] = useState(false)
 
   const isOpen    = entry.status === 'OPEN'
   const isClosed  = entry.status === 'CLOSED'
@@ -204,6 +222,24 @@ function EntryCard({
     } finally {
       setSavingNotes(false)
     }
+  }
+
+  const handleFieldSave = async (field: string) => {
+    setSavingField(true)
+    try {
+      const val = field === 'underlying_entry' ? parseFloat(editValue) : editValue
+      await onUpdate(entry.id, { [field]: val })
+      setEditingField(null)
+      setEditValue('')
+    } catch {
+    } finally {
+      setSavingField(false)
+    }
+  }
+
+  const startEditing = (field: string, current: string | number) => {
+    setEditingField(field)
+    setEditValue(String(current ?? ''))
   }
 
   const outcomeColor = entry.outcome ? OUTCOME_COLORS[entry.outcome] ?? 'text-gray-400' : ''
@@ -240,10 +276,27 @@ function EntryCard({
               </div>
             </div>
 
-            <div className="min-w-0 text-right sm:text-left sm:w-24 sm:shrink-0">
-              <div className={`text-sm font-semibold font-mono ${pnlColor}`}>{fmt$(pnlContract)}</div>
-              <div className="text-xs text-gray-500">{pnlLabel}</div>
-            </div>
+            {(() => {
+              const ep = entry.underlying_entry
+              const cp = entry.current_price
+              const hasBoth = ep > 0 && cp > 0
+              const diff = hasBoth ? cp - ep : 0
+              const pct = hasBoth ? (diff / ep) * 100 : 0
+              const color = hasBoth ? (diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-gray-200') : 'text-gray-200'
+              return (
+                <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
+                  <div className={`text-sm font-semibold font-mono ${color}`}>
+                    ${cp?.toFixed(2) ?? '—'}
+                    {hasBoth && (
+                      <span className="text-[10px] ml-1 font-normal">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {ep > 0 ? `entry $${ep.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+              )
+            })()}
 
             <div className="flex items-center sm:hidden">
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
@@ -300,7 +353,6 @@ function EntryCard({
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3 text-xs">
               {[
                 { label: 'Entry Date', value: fmtDate(entry.entry_date), note: '' },
-                { label: 'Entry Price', value: `$${entry.underlying_entry?.toFixed(2) ?? '—'}`, note: '' },
                 {
                   label: 'Net / contract',
                   value: `${entry.net_credit > 0 ? '+' : ''}$${(entry.net_credit * 100).toFixed(0)}`,
@@ -328,14 +380,20 @@ function EntryCard({
               ))}
             </div>
 
-            {/* Current / exit price info */}
+            {/* Price comparison: entry vs current (open) or entry vs exit (closed/expired) */}
             {isOpen && entry.current_price > 0 && (
-              <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs">
-                <span className="text-blue-400 font-semibold">Live · </span>
-                <span className="text-gray-300">
-                  {entry.ticker} @ <span className="font-mono">${entry.current_price.toFixed(2)}</span>
-                  &nbsp;·&nbsp;MTM P&L: <span className={`font-mono font-bold ${pnlColor}`}>{fmt$(pnlContract)}</span> per contract
+              <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-x-3 gap-y-1">
+                <span className="text-gray-500">
+                  Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
                 </span>
+                <span className="text-gray-500">
+                  Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
+                </span>
+                {entry.underlying_entry > 0 && (
+                  <span className="text-gray-500">
+                    P&L: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
+                  </span>
+                )}
               </div>
             )}
 
@@ -346,7 +404,12 @@ function EntryCard({
                 </span>
                 {entry.underlying_exit > 0 && (
                   <span className="text-gray-500">
-                    Exit price: <span className="font-mono text-gray-300">${entry.underlying_exit.toFixed(2)}</span>
+                    Exit: <span className="font-mono text-gray-300">${entry.underlying_exit.toFixed(2)}</span>
+                  </span>
+                )}
+                {entry.underlying_entry > 0 && entry.underlying_exit > 0 && (
+                  <span className="text-gray-500">
+                    Chg: <PriceDiff current={entry.underlying_exit} entry={entry.underlying_entry} />
                   </span>
                 )}
                 <span className="text-gray-500">
@@ -357,6 +420,60 @@ function EntryCard({
                 </span>
               </div>
             )}
+
+            {/* Editable fields: strategy, bias, entry price */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {([
+                { key: 'strategy', label: 'Strategy', value: entry.strategy },
+                { key: 'bias', label: 'Bias', value: entry.bias },
+                { key: 'underlying_entry', label: 'Entry Price', value: entry.underlying_entry > 0 ? `$${entry.underlying_entry.toFixed(2)}` : '$--' },
+              ] as const).map(f => (
+                <div key={f.key} className="group flex items-center gap-1.5 bg-gray-800 rounded-lg px-2.5 py-1.5 text-xs">
+                  <span className="text-gray-500">{f.label}:</span>
+                  {editingField === f.key ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type={f.key === 'underlying_entry' ? 'number' : 'text'}
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleFieldSave(f.key)
+                          if (e.key === 'Escape') { setEditingField(null); setEditValue('') }
+                        }}
+                        autoFocus
+                        className="w-24 bg-gray-700 border border-violet-600 rounded px-1.5 py-0.5 text-gray-200 font-mono text-xs outline-none"
+                        step={f.key === 'underlying_entry' ? '0.01' : undefined}
+                      />
+                      <button
+                        onClick={() => handleFieldSave(f.key)}
+                        disabled={savingField}
+                        className="text-violet-400 hover:text-violet-300 p-0.5"
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        onClick={() => { setEditingField(null); setEditValue('') }}
+                        className="text-gray-500 hover:text-gray-400 p-0.5"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const val = f.key === 'underlying_entry' ? entry.underlying_entry
+                          : f.key === 'strategy' ? entry.strategy
+                          : entry.bias
+                        startEditing(f.key, val)
+                      }}
+                      className="text-gray-300 font-semibold hover:text-violet-400 transition-colors cursor-text"
+                    >
+                      {f.value}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
 
             {/* Legs table */}
             {entry.legs && entry.legs.length > 0 && (
@@ -507,6 +624,19 @@ export default function JournalPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Auto-refresh every 60s
+  useEffect(() => {
+    if (!email) return
+    const id = setInterval(() => {
+      refreshJournal(email).then(data => {
+        const list = (data.entries as JournalEntry[]) ?? []
+        setEntries(list)
+        syncJournalEntryCount(list.length)
+      }).catch(() => {})
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [email, syncJournalEntryCount])
+
   const handleRefresh = async () => {
     if (!email) return
     setRefreshing(true)
@@ -551,6 +681,12 @@ export default function JournalPage() {
     if (!email) return
     await updateJournalNotes(email, id, notes)
     setEntries(prev => prev.map(e => e.id === id ? { ...e, notes } : e))
+  }
+
+  const handleUpdate = async (id: string, fields: Record<string, unknown>) => {
+    if (!email) return
+    await updateJournalEntry(email, id, fields)
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, ...fields } as JournalEntry : e))
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -731,6 +867,7 @@ export default function JournalPage() {
               onClose={handleClose}
               onDeleteConfirm={handleDeleteConfirm}
               onNotesSave={handleNotesSave}
+              onUpdate={handleUpdate}
             />
           ))}
         </div>

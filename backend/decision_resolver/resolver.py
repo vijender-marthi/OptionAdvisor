@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from .decision_models import ResolvedTradeDecision
+from .explanation_builder import (
+    build_execution_fields,
+    build_strategy_explanation,
+    compute_risk_label,
+    normalize_confidence,
+)
 
 
 def _get(mapping: Mapping[str, Any] | Any, key: str, default: Any = None) -> Any:
@@ -85,6 +91,24 @@ def _execution_timing_from_decision(fd: str) -> str:
     if f in ("EXIT", "MANAGE", "SCALE_OUT"):
         return "MANAGE"
     return ""
+
+
+def _day_execution_timing(final_decision: str, missing_confirmations: list[str]) -> str:
+    f = str(final_decision or "").upper()
+    if f != "READY":
+        return _execution_timing_from_decision(final_decision)
+    if not missing_confirmations:
+        return "ENTER NOW"
+    confirmations_lower = " ".join(c.lower() for c in missing_confirmations)
+    if "vwap" in confirmations_lower and "breakout" not in confirmations_lower:
+        return "WAIT FOR VWAP HOLD"
+    if "breakout" in confirmations_lower:
+        return "WAIT FOR BREAKOUT"
+    if "pullback" in confirmations_lower:
+        return "WAIT FOR PULLBACK"
+    if "volume" in confirmations_lower:
+        return "WAIT FOR CONFIRMATION"
+    return "ENTRY CONDITIONAL"
 
 
 def _risk_category_from_state(rs: str) -> str:
@@ -202,15 +226,18 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
         execution = "WAIT"
         final_decision = "WAIT"
 
-    confidence = 0
-    confidence += 28 if trend_strength == "HIGH" else 18 if trend_strength == "MEDIUM" else 8
-    confidence += 26 if breakout_quality == "GOOD" else 14 if breakout_quality == "FAIR" else 6
-    confidence += 18 if volume_confirmation == "STRONG" else 8
-    confidence += 16 if market_bias in {"BULLISH", "BEARISH"} else 10 if market_bias == "MIXED" else 6
-    confidence += 10 if risk_state == "LOW" else 6 if risk_state == "MEDIUM" else 2
+    raw_confidence = 0
+    raw_confidence += 28 if trend_strength == "HIGH" else 18 if trend_strength == "MEDIUM" else 8
+    raw_confidence += 26 if breakout_quality == "GOOD" else 14 if breakout_quality == "FAIR" else 6
+    raw_confidence += 18 if volume_confirmation == "STRONG" else 8
+    raw_confidence += 16 if market_bias in {"BULLISH", "BEARISH"} else 10 if market_bias == "MIXED" else 6
+    raw_confidence += 10 if risk_state == "LOW" else 6 if risk_state == "MEDIUM" else 2
 
     reasons = _as_list(_get(engine_analysis, "reasons"))
     supporting = reasons[:4]
+
+    # ── Execution timing (signal vs execution separation) ────────────────
+    dt_exec_timing = _day_execution_timing(final_decision, missing)
 
     # ── Three-axis display fields ────────────────────────────────────────
     dt_signal_raw = verdict
@@ -223,24 +250,139 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     else:
         dt_signal = ""
 
+    # ── Execution fields ─────────────────────────────────────────────────
+    execution_fields: list[dict] = []
+    vwap = metrics.get("vwap")
+    last_price = metrics.get("last_price")
+    or_high = metrics.get("or_high")
+    or_low = metrics.get("or_low")
+    if vwap is not None:
+        execution_fields.append({"label": "VWAP", "value": f"${float(vwap):.2f}"})
+    if or_high is not None:
+        execution_fields.append({"label": "Opening Range High", "value": f"${float(or_high):.2f}"})
+    if or_low is not None:
+        execution_fields.append({"label": "Opening Range Low", "value": f"${float(or_low):.2f}"})
+    if bias == "long" and or_high is not None:
+        execution_fields.append({"label": "Breakout Level", "value": f"${float(or_high):.2f}"})
+        if or_low is not None:
+            execution_fields.append({"label": "Risk Below", "value": f"${float(or_low):.2f}"})
+    elif bias == "short" and or_low is not None:
+        execution_fields.append({"label": "Breakdown Level", "value": f"${float(or_low):.2f}"})
+        if or_high is not None:
+            execution_fields.append({"label": "Risk Above", "value": f"${float(or_high):.2f}"})
+    if last_price is not None and vwap is not None:
+        dist_to_target = float(last_price) * 1.01 if bias == "long" else float(last_price) * 0.99
+        target_label = "Scalp Target" if bias == "long" else "Scalp Target"
+        execution_fields.append({"label": target_label, "value": f"${dist_to_target:.2f}"})
+
+    # ── Explanation ──────────────────────────────────────────────────────
+    summary_text = ""
+    recommended_action_text = ""
+    main_risk_text = ""
+    if final_decision == "READY" and not missing:
+        summary_text = (
+            "Strong intraday candidate. VWAP hold and momentum confirmation are active. "
+            "Entry window is open; manage risk tightly."
+        )
+        recommended_action_text = "Entry window is open. Enter with defined risk."
+        main_risk_text = "Momentum can fade quickly intraday. Use tight stops."
+    elif final_decision in ("READY", "WATCH") and missing:
+        first_conf = missing[0].lower()
+        if "vwap" in first_conf:
+            summary_text = (
+                "Strong intraday candidate. Market tape is supportive, "
+                "but entry should wait for VWAP hold. Avoid chasing extended candles."
+            )
+            recommended_action_text = "Wait for VWAP reclaim before entry."
+        elif "breakout" in first_conf:
+            summary_text = (
+                "Strong intraday candidate. Setup is forming but breakout confirmation "
+                "is still missing. Avoid chasing extended candles."
+            )
+            recommended_action_text = "Wait for breakout confirmation before entry."
+        elif "pullback" in first_conf:
+            summary_text = (
+                "Strong intraday candidate. Momentum is present, "
+                "but entry should wait for a controlled pullback to support."
+            )
+            recommended_action_text = "Wait for a pullback to support before entry."
+        else:
+            summary_text = (
+                "Setup is forming but confirmation is missing. "
+                "Wait for VWAP reclaim, breakout, or volume expansion."
+            )
+            recommended_action_text = f"Needs confirmation: {missing[0]}."
+        main_risk_text = "Chasing an extended move increases risk of a poor fill."
+    elif final_decision == "WAIT":
+        summary_text = (
+            "Setup is forming but the intraday structure needs more development. "
+            "Let the price action settle before considering entry."
+        )
+        recommended_action_text = "Stand aside until a clearer pattern emerges."
+        main_risk_text = "Low conviction setups often lead to poor risk-reward entries."
+    elif final_decision == "AVOID" or verdict == "NO-GO":
+        summary_text = (
+            "Intraday conditions are not favorable for a day trade on this name right now. "
+            "Market context, volume, or trend alignment is missing."
+        )
+        recommended_action_text = "Do not force a trade. Look for higher-conviction names."
+        main_risk_text = "Trading against the intraday trend or weak volume increases the chance of a loss."
+    else:
+        summary_text = "No clean intraday trigger yet."
+        recommended_action_text = "Wait for a clearer setup."
+        main_risk_text = "Avoid forcing trades in low-conviction conditions."
+
+    raw_reason = str(trader_decision.get("decision_message", "") or "")
+    reason = _pick_reason(
+        explicit_reason=None,
+        message=raw_reason,
+        missing_confirmations=missing,
+        fallback="No clean intraday trigger yet.",
+    )
+
+    # ── Risk reason ──────────────────────────────────────────────────────
+    risk_reason_parts: list[str] = []
+    if risk_state in ("HIGH", "EXTREME"):
+        vix_val = metrics.get("vix")
+        if vix_val is not None and float(vix_val) >= 30:
+            risk_reason_parts.append(f"VIX elevated ({float(vix_val):.1f})")
+        if not volume_confirmation or volume_confirmation == "WEAK":
+            risk_reason_parts.append("Volume confirmation missing")
+        if breakout_quality == "WEAK":
+            risk_reason_parts.append("Breakout structure is weak")
+    elif risk_state == "MEDIUM":
+        if breakout_quality == "FAIR":
+            risk_reason_parts.append("Moderate breakout quality")
+    risk_reason = "; ".join(risk_reason_parts) if risk_reason_parts else "Standard intraday risk."
+
+    # ── Display confidence ───────────────────────────────────────────────
+    display_confidence = _clamp_confidence(raw_confidence)
+    risk_caps = {"LOW": 100, "MEDIUM": 92, "HIGH": 84, "EXTREME": 78}
+    display_confidence = min(display_confidence, risk_caps.get(risk_state, 100))
+    if missing:
+        display_confidence = min(display_confidence, 85)
+
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
         execution_readiness=execution,
         final_decision=final_decision,
-        confidence=_clamp_confidence(confidence),
-        reason=_pick_reason(
-            explicit_reason=None,
-            message=str(trader_decision.get("decision_message", "") or ""),
-            missing_confirmations=missing,
-            fallback="No clean intraday trigger yet.",
-        ),
+        confidence=_clamp_confidence(raw_confidence),
+        reason=reason,
         supporting_factors=supporting,
         missing_confirmations=missing,
         risk_state=risk_state,
         signal_quality=dt_signal,
-        execution_timing=_execution_timing_from_decision(final_decision),
+        execution_timing=dt_exec_timing,
         risk_category=_risk_category_from_state(risk_state),
+        explanation={
+            "summary": summary_text,
+            "recommended_action": recommended_action_text,
+            "main_risk": main_risk_text,
+        },
+        risk_reason=risk_reason,
+        display_confidence=display_confidence,
+        execution_fields=execution_fields,
     )
 
 
@@ -432,6 +574,35 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
     else:
         rg_signal = ""
 
+    # ── Strategy-aware explanation ───────────────────────────────────────
+    rec_for_explain = rec_map if rec_map else {}
+    sig_for_explain: dict = {}
+    if signals is not None:
+        sig_for_explain = {k: sig.get(k) for k in (
+            "current_price", "trend", "iv_rank", "iv_environment",
+            "volatility_regime", "directional_bias",
+        )}
+
+    explanation = build_strategy_explanation(rec_for_explain, sig_for_explain) if rec_map else {}
+
+    risk_label, risk_reason = compute_risk_label(rec_for_explain, sig_for_explain) if rec_map else ("MEDIUM", "")
+
+    trend_str = str(sig.get("trend", "") or "").lower()
+    trend_strong = "strong" in trend_str
+    earnings_risk = any("earnings" in str(w).lower() for w in warnings)
+
+    display_confidence = normalize_confidence(
+        confidence,
+        strategy=str(rec_map.get("strategy", "") if rec_map else ""),
+        risk_label=risk_label,
+        passes_liquidity=passes_liquidity if rec_map else True,
+        passes_rr=passes_rr if rec_map else True,
+        trend_strong=trend_strong,
+        earnings_risk=earnings_risk,
+    )
+
+    execution_fields = build_execution_fields(rec_for_explain, sig_for_explain) if rec_map else []
+
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
@@ -445,6 +616,10 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
         signal_quality=rg_signal,
         execution_timing=_execution_timing_from_decision(final_decision),
         risk_category=_risk_category_from_state(risk_state),
+        explanation=explanation,
+        risk_reason=risk_reason,
+        display_confidence=display_confidence,
+        execution_fields=execution_fields,
     )
 
 

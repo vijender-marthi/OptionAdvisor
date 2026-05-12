@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Star, Check, TrendingUp, Atom, Shield, Cpu, Building2, Search, Zap, FlaskConical } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
+import { addMyTicker, removeMyTicker, fetchMyTickers } from '../api/commandCenter'
+import type { MyTickerEntry } from '../api/commandCenter'
 
 // ─────────────────────────────────────────────────────────────
 // STOCK UNIVERSE — curated Quantum Computing names
@@ -236,15 +238,12 @@ const CAT_ACTIVE: Record<string, string> = {
 // STOCK CARD
 // ─────────────────────────────────────────────────────────────
 
-function QStockCard({ stock }: { stock: QStockEntry }) {
-  const { requestAnalysis, addToWatchlist, removeFromWatchlist, isWatched } = useApp()
-  const watched = isWatched(stock.ticker)
+function QStockCard({ stock, myTickerSet, onToggleWatch }: { stock: QStockEntry; myTickerSet: Set<string>; onToggleWatch: (ticker: string, name: string, currentlyWatched: boolean) => void }) {
+  const { requestAnalysis } = useApp()
+  const watched = myTickerSet.has(stock.ticker)
 
   const handleAnalyze = () => requestAnalysis(stock.ticker)
-  const handleWatch   = () => {
-    if (watched) removeFromWatchlist(stock.ticker)
-    else addToWatchlist({ ticker: stock.ticker, companyName: stock.name })
-  }
+  const handleWatch   = () => onToggleWatch(stock.ticker, stock.name, watched)
 
   return (
     <div className={`bg-gray-900 rounded-2xl p-4 flex flex-col gap-3 transition-colors group
@@ -319,7 +318,30 @@ function QStockCard({ stock }: { stock: QStockEntry }) {
 export default function QRadarPage() {
   const [activeCategory, setActiveCategory] = useState<QCategory>('All')
   const [search, setSearch] = useState('')
-  const { watchlist } = useApp()
+  const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
+
+  useEffect(() => {
+    fetchMyTickers().then(res => {
+      setMyTickers(res.data?.tickers || [])
+    }).catch(() => {})
+  }, [])
+
+  const myTickerSet = useMemo(() => new Set(myTickers.map(t => t.symbol.toUpperCase())), [myTickers])
+
+  const handleToggleWatch = useCallback(async (ticker: string, name: string, currentlyWatched: boolean) => {
+    const sym = ticker.toUpperCase()
+    if (currentlyWatched) {
+      try {
+        await removeMyTicker(sym)
+        setMyTickers(prev => prev.filter(t => t.symbol.toUpperCase() !== sym))
+      } catch {}
+    } else {
+      try {
+        const res = await addMyTicker({ symbol: sym, company_name: name, trade_types: ['regular'] })
+        if (res.data?.tickers) setMyTickers(res.data.tickers)
+      } catch {}
+    }
+  }, [])
 
   const filtered = STOCKS.filter(s => {
     const matchCat = activeCategory === 'All' || s.category === activeCategory
@@ -332,7 +354,7 @@ export default function QRadarPage() {
     return matchCat && matchSearch
   })
 
-  const watchedCount   = STOCKS.filter(s => watchlist.some(w => w.ticker === s.ticker)).length
+  const watchedCount   = STOCKS.filter(s => myTickerSet.has(s.ticker)).length
   const highlightCount = STOCKS.filter(s => s.highlight).length
 
   return (
@@ -446,7 +468,7 @@ export default function QRadarPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.map(stock => (
-              <QStockCard key={stock.ticker} stock={stock} />
+              <QStockCard key={stock.ticker} stock={stock} myTickerSet={myTickerSet} onToggleWatch={handleToggleWatch} />
             ))}
           </div>
         )}

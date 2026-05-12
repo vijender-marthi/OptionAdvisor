@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AlertCenterPayload, ApiEnvelope, TradeCommandCenterPayload, WatchlistXPayload } from '../types/commandCenter'
+import type { AlertCenterPayload, AlertCenterSummaryResponse, ApiEnvelope, TradeCommandCenterPayload, WatchlistXPayload } from '../types/commandCenter'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -43,6 +43,7 @@ export async function fetchAlertCenterPage(opts: {
   status?: string
   ticker?: string
   active_only?: boolean
+  today_only?: boolean
 }): Promise<ApiEnvelope<AlertCenterPayload>> {
   if (USE_MOCK) {
     const { alertCenterEnvelopeMock } = await import('../mocks/alert-center.mock')
@@ -55,8 +56,28 @@ export async function fetchAlertCenterPage(opts: {
       status: opts.status,
       ticker: opts.ticker,
       active_only: opts.active_only,
+      today_only: opts.today_only,
     },
   })
+  return data
+}
+
+export async function fetchAlertCenterSummary(): Promise<ApiEnvelope<AlertCenterSummaryResponse>> {
+  if (USE_MOCK) {
+    return {
+      data: {
+        active_count: 0,
+        items: [],
+        by_engine: { day: 0, swing: 0, regular: 0, portfolio: 0, general: 0 },
+        by_severity: { critical: 0, warning: 0, info: 0 },
+        rules_count: 0,
+      },
+      error: null,
+      stale: false,
+      fetched_at: new Date().toISOString(),
+    }
+  }
+  const { data } = await api.get<ApiEnvelope<AlertCenterSummaryResponse>>('/alerts/summary')
   return data
 }
 
@@ -201,5 +222,57 @@ export async function removeWatchlistTicker(payload: {
   ticker: string
 }): Promise<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>> {
   const { data } = await api.post<ApiEnvelope<{ ok: boolean; watchlist: Array<Record<string, unknown>> }>>('/watchlist/remove', payload)
+  return data
+}
+
+// ── My Tickers ─────────────────────────────────────────────────────────────────
+
+export interface MyTickerEntry {
+  symbol: string
+  company_name: string
+  added_date: string
+  trade_types: string[]
+  is_active: boolean
+}
+
+export interface SearchTickerResult {
+  symbol: string
+  company: string
+  sector: string
+}
+
+export async function searchTickers(q: string): Promise<ApiEnvelope<{ results: SearchTickerResult[] }>> {
+  const { data } = await api.get<ApiEnvelope<{ results: SearchTickerResult[] }>>('/search-tickers', { params: { q } })
+  return data
+}
+
+export async function fetchMyTickers(): Promise<ApiEnvelope<{ tickers: MyTickerEntry[] }>> {
+  const { data } = await api.get<ApiEnvelope<{ tickers: MyTickerEntry[] }>>('/my-tickers')
+  return data
+}
+
+export async function addMyTicker(payload: {
+  symbol: string
+  company_name?: string
+  trade_types: string[]
+}): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>('/my-tickers', payload)
+  return data
+}
+
+export async function updateMyTicker(symbol: string, payload: {
+  trade_types: string[]
+}): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
+  const { data } = await api.patch<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}`, payload)
+  return data
+}
+
+export async function removeMyTicker(symbol: string): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
+  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}`)
+  return data
+}
+
+export async function removeMyTickerType(symbol: string, tradeType: string): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
+  const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}/type/${encodeURIComponent(tradeType)}`)
   return data
 }

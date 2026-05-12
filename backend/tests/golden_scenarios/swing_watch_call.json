@@ -1,0 +1,29 @@
+{
+  "name": "Swing Trade — Watch call, needs confirmation",
+  "engine_type": "swing",
+  "input": {
+    "ticker": "AAPL",
+    "swing_bias": "BULLISH",
+    "entry_quality": "GOOD_ENTRY",
+    "risk_level": "MEDIUM",
+    "final_action": "WATCH_CALL_OR_DEBIT_SPREAD",
+    "trade_quality_score": 6.8,
+    "decision_message": "Trend is intact but entry confirmation is still building.",
+    "confirmation_needed": ["breakout confirmation"],
+    "reasons": [
+      "MA20 rising",
+      "RSI above 50",
+      "Volume below average"
+    ]
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "GOOD",
+    "final_decision": "WATCH",
+    "execution_timing": "WATCH",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": ["Breakout confirmation"],
+    "must_not_contain": ["ENTER NOW", "AVOID"],
+    "explanation_contains": []
+  }
+}

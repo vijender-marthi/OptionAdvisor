@@ -27,3 +27,9 @@ class ResolvedTradeDecision(BaseModel):
     signal_quality: str = ""         # "STRONG GO" | "GO" | "READY" | ""
     execution_timing: str = ""       # "ENTER NOW" | "WAIT FOR PULLBACK" | "WATCH" | "STAND ASIDE" | "MANAGE" | ""
     risk_category: str = ""          # "LOW" | "MODERATE" | "EXTENDED" | "HIGH" | ""
+
+    # Strategy-aware explanation fields (added 2026-05)
+    explanation: dict = Field(default_factory=dict)
+    risk_reason: str = ""
+    display_confidence: int = Field(default=0, ge=0, le=100)
+    execution_fields: list[dict] = Field(default_factory=list)

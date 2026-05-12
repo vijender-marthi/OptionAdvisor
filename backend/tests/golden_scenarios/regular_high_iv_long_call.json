@@ -1,0 +1,42 @@
+{
+  "name": "Regular Trade — Long Call with high IV → AVOID",
+  "engine_type": "regular",
+  "input": {
+    "signals": {
+      "directional_bias": "Bullish",
+      "trend": "uptrend",
+      "iv_rank": 72,
+      "bias_confidence": 0.71,
+      "iv_environment": "elevated",
+      "volatility_regime": "high"
+    },
+    "recommendations": [
+      {
+        "strategy": "Long Call",
+        "bias": "Bullish",
+        "net_credit": -4.25,
+        "expected_value": 0.18,
+        "edge_ratio": 0.07,
+        "dte": 28,
+        "passes_liquidity_filter": true,
+        "passes_rr_filter": true,
+        "warnings": ["IV is rich for a simple long premium buy."],
+        "scores": {"total_score": 24},
+        "max_profit": 42.50,
+        "max_loss": 4.25,
+        "breakeven_lower": 429.25,
+        "breakeven_upper": 0
+      }
+    ]
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "GOOD",
+    "final_decision": "AVOID",
+    "execution_timing": "STAND ASIDE",
+    "risk_state": "HIGH",
+    "missing_confirmations": ["Cheaper implied volatility"],
+    "explanation_contains": ["IV", "elevated"],
+    "must_not_contain": ["ENTER NOW", "READY"]
+  }
+}

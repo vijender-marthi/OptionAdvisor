@@ -113,6 +113,8 @@ class SwingTradeScan:
     suggested_strategy:      str               = "NO_TRADE"
     avoid_reason:            Optional[str]     = None
     playbook_hint:           str               = ""
+    expected_holding_period:  str               = ""
+    recommended_contract_duration: str          = ""
 
 
 # ── Technical helpers ─────────────────────────────────────────────────
@@ -308,25 +310,29 @@ def _get_market_context_cached() -> tuple[str, str, str]:
 
 def _build_decision_message(
     *,
-    ticker:                 str,
-    swing_bias:             str,
-    decision_label:         str,
-    final_action:           str,
-    entry_quality:          str,
-    risk_level:             str,
-    trade_quality_score:    float,
-    market_context:         str,
-    mom_5d_pct:             float,
-    dist_ma20_pct:          float,
-    rsi_val:                float,
-    suggested_strategy:     str,
-    suggested_expiry_window: str,
-    earnings_within_days:   Optional[int],
-    risk_flags:             list[str],
-    is_bullish:             bool,
+    ticker:                      str,
+    swing_bias:                  str,
+    decision_label:              str,
+    final_action:                str,
+    entry_quality:               str,
+    risk_level:                  str,
+    trade_quality_score:         float,
+    market_context:              str,
+    mom_5d_pct:                  float,
+    dist_ma20_pct:               float,
+    rsi_val:                     float,
+    suggested_strategy:          str,
+    suggested_expiry_window:     str,
+    earnings_within_days:        Optional[int],
+    risk_flags:                  list[str],
+    is_bullish:                  bool,
+    expected_holding_period:     str = "",
+    recommended_contract_duration: str = "",
 ) -> str:
     bias_str  = swing_bias.lower().replace("_", " ")
     strat_str = suggested_strategy.replace("_", " ").title()
+    hold_str = f"Holding period: ~{expected_holding_period} (swing). " if expected_holding_period else ""
+    contract_str = f"Contract: {recommended_contract_duration} DTE." if recommended_contract_duration else ""
 
     if decision_label == "MARKET_CONFIRMATION_ONLY":
         return (
@@ -340,7 +346,7 @@ def _build_decision_message(
         direction = "bullish" if is_bullish else "bearish"
         return (
             f"{ticker} has a clean {direction} setup (quality score {trade_quality_score}/10). "
-            f"{mkt}Best structure: {strat_str} with {suggested_expiry_window} expiry. "
+            f"{mkt}Best structure: {strat_str}. {hold_str}{contract_str} "
             "Enter on pullback hold or breakout continuation with volume."
         )
 
@@ -474,6 +480,18 @@ def build_swing_trade_decision(
             earnings_within_days=earnings_within_days,
             risk_flags=risk_flags, is_bullish=is_bullish,
         )
+        guidance = _build_swing_execution_guidance(
+            ticker=t, entry_quality="MARKET_CONFIRMATION_ONLY",
+            final_action=fa, decision_label="MARKET_CONFIRMATION_ONLY",
+            risk_level=rl, trade_quality_score=tqs,
+            market_context=market_context, swing_bias=swing_bias,
+            is_bullish=is_bullish, is_extended=False, is_very_extended=False,
+            near_resistance=None, rsi_val=rsi_val,
+            dist_ma20_pct=dist_ma20_pct, mom_5d_pct=mom_5d_pct,
+            vix_level=vix_level, risk_flags=[], confirmation_needed=[], avoid_reason=None,
+            suggested_strategy=strat, expected_holding_period="",
+            recommended_contract_duration="",
+        )
         return {
             "swing_bias": swing_bias,
             "entry_quality": "MARKET_CONFIRMATION_ONLY",
@@ -487,6 +505,17 @@ def build_swing_trade_decision(
             "suggested_expiry_window": "4-6 weeks" if fa != "NO_TRADE" else "No trade",
             "suggested_strategy": strat,
             "avoid_reason": None,
+            "entry_recommendation_state":   guidance["entry_recommendation_state"],
+            "market_phase":                 guidance["market_phase"],
+            "pullback_probability":         guidance["pullback_probability"],
+            "pullback_probability_reason":  guidance["pullback_probability_reason"],
+            "entry_quality_label":          guidance["entry_quality_label"],
+            "trend_quality":                guidance["trend_quality"],
+            "rr_quality":                   guidance["rr_quality"],
+            "execution_personality":        guidance["execution_personality"],
+            "should_enter_now":             guidance["should_enter_now"],
+            "entry_decision":               guidance["entry_decision"],
+            "contextual_alerts":            guidance["contextual_alerts"],
         }
 
     # ── 3. Collect risk flags (Phase 2 fields silently skipped if None) ─
@@ -711,7 +740,21 @@ def build_swing_trade_decision(
     else:
         suggested_expiry_window = "4-6 weeks"
 
-    # ── 11. Decision message ───────────────────────────────────────────
+    # ── 11. Separate holding period from contract duration ──────────────
+    # Holding period always stays ~3-5 trading days for swing (overnight holds).
+    # Contract duration varies by risk/quality — never use the holding period
+    # as the expiration length.
+    expected_holding_period = "3-5 trading days"
+    if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
+        recommended_contract_duration = ""
+    elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
+        recommended_contract_duration = "42-56"
+    elif trade_quality_score >= 7.0 and entry_quality == "GOOD_ENTRY":
+        recommended_contract_duration = "21-42"
+    else:
+        recommended_contract_duration = "28-42"
+
+    # ── 12. Decision message ───────────────────────────────────────────
     decision_message = _build_decision_message(
         ticker=t,
         swing_bias=swing_bias,
@@ -729,21 +772,418 @@ def build_swing_trade_decision(
         earnings_within_days=earnings_within_days,
         risk_flags=risk_flags,
         is_bullish=is_bullish,
+        expected_holding_period=expected_holding_period,
+        recommended_contract_duration=recommended_contract_duration,
+    )
+
+    execution_guidance = _build_swing_execution_guidance(
+        ticker=t,
+        entry_quality=entry_quality,
+        final_action=final_action,
+        decision_label=decision_label,
+        risk_level=risk_level,
+        trade_quality_score=trade_quality_score,
+        market_context=market_context,
+        swing_bias=swing_bias,
+        is_bullish=is_bullish,
+        is_extended=is_extended,
+        is_very_extended=is_very_extended,
+        near_resistance=near_resistance,
+        rsi_val=rsi_val,
+        dist_ma20_pct=dist_ma20_pct,
+        mom_5d_pct=mom_5d_pct,
+        vix_level=vix_level,
+        risk_flags=risk_flags,
+        confirmation_needed=confirmation_needed,
+        avoid_reason=avoid_reason,
+        suggested_strategy=suggested_strategy,
+        expected_holding_period=expected_holding_period,
+        recommended_contract_duration=recommended_contract_duration,
     )
 
     return {
-        "swing_bias":              swing_bias,
-        "entry_quality":           entry_quality,
-        "risk_level":              risk_level,
-        "final_action":            final_action,
-        "trade_quality_score":     trade_quality_score,
-        "decision_label":          decision_label,
-        "decision_message":        decision_message,
-        "risk_flags":              risk_flags,
-        "confirmation_needed":     confirmation_needed,
-        "suggested_expiry_window": suggested_expiry_window,
-        "suggested_strategy":      suggested_strategy,
-        "avoid_reason":            avoid_reason,
+        "swing_bias":                   swing_bias,
+        "entry_quality":                entry_quality,
+        "risk_level":                   risk_level,
+        "final_action":                 final_action,
+        "trade_quality_score":          trade_quality_score,
+        "decision_label":               decision_label,
+        "decision_message":             decision_message,
+        "risk_flags":                   risk_flags,
+        "confirmation_needed":          confirmation_needed,
+        "suggested_expiry_window":      suggested_expiry_window,
+        "suggested_strategy":           suggested_strategy,
+        "avoid_reason":                 avoid_reason,
+        "expected_holding_period":      expected_holding_period,
+        "recommended_contract_duration": recommended_contract_duration,
+        # Execution guidance
+        "entry_recommendation_state":   execution_guidance["entry_recommendation_state"],
+        "market_phase":                 execution_guidance["market_phase"],
+        "pullback_probability":         execution_guidance["pullback_probability"],
+        "pullback_probability_reason":  execution_guidance["pullback_probability_reason"],
+        "entry_quality_label":          execution_guidance["entry_quality_label"],
+        "trend_quality":                execution_guidance["trend_quality"],
+        "rr_quality":                   execution_guidance["rr_quality"],
+        "execution_personality":        execution_guidance["execution_personality"],
+        "should_enter_now":             execution_guidance["should_enter_now"],
+        "entry_decision":               execution_guidance["entry_decision"],
+        "contextual_alerts":            execution_guidance["contextual_alerts"],
+    }
+
+
+# ── Execution guidance helpers ──────────────────────────────────────
+
+EXT_LOW = 3.0
+EXT_WARN = 8.0
+EXT_HARD_PULL = 12.0
+
+RSI_LOW = 45
+RSI_MODERATE = 55
+RSI_HIGH = 65
+
+def _compute_entry_rec_state(
+    *,
+    entry_quality: str,
+    final_action: str,
+    is_bullish: bool,
+    is_extended: bool,
+    is_very_extended: bool,
+    near_resistance: Optional[bool],
+    rsi_val: float,
+    dist_ma20_pct: float,
+    mom_5d_pct: float,
+    trade_quality_score: float,
+    risk_level: str,
+) -> str:
+    if entry_quality in ("BAD_ENTRY", "NO_CLEAN_ENTRY") or final_action == "NO_TRADE":
+        return "TREND_CONFIRMATION_PENDING"
+
+    if final_action == "AVOID_CHASE" or is_very_extended:
+        return "EXTENDED_CHASE_RISK"
+
+    if entry_quality == "LATE_ENTRY":
+        return "LATE_STAGE_CONTINUATION"
+
+    if entry_quality == "WAIT_BREAKOUT_CONFIRMATION" or near_resistance is True:
+        return "HIGH_RISK_BREAKOUT"
+
+    if entry_quality == "WAIT_PULLBACK" or is_extended:
+        return "PULLBACK_PREFERRED"
+
+    if final_action == "AVOID_NAKED_CALLS":
+        return "WAIT_FOR_CONSOLIDATION"
+
+    if entry_quality == "GOOD_ENTRY" and trade_quality_score >= 8.0 and risk_level in ("LOW", "MEDIUM"):
+        abs_mom = abs(mom_5d_pct)
+        abs_dist = abs(dist_ma20_pct)
+        if abs_dist < EXT_LOW and abs_mom < 3 and rsi_val < 60:
+            return "IDEAL_PULLBACK_ENTRY"
+        if abs_dist < EXT_LOW and abs_mom > 3:
+            return "BREAKOUT_CONTINUATION"
+        if abs_dist < EXT_WARN and abs_mom > 5:
+            return "AGGRESSIVE_CONTINUATION"
+        return "BREAKOUT_CONTINUATION"
+
+    if entry_quality in ("GOOD_ENTRY", "CAUTION_ENTRY"):
+        return "BREAKOUT_CONTINUATION"
+
+    return "TREND_CONFIRMATION_PENDING"
+
+
+def _compute_market_phase(
+    *,
+    entry_quality: str,
+    final_action: str,
+    is_bullish: bool,
+    is_extended: bool,
+    is_very_extended: bool,
+    rsi_val: float,
+    dist_ma20_pct: float,
+    mom_5d_pct: float,
+    trade_quality_score: float,
+    market_context: str,
+) -> str:
+    if final_action == "NO_TRADE":
+        if market_context in ("MARKET_WEAK", "MARKET_MIXED"):
+            return "CONSOLIDATION"
+        return "FAILED_BREAKOUT"
+
+    if is_very_extended or mom_5d_pct > EXT_HARD_PULL:
+        return "EXHAUSTION_RISK"
+
+    if is_extended or entry_quality == "LATE_ENTRY":
+        return "LATE_STAGE_CONTINUATION"
+
+    if entry_quality == "WAIT_BREAKOUT_CONFIRMATION":
+        return "CONSOLIDATION"
+
+    if entry_quality == "GOOD_ENTRY" and trade_quality_score >= 8.0:
+        abs_dist = abs(dist_ma20_pct)
+        abs_mom = abs(mom_5d_pct)
+        if abs_dist < 2 and abs_mom < 2:
+            return "EARLY_BREAKOUT"
+        if abs_dist < 4 and abs_mom < 5 and rsi_val < 65:
+            return "CONFIRMED_BREAKOUT"
+        if abs_mom > 5:
+            return "MOMENTUM_EXPANSION"
+        return "HEALTHY_CONTINUATION"
+
+    if entry_quality in ("GOOD_ENTRY", "CAUTION_ENTRY"):
+        abs_mom = abs(mom_5d_pct)
+        if abs_mom > 5:
+            return "MOMENTUM_EXPANSION"
+        if abs_mom > 2:
+            return "HEALTHY_CONTINUATION"
+        return "CONFIRMED_BREAKOUT"
+
+    return "CONSOLIDATION"
+
+
+def _compute_pullback_probability(
+    *,
+    rsi_val: float,
+    dist_ma20_pct: float,
+    mom_5d_pct: float,
+    is_extended: bool,
+    is_very_extended: bool,
+    entry_quality: str,
+) -> tuple[str, str]:
+    reasons: list[str] = []
+    score = 0
+
+    if is_very_extended:
+        score += 9
+        reasons.append("price extremely extended")
+    elif is_extended:
+        score += 7
+        reasons.append("price extended above MA20")
+
+    abs_rsi = abs(rsi_val - 50)
+    if rsi_val > 70:
+        score += 8
+        reasons.append("RSI overbought")
+    elif rsi_val > 60:
+        score += 4
+        reasons.append("RSI elevated")
+
+    abs_mom = abs(mom_5d_pct)
+    if abs_mom > 10:
+        score += 8
+        reasons.append("strong 5d momentum suggests profit-taking")
+    elif abs_mom > 5:
+        score += 5
+        reasons.append("moderate 5d momentum")
+
+    if entry_quality == "LATE_ENTRY":
+        score += 6
+        reasons.append("late-stage move")
+    elif entry_quality == "GOOD_ENTRY":
+        score -= 3
+
+    if reasons and score >= 7:
+        return "HIGH", "; ".join(reasons[:2])
+    if score >= 4:
+        return "MODERATE", "; ".join(reasons[:2]) if reasons else "moderate extension"
+    return "LOW", "no significant extension signals"
+
+
+def _compute_rr_quality(
+    *,
+    risk_level: str,
+    is_extended: bool,
+    is_very_extended: bool,
+    dist_ma20_pct: float,
+    rsi_val: float,
+    entry_quality: str,
+) -> str:
+    if is_very_extended or risk_level in ("HIGH", "VERY_HIGH"):
+        return "WEAK"
+    if is_extended or risk_level == "MEDIUM" or entry_quality == "CAUTION_ENTRY":
+        return "MODERATE"
+    if abs(dist_ma20_pct) < 3 and 40 <= rsi_val <= 65:
+        return "STRONG"
+    return "MODERATE"
+
+
+def _compute_execution_personality(*, entry_rec_state: str, is_bullish: bool) -> dict[str, list[str]]:
+    suitable: list[str] = []
+    not_ideal: list[str] = []
+
+    if entry_rec_state == "IDEAL_PULLBACK_ENTRY":
+        suitable = ["pullback swing traders", "conservative breakout entries"]
+        not_ideal = ["aggressive momentum chasers"]
+    elif entry_rec_state == "BREAKOUT_CONTINUATION":
+        suitable = ["momentum continuation traders", "breakout swing traders"]
+        not_ideal = ["late-session momentum chasers"]
+    elif entry_rec_state == "AGGRESSIVE_CONTINUATION":
+        suitable = ["aggressive continuation traders"]
+        not_ideal = ["conservative pullback traders", "risk-averse position traders"]
+    elif entry_rec_state == "LATE_STAGE_CONTINUATION":
+        suitable = ["active position managers"]
+        not_ideal = ["new entry seekers", "conservative breakout entries"]
+    elif entry_rec_state == "PULLBACK_PREFERRED":
+        suitable = ["pullback swing traders", "mean-reversion scalpers"]
+        not_ideal = ["aggressive continuation traders", "momentum chasers"]
+    elif entry_rec_state == "EXTENDED_CHASE_RISK":
+        suitable: list[str] = []
+        not_ideal = ["all new entry seekers", "momentum chasers", "conservative traders"]
+    elif entry_rec_state == "HIGH_RISK_BREAKOUT":
+        suitable = ["aggressive breakout traders willing to accept false-break risk"]
+        not_ideal = ["conservative entries", "pullback traders"]
+    elif entry_rec_state == "WAIT_FOR_CONSOLIDATION":
+        suitable = ["patient position traders"]
+        not_ideal = ["aggressive entries", "momentum chasers"]
+    else:
+        suitable = ["patient breakout traders"]
+        not_ideal = ["aggressive momentum entries"]
+
+    return {"suitable_for": suitable, "not_ideal_for": not_ideal}
+
+
+def _build_swing_execution_guidance(
+    *,
+    ticker: str,
+    entry_quality: str,
+    final_action: str,
+    decision_label: str,
+    risk_level: str,
+    trade_quality_score: float,
+    market_context: str,
+    swing_bias: str,
+    is_bullish: bool,
+    is_extended: bool,
+    is_very_extended: bool,
+    near_resistance: Optional[bool],
+    rsi_val: float,
+    dist_ma20_pct: float,
+    mom_5d_pct: float,
+    vix_level: Optional[float],
+    risk_flags: list[str],
+    confirmation_needed: list[str],
+    avoid_reason: Optional[str],
+    suggested_strategy: str,
+    expected_holding_period: str,
+    recommended_contract_duration: str,
+) -> dict[str, Any]:
+    entry_rec_state = _compute_entry_rec_state(
+        entry_quality=entry_quality,
+        final_action=final_action,
+        is_bullish=is_bullish,
+        is_extended=is_extended,
+        is_very_extended=is_very_extended,
+        near_resistance=near_resistance,
+        rsi_val=rsi_val,
+        dist_ma20_pct=dist_ma20_pct,
+        mom_5d_pct=mom_5d_pct,
+        trade_quality_score=trade_quality_score,
+        risk_level=risk_level,
+    )
+
+    market_phase = _compute_market_phase(
+        entry_quality=entry_quality,
+        final_action=final_action,
+        is_bullish=is_bullish,
+        is_extended=is_extended,
+        is_very_extended=is_very_extended,
+        rsi_val=rsi_val,
+        dist_ma20_pct=dist_ma20_pct,
+        mom_5d_pct=mom_5d_pct,
+        trade_quality_score=trade_quality_score,
+        market_context=market_context,
+    )
+
+    pullback_prob, pullback_reason = _compute_pullback_probability(
+        rsi_val=rsi_val,
+        dist_ma20_pct=dist_ma20_pct,
+        mom_5d_pct=mom_5d_pct,
+        is_extended=is_extended,
+        is_very_extended=is_very_extended,
+        entry_quality=entry_quality,
+    )
+
+    rr_quality = _compute_rr_quality(
+        risk_level=risk_level,
+        is_extended=is_extended,
+        is_very_extended=is_very_extended,
+        dist_ma20_pct=dist_ma20_pct,
+        rsi_val=rsi_val,
+        entry_quality=entry_quality,
+    )
+
+    exec_personality = _compute_execution_personality(entry_rec_state=entry_rec_state, is_bullish=is_bullish)
+
+    # should_enter_now
+    if final_action == "NO_TRADE" or entry_quality in ("BAD_ENTRY", "LATE_ENTRY") or final_action == "AVOID_CHASE":
+        should_now = "NO"
+    elif entry_quality == "GOOD_ENTRY" and trade_quality_score >= 8.0:
+        should_now = "YES"
+    elif entry_quality in ("GOOD_ENTRY", "CAUTION_ENTRY"):
+        should_now = "YES"
+    elif entry_quality in ("WAIT_PULLBACK", "WAIT_BREAKOUT_CONFIRMATION", "NO_CLEAN_ENTRY"):
+        should_now = "CONDITIONAL"
+    else:
+        should_now = "NO"
+
+    # Entry decision sections
+    direction_word = "bullish" if is_bullish else "bearish"
+    can_enter = should_now in ("YES", "CONDITIONAL")
+    conservative = ""
+    aggressive = ""
+    best_setup = ""
+
+    if can_enter and not is_extended and not is_very_extended:
+        conservative = f"Wait for pullback toward MA20 or {direction_word} consolidation hold."
+        aggressive = f"Breakout above recent range with volume confirmation."
+        best_setup = f"Pullback hold near MA20 support with {direction_word} continuation."
+    elif can_enter and is_extended and not is_very_extended:
+        conservative = f"Wait for pullback or short consolidation before entry. RSI at {rsi_val:.0f} suggests mean-reversion risk."
+        aggressive = f"Continuation above nearest resistance with expanding volume."
+        best_setup = f"Short pullback toward MA20 zone."
+    elif should_now == "YES" and not is_extended:
+        conservative = f"Pullback entry toward MA20 with volume confirmation."
+        aggressive = f"Momentum continuation on {direction_word} follow-through."
+        best_setup = f"Entry on {direction_word} confirmation with defined stop below recent swing low."
+    else:
+        conservative = "No trade — wait for clearer setup."
+        aggressive = "Not recommended at current levels."
+        best_setup = "No clear entry — monitor for structure improvement."
+
+    contextual_alerts: list[dict[str, str]] = []
+    if is_extended or is_very_extended:
+        contextual_alerts.append({
+            "type": "PULLBACK_MONITOR",
+            "message": f"{ticker} pullback toward MA20 support zone",
+            "condition": f"RSI cools below {RSI_HIGH:.0f} and price nears MA20",
+        })
+    if entry_quality in ("GOOD_ENTRY", "CAUTION_ENTRY") and not is_extended:
+        contextual_alerts.append({
+            "type": "BREAKOUT_CONFIRMATION",
+            "message": f"{ticker} breakout above resistance with volume expansion",
+            "condition": "Price breaks above recent high with >1.5× avg volume",
+        })
+    if rsi_val > 70:
+        contextual_alerts.append({
+            "type": "RSI_OVERBOUGHT",
+            "message": f"{ticker} RSI exceeds 70 — continuation overheating",
+            "condition": "Wait for RSI pullback below 65 before fresh entry",
+        })
+
+    return {
+        "entry_recommendation_state": entry_rec_state,
+        "market_phase": market_phase,
+        "pullback_probability": pullback_prob,
+        "pullback_probability_reason": pullback_reason,
+        "trend_quality": market_phase,
+        "entry_quality_label": "STRONG" if entry_quality == "GOOD_ENTRY" else "MODERATE" if entry_quality in ("CAUTION_ENTRY",) else "WEAK",
+        "rr_quality": rr_quality,
+        "execution_personality": exec_personality,
+        "should_enter_now": should_now,
+        "entry_decision": {
+            "conservative": conservative,
+            "aggressive": aggressive,
+            "best_setup": best_setup,
+        },
+        "contextual_alerts": contextual_alerts,
     }
 
 
@@ -1465,6 +1905,12 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         earnings_days=earnings_within_days,
     )
     metrics["playbook_hint"] = playbook_hint
+    for guid_key in ("entry_recommendation_state", "market_phase", "pullback_probability",
+                     "pullback_probability_reason", "entry_quality_label", "trend_quality",
+                     "rr_quality", "execution_personality", "should_enter_now",
+                     "entry_decision", "contextual_alerts"):
+        if guid_key in decision:
+            metrics[guid_key] = decision[guid_key]
 
     scan = SwingTradeScan(
         ticker=t,
@@ -1489,6 +1935,8 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         suggested_strategy=decision["suggested_strategy"],
         avoid_reason=decision["avoid_reason"],
         playbook_hint=playbook_hint,
+        expected_holding_period=decision.get("expected_holding_period", ""),
+        recommended_contract_duration=decision.get("recommended_contract_duration", ""),
     )
     with _swing_scan_lock:
         _swing_scan_cache[t] = (time.time(), scan)

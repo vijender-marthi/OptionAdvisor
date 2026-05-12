@@ -1,0 +1,44 @@
+{
+  "name": "Regular Trade — Long Put, bearish momentum",
+  "engine_type": "regular",
+  "input": {
+    "signals": {
+      "directional_bias": "Bearish",
+      "trend": "downtrend",
+      "iv_rank": 40,
+      "bias_confidence": 0.72,
+      "iv_environment": "normal",
+      "volatility_regime": "normal",
+      "current_price": 175.00
+    },
+    "recommendations": [
+      {
+        "strategy": "Long Put",
+        "bias": "Bearish",
+        "net_credit": -3.80,
+        "expected_value": 0.20,
+        "edge_ratio": 0.08,
+        "dte": 30,
+        "passes_liquidity_filter": true,
+        "passes_rr_filter": true,
+        "warnings": [],
+        "scores": {"total_score": 23},
+        "max_profit": 38.00,
+        "max_loss": 3.80,
+        "breakeven_lower": 0,
+        "breakeven_upper": 171.20
+      }
+    ]
+  },
+  "expected": {
+    "market_bias": "BEARISH",
+    "setup_quality": "GOOD",
+    "final_decision": "READY",
+    "execution_timing": "ENTER NOW",
+    "signal_quality": "GO",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": [],
+    "explanation_contains": ["breakdown", "put", "bearish"],
+    "execution_fields_present": ["Premium", "Breakeven"]
+  }
+}

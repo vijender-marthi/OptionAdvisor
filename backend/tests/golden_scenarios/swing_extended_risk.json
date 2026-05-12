@@ -1,0 +1,29 @@
+{
+  "name": "Swing Trade — Quality long but risk is extended → demoted to WATCH",
+  "engine_type": "swing",
+  "input": {
+    "ticker": "NVDA",
+    "swing_bias": "BULLISH",
+    "entry_quality": "GOOD_ENTRY",
+    "risk_level": "HIGH",
+    "final_action": "QUALITY_LONG",
+    "trade_quality_score": 8.8,
+    "decision_message": "Strong trend but extended after recent run.",
+    "confirmation_needed": ["controlled pullback"],
+    "reasons": [
+      "Strong uptrend",
+      "RSI above 70",
+      "Extended from MA20"
+    ]
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "STRONG",
+    "final_decision": "WATCH",
+    "execution_timing": "WATCH",
+    "risk_state": "HIGH",
+    "missing_confirmations": ["Controlled pullback hold"],
+    "must_not_contain": ["ENTER NOW", "READY"],
+    "explanation_contains": []
+  }
+}

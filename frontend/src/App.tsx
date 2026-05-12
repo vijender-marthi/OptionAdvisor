@@ -16,7 +16,7 @@ const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
 const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const HelpPage = lazy(() => import('./pages/HelpPage'))
-const TradingGlossaryPage = lazy(() => import('./pages/TradingGlossary'))
+
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
 const QRadarPage = lazy(() => import('./pages/QRadarPage'))
 const BacktestPage = lazy(() => import('./pages/BacktestPage'))
@@ -29,6 +29,7 @@ const DayTradePage = lazy(() => import('./pages/DayTradePage'))
 const SwingTradePage = lazy(() => import('./pages/SwingTradePage'))
 const UnifiedWatchlistPage = lazy(() => import('./pages/UnifiedWatchlistPage'))
 const WatchlistXPage = lazy(() => import('./pages/WatchlistXPage'))
+const MyTickersPage = lazy(() => import('./pages/MyTickersPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -122,6 +123,7 @@ function ShellRoutes() {
       <Route path="/discovery" element={<Navigate to="/strategy-finder" replace />} />
       <Route path="/scanner" element={<Navigate to="/strategy-finder" replace />} />
       <Route path="/ticker" element={<Navigate to="/strategy-finder" replace />} />
+      <Route path="/trading-glossary" element={<Navigate to="/help" replace />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<RoleGuard />}>
@@ -134,7 +136,7 @@ function ShellRoutes() {
               <Route path="/positions" element={<PositionsRoute />} />
               <Route path="/alerts" element={<AlertCenterPage />} />
               <Route path="/help" element={<HelpPage />} />
-              <Route path="/trading-glossary" element={<TradingGlossaryPage />} />
+              {/* Trading Glossary merged into /help */}
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/ai-stocks" element={<AIStocksPage />} />
               <Route path="/q-radar" element={<QRadarPage />} />
@@ -148,6 +150,7 @@ function ShellRoutes() {
               <Route path="/day-trade-alerts" element={<DayTradeAlertsPage />} />
               <Route path="/active-trades" element={<Navigate to="/positions?tab=open&style=day" replace />} />
               <Route path="/swing-trade" element={<SwingTradePage />} />
+              <Route path="/my-tickers" element={<MyTickersPage />} />
             </Route>
           </Route>
         </Route>

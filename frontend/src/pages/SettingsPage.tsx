@@ -66,7 +66,8 @@ function SettingsCard({ title, children }: { title: string; children: ReactNode 
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const { alertEmailEnabled, setAlertEmailEnabled, user } = useApp()
+  const { alertEmailEnabled, setAlertEmailEnabled, user, accountSize, setAccountSize } = useApp()
+  const [buyingPowerInput, setBuyingPowerInput] = useState(String(accountSize))
   const [testingEmail, setTestingEmail] = useState(false)
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [emailStatus, setEmailStatus] = useState<{
@@ -86,6 +87,15 @@ export default function SettingsPage() {
       .then(setEmailStatus)
       .catch(() => setEmailStatus(null))
   }, [])
+
+  useEffect(() => {
+    setBuyingPowerInput(String(accountSize))
+  }, [accountSize])
+
+  const handleBuyingPowerSave = () => {
+    const val = parseFloat(buyingPowerInput)
+    if (!isNaN(val) && val > 0) setAccountSize(val)
+  }
 
   const handleTestEmail = async () => {
     if (!user?.email || testingEmail) return
@@ -202,6 +212,33 @@ export default function SettingsPage() {
               <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${roleBadgeClass(user.role)}`}>
                 {roleLabel(user.role)}
               </span>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-100">Buying Power</div>
+                <div className="text-xs text-gray-500">Used by Kelly sizing &amp; Positions Center</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-500">$</span>
+                <input
+                  type="number"
+                  value={buyingPowerInput}
+                  onChange={e => setBuyingPowerInput(e.target.value)}
+                  onBlur={handleBuyingPowerSave}
+                  onKeyDown={e => { if (e.key === 'Enter') handleBuyingPowerSave() }}
+                  className="w-28 bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-sm text-gray-200 font-mono text-right
+                             focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                  min={0}
+                  step={1000}
+                />
+                <button
+                  onClick={handleBuyingPowerSave}
+                  className="px-2.5 py-1.5 bg-gray-800 hover:bg-violet-600/20 border border-gray-700 hover:border-violet-600
+                             text-gray-400 hover:text-violet-400 text-xs font-semibold rounded-lg transition-colors"
+                >
+                  Save
+                </button>
+              </div>
             </div>
             <p className="text-xs text-gray-600 leading-relaxed pt-1">
               {user.role === 'finance' && 'Discovery radars (AI & Q) are hidden. Admins assign roles via server env or database.'}

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs engine regression + frontend validation before commit.
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  PRE-COMMIT VALIDATION"
+echo "═══════════════════════════════════════════"
+
+# ── 1. Engine regression ──────────────────────────────────────────────────
+echo ""
+echo "▶ 1/4 Engine regression scenarios..."
+cd "$ROOT_DIR/backend"
+PYTHON_BIN="${ROOT_DIR}/backend/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python3"
+fi
+if ! "$PYTHON_BIN" tests/run_engine_regression.py; then
+  echo "❌ Engine regression FAILED. Commit blocked."
+  exit 1
+fi
+echo "   ✅ Engine regression passed."
+
+# ── 2. TypeScript validation ──────────────────────────────────────────────
+echo ""
+echo "▶ 2/4 TypeScript typecheck..."
+cd "$ROOT_DIR/frontend"
+if ! npx tsc --noEmit 2>&1; then
+  echo "❌ TypeScript typecheck FAILED. Commit blocked."
+  exit 1
+fi
+echo "   ✅ TypeScript typecheck passed."
+
+# ── 3. Vite build ─────────────────────────────────────────────────────────
+echo ""
+echo "▶ 3/4 Vite build..."
+if ! npx vite build 2>&1; then
+  echo "❌ Vite build FAILED. Commit blocked."
+  exit 1
+fi
+echo "   ✅ Vite build passed."
+
+# ── 4. Backend syntax ─────────────────────────────────────────────────────
+echo ""
+echo "▶ 4/4 Backend syntax check..."
+cd "$ROOT_DIR/backend"
+if ! "$PYTHON_BIN" -m py_compile main.py 2>&1; then
+  echo "❌ Backend syntax check FAILED. Commit blocked."
+  exit 1
+fi
+if ! "$PYTHON_BIN" -m py_compile storage.py 2>&1; then
+  echo "❌ Backend storage syntax check FAILED. Commit blocked."
+  exit 1
+fi
+echo "   ✅ Backend syntax check passed."
+
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  ✅ ALL VALIDATIONS PASSED — committing."
+echo "═══════════════════════════════════════════"

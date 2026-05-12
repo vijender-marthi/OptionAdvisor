@@ -12,6 +12,7 @@ reference but is no longer called by any endpoint.
 from __future__ import annotations
 
 import logging
+import math
 import time
 import uuid
 from datetime import datetime, timezone
@@ -19,12 +20,15 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
+import pandas as pd
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from alerts.alert_service import build_alert_center_payload
 from auth_routes import require_access_email
 import bar_cache
+import yfinance as yf
 from storage import (
     alert_center_acknowledge,
     alert_center_active_count,
@@ -33,11 +37,16 @@ from storage import (
     alert_center_list,
     alert_center_resolve,
     ensure_demo_alert_center_rows,
+    get_alert_center_summary,
     get_user_state,
+    LEGACY_USER_ALERT_RETENTION_MS,
     normalize_email,
+    prune_alert_center_items,
     save_user_state,
+    sync_user_alerts_to_alert_center,
 )
 from trade_aggregator import build_command_center_payload
+from position_analyzer import analyze_active_position
 
 command_center_router = APIRouter(tags=["command-center"])
 
@@ -323,9 +332,12 @@ def list_alerts_center(
     status: Optional[str] = Query(None),
     ticker: Optional[str] = Query(None),
     active_only: bool = Query(False),
+    today_only: bool = Query(False),
 ):
     email = normalize_email(auth_email)
     ensure_demo_alert_center_rows(email)
+    sync_user_alerts_to_alert_center(email, retention_ms=LEGACY_USER_ALERT_RETENTION_MS, now_ms=int(time.time() * 1000))
+    prune_alert_center_items(email)
     engine_filter = engine_type or engine
     items, total = alert_center_list(
         email,
@@ -334,6 +346,7 @@ def list_alerts_center(
         status=status,
         ticker=ticker,
         active_only=active_only,
+        today_only=today_only,
         page=1,
         page_size=250,
     )
@@ -374,6 +387,14 @@ def post_alert_note(
     return api_envelope({"ok": True})
 
 
+@command_center_router.get("/alerts/summary")
+def list_alerts_summary(
+    auth_email: str = Depends(require_access_email),
+):
+    email = normalize_email(auth_email)
+    return api_envelope(get_alert_center_summary(email))
+
+
 def _engine_source_label(raw: str) -> str:
     m = (raw or "").strip().lower()
     if m == "day":
@@ -404,68 +425,306 @@ def _mistake_tag_from_notes(notes: str) -> Optional[str]:
     return None
 
 
+def _sanitize_iv(iv_raw: Any, ticker: Optional[str] = None) -> float:
+    """
+    Convert stored IV to decimal form for Black-Scholes.
+
+    Stored IV may be:
+    - 0 (missing) → fallback to historical vol or 0.50
+    - Percentage > 1 (e.g. 52.0 for 52%) → divide by 100
+    - Decimal (e.g. 0.52 for 52%) → use as-is
+    """
+    try:
+        iv = float(iv_raw) if iv_raw else 0.0
+    except (TypeError, ValueError):
+        iv = 0.0
+
+    if iv > 1.0:
+        iv = iv / 100.0
+
+    if iv >= 0.005:
+        return round(iv, 4)
+
+    if ticker:
+        try:
+            h = bar_cache.get_history(ticker, period="3mo", interval="1d", auto_adjust=True)
+            if h is not None and not h.empty:
+                returns = h["Close"].pct_change().dropna()
+                hv = returns.tail(20).std() * math.sqrt(252)
+                if 0.005 < hv < 10.0:
+                    return round(float(hv), 4)
+        except Exception:
+            pass
+
+    return 0.50
+
+
+def _fetch_live_option_marks(
+    ticker: str, expiry: str
+) -> dict[str, tuple[float, float, float]]:
+    """
+    Fetch live bid/ask/last for all strikes of a ticker+expiry.
+
+    Returns dict keyed by ``OPTION_TYPE:STRIKE`` (e.g. ``CALL:430.0``)
+    → ``(bid, ask, lastPrice)``.
+
+    Falls back to empty dict on any failure.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        chain = tk.option_chain(expiry)
+        result: dict[str, tuple[float, float, float]] = {}
+        for _, row in chain.calls.iterrows():
+            s = float(row["strike"])
+            bid = float(row["bid"]) if not pd.isna(row.get("bid", 0)) else 0.0
+            ask = float(row["ask"]) if not pd.isna(row.get("ask", 0)) else 0.0
+            last = float(row["lastPrice"]) if not pd.isna(row.get("lastPrice", 0)) else 0.0
+            result[f"CALL:{s}"] = (bid, ask, last)
+        for _, row in chain.puts.iterrows():
+            s = float(row["strike"])
+            bid = float(row["bid"]) if not pd.isna(row.get("bid", 0)) else 0.0
+            ask = float(row["ask"]) if not pd.isna(row.get("ask", 0)) else 0.0
+            last = float(row["lastPrice"]) if not pd.isna(row.get("lastPrice", 0)) else 0.0
+            result[f"PUT:{s}"] = (bid, ask, last)
+        return result
+    except Exception:
+        return {}
+
+
+def calculate_position_pnl(
+    position: dict[str, Any],
+    *,
+    live_option_marks: Optional[dict[str, tuple[float, float, float]]] = None,
+    underlying_price: Optional[float] = None,
+) -> dict[str, Any]:
+    """
+    Centralized option/stock position P&L computation.
+
+    Uses live option marks when available, Black-Scholes with sanitised IV as
+    fallback, and entry price as final fallback (zero P&L, stale marker).
+
+    All monetary values are **total position** except
+    ``entry_premium_per_share`` and ``current_mark_per_share``
+    which are per-share (× 100 × contracts for totals).
+
+    Formula (applies to both long and short/credit):
+        pnl = current_value_total - entry_cost_total
+
+    For a **long** position both terms are positive and P&L is
+    current − entry.  For a **short/credit** position both terms are
+    negative and P&L is (‑current) − (‑entry) = entry − current,
+    which is correct for a short where we received entry credit and
+    would pay current to close.
+    """
+    contracts = max(1, int(_float_or(position.get("contracts"), 1)))
+    SHARES = 100
+    max_loss_ps = abs(_float_or(position.get("max_loss"), 0.0))
+    max_profit_ps = abs(_float_or(position.get("max_profit"), 0.0))
+    strategy = str(position.get("strategy", ""))
+    ticker = str(position.get("ticker", "")).upper()
+
+    legs = position.get("legs", [])
+    if not legs:
+        up = underlying_price or _float_or(position.get("entryPrice"), 0.0)
+        entry_px = _float_or(position.get("entryPrice"), 0.0)
+        if entry_px <= 0:
+            return {
+                "entry_premium_per_share": 0.0, "current_mark_per_share": 0.0,
+                "contracts": contracts, "multiplier": 1,
+                "entry_cost_total": 0.0, "current_value_total": 0.0,
+                "pnl": 0.0, "pnl_percent": 0.0,
+                "max_loss_total": 0.0, "max_profit_display": "—", "at_risk_total": 0.0,
+                "mark_source": "stale",
+            }
+        entry_cost_total = entry_px * contracts
+        current_value_total = up * contracts
+        pnl = current_value_total - entry_cost_total
+        pnl_pct = (pnl / entry_cost_total * 100) if entry_cost_total > 0 else 0.0
+        return {
+            "entry_premium_per_share": entry_px,
+            "current_mark_per_share": up,
+            "contracts": contracts, "multiplier": 1,
+            "entry_cost_total": round(entry_cost_total, 2),
+            "current_value_total": round(current_value_total, 2),
+            "pnl": round(pnl, 2),
+            "pnl_percent": round(pnl_pct, 2),
+            "max_loss_total": round(entry_cost_total, 2),
+            "max_profit_display": "Unlimited",
+            "at_risk_total": round(entry_cost_total, 2),
+            "mark_source": "live" if underlying_price else "stale",
+        }
+
+    entry_premium_ps = 0.0
+    current_mark_ps = 0.0
+    overall_mark_source = "stale"
+
+    for leg in legs:
+        action = str(leg.get("action", "BUY")).upper()
+        entry_p = _float_or(leg.get("mid_price"), 0.0)
+        leg_iv = leg.get("iv", 0)
+        strike = float(leg.get("strike", 0))
+        opt_type = str(leg.get("option_type", "CALL")).upper()
+
+        curr_p: Optional[float] = None
+        mark_source = "stale"
+
+        if live_option_marks is not None:
+            key = f"{opt_type}:{strike}"
+            if key in live_option_marks:
+                bid, ask, last = live_option_marks[key]
+                if bid > 0 and ask > 0:
+                    curr_p = (bid + ask) / 2
+                    mark_source = "live"
+                elif last > 0:
+                    curr_p = last
+                    mark_source = "live"
+
+        if curr_p is None and underlying_price:
+            try:
+                from backtest import bs_price, RISK_FREE_RATE
+                expiry = str(position.get("expiry", ""))
+                today = datetime.today().date()
+                try:
+                    expiry_date = datetime.strptime(expiry[:10], "%Y-%m-%d").date()
+                    T = max(0.0, (expiry_date - today).days / 365.0)
+                except Exception:
+                    T = 0.1
+                iv = _sanitize_iv(leg_iv, ticker)
+                bs_p = bs_price(underlying_price, strike, T, RISK_FREE_RATE, iv, opt_type)
+                curr_p = round(bs_p, 2)
+                mark_source = "bs_theoretical"
+            except Exception:
+                pass
+
+        if curr_p is None:
+            curr_p = entry_p
+
+        if mark_source == "live":
+            overall_mark_source = "live"
+        elif mark_source == "bs_theoretical" and overall_mark_source not in ("live",):
+            overall_mark_source = "bs_theoretical"
+
+        if action == "SELL":
+            entry_premium_ps -= entry_p
+            current_mark_ps -= curr_p
+        else:
+            entry_premium_ps += entry_p
+            current_mark_ps += curr_p
+
+    entry_cost_total = entry_premium_ps * SHARES * contracts
+    current_value_total = current_mark_ps * SHARES * contracts
+    pnl = current_value_total - entry_cost_total
+
+    max_loss_total = abs(max_loss_ps * SHARES * contracts)
+    at_risk_total = max_loss_total if max_loss_total > 0 else abs(entry_cost_total)
+
+    if max_loss_total > 0:
+        pnl_pct = (pnl / max_loss_total) * 100
+    elif entry_cost_total != 0:
+        pnl_pct = (pnl / abs(entry_cost_total)) * 100
+    else:
+        pnl_pct = 0.0
+
+    strategy_lower = strategy.lower()
+    if "long call" == strategy_lower or strategy_lower in ("long call",):
+        max_profit_display = "Unlimited"
+    elif "covered" in strategy_lower or "short put" in strategy_lower:
+        if underlying_price and legs:
+            s = abs(float(legs[0].get("strike", 0)))
+            est = (underlying_price - s) * SHARES * contracts if "call" in strategy_lower else (s - 0) * SHARES * contracts
+            max_profit_display = f"${abs(est):,.0f} (est.)"
+        else:
+            max_profit_display = "Unlimited"
+    elif max_profit_ps > 0:
+        max_profit_display = f"${max_profit_ps * SHARES * contracts:,.2f}"
+    else:
+        max_profit_display = "—"
+
+    return {
+        "entry_premium_per_share": round(entry_premium_ps, 2),
+        "current_mark_per_share": round(current_mark_ps, 2),
+        "contracts": contracts,
+        "multiplier": SHARES,
+        "entry_cost_total": round(entry_cost_total, 2),
+        "current_value_total": round(current_value_total, 2),
+        "pnl": round(pnl, 2),
+        "pnl_percent": round(pnl_pct, 2),
+        "max_loss_total": round(max_loss_total, 2),
+        "max_profit_display": max_profit_display,
+        "at_risk_total": round(at_risk_total, 2),
+        "mark_source": overall_mark_source,
+    }
+
+
+def _cost_basis_ref_per_share(p: dict) -> float:
+    """Cost-basis reference per share for P&L math.
+
+    Debit strategies (net_credit < 0, e.g. Long Call/Put) use |net_credit|.
+    Credit strategies use max_profit.
+    Mirrors the frontend costBasisRefPerShare() helper.
+    """
+    net_credit = _float_or(p.get("net_credit"), 0.0)
+    if net_credit < 0:
+        return abs(net_credit)
+    return _float_or(p.get("max_profit"), 0.0)
+
+
 def _compute_positions_pnl(
     open_pos: list[dict],
     closed_pos: list[dict],
 ) -> dict[str, Any]:
-    """
-    Compute Total P&L and Day P&L from raw portfolio positions.
-
-    Closed positions — realized P&L:
-        dollar = (pnlPct / 100) × max_profit × 100 × contracts
-        Matches PortfolioPage.tsx totalRealisedPnl formula exactly.
-
-    Open positions — mark-to-market P&L (Black-Scholes):
-        Fetches current & previous-day underlying price from Yahoo Finance.
-        Uses stored leg IV/strike/mid_price with bs_price() from backtest.py.
-
-    Day P&L = sum of (mtm_today − mtm_yesterday) × 100 × contracts across
-              all open positions that have live price data.
-
-    Returns dict with keys: total_pl, day_pl (either may be None).
-    """
-    SHARES = 100  # shares per contract (standard)
+    SHARES = 100
 
     # ── 1. Realized P&L from closed positions ─────────────────────────────
-    realized_pnl   = 0.0
+    realized_pnl = 0.0
     realized_count = 0
     for p in closed_pos:
-        pnl_pct    = p.get("pnlPct")
-        if pnl_pct is None:
-            continue
-        max_profit = _float_or(p.get("max_profit"), 0.0)
-        contracts  = max(1.0, _float_or(p.get("contracts"), 1.0))
-        if max_profit <= 0:
-            continue
-        realized_pnl += (_float_or(pnl_pct, 0.0) / 100.0) * max_profit * SHARES * contracts
-        realized_count += 1
+        rp = p.get("realized_pnl")
+        if rp is not None:
+            realized_pnl += _float_or(rp, 0.0)
+            realized_count += 1
+        else:
+            pnl_pct = p.get("pnlPct")
+            if pnl_pct is None:
+                continue
+            cost_ref = _cost_basis_ref_per_share(p)
+            contracts = max(1.0, _float_or(p.get("contracts"), 1.0))
+            if cost_ref <= 0:
+                continue
+            realized_pnl += (_float_or(pnl_pct, 0.0) / 100.0) * cost_ref * SHARES * contracts
+            realized_count += 1
 
-    # ── 2. MTM P&L from open positions ────────────────────────────────────
+    per_position_pnl: dict[str, dict[str, float]] = {}
+    for p in closed_pos:
+        pid = str(p.get("id", ""))
+        if not pid:
+            continue
+        rp = p.get("realized_pnl")
+        rpp = p.get("realized_pnl_percent")
+        if rp is not None:
+            pnl_dollar = _float_or(rp, 0.0)
+            pnl_pct_val = _float_or(rpp, 0.0) if rpp is not None else _float_or(p.get("pnlPct"), 0.0)
+            per_position_pnl[pid] = {"pnl": round(pnl_dollar, 2), "pnl_pct": round(pnl_pct_val, 2)}
+        else:
+            pp = p.get("pnlPct")
+            if pp is not None:
+                cost_ref = _cost_basis_ref_per_share(p)
+                cc = max(1.0, _float_or(p.get("contracts"), 1.0))
+                if cost_ref > 0:
+                    dollar = (float(pp) / 100.0) * cost_ref * SHARES * cc
+                    per_position_pnl[pid] = {"pnl": round(dollar, 2), "pnl_pct": float(pp)}
+
     open_with_legs = [
         p for p in open_pos
         if isinstance(p, dict) and isinstance(p.get("legs"), list) and p.get("legs")
     ]
 
-    per_position_pnl: dict[str, dict[str, float]] = {}
-    for p in closed_pos:
-        pid = str(p.get("id", ""))
-        pp = p.get("pnlPct")
-        if pid and pp is not None:
-            mp = _float_or(p.get("max_profit"), 0.0)
-            cc = max(1.0, _float_or(p.get("contracts"), 1.0))
-            if mp > 0:
-                dollar = (float(pp) / 100.0) * mp * SHARES * cc
-                per_position_pnl[pid] = {"pnl": round(dollar, 2), "pnl_pct": float(pp)}
-
     if not open_with_legs:
-        total_pl = round(realized_pnl, 2) if realized_count > 0 else None
-        return {"total_pl": total_pl, "day_pl": None, "per_position": per_position_pnl}
+        total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
+        return {"total_pl": total_pl, "day_pl": 0.0, "per_position": per_position_pnl}
 
+    # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
-        from datetime import datetime
-        from backtest import bs_price, RISK_FREE_RATE  # type: ignore[import]
-
-        # Fetch (current_close, prev_close) for each unique underlying ticker via bar_cache
         tickers = list({
             str(p.get("ticker", "")).upper()
             for p in open_with_legs
@@ -484,61 +743,60 @@ def _compute_positions_pnl(
             except Exception:
                 continue
 
-        today       = datetime.today().date()
-        mtm_total   = 0.0
-        day_total   = 0.0
-        has_mtm     = False
+        expiry_groups: dict[tuple[str, str], list[dict]] = {}
+        for p in open_with_legs:
+            sym = str(p.get("ticker", "")).upper()
+            exp = str(p.get("expiry", ""))[:10]
+            if sym and exp:
+                expiry_groups.setdefault((sym, exp), []).append(p)
+
+        live_marks: dict[str, dict[str, tuple[float, float, float]]] = {}
+        for (sym, exp), _ in expiry_groups.items():
+            marks = _fetch_live_option_marks(sym, exp)
+            if marks:
+                live_marks[f"{sym}:{exp}"] = marks
+
+        today = datetime.today().date()
+        mtm_total = 0.0
+        day_total = 0.0
+        has_mtm = False
 
         for p in open_with_legs:
             sym = str(p.get("ticker", "")).upper()
             if sym not in price_map:
                 continue
-
             S_now, S_prev = price_map[sym]
 
-            try:
-                expiry_date = datetime.strptime(str(p.get("expiry", ""))[:10], "%Y-%m-%d").date()
-                T_years = max(0.0, (expiry_date - today).days / 365.0)
-            except Exception:
-                continue
+            exp_key = f"{sym}:{str(p.get('expiry', ''))[:10]}"
+            pos_marks = live_marks.get(exp_key)
 
-            contracts = max(1.0, _float_or(p.get("contracts"), 1.0))
-            legs      = p["legs"]
-
-            def _mtm_pnl(S: float, *, _T: float = T_years, _legs: list = legs) -> float:
-                pnl = 0.0
-                for leg in _legs:
-                    iv       = float(leg.get("iv") or 0.0)
-                    if iv < 0.005:
-                        iv = 0.25   # fallback HV proxy (matches main.py)
-                    strike   = float(leg.get("strike") or 0.0)
-                    entry_p  = float(leg.get("mid_price") or 0.0)
-                    opt_type = str(leg.get("option_type") or "CALL").upper()
-                    action   = str(leg.get("action") or "BUY").upper()
-                    curr_p   = bs_price(S, strike, _T, RISK_FREE_RATE, iv, opt_type)
-                    pnl += (entry_p - curr_p) if action == "SELL" else (curr_p - entry_p)
-                return pnl
-
-            pnl_now  = _mtm_pnl(S_now)
-            pnl_prev = _mtm_pnl(S_prev)
-
-            mtm_total += pnl_now  * SHARES * contracts
-            day_total += (pnl_now - pnl_prev) * SHARES * contracts
-            has_mtm    = True
-
+            current_result = calculate_position_pnl(
+                p,
+                live_option_marks=pos_marks,
+                underlying_price=S_now,
+            )
+            # Day P&L from BS only (avoids stale mark cross-contamination)
+            bs_today = calculate_position_pnl(
+                p, live_option_marks=None, underlying_price=S_now,
+            )
+            bs_yesterday = calculate_position_pnl(
+                p, live_option_marks=None, underlying_price=S_prev,
+            )
             pid = str(p.get("id", ""))
             if pid:
-                pnl_dollar = round(pnl_now * SHARES * contracts, 2)
-                pct_ref = abs(_float_or(p.get("max_loss"), 0.0)) * SHARES * contracts
-                pnl_pct = round((pnl_dollar / pct_ref) * 100, 2) if pct_ref > 0 else 0.0
-                per_position_pnl[pid] = {"pnl": pnl_dollar, "pnl_pct": pnl_pct}
+                per_position_pnl[pid] = {
+                    "pnl": current_result["pnl"],
+                    "pnl_pct": current_result["pnl_percent"],
+                }
+            mtm_total += current_result["pnl"]
+            day_total += bs_today["pnl"] - bs_yesterday["pnl"]
+            has_mtm = True
 
         total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
-        day_pl   = round(day_total, 2) if has_mtm else None
+        day_pl = round(day_total, 2) if has_mtm else None
         return {"total_pl": total_pl, "day_pl": day_pl, "per_position": per_position_pnl}
 
     except Exception:  # noqa: BLE001
-        # Live price fetch failed — fall back to realized-only
         total_pl = round(realized_pnl, 2) if realized_count > 0 else None
         return {"total_pl": total_pl, "day_pl": None, "per_position": per_position_pnl}
 
@@ -741,6 +999,19 @@ def _portfolio_position_row(p: dict[str, Any], *, closed: bool) -> dict[str, Any
         mt = _mistake_tag_from_notes(notes)
         row["mistake_tag"] = mt
         row["notes"] = notes
+
+        rp = p.get("realized_pnl")
+        if rp is not None:
+            row["realized_pnl"] = _float_or(rp, 0.0)
+        rpp = p.get("realized_pnl_percent")
+        if rpp is not None:
+            row["realized_pnl_percent"] = _float_or(rpp, 0.0)
+        ep = p.get("exit_price")
+        if ep is not None:
+            row["exit_price"] = _float_or(ep, 0.0)
+        ov = p.get("pnl_overridden")
+        if ov is not None:
+            row["pnl_overridden"] = bool(ov)
     return row
 
 
@@ -810,6 +1081,35 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
 
     # P&L: realized (closed) + MTM (open via Black-Scholes + live yfinance prices)
     pnl_data = _compute_positions_pnl(open_pos, closed)
+
+    # AI position analysis for every open position
+    ai_analyses: dict[str, dict[str, Any]] = {}
+    ppnl = pnl_data.get("per_position", {})
+    for p in open_pos:
+        pid = str(p.get("id", ""))
+        if not pid:
+            continue
+        position_pnl = ppnl.get(pid)
+        try:
+            ai_analyses[pid] = analyze_active_position(p, pnl_data=position_pnl)
+        except Exception as exc:
+            log.warning("AI analysis failed for position %s (%s): %s", pid, p.get("ticker", "?"), exc)
+            ai_analyses[pid] = {
+                "ai_state": "ANALYSIS_ERROR", "state_label": "Error",
+                "health_score": 0, "health_label": "ERROR",
+                "pnl_pct": 0.0, "momentum_quality": "UNKNOWN",
+                "extension_pct": 0.0, "extension_risk": "UNKNOWN",
+                "theta_risk": "UNKNOWN", "iv_risk": "UNKNOWN",
+                "trend_risk": "UNKNOWN", "rsi_risk": "UNKNOWN",
+                "liquidity_risk": "UNKNOWN", "market_correlation_risk": "UNKNOWN",
+                "dte": 0, "rsi": 50.0, "current_price": 0.0, "ma20": 0.0,
+                "value_capture_pct": None, "max_profit": 0.0, "max_loss": 0.0,
+                "ai_summary": "AI analysis unavailable for this position.",
+                "next_best_action": "Review position manually.",
+                "timeline_stage": "UNKNOWN", "smart_alerts": [],
+                "management_playbook": [], "management_actions": [],
+                "is_profitable": False, "strategy_family": "UNKNOWN",
+            }
 
     summary = {
         "total_open_positions":   len(open_pos),
@@ -890,6 +1190,7 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "closed_trades_detail":  closed[:200],
         "risk":                  risk,
         "per_position_pnl":      pnl_data.get("per_position", {}),
+        "ai_analyses":           ai_analyses,
     }
 
 
@@ -976,6 +1277,15 @@ class PortfolioCloseBody(BaseModel):
     id: str = Field(..., min_length=1)
     mistake_tag: Optional[str] = None
     pnl_pct: Optional[float] = None
+    exit_price: Optional[float] = None
+    exit_debit_credit: Optional[float] = None
+    close_date: Optional[str] = None
+    realized_pnl: Optional[float] = None
+    realized_pnl_percent: Optional[float] = None
+    exit_reason: Optional[str] = None
+    close_notes: Optional[str] = None
+    pnl_overridden: Optional[bool] = None
+    pnl_override_reason: Optional[str] = None
 
 
 @command_center_router.post("/portfolio/close")
@@ -993,9 +1303,25 @@ def post_portfolio_close(body: PortfolioCloseBody, auth_email: str = Depends(req
         if p.get("status") != "open":
             break
         p["status"] = "closed"
-        p["exitDate"] = datetime.now(timezone.utc).date().isoformat()
+        p["exitDate"] = body.close_date or datetime.now(timezone.utc).date().isoformat()
         if body.pnl_pct is not None:
             p["pnlPct"] = body.pnl_pct
+        if body.exit_price is not None:
+            p["exit_price"] = body.exit_price
+        if body.exit_debit_credit is not None:
+            p["exit_debit_credit"] = body.exit_debit_credit
+        if body.realized_pnl is not None:
+            p["realized_pnl"] = body.realized_pnl
+        if body.realized_pnl_percent is not None:
+            p["realized_pnl_percent"] = body.realized_pnl_percent
+        if body.exit_reason is not None:
+            p["exit_reason"] = body.exit_reason
+        if body.close_notes is not None:
+            p["close_notes"] = body.close_notes
+        if body.pnl_overridden is not None:
+            p["pnl_overridden"] = body.pnl_overridden
+        if body.pnl_override_reason is not None:
+            p["pnl_override_reason"] = body.pnl_override_reason
         notes = str(p.get("notes") or "")
         if tag:
             p["notes"] = (notes + "\n" if notes else "") + f"[mistake_tag] {tag}"
@@ -1027,3 +1353,178 @@ def post_portfolio_update_note(body: PortfolioNoteBody, auth_email: str = Depend
         raise HTTPException(status_code=404, detail="Position not found")
     saved = save_user_state(email, state.get("watchlist") or [], port)
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
+
+
+# ── My Tickers CRUD ─────────────────────────────────────────────────────────────
+
+class MyTickerBody(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=12)
+    company_name: str = ""
+    trade_types: list[str] = Field(default_factory=list)
+
+
+class MyTickerUpdateBody(BaseModel):
+    trade_types: list[str] = Field(default_factory=list)
+
+
+def _seed_default_my_tickers(email: str) -> list[dict[str, Any]]:
+    defaults = [
+        {
+            "symbol": "SPY",
+            "company_name": "SPDR S&P 500 ETF Trust",
+            "added_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "trade_types": ["regular", "day", "swing"],
+            "is_active": True,
+        },
+        {
+            "symbol": "QQQ",
+            "company_name": "Invesco QQQ Trust",
+            "added_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "trade_types": ["regular", "day", "swing"],
+            "is_active": True,
+        },
+    ]
+    state = get_user_state(email)
+    save_user_state(
+        email,
+        state.get("watchlist") or [],
+        state.get("portfolio") or [],
+        my_tickers=defaults,
+    )
+    return defaults
+
+
+def _load_my_tickers(email: str) -> list[dict[str, Any]]:
+    state = get_user_state(email)
+    tickers = list(state.get("my_tickers") or [])
+    if not tickers:
+        tickers = _seed_default_my_tickers(email)
+    return tickers
+
+
+def _save_my_tickers(email: str, tickers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    state = get_user_state(email)
+    save_user_state(
+        email,
+        state.get("watchlist") or [],
+        state.get("portfolio") or [],
+        my_tickers=tickers,
+    )
+    return _load_my_tickers(email)
+
+
+@command_center_router.get("/my-tickers")
+def get_my_tickers(auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+    return api_envelope({"tickers": tickers})
+
+
+@command_center_router.post("/my-tickers")
+def post_my_ticker(body: MyTickerBody, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+    symbol = body.symbol.strip().upper()
+
+    existing = [t for t in tickers if str(t.get("symbol", "")).upper() == symbol]
+    if existing:
+        raise HTTPException(status_code=409, detail=f"{symbol} is already in My Tickers")
+
+    entry: dict[str, Any] = {
+        "symbol": symbol,
+        "company_name": body.company_name.strip(),
+        "added_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "trade_types": sorted(set(body.trade_types)),
+        "is_active": True,
+    }
+    if not entry["trade_types"]:
+        entry["trade_types"] = ["regular"]
+
+    tickers.insert(0, entry)
+    updated = _save_my_tickers(email, tickers)
+    return api_envelope({"ok": True, "tickers": updated})
+
+
+@command_center_router.patch("/my-tickers/{symbol}")
+def patch_my_ticker(symbol: str, body: MyTickerUpdateBody, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+    sym = symbol.strip().upper()
+    new_types = sorted(set(body.trade_types))
+
+    found = False
+    for t in tickers:
+        if str(t.get("symbol", "")).upper() == sym:
+            t["trade_types"] = new_types if new_types else ["regular"]
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{sym} not found in My Tickers")
+
+    updated = _save_my_tickers(email, tickers)
+    return api_envelope({"ok": True, "tickers": updated})
+
+
+@command_center_router.delete("/my-tickers/{symbol}")
+def delete_my_ticker(symbol: str, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+    sym = symbol.strip().upper()
+    filtered = [t for t in tickers if str(t.get("symbol", "")).upper() != sym]
+
+    if len(filtered) == len(tickers):
+        raise HTTPException(status_code=404, detail=f"{sym} not found in My Tickers")
+
+    updated = _save_my_tickers(email, filtered)
+    return api_envelope({"ok": True, "tickers": updated})
+
+
+@command_center_router.get("/search-tickers")
+def search_tickers(q: str = Query(..., min_length=1), auth_email: str = Depends(require_access_email)):
+    qs = q.strip()
+    if not qs:
+        return api_envelope({"results": []})
+
+    results: list[dict[str, str]] = []
+    try:
+        import yfinance as yf
+        search = yf.Search(qs)
+        for item in (search.quotes or []):
+            if item.get("quoteType") == "EQUITY":
+                results.append({
+                    "symbol": item.get("symbol", ""),
+                    "company": item.get("longname") or item.get("shortname", ""),
+                    "sector": item.get("sector", ""),
+                })
+    except Exception as exc:
+        log.warning("search_tickers yf.Search(%r) failed: %s", qs, exc)
+
+    return api_envelope({"results": results})
+
+
+@command_center_router.delete("/my-tickers/{symbol}/type/{trade_type}")
+def delete_my_ticker_type(symbol: str, trade_type: str, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+    sym = symbol.strip().upper()
+    ttype = trade_type.strip().lower()
+
+    found = False
+    for t in tickers:
+        if str(t.get("symbol", "")).upper() == sym:
+            types = t.get("trade_types") or []
+            if ttype in types:
+                types.remove(ttype)
+                if types:
+                    t["trade_types"] = types
+                else:
+                    tickers = [x for x in tickers if str(x.get("symbol", "")).upper() != sym]
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{sym} not found in My Tickers")
+
+    updated = _save_my_tickers(email, tickers)
+    return api_envelope({"ok": True, "tickers": updated})

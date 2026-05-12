@@ -93,6 +93,7 @@ export default function AlertCenter() {
   const [status, setStatus] = useState('')
   const [ticker, setTicker] = useState('')
   const [activeOnly, setActiveOnly] = useState(true)
+  const [todayOnly, setTodayOnly] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
 
@@ -105,12 +106,28 @@ export default function AlertCenter() {
         status: status || undefined,
         ticker: ticker.trim() || undefined,
         active_only: activeOnly,
+        today_only: todayOnly,
       })
+      if (import.meta.env.DEV) {
+        const rawAlerts = env.data?.alerts ?? []
+        const groupedCount = Object.values(env.data?.sections ?? {}).reduce((sum, rows) => sum + rows.length, 0)
+        console.debug('[alerts] alert center load', {
+          endpoint: '/api/alerts',
+          sidebarCount: null,
+          alertCenterRawCount: rawAlerts.length,
+          afterActiveFilter: activeOnly ? rawAlerts.length : null,
+          afterStatusFilter: status || 'ALL',
+          afterEngineTypeFilter: engineType || 'ALL',
+          afterGrouping: groupedCount,
+          summary: env.data?.summary ?? null,
+        })
+      }
       setPayload(env.data)
+      window.dispatchEvent(new Event('oa-alert-center-updated'))
     } finally {
       setLoading(false)
     }
-  }, [activeOnly, engineType, severity, status, ticker])
+  }, [activeOnly, engineType, severity, status, ticker, todayOnly])
 
   useEffect(() => {
     void load()
@@ -146,11 +163,13 @@ export default function AlertCenter() {
 
   const onAck = async (id: string) => {
     await acknowledgeAlert(id)
+    window.dispatchEvent(new Event('oa-alert-center-updated'))
     void load()
   }
 
   const onResolve = async (id: string) => {
     await resolveAlert(id)
+    window.dispatchEvent(new Event('oa-alert-center-updated'))
     void load()
   }
 
@@ -173,7 +192,7 @@ export default function AlertCenter() {
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <SummaryCard label="Total Active Alerts" value={summary.active ?? 0} tone="neutral" />
         <SummaryCard label="Critical Alerts" value={summary.critical ?? 0} tone="critical" />
         <SummaryCard label="Warning Alerts" value={summary.warning ?? 0} tone="warning" />
@@ -181,13 +200,13 @@ export default function AlertCenter() {
         <SummaryCard label="Trade Entry Alerts" value={summary.trade_entry ?? 0} tone="positive" />
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs text-gray-500">
+      <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+        <label className="text-[10px] sm:text-xs text-gray-500">
           Engine Type
           <select
             value={engineType}
             onChange={e => setEngineType(e.target.value)}
-            className="mt-1 block w-36 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm"
+            className="mt-1 block w-full min-w-[100px] sm:w-36 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
           >
             <option value="">All</option>
             <option value="DAY">Day</option>
@@ -197,12 +216,12 @@ export default function AlertCenter() {
             <option value="MARKET">Market</option>
           </select>
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-[10px] sm:text-xs text-gray-500">
           Severity
           <select
             value={severity}
             onChange={e => setSeverity(e.target.value)}
-            className="mt-1 block w-32 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm"
+            className="mt-1 block w-full min-w-[90px] sm:w-32 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
           >
             <option value="">All</option>
             <option value="INFO">Info</option>
@@ -210,12 +229,12 @@ export default function AlertCenter() {
             <option value="CRITICAL">Critical</option>
           </select>
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-[10px] sm:text-xs text-gray-500">
           Status
           <select
             value={status}
             onChange={e => setStatus(e.target.value)}
-            className="mt-1 block w-40 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm"
+            className="mt-1 block w-full min-w-[100px] sm:w-40 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
           >
             <option value="">All</option>
             <option value="ACTIVE">Active</option>
@@ -223,18 +242,22 @@ export default function AlertCenter() {
             <option value="RESOLVED">Resolved</option>
           </select>
         </label>
-        <label className="text-xs text-gray-500">
+        <label className="text-[10px] sm:text-xs text-gray-500">
           Ticker
           <input
             value={ticker}
             onChange={e => setTicker(e.target.value.toUpperCase())}
             placeholder="e.g. NVDA"
-            className="mt-1 block w-28 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm uppercase"
+            className="mt-1 block w-full min-w-[80px] sm:w-28 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm uppercase"
           />
         </label>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-400">
-          <input type="checkbox" checked={activeOnly} onChange={e => setActiveOnly(e.target.checked)} />
+        <label className="flex cursor-pointer items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-gray-400 whitespace-nowrap pt-1">
+          <input type="checkbox" checked={activeOnly} onChange={e => setActiveOnly(e.target.checked)} className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Active Only
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-gray-400 whitespace-nowrap pt-1">
+          <input type="checkbox" checked={todayOnly} onChange={e => setTodayOnly(e.target.checked)} className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          Today Only
         </label>
       </div>
 
@@ -264,47 +287,51 @@ export default function AlertCenter() {
                     const expanded = !!expandedRows[row.id]
                     const showExpand = longText(row.reason) || longText(row.recommended_action)
                     return (
-                      <div key={row.id} className="space-y-3 px-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div key={row.id} className="space-y-3 px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0 flex-1 space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {row.ticker ? <span className="font-mono text-sm font-bold text-gray-100">{row.ticker}</span> : null}
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                              {row.ticker ? <span className="font-mono text-xs sm:text-sm font-bold text-gray-100">{row.ticker}</span> : null}
                               <EngineBadge engine={row.engine_type} />
-                              <span className="text-[11px] uppercase tracking-wide text-gray-500">{row.alert_type}</span>
+                              <span className="text-[10px] sm:text-[11px] uppercase tracking-wide text-gray-500">{row.alert_type}</span>
                               <SeverityBadge severity={row.severity} />
                               <SignalBadge signal={row.signal} />
                               <StatusBadge status={row.status} />
                             </div>
-                            <div className="font-semibold text-gray-900 dark:text-gray-100">{row.message}</div>
-                            <div className={`text-sm text-gray-600 dark:text-gray-400 ${expanded ? '' : 'line-clamp-2'}`}>
-                              {row.reason}
-                            </div>
-                            <div className={`text-sm text-violet-300/95 ${expanded ? '' : 'line-clamp-2'}`}>
-                              Recommended action: {row.recommended_action}
-                            </div>
-                            <div className="text-[11px] text-gray-500">Created: {fmtTime(row.created_at)}</div>
+                            <div className="text-sm sm:text-base font-semibold leading-snug text-gray-900 dark:text-gray-100">{row.message}</div>
+                            {row.reason ? (
+                              <div className={`text-xs sm:text-sm leading-relaxed text-gray-600 dark:text-gray-400 ${expanded ? '' : 'line-clamp-2'}`}>
+                                {row.reason}
+                              </div>
+                            ) : null}
+                            {row.recommended_action ? (
+                              <div className={`text-xs sm:text-sm leading-relaxed text-violet-300/95 ${expanded ? '' : 'line-clamp-2'}`}>
+                                <span className="font-medium">Action:</span> {row.recommended_action}
+                              </div>
+                            ) : null}
+                            <div className="text-[10px] sm:text-[11px] text-gray-500">Created: {fmtTime(row.created_at)}</div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-row flex-wrap gap-1.5 sm:flex-col sm:gap-2 shrink-0">
                             <button
                               type="button"
-                              className="oa-cc-btn-secondary text-xs"
+                              className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3"
                               disabled={row.status !== 'ACTIVE'}
                               onClick={() => void onAck(row.id)}
                             >
                               Acknowledge
                             </button>
-                            <button type="button" className="oa-cc-btn-secondary text-xs" onClick={() => void onResolve(row.id)}>
+                            <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => void onResolve(row.id)}>
                               Resolve
                             </button>
                             {row.ticker ? (
-                              <button type="button" className="oa-cc-btn-secondary text-xs" onClick={() => requestAnalysis(row.ticker)}>
+                              <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => requestAnalysis(row.ticker)}>
                                 View Ticker
                               </button>
                             ) : null}
                             {row.related_trade_id ? (
                               <button
                                 type="button"
-                                className="oa-cc-btn-secondary text-xs"
+                                className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3"
                                 onClick={() => navigate(`/positions?tab=open&trade=${encodeURIComponent(row.related_trade_id ?? '')}`)}
                               >
                                 View Trade

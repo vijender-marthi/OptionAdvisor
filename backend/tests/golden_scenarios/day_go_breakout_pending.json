@@ -1,0 +1,47 @@
+{
+  "name": "Day Trade — GO signal but breakout confirmation still pending",
+  "engine_type": "day",
+  "input": {
+    "ticker": "TSLA",
+    "verdict": "GO",
+    "bias": "long",
+    "reasons": [
+      "Above VWAP (+0.18%)",
+      "Momentum positive",
+      "Volume improving but not yet spiking",
+      "Outperforming QQQ"
+    ],
+    "metrics": {
+      "vix": 22.5,
+      "vwap": 284.50,
+      "last_price": 285.00,
+      "or_high": 285.80,
+      "or_low": 283.20,
+      "or_breakout": "inside",
+      "momentum_pct": 0.10,
+      "volume_spike": false,
+      "confidence": {
+        "trend_strength": "MEDIUM",
+        "breakout_quality": "FAIR",
+        "volume_confirmation": "WEAK",
+        "market_alignment": "STRONG",
+        "risk": "MEDIUM"
+      }
+    },
+    "trader_decision": {
+      "market_state": "MARKET_SUPPORTIVE",
+      "decision_message": "Setup is constructive but needs breakout confirmation.",
+      "confirmation_needed": ["break intraday high", "volume expansion"]
+    }
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "GOOD",
+    "final_decision": "WAIT",
+    "signal_quality": "GO",
+    "execution_timing": "WAIT FOR PULLBACK",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": ["Breakout confirmation", "Volume confirmation"],
+    "must_not_contain": ["ENTER NOW"]
+  }
+}

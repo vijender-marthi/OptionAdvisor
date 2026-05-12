@@ -134,6 +134,15 @@ export interface DayTraderDecision {
   confirmation_needed: string[]
 }
 
+export interface DayOptionRiskContext {
+  theta_risk: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' | string
+  gamma_risk: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' | string
+  iv_risk: 'HIGH' | 'MEDIUM' | 'LOW' | string
+  liquidity_risk: 'HIGH' | 'MEDIUM' | 'LOW' | string
+  suggested_contract_window: string
+  option_execution_warning: string
+}
+
 /** Intraday day-trade scan — verdict tiers: STRONG GO, GO, WATCH, NO-GO, WAIT. */
 export interface DayTradeScanResult {
   ticker: string
@@ -156,6 +165,53 @@ export interface DayTradeScanResult {
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
+  /** Three-axis display: signal quality, execution timing, risk category */
+  signal_quality?: string
+  execution_timing?: string
+  risk_category?: string
+  /** Strategy-aware explanation */
+  explanation?: Record<string, string>
+  risk_reason?: string
+  display_confidence?: number
+  /** Execution-level fields (VWAP, breakout level, etc.) */
+  execution_fields?: Array<{ label: string; value: string }>
+  /** VWAP-based entry guidance with pending confirmations, breakout levels, and human-readable action text */
+  entry_guidance?: {
+    state: string
+    summary: string
+    action: string
+    avoid: string
+    pending_confirmations: string[]
+    current_price?: number
+    vwap?: number
+    price_vs_vwap_pct?: number
+    opening_range_high?: number
+    opening_range_low?: number
+    breakout_level?: number
+    pullback_zone?: string
+    risk_below?: number
+    scalp_target?: number
+    /** New execution guidance fields */
+    day_market_phase?: string
+    pullback_probability?: string
+    should_enter_now?: string
+    execution_personality?: {
+      suitable_for: string[]
+      not_ideal_for: string[]
+    }
+    entry_decision?: {
+      conservative: string
+      aggressive: string
+      best_setup: string
+    }
+    contextual_alerts?: Array<{
+      type: string
+      message: string
+      condition: string
+    }>
+  }
+  /** Lightweight options execution context — warning-only, not a strategy builder. */
+  option_risk_context?: DayOptionRiskContext
 }
 
 export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {
@@ -214,6 +270,8 @@ export interface SwingTradeScanResult {
   supporting_factors:     string[]
   missing_confirmations:  string[]
   risk_state:             string
+  expected_holding_period:      string
+  recommended_contract_duration: string
 }
 
 export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
@@ -442,6 +500,12 @@ export const closeJournalEntry = async (
 
 export const updateJournalNotes = async (email: string, id: string, notes: string): Promise<void> => {
   await api.patch(`/journal/${encodeURIComponent(email)}/${id}/notes`, { notes })
+}
+
+export const updateJournalEntry = async (
+  email: string, id: string, fields: Record<string, unknown>
+): Promise<void> => {
+  await api.patch(`/journal/${encodeURIComponent(email)}/${id}/update`, fields)
 }
 
 export const deleteJournalEntry = async (email: string, id: string): Promise<void> => {

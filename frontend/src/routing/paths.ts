@@ -24,9 +24,8 @@ export function locationToPage(pathname: string): Page {
     case 'alerts':
       return 'alert-center'
     case 'help':
-      return 'help'
     case 'trading-glossary':
-      return 'trading-glossary'
+      return 'help'
     case 'settings':
       return 'settings'
     case 'ai-stocks':
@@ -61,6 +60,8 @@ export function locationToPage(pathname: string): Page {
       return 'reset-password'
     case 'activate':
       return 'activate'
+    case 'my-tickers':
+      return 'my-tickers'
     default:
       return 'trade-command-center'
   }
@@ -84,9 +85,8 @@ export function pageToLocation(p: Page): string {
     case 'alert-center':
       return '/alerts'
     case 'help':
-      return '/help'
     case 'trading-glossary':
-      return '/trading-glossary'
+      return '/help'
     case 'settings':
       return '/settings'
     case 'ai-stocks':
@@ -121,6 +121,8 @@ export function pageToLocation(p: Page): string {
       return '/reset-password'
     case 'activate':
       return '/activate'
+    case 'my-tickers':
+      return '/my-tickers'
     default:
       return '/trade-command-center'
   }

@@ -31,7 +31,7 @@ import {
 import { fetchMarketPosition, fetchTradeCommandCenter } from '../api/commandCenter'
 import type { MarketPositionData } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES } from '../routing/routes'
+import { ROUTES, getEngineRoute } from '../routing/routes'
 import GaugeMeter from '../components/GaugeMeter'
 import SignalRing from '../components/SignalRing'
 import SparklineCard from '../components/SparklineCard'
@@ -138,11 +138,26 @@ function formatCoachMessage(msg: string): ReactNode {
   return msg.split('\n\n').map((p, i) => <p key={i} className="mb-2 last:mb-0">{p}</p>)
 }
 
-function routeForEngine(engineType: string): { href: string; label: string } {
+function routeForEngine(engineType: string, ticker?: string): string {
   const key = engineType.trim().toLowerCase()
-  if (key === 'day') return { href: ROUTES.dayTrade, label: 'View Day Details' }
-  if (key === 'swing') return { href: ROUTES.swingWatchlist, label: 'View Swing Watchlist' }
-  return { href: ROUTES.regularTrade, label: 'View Regular Details' }
+  const from = encodeURIComponent(ROUTES.tradeCommandCenter)
+  const sep = ticker ? '&' : '?'
+  if (key === 'day') {
+    const base = ticker ? `${ROUTES.dayTrade}?ticker=${encodeURIComponent(ticker)}` : ROUTES.dayTrade
+    return `${base}${sep}from=${from}`
+  }
+  if (key === 'swing') {
+    const base = ticker ? `${ROUTES.swingTrade}?ticker=${encodeURIComponent(ticker)}` : ROUTES.swingTrade
+    return `${base}${sep}from=${from}`
+  }
+  const base = ticker ? `${ROUTES.strategyFinder}?ticker=${encodeURIComponent(ticker)}` : ROUTES.strategyFinder
+  return `${base}${sep}from=${from}`
+}
+
+function getDetailsRoute(rec: TradeCommandCenterRecommendation): string {
+  const key = (rec.engine_type || '').trim().toLowerCase()
+  const base = getEngineRoute(key, rec.ticker)
+  return `${base}&from=${encodeURIComponent(ROUTES.tradeCommandCenter)}`
 }
 
 function confidenceNumber(raw: string | number | undefined): number {
@@ -247,9 +262,9 @@ function buildFallbackConflicts(recommendations: TradeCommandCenterRecommendatio
       id: `fallback-${ticker}`,
       ticker,
       state: 'CONFLICTING_SIGNALS',
-      summary: `${ticker} has conflicting signals across engines.`,
-      resolution: 'Timeframe or options pricing is creating a disagreement.',
-      suggested_action: 'Prefer smaller size or wait for cleaner agreement before acting.',
+      summary: `${ticker} — mixed signals across engines. Check IV rank and daily bias before acting.`,
+      resolution: 'Shorter-timeframe engine likely seeing intraday noise the swing/regular engine discounts. Check IV rank and daily bias.',
+      suggested_action: 'Reduce position size by 50% or stand aside until all active engines agree on signal direction.',
         signals: rows.map(row => ({
           engine_type: String(row.engine_type || '').toUpperCase(),
           signal: String(row.final_decision || row.signal || '').toUpperCase(),
@@ -525,7 +540,7 @@ export default function TradeCommandCenter() {
 
   const handleAddToPositions = (rec: TradeCommandCenterRecommendation) => {
     if (rec.ticker) requestAnalysis(rec.ticker)
-    setNotice('info', `Opened ${rec.ticker} details. Direct add-to-positions from Trade Command Center is not wired yet, so use the ticker advisor flow to confirm and add the trade.`)
+    setNotice('info', `${rec.ticker} analysis opened — review entry/stop/target in the Ticker Advisor, then add to Positions from there.`)
   }
 
   const handleCreateAlert = (ticker: string) => {
@@ -546,7 +561,7 @@ export default function TradeCommandCenter() {
         <div className="min-w-0">
           <h1 className="tcc-hero-title text-3xl">Trade Command Center</h1>
           <p className="mt-1.5 max-w-3xl text-sm text-gray-500">
-            One decision dashboard for market regime, engine trust, actionable setups, conflicts, alerts, and recent activity.
+            Real-time regime snapshot — engine trust scores, READY/TRADE setups with entry/stop/target, cross-engine conflicts, and smart alerts. Act only when signal quality + execution timing agree.
             {env?.stale ? <span className="text-amber-400"> Live market summary unavailable, using cached defaults.</span> : null}
           </p>
         </div>
@@ -641,37 +656,35 @@ export default function TradeCommandCenter() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <BarChart3 size={18} className="text-teal-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Health / Engine Bias</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Trust &amp; Directional Bias</h2>
             </div>
             <div className="border-t border-slate-100 dark:border-white/[0.05]" />
             <div className="grid gap-4 xl:grid-cols-3">
               {engines.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                  No engine snapshots from API yet.
+                  No engine data loaded — check that the backend is running and the last scan completed successfully.
                 </div>
               ) : (
                 engines.map((card: TradeCommandCenterEngine) => {
-                   const route = routeForEngine(String(card.engine_type || ''))
                    const topTicker = String(card.top_recommendation?.ticker || '').toUpperCase()
                    const confPct = confidenceNumber(card.confidence)
                    const confColor = readinessColor(confPct)
                    const sigCount = summaryNumber(card.signal_count)
                    return (
-                     <div key={`${card.engine_type}-${topTicker}`} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3.5 shadow-sm">
-                       <div className="flex items-center justify-between gap-2">
-                         <div className="flex items-center gap-2 min-w-0">
-                           <span className="text-base font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
-                           <span className="text-[10px] text-slate-500 hidden sm:inline">{card.timeframe || '—'}</span>
-                         </div>
-                         <div className="flex items-center gap-2 shrink-0">
-                            <div className="flex items-center gap-1">
-                              <SignalQualityBadge quality={card.signal_quality || ''} />
-                              <ExecTimingBadge timing={card.execution_timing || ''} />
-                              <RiskCatBadge category={card.risk_category || ''} />
-                            </div>
-                            <span className="text-xs font-bold text-white">{confPct}%</span>
-                         </div>
-                       </div>
+                      <div key={`${card.engine_type}-${topTicker}`} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3.5 shadow-sm">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                          <div className="flex items-center justify-between gap-2 sm:contents">
+                            <span className="text-base font-bold text-slate-900 dark:text-white">{String(card.engine_type || '').toUpperCase()}</span>
+                            <span className="text-xs font-bold text-white sm:hidden">{(card as any).display_confidence ?? confPct}%</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500">{card.timeframe || '—'}</span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <SignalQualityBadge quality={card.signal_quality || ''} />
+                            <ExecTimingBadge timing={card.execution_timing || ''} />
+                            <RiskCatBadge category={card.risk_category || ''} />
+                            <span className="text-xs font-bold text-white hidden sm:inline" title={(card as any).risk_reason || ''}>{(card as any).display_confidence ?? confPct}%</span>
+                          </div>
+                        </div>
                        <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-700/30">
                          <div
                            className="h-full rounded-full transition-all duration-500"
@@ -680,10 +693,11 @@ export default function TradeCommandCenter() {
                        </div>
                        <div className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2">
                          <span>{card.market_bias || '—'}</span>
-                         <span className="text-slate-300 dark:text-slate-600">•</span>
-                         <RiskBadge risk={String(card.risk_level || 'Unknown')} />
-                         <span className="text-slate-300 dark:text-slate-600">•</span>
-                         <span>{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
+                          <span className="text-slate-300 dark:text-slate-600">•</span>
+                          <RiskBadge risk={String(card.risk_level || 'Unknown')} />
+                          <span className="text-slate-300 dark:text-slate-600">•</span>
+                          <span>{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
+                          {(card as any).risk_reason ? <span className="text-[10px] text-amber-500/70 italic truncate max-w-[120px]" title={(card as any).risk_reason}>{(card as any).risk_reason}</span> : null}
                        </div>
                        {topTicker || card.best_use_case ? (
                          <div className="mt-2 text-sm">
@@ -693,32 +707,34 @@ export default function TradeCommandCenter() {
                          </div>
                        ) : null}
                        <p className="mt-2.5 text-xs text-slate-700 dark:text-slate-300 leading-relaxed line-clamp-2">
-                         {card.reason || card.summary || card.top_recommendation?.reason || 'No engine summary yet.'}
+                         {card.reason || card.summary || card.top_recommendation?.reason || 'Engine returned no thesis — wait for next scan cycle before acting.'}
                        </p>
                        {card.missing_confirmations.length > 0 ? (
                          <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-200/70 font-medium truncate">
                            Waiting: {card.missing_confirmations.join(' · ')}
                          </p>
                        ) : null}
-                       <div className="mt-3 flex flex-wrap gap-1.5">
-                         <button
-                           type="button"
-                           onClick={() => navigate(route.href)}
-                           className="btn btn-primary gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
-                         >
-                           Details
-                           <ArrowRight size={12} />
-                         </button>
-                         {topTicker ? (
-                           <button
-                             type="button"
-                             onClick={() => requestAnalysis(topTicker)}
-                             className="btn btn-outline gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
-                           >
-                             {topTicker}
-                           </button>
-                         ) : null}
-                       </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              disabled={!topTicker}
+                              onClick={() => navigate(routeForEngine(String(card.engine_type || ''), topTicker || undefined))}
+                              className={`btn gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold ${topTicker ? 'btn-primary' : 'btn-disabled cursor-not-allowed opacity-40'}`}
+                              title={topTicker ? `View ${String(card.engine_type || '').toUpperCase()} details` : 'No ticker available for this engine'}
+                            >
+                              Details
+                              <ArrowRight size={12} />
+                            </button>
+                          {topTicker ? (
+                            <button
+                              type="button"
+                              onClick={() => requestAnalysis(topTicker)}
+                              className="btn btn-outline gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
+                            >
+                              {topTicker}
+                            </button>
+                          ) : null}
+                        </div>
                      </div>
                    )
                  })
@@ -731,7 +747,7 @@ export default function TradeCommandCenter() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <BriefcaseBusiness size={18} className="text-emerald-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Trade Opportunities</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">READY / TRADE Setups — Confirmed Edge + Timing</h2>
               </div>
               <button
                 type="button"
@@ -789,11 +805,12 @@ export default function TradeCommandCenter() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {actionable.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                    No actionable opportunities for the current filters.
+                    No READY or TRADE signals match the current filters — widen engine/direction filters or wait for next scan cycle.
                   </div>
                 ) : (
                   actionable.map(rec => {
                     const expanded = expandedOpportunityId === rec.id
+                    const detailsRoute = getDetailsRoute(rec)
                     return (
                       <div key={rec.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -811,58 +828,92 @@ export default function TradeCommandCenter() {
                             <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Confidence</div>
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white">{String(rec.confidence || '—')}</div>
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Signal Strength</div>
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white" title={rec.risk_reason || ''}>{String(rec.display_confidence || rec.confidence || '—')}</div>
                           </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                           <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Market Bias</div>
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Regime Bias</div>
                             <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
                           </div>
                             <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Execution</div>
+                              <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry Timing</div>
                               <div className="mt-1"><ExecTimingBadge timing={String(rec.execution_timing || rec.execution_readiness || '—')} /></div>
                             </div>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
-                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div>
+                        {(rec.execution_fields && rec.execution_fields.length > 0) ? (
+                          <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                            {rec.execution_fields.map((ef: { label: string; value: string }, i: number) => (
+                              <div key={i} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2 min-w-[100px] flex-1">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">{ef.label}</div>
+                                <div className="mt-1 text-slate-900 dark:text-slate-100 font-medium">{ef.value}</div>
+                              </div>
+                            ))}
                           </div>
-                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
-                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target || '—'}</div>
+                        ) : (rec.entry_zone || rec.target || rec.stop_loss) ? (
+                          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                            {rec.entry_zone ? (
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
+                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone}</div>
+                              </div>
+                            ) : null}
+                            {rec.target ? (
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
+                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target}</div>
+                              </div>
+                            ) : null}
+                            {rec.stop_loss ? (
+                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
+                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss}</div>
+                              </div>
+                            ) : null}
                           </div>
-                          <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
-                            <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss || '—'}</div>
-                          </div>
-                        </div>
+                        ) : null}
 
-                        <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.reason || 'No reason from API.'}</p>
-                        <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-2'}`}>
-                          Recommended action: {rec.recommended_action || rec.action_label || 'Review details before acting.'}
-                        </p>
+                        {rec.explanation?.summary ? (
+                          <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.explanation.summary}</p>
+                        ) : (
+                          <p className={`mt-4 text-sm leading-relaxed text-slate-700 dark:text-slate-300 ${expanded ? '' : 'line-clamp-2'}`}>{rec.reason || 'No reason from API.'}</p>
+                        )}
+                        {rec.explanation?.recommended_action ? (
+                          <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-1'}`}>
+                            {rec.explanation.recommended_action}
+                          </p>
+                        ) : (
+                          <p className={`mt-2 text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90 ${expanded ? '' : 'line-clamp-2'}`}>
+                            {rec.recommended_action || rec.action_label || 'Verify entry trigger, stop, and target before sizing in.'}
+                          </p>
+                        )}
+                        {rec.risk_reason ? (
+                          <p className="mt-1 text-xs text-amber-600/80 dark:text-amber-300/70 italic" title="Risk reason">{rec.risk_reason}</p>
+                        ) : null}
+                        {(rec.engine_type || '').toLowerCase() === 'day' && rec.option_risk_context?.option_execution_warning ? (
+                          <div className="mt-2 rounded-lg border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/15 dark:text-amber-200/90">
+                            <span className="font-semibold">Option execution:</span> {rec.option_risk_context.option_execution_warning}
+                          </div>
+                        ) : null}
                         {rec.missing_confirmations && rec.missing_confirmations.length > 0 ? (
-                          <p className={`mt-2 text-xs text-amber-700/90 dark:text-amber-200/90 ${expanded ? '' : 'line-clamp-1'}`}>
-                            Waiting on: {rec.missing_confirmations.join(' · ')}
+                          <p className={`mt-2 text-xs ${(rec.engine_type || '').toLowerCase() === 'day' ? 'text-orange-700/90 dark:text-orange-200/90' : 'text-amber-700/90 dark:text-amber-200/90'} ${expanded ? '' : 'line-clamp-1'}`}>
+                            {(rec.engine_type || '').toLowerCase() === 'day'
+                              ? `WAIT — confirming: ${rec.missing_confirmations.slice(0, 2).join(', ')}${rec.missing_confirmations.length > 2 ? '…' : ''} before entry is valid.`
+                              : `PENDING — needs: ${rec.missing_confirmations.join(' · ')} to align before acting.`}
                           </p>
                         ) : null}
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleAddToWatchlist(rec.ticker)}>
-                            Add to Watchlist
-                          </button>
                           <button type="button" className="btn btn-primary gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleAddToPositions(rec)}>
                             Add to Positions
                           </button>
                           <button type="button" className="btn btn-warning gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleCreateAlert(rec.ticker)}>
                             Create Alert
                           </button>
-                          <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => requestAnalysis(rec.ticker)}>
+                          <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => navigate(detailsRoute)}>
                             View Details
                           </button>
                           <button
@@ -886,11 +937,11 @@ export default function TradeCommandCenter() {
               <div className="rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-950/10 border-l-[3px] border-l-rose-500 p-4 md:p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <AlertTriangle size={16} className="text-rose-300" />
-                  <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">Avoid Right Now</h3>
+                  <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">AVOID — High-Risk or Conflicting Tickers</h3>
                 </div>
                 <div className="space-y-3">
                   {avoids.length === 0 ? (
-                    <div className="text-sm text-slate-500">No avoid list items under the current filters.</div>
+                    <div className="text-sm text-slate-500">No AVOID signals under current filters — all scanned tickers are WATCH or better.</div>
                   ) : (
                     avoids.map(rec => (
                       <div key={`avoid-${rec.id}`} className="rounded-lg border border-rose-100 dark:border-rose-900/20 bg-white dark:bg-slate-900/80 p-3">
@@ -904,7 +955,7 @@ export default function TradeCommandCenter() {
                           </div>
                         </div>
                         <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
-                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Avoid for now.'}</div>
+                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Stand aside — re-evaluate if signal flips to WATCH above key resistance.'}</div>
                       </div>
                     ))
                   )}
@@ -951,12 +1002,12 @@ export default function TradeCommandCenter() {
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <ShieldAlert size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Conflict Panel</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Cross-Engine Signal Conflicts — Do Not Trade Until Resolved</h2>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {conflicts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                  No engine conflicts reported right now.
+                  No cross-engine conflicts right now — all active engines are in signal agreement.
                 </div>
               ) : (
                 conflicts.map(conflict => (
@@ -966,7 +1017,7 @@ export default function TradeCommandCenter() {
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{conflict.ticker}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
-                            {conflict.state.replace(/_/g, ' ')}
+                            {conflict.state === 'CONFLICTING_SIGNALS' ? 'SIGNAL CONFLICT' : conflict.state.replace(/_/g, ' ')}
                           </span>
                         </div>
                         <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{conflict.summary}</div>
@@ -984,9 +1035,9 @@ export default function TradeCommandCenter() {
                       ))}
                     </div>
                     <div className="mt-4 rounded-xl border border-amber-700/25 bg-amber-500/5 p-3">
-                      <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Resolution</div>
+                      <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Root Cause</div>
                       <div className="mt-1 text-sm text-slate-800 dark:text-slate-200">{conflict.resolution}</div>
-                      <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">Suggested action: {conflict.suggested_action}</div>
+                      <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">ACTION — {conflict.suggested_action}</div>
                     </div>
                   </div>
                 ))

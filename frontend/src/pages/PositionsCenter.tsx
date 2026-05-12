@@ -22,8 +22,9 @@ import {
 } from 'lucide-react'
 import { fetchPositionsCenter } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
-import type { ApiEnvelope } from '../types/commandCenter'
-import type { PortfolioPosition, OptionLeg } from '../types/index'
+import type { AiPositionAnalysis, ApiEnvelope } from '../types/commandCenter'
+import type { PortfolioPosition, OptionLeg, ClosePositionPayload } from '../types/index'
+import { EXIT_REASON_OPTIONS } from '../types/index'
 import {
   getActionButtonClass,
   getBiasBadgeClass,
@@ -215,17 +216,17 @@ function deriveAiGuidance(pos: PortfolioPosition): string {
   const dte = pos.dte ?? 99
   const strat = (pos.strategy || '').toLowerCase()
   const bias = (pos.bias || '').toLowerCase()
-  if (status === 'EXIT SOON') return `Expiry approaching in ${dte} days. Consider rolling or closing before theta decay accelerates.`
-  if (status === 'WATCH') return `DTE at ${dte}. Set a price alert and review at ${Math.max(1, dte - 5)} DTE for roll decisions.`
-  if (status === 'CONFLICT') return `Position probability is low (${pos.prob_of_profit ?? 50}%). Review thesis and consider reducing size.`
+  if (status === 'EXIT SOON') return `EXIT SOON — ${dte} DTE remaining. Theta is destroying value daily; close or roll to a later expiry now. If rolling, target ≥ 21 DTE on the new leg.`
+  if (status === 'WATCH') return `WATCH — ${dte} DTE. At ${Math.max(1, dte - 5)} DTE reassess: if position is ≥ 50% of max profit, close and redeploy. Otherwise, prepare a roll thesis before theta accelerates.`
+  if (status === 'CONFLICT') return `CONFLICT — P(profit) at ${pos.prob_of_profit ?? 50}%, below the 40% floor. Cut size by 50% or close if price has moved against your breakeven by more than 1 ATR.`
   if (status === 'MANAGE') {
-    if (strat.includes('spread')) return `Spread position active. Monitor the short leg and manage pin risk near expiry.`
-    return 'Active management required. Set stop-loss and review position sizing.'
+    if (strat.includes('spread')) return `MANAGE — Spread active. If the short leg goes ITM with < 7 DTE, buy it back to eliminate pin risk. Stop the spread at 2× the premium paid.`
+    return 'MANAGE — Multi-leg position. Close if net delta exceeds ±0.30 per contract, or if the position loses > 25% of credit received.'
   }
-  if (status === 'EXIT') return 'Position closed. Review trade journal for lessons learned.'
-  if (bias.includes('bull')) return `Bullish position with ${dte} DTE remaining. Trend is your friend — trail stops higher.`
-  if (bias.includes('bear')) return `Bearish position with ${dte} DTE remaining. Protect against short squeezes with tight stops.`
-  return `Position ${dte} DTE out. Monitor thesis and set exit conditions.`
+  if (status === 'EXIT') return 'CLOSED — Compare final P&L to entry thesis: did price reach your target or stop you out? Log IV at open and DTE at close for pattern review.'
+  if (bias.includes('bull')) return `HOLD — Bullish. ${dte} DTE remaining. Trail stop to just below the last swing low or VWAP reclaim. Target 50% profit for partial close, full exit at 80%.`
+  if (bias.includes('bear')) return `HOLD — Bearish. ${dte} DTE remaining. Close if price reclaims the prior day's VWAP or breaks above nearest resistance with volume confirmation.`
+  return `HOLD — ${dte} DTE remaining. Set profit target at 50% of max credit, stop at 2× premium paid, and hard close date at 21 DTE.`
 }
 
 function engineSourceLabel(source: 'day' | 'swing' | 'regular'): string {
@@ -239,11 +240,16 @@ function stratelabel(strat: string): string {
   return strat.replace(/_/g, ' ')
 }
 
+/** Cost-basis reference per share: debit strategies use |net_credit|, credit use max_profit. */
+function costBasisRefPerShare(pos: PortfolioPosition): number {
+  return pos.net_credit < 0 ? Math.abs(pos.net_credit) : pos.max_profit
+}
+
 function computePnlDollar(pos: PortfolioPosition): number | null {
-  if (pos.status === 'closed' && pos.pnlPct != null && pos.max_profit > 0) {
-    return (pos.pnlPct / 100) * pos.max_profit * 100 * pos.contracts
-  }
-  return null
+  if (pos.status !== 'closed' || pos.pnlPct == null || !Number.isFinite(pos.pnlPct)) return null
+  const ref = costBasisRefPerShare(pos)
+  if (ref <= 0) return null
+  return (pos.pnlPct / 100) * ref * 100 * pos.contracts
 }
 
 function computeCreditTotal(pos: PortfolioPosition): number {
@@ -479,6 +485,7 @@ function TradingPositionCard({
   pos,
   expanded,
   pnlData,
+  aiAnalysis,
   onToggle,
   onClose,
   onManage,
@@ -488,6 +495,7 @@ function TradingPositionCard({
   pos: PortfolioPosition
   expanded: boolean
   pnlData?: { pnl: number; pnl_pct: number } | null
+  aiAnalysis?: AiPositionAnalysis | null
   onToggle: () => void
   onClose: () => void
   onManage: () => void
@@ -500,10 +508,31 @@ function TradingPositionCard({
   const isExpiringSoon = (pos.dte ?? 99) <= 7
   const dteForDisplay = pos.dte != null ? String(pos.dte) : '—'
 
-  const displayPnl = pnlData ?? (pos.status === 'closed' ? (() => {
+  // For closed positions, always prefer the user-entered realized_pnl over the
+  // server-calculated perPositionPnl (which uses the old pnlPct-based formula).
+  // The server formula can return wrong values for debit spreads, so the
+  // authoritative source is the stored realized_pnl / realized_pnl_percent.
+  const closedPnl = pos.status === 'closed' ? (() => {
+    if (pos.realized_pnl != null && Number.isFinite(pos.realized_pnl)) {
+      if (pos.net_credit < 0 && pos.pnlPct != null && pos.max_profit > 0) {
+        const buggyCalc = (pos.pnlPct / 100) * pos.max_profit * 100 * pos.contracts
+        if (Math.abs(pos.realized_pnl - buggyCalc) < 1) {
+          const corrected = computePnlDollar(pos)
+          if (corrected != null) {
+            return { pnl: corrected, pnl_pct: pos.realized_pnl_percent ?? pos.pnlPct }
+          }
+        }
+      }
+      const pnlPctVal = pos.realized_pnl_percent ?? pos.pnlPct
+      return { pnl: pos.realized_pnl, pnl_pct: Number.isFinite(pnlPctVal) ? pnlPctVal : 0 }
+    }
     const d = computePnlDollar(pos)
     return d != null ? { pnl: d, pnl_pct: pos.pnlPct ?? 0 } : null
-  })() : null)
+  })() : null
+
+  const displayPnl = (pos.status === 'closed' && closedPnl != null)
+    ? closedPnl
+    : pnlData ?? null
 
   const pnlColor = displayPnl
     ? displayPnl.pnl > 0 ? 'text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
@@ -555,6 +584,11 @@ function TradingPositionCard({
                 {isCredit ? 'Cr' : 'Dr'} {fmtUsd(creditTotal)}
               </span>
             )}
+            {aiAnalysis?.current_price != null && aiAnalysis.current_price > 0 && (
+              <span className="font-medium tabular-nums text-secondary">
+                ${aiAnalysis.current_price.toFixed(2)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -566,10 +600,10 @@ function TradingPositionCard({
                 {displayPnl.pnl >= 0 ? '+' : ''}{fmtUsd(displayPnl.pnl)}
               </div>
               <div className={`text-[11px] font-semibold tabular-nums tracking-tight ${pnlColor}`}>
-                {displayPnl.pnl_pct >= 0 ? '+' : ''}{displayPnl.pnl_pct.toFixed(2)}%
+                {displayPnl.pnl_pct != null && <>{displayPnl.pnl_pct >= 0 ? '+' : ''}{displayPnl.pnl_pct.toFixed(2)}%</>}
               </div>
               <div className="mt-1 flex gap-1 justify-end">
-                {pos.status === 'open' && displayPnl.pnl > 0 && displayPnl.pnl_pct > 30 && <ProtectProfitsBadge />}
+                {pos.status === 'open' && displayPnl.pnl > 0 && (displayPnl.pnl_pct ?? 0) > 30 && <ProtectProfitsBadge />}
                 <PlBadge pnl={displayPnl.pnl} />
                 {pos.status === 'closed' && <ExitBadge />}
               </div>
@@ -611,44 +645,214 @@ function TradingPositionCard({
       {expanded && (
         <div className="border-t border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
 
-          {/* AI guidance */}
-          <div className="flex items-start gap-1.5 text-sm text-secondary">
-            <BrainCircuit size={13} className="mt-px shrink-0 text-violet-400" />
-            <p className="leading-snug">{guidance}</p>
-          </div>
+          {aiAnalysis ? (
+            /* ── AI Coach ── */
+            <div className="space-y-3">
+
+              {/* Health bar */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="font-semibold text-secondary">Health</span>
+                    <span className={`font-bold tabular-nums ${
+                      aiAnalysis.health_score >= 75 ? 'text-emerald-400'
+                      : aiAnalysis.health_score >= 60 ? 'text-amber-400'
+                      : aiAnalysis.health_score >= 40 ? 'text-orange-400'
+                      : 'text-rose-400'
+                    }`}>{aiAnalysis.health_score}/100</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${
+                      aiAnalysis.health_score >= 75 ? 'bg-emerald-400'
+                      : aiAnalysis.health_score >= 60 ? 'bg-amber-400'
+                      : aiAnalysis.health_score >= 40 ? 'bg-orange-400'
+                      : 'bg-rose-400'
+                    }`} style={{ width: `${aiAnalysis.health_score}%` }} />
+                  </div>
+                </div>
+                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  aiAnalysis.health_label === 'STRONG_TREND' ? 'border-emerald-500/30 text-emerald-400'
+                  : aiAnalysis.health_label === 'HEALTHY' ? 'border-emerald-400/30 text-emerald-300'
+                  : aiAnalysis.health_label === 'CAUTION' ? 'border-amber-400/30 text-amber-400'
+                  : aiAnalysis.health_label === 'WEAKENING' ? 'border-orange-400/30 text-orange-400'
+                  : 'border-rose-400/30 text-rose-400'
+                }`}>{aiAnalysis.health_label.replace(/_/g, ' ')}</span>
+              </div>
+
+              {/* State + Timeline */}
+              <div className="flex flex-wrap gap-1.5">
+                <AIStatusBadge status={aiAnalysis.state_label} />
+                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  aiAnalysis.timeline_stage === 'EXIT_SOON' ? 'border-rose-400/30 text-rose-400'
+                  : aiAnalysis.timeline_stage === 'ROLL_WINDOW' ? 'border-amber-400/30 text-amber-400'
+                  : aiAnalysis.timeline_stage === 'PROFIT_PROTECTION' ? 'border-sky-400/30 text-sky-400'
+                  : aiAnalysis.timeline_stage === 'RISK_MANAGEMENT' ? 'border-orange-400/30 text-orange-400'
+                  : 'border-emerald-400/30 text-emerald-400'
+                }`}>{aiAnalysis.timeline_stage.replace(/_/g, ' ')}</span>
+              </div>
+
+              {/* AI summary */}
+              <div className="flex items-start gap-1.5 text-sm text-secondary">
+                <BrainCircuit size={13} className="mt-px shrink-0 text-violet-400" />
+                <p className="leading-snug">{aiAnalysis.ai_summary}</p>
+              </div>
+
+              {/* Next action */}
+              <div className="rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-200">
+                <span className="font-bold uppercase tracking-wide text-violet-300">Next:</span> {aiAnalysis.next_best_action}
+              </div>
+
+              {/* Smart alerts */}
+              {aiAnalysis.smart_alerts.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Smart Alerts</div>
+                  {aiAnalysis.smart_alerts.map((a, i) => (
+                    <div key={i} className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+                      a.severity === 'CRITICAL' ? 'border-rose-400/30 bg-rose-500/10 text-rose-300'
+                      : a.severity === 'WARNING' ? 'border-amber-400/30 bg-amber-500/10 text-amber-300'
+                      : 'border-sky-400/30 bg-sky-500/10 text-sky-300'
+                    }`}>
+                      <AlertTriangle size={11} className="mt-px shrink-0" />
+                      <span>{a.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Risk breakdown */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Risk Factors</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                  {[
+                    { label: 'Extension', value: aiAnalysis.extension_risk },
+                    { label: 'Theta', value: aiAnalysis.theta_risk },
+                    { label: 'RSI', value: aiAnalysis.rsi_risk },
+                    { label: 'IV', value: aiAnalysis.iv_risk },
+                    { label: 'Trend', value: aiAnalysis.trend_risk },
+                    { label: 'Liquidity', value: aiAnalysis.liquidity_risk },
+                    { label: 'Market Corr.', value: aiAnalysis.market_correlation_risk },
+                  ].map(r => (
+                    <div key={r.label} className={`rounded border px-2 py-1 font-semibold ${
+                      r.value === 'HIGH' || r.value === 'CRITICAL' ? 'border-rose-400/20 bg-rose-500/10 text-rose-400'
+                      : r.value === 'MODERATE' ? 'border-amber-400/20 bg-amber-500/10 text-amber-400'
+                      : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-400'
+                    }`}>
+                      <span className="text-muted font-normal">{r.label}</span>{' '}{r.value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Management playbook */}
+              {aiAnalysis.management_playbook.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Playbook</div>
+                  <ul className="space-y-0.5">
+                    {aiAnalysis.management_playbook.map((step, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-[11px] text-secondary">
+                        <span className="h-1 w-1 rounded-full bg-violet-400 shrink-0" />
+                        {step}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Momentum */}
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+                <span>Momentum: <span className={`font-semibold ${
+                  aiAnalysis.momentum_quality === 'STRONG' ? 'text-emerald-400'
+                  : aiAnalysis.momentum_quality === 'MODERATE' ? 'text-amber-400'
+                  : 'text-rose-400'
+                }`}>{aiAnalysis.momentum_quality}</span></span>
+                <span>RSI: <span className={`font-semibold tabular-nums ${
+                  aiAnalysis.rsi > 70 || aiAnalysis.rsi < 30 ? 'text-rose-400'
+                  : 'text-secondary'
+                }`}>{aiAnalysis.rsi.toFixed(1)}</span></span>
+                <span>Price: <span className="font-semibold tabular-nums text-secondary">${aiAnalysis.current_price.toFixed(2)}</span></span>
+                <span>MA20: <span className="font-semibold tabular-nums text-secondary">${aiAnalysis.ma20.toFixed(2)}</span></span>
+                {aiAnalysis.extension_pct != null && (
+                  <span>Ext: <span className={`font-semibold tabular-nums ${
+                    Math.abs(aiAnalysis.extension_pct) > 8 ? 'text-rose-400' : 'text-secondary'
+                  }`}>{aiAnalysis.extension_pct >= 0 ? '+' : ''}{aiAnalysis.extension_pct.toFixed(1)}%</span></span>
+                )}
+                {aiAnalysis.value_capture_pct != null && (
+                  <span>Value: <span className="font-semibold tabular-nums text-sky-400">{aiAnalysis.value_capture_pct.toFixed(0)}%</span></span>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Fallback: simple AI guidance */
+            <div className="flex items-start gap-1.5 text-sm text-secondary">
+              <BrainCircuit size={13} className="mt-px shrink-0 text-violet-400" />
+              <p className="leading-snug">{guidance}</p>
+            </div>
+          )}
 
           {/* Metrics — borderless grid */}
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
-            {pos.prob_of_profit != null && (
-              <div><div className="text-muted">PoP</div>
-                <div className={`font-semibold tabular-nums ${pos.prob_of_profit >= 60 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.prob_of_profit.toFixed(0)}%</div></div>
-            )}
-            {pos.edge_ratio != null && (
-              <div><div className="text-muted">Edge</div>
-                <div className={`font-semibold tabular-nums ${pos.edge_ratio >= 0.05 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.edge_ratio.toFixed(2)}</div></div>
-            )}
-            {pos.kelly_fraction != null && (
-              <div><div className="text-muted">½ Kelly</div>
-                <div className="font-semibold tabular-nums text-sky-400">{((pos.half_kelly_fraction ?? pos.kelly_fraction) * 100).toFixed(1)}%</div></div>
+            {aiAnalysis ? (
+              <>
+                <div><div className="text-muted">Health</div>
+                  <div className={`font-semibold tabular-nums ${
+                    aiAnalysis.health_score >= 75 ? 'text-emerald-400' : aiAnalysis.health_score >= 60 ? 'text-amber-400' : aiAnalysis.health_score >= 40 ? 'text-orange-400' : 'text-rose-400'
+                  }`}>{aiAnalysis.health_score}</div></div>
+                <div><div className="text-muted">Momentum</div>
+                  <div className={`font-semibold ${
+                    aiAnalysis.momentum_quality === 'STRONG' ? 'text-emerald-400'
+                    : aiAnalysis.momentum_quality === 'MODERATE' ? 'text-amber-400'
+                    : 'text-rose-400'
+                  }`}>{aiAnalysis.momentum_quality}</div></div>
+                <div><div className="text-muted">Stage</div>
+                  <div className={`font-semibold ${
+                    aiAnalysis.timeline_stage === 'EXIT_SOON' ? 'text-rose-400'
+                    : aiAnalysis.timeline_stage === 'ROLL_WINDOW' ? 'text-amber-400'
+                    : aiAnalysis.timeline_stage === 'PROFIT_PROTECTION' ? 'text-sky-400'
+                    : 'text-emerald-400'
+                  }`}>{aiAnalysis.timeline_stage.replace(/_/g, ' ')}</div></div>
+                <div><div className="text-muted">RSI</div>
+                  <div className={`font-semibold tabular-nums ${
+                    aiAnalysis.rsi > 70 || aiAnalysis.rsi < 30 ? 'text-rose-400' : 'text-secondary'
+                  }`}>{aiAnalysis.rsi.toFixed(1)}</div></div>
+              </>
+            ) : (
+              <>
+                {pos.prob_of_profit != null && (
+                  <div><div className="text-muted">PoP</div>
+                    <div className={`font-semibold tabular-nums ${pos.prob_of_profit >= 60 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.prob_of_profit.toFixed(0)}%</div></div>
+                )}
+                {pos.edge_ratio != null && (
+                  <div><div className="text-muted">Edge</div>
+                    <div className={`font-semibold tabular-nums ${pos.edge_ratio >= 0.05 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.edge_ratio.toFixed(2)}</div></div>
+                )}
+                {pos.kelly_fraction != null && (
+                  <div><div className="text-muted">½ Kelly</div>
+                    <div className="font-semibold tabular-nums text-sky-400">{((pos.half_kelly_fraction ?? pos.kelly_fraction) * 100).toFixed(1)}%</div></div>
+                )}
+              </>
             )}
             {pos.max_profit != null && pos.max_profit > 0 && (
-              <div><div className="text-muted">Max $</div>
-                <div className="font-semibold tabular-nums text-emerald-400">{fmtUsd(pos.max_profit)}</div></div>
+              <div><div className="text-muted">Max Profit (full expiry)</div>
+                <div className="font-semibold tabular-nums text-emerald-400">
+                  {pos.strategy === 'Long Call' || pos.strategy === 'Long Put'
+                    ? 'Unlimited'
+                    : fmtUsd(pos.max_profit * SHARES_PER_OPTION_CONTRACT * pos.contracts)}
+                </div></div>
             )}
             {pos.max_loss != null && pos.max_loss > 0 && (
-              <div><div className="text-muted">Max loss</div>
-                <div className="font-semibold tabular-nums text-rose-400">{fmtUsd(pos.max_loss)}</div></div>
+              <div><div className="text-muted">Max Loss / Capital at Risk</div>
+                <div className="font-semibold tabular-nums text-rose-400">{fmtUsd(pos.max_loss * SHARES_PER_OPTION_CONTRACT * pos.contracts)}</div></div>
             )}
             {pos.capital_at_risk != null && (
               <div><div className="text-muted">At risk</div>
                 <div className="font-semibold tabular-nums text-amber-400">{fmtUsd(pos.capital_at_risk)}</div></div>
             )}
             {pos.net_credit != null && (
-              <div><div className="text-muted">Net {pos.net_credit >= 0 ? 'cr' : 'dr'}</div>
-                <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.net_credit)}</div></div>
+              <div><div className="text-muted">Net {pos.net_credit >= 0 ? 'credit' : 'debit'}</div>
+                <div className="font-semibold tabular-nums text-secondary">{fmtUsd(Math.abs(pos.net_credit) * SHARES_PER_OPTION_CONTRACT * pos.contracts)}</div></div>
             )}
             {pos.breakeven_lower != null && pos.breakeven_lower > 0 && (
-              <div><div className="text-muted">B/E</div>
+              <div><div className="text-muted">Breakeven at Expiry</div>
                 <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.breakeven_lower)}</div></div>
             )}
             <div><div className="text-muted">Entry</div>
@@ -659,12 +863,28 @@ function TradingPositionCard({
               <div><div className="text-muted">Closed</div>
                 <div className="font-semibold text-secondary">{new Date(pos.exitDate).toLocaleDateString()}</div></div>
             )}
-            {pos.status === 'closed' && pos.pnlPct != null && (
-              <div><div className="text-muted">Realized</div>
-                <div className={`font-semibold ${getProfitLossTextClass(pos.pnlPct)}`}>{fmtPct(pos.pnlPct)}</div></div>
+            {pos.status === 'closed' && pos.exit_price != null && (
+              <div><div className="text-muted">Exit price</div>
+                <div className="font-semibold text-secondary">{fmtUsd(pos.exit_price)}</div></div>
+            )}
+            {pos.status === 'closed' && pos.realized_pnl != null && (
+              <div><div className="text-muted">Realized P&L ($)</div>
+                <div className={`font-semibold ${getProfitLossTextClass(pos.realized_pnl)}`}>{fmtUsd(pos.realized_pnl)}</div></div>
+            )}
+            {pos.status === 'closed' && pos.realized_pnl_percent != null && (
+              <div><div className="text-muted">Realized P&L (% of cost)</div>
+                <div className={`font-semibold ${getProfitLossTextClass(pos.realized_pnl_percent)}`}>{fmtPct(pos.realized_pnl_percent)}</div></div>
+            )}
+            {pos.status === 'closed' && pos.exit_reason && (
+              <div><div className="text-muted">Exit reason</div>
+                <div className="font-semibold text-secondary">{pos.exit_reason}</div></div>
+            )}
+            {pos.status === 'closed' && pos.pnl_overridden && (
+              <div><div className="text-muted">Override</div>
+                <div className="font-semibold text-amber-400">P&L Override (manual entry)</div></div>
             )}
             {displayPnl && pos.status === 'open' && (
-              <div><div className="text-muted">Cur. P&L</div>
+              <div><div className="text-muted">Live P&L (mark-to-market)</div>
                 <div className={`font-semibold tabular-nums ${pnlColor}`}>{fmtUsd(displayPnl.pnl)}</div></div>
             )}
           </div>
@@ -720,6 +940,7 @@ export default function PositionsCenter() {
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [closingId, setClosingId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -763,6 +984,7 @@ export default function PositionsCenter() {
   const summary = (d.summary ?? {}) as Record<string, unknown>
   const market = (d.market_snapshot ?? {}) as Record<string, unknown>
   const perPositionPnl = (d.per_position_pnl ?? {}) as Record<string, { pnl: number; pnl_pct: number }>
+  const aiAnalyses = (d.ai_analyses ?? {}) as Record<string, AiPositionAnalysis>
   const rawTab = positionsTab as string
   const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'open'
 
@@ -849,8 +1071,14 @@ export default function PositionsCenter() {
   }, [])
 
   const handleClose = useCallback((pos: PortfolioPosition) => {
-    closePosition(pos.id, { contractsToClose: pos.contracts, pnlPct: 0 })
-    toggleExpanded(pos.id)
+    setClosingId(pos.id)
+  }, [])
+
+  const handleCloseConfirm = useCallback((id: string, payload: ClosePositionPayload) => {
+    closePosition(id, payload)
+    setClosingId(null)
+    toggleExpanded(id)
+    setNotice({ message: 'Position closed.' })
   }, [closePosition, toggleExpanded])
 
   const handleManage = useCallback((pos: PortfolioPosition) => {
@@ -874,6 +1102,11 @@ export default function PositionsCenter() {
     if (!editingId) return null
     return portfolio.find(p => p.id === editingId) ?? null
   }, [editingId, portfolio])
+
+  const closingPos = useMemo(() => {
+    if (!closingId) return null
+    return portfolio.find(p => p.id === closingId && p.status === 'open') ?? null
+  }, [closingId, portfolio])
 
   const handleSaveEdit = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     updatePortfolioPosition(id, data)
@@ -1056,6 +1289,7 @@ export default function PositionsCenter() {
               key={pos.id}
               pos={pos}
               pnlData={perPositionPnl[pos.id] ?? null}
+              aiAnalysis={aiAnalyses[pos.id] ?? null}
               expanded={expandedId === pos.id}
               onToggle={() => toggleExpanded(pos.id)}
               onClose={() => handleClose(pos)}
@@ -1076,6 +1310,14 @@ export default function PositionsCenter() {
         <AddPositionModal
           onSave={handleAddPosition}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {closingPos && (
+        <ClosePositionModal
+          pos={closingPos}
+          onConfirm={handleCloseConfirm}
+          onClose={() => setClosingId(null)}
         />
       )}
 
@@ -1187,7 +1429,7 @@ function AddPositionModal({
   }
 
   const canSubmit = form.ticker.trim() && (form.strategy === 'Stock'
-    ? (parseInt(form.contractCount) || 0) >= 1
+    ? form.entryStockPrice && (parseFloat(form.entryStockPrice) || 0) > 0 && (parseInt(form.contractCount) || 0) >= 1
     : form.expiry && form.entryStockPrice && (parseInt(form.contractCount) || 0) >= 1
   )
 
@@ -1210,6 +1452,250 @@ function AddPositionModal({
   )
 }
 
+function computeClosePnl(
+  pos: PortfolioPosition,
+  exitPrice: number | null,
+  exitDebitCredit: number | null,
+  contractsOverride?: number,
+): { realizedPnl: number | null; realizedPnlPct: number | null } {
+  const isStock = pos.strategy === 'Stock'
+  const contracts = contractsOverride != null ? contractsOverride : (pos.contracts || 0)
+  const netCredit = pos.net_credit || 0
+
+  let realizedPnl: number | null = null
+  let costBasis = 0
+
+  if (isStock && exitPrice != null) {
+    realizedPnl = (exitPrice - pos.entryPrice) * contracts
+    costBasis = pos.entryPrice * contracts
+  } else if (netCredit >= 0 && exitDebitCredit != null) {
+    realizedPnl = (netCredit - exitDebitCredit) * contracts * 100
+    costBasis = (pos.capital_at_risk != null
+      ? (pos.capital_at_risk * contracts) / (pos.contracts || 1)
+      : (pos.max_loss || netCredit) * contracts * 100)
+  } else if (netCredit < 0 && exitPrice != null) {
+    realizedPnl = (exitPrice - Math.abs(netCredit)) * contracts * 100
+    costBasis = Math.abs(netCredit) * contracts * 100
+  }
+
+  const realizedPnlPct = realizedPnl != null && costBasis > 0
+    ? (realizedPnl / costBasis) * 100
+    : null
+
+  return { realizedPnl, realizedPnlPct }
+}
+
+function ClosePositionModal({
+  pos,
+  onConfirm,
+  onClose,
+}: {
+  pos: PortfolioPosition
+  onConfirm: (id: string, payload: ClosePositionPayload) => void
+  onClose: () => void
+}) {
+  const isStock = pos.strategy === 'Stock'
+  const isCredit = pos.net_credit >= 0
+
+  const [contractsToCloseStr, setContractsToCloseStr] = useState(() => String(pos.contracts))
+  const [exitPriceStr, setExitPriceStr] = useState('')
+  const [exitDebitCreditStr, setExitDebitCreditStr] = useState('')
+  const [closeDate, setCloseDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [exitReason, setExitReason] = useState('')
+  const [closeNotes, setCloseNotes] = useState('')
+  const [overrideEnabled, setOverrideEnabled] = useState(false)
+  const [overridePnlStr, setOverridePnlStr] = useState('')
+  const [overridePnlPctStr, setOverridePnlPctStr] = useState('')
+  const [overrideReason, setOverrideReason] = useState('')
+
+  const contractsToClose = Math.min(Math.max(parseInt(contractsToCloseStr) || 1, 1), pos.contracts)
+  const isPartialClose = contractsToClose < pos.contracts
+
+  const exitPrice = exitPriceStr ? parseFloat(exitPriceStr) : null
+  const exitDebitCredit = exitDebitCreditStr ? parseFloat(exitDebitCreditStr) : null
+
+  const { realizedPnl, realizedPnlPct } = computeClosePnl(pos, exitPrice, exitDebitCredit, contractsToClose)
+
+  const displayPnl = overrideEnabled
+    ? { pnl: parseFloat(overridePnlStr) || 0, pnlPct: parseFloat(overridePnlPctStr) || 0 }
+    : { pnl: realizedPnl ?? 0, pnlPct: realizedPnlPct ?? 0 }
+
+  const pnlColor =
+    displayPnl.pnl > 0 ? 'text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onConfirm(pos.id, {
+      contractsToClose,
+      exit_price: exitPrice ?? undefined,
+      exit_debit_credit: exitDebitCredit ?? undefined,
+      close_date: closeDate ? new Date(closeDate + 'T12:00:00').toISOString() : undefined,
+      realized_pnl: displayPnl.pnl,
+      realized_pnl_percent: displayPnl.pnlPct,
+      exit_reason: exitReason || undefined,
+      close_notes: closeNotes.trim() || undefined,
+      pnl_overridden: overrideEnabled || undefined,
+      pnl_override_reason: overrideEnabled ? (overrideReason.trim() || undefined) : undefined,
+    })
+  }
+
+  const canSubmit = true
+
+  const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
+  const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
+  const readOnlyCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-sm text-secondary outline-none'
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
+        <h2 className="text-lg font-bold tracking-tight text-heading">Close Position</h2>
+        <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
+      </div>
+      <form onSubmit={handleSubmit}>
+        <div className="px-6 py-5 space-y-5">
+          {/* Readonly position info */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <div className={labelCls}>Ticker</div>
+              <div className={readOnlyCls}>{pos.ticker}</div>
+            </div>
+            <div>
+              <div className={labelCls}>Strategy</div>
+              <div className={readOnlyCls}>{pos.strategy}</div>
+            </div>
+            <div>
+              <label className={labelCls}>
+                {isStock ? 'Shares to Close' : 'Contracts to Close'}
+                <input
+                  type="number"
+                  min={1}
+                  max={pos.contracts}
+                  step={1}
+                  value={contractsToCloseStr}
+                  onChange={e => setContractsToCloseStr(e.target.value.replace(/[^0-9]/g, ''))}
+                  className={inputCls}
+                />
+                {isPartialClose && (
+                  <span className="mt-1 block text-[11px] text-amber-400 font-medium">
+                    Partial close — {contractsToClose} of {pos.contracts} {isStock ? 'shares' : 'contracts'}. Remaining {pos.contracts - contractsToClose} will stay open.
+                  </span>
+                )}
+              </label>
+            </div>
+            <div>
+              <div className={labelCls}>Entry {isCredit ? 'Credit' : 'Debit'}</div>
+              <div className={readOnlyCls}>{fmtUsd(pos.net_credit)}</div>
+            </div>
+          </div>
+
+          {/* Entry price display */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className={labelCls}>Entry Price</div>
+              <div className={readOnlyCls}>{fmtUsd(pos.entryPrice)}</div>
+            </div>
+            <div>
+              <div className={labelCls}>Est. P&L (current)</div>
+              <div className={readOnlyCls}>—</div>
+            </div>
+          </div>
+
+          {/* Exit inputs */}
+          <div className="border-t border-slate-100 dark:border-white/[0.05] pt-4 space-y-3">
+            <div className="text-sm font-bold text-heading">Exit Details</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {isStock || !isCredit ? (
+                <label className={labelCls}>Exit Price / Closing Premium ($)
+                  <input type="number" step="any" value={exitPriceStr}
+                    onChange={e => setExitPriceStr(e.target.value)} className={inputCls} />
+                </label>
+              ) : null}
+              {isCredit && !isStock ? (
+                <label className={labelCls}>Exit Debit / Cost to Close ($)
+                  <input type="number" step="any" value={exitDebitCreditStr}
+                    onChange={e => setExitDebitCreditStr(e.target.value)} className={inputCls} />
+                </label>
+              ) : null}
+              <label className={labelCls}>Close Date
+                <input type="date" value={closeDate}
+                  onChange={e => setCloseDate(e.target.value)} className={inputCls} />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className={labelCls}>Exit Reason
+                <select value={exitReason} onChange={e => setExitReason(e.target.value)} className={inputCls}>
+                  <option value="">Select reason...</option>
+                  {EXIT_REASON_OPTIONS.map(r => (
+                    <option key={r} value={r} className="bg-surface-card">{r}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={labelCls}>Notes
+                <input value={closeNotes} onChange={e => setCloseNotes(e.target.value)} className={inputCls} />
+              </label>
+            </div>
+          </div>
+
+          {/* Auto-calculated P&L */}
+          {realizedPnl != null && (
+            <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/40 p-4 space-y-2">
+              <div className="text-xs font-bold text-secondary uppercase tracking-wide">Calculated Realized P&L</div>
+              <div className="flex items-center gap-4">
+                <span className={`font-mono text-xl font-bold tabular-nums ${pnlColor}`}>
+                  {displayPnl.pnl >= 0 ? '+' : ''}{fmtUsd(displayPnl.pnl)}
+                </span>
+                <span className={`font-mono text-base font-semibold tabular-nums ${pnlColor}`}>
+                  {displayPnl.pnlPct >= 0 ? '+' : ''}{displayPnl.pnlPct.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Manual override toggle */}
+          <div className="border-t border-slate-100 dark:border-white/[0.05] pt-4 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={overrideEnabled}
+                onChange={e => setOverrideEnabled(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-600" />
+              <span className="text-xs font-semibold text-secondary">Override calculated P&L</span>
+            </label>
+
+            {overrideEnabled && (
+              <div className="space-y-3 pl-6 border-l-2 border-amber-400/40">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={labelCls}>Realized P&L ($)
+                    <input type="number" step="any" value={overridePnlStr}
+                      onChange={e => setOverridePnlStr(e.target.value)}
+                      className={inputCls} placeholder="e.g. 450.00" />
+                  </label>
+                  <label className={labelCls}>Realized P&L (%)
+                    <input type="number" step="any" value={overridePnlPctStr}
+                      onChange={e => setOverridePnlPctStr(e.target.value)}
+                      className={inputCls} placeholder="e.g. 12.5" />
+                  </label>
+                </div>
+                <label className={labelCls}>Override Reason
+                  <input value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
+                    className={inputCls} placeholder="e.g. Broker fill differs from estimated mid price" />
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
+          <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>
+          <button type="submit" disabled={!canSubmit} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold`}>
+            {isPartialClose ? `Close ${contractsToClose} of ${pos.contracts} ${isStock ? 'Shares' : 'Contracts'}` : 'Close Position'}
+          </button>
+        </div>
+      </form>
+    </ModalOverlay>
+  )
+}
+
 function EditPositionModal({
   pos,
   onSave,
@@ -1219,6 +1705,7 @@ function EditPositionModal({
   onSave: (id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   onClose: () => void
 }) {
+  const isClosed = pos.status === 'closed'
   const [form, setForm] = useState<FormState>(() => {
     const strat = resolveEditorStrategyForEdit(pos)
     const { strikes, premiums } = seedLegStringsFromPosition(pos)
@@ -1236,6 +1723,26 @@ function EditPositionModal({
     }
   })
 
+  const isStockEdit = pos.strategy === 'Stock'
+  const isCreditEdit = pos.net_credit >= 0
+
+  // Close-detail editing state for closed positions
+  const [closeExitPrice, setCloseExitPrice] = useState(pos.exit_price != null ? String(pos.exit_price) : '')
+  const [closeExitDebitCredit, setCloseExitDebitCredit] = useState(pos.exit_debit_credit != null ? String(pos.exit_debit_credit) : '')
+  const [closeRealizedPnl, setCloseRealizedPnl] = useState(pos.realized_pnl != null ? String(pos.realized_pnl) : '')
+  const [closeRealizedPnlPct, setCloseRealizedPnlPct] = useState(pos.realized_pnl_percent != null ? String(pos.realized_pnl_percent) : '')
+  const [closeExitReason, setCloseExitReason] = useState(pos.exit_reason || '')
+  const [closeOverrideReason, setCloseOverrideReason] = useState(pos.pnl_override_reason || '')
+  const [closeNotes, setCloseNotes] = useState(pos.close_notes || '')
+  const [closePnlOverridden, setClosePnlOverridden] = useState(pos.pnl_overridden || false)
+
+  const exitPriceVal = closeExitPrice !== '' ? parseFloat(closeExitPrice) : null
+  const exitDebitCreditVal = closeExitDebitCredit !== '' ? parseFloat(closeExitDebitCredit) : null
+
+  const { realizedPnl: editComputedPnl, realizedPnlPct: editComputedPnlPct } = isClosed
+    ? computeClosePnl(pos, exitPriceVal, exitDebitCreditVal)
+    : { realizedPnl: null, realizedPnlPct: null }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const def = STRATEGY_DEFS[form.strategy]
@@ -1249,6 +1756,20 @@ function EditPositionModal({
     const dteVal = form.expiry
       ? Math.ceil((new Date(form.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
       : pos.dte
+
+    const parsedRealizedPnl = closeRealizedPnl !== '' ? parseFloat(closeRealizedPnl) : undefined
+    const parsedRealizedPnlPct = closeRealizedPnlPct !== '' ? parseFloat(closeRealizedPnlPct) : undefined
+
+    const closeDetails = isClosed ? {
+      exit_price: exitPriceVal ?? pos.exit_price,
+      exit_debit_credit: exitDebitCreditVal ?? pos.exit_debit_credit,
+      realized_pnl: Number.isFinite(parsedRealizedPnl) ? parsedRealizedPnl : pos.realized_pnl,
+      realized_pnl_percent: Number.isFinite(parsedRealizedPnlPct) ? parsedRealizedPnlPct : pos.realized_pnl_percent,
+      exit_reason: closeExitReason || undefined,
+      close_notes: closeNotes.trim() || undefined,
+      pnl_overridden: closePnlOverridden,
+      pnl_override_reason: closeOverrideReason.trim() || undefined,
+    } : {}
 
     if (isStock) {
       onSave(pos.id, {
@@ -1277,6 +1798,7 @@ function EditPositionModal({
         half_kelly_fraction: pos.half_kelly_fraction,
         edge_ratio: pos.edge_ratio,
         account_size_at_entry: pos.account_size_at_entry,
+        ...closeDetails,
       })
       return
     }
@@ -1326,18 +1848,106 @@ function EditPositionModal({
       edge_ratio: pos.edge_ratio,
       account_size_at_entry: pos.account_size_at_entry,
       notes: form.notes.trim() || undefined,
+      ...closeDetails,
     })
   }
+
+  const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
 
   return (
     <ModalOverlay onClose={onClose}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
-        <h2 className="text-lg font-bold tracking-tight text-heading">Edit Position</h2>
+        <h2 className="text-lg font-bold tracking-tight text-heading">{isClosed ? 'Review / Edit Close Details' : 'Edit Position'}</h2>
         <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
       </div>
       <form onSubmit={handleSubmit}>
         <div className="px-6 py-5">
           <PositionFormFields form={form} onChange={patch => setForm(f => ({ ...f, ...patch }))} readonlyTicker isEdit />
+
+          {isClosed && (
+            <div className="mt-6 border-t border-slate-100 dark:border-white/[0.05] pt-5 space-y-4">
+              <div className="text-sm font-bold text-heading">Close Details</div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {isStockEdit || !isCreditEdit ? (
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Exit Price / Closing Premium ($)
+                    <input type="number" step="any" value={closeExitPrice}
+                      onChange={e => setCloseExitPrice(e.target.value)} className={inputCls} />
+                  </label>
+                ) : null}
+                {isCreditEdit && !isStockEdit ? (
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Exit Debit / Cost to Close ($)
+                    <input type="number" step="any" value={closeExitDebitCredit}
+                      onChange={e => setCloseExitDebitCredit(e.target.value)} className={inputCls} />
+                  </label>
+                ) : null}
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Exit Reason
+                  <select value={closeExitReason} onChange={e => setCloseExitReason(e.target.value)} className={inputCls}>
+                    <option value="">Select reason...</option>
+                    {EXIT_REASON_OPTIONS.map(r => (
+                      <option key={r} value={r} className="bg-surface-card">{r}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {editComputedPnl != null && (
+                <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1">
+                  <div className="text-xs font-bold text-secondary uppercase tracking-wide">Calculated Realized P&L</div>
+                  <div className="flex items-center gap-4">
+                    <span className={`font-mono text-base font-semibold tabular-nums ${editComputedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {editComputedPnl >= 0 ? '+' : ''}{fmtUsd(editComputedPnl)}
+                    </span>
+                    {editComputedPnlPct != null && (
+                      <span className={`font-mono text-sm font-semibold tabular-nums ${editComputedPnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {editComputedPnlPct >= 0 ? '+' : ''}{editComputedPnlPct.toFixed(2)}%
+                      </span>
+                    )}
+                    <button type="button"
+                      className="text-[11px] text-violet-400 hover:text-violet-300 font-medium underline underline-offset-2"
+                      onClick={() => {
+                        if (editComputedPnl != null) setCloseRealizedPnl(String(Math.round(editComputedPnl * 100) / 100))
+                        if (editComputedPnlPct != null) setCloseRealizedPnlPct(String(Math.round(editComputedPnlPct * 100) / 100))
+                      }}>
+                      Apply to fields
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Realized P&L ($)
+                  <input type="number" step="any" value={closeRealizedPnl}
+                    onChange={e => setCloseRealizedPnl(e.target.value)} className={inputCls} />
+                </label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Realized P&L (%)
+                  <input type="number" step="any" value={closeRealizedPnlPct}
+                    onChange={e => setCloseRealizedPnlPct(e.target.value)} className={inputCls} />
+                </label>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={closePnlOverridden}
+                  onChange={e => setClosePnlOverridden(e.target.checked)}
+                  className="rounded border-slate-300 dark:border-slate-600" />
+                <span className="text-xs font-semibold text-secondary">Manual P&L override</span>
+              </label>
+
+              {closePnlOverridden && (
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Override Reason
+                  <input value={closeOverrideReason}
+                    onChange={e => setCloseOverrideReason(e.target.value)}
+                    className={inputCls} placeholder="e.g. Broker fill differs" />
+                </label>
+              )}
+
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Close Notes
+                <input value={closeNotes}
+                  onChange={e => setCloseNotes(e.target.value)}
+                  className={inputCls} />
+              </label>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
           <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>

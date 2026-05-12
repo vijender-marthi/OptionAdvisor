@@ -194,9 +194,10 @@ function ChartTooltip({ active, payload, label, pal, mode, impliedIv }: ChartToo
 
 interface Props {
   metrics: Record<string, unknown>
+  mode?: 'price' | 'rsi' | 'hv' | 'volume' | 'all'
 }
 
-export default function SwingTradeMetricCharts({ metrics }: Props) {
+export default function SwingTradeMetricCharts({ metrics, mode = 'all' }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [pal, setPal] = useState<Palette>(SWING_CHART_PALETTE_FALLBACK)
 
@@ -227,18 +228,23 @@ export default function SwingTradeMetricCharts({ metrics }: Props) {
 
   const [pLo, pHi] = useMemo(() => priceExtent(data), [data])
   const [vLo, vHi] = useMemo(() => hvExtent(data, impliedIv), [data, impliedIv])
+  const volumeRatio = typeof metrics.volume_ratio === 'number' ? metrics.volume_ratio : null
+  const volumeLabel = typeof metrics.volume_label === 'string' ? metrics.volume_label : ''
 
-  if (data.length === 0) return null
+  if (mode !== 'volume' && data.length === 0) return null
 
   const hasHv = data.some(r => r.hv20 != null)
   const showIvLine = impliedIv != null && impliedIv > 0
 
   return (
     <div ref={wrapRef} className="swing-trade-metric-charts space-y-4">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-        Daily context (scan window)
-      </div>
+      {mode === 'all' && (
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+          Daily context (scan window)
+        </div>
+      )}
 
+      {(mode === 'all' || mode === 'price') && (
       <div>
         <div className="text-[10px] font-medium text-gray-500 mb-1">Price · MA20 · MA50</div>
         <ResponsiveContainer width="100%" height={200}>
@@ -259,7 +265,9 @@ export default function SwingTradeMetricCharts({ metrics }: Props) {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      )}
 
+      {(mode === 'all' || mode === 'rsi') && (
       <div>
         <div className="text-[10px] font-medium text-gray-500 mb-1">RSI (14)</div>
         <ResponsiveContainer width="100%" height={130}>
@@ -279,8 +287,9 @@ export default function SwingTradeMetricCharts({ metrics }: Props) {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      )}
 
-      {(hasHv || showIvLine) && (
+      {(mode === 'all' || mode === 'hv') && (hasHv || showIvLine) && (
         <div>
           <div className="text-[10px] font-medium text-gray-500 mb-1">HV20 (annualized %) · IV (Yahoo)</div>
           <ResponsiveContainer width="100%" height={130}>
@@ -325,6 +334,31 @@ export default function SwingTradeMetricCharts({ metrics }: Props) {
               )}
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {(mode === 'all' || mode === 'volume') && (
+        <div>
+          <div className="text-[10px] font-medium text-gray-500 mb-1">Volume Context</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-gray-800/80 bg-black/15 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Volume Ratio</div>
+              <div className={`mt-1 text-lg font-mono font-bold ${
+                volumeRatio == null ? 'text-gray-300' : volumeRatio > 1.5 ? 'text-emerald-400' : volumeRatio > 0.7 ? 'text-amber-400' : 'text-rose-400'
+              }`}>
+                {volumeRatio == null ? '—' : `${volumeRatio.toFixed(2)}x`}
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-800/80 bg-black/15 px-3 py-3">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Participation</div>
+              <div className="mt-1 text-sm font-semibold text-gray-200">
+                {volumeLabel || 'Volume context unavailable'}
+              </div>
+              <div className="mt-1 text-xs text-gray-400">
+                Volume should confirm continuation before adding size.
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

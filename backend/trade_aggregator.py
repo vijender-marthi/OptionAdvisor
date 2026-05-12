@@ -29,6 +29,7 @@ from analysis import generate_signals
 from day_trade import run_day_trade_scan
 from decision_resolver import resolve_trade_decision
 from engine import pick_expiry_by_dte, run_engine
+from score_normalizer import normalize_day_score, normalize_regular_score, normalize_swing_score
 from storage import (
     fetch_iv_atm_history_strict_before,
     get_user_state,
@@ -81,8 +82,7 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 def get_source_items(state: dict) -> list[dict]:
     """
-    Merge day_trade_watchlist + swing_trade_watchlist + watchlist into a
-    deduplicated list of {ticker, id, sources} dicts, sorted by ticker.
+    Build ticker list from my_tickers only.
     """
     merged: dict[str, dict] = {}
 
@@ -99,18 +99,14 @@ def get_source_items(state: dict) -> list[dict]:
         if not item.get("notes") and notes and notes.strip():
             item["notes"] = notes.strip()
 
-    for raw in state.get("watchlist") or []:
-        if isinstance(raw, dict):
-            _ensure(
-                str(raw.get("ticker", "")),
-                source="regular",
-                notes=str(raw.get("notes", "") or ""),
-                added_at=str(raw.get("addedAt", "") or ""),
-            )
-    for t in state.get("day_trade_watchlist") or []:
-        _ensure(str(t), source="day")
-    for t in state.get("swing_trade_watchlist") or []:
-        _ensure(str(t), source="swing")
+    for mt in state.get("my_tickers") or []:
+        sym = str(mt.get("symbol", "") or "").strip().upper()
+        if not sym:
+            continue
+        types = mt.get("trade_types") or ["regular"]
+        company = str(mt.get("company_name", "") or "")
+        for src in types:
+            _ensure(sym, source=src, notes=company)
 
     return sorted(merged.values(), key=lambda x: str(x.get("ticker") or ""))
 
@@ -241,6 +237,9 @@ def decision_payload(
     Normalise a ResolvedTradeDecision (or None) into a flat dict.
     Preserves the resolver's final_decision verbatim (no watchlistx remapping)
     so the command center gets READY / WATCH / WAIT / AVOID / EXIT / NO_EDGE.
+
+    Normalized scoring fields are added by _compute_ticker_engines() after
+    calling the engine-specific normalizer.
     """
     reason_text = str(reason or "")
     if decision is None:
@@ -259,6 +258,19 @@ def decision_payload(
             "signal_quality":      "",
             "execution_timing":    "",
             "risk_category":       "",
+            "explanation":         {},
+            "risk_reason":         "",
+            "display_confidence":  0,
+            "execution_fields":    [],
+            "raw_engine_score":    0.0,
+            "normalized_score":    0,
+            "normalized_state":    "",
+            "confidence_band":     "LOW",
+            "execution_bias":      "NO_CLEAN_ENTRY",
+            "risk_band":           "MEDIUM",
+            "normalized_reason":   "",
+            "engine_score_breakdown": {},
+            "option_risk_context":   {},
         }
     return {
         "engine":              label,
@@ -275,6 +287,19 @@ def decision_payload(
         "signal_quality":      decision.signal_quality or "",
         "execution_timing":    decision.execution_timing or "",
         "risk_category":       decision.risk_category or "",
+        "explanation":         dict(decision.explanation or {}),
+        "risk_reason":         decision.risk_reason or "",
+        "display_confidence":  int(decision.display_confidence or 0),
+        "execution_fields":    list(decision.execution_fields or []),
+        "raw_engine_score":    0.0,
+        "normalized_score":    0,
+        "normalized_state":    "",
+        "confidence_band":     "LOW",
+        "execution_bias":      "NO_CLEAN_ENTRY",
+        "risk_band":           "MEDIUM",
+        "normalized_reason":   "",
+        "engine_score_breakdown": {},
+        "option_risk_context":   {},
     }
 
 
@@ -292,6 +317,7 @@ def _compute_ticker_engines(ticker: str) -> dict:
     day_reason   = ""
     day_raw      = ""
     day_metrics: dict = {}
+    day_scan     = None
     try:
         day_scan = run_day_trade_scan(ticker)
         day_decision = resolve_trade_decision({
@@ -313,6 +339,7 @@ def _compute_ticker_engines(ticker: str) -> dict:
     swing_decision = None
     swing_reason   = ""
     swing_raw      = ""
+    swing_scan     = None
     try:
         swing_scan = run_swing_trade_scan(ticker)
         swing_decision = resolve_trade_decision({
@@ -356,12 +383,64 @@ def _compute_ticker_engines(ticker: str) -> dict:
     except Exception as exc:
         regular_reason = f"Regular evaluation unavailable: {exc}"
 
+    # ── Build decision payloads ───────────────────────────────────────────────
+    day_payload     = decision_payload(day_decision,     label="day",     raw_signal=day_raw,     reason=day_reason)
+    swing_payload   = decision_payload(swing_decision,   label="swing",   raw_signal=swing_raw,   reason=swing_reason)
+    regular_payload = decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
+
+    # ── Attach day-trade option risk context ──────────────────────────────────
+    if day_scan is not None:
+        day_payload["option_risk_context"] = day_scan.option_risk_context
+
+    # ── Apply cross-engine score normalization ────────────────────────────────
+    if day_scan is not None and day_decision is not None:
+        day_norm = normalize_day_score(
+            bull_score=day_scan.bull_score,
+            bear_score=day_scan.bear_score,
+            verdict=str(day_scan.verdict or ""),
+            metrics=day_metrics,
+            decision_confidence=int(day_decision.confidence or 0),
+            decision_risk_state=str(day_decision.risk_state or "MEDIUM"),
+            entry_guidance=day_scan.entry_guidance,
+            reasons=day_scan.reasons,
+        )
+        day_payload.update(day_norm)
+
+    if swing_scan is not None and swing_decision is not None:
+        swing_norm = normalize_swing_score(
+            trade_quality_score=swing_scan.trade_quality_score,
+            verdict=str(swing_scan.verdict or ""),
+            final_action=str(swing_scan.final_action or ""),
+            entry_quality=str(swing_scan.entry_quality or ""),
+            risk_level=str(swing_scan.risk_level or "MEDIUM"),
+            swing_bias=str(swing_scan.swing_bias or ""),
+            decision_confidence=int(swing_decision.confidence or 0),
+            decision_risk_state=str(swing_decision.risk_state or "MEDIUM"),
+            metrics=swing_scan.metrics,
+            bull_score=swing_scan.bull_score,
+            bear_score=swing_scan.bear_score,
+            reasons=swing_scan.reasons,
+        )
+        swing_payload.update(swing_norm)
+
+    if regular_decision is not None:
+        top_rec = regular_data["recommendations"][0] if regular_data and regular_data.get("recommendations") else None
+        regular_norm = normalize_regular_score(
+            top_candidate=top_rec,
+            signals=regular_data.get("signals") if regular_data else None,
+            decision_confidence=int(regular_decision.confidence or 0),
+            decision_risk_state=str(regular_decision.risk_state or "MEDIUM"),
+            decision_reason=regular_reason,
+        )
+        regular_payload.update(regular_norm)
+
     return {
-        "day":          decision_payload(day_decision,     label="day",     raw_signal=day_raw,     reason=day_reason),
-        "swing":        decision_payload(swing_decision,   label="swing",   raw_signal=swing_raw,   reason=swing_reason),
-        "regular":      decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason),
-        "regular_data": regular_data,
-        "day_metrics":  day_metrics,
+        "day":                    day_payload,
+        "swing":                  swing_payload,
+        "regular":                regular_payload,
+        "regular_data":           regular_data,
+        "day_metrics":            day_metrics,
+        "swing_suggested_strategy": swing_scan.suggested_strategy if swing_scan else "",
     }
 
 
@@ -448,18 +527,66 @@ def _expiry_label(engine: str, regular_data: Optional[dict]) -> str:
     return "~4w"
 
 
-def _strategy_label(engine: str, market_bias: str, regular_data: Optional[dict]) -> str:
+def _strategy_label(engine: str, market_bias: str, regular_data: Optional[dict], swing_suggested_strategy: str = "") -> str:
     if engine == "regular" and regular_data and regular_data.get("recommendations"):
         first = regular_data["recommendations"][0]
         return str(first.get("strategy") or "Defined-Risk Spread")
     if engine == "day":
         return "Intraday Scalp"
+    if engine == "swing" and swing_suggested_strategy and swing_suggested_strategy not in ("NO_TRADE", ""):
+        norm = swing_suggested_strategy.replace("_", " ").title()
+        synonyms = {
+            "Call Debit Spread": "Bull Call Spread",
+            "Put Debit Spread":  "Bear Put Spread",
+            "Credit Put Spread":  "Bull Put Spread",
+            "Credit Call Spread": "Bear Call Spread",
+        }
+        return synonyms.get(norm, norm)
     b = str(market_bias or "").upper()
     if "BULL" in b:
         return "Long Call"
     if "BEAR" in b:
         return "Long Put"
     return "Directional Play"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _empty_payload(
+    engine_filter: Optional[str],
+    signal_filter: Optional[str],
+    direction_filter: Optional[str],
+    risk_filter: Optional[str],
+) -> dict:
+    """Return a structurally complete but empty payload (used when watchlist is empty)."""
+    zero_dist = [
+        {"engine": "Day",     "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
+        {"engine": "Swing",   "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
+        {"engine": "Regular", "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
+    ]
+    return {
+        "engines":         [],
+        "recommendations": [],
+        "conflicts":       [],
+        "alerts_summary": {
+            "active_alerts": 0, "critical_alerts": 0,
+            "positions_requiring_exit": 0, "near_expiry_trades": 0,
+            "high_iv_warnings": 0,
+        },
+        "recent_activity": [],
+        "charts": {
+            "trend_strength":             [],
+            "engine_signal_distribution": zero_dist,
+            "risk_distribution":          [{"label": k, "value": 0} for k in ("Low", "Medium", "High")],
+            "style_allocation":           [{"label": k, "value": 0} for k in ("Day", "Swing", "Regular", "Avoid")],
+        },
+        "filters": {
+            "engine": engine_filter, "signal": signal_filter,
+            "direction": direction_filter, "risk": risk_filter,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +630,7 @@ def build_command_center_payload(
                     "regular": decision_payload(None, label="regular"),
                     "regular_data": None,
                     "day_metrics":  {},
+                    "swing_suggested_strategy": "",
                 }
             per_ticker.append({"ticker": t, "engines": engines})
 
@@ -519,12 +647,13 @@ def build_command_center_payload(
             p     = engines[eng_key]
             fd    = str(p.get("final_decision") or "").upper()
             rdata = engines.get("regular_data") if eng_key == "regular" else None
+            swing_strat = engines.get("swing_suggested_strategy", "")
             all_recs.append({
                 "id":                    f"{ticker.lower()}-{eng_key}-{str(uuid.uuid4())[:8]}",
                 "ticker":                ticker,
                 "engine_type":           eng_key,
                 "direction":             _direction_from_bias(p.get("market_bias", "")),
-                "strategy":              _strategy_label(eng_key, p.get("market_bias", ""), rdata),
+                "strategy":              _strategy_label(eng_key, p.get("market_bias", ""), rdata, swing_strat),
                 "signal":                p.get("raw_signal") or fd,
                 "entry_zone":            "—",
                 "target":                "—",
@@ -545,6 +674,20 @@ def build_command_center_payload(
                 "signal_quality":        p.get("signal_quality") or "",
                 "execution_timing":      p.get("execution_timing") or "",
                 "risk_category":         p.get("risk_category") or "",
+                "explanation":           p.get("explanation") or {},
+                "risk_reason":           p.get("risk_reason") or "",
+                "display_confidence":    int(p.get("display_confidence") or 0),
+                "execution_fields":      list(p.get("execution_fields") or []),
+                # Normalized scoring fields
+                "raw_engine_score":      float(p.get("raw_engine_score") or 0.0),
+                "normalized_score":      int(p.get("normalized_score") or 0),
+                "normalized_state":      p.get("normalized_state") or "",
+                "confidence_band":       p.get("confidence_band") or "LOW",
+                "execution_bias":        p.get("execution_bias") or "NO_CLEAN_ENTRY",
+                "risk_band":             p.get("risk_band") or "MEDIUM",
+                "normalized_reason":     p.get("normalized_reason") or "",
+                "engine_score_breakdown": p.get("engine_score_breakdown") or {},
+                "option_risk_context":   p.get("option_risk_context") or {},
             })
 
     # Rows with NO_EDGE are omitted from the visible recommendation list
@@ -572,10 +715,11 @@ def build_command_center_payload(
     if rf in ("low", "medium", "high"):
         filtered = [r for r in filtered if str(r.get("risk_level", "")).lower() == rf]
 
-    # Sort: highest signal rank first, then confidence
+    # Sort: highest signal rank first, then normalized_score, then confidence
     filtered.sort(
         key=lambda r: (
             _SIGNAL_RANK.get(str(r.get("final_decision", "")).upper(), 0),
+            int(r.get("normalized_score") or 0),
             int(r.get("confidence") or 0),
         ),
         reverse=True,
@@ -607,6 +751,19 @@ def build_command_center_payload(
                 "signal_quality":        "",
                 "execution_timing":      "",
                 "risk_category":         "",
+                "explanation":           {},
+                "risk_reason":           "",
+                "display_confidence":    0,
+                "execution_fields":      [],
+                "raw_engine_score":      0.0,
+                "normalized_score":      0,
+                "normalized_state":      "",
+                "confidence_band":       "LOW",
+                "execution_bias":        "NO_CLEAN_ENTRY",
+                "risk_band":             "MEDIUM",
+                "normalized_reason":     "",
+                "engine_score_breakdown": {},
+                "option_risk_context":   {},
             })
             continue
 
@@ -615,6 +772,7 @@ def build_command_center_payload(
             eng_visible,
             key=lambda r: (
                 _SIGNAL_RANK.get(str(r.get("final_decision", "")).upper(), 0),
+                int(r.get("normalized_score") or 0),
                 int(r.get("confidence") or 0),
             ),
         )
@@ -650,169 +808,85 @@ def build_command_center_payload(
             "signal_quality":        top.get("signal_quality") or "",
             "execution_timing":      top.get("execution_timing") or "",
             "risk_category":         top.get("risk_category") or "",
+            "explanation":           top.get("explanation") or {},
+            "risk_reason":           top.get("risk_reason") or "",
+            "display_confidence":    int(top.get("display_confidence") or 0),
+            "execution_fields":      list(top.get("execution_fields") or []),
+            "raw_engine_score":      float(top.get("raw_engine_score") or 0.0),
+            "normalized_score":      int(top.get("normalized_score") or 0),
+            "normalized_state":      top.get("normalized_state") or "",
+            "confidence_band":       top.get("confidence_band") or "LOW",
+            "execution_bias":        top.get("execution_bias") or "NO_CLEAN_ENTRY",
+            "risk_band":             top.get("risk_band") or "MEDIUM",
+            "normalized_reason":     top.get("normalized_reason") or "",
+            "engine_score_breakdown": top.get("engine_score_breakdown") or {},
+            "option_risk_context":   top.get("option_risk_context") or {},
         })
-
-    # ── Conflicts ─────────────────────────────────────────────────────────────
-    # A ticker is in conflict when at least one engine is READY/WATCH and at
-    # least one other engine is AVOID/EXIT.
+    # ── Conflicts: tickers with mixed GO/AVOID signals across engines ────────
     conflicts: list[dict] = []
-    ticker_eng_map: dict[str, dict[str, dict]] = defaultdict(dict)
-    for rec in visible_recs:
-        ticker_eng_map[rec["ticker"]][rec["engine_type"]] = rec
+    by_ticker: dict[str, list[dict]] = {}
+    for r in all_recs:
+        t = str(r.get("ticker") or "").upper()
+        by_ticker.setdefault(t, []).append(r)
 
-    for ticker, eng_recs in ticker_eng_map.items():
-        decisions = {k: str(v.get("final_decision", "")).upper() for k, v in eng_recs.items()}
-        go_set    = {"READY", "TRADE", "WATCH"}
-        avoid_set = {"AVOID", "EXIT"}
-        has_go    = any(v in go_set    for v in decisions.values())
-        has_avoid = any(v in avoid_set for v in decisions.values())
-        if not (has_go and has_avoid):
+    for ticker, rows in by_ticker.items():
+        if len(rows) < 2:
+            continue
+        signals = [str(r.get("final_decision") or r.get("signal") or "").upper() for r in rows]
+        has_go    = any(s in ("READY", "TRADE", "WATCH") for s in signals)
+        has_avoid = any(s in ("AVOID", "EXIT", "NO_EDGE") for s in signals)
+        if not has_go or not has_avoid:
             continue
         conflicts.append({
-            "id":             f"conflict-{ticker.lower()}",
-            "ticker":         ticker,
-            "state":          "CONFLICTING_SIGNALS",
-            "summary":        f"{ticker} has conflicting signals across engines.",
-            "resolution":     "Timeframe or IV environment is creating engine disagreement.",
-            "suggested_action": "Prefer the longer timeframe or wait for alignment before acting.",
+            "id":               f"conflict-{ticker.lower()}",
+            "ticker":           ticker,
+            "state":            "CONFLICTING_SIGNALS",
+            "summary":          f"{ticker} has conflicting signals across engines.",
+            "resolution":       "Timeframe or options pricing is creating a disagreement.",
+            "suggested_action": "Prefer smaller size or wait for cleaner agreement before acting.",
             "signals": [
                 {
-                    "engine_type": k.upper(),
-                    "signal":      v,
-                    "note":        (eng_recs[k].get("reason") or "")[:120],
+                    "engine_type": str(r.get("engine_type") or "").upper(),
+                    "signal":      str(r.get("final_decision") or r.get("signal") or "").upper(),
+                    "note":        r.get("reason") or "",
                 }
-                for k, v in decisions.items()
+                for r in rows
             ],
         })
 
-    # ── Charts ────────────────────────────────────────────────────────────────
-    eng_sig_map: dict[str, dict] = {
+    # ── Charts: computed from all_recs (unfiltered for accurate distribution) ─
+    eng_dist_map: dict[str, dict] = {
         "Day":     {"engine": "Day",     "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
         "Swing":   {"engine": "Swing",   "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
         "Regular": {"engine": "Regular", "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
     }
-    risk_counts: dict[str, int] = {"Low": 0, "Medium": 0, "High": 0}
+    risk_counts = {"Low": 0, "Medium": 0, "High": 0}
+    style_counts = {"Day": 0, "Swing": 0, "Regular": 0, "Avoid": 0}
 
-    for rec in all_recs:  # include NO_EDGE in chart counts
-        ek = str(rec.get("engine_type") or "").capitalize()
-        fd = str(rec.get("final_decision") or "").upper()
-        rl = str(rec.get("risk_level") or "").capitalize()
-        if ek in eng_sig_map:
-            bucket = eng_sig_map[ek]
-            if fd in ("READY", "TRADE"):
-                bucket["READY"] += 1
-            elif fd == "WATCH":
-                bucket["WATCH"] += 1
-            elif fd == "WAIT":
-                bucket["WAIT"] += 1
-            elif fd in ("AVOID", "EXIT"):
-                bucket["AVOID"] += 1
-            else:
-                bucket["NO_EDGE"] += 1
-        if rl in risk_counts:
-            risk_counts[rl] += 1
+    for r in all_recs:
+        eng_key  = str(r.get("engine_type") or "").lower()
+        eng_label = {"day": "Day", "swing": "Swing", "regular": "Regular"}.get(eng_key, "")
+        sig = str(r.get("final_decision") or r.get("signal") or "").upper()
+        if eng_label and eng_label in eng_dist_map:
+            bucket = sig if sig in ("READY", "WATCH", "WAIT", "AVOID", "NO_EDGE") else "NO_EDGE"
+            # TRADE maps to READY bucket
+            if sig == "TRADE":
+                bucket = "READY"
+            eng_dist_map[eng_label][bucket] += 1
 
-    # Style allocation based on actionable recs
-    style_counts: dict[str, int] = {"Day": 0, "Swing": 0, "Regular": 0, "Avoid": 0}
-    for r in visible_recs:
-        ek = str(r.get("engine_type") or "").capitalize()
-        fd = str(r.get("final_decision") or "").upper()
-        if fd in ("AVOID", "EXIT"):
+        risk = str(r.get("risk_level") or "").capitalize()
+        if risk in risk_counts:
+            risk_counts[risk] += 1
+
+        if sig in ("AVOID", "EXIT", "NO_EDGE"):
             style_counts["Avoid"] += 1
-        elif ek in style_counts:
-            style_counts[ek] += 1
-    style_total = sum(style_counts.values()) or 1
-    style_alloc = [{"label": k, "value": round(v / style_total * 100)} for k, v in style_counts.items()]
-
-    charts = {
-        "trend_strength":             [],  # populated by caller via live_mkt
-        "engine_signal_distribution": list(eng_sig_map.values()),
-        "risk_distribution": [
-            {"label": "Low",    "value": risk_counts["Low"]},
-            {"label": "Medium", "value": risk_counts["Medium"]},
-            {"label": "High",   "value": risk_counts["High"]},
-        ],
-        "style_allocation": style_alloc,
-    }
-
-    # ── Alerts summary ────────────────────────────────────────────────────────
-    alerts_summary = {
-        "active_alerts":            len(visible_recs),
-        "critical_alerts":          sum(
-            1 for r in visible_recs
-            if str(r.get("risk_state", "")).upper() in ("HIGH", "EXTREME")
-            and str(r.get("final_decision", "")).upper() in ("AVOID", "EXIT")
-        ),
-        "positions_requiring_exit": sum(
-            1 for r in visible_recs if str(r.get("final_decision", "")).upper() == "EXIT"
-        ),
-        "near_expiry_trades":       0,
-        "high_iv_warnings":         sum(
-            1 for r in visible_recs if str(r.get("risk_state", "")).upper() == "HIGH"
-        ),
-    }
+        elif eng_label and eng_label in style_counts:
+            style_counts[eng_label] += 1
 
     return {
         "engines":         engine_cards,
         "recommendations": filtered,
         "conflicts":       conflicts,
-        "alerts_summary":  alerts_summary,
-        "recent_activity": [],
-        "charts":          charts,
-        "filters": {
-            "engine":    engine_filter,
-            "signal":    signal_filter,
-            "direction": direction_filter,
-            "risk":      risk_filter,
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
-# Empty-watchlist fallback
-# ---------------------------------------------------------------------------
-
-def _empty_payload(
-    engine_filter: Optional[str],
-    signal_filter: Optional[str],
-    direction_filter: Optional[str],
-    risk_filter: Optional[str],
-) -> dict:
-    """Return an honest empty payload when the user has no watchlist tickers."""
-    engine_cards = [
-        {
-            "engine_type":           eng_key,
-            "timeframe":             _ENGINE_META[eng_key]["timeframe"],
-            "best_use_case":         _ENGINE_META[eng_key]["best_use_case"],
-            "signal":                "NO_EDGE",
-            "signal_count":          0,
-            "top_recommendation":    None,
-            "risk_level":            "medium",
-            "summary":               "Add tickers to your watchlist to see live signals.",
-            "market_bias":           "NEUTRAL",
-            "setup_quality":         "WEAK",
-            "execution_readiness":   "WAIT",
-            "final_decision":        "NO_EDGE",
-            "confidence":            0,
-            "reason":                "No watchlist tickers to evaluate.",
-            "supporting_factors":    [],
-            "missing_confirmations": ["Watchlist tickers"],
-            "risk_state":            "MEDIUM",
-            "signal_quality":        "",
-            "execution_timing":      "",
-            "risk_category":         "",
-        }
-        for eng_key in ("day", "swing", "regular")
-    ]
-    zero_dist = [
-        {"engine": "Day",     "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
-        {"engine": "Swing",   "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
-        {"engine": "Regular", "READY": 0, "WATCH": 0, "WAIT": 0, "AVOID": 0, "NO_EDGE": 0},
-    ]
-    return {
-        "engines":         engine_cards,
-        "recommendations": [],
-        "conflicts":       [],
         "alerts_summary": {
             "active_alerts": 0, "critical_alerts": 0,
             "positions_requiring_exit": 0, "near_expiry_trades": 0,
@@ -821,9 +895,9 @@ def _empty_payload(
         "recent_activity": [],
         "charts": {
             "trend_strength":             [],
-            "engine_signal_distribution": zero_dist,
-            "risk_distribution":          [{"label": k, "value": 0} for k in ("Low", "Medium", "High")],
-            "style_allocation":           [{"label": k, "value": 0} for k in ("Day", "Swing", "Regular", "Avoid")],
+            "engine_signal_distribution": list(eng_dist_map.values()),
+            "risk_distribution":          [{"label": k, "value": v} for k, v in risk_counts.items()],
+            "style_allocation":           [{"label": k, "value": v} for k, v in style_counts.items()],
         },
         "filters": {
             "engine": engine_filter, "signal": signal_filter,

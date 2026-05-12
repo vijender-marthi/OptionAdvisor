@@ -33,36 +33,36 @@ export function swingEngineSecondaryBadgeItems(result: SwingTradeScanResult): Ar
 
 /** Card / expanded-section chrome from final_action tone (not aggregate verdict). */
 export function swingEngineWatchlistRowRingClass(tone: Tone): string {
-  if (tone === 'green') return 'ring-1 ring-emerald-500/20'
-  if (tone === 'blue') return 'ring-1 ring-sky-500/25'
-  if (tone === 'orange') return 'ring-1 ring-amber-500/20'
-  if (tone === 'red') return 'ring-1 ring-rose-500/20'
-  return 'ring-1 ring-violet-500/15'
+  if (tone === 'green') return 'ring-1 ring-semantic-bullish-border'
+  if (tone === 'blue') return 'ring-1 ring-semantic-info-border'
+  if (tone === 'orange') return 'ring-1 ring-semantic-warning-border'
+  if (tone === 'red') return 'ring-1 ring-semantic-bearish-border'
+  return 'ring-1 ring-semantic-accent-border'
 }
 
 export function swingEngineWatchlistExpandedShellClasses(tone: Tone): string {
   if (tone === 'green')
-    return 'border-l-emerald-500 bg-emerald-950/20 ring-1 ring-inset ring-emerald-500/15'
+    return 'border-l-4 border-l-semantic-bullish bg-semantic-bullish-bg ring-1 ring-inset ring-semantic-bullish-border'
   if (tone === 'blue')
-    return 'border-l-sky-500 bg-gray-950/40 ring-1 ring-inset ring-sky-500/15'
+    return 'border-l-4 border-l-semantic-info bg-surface-card ring-1 ring-inset ring-semantic-info-border'
   if (tone === 'orange')
-    return 'border-l-amber-400 bg-amber-950/30 ring-1 ring-inset ring-amber-500/15'
+    return 'border-l-4 border-l-semantic-warning bg-semantic-warning-bg ring-1 ring-inset ring-semantic-warning-border'
   if (tone === 'red')
-    return 'border-l-rose-500 bg-rose-950/25 ring-1 ring-inset ring-rose-500/15'
-  return 'border-l-violet-500/70 bg-gray-950/40 ring-1 ring-inset ring-violet-500/10'
+    return 'border-l-4 border-l-semantic-bearish bg-semantic-bearish-bg ring-1 ring-inset ring-semantic-bearish-border'
+  return 'border-l-4 border-l-semantic-accent bg-surface-card ring-1 ring-inset ring-semantic-accent-border'
 }
 
 /** Top accent bar in watchlist expanded details — matches `final_action` tone (panel ring). */
 export function swingEngineWatchlistExpandedAccentBarClass(tone: Tone): string {
   if (tone === 'green')
-    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-emerald-500 shadow-[0_0_14px_rgba(16,185,129,0.35)]'
+    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-semantic-bullish'
   if (tone === 'blue')
-    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-sky-500 shadow-[0_0_14px_rgba(14,165,233,0.32)]'
+    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-semantic-info'
   if (tone === 'orange')
-    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-amber-500 shadow-[0_0_14px_rgba(245,158,11,0.3)]'
+    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-semantic-warning'
   if (tone === 'red')
-    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-rose-500 shadow-[0_0_14px_rgba(244,63,94,0.32)]'
-  return 'swing-tone-bar mb-4 h-1 w-full rounded-md bg-slate-600/45'
+    return 'swing-tone-bar mb-4 h-1.5 w-full rounded-md bg-semantic-bearish'
+  return 'swing-tone-bar mb-4 h-1 w-full rounded-md bg-semantic-neutral-border'
 }
 
 export function toneForFinalAction(fa: string): Tone {
@@ -104,36 +104,36 @@ export function toneForMarketContext(mc: string | null | undefined): Tone {
 }
 
 export const TONE_BADGE: Record<Tone, string> = {
-  green:  'bg-emerald-500/15 text-emerald-300 border border-emerald-600/40',
-  blue:   'bg-sky-500/15 text-sky-300 border border-sky-600/40',
-  orange: 'bg-amber-500/15 text-amber-300 border border-amber-600/40',
-  red:    'bg-rose-500/15 text-rose-300 border border-rose-700/40',
-  gray:   'bg-gray-700/50 text-gray-400 border border-gray-600/40',
+  green:  'border-semantic-bullish-border bg-semantic-bullish-bg text-semantic-bullish',
+  blue:   'border-semantic-info-border bg-semantic-info-bg text-semantic-info',
+  orange: 'border-semantic-warning-border bg-semantic-warning-bg text-semantic-warning',
+  red:    'border-semantic-bearish-border bg-semantic-bearish-bg text-semantic-bearish',
+  gray:   'border-semantic-neutral-border bg-semantic-neutral-bg text-semantic-neutral',
 }
 
 export const TONE_RING: Record<Tone, string> = {
-  green:  'ring-2 ring-emerald-500/30',
-  blue:   'ring-2 ring-sky-500/25',
-  orange: 'ring-2 ring-amber-500/25',
-  red:    'ring-2 ring-rose-600/30',
-  gray:   'ring-1 ring-gray-700/60',
+  green:  'ring-1 ring-semantic-bullish-border',
+  blue:   'ring-1 ring-semantic-info-border',
+  orange: 'ring-1 ring-semantic-warning-border',
+  red:    'ring-1 ring-semantic-bearish-border',
+  gray:   'ring-1 ring-border',
 }
 
 export const TONE_DOT: Record<Tone, string> = {
-  green:  'bg-emerald-400',
-  blue:   'bg-sky-400',
-  orange: 'bg-amber-400',
-  red:    'bg-rose-400',
-  gray:   'bg-gray-500',
+  green:  'bg-semantic-bullish',
+  blue:   'bg-semantic-info',
+  orange: 'bg-semantic-warning',
+  red:    'bg-semantic-bearish',
+  gray:   'bg-semantic-neutral',
 }
 
 /** Filled badge for primary final_action emphasis */
 export const TONE_ACTION_BADGE: Record<Tone, string> = {
-  green:  'bg-emerald-600 text-white',
-  blue:   'bg-sky-600 text-white',
-  orange: 'bg-amber-600 text-white',
-  red:    'bg-rose-700 text-white',
-  gray:   'bg-gray-700 text-gray-200',
+  green:  'border border-semantic-bullish-border bg-semantic-bullish-bg text-semantic-bullish',
+  blue:   'border border-semantic-info-border bg-semantic-info-bg text-semantic-info',
+  orange: 'border border-semantic-warning-border bg-semantic-warning-bg text-semantic-warning',
+  red:    'border border-semantic-bearish-border bg-semantic-bearish-bg text-semantic-bearish',
+  gray:   'border border-semantic-neutral-border bg-semantic-neutral-bg text-semantic-neutral',
 }
 
 export function formatSwingEngineLabel(s: string): string {

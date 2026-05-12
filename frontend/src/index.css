@@ -235,12 +235,14 @@ html.light .bg-gray-950  { background-color: var(--surface-canvas); }
 html.light .bg-gray-900  { background-color: var(--surface-card); }
 html.light .bg-gray-800  { background-color: var(--surface-elevated); }
 html.light .bg-gray-700  { background-color: var(--surface-raised); }
+html.light .bg-gray-700\/50 { background-color: color-mix(in srgb, var(--surface-raised) 65%, transparent); }
 html.light .bg-gray-600  { background-color: var(--surface-muted); }
 
 /* Alpha variants */
 html.light .bg-gray-950\/40 { background-color: color-mix(in srgb, var(--surface-card) 85%, transparent); }
 html.light .bg-gray-950\/35 { background-color: color-mix(in srgb, var(--surface-card) 82%, transparent); }
 html.light .bg-gray-950\/80 { background-color: color-mix(in srgb, var(--surface-elevated) 96%, transparent); }
+html.light .bg-gray-950\/30 { background-color: color-mix(in srgb, var(--surface-card) 72%, transparent); }
 html.light .bg-gray-900\/80 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
 html.light .bg-gray-900\/70 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
 html.light .bg-gray-900\/60 { background-color: color-mix(in srgb, var(--surface-card) 95%, transparent); }
@@ -280,6 +282,7 @@ html.light .border-gray-800\/80 { border-color: color-mix(in srgb, var(--border-
 html.light .border-gray-800\/70 { border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent); }
 html.light .border-gray-800\/60 { border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent); }
 html.light .border-gray-800\/50 { border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent); }
+html.light .border-gray-800\/40 { border-color: color-mix(in srgb, var(--border-subtle) 40%, transparent); }
 html.light .border-gray-700  { border-color: var(--border-default); }
 html.light .border-gray-700\/90 { border-color: color-mix(in srgb, var(--border-default) 90%, transparent); }
 html.light .border-gray-700\/80 { border-color: color-mix(in srgb, var(--border-default) 80%, transparent); }
@@ -329,6 +332,7 @@ html.light .hover\:bg-gray-600:hover { background-color: var(--surface-muted); }
 html.light .hover\:bg-gray-900\/50:hover { background-color: color-mix(in srgb, var(--surface-card) 92%, transparent); }
 html.light .hover\:bg-gray-800\/40:hover { background-color: color-mix(in srgb, var(--surface-elevated) 85%, transparent); }
 html.light .hover\:bg-gray-800\/50:hover { background-color: color-mix(in srgb, var(--surface-elevated) 90%, transparent); }
+html.light .hover\:bg-gray-800\/30:hover { background-color: color-mix(in srgb, var(--surface-elevated) 65%, transparent); }
 html.light .hover\:text-white:hover  { color: var(--text-heading); }
 html.light .hover\:text-gray-200:hover { color: var(--text-secondary); }
 html.light .hover\:text-gray-300:hover { color: var(--text-tertiary); }
@@ -380,12 +384,15 @@ html.light .text-cyan-400 { color: #0891b2; }
 html.light .text-teal-300 { color: #0f766e; }
 html.light .text-teal-400 { color: #0d9488; }
 html.light .text-emerald-200 { color: #065f46; }
+html.light .text-emerald-200\/90 { color: #065f46; }
 html.light .text-emerald-300 { color: #065f46; }
 html.light .text-emerald-400 { color: #047857; }
+html.light .text-emerald-400\/80 { color: #047857; }
 html.light .text-emerald-500 { color: #047857; }
 html.light .text-green-300 { color: #166534; }
 html.light .text-green-400 { color: #15803d; }
 html.light .text-amber-200 { color: #92400e; }
+html.light .text-amber-200\/90 { color: #92400e; }
 html.light .text-amber-300 { color: #b45309; }
 html.light .text-amber-300\/90 { color: #b45309; }
 html.light .text-amber-300\/95 { color: #b45309; }
@@ -410,10 +417,14 @@ html.light .text-rose-400\/95 { color: #e11d48; }
 html.light .hover\:text-rose-400:hover { color: #e11d48; }
 html.light .text-red-300 { color: #b91c1c; }
 html.light .text-red-400 { color: #dc2626; }
+html.light .text-red-400\/80 { color: #dc2626; }
 html.light .hover\:text-red-400:hover { color: #b91c1c; }
 html.light .text-yellow-400 { color: #a16207; }
 
 /* Badge / Chip backgrounds and borders — semantic */
+html.light .bg-emerald-500\/15 { background-color: color-mix(in srgb, rgba(5, 150, 105, 0.5) 65%, transparent); }
+html.light .bg-rose-500\/15 { background-color: color-mix(in srgb, rgba(225, 29, 72, 0.5) 65%, transparent); }
+html.light .bg-sky-500\/15 { background-color: color-mix(in srgb, rgba(2, 132, 199, 0.5) 65%, transparent); }
 html.light .bg-violet-600\/20 { background-color: color-mix(in srgb, var(--accent-bg) 80%, transparent); }
 html.light .bg-violet-600\/30 { background-color: color-mix(in srgb, var(--accent-bg) 90%, transparent); }
 html.light .hover\:bg-violet-600\/30:hover,
@@ -547,6 +558,7 @@ html.light .bg-amber-500\/20 { background-color: color-mix(in srgb, var(--info-b
 html.light .bg-amber-500\/10 { background-color: color-mix(in srgb, var(--info-bg) 22%, transparent); }
 html.light .bg-amber-600\/25 { background-color: color-mix(in srgb, var(--info-bg) 58%, transparent); }
 html.light .border-amber-700 { border-color: #f59e0b; }
+html.light .border-amber-700\/30 { border-color: color-mix(in srgb, var(--warning-border) 32%, transparent); }
 html.light .border-amber-800 { border-color: #fbbf24; }
 html.light .border-amber-800\/50 { border-color: #fbbf24; }
 html.light .border-amber-800\/40 { border-color: color-mix(in srgb, var(--warning-border) 38%, transparent); }
@@ -556,6 +568,18 @@ html.light .border-amber-900\/40 { border-color: color-mix(in srgb, var(--warnin
 html.light .border-amber-900\/50 { border-color: color-mix(in srgb, var(--warning-border) 38%, transparent); }
 html.light .ring-amber-500\/25 { --tw-ring-color: color-mix(in srgb, var(--info-border) 28%, transparent); }
 html.light .ring-amber-500\/30 { --tw-ring-color: color-mix(in srgb, var(--info-border) 28%, transparent); }
+
+html.light .bg-amber-950\/35 { background-color: color-mix(in srgb, var(--warning-bg) 70%, transparent); }
+html.light .bg-amber-950\/45 { background-color: color-mix(in srgb, var(--warning-bg) 75%, transparent); }
+html.light .border-amber-700\/55 { border-color: color-mix(in srgb, var(--warning-border) 55%, transparent); }
+html.light .border-amber-800\/60 { border-color: color-mix(in srgb, var(--warning-border) 55%, transparent); }
+html.light .text-amber-100\/90 { color: #92400e; }
+html.light .text-amber-200\/75 { color: #92400e; }
+html.light .text-amber-300\/70 { color: #b45309; }
+html.light .text-amber-600 { color: #d97706; }
+html.light .hover\:text-amber-400:hover { color: #d97706; }
+html.light .hover\:border-amber-500:hover { border-color: #d97706; }
+html.light .hover\:border-amber-600:hover { border-color: #d97706; }
 
 /* Blue / Info */
 html.light .bg-blue-900\/20 { background-color: color-mix(in srgb, var(--manage-bg) 50%, transparent); }
@@ -1629,4 +1653,29 @@ html.light .tcc-widget-card {
   background: #ef4444;
   opacity: 0.6;
   transition: width 600ms ease;
+}
+
+.oa-tt-day {
+  background: #042C53;
+  color: #85B7EB;
+}
+html.light .oa-tt-day {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.oa-tt-swing {
+  background: #04342C;
+  color: #5DCAA5;
+}
+html.light .oa-tt-swing {
+  background: #d1fae5;
+  color: #065f46;
+}
+.oa-tt-regular {
+  background: #412402;
+  color: #FAC775;
+}
+html.light .oa-tt-regular {
+  background: #fef3c7;
+  color: #92400e;
 }

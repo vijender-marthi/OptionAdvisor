@@ -1,0 +1,46 @@
+{
+  "name": "Day Trade — Strong GO with volume but volume confirmation is missing entry conditional",
+  "engine_type": "day",
+  "input": {
+    "ticker": "META",
+    "verdict": "STRONG GO",
+    "bias": "long",
+    "reasons": [
+      "Above VWAP",
+      "Strong momentum",
+      "Market supportive"
+    ],
+    "metrics": {
+      "vix": 18.0,
+      "vwap": 525.00,
+      "last_price": 525.80,
+      "or_high": 526.50,
+      "or_low": 523.00,
+      "or_breakout": "inside",
+      "momentum_pct": 0.18,
+      "volume_spike": true,
+      "confidence": {
+        "trend_strength": "HIGH",
+        "breakout_quality": "GOOD",
+        "volume_confirmation": "STRONG",
+        "market_alignment": "STRONG",
+        "risk": "MEDIUM"
+      }
+    },
+    "trader_decision": {
+      "market_state": "MARKET_SUPPORTIVE",
+      "decision_message": "Strong candidate but price needs to prove above OR high.",
+      "confirmation_needed": ["break intraday high"]
+    }
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "STRONG",
+    "final_decision": "READY",
+    "execution_timing": "WAIT FOR BREAKOUT",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": ["Breakout confirmation"],
+    "must_not_contain": ["ENTER NOW"],
+    "explanation_contains": ["confirmation"]
+  }
+}

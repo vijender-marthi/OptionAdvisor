@@ -3,7 +3,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
-  BrainCircuit, HelpCircle,
+  BrainCircuit, HelpCircle, ListTodo,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -94,17 +94,18 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
-        { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'watchlist', label: 'WatchlistX', icon: <Star size={18} /> },
+        { id: 'watchlist', label: 'Signal Feed', icon: <Star size={18} /> },
+        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+        { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
       ],
     },
     {
       label: 'Analyze',
       items: [
         { id: 'ticker', label: 'Strategy Finder', icon: <Search size={18} /> },
-        { id: 'trade-signals', label: 'Signals', icon: <Radar size={18} /> },
-        { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
+        { id: 'trade-signals', label: 'Best Trades', icon: <Radar size={18} /> },
+        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
       ],
     },
@@ -127,7 +128,6 @@ export default function Sidebar() {
       label: 'Support',
       items: [
         { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
-        { id: 'trading-glossary', label: 'Trading Glossary', icon: <BookOpen size={18} /> },
       ],
     },
   ]
@@ -137,12 +137,12 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
     { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'watchlist', label: 'Watchlist', icon: <Star size={23} /> },
+    { id: 'watchlist', label: 'Signal Feed', icon: <Star size={23} /> },
     { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
     { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'trade-signals', label: 'Signals', icon: <Radar size={18} /> },
+    { id: 'trade-signals', label: 'Best Trades', icon: <Radar size={18} /> },
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },

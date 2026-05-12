@@ -10,18 +10,16 @@ export function normalizeUserRole(raw: string | undefined | null): UserRole {
 const FINANCE_NO_ACCESS: ReadonlySet<Page> = new Set(['ai-stocks', 'q-radar', 'auto-trade'])
 const ADMIN_ONLY: ReadonlySet<Page> = new Set([
   'auto-trade',
-  'day-trade',
   'day-trade-watchlist',
   'day-trade-alerts',
   'active-trades',
-  'swing-trade',
   'swing-trade-watchlist',
 ])
 
 /**
  * Finance users get analysis, portfolio, journal, alerts, etc., but not stock-discovery radars.
- * auto-trade, Day Trading (engine, watchlist, alerts, active trades), and Swing Trading
- * (engine + watchlist) are admin-only pages.
+ * auto-trade, Day Trading watchlist/alerts/active-trades, and Swing Trading watchlist
+ * are admin-only pages. Day Trade and Swing Trade analysis engines are available to everyone.
  * Admin and standard users have full navigation (except admin-only pages).
  */
 export function canAccessPage(role: UserRole | undefined, page: Page): boolean {

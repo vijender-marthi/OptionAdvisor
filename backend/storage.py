@@ -20,6 +20,8 @@ DB_PATH = Path(os.getenv("OPTION_ADVISOR_DB_PATH", str(DEFAULT_DB_PATH))).expand
 
 DAY_TRADE_WATCHLIST_MAX_TICKERS = 10
 SWING_TRADE_WATCHLIST_MAX_TICKERS = 20
+LEGACY_USER_ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
+ALERT_CENTER_RETENTION_MS = 4 * 24 * 60 * 60 * 1000
 
 
 def _connect() -> sqlite3.Connection:
@@ -100,6 +102,65 @@ def _migrate_user_state_alert_email_enabled(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE user_state ADD COLUMN alert_email_enabled INTEGER NOT NULL DEFAULT 1"
         )
+
+
+def _migrate_user_state_my_tickers(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "my_tickers_json" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN my_tickers_json TEXT NOT NULL DEFAULT '[]'"
+        )
+
+
+def _migrate_user_state_backfill_my_tickers(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        "SELECT email, watchlist_json, day_trade_watchlist_json, swing_trade_watchlist_json, my_tickers_json FROM user_state"
+    ).fetchall()
+    for row in rows:
+        existing = json.loads(row["my_tickers_json"] or "[]")
+        if existing:
+            continue
+        merged: dict[str, dict[str, Any]] = {}
+        for raw in json.loads(row["watchlist_json"] or "[]"):
+            if isinstance(raw, dict):
+                sym = str(raw.get("ticker", "") or "").strip().upper()
+                if sym:
+                    if sym not in merged:
+                        merged[sym] = {"symbol": sym, "trade_types": [], "is_active": True, "company_name": str(raw.get("companyName", "") or ""), "added_date": str(raw.get("addedAt", "") or "")[:10]}
+                    if "regular" not in merged[sym]["trade_types"]:
+                        merged[sym]["trade_types"].append("regular")
+        for t in json.loads(row["day_trade_watchlist_json"] or "[]"):
+            sym = str(t or "").strip().upper()
+            if sym:
+                if sym not in merged:
+                    merged[sym] = {"symbol": sym, "trade_types": [], "is_active": True, "company_name": "", "added_date": ""}
+                if "day" not in merged[sym]["trade_types"]:
+                    merged[sym]["trade_types"].append("day")
+        for t in json.loads(row["swing_trade_watchlist_json"] or "[]"):
+            sym = str(t or "").strip().upper()
+            if sym:
+                if sym not in merged:
+                    merged[sym] = {"symbol": sym, "trade_types": [], "is_active": True, "company_name": "", "added_date": ""}
+                if "swing" not in merged[sym]["trade_types"]:
+                    merged[sym]["trade_types"].append("swing")
+        if merged:
+            conn.execute(
+                "UPDATE user_state SET my_tickers_json = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?",
+                (json.dumps(list(merged.values())), row["email"]),
+            )
+
+
+def _migrate_user_state_clear_old_watchlist(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    has_wl = "watchlist_json" in cols
+    has_dt = "day_trade_watchlist_json" in cols
+    has_sw = "swing_trade_watchlist_json" in cols
+    if has_wl:
+        conn.execute("UPDATE user_state SET watchlist_json = '[]'")
+    if has_dt:
+        conn.execute("UPDATE user_state SET day_trade_watchlist_json = '[]'")
+    if has_sw:
+        conn.execute("UPDATE user_state SET swing_trade_watchlist_json = '[]'")
 
 
 def _migrate_active_trades_option_columns(conn: sqlite3.Connection) -> None:
@@ -223,6 +284,9 @@ def init_db() -> None:
         _migrate_user_state_day_trade_watchlist(conn)
         _migrate_user_state_swing_trade_watchlist(conn)
         _migrate_user_state_alert_email_enabled(conn)
+        _migrate_user_state_my_tickers(conn)
+        _migrate_user_state_backfill_my_tickers(conn)
+        _migrate_user_state_clear_old_watchlist(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -402,6 +466,7 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
                 "alert_email_enabled": True,
+                "my_tickers": [],
             }
         )
 
@@ -410,7 +475,8 @@ def get_user_state(email: str) -> dict[str, Any]:
             """
             SELECT email, watchlist_json, portfolio_json, role,
                    advisory_terms_version, advisory_accepted_at,
-                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled
+                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled,
+                   my_tickers_json
             FROM user_state
             WHERE email = ?
             """,
@@ -429,6 +495,7 @@ def get_user_state(email: str) -> dict[str, Any]:
                 "advisory_terms_version": None,
                 "advisory_accepted_at": None,
                 "alert_email_enabled": True,
+                "my_tickers": [],
             }
         )
 
@@ -450,6 +517,11 @@ def get_user_state(email: str) -> dict[str, Any]:
         alert_email_enabled = bool(int(ae_raw)) if ae_raw is not None else True
     except (KeyError, IndexError, TypeError, ValueError):
         alert_email_enabled = True
+    try:
+        mt_raw = row["my_tickers_json"]
+    except (KeyError, IndexError):
+        mt_raw = "[]"
+    mt_list = json.loads(mt_raw) if mt_raw else []
     return _state_with_watchlist_max(
         {
             "email": row["email"],
@@ -461,6 +533,7 @@ def get_user_state(email: str) -> dict[str, Any]:
             "advisory_terms_version": row["advisory_terms_version"],
             "advisory_accepted_at": row["advisory_accepted_at"],
             "alert_email_enabled": alert_email_enabled,
+            "my_tickers": mt_list,
         }
     )
 
@@ -512,6 +585,7 @@ def save_user_state(
     day_trade_watchlist: Optional[list[str]] = None,
     swing_trade_watchlist: Optional[list[str]] = None,
     alert_email_enabled: Optional[bool] = None,
+    my_tickers: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     normalized = normalize_email(email)
     preview = get_user_state(normalized)
@@ -531,6 +605,10 @@ def save_user_state(
     ae = bool(preview.get("alert_email_enabled", True))
     if alert_email_enabled is not None:
         ae = bool(alert_email_enabled)
+    if my_tickers is not None:
+        mt_normalized = my_tickers
+    else:
+        mt_normalized = preview.get("my_tickers") or []
 
     with _connect() as conn:
         conn.execute(
@@ -538,9 +616,10 @@ def save_user_state(
             INSERT INTO user_state (
                 email, watchlist_json, portfolio_json, role,
                 advisory_terms_version, advisory_accepted_at,
-                day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled, updated_at
+                day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled,
+                my_tickers_json, updated_at
             )
-            VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 watchlist_json = excluded.watchlist_json,
                 portfolio_json = excluded.portfolio_json,
@@ -555,6 +634,7 @@ def save_user_state(
                 day_trade_watchlist_json = excluded.day_trade_watchlist_json,
                 swing_trade_watchlist_json = excluded.swing_trade_watchlist_json,
                 alert_email_enabled = excluded.alert_email_enabled,
+                my_tickers_json = excluded.my_tickers_json,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -566,6 +646,7 @@ def save_user_state(
                 json.dumps(dt_normalized),
                 json.dumps(sw_normalized),
                 1 if ae else 0,
+                json.dumps(mt_normalized),
             ),
         )
 
@@ -739,6 +820,92 @@ def get_user_alerts(email: str, retention_ms: int, now_ms: int) -> list[dict[str
     return alerts
 
 
+def _legacy_user_alert_to_alert_center_record(
+    email: str,
+    alert: dict[str, Any],
+) -> tuple[
+    str, str, str, str, str, str, str, str, str, str, int, int, str,
+]:
+    normalized = normalize_email(email)
+    legacy_id = str(alert.get("id") or "").strip()
+    aid = f"legacy-watchlist:{legacy_id}" if legacy_id else f"legacy-watchlist:{uuid.uuid4()}"
+    ticker = str(alert.get("ticker") or "").strip().upper()
+    strategy = str(alert.get("strategy") or "Trade setup").strip()
+    bias = str(alert.get("bias") or "").strip()
+    score = alert.get("score")
+    ev = alert.get("ev")
+    pop = alert.get("pop")
+    expiry = str(alert.get("expiry") or "").strip()
+    dismissed = bool(alert.get("dismissed"))
+    created_ms = int(alert.get("detectedAt") or int(time.time() * 1000))
+    updated_ms = created_ms
+
+    score_txt = f"Score {int(score)}" if isinstance(score, (int, float)) and math.isfinite(score) else None
+    ev_txt = f"EV {float(ev):.2f}" if isinstance(ev, (int, float)) and math.isfinite(ev) else None
+    pop_txt = f"PoP {float(pop) * 100:.0f}%" if isinstance(pop, (int, float)) and math.isfinite(pop) else None
+    facts = " · ".join(part for part in [bias or None, score_txt, ev_txt, pop_txt, expiry or None] if part)
+
+    title = f"{ticker} {strategy} alert is active." if ticker else f"{strategy} alert is active."
+    body = facts or "Legacy watchlist scanner alert promoted into Alert Center."
+    meta = {
+        "ticker": ticker,
+        "alert_type": "REGULAR_TRADE",
+        "engine_type": "REGULAR",
+        "recommended_action": "Open Strategy Finder to review the setup and decide whether to add it to positions.",
+        "reason": facts or "Legacy watchlist scanner alert.",
+        "legacy_alert_id": legacy_id,
+        "source": "legacy_user_alerts",
+    }
+    status = "RESOLVED" if dismissed else "ACTIVE"
+    return (
+        aid,
+        normalized,
+        "regular_trade",
+        "INFO",
+        "REGULAR",
+        "GO",
+        title,
+        body,
+        status,
+        "",
+        created_ms,
+        updated_ms,
+        json.dumps(meta),
+    )
+
+
+def sync_user_alerts_to_alert_center(
+    email: str,
+    retention_ms: int,
+    now_ms: int,
+) -> int:
+    normalized = normalize_email(email)
+    if not normalized:
+        return 0
+    alerts = get_user_alerts(normalized, retention_ms, now_ms)
+    if not alerts:
+        return 0
+    rows = [_legacy_user_alert_to_alert_center_record(normalized, alert) for alert in alerts]
+    with _connect() as conn:
+        before = conn.total_changes
+        conn.executemany(
+            """
+            INSERT INTO alert_center_items (
+                id, email, alert_group, severity, engine, signal, title, body,
+                status, notes, created_at_ms, updated_at_ms, meta_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email, id) DO UPDATE SET
+                status = excluded.status,
+                updated_at_ms = excluded.updated_at_ms,
+                title = excluded.title,
+                body = excluded.body,
+                meta_json = excluded.meta_json
+            """,
+            rows,
+        )
+        return conn.total_changes - before
+
+
 def dismiss_user_alert(email: str, alert_id: str) -> None:
     normalized = normalize_email(email)
     with _connect() as conn:
@@ -873,6 +1040,7 @@ def alert_center_list(
     status: Optional[str] = None,
     ticker: Optional[str] = None,
     active_only: bool = False,
+    today_only: bool = False,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -905,6 +1073,10 @@ def alert_center_list(
     if active_only:
         clauses.append("status = ?")
         params.append("ACTIVE")
+    if today_only:
+        today_start = int(datetime.now(ZoneInfo("America/New_York")).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        clauses.append("created_at_ms >= ?")
+        params.append(today_start)
     where_sql = " AND ".join(clauses)
     with _connect() as conn:
         total_row = conn.execute(
@@ -1003,6 +1175,7 @@ def alert_center_active_count(email: str) -> int:
     normalized = normalize_email(email)
     if not normalized:
         return 0
+    sync_user_alerts_to_alert_center(normalized, LEGACY_USER_ALERT_RETENTION_MS, int(time.time() * 1000))
     with _connect() as conn:
         row = conn.execute(
             """
@@ -1019,6 +1192,7 @@ def alert_center_critical_count(email: str) -> int:
     normalized = normalize_email(email)
     if not normalized:
         return 0
+    sync_user_alerts_to_alert_center(normalized, LEGACY_USER_ALERT_RETENTION_MS, int(time.time() * 1000))
     with _connect() as conn:
         row = conn.execute(
             """
@@ -1084,6 +1258,104 @@ def alert_center_append_note(email: str, alert_id: str, text: str) -> bool:
             (prev + line, int(time.time() * 1000), normalized, aid),
         )
         return True
+
+
+def get_alert_center_summary(
+    email: str,
+) -> dict[str, Any]:
+    normalized = normalize_email(email)
+    if not normalized:
+        return {"active_count": 0, "items": [], "by_engine": {}, "by_severity": {}, "rules_count": 0}
+
+    sync_user_alerts_to_alert_center(normalized, LEGACY_USER_ALERT_RETENTION_MS, int(time.time() * 1000))
+
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT status, engine, severity, id, alert_group, signal, title, body,
+                   notes, created_at_ms, updated_at_ms, meta_json
+            FROM alert_center_items
+            WHERE email = ?
+            ORDER BY created_at_ms DESC
+            """,
+            (normalized,),
+        ).fetchall()
+
+    active_count = 0
+    by_engine: dict[str, int] = {}
+    by_severity: dict[str, int] = {}
+    items: list[dict[str, Any]] = []
+
+    for row in rows:
+        meta: dict[str, Any] = {}
+        try:
+            meta = json.loads(row["meta_json"] or "{}")
+        except json.JSONDecodeError:
+            meta = {}
+
+        status = str(row["status"] or "ACTIVE").upper()
+        engine = str(meta.get("engine_type") or row["engine"] or "REGULAR").upper()
+        section = str(row["alert_group"] or "regular_trade").lower()
+        severity = str(row["severity"] or "INFO").upper()
+
+        mapped_engine = {
+            "DAY": "day",
+            "SWING": "swing",
+            "REGULAR": "regular",
+            "PORTFOLIO": "portfolio",
+        }.get(engine, "general")
+
+        if status == "ACTIVE":
+            active_count += 1
+            by_engine[mapped_engine] = by_engine.get(mapped_engine, 0) + 1
+            by_severity[severity.lower()] = by_severity.get(severity.lower(), 0) + 1
+
+        items.append({
+            "id": row["id"],
+            "ticker": str(meta.get("ticker") or "").upper(),
+            "alert_type": str(meta.get("alert_type") or "GENERAL").upper(),
+            "engine_type": engine,
+            "section": section,
+            "severity": severity,
+            "signal": str(row["signal"] or "WATCH").upper(),
+            "message": str(row["title"] or ""),
+            "reason": str(meta.get("reason") or row["body"] or ""),
+            "recommended_action": str(meta.get("recommended_action") or "Review the setup."),
+            "status": status,
+            "created_at": datetime.fromtimestamp(int(row["created_at_ms"]) / 1000.0, tz=ZoneInfo("UTC")).isoformat(),
+            "updated_at": datetime.fromtimestamp(int(row["updated_at_ms"] or row["created_at_ms"]) / 1000.0, tz=ZoneInfo("UTC")).isoformat(),
+        })
+
+    return {
+        "active_count": active_count,
+        "items": items,
+        "by_engine": {
+            "day": by_engine.get("day", 0),
+            "swing": by_engine.get("swing", 0),
+            "regular": by_engine.get("regular", 0),
+            "portfolio": by_engine.get("portfolio", 0),
+            "general": by_engine.get("general", 0),
+        },
+        "by_severity": {
+            "critical": by_severity.get("critical", 0),
+            "warning": by_severity.get("warning", 0),
+            "info": by_severity.get("info", 0),
+        },
+        "rules_count": 0,
+    }
+
+
+def prune_alert_center_items(email: str) -> int:
+    normalized = normalize_email(email)
+    if not normalized:
+        return 0
+    cutoff = int(time.time() * 1000) - ALERT_CENTER_RETENTION_MS
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM alert_center_items WHERE email = ? AND created_at_ms < ?",
+            (normalized, cutoff),
+        )
+        return cur.rowcount
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1402,6 +1674,9 @@ def update_journal_entry(email: str, entry_id: str, **fields) -> None:
         "status", "exit_date", "underlying_exit", "realized_pnl",
         "exit_reason", "outcome", "current_price", "current_pnl",
         "last_refreshed", "notes",
+        "strategy", "bias", "underlying_entry", "net_credit",
+        "max_profit", "max_loss", "prob_of_profit", "expected_value",
+        "total_score", "expiry", "entry_date", "company_name",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

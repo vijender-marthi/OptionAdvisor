@@ -1,58 +1,15 @@
-import { RefreshCw } from 'lucide-react'
+import { useRef, useState } from 'react'
+import {
+  AlertTriangle, CheckCircle, RefreshCw, PlusCircle, Bell, BarChart2, Search, Star,
+  TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, ShieldAlert,
+  Activity, Target, Zap, Info, Layers,
+} from 'lucide-react'
 import type { DayTradeScanResult } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
+import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
-export function verdictStyle(verdict: string) {
-  if (verdict === 'READY' || verdict === 'STRONG GO') {
-    return {
-      bg: 'bg-emerald-950/70',
-      border: 'border-emerald-500/70',
-      text: 'text-emerald-200',
-      ring: 'ring-emerald-400/35',
-    }
-  }
-  if (verdict === 'WATCH' || verdict === 'GO') {
-    return {
-      bg: 'bg-amber-950/40',
-      border: 'border-amber-600/50',
-      text: 'text-amber-200',
-      ring: 'ring-amber-500/25',
-    }
-  }
-  if (verdict === 'AVOID' || verdict === 'EXIT' || verdict === 'NO-GO') {
-    return {
-      bg: 'bg-rose-950/50',
-      border: 'border-rose-600/50',
-      text: 'text-rose-300',
-      ring: 'ring-rose-500/30',
-    }
-  }
-  return {
-    bg: 'bg-gray-800/80',
-    border: 'border-gray-600/50',
-    text: 'text-gray-200',
-    ring: 'ring-gray-500/20',
-  }
-}
-
-function MetricRow({
-  label,
-  value,
-  valueClassName = 'text-gray-200',
-}: {
-  label: string
-  value: string
-  /** Tailwind classes for the value column (semantic green / red where it helps). */
-  valueClassName?: string
-}) {
-  return (
-    <div className="flex justify-between gap-3 border-b border-gray-800/80 py-2 text-sm last:border-0">
-      <span className="text-gray-500">{label}</span>
-      <span className={`font-mono text-right font-medium ${valueClassName}`}>{value}</span>
-    </div>
-  )
-}
+// ─── Helpers ────────────────────────────────────────────────────────
 
 function asFiniteNum(x: unknown): number | null {
   if (typeof x === 'number') return Number.isFinite(x) ? x : null
@@ -65,392 +22,1212 @@ function asFiniteNum(x: unknown): number | null {
 
 function fmtPct(x: unknown) {
   const n = asFiniteNum(x)
-  return n === null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+  return n === null ? null : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
 function fmtNum(x: unknown, d = 2) {
   const n = asFiniteNum(x)
-  return n === null ? '—' : n.toFixed(d)
+  return n === null ? null : n.toFixed(d)
 }
 
-/** Signed % display: green if &gt; 0, red if &lt; 0, neutral at 0. */
+type Tone = 'green' | 'blue' | 'orange' | 'red' | 'gray'
+
+const TONE_BADGE: Record<Tone, string> = {
+  green: getDecisionBadgeClass('READY'),
+  blue: getDecisionBadgeClass('GO'),
+  orange: getDecisionBadgeClass('WATCH'),
+  red: getDecisionBadgeClass('AVOID'),
+  gray: getDecisionBadgeClass('NEUTRAL'),
+}
+
+function toneForDecision(v: string): Tone {
+  const d = v.toUpperCase()
+  if (d === 'READY' || d === 'STRONG GO' || d === 'STRONG_BUY' || d === 'STRONG BUY') return 'green'
+  if (d === 'WATCH' || d === 'GO' || d === 'BUY') return 'blue'
+  if (d === 'WAIT' || d === 'HOLD' || d === 'AVOID_CHASE') return 'orange'
+  if (d === 'AVOID' || d === 'NO-GO' || d === 'NO_EDGE' || d === 'NO GO') return 'red'
+  return 'gray'
+}
+
+function toneForRisk(v: string): Tone {
+  const r = v.toUpperCase()
+  if (r === 'LOW') return 'green'
+  if (r === 'MEDIUM') return 'blue'
+  if (r === 'HIGH' || r === 'VERY_HIGH') return 'orange'
+  if (r === 'EXTREME') return 'red'
+  return 'gray'
+}
+
+function Badge({ text, tone }: { text: string; tone: Tone }) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${TONE_BADGE[tone]}`}>
+      {text}
+    </span>
+  )
+}
+
+function ExecMapRow({ label, value, tone }: { label: string; value: string | null; tone?: string }) {
+  if (!value) return null
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wide text-gray-500">{label}</span>
+      <span className={`text-xs font-semibold font-mono tabular-nums ${tone || 'text-gray-200'}`}>{value}</span>
+    </div>
+  )
+}
+
+function SignalRow({ label, value, tone }: { label: string; value: string; tone: Tone }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
+      <span className="text-[11px] text-gray-500 font-medium">{label}</span>
+      <Badge text={value} tone={tone} />
+    </div>
+  )
+}
+
 function signedPctClass(n: number | null): string {
-  if (n === null) return 'text-gray-200'
-  if (n > 0) return 'text-emerald-400'
-  if (n < 0) return 'text-rose-400'
-  return 'text-gray-300'
+  return getProfitLossTextClass(n)
 }
 
-function orPositionClass(raw: string): string {
-  const s = raw.toLowerCase()
-  if (s === 'above') return 'text-emerald-400'
-  if (s === 'below') return 'text-rose-400'
-  if (s === 'inside') return 'text-amber-400/90'
-  return 'text-gray-200'
+function vixClass(n: number | null): Tone {
+  if (n === null) return 'gray'
+  if (n >= 30) return 'red'
+  if (n <= 18) return 'green'
+  return 'blue'
 }
 
-function volumeSpikeClass(yes: boolean): string {
-  return yes ? 'text-emerald-400' : 'text-rose-400/95'
+function toneForOptionRisk(value: string): Tone {
+  const risk = String(value || '').toUpperCase()
+  if (risk === 'HIGH') return 'red'
+  if (risk === 'MEDIUM') return 'orange'
+  if (risk === 'LOW') return 'green'
+  return 'gray'
 }
 
-function vixClass(n: number | null): string {
-  if (n === null) return 'text-gray-200'
-  if (n >= 30) return 'text-rose-400'
-  if (n <= 18) return 'text-emerald-400/90'
-  return 'text-gray-200'
+function optionRiskLabel(key: 'theta_risk' | 'gamma_risk' | 'iv_risk' | 'liquidity_risk'): string {
+  if (key === 'theta_risk') return 'Theta'
+  if (key === 'gamma_risk') return 'Gamma'
+  if (key === 'iv_risk') return 'IV'
+  return 'Liquidity'
 }
 
-const CONF_LABEL: Record<string, string> = {
-  trend_strength: 'Trend strength',
-  breakout_quality: 'Breakout quality',
-  volume_confirmation: 'Volume confirmation',
-  market_alignment: 'Market alignment',
-  risk: 'Risk',
+function optionRiskChrome(warning: string, hasOptions: boolean): string {
+  if (!hasOptions) return 'border-gray-800/90 bg-black/15'
+  const upper = String(warning || '').toUpperCase()
+  if (upper.includes('HIGH') || upper.includes('POOR LIQUIDITY')) return 'border-semantic-bearish-border bg-semantic-bearish-bg'
+  if (upper.includes('MODERATE') || upper.includes('FAIR LIQUIDITY') || upper.includes('ELEVATED')) return 'border-semantic-warning-border bg-semantic-warning-bg'
+  return 'border-semantic-info-border bg-semantic-info-bg'
 }
 
-function confidenceTone(dim: string, val: string): string {
-  switch (dim) {
-    case 'risk':
-      if (val === 'LOW') return 'text-emerald-400'
-      if (val === 'MEDIUM') return 'text-amber-400'
-      return 'text-rose-400'
-    case 'trend_strength':
-      if (val === 'HIGH') return 'text-emerald-400'
-      if (val === 'MEDIUM') return 'text-amber-400'
-      return 'text-gray-400'
-    case 'breakout_quality':
-      if (val === 'GOOD') return 'text-emerald-400'
-      if (val === 'FAIR') return 'text-amber-400'
-      return 'text-rose-400'
-    case 'volume_confirmation':
-      return val === 'STRONG' ? 'text-emerald-400' : 'text-rose-400'
-    case 'market_alignment':
-      if (val === 'STRONG') return 'text-emerald-400'
-      if (val === 'MEDIUM') return 'text-amber-400'
-      return 'text-rose-400'
-    default:
-      return 'text-gray-200'
+// ─── Signal breakdown builder ───────────────────────────────────────
+
+type SignalMap = Record<string, { text: string; tone: Tone } | null>
+
+function computeSignals(result: DayTradeScanResult, m: Record<string, unknown>): SignalMap {
+  const confRaw = m.confidence
+  const confidence = confRaw && typeof confRaw === 'object' && !Array.isArray(confRaw)
+    ? confRaw as Record<string, string> : null
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const mom = asFiniteNum(m.momentum_pct)
+  const volSpike = !!m.volume_spike
+  const rsN = asFiniteNum(m.rs_vs_qqq_pct)
+  const orBreakout = String(m.or_breakout ?? '')
+
+  const trendVal = confidence?.trend_strength ?? null
+  const breakoutVal = confidence?.breakout_quality ?? null
+  const volVal = confidence?.volume_confirmation ?? null
+  const marketVal = confidence?.market_alignment ?? null
+  const riskVal = confidence?.risk ?? null
+
+  const toneForConf = (key: string, val: string): Tone => {
+    if (val === 'HIGH' || val === 'STRONG' || val === 'GOOD') return 'green'
+    if (val === 'MEDIUM' || val === 'FAIR') return 'blue'
+    if (val === 'LOW' || val === 'WEAK' || val === 'POOR') return 'orange'
+    return 'gray'
+  }
+
+  return {
+    trend_strength: trendVal ? { text: trendVal, tone: toneForConf('trend_strength', trendVal) } : null,
+    breakout_quality: breakoutVal ? { text: breakoutVal, tone: toneForConf('breakout_quality', breakoutVal) } : null,
+    volume_confirmation: volVal ? { text: volVal, tone: toneForConf('volume_confirmation', volVal) } : null,
+    market_alignment: marketVal ? { text: marketVal, tone: toneForConf('market_alignment', marketVal) } : null,
+    risk: riskVal ? { text: riskVal, tone: toneForRisk(riskVal) } : null,
+    vwap_position: vwapDist != null
+      ? { text: vwapDist >= 0 ? 'Above VWAP' : 'Below VWAP', tone: vwapDist >= 0 ? 'green' : 'red' }
+      : null,
+    momentum: mom != null
+      ? { text: `${mom >= 0 ? '+' : ''}${mom.toFixed(1)}%`, tone: mom > 0 ? 'green' : mom < 0 ? 'red' : 'gray' }
+      : null,
+    volume: volSpike
+      ? { text: 'Confirmed', tone: 'green' }
+      : { text: 'Normal', tone: 'blue' },
+    relative_strength: rsN != null
+      ? { text: rsN >= 0 ? 'Positive' : 'Negative', tone: rsN >= 0 ? 'green' : 'red' }
+      : null,
+    or_position: orBreakout
+      ? { text: orBreakout.replace(/_/g, ' '), tone: orBreakout === 'ABOVE' ? 'green' : orBreakout === 'BELOW' ? 'red' : 'blue' }
+      : null,
   }
 }
 
-function rsSessionClass(rs: number | null): string {
-  if (rs === null) return 'text-gray-200'
-  if (rs >= 0.02) return 'text-emerald-400'
-  if (rs <= -0.02) return 'text-rose-400'
-  return 'text-gray-300'
+// ─── Reasoning builder ──────────────────────────────────────────────
+
+type ReasoningBlock = {
+  title: string
+  items: string[]
+  tone: 'emerald' | 'amber' | 'sky' | 'violet'
 }
 
-function decisionBadgeClass(value: string): string {
-  const v = value.toUpperCase()
-  if (v === 'READY' || v === 'TRADE') return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-  if (v === 'WATCH' || v === 'WAIT') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'AVOID' || v === 'EXIT' || v === 'NO_EDGE') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  if (v === 'BULLISH') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'BEARISH') return 'border-rose-600/35 bg-rose-500/10 text-rose-200'
-  if (v === 'MIXED') return 'border-sky-700/35 bg-sky-500/10 text-sky-200'
-  if (v === 'STRONG' || v === 'GOOD') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'FAIR' || v === 'WEAK') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'POOR') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  if (v === 'LOW') return 'border-emerald-600/35 bg-emerald-500/10 text-emerald-200'
-  if (v === 'MEDIUM') return 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-  if (v === 'HIGH' || v === 'EXTREME') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
-  return 'border-gray-700/40 bg-gray-800/80 text-gray-200'
+function computeReasoning(result: DayTradeScanResult, m: Record<string, unknown>): ReasoningBlock[] {
+  const blocks: ReasoningBlock[] = []
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const mom = asFiniteNum(m.momentum_pct)
+  const volSpike = !!m.volume_spike
+  const rsN = asFiniteNum(m.rs_vs_qqq_pct)
+  const orBreakout = String(m.or_breakout ?? '')
+  const marketBias = result.market_bias
+
+  // WHY THIS TRADE
+  const whyTrade: string[] = []
+  if (marketBias) {
+    whyTrade.push(`Market bias: ${marketBias.replace(/_/g, ' ')}`)
+  }
+  if (volSpike) whyTrade.push('Volume spike confirms participation')
+  if (vwapDist != null && vwapDist > 0) whyTrade.push('Price positioned above VWAP — bullish intraday bias')
+  if (rsN != null && rsN > 0) whyTrade.push(`Relative strength vs QQQ positive (${rsN >= 0 ? '+' : ''}${rsN.toFixed(2)}%)`)
+  if (orBreakout === 'ABOVE') whyTrade.push('Breakout above opening range — momentum expanding')
+  if (result.supporting_factors.length > 0) whyTrade.push(...result.supporting_factors.slice(0, 2))
+  if (whyTrade.length === 0 && result.reason) whyTrade.push(result.reason)
+  if (whyTrade.length > 0) blocks.push({ title: 'WHY THIS TRADE', items: whyTrade, tone: 'emerald' })
+
+  // WHY THIS EXECUTION
+  const whyExec: string[] = []
+  if (result.execution_timing) {
+    whyExec.push(`Execution state: ${result.execution_timing.replace(/_/g, ' ')}`)
+  }
+  if (result.entry_guidance?.action) {
+    whyExec.push(result.entry_guidance.action)
+  }
+  if (result.missing_confirmations.length > 0) {
+    whyExec.push(...result.missing_confirmations.slice(0, 2).map(c => `Waiting: ${c}`))
+  }
+  if (vwapDist != null && vwapDist < 0) whyExec.push('Price below VWAP — wait for reclamation before entry')
+  if (mom != null && mom > 2) whyExec.push('Momentum extended — avoid chasing at current levels')
+  if (whyExec.length > 0) blocks.push({ title: 'WHY THIS EXECUTION', items: whyExec, tone: 'sky' })
+
+  // WHY THIS STRUCTURE
+  const whyStruct: string[] = []
+  if (result.bias === 'long') whyStruct.push('Bullish bias — call structures preferred')
+  if (result.bias === 'short') whyStruct.push('Bearish bias — put structures preferred')
+  const vix = asFiniteNum(m.vix)
+  if (vix != null) {
+    if (vix > 25) whyStruct.push('Elevated VIX — spreads define risk, consider debit spreads')
+    else whyStruct.push('Benign VIX — directional premium reasonable')
+  }
+  blocks.push({ title: 'WHY THIS STRUCTURE', items: whyStruct, tone: 'violet' })
+
+  // RISK NOTES
+  const riskNotes: string[] = []
+  if (result.risk_reason) riskNotes.push(result.risk_reason)
+  if (result.explanation?.main_risk) riskNotes.push(result.explanation.main_risk)
+  if (mom != null && Math.abs(mom) > 1.5) riskNotes.push(`Momentum at ${mom >= 0 ? '+' : ''}${mom.toFixed(1)}% — extension risk`)
+  if (result.entry_guidance?.avoid) riskNotes.push(result.entry_guidance.avoid)
+  if (vwapDist != null && vwapDist < -0.5) riskNotes.push('Price significantly below VWAP — breakdown risk')
+  if (riskNotes.length === 0) riskNotes.push('No material risk flags — standard intraday position management applies')
+  blocks.push({ title: 'RISK NOTES', items: riskNotes, tone: 'amber' })
+
+  return blocks
 }
 
-function DecisionCell({ label, value }: { label: string; value: string }) {
+// ─── Risk panel builder ─────────────────────────────────────────────
+
+type RiskItem = { label: string; value: string; tone: 'green' | 'amber' | 'red' | 'gray' }
+
+function computeRiskPanel(result: DayTradeScanResult, m: Record<string, unknown>): RiskItem[] {
+  const items: RiskItem[] = []
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const mom = asFiniteNum(m.momentum_pct)
+  const vix = asFiniteNum(m.vix)
+  const volSpike = !!m.volume_spike
+  const orBreakout = String(m.or_breakout ?? '')
+
+  const riskTone: 'green' | 'amber' | 'red' | 'gray' = (() => {
+    const r = result.risk_state?.toUpperCase()
+    if (r === 'LOW') return 'green'
+    if (r === 'MEDIUM' || r === 'HIGH' || r === 'VERY_HIGH') return 'amber'
+    if (r === 'EXTREME') return 'red'
+    return 'gray'
+  })()
+  items.push({
+    label: 'Overall Risk',
+    value: result.risk_state ? result.risk_state.replace(/_/g, ' ') : '—',
+    tone: riskTone,
+  })
+
+  items.push({
+    label: 'Momentum Risk',
+    value: mom != null && Math.abs(mom) > 1.5 ? 'Elevated' : 'Manageable',
+    tone: mom != null && Math.abs(mom) > 1.5 ? 'amber' : 'green',
+  })
+
+  items.push({
+    label: 'Breakout Failure',
+    value: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'Low' : 'Moderate',
+    tone: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'green' : 'amber',
+  })
+
+  items.push({
+    label: 'Extended Move',
+    value: mom != null && mom > 2 ? 'High' : mom != null && mom < -2 ? 'High' : 'Low',
+    tone: mom != null && Math.abs(mom) > 2 ? 'red' : 'green',
+  })
+
+  items.push({
+    label: 'Volume Fade',
+    value: volSpike ? 'Low' : 'Possible',
+    tone: volSpike ? 'green' : 'amber',
+  })
+
+  const vixRiskTone: 'green' | 'amber' | 'red' | 'gray' = vix == null ? 'gray' : vix >= 30 ? 'red' : vix <= 18 ? 'green' : 'amber'
+  items.push({
+    label: 'VIX Context',
+    value: vix != null ? `${vix.toFixed(1)}` : '—',
+    tone: vixRiskTone,
+  })
+
+  return items
+}
+
+function formatLabel(value: string | null | undefined): string {
+  if (!value) return '—'
+  return value.replace(/_/g, ' ')
+}
+
+function normalizedActionState(value: string | null | undefined): string {
+  const v = String(value || '').toUpperCase()
+  if (!v) return 'WAIT'
+  if (v.includes('READY') || v.includes('STRONG GO') || v === 'GO') return 'READY'
+  if (v.includes('WATCH')) return 'WATCH'
+  if (v.includes('WAIT') || v.includes('CONDITIONAL')) return 'WAIT'
+  if (v.includes('EXTENDED') || v.includes('AVOID_CHASE')) return 'EXTENDED'
+  if (v.includes('EXIT') || v.includes('AVOID') || v.includes('NO GO') || v.includes('NO-GO') || v.includes('NO_EDGE')) return 'AVOID'
+  if (v.includes('MANAGE')) return 'MANAGE'
+  return 'WAIT'
+}
+
+function actionTone(value: string | null | undefined): Tone {
+  const state = normalizedActionState(value)
+  if (state === 'READY') return 'green'
+  if (state === 'WATCH') return 'blue'
+  if (state === 'WAIT' || state === 'EXTENDED') return 'orange'
+  if (state === 'AVOID') return 'red'
+  return 'gray'
+}
+
+function actionButtonClass(tone: Tone): string {
+  if (tone === 'green' || tone === 'blue') return getActionButtonClass('trade')
+  if (tone === 'orange' || tone === 'red') return getActionButtonClass('surface')
+  return getActionButtonClass('surface')
+}
+
+function toneForExecText(value: string | null | undefined): string {
+  const tone = actionTone(value)
+  if (tone === 'green') return 'text-semantic-bullish'
+  if (tone === 'blue') return 'text-semantic-info'
+  if (tone === 'orange') return 'text-semantic-warning'
+  if (tone === 'red') return 'text-semantic-bearish'
+  return 'text-secondary'
+}
+
+function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, unknown>): string {
+  const parts: string[] = []
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const mom = asFiniteNum(m.momentum_pct)
+  const volSpike = !!m.volume_spike
+  const marketBias = formatLabel(result.market_bias).toLowerCase()
+  const pullbackProb = formatLabel(result.entry_guidance?.pullback_probability).toLowerCase()
+  const shouldEnter = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+
+  parts.push(
+    result.market_bias
+      ? `Market bias is ${marketBias}.`
+      : 'Market context is mixed.'
+  )
+
+  if (vwapDist != null) {
+    parts.push(
+      vwapDist >= 0
+        ? 'Price is holding above VWAP, so intraday structure is constructive.'
+        : 'Price is below VWAP, so reclaim confirmation still matters.'
+    )
+  }
+
+  if (String(m.or_breakout || '') === 'ABOVE') {
+    parts.push('The ticker is trading above the opening range high, which supports continuation.')
+  } else if (String(m.or_breakout || '') === 'BELOW') {
+    parts.push('The ticker is trading below the opening range low, which favors downside continuation.')
+  } else {
+    parts.push('Opening-range breakout is not fully confirmed yet.')
+  }
+
+  if (volSpike) {
+    parts.push('Volume participation is expanding.')
+  } else {
+    parts.push('Volume is not fully confirming yet.')
+  }
+
+  if (shouldEnter === 'YES') {
+    parts.push('Execution is ready if VWAP support remains intact.')
+  } else if (shouldEnter === 'CONDITIONAL') {
+    parts.push('Execution is conditional, so wait for the next confirmation candle.')
+  } else {
+    parts.push('Execution is not ready yet, so patience is better than chasing.')
+  }
+
+  if (mom != null && Math.abs(mom) > 2) {
+    parts.push('Momentum is extended, so protect against chase risk.')
+  } else if (pullbackProb && pullbackProb !== '—') {
+    parts.push(`Pullback probability is ${pullbackProb}.`)
+  }
+
+  return parts.join(' ')
+}
+
+function computeBestNextStep(result: DayTradeScanResult): string {
+  const eg = result.entry_guidance
+  const decision = eg?.entry_decision as Record<string, string> | undefined
+  if (decision?.best_setup) return decision.best_setup
+  if (eg?.pending_confirmations?.length) return eg.pending_confirmations[0] || eg.action || result.reason
+  if (eg?.action) return eg.action
+  return result.reason
+}
+
+function computeIntradayManagementPlan(result: DayTradeScanResult, m: Record<string, unknown>): string[] {
+  const items: string[] = []
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const mom = asFiniteNum(m.momentum_pct)
+  const volSpike = !!m.volume_spike
+  const orBreakout = String(m.or_breakout || '').toUpperCase()
+  const eg = result.entry_guidance
+
+  if (orBreakout === 'ABOVE' || orBreakout === 'BELOW') {
+    items.push('If the breakout works, scale some size into strength and keep the stop anchored to structure.')
+  }
+  if (vwapDist != null && vwapDist >= 0) {
+    items.push('If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.')
+  } else {
+    items.push('If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
+  }
+  if (!volSpike) {
+    items.push('If volume stays weak, avoid adding size even if price drifts higher.')
+  } else {
+    items.push('If volume fades after the entry candle, tighten stops under the most recent support.')
+  }
+  if (mom != null && Math.abs(mom) > 2) {
+    items.push('If extension keeps increasing, protect profits early and avoid turning an intraday trade into a hope trade.')
+  } else {
+    items.push('If momentum cools while structure holds, partial scale-outs are fine before reloading on confirmation.')
+  }
+  if (eg?.avoid) {
+    items.push(`Avoid condition: ${eg.avoid}`)
+  } else {
+    items.push('If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
+  }
+  return items
+}
+
+function buildDayWalkthrough(result: DayTradeScanResult, m: Record<string, unknown>): string[] {
+  const marketBias = formatLabel(result.market_bias)
+  const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const volSpike = !!m.volume_spike
+  const orBreakout = String(m.or_breakout || '')
+  const optionRisk = result.option_risk_context
+  const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+  const steps: string[] = []
+
+  steps.push(result.market_bias ? `Market is ${marketBias.toLowerCase()}.` : 'Market context is mixed.')
+  steps.push(
+    vwapDist != null && vwapDist >= 0
+      ? 'Price is holding above VWAP, so intraday structure is constructive.'
+      : 'Price is not holding above VWAP yet, so structure is still fragile.'
+  )
+  steps.push(
+    orBreakout === 'ABOVE'
+      ? 'The breakout is present, but it still needs continuation quality.'
+      : orBreakout === 'BELOW'
+        ? 'Breakdown pressure exists, but follow-through still matters.'
+        : 'Opening-range confirmation is still missing.'
+  )
+  steps.push(
+    volSpike
+      ? 'Volume is confirming the move, so execution quality improves.'
+      : 'Volume is not expanding yet, so the safer entry comes after confirmation.'
+  )
+  if (optionRisk?.option_execution_warning) {
+    steps.push(optionRisk.option_execution_warning)
+  }
+  steps.push(
+    exec === 'YES'
+      ? 'Execution is allowed now, but intraday risk still requires a tight invalidation.'
+      : exec === 'CONDITIONAL'
+        ? 'Entry is conditional, so wait for the trigger candle before committing size.'
+        : 'Execution is not ready yet, so patience is the trade.'
+  )
+  return steps
+}
+
+function buildSeriesPath(values: number[], width: number, height: number): string {
+  if (values.length === 0) return ''
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  return values
+    .map((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * width
+      const y = height - ((value - min) / range) * height
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+    })
+    .join(' ')
+}
+
+function MiniLineChart({
+  values,
+  stroke,
+  fill,
+}: {
+  values: number[]
+  stroke: string
+  fill?: string
+}) {
+  if (values.length < 2) {
+    return <div className="rounded-lg border border-gray-800/80 bg-black/20 px-3 py-6 text-xs text-gray-500">Not enough data.</div>
+  }
+
+  const width = 560
+  const height = 180
+  const path = buildSeriesPath(values, width, height)
   return (
-    <div className="rounded-xl border border-gray-800/90 bg-black/20 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${decisionBadgeClass(value)}`}>
-        {value || '—'}
+    <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3">
+      <svg viewBox={`0 0 ${width} ${height}`} className="block h-44 w-full" role="img" aria-label="Decision support chart">
+        <path d={path} fill="none" stroke={stroke} strokeWidth={3} strokeLinecap="round" />
+        {fill ? <path d={`${path} L ${width} ${height} L 0 ${height} Z`} fill={fill} opacity={0.18} /> : null}
+      </svg>
+    </div>
+  )
+}
+
+function MiniBarChart({
+  values,
+  color,
+}: {
+  values: number[]
+  color: string
+}) {
+  if (values.length < 2) {
+    return <div className="rounded-lg border border-gray-800/80 bg-black/20 px-3 py-6 text-xs text-gray-500">Not enough data.</div>
+  }
+  const max = Math.max(...values, 1)
+  return (
+    <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3">
+      <div className="flex h-44 items-end gap-[2px]">
+        {values.map((value, index) => (
+          <div
+            key={`${index}-${value}`}
+            className="flex-1 rounded-t-sm"
+            style={{
+              height: `${Math.max(6, (value / max) * 100)}%`,
+              background: color,
+            }}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-/** Full verdict + metrics + notes — same content as the Day Trade Engine result card. */
+// ─── Main Component ─────────────────────────────────────────────────
+
+interface Props {
+  result: DayTradeScanResult
+  onRefresh?: () => void
+  refreshing?: boolean
+  showRefresh?: boolean
+  onRequestEnterActiveTrade?: () => void
+  onOpenStrategyFinder?: () => void
+  onOpenCommandCenter?: () => void
+  onCreateAlert?: () => void
+  onAddToWatchlist?: () => void
+  onViewSignals?: () => void
+}
+
 export default function DayTradeEnginePanel({
   result,
   onRefresh,
   refreshing,
   showRefresh = true,
   onRequestEnterActiveTrade,
-}: {
-  result: DayTradeScanResult
-  onRefresh?: () => void
-  refreshing?: boolean
-  showRefresh?: boolean
-  /** When set, shows admin-only CTA to persist this symbol for Day Trade Active monitoring. */
-  onRequestEnterActiveTrade?: () => void
-}) {
-  const cfg = verdictStyle(result.final_decision)
+  onOpenStrategyFinder,
+  onOpenCommandCenter,
+  onCreateAlert,
+  onAddToWatchlist,
+  onViewSignals,
+}: Props) {
+  const [signalsOpen, setSignalsOpen] = useState(false)
+  const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
+  const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
+  const signalsSectionRef = useRef<HTMLDivElement | null>(null)
+
   const m = result.metrics ?? {}
   const vwapDist = asFiniteNum(m.vwap_dist_pct)
   const mom = asFiniteNum(m.momentum_pct)
-  const spyChg = m.spy_change_pct == null ? null : asFiniteNum(m.spy_change_pct)
-  const qqqChg = m.qqq_change_pct == null ? null : asFiniteNum(m.qqq_change_pct)
-  const vixN = m.vix == null ? null : asFiniteNum(m.vix)
-  const orBreakout = String(m.or_breakout ?? '—')
-  const rsN = m.rs_vs_qqq_pct == null ? null : asFiniteNum(m.rs_vs_qqq_pct)
+  const lastPrice = asFiniteNum(m.last_price)
+  const vwapValue = asFiniteNum(m.vwap)
+  const spyChg = asFiniteNum(m.spy_change_pct)
+  const qqqChg = asFiniteNum(m.qqq_change_pct)
+  const vixN = asFiniteNum(m.vix)
+  const rsN = asFiniteNum(m.rs_vs_qqq_pct)
   const rsLabel = typeof m.rs_vs_qqq_label === 'string' ? m.rs_vs_qqq_label : null
-  const confRaw = m.confidence
-  const confidence =
-    confRaw && typeof confRaw === 'object' && !Array.isArray(confRaw)
-      ? (confRaw as Record<string, string>)
-      : null
-  const confOrder = ['trend_strength', 'breakout_quality', 'volume_confirmation', 'market_alignment', 'risk'] as const
   const chartBars = parseChartBars(m.chart_bars)
   const orChartHigh = asFiniteNum(m.or_high)
   const orChartLow = asFiniteNum(m.or_low)
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
   const td = coerceTraderDecision(result.trader_decision ?? null)
+  const eg = result.entry_guidance
+  const signals = computeSignals(result, m)
+  const reasoning = computeReasoning(result, m)
+  const riskPanel = computeRiskPanel(result, m)
+  const decisionTone = actionTone(result.final_decision)
+  const execTone = actionTone(result.execution_readiness || result.execution_timing)
+  const optionRisk = result.option_risk_context
+  const hasOptionOverlay = !!optionRisk
+  const hasListedOptions = hasOptionOverlay && optionRisk?.suggested_contract_window !== 'N/A'
+  const optionWarning = String(optionRisk?.option_execution_warning || '').trim()
+  const optionRiskItems = optionRisk ? ([
+    ['theta_risk', optionRisk.theta_risk],
+    ['gamma_risk', optionRisk.gamma_risk],
+    ['iv_risk', optionRisk.iv_risk],
+    ['liquidity_risk', optionRisk.liquidity_risk],
+  ] as const) : []
+  const intradaySummary = computeIntradaySummary(result, m)
+  const bestNextStep = computeBestNextStep(result)
+  const managementPlan = computeIntradayManagementPlan(result, m)
+  const walkthroughSteps = buildDayWalkthrough(result, m)
+  const currentPrice = eg?.current_price ?? lastPrice
+  const breakoutLevel = eg?.breakout_level
+  const volumeSeries = chartBars?.map(bar => bar.v) ?? []
+  const momentumSeries = chartBars?.length
+    ? chartBars.map(bar => ((bar.c / chartBars[0].o) - 1) * 100)
+    : []
+  const relativeBars = [
+    { label: 'Ticker Mom', value: mom ?? 0, color: mom != null && mom >= 0 ? 'bg-semantic-bullish' : 'bg-semantic-bearish' },
+    { label: 'RS vs QQQ', value: rsN ?? 0, color: rsN != null && rsN >= 0 ? 'bg-semantic-info' : 'bg-semantic-bearish' },
+    { label: 'SPY', value: spyChg ?? 0, color: spyChg != null && spyChg >= 0 ? 'bg-semantic-bullish' : 'bg-semantic-bearish' },
+    { label: 'QQQ', value: qqqChg ?? 0, color: qqqChg != null && qqqChg >= 0 ? 'bg-semantic-accent' : 'bg-semantic-bearish' },
+  ]
+  const chaseRisk = mom != null && Math.abs(mom) > 2 ? 'HIGH' : mom != null && Math.abs(mom) > 1.2 ? 'MODERATE' : 'LOW'
+  const confirmationState = eg?.pending_confirmations?.length ? 'PENDING' : 'CLEAR'
 
   return (
-    <section className={`rounded-2xl border ${cfg.border} ${cfg.bg} ring-1 ${cfg.ring} p-4 sm:p-5 space-y-4`}>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-xs text-gray-500 font-mono">{result.ticker}</div>
-          <div className="text-sm text-gray-400">{result.company_name}</div>
+    <div className={`rounded-2xl border border-border bg-gray-900/70 overflow-hidden ${
+      decisionTone === 'green' ? 'ring-1 ring-semantic-bullish-border' :
+      decisionTone === 'blue' ? 'ring-1 ring-semantic-info-border' :
+      decisionTone === 'orange' ? 'ring-1 ring-semantic-warning-border' :
+      decisionTone === 'red' ? 'ring-1 ring-semantic-bearish-border' : 'ring-1 ring-border'
+    }`}>
+      <div className="px-4 pt-4 pb-3 border-b border-gray-800 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+            <div className="mt-1 flex items-center gap-2.5 flex-wrap">
+              <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
+              {result.company_name && (
+                <span className="text-xs text-gray-500 truncate max-w-[220px]">{result.company_name}</span>
+              )}
+            </div>
+            <div className="mt-1 text-sm text-gray-300">
+              {result.bias === 'short' ? 'Bearish' : 'Bullish'} intraday setup · {formatLabel(result.signal_quality || result.setup_quality)}
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1">
+              {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {showRefresh && onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing}
+                title="Re-scan"
+                className="rounded-lg p-1.5 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              </button>
+            )}
+          </div>
         </div>
-        {showRefresh && onRefresh && (
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
+            <div className="mt-1">
+              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
+                {formatLabel(result.final_decision)}
+              </span>
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Execution</div>
+            <div className="mt-1">
+              <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
+            <div className="mt-1">
+              <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
+            <div className="mt-1">
+              <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>
+                {result.market_bias || 'MIXED'}
+              </span>
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Confidence</div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{result.display_confidence ?? result.confidence} / 100</div>
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Next Step</div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{bestNextStep}</div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+            <BarChart2 size={12} />
+            AI Coach Summary
+          </div>
+          <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+          <div className="text-[11px] text-semantic-accent leading-relaxed">
+            Best setup: {computeBestNextStep(result)}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onRequestEnterActiveTrade && (
+            <button
+              type="button"
+              onClick={onRequestEnterActiveTrade}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
+            >
+              <PlusCircle size={14} />
+              Add to Positions
+            </button>
+          )}
+          {onCreateAlert && (
+            <button
+              type="button"
+              onClick={onCreateAlert}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${getActionButtonClass('alert')}`}
+            >
+              <Bell size={14} />
+              Add Alert
+            </button>
+          )}
+          {onOpenStrategyFinder && (
+            <button
+              type="button"
+              onClick={onOpenStrategyFinder}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}
+            >
+              <BarChart2 size={13} />
+              Strategy Finder
+            </button>
+          )}
+          {onOpenCommandCenter && (
+            <button
+              type="button"
+              onClick={onOpenCommandCenter}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
+            >
+              <Layers size={13} />
+              Command Center
+            </button>
+          )}
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="text-xs text-gray-400 hover:text-violet-400 flex items-center gap-1 shrink-0"
+            onClick={() => {
+              setSignalsOpen(true)
+              signalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              onViewSignals?.()
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
           >
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            <Search size={13} />
+            View Signals
           </button>
+          {onAddToWatchlist && (
+            <button
+              type="button"
+              onClick={onAddToWatchlist}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
+            >
+              <Star size={13} />
+              Add to Watchlist
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 1</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Market Context</h2>
+          <p className="mt-1 text-xs text-gray-400">Is the market helping or hurting this trade?</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <ExecMapRow label="SPY" value={spyChg != null ? `${spyChg >= 0 ? '+' : ''}${spyChg.toFixed(2)}%` : '—'} />
+          <ExecMapRow label="QQQ" value={qqqChg != null ? `${qqqChg >= 0 ? '+' : ''}${qqqChg.toFixed(2)}%` : '—'} />
+          <ExecMapRow label="VIX" value={vixN != null ? vixN.toFixed(1) : '—'} tone={toneForExecText(vixN != null ? (vixN >= 30 ? 'AVOID' : vixN <= 18 ? 'READY' : 'WAIT') : 'WAIT')} />
+          <ExecMapRow label="RS vs QQQ" value={rsLabel || (rsN != null ? `${rsN >= 0 ? '+' : ''}${rsN.toFixed(2)}%` : '—')} tone={toneForExecText(rsN != null ? (rsN >= 0 ? 'READY' : 'AVOID') : 'WAIT')} />
+          <ExecMapRow label="Market Support" value={formatLabel(result.market_bias)} tone={toneForExecText(result.market_bias)} />
+          <ExecMapRow label="Tape Quality" value={signals.volume_confirmation?.text || signals.volume?.text || 'Normal'} tone={toneForExecText(signals.volume_confirmation?.text || signals.volume?.text)} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>
+            {result.market_bias || 'MIXED'}
+          </span>
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getDecisionBadgeClass(result.bias === 'short' ? 'AVOID' : 'READY')}`}>
+            {result.bias === 'short' ? 'BEARISH POSTURE' : 'BULLISH POSTURE'}
+          </span>
+          <Badge text={signals.volume_confirmation?.text || 'Awaiting volume'} tone={signals.volume_confirmation?.tone || 'orange'} />
+        </div>
+        <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-xs text-gray-300 leading-relaxed">
+          {result.market_bias
+            ? `${formatLabel(result.market_bias)} market backdrop. ${rsN != null && rsN >= 0 ? 'Leadership is present relative to QQQ.' : 'Leadership is not clear yet.'} ${vixN != null && vixN < 20 ? 'Continuation probability is healthier with calmer volatility.' : 'Volatility is elevated enough to demand tighter confirmation.'}`
+            : 'Market context is mixed, so let confirmation matter more than bias.'}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 2</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Price &amp; Intraday Structure</h2>
+          <p className="mt-1 text-xs text-gray-400">Is the ticker structurally aligned with an intraday continuation or breakdown?</p>
+        </div>
+
+        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-5">
+          {signals.vwap_position ? <SignalRow label="VWAP Position" value={signals.vwap_position.text} tone={signals.vwap_position.tone} /> : null}
+          {signals.or_position ? <SignalRow label="OR Position" value={signals.or_position.text} tone={signals.or_position.tone} /> : null}
+          {signals.breakout_quality ? <SignalRow label="Breakout Quality" value={signals.breakout_quality.text} tone={signals.breakout_quality.tone} /> : null}
+          {signals.momentum ? <SignalRow label="Momentum" value={signals.momentum.text} tone={signals.momentum.tone} /> : null}
+          {signals.volume_confirmation ? <SignalRow label="Volume" value={signals.volume_confirmation.text} tone={signals.volume_confirmation.tone} /> : null}
+        </div>
+
+        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+          <ExecMapRow label="Current Price" value={currentPrice != null ? `$${currentPrice.toFixed(2)}` : null} />
+          <ExecMapRow label="VWAP" value={eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : vwapValue != null ? `$${vwapValue.toFixed(2)}` : null} />
+          <ExecMapRow label="ORH" value={eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : null} />
+          <ExecMapRow label="ORL" value={eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : null} />
+          <ExecMapRow label="Breakout Level" value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} />
+          <ExecMapRow label="Pullback Zone" value={eg?.pullback_zone ?? null} />
+          <ExecMapRow label="Scalp Target" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} />
+          <ExecMapRow label="Risk Below" value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} />
+        </div>
+
+        <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-xs text-gray-300 leading-relaxed">
+          {vwapDist != null && vwapDist >= 0
+            ? 'Price above VWAP and above the opening structure supports continuation, but the best entry still depends on breakout quality and volume.'
+            : 'Until price reclaims VWAP or confirms the breakdown, intraday structure is still incomplete.'}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 3</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Execution Analysis</h2>
+          <p className="mt-1 text-xs text-gray-400">Why is this entry good or bad right now, and what still needs to happen?</p>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <ExecMapRow label="Execution State" value={formatLabel(result.execution_readiness || result.execution_timing)} tone={toneForExecText(result.execution_readiness || result.execution_timing)} />
+          <ExecMapRow label="Volume Confirmation" value={signals.volume_confirmation?.text || signals.volume?.text || 'Normal'} tone={toneForExecText(signals.volume_confirmation?.text || signals.volume?.text)} />
+          <ExecMapRow label="Breakout Quality" value={signals.breakout_quality?.text || formatLabel(result.setup_quality)} tone={toneForExecText(signals.breakout_quality?.text || result.setup_quality)} />
+          <ExecMapRow label="Pullback Probability" value={formatLabel(eg?.pullback_probability)} tone={toneForExecText(eg?.pullback_probability)} />
+          <ExecMapRow label="Chase Risk" value={chaseRisk} tone={toneForExecText(chaseRisk)} />
+        </div>
+
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-2">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Confirmation State</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge text={confirmationState} tone={confirmationState === 'CLEAR' ? 'green' : 'orange'} />
+            {eg?.should_enter_now ? <Badge text={eg.should_enter_now === 'YES' ? 'ENTER NOW' : eg.should_enter_now === 'CONDITIONAL' ? 'WATCH' : 'WAIT'} tone={eg.should_enter_now === 'YES' ? 'green' : 'orange'} /> : null}
+          </div>
+          <div className="text-xs text-gray-300 leading-relaxed">
+            {eg?.action || 'Wait for VWAP support, breakout quality, and volume expansion to align before entry.'}
+          </div>
+          {eg?.pending_confirmations?.length ? (
+            <div className="rounded-lg border border-semantic-warning-border bg-semantic-warning-bg px-3 py-2 space-y-1">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-semantic-warning">What must happen first</div>
+              {eg.pending_confirmations.map((c, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-[11px] text-semantic-warning">
+                  <span className="mt-1 h-1 w-1 rounded-full bg-semantic-warning shrink-0" />
+                  {c}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 4</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Option Execution Context</h2>
+          <p className="mt-1 text-xs text-gray-400">Use options only if the intraday setup is valid and the contract quality is still tradable.</p>
+        </div>
+
+        {hasOptionOverlay ? (
+          <div className={`rounded-xl border px-3 py-3 space-y-3 ${optionRiskChrome(optionWarning, hasListedOptions)}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Intraday option awareness</div>
+                <div className="mt-1 text-xs text-gray-400">
+                  This does not change the day-trade signal. It only warns about execution friction.
+                </div>
+              </div>
+              <div className="rounded-full border border-semantic-accent-border bg-semantic-accent-bg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-semantic-accent">
+                {hasListedOptions ? (optionRisk?.suggested_contract_window || 'Same day') : 'Equity only'}
+              </div>
+            </div>
+
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+              {optionRiskItems.map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between rounded-lg border border-gray-800/80 bg-black/15 px-3 py-2">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{optionRiskLabel(key)}</span>
+                  <Badge text={String(value || '—')} tone={toneForOptionRisk(String(value || ''))} />
+                </div>
+              ))}
+            </div>
+
+            <div className="text-xs text-gray-200 leading-relaxed">
+              {optionWarning || 'Options look tradable, but only if the underlying confirms the setup first.'}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 text-xs text-gray-400">
+            No option-risk overlay is available for this symbol yet. Use the equity setup first, then verify contract quality separately.
+          </div>
         )}
       </div>
 
-      <div className="text-center py-2">
-        <div className={`font-black tracking-tight text-3xl sm:text-4xl ${cfg.text}`}>{result.final_decision}</div>
-        <p className="mt-2 text-sm text-gray-300">{result.reason || 'No clean trigger yet.'}</p>
-        <p className="mt-1 text-[11px] text-gray-500">
-          Market bias does not equal execution. Engine score: <span className="text-gray-300">{result.verdict}</span>
-        </p>
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 5</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Final Intraday Decision</h2>
+          <p className="mt-1 text-xs text-gray-400">Translate market support and setup quality into an actual execution decision.</p>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>{formatLabel(result.final_decision)}</span>
+              <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
+              {eg?.pullback_probability ? <Badge text={`Pullback ${eg.pullback_probability}`} tone={eg.pullback_probability === 'HIGH' ? 'orange' : eg.pullback_probability === 'LOW' ? 'green' : 'blue'} /> : null}
+              <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
+            </div>
+            <div className="text-sm text-gray-200 leading-relaxed">{result.reason || eg?.action || 'Wait for the next valid confirmation before entry.'}</div>
+            {eg?.avoid ? (
+              <div className="flex items-start gap-1.5 text-xs text-semantic-bearish bg-semantic-bearish-bg border border-semantic-bearish-border rounded-lg px-3 py-2">
+                <ShieldAlert size={12} className="shrink-0 mt-0.5" />
+                {eg.avoid}
+              </div>
+            ) : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Conservative Entry</div>
+                <div className="mt-1 text-xs text-gray-300">{(eg?.entry_decision as Record<string, string> | undefined)?.conservative || 'Wait for volume expansion above the trigger.'}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">Aggressive Entry</div>
+                <div className="mt-1 text-xs text-gray-300">{(eg?.entry_decision as Record<string, string> | undefined)?.aggressive || 'Only acceptable if VWAP remains supported and the breakout candle is clean.'}</div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500">Best Setup</div>
+              <div className="mt-1 text-xs text-gray-300">{(eg?.entry_decision as Record<string, string> | undefined)?.best_setup || bestNextStep}</div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">AI Decision Walkthrough</div>
+            <div className="space-y-1.5">
+              {walkthroughSteps.map((step, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-gray-200 leading-relaxed">
+                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-semantic-accent-border bg-semantic-accent-bg text-[10px] font-bold text-semantic-accent shrink-0">{i + 1}</span>
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DecisionCell label="Market Bias" value={result.market_bias} />
-        <DecisionCell label="Setup Quality" value={result.setup_quality} />
-        <DecisionCell label="Execution Readiness" value={result.execution_readiness} />
-        <DecisionCell label="Final Decision" value={result.final_decision} />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 6</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Intraday Management Plan</h2>
+          <p className="mt-1 text-xs text-gray-400">Know the management plan before entry so you do not improvise under pressure.</p>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          {riskPanel.map(item => (
+            <div key={item.label} className="flex items-center justify-between gap-2 rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
+              <span className="text-[10px] text-gray-500 font-medium">{item.label}</span>
+              <span className={`text-xs font-semibold ${
+                item.tone === 'green' ? 'text-semantic-bullish' : item.tone === 'amber' ? 'text-semantic-warning' : item.tone === 'red' ? 'text-semantic-bearish' : 'text-secondary'
+              }`}>{item.value}</span>
+            </div>
+          ))}
+        </div>
         <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-          <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-gray-500">
-            <span>Confidence</span>
-            <span className="font-semibold text-gray-300">{result.confidence}%</span>
-          </div>
-          <div className="mt-2 h-2 rounded-full bg-gray-800">
-            <div
-              className={`${result.confidence >= 70 ? 'bg-emerald-400' : result.confidence >= 45 ? 'bg-amber-400' : 'bg-rose-400'} h-2 rounded-full`}
-              style={{ width: `${Math.max(0, Math.min(100, result.confidence))}%` }}
-            />
-          </div>
-        </div>
-        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Risk State</div>
-          <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${decisionBadgeClass(result.risk_state)}`}>
-            {result.risk_state}
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Management Checklist</div>
+          <div className="space-y-1.5">
+            {managementPlan.map((item, index) => (
+              <div key={index} className="flex items-start gap-1.5 text-[11px] text-gray-300 leading-relaxed">
+                <span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />
+                {item}
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {result.missing_confirmations.length > 0 && (
-        <div className="rounded-xl border border-amber-700/30 bg-amber-950/20 px-3 py-3">
-          <div className="text-[10px] uppercase tracking-wide text-amber-200/80">Missing Confirmations</div>
-          <p className="mt-1 text-sm text-amber-100/90">{result.missing_confirmations.join(' · ')}</p>
-        </div>
-      )}
+      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setChartsOpen(v => !v)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+          >
+            <span>
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Decision Charts</div>
+              <div className="text-xs text-gray-400 mt-0.5">Use the session chart to support the decision, not replace it.</div>
+            </span>
+            {chartsOpen ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
+          </button>
+          {chartsOpen ? (
+            <div className="border-t border-gray-800 px-3 py-3 space-y-3">
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ['session', 'Session Chart'],
+                  ['vwap', 'VWAP + OR'],
+                  ['volume', 'Volume'],
+                  ['momentum', 'Momentum'],
+                  ['relative', 'Relative Strength vs QQQ'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setChartTab(value as 'session' | 'vwap' | 'volume' | 'momentum' | 'relative')}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                      chartTab === value
+                        ? 'border border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
+                        : 'border border-border bg-gray-800 text-secondary hover:bg-gray-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-      {td ? <DayTradeTraderDecisionExpanded td={td} /> : null}
+              {(chartTab === 'session' || chartTab === 'vwap') && chartBars && orChartHigh != null && orChartLow != null ? (
+                <div className="space-y-2">
+                  <DayTradeIntradayChart
+                    bars={chartBars}
+                    orHigh={orChartHigh}
+                    orLow={orChartLow}
+                    orMinutes={orMinN}
+                    sessionDate={String(m.session_date ?? '')}
+                  />
+                  <div className="text-xs text-gray-400">
+                    {chartTab === 'session'
+                      ? 'Session view: watch the relationship between price, VWAP, and the opening range before forcing an entry.'
+                      : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear the opening-range trigger with real participation.'}
+                  </div>
+                </div>
+              ) : null}
 
-      {chartBars && orChartHigh != null && orChartLow != null && (
-        <DayTradeIntradayChart
-          bars={chartBars}
-          orHigh={orChartHigh}
-          orLow={orChartLow}
-          orMinutes={orMinN}
-          sessionDate={String(m.session_date ?? '')}
-        />
-      )}
+              {chartTab === 'volume' ? (
+                <div className="space-y-2">
+                  <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" />
+                  <div className="text-xs text-gray-400">Volume should expand into the breakout candle, not shrink while price stretches.</div>
+                </div>
+              ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-emerald-950/25 border border-emerald-800/40 px-3 py-2 text-center ring-1 ring-emerald-500/10">
-          <div className="text-[10px] uppercase tracking-wide text-emerald-600/80 dark:text-emerald-500/80">Bull score</div>
-          <div className="text-xl font-mono tabular-nums text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.15)]">
-            {result.bull_score}
-          </div>
-        </div>
-        <div className="rounded-xl bg-rose-950/25 border border-rose-800/40 px-3 py-2 text-center ring-1 ring-rose-500/10">
-          <div className="text-[10px] uppercase tracking-wide text-rose-600/80 dark:text-rose-500/80">Bear score</div>
-          <div className="text-xl font-mono tabular-nums text-rose-400 drop-shadow-[0_0_12px_rgba(251,113,133,0.12)]">
-            {result.bear_score}
-          </div>
+              {chartTab === 'momentum' ? (
+                <div className="space-y-2">
+                  <MiniLineChart values={momentumSeries} stroke="var(--chart-line-ma20)" fill="var(--chart-line-ma20)" />
+                  <div className="text-xs text-gray-400">Momentum should trend cleanly upward for continuation longs or downward for breakdown shorts. Flat momentum means wait.</div>
+                </div>
+              ) : null}
+
+              {chartTab === 'relative' ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3 space-y-3">
+                    {relativeBars.map(item => {
+                      const width = Math.min(100, Math.max(8, Math.abs(item.value) * 20))
+                      return (
+                        <div key={item.label} className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-gray-400">{item.label}</span>
+                            <span className={signedPctClass(item.value)}>{item.value >= 0 ? '+' : ''}{item.value.toFixed(2)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-gray-800">
+                            <div className={`h-2 rounded-full ${item.color}`} style={{ width: `${width}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="text-xs text-gray-400">Relative strength should stay positive versus QQQ for a bullish day setup to deserve aggressive execution.</div>
+                </div>
+              ) : null}
+
+              {!chartBars && (chartTab === 'session' || chartTab === 'vwap') ? (
+                <p className="text-xs text-gray-500 py-2">Chart data unavailable.</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 px-3 py-2.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-400/90 mb-2">
-          Intraday confidence
+      <div ref={signalsSectionRef} className="px-4 py-4 border-b border-gray-800 space-y-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Advanced Diagnostics</div>
+          <h2 className="mt-1 text-sm font-bold text-white">Signal Engine Breakdown</h2>
+          <p className="mt-1 text-xs text-gray-400">Keep the full diagnostic layer, but use it after the trade workflow is clear.</p>
         </div>
-        {confidence ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {confOrder.map(key => {
-              const val = confidence[key]
-              if (!val) return null
+        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+          {signals.trend_strength && <SignalRow label="Trend Strength" value={signals.trend_strength.text} tone={signals.trend_strength.tone} />}
+          {signals.breakout_quality && <SignalRow label="Breakout Quality" value={signals.breakout_quality.text} tone={signals.breakout_quality.tone} />}
+          {signals.volume_confirmation && <SignalRow label="Volume Conf." value={signals.volume_confirmation.text} tone={signals.volume_confirmation.tone} />}
+          {signals.market_alignment && <SignalRow label="Market Align" value={signals.market_alignment.text} tone={signals.market_alignment.tone} />}
+          {signals.vwap_position && <SignalRow label="VWAP Position" value={signals.vwap_position.text} tone={signals.vwap_position.tone} />}
+          {signals.momentum && <SignalRow label="Momentum" value={signals.momentum.text} tone={signals.momentum.tone} />}
+          {signals.volume && <SignalRow label="Volume" value={signals.volume.text} tone={signals.volume.tone} />}
+          {signals.relative_strength && <SignalRow label="RS vs QQQ" value={signals.relative_strength.text} tone={signals.relative_strength.tone} />}
+          {signals.risk && <SignalRow label="Risk" value={signals.risk.text} tone={signals.risk.tone} />}
+          {signals.or_position && <SignalRow label="OR Position" value={signals.or_position.text} tone={signals.or_position.tone} />}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {reasoning.map(block => {
+            const borderMap: Record<string, string> = {
+              emerald: 'border-l-emerald-600/50', amber: 'border-l-amber-600/50',
+              sky: 'border-l-sky-600/50', violet: 'border-l-violet-600/50',
+            }
+            const dotMap: Record<string, string> = {
+              emerald: 'bg-semantic-bullish', amber: 'bg-semantic-warning',
+              sky: 'bg-semantic-info', violet: 'bg-semantic-accent',
+            }
+            return (
+              <div key={block.title} className={`rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2.5 border-l-2 ${borderMap[block.tone]}`}>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">{block.title}</div>
+                <ul className="space-y-0.5">
+                  {block.items.map((item, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed">
+                      <span className={`mt-1.5 h-1 w-1 rounded-full ${dotMap[block.tone]} shrink-0`} />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="border-b border-gray-800">
+        <button
+          type="button"
+          onClick={() => setSignalsOpen(v => !v)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 hover:bg-gray-800/40 transition-colors"
+        >
+          <span>Signal Notes ({result.reasons.length})</span>
+          {signalsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        {signalsOpen && (
+          <div className="px-4 pb-4 pt-1 space-y-1.5">
+            {result.reasons.map((r, i) => {
+              const lower = r.toLowerCase()
+              let icon = <Minus size={12} className="shrink-0 mt-0.5 text-gray-600" />
+              let lineClass = 'text-gray-400'
+              if (lower.startsWith('strong go') || lower.includes('bullish') || /above vwap|above opening|volume spike|outperforming/.test(lower)) {
+                icon = <CheckCircle size={12} className="shrink-0 mt-0.5 text-semantic-bullish" />
+                lineClass = 'text-semantic-bullish'
+              } else if (/below vwap|below opening|bearish|lagging qqq|no volume spike/.test(lower)) {
+                icon = <AlertTriangle size={12} className="shrink-0 mt-0.5 text-semantic-warning" />
+                lineClass = 'text-semantic-warning'
+              } else if (/avoid|vix very high|elevated vix|skipping|reversal risk|headline risk/.test(lower)) {
+                icon = <ShieldAlert size={12} className="shrink-0 mt-0.5 text-semantic-bearish" />
+                lineClass = 'text-semantic-bearish'
+              }
               return (
-                <div
-                  key={key}
-                  className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-1.5 text-sm"
-                >
-                  <span className="text-gray-500">{CONF_LABEL[key] ?? key}</span>
-                  <span className={`font-bold font-mono tabular-nums ${confidenceTone(key, val)}`}>
-                    {val}
-                  </span>
+                <div key={i} className={`flex items-start gap-2 text-xs leading-relaxed ${lineClass}`}>
+                  {icon}
+                  <span>{r}</span>
                 </div>
               )
             })}
           </div>
-        ) : (
-          <p className="text-xs text-gray-500">Confidence scores unavailable.</p>
         )}
       </div>
 
-      <div className="rounded-xl border border-gray-800 bg-gray-950/50 px-3 py-1">
-        <MetricRow label="Session (ET date)" value={String(m.session_date ?? '—')} />
-        <MetricRow
-          label="Last"
-          value={`$${fmtNum(m.last_price, 4)}`}
-          valueClassName="text-gray-100"
-        />
-        <MetricRow label="VWAP" value={`$${fmtNum(m.vwap, 4)}`} valueClassName="text-sky-300/90" />
-        <MetricRow
-          label="vs VWAP"
-          value={fmtPct(m.vwap_dist_pct)}
-          valueClassName={signedPctClass(vwapDist)}
-        />
-        <MetricRow
-          label="Opening range (15m)"
-          value={`$${fmtNum(m.or_low, 2)} – $${fmtNum(m.or_high, 2)}`}
-          valueClassName="text-gray-300"
-        />
-        <MetricRow label="OR position" value={orBreakout} valueClassName={orPositionClass(orBreakout)} />
-        <MetricRow
-          label="Momentum (recent)"
-          value={fmtPct(m.momentum_pct)}
-          valueClassName={signedPctClass(mom)}
-        />
-        <MetricRow
-          label="Volume spike"
-          value={m.volume_spike ? 'Yes' : 'No'}
-          valueClassName={volumeSpikeClass(!!m.volume_spike)}
-        />
-        {rsLabel != null && (
-          <div className="border-b border-gray-800/80 py-2 text-sm last:border-0">
-            <div className="text-gray-500 mb-1">RS vs QQQ (session)</div>
-            <p className={`text-right font-medium leading-snug pl-2 ${rsSessionClass(rsN)}`}>{rsLabel}</p>
-          </div>
-        )}
-        {rsLabel == null && rsN !== null && (
-          <MetricRow
-            label="RS vs QQQ (session)"
-            value={`${rsN >= 0 ? '+' : ''}${rsN.toFixed(2)}%`}
-            valueClassName={rsSessionClass(rsN)}
-          />
-        )}
-        <MetricRow
-          label="SPY (daily chg %)"
-          value={m.spy_change_pct == null ? '—' : fmtPct(m.spy_change_pct)}
-          valueClassName={spyChg === null ? 'text-gray-200' : signedPctClass(spyChg)}
-        />
-        <MetricRow
-          label="QQQ (daily chg %)"
-          value={m.qqq_change_pct == null ? '—' : fmtPct(m.qqq_change_pct)}
-          valueClassName={qqqChg === null ? 'text-gray-200' : signedPctClass(qqqChg)}
-        />
-        <MetricRow
-          label="SPY (session chg %)"
-          value={m.spy_session_change_pct == null ? '—' : fmtPct(m.spy_session_change_pct)}
-          valueClassName={signedPctClass(asFiniteNum(m.spy_session_change_pct))}
-        />
-        <MetricRow
-          label="QQQ (session chg %)"
-          value={m.qqq_session_change_pct == null ? '—' : fmtPct(m.qqq_session_change_pct)}
-          valueClassName={signedPctClass(asFiniteNum(m.qqq_session_change_pct))}
-        />
-        <MetricRow
-          label="VIX"
-          value={m.vix == null ? '—' : fmtNum(m.vix, 2)}
-          valueClassName={vixClass(vixN)}
-        />
-        <MetricRow label="1m bars (RTH)" value={String(m.bars_used ?? '—')} />
-      </div>
-
-      {onRequestEnterActiveTrade && (
-        <div className="rounded-xl border border-orange-700/35 bg-orange-950/25 px-3 py-3">
-          <p className="text-[11px] text-orange-200/80 mb-2">
-            Save this symbol for the <span className="font-semibold text-orange-100">Day Trade Active</span> monitor
-            (option entry + intraday guidance).
-          </p>
-          <button
-            type="button"
-            onClick={onRequestEnterActiveTrade}
-            className="w-full rounded-xl bg-orange-600/90 hover:bg-orange-500 text-white text-sm font-semibold py-2.5 px-3 transition-colors"
-          >
-            Day Trade Active
-          </button>
+      {td && (
+        <div className="border-b border-gray-800">
+          <DayTradeTraderDecisionExpanded td={td} />
         </div>
       )}
 
-      <div>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Signal notes</div>
-        <ul className="space-y-1.5 text-sm">
-          {result.reasons.map((r, i) => {
-            const lower = r.toLowerCase()
-            let lineClass = 'text-gray-400'
-            if (lower.startsWith('strong go')) lineClass = 'text-emerald-200'
-            else if (lower.startsWith('go —') || lower.startsWith('go -')) lineClass = 'text-emerald-400/95'
-            else if (lower.startsWith('watch')) lineClass = 'text-amber-300/95'
-            else if (
-              /above vwap|above opening|bullish|long-bias|positive broad|\+[\d.]+%/.test(lower)
-              || lower.includes('long-bias context')
-            ) {
-              lineClass = 'text-emerald-400/95'
-            } else if (
-              /below vwap|below opening|bearish|short-bias|negative broad|-[\d.]+%/.test(lower)
-              || lower.includes('short-bias context')
-            ) {
-              lineClass = 'text-rose-400/95'
-            } else if (/vix very high|avoid new day-trade|no clear intraday|skipping|elevated vix/.test(lower)) {
-              lineClass = 'text-amber-400/90'
-            } else if (/volume spike confirms/.test(lower)) {
-              lineClass = 'text-emerald-400/90'
-            } else if (/outperforming qqq|lagging qqq|vs qqq:/.test(lower)) {
-              lineClass = 'text-violet-400/90'
-            } else if (/no volume spike|expansion not confirmed|reversal risk|headline risk|fragile follow/.test(lower)) {
-              lineClass = 'text-amber-400/85'
-            } else if (/inside opening range|range-bound|choppy/.test(lower)) {
-              lineClass = 'text-gray-400'
-            }
-            return (
-              <li key={i} className={`flex gap-2 ${lineClass}`}>
-                <span className="shrink-0 opacity-80">·</span>
-                <span>{r}</span>
-              </li>
-            )
-          })}
-        </ul>
+      {(result.explanation?.summary || result.reason) && (
+        <div className="px-4 py-3 border-b border-gray-800">
+          {result.explanation?.summary ? (
+            <p className="text-sm text-gray-300 leading-relaxed">{result.explanation.summary}</p>
+          ) : (
+            <p className="text-sm text-gray-300 leading-relaxed">{result.reason}</p>
+          )}
+          {result.explanation?.main_risk && (
+            <div className="mt-1.5 flex items-start gap-1.5 text-xs text-semantic-warning">
+              <AlertTriangle size={11} className="shrink-0 mt-0.5" />
+              {result.explanation.main_risk}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="px-4 py-2.5 bg-gray-950/25">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-600">
+          <span>Bull {result.bull_score} · Bear {result.bear_score}</span>
+          <span className="text-gray-800">|</span>
+          <span>Bias: {result.market_bias?.replace(/_/g, ' ') || '—'}</span>
+          <span className="text-gray-800">|</span>
+          <span>Risk: {result.risk_state?.replace(/_/g, ' ') || '—'}</span>
+          {typeof m.bars_used === 'number' && (
+            <>
+              <span className="text-gray-800">|</span>
+              <span>{m.bars_used} 1m bars</span>
+            </>
+          )}
+        </div>
       </div>
-    </section>
+    </div>
   )
 }
 
-/** Compact price / verdict for watchlist summary row. */
+// ─── Re-export utility ──────────────────────────────────────────────
+
 export function formatDayTradeLastPrice(metrics: Record<string, unknown>): string {
   const n = asFiniteNum(metrics.last_price)
   return n === null ? '—' : `$${n.toFixed(2)}`

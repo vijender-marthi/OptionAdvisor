@@ -1,6 +1,5 @@
 import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -11,6 +10,7 @@ import {
   BrainCircuit,
   ChevronDown,
   ChevronUp,
+  EyeOff,
   Filter,
   LineChart as LineChartIcon,
   Plus,
@@ -18,7 +18,6 @@ import {
   Search,
   Sparkles,
   Star,
-  Trash2,
   X,
 } from 'lucide-react'
 import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
@@ -180,6 +179,32 @@ function saveJson(key: string, value: unknown) {
   } catch {
     /* ignore */
   }
+}
+
+const IGNORE_STORAGE_KEY = 'oa_signal_feed_ignored'
+
+interface IgnoredData {
+  date: string
+  tickers: string[]
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function loadIgnored(): IgnoredData {
+  try {
+    const raw = localStorage.getItem(IGNORE_STORAGE_KEY)
+    if (raw) {
+      const data = JSON.parse(raw) as IgnoredData
+      if (data.date === todayStr()) return data
+    }
+  } catch {}
+  return { date: todayStr(), tickers: [] }
+}
+
+function saveIgnored(data: IgnoredData) {
+  try { localStorage.setItem(IGNORE_STORAGE_KEY, JSON.stringify(data)) } catch {}
 }
 
 function axiosErrorMessage(err: unknown): string {
@@ -409,7 +434,27 @@ function RiskCatBadge({ category }: { category: string }) {
   return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cClass}`}>{category}</span>
 }
 
+function OptionRiskPill({ label, value }: { label: string; value: string }) {
+  const tone = String(value || '').toUpperCase()
+  const chrome = tone === 'HIGH'
+    ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-900/20 dark:text-rose-300'
+    : tone === 'MEDIUM'
+      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/25 dark:bg-amber-900/20 dark:text-amber-300'
+      : tone === 'LOW'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-900/20 dark:text-emerald-300'
+        : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-white/[0.08] dark:bg-slate-800/50 dark:text-slate-300'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${chrome}`}>
+      {label}
+      <span className="opacity-75">{value}</span>
+    </span>
+  )
+}
+
 function DecisionPanel({ title, decision }: { title: string; decision: WatchlistXDecisionBlock }) {
+  const optionRisk = decision.option_risk_context
+  const showOptionRisk = decision.engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
+
   return (
     <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -429,10 +474,44 @@ function DecisionPanel({ title, decision }: { title: string; decision: Watchlist
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reason</div>
           <div className="mt-1 text-sm text-secondary">{decision.reason || 'No reason provided.'}</div>
         </div>
+        {(decision.expected_holding_period || decision.recommended_contract_duration) ? (
+          <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Timeframe</div>
+            <div className="mt-1 space-y-0.5 text-sm text-secondary">
+              {decision.expected_holding_period ? (
+                <div>Hold: ~{decision.expected_holding_period}</div>
+              ) : null}
+              {decision.recommended_contract_duration ? (
+                <div>Contract: {decision.recommended_contract_duration} DTE</div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Risk</div>
           <div className={`mt-1 text-sm font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_category || decision.risk_state || 'MEDIUM'}</div>
         </div>
+        {showOptionRisk ? (
+          <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Option execution</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <OptionRiskPill label="Theta" value={optionRisk.theta_risk} />
+              <OptionRiskPill label="Gamma" value={optionRisk.gamma_risk} />
+              <OptionRiskPill label="IV" value={optionRisk.iv_risk} />
+              <OptionRiskPill label="Liquidity" value={optionRisk.liquidity_risk} />
+            </div>
+            {optionRisk.suggested_contract_window ? (
+              <div className="mt-2 text-[11px] font-semibold text-violet-600 dark:text-violet-300">
+                Suggested window: {optionRisk.suggested_contract_window}
+              </div>
+            ) : null}
+            {optionRisk.option_execution_warning ? (
+              <div className="mt-1 text-xs leading-relaxed text-secondary">
+                {optionRisk.option_execution_warning}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -529,6 +608,7 @@ const WatchlistCard = memo(function WatchlistCard({
   row,
   isOpen,
   isFavorite,
+  isIgnored,
   alertBusy,
   sourceFilter,
   onToggle,
@@ -536,22 +616,21 @@ const WatchlistCard = memo(function WatchlistCard({
   onViewChart,
   onCreateAlert,
   onAddToPositions,
-  onOpenAlerts,
   onFavorite,
-  onRemove,
+  onIgnore,
 }: {
   row: WatchlistXRow
   isOpen: boolean
   isFavorite: boolean
+  isIgnored: boolean
   alertBusy: boolean
   sourceFilter: SourceFilter
   onAnalyze: () => void
   onViewChart: () => void
   onCreateAlert: () => void
   onAddToPositions: () => void
-  onOpenAlerts: () => void
   onFavorite: () => void
-  onRemove: () => void
+  onIgnore: () => void
   onToggle: (id: string) => void
 }) {
   const metrics = row.metrics
@@ -567,7 +646,6 @@ const WatchlistCard = memo(function WatchlistCard({
   const updatedLabel = row.cache_age_seconds != null && Number.isFinite(row.cache_age_seconds)
     ? `${Math.max(0, Math.round(row.cache_age_seconds))}s ago`
     : 'cached'
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const handleToggle = useCallback(() => onToggle(row.id), [onToggle, row.id])
 
   const accentBorder =
@@ -615,6 +693,11 @@ const WatchlistCard = memo(function WatchlistCard({
         <div className="shrink-0 text-right">
           <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
           <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
+          {row.alerts_count > 0 && (
+            <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-900/40 px-2 py-0.5 text-[10px] font-medium text-rose-300">
+              <BellPlus size={10} /> {row.alerts_count}
+            </div>
+          )}
         </div>
       </div>
 
@@ -642,21 +725,15 @@ const WatchlistCard = memo(function WatchlistCard({
           Trade
         </button>
         <button type="button" onClick={onCreateAlert} disabled={alertBusy} className={`${getActionButtonClass('alert')} px-2 py-0.5 text-[10px]`}>
-          {alertBusy ? 'Creating…' : 'Alert'}
+          {alertBusy ? 'Creating\u2026' : 'Alert'}
         </button>
         <div className="relative ml-auto flex items-center gap-1">
           <button
             type="button"
-            onClick={e => {
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-              if (menuPos) { setMenuPos(null); return }
-              const menuWidth = 176
-              const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
-              setMenuPos({ top: rect.bottom + 4, left })
-            }}
+            onClick={onIgnore}
             className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
           >
-            More<ChevronDown size={10} />
+            <EyeOff size={10} /> {isIgnored ? 'Unignore' : 'Ignore'}
           </button>
           <button
             type="button"
@@ -667,26 +744,6 @@ const WatchlistCard = memo(function WatchlistCard({
           </button>
         </div>
       </div>
-      {menuPos && createPortal(
-        <div className="fixed inset-0 z-50" onClick={() => setMenuPos(null)}>
-          <div
-            className="menu-dropdown absolute w-44 rounded-xl border py-1 shadow-lg"
-            style={{ top: menuPos.top, left: menuPos.left }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button type="button" onClick={() => { onViewChart(); setMenuPos(null) }} className="menu-item flex w-full items-center gap-2 px-3 py-1.5 text-xs">
-              <ArrowUpRight size={13} /> Ticker detail
-            </button>
-            <button type="button" onClick={onOpenAlerts} className="menu-item flex w-full items-center gap-2 px-3 py-1.5 text-xs">
-              <BellPlus size={13} /> {row.alerts_count} alert{row.alerts_count === 1 ? '' : 's'}
-            </button>
-            <button type="button" onClick={() => { onRemove(); setMenuPos(null) }} className="menu-item menu-item-danger flex w-full items-center gap-2 px-3 py-1.5 text-xs">
-              <Trash2 size={13} /> Remove
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
 
       {isOpen ? (
         <ExpandedAnalysis
@@ -766,11 +823,29 @@ export default function WatchlistXPage() {
   const [marketExpanded, setMarketExpanded] = useState(false)
   const [showAddTicker, setShowAddTicker] = useState(false)
   const moreStatsRef = useRef<HTMLButtonElement>(null)
+  const [ignoredData, setIgnoredData] = useState<IgnoredData>(loadIgnored)
+  const [showIgnored, setShowIgnored] = useState(false)
+  const [onlyIgnored, setOnlyIgnored] = useState(false)
 
   useEffect(() => { saveJson(FAVORITES_KEY, favorites) }, [favorites])
   useEffect(() => { saveJson(FILTERS_EXPANDED_KEY, filtersExpanded) }, [filtersExpanded])
+  useEffect(() => { saveIgnored(ignoredData) }, [ignoredData])
 
   const favoriteSet = useMemo(() => new Set(favorites.map(item => item.toUpperCase())), [favorites])
+  const ignoredSet = useMemo(() => new Set(ignoredData.tickers.map(t => t.toUpperCase())), [ignoredData])
+
+  const toggleIgnore = useCallback((ticker: string) => {
+    setIgnoredData(prev => {
+      const sym = ticker.toUpperCase()
+      const exists = prev.tickers.some(t => t.toUpperCase() === sym)
+      return {
+        ...prev,
+        tickers: exists
+          ? prev.tickers.filter(t => t.toUpperCase() !== sym)
+          : [...prev.tickers, sym],
+      }
+    })
+  }, [])
 
   const sourceFilter = useMemo<SourceFilter>(() => {
     const raw = searchParams.get('source')?.trim().toLowerCase()
@@ -866,7 +941,7 @@ export default function WatchlistXPage() {
   const payload = env?.data
   const rows = payload?.rows ?? []
   const summary = payload?.summary ?? { total: 0, ready: 0, watch: 0, extended: 0, avoid: 0, conflict: 0, manage: 0, alerts: 0, strong_bullish: 0, strong_bearish: 0 }
-  const aiSummary = payload?.ai_summary ?? { headline: 'No watchlist items yet', message: 'Add tickers to start the unified watchlist pipeline.', best_focus: 'Use Strategy Finder, day trade, or swing trade flows to seed tickers.', counts: {} }
+  const aiSummary = payload?.ai_summary ?? { headline: 'No Signal Feed items yet', message: 'Add tickers to start the Signal Feed pipeline.', best_focus: 'Use Strategy Finder, day trade, or swing trade flows to seed tickers.', counts: {} }
   const pagination = payload?.pagination ?? { page: 1, page_size: pageSize, total: 0, total_pages: 1 }
 
   const sectors = useMemo(() => {
@@ -874,9 +949,11 @@ export default function WatchlistXPage() {
   }, [rows])
 
   const visibleRows = useMemo(() => {
-    // Client-side search: filter by ticker or company name without any backend call.
     const q = deferredSearch.trim().toLowerCase()
     return rows.filter(row => {
+      const isIgnored = ignoredSet.has(row.ticker.toUpperCase())
+      if (onlyIgnored) return isIgnored
+      if (isIgnored) return false
       if (q) {
         const tickerMatch = row.ticker.toLowerCase().includes(q)
         const nameMatch = String(row.company_name ?? '').toLowerCase().includes(q)
@@ -888,7 +965,7 @@ export default function WatchlistXPage() {
       if (sectorFilter !== 'all' && (row.sector || 'N/A') !== sectorFilter) return false
       return true
     })
-  }, [deferredSearch, agreementFilter, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
+  }, [deferredSearch, agreementFilter, ignoredSet, onlyIgnored, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
 
   const engineCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -978,8 +1055,9 @@ export default function WatchlistXPage() {
   const handleRemove = useCallback((row: WatchlistXRow) => {
     if (!row.sources.includes('regular')) { setNotice({ tone: 'info', message: `${row.ticker} is only coming from Day/Swing sources. Unified-source removal is still a TODO.` }); return }
     removeFromWatchlist(row.ticker)
+    setEnv(cur => cur && cur.data ? { ...cur, data: { ...cur.data, rows: cur.data.rows.filter(r => r.id !== row.id) } } : cur)
     setExpandedId(cur => (cur === row.id ? null : cur))
-    setNotice({ tone: 'success', message: row.sources.length > 1 ? `${row.ticker} was removed from the regular watchlist but still exists in other engine sources.` : `${row.ticker} was removed from the watchlist.` })
+    setNotice({ tone: 'success', message: row.sources.length > 1 ? `${row.ticker} was removed from Signal Feed but still exists in other engine sources.` : `${row.ticker} was removed from Signal Feed.` })
   }, [removeFromWatchlist])
 
   return (
@@ -987,13 +1065,12 @@ export default function WatchlistXPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">WatchlistX</h1>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Signal Feed</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
           </div>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based watchlist for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Card-based Signal Feed for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setShowAddTicker(true)} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><Plus size={16} /> Add Ticker</button>
           <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className={`${getActionButtonClass('alert')} gap-2 rounded-full px-3 py-2 text-sm`}><AlertTriangle size={16} /> Alert Center</button>
           <button type="button" onClick={() => routerNavigate(ROUTES.positions)} className={`${getActionButtonClass('trade')} gap-2 rounded-full px-3 py-2 text-sm`}><BriefcaseBusiness size={16} /> Positions</button>
           <button type="button" onClick={() => void load()} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh</button>
@@ -1051,7 +1128,7 @@ export default function WatchlistXPage() {
             <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search ticker or company…" className="w-full bg-transparent text-sm text-primary outline-none placeholder:text-muted" />
           </label>
 
-          {/* Engine tabs: All / Day / Swing / Regular */}
+          {/* Engine tabs: All / Day / Swing / Regular / Ignored */}
           <div className="flex gap-1 overflow-x-auto">
             {SOURCE_OPTIONS.map(opt => (
               <button key={opt.value} type="button"
@@ -1061,6 +1138,12 @@ export default function WatchlistXPage() {
                 }`}
               >{opt.label}</button>
             ))}
+            <button type="button"
+              onClick={() => setOnlyIgnored(prev => !prev)}
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                onlyIgnored ? 'bg-rose-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
+              }`}
+            ><EyeOff size={12} className="inline" /> Ignored</button>
           </div>
 
           {/* Sort + direction */}
@@ -1196,9 +1279,9 @@ export default function WatchlistXPage() {
       <section className="space-y-4 pb-24 sm:pb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold text-heading">Unified watchlist cards</div>
+            <div className="text-lg font-semibold text-heading">Signal Feed cards</div>
             <div className="text-sm text-muted">
-              Showing {visibleRows.length} {engineLabel.toLowerCase()} {stateFilter === 'all' ? 'setups' : `${stateFilter.toUpperCase()} setups`}. Client-side filter — no backend call.
+              Showing {visibleRows.length} {onlyIgnored ? 'ignored' : engineLabel.toLowerCase()} {stateFilter === 'all' ? 'setups' : `${stateFilter.toUpperCase()} setups`}. {!onlyIgnored && ignoredData.tickers.length > 0 && `${ignoredData.tickers.length} ignored today.`} Client-side filter \u2014 no backend call.
             </div>
           </div>
           <div className="text-sm text-muted">Page {pagination.page} of {pagination.total_pages} · {pagination.total} tickers</div>
@@ -1206,12 +1289,18 @@ export default function WatchlistXPage() {
 
         {loading ? (
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/50 px-4 py-16 text-center text-sm text-gray-400">
-            <div className="inline-flex items-center gap-2"><RefreshCw size={16} className="animate-spin" /> Loading unified watchlist\u2026</div>
+            <div className="inline-flex items-center gap-2"><RefreshCw size={16} className="animate-spin" /> Loading Signal Feed\u2026</div>
           </div>
         ) : error ? (
           <div className="rounded-[28px] border border-rose-500/20 bg-rose-500/10 px-4 py-14 text-center text-sm text-rose-100">
             <div>{error}</div>
             <button type="button" onClick={() => void load()} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
+          </div>
+        ) : visibleRows.length === 0 && ignoredData.tickers.length > 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
+            <div className="text-lg font-semibold text-gray-200">All tickers ignored for today</div>
+            <div className="mt-2 text-sm text-gray-500">Unignore tickers below to see them again, or add more tickers in My Tickers.</div>
+            <button type="button" onClick={() => setShowIgnored(true)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">View ignored tickers</button>
           </div>
         ) : visibleRows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
@@ -1225,11 +1314,12 @@ export default function WatchlistXPage() {
               const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
               return (
                 <WatchlistCard key={row.id} row={row} sourceFilter={sourceFilter}
-                  isOpen={isOpen} isFavorite={isFavorite} alertBusy={Boolean(alertBusy[row.id])}
+                  isOpen={isOpen} isFavorite={isFavorite} isIgnored={ignoredSet.has(row.ticker.toUpperCase())} alertBusy={Boolean(alertBusy[row.id])}
                   onToggle={toggleExpanded} onAnalyze={() => handleAnalyze(row.ticker)}
-                  onViewChart={() => handleTickerDetail(row)} onCreateAlert={() => void handleCreateAlert(row)}
-                  onAddToPositions={() => handleAddToPositions(row)} onOpenAlerts={() => handleOpenAlerts(row)}
-                  onFavorite={() => toggleFavorite(row.ticker)} onRemove={() => handleRemove(row)}
+                  onViewChart={() => handleTickerDetail(row)}
+                  onCreateAlert={() => void handleCreateAlert(row)}
+                  onAddToPositions={() => handleAddToPositions(row)}
+                  onFavorite={() => toggleFavorite(row.ticker)} onIgnore={() => toggleIgnore(row.ticker)}
                 />
               )
             })}
@@ -1270,6 +1360,31 @@ export default function WatchlistXPage() {
         onRemove={() => { if (activeRow) handleRemove(activeRow) }}
         onToggle={() => { if (activeRow) toggleExpanded(activeRow.id) }}
       />
+
+      {ignoredData.tickers.length > 0 && (
+        <div className="fixed bottom-6 left-4 z-40">
+          <button type="button" onClick={() => setShowIgnored(!showIgnored)} className="inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900 px-4 py-2 text-xs text-gray-400 shadow-lg hover:bg-gray-800">
+            <EyeOff size={12} /> {ignoredData.tickers.length} ignored
+          </button>
+        </div>
+      )}
+
+      {showIgnored && ignoredData.tickers.length > 0 && (
+        <div className="fixed bottom-16 left-4 z-40 w-72 rounded-xl border border-gray-800 bg-gray-900 p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-300">Ignored today ({ignoredData.tickers.length})</span>
+            <button type="button" onClick={() => setShowIgnored(false)} className="text-gray-500 hover:text-gray-300"><X size={14} /></button>
+          </div>
+          <div className="max-h-48 space-y-1 overflow-y-auto">
+            {ignoredData.tickers.map(sym => (
+              <div key={sym} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-800">
+                <span className="text-xs font-medium text-gray-400">{sym}</span>
+                <button type="button" onClick={() => { toggleIgnore(sym); setShowIgnored(false) }} className="text-[10px] text-violet-400 hover:text-violet-300">Unignore</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,67 +1,53 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
   FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap, LineChart,
+  Menu, X, Search, Copy, LayoutDashboard, GitBranch, RefreshCw, Gauge,
+  Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole } from '../permissions'
 
-// ─── Section data ────────────────────────────────────────────────────────────
+// ─── Nav structure ──────────────────────────────────────────────────
+
+const NAV_SECTIONS = [
+  { id: 'overview',         label: 'Platform Overview',         icon: LayoutDashboard },
+  { id: 'engine-arch',      label: 'Engine Architecture',       icon: GitBranch },
+  { id: 'trade-lifecycle',  label: 'Trade Lifecycle',           icon: Activity },
+  { id: 'engine-states',    label: 'Engine States',             icon: Gauge },
+  { id: 'execution-states', label: 'Execution States',          icon: Target },
+  { id: 'day-trade',        label: 'Day Trade Engine',          icon: Zap },
+  { id: 'swing-trade',      label: 'Swing Trade Engine',        icon: TrendingUp },
+  { id: 'regular-engine',   label: 'Regular Engine',            icon: SlidersHorizontal },
+  { id: 'options-funda',    label: 'Options Fundamentals',      icon: BookOpen },
+  { id: 'strategy-glossary',label: 'Strategy Glossary',         icon: BookOpen },
+  { id: 'validation',       label: 'Validation System',         icon: CheckCircle2 },
+  { id: 'hard-soft-fail',   label: 'Hard Fail vs Soft Fail',    icon: XCircle },
+  { id: 'ev-pop-kelly',     label: 'EV / PoP / Kelly',          icon: Sigma },
+  { id: 'alerts',           label: 'Alert System',              icon: Bell },
+  { id: 'position-mgmt',    label: 'Position Management',       icon: Briefcase },
+  { id: 'market-summary',   label: 'Market Command Summary',    icon: BarChart2 },
+  { id: 'portfolio',        label: 'Portfolio Philosophy',      icon: ShieldCheck },
+  { id: 'ui-ux-rules',      label: 'UI/UX Design Rules',        icon: Eye },
+  { id: 'faq',              label: 'FAQ',                        icon: HelpCircle },
+]
+
+// ─── Data constants (preserved from existing page) ──────────────────
 
 const strategyRules = [
-  {
-    condition: 'BULLISH + LOW_IV',
-    built: 'Long Call, Bull Call Spread',
-    why: 'Buy premium when the engine has upside conviction and options are relatively cheap.',
-  },
-  {
-    condition: 'BEARISH + LOW_IV',
-    built: 'Long Put, Bear Put Spread',
-    why: 'Buy downside exposure when bearish signals align and IV is not expensive.',
-  },
-  {
-    condition: 'HIGH_IV + not BEARISH',
-    built: 'Bull Put Spread',
-    why: 'Sell put premium below price when IV is elevated and the signal is bullish or neutral.',
-  },
-  {
-    condition: 'HIGH_IV + not BULLISH',
-    built: 'Bear Call Spread',
-    why: 'Sell call premium above price when IV is elevated and the signal is bearish or neutral.',
-  },
-  {
-    condition: 'NEUTRAL + HIGH_IV',
-    built: 'Iron Condor',
-    why: 'Sell both sides when the engine expects range-bound movement and premium is rich.',
-  },
-  {
-    condition: 'NEUTRAL + LOW_IV',
-    built: 'Long Straddle',
-    why: 'Buy both sides when the signal is neutral but premium is cheap enough to buy volatility.',
-  },
-  {
-    condition: 'HIGH_IV + not BEARISH',
-    built: 'Covered Call',
-    why: 'Sell an OTM call against 100 shares already owned. Collects income in elevated IV; stock gains are capped at the short strike.',
-  },
-  {
-    condition: 'HIGH_IV + not BEARISH',
-    built: 'Covered Put (Cash-Secured Put)',
-    why: 'Sell an OTM put with cash collateral. Collects income in elevated IV; if assigned you buy the stock at an effective discount.',
-  },
-  {
-    condition: 'HIGH_IV + not BEARISH',
-    built: 'Short Put (naked)',
-    why: 'Sell an OTM put for premium without cash-securing. Requires a margin account. Profit if stock stays above the strike.',
-  },
-  {
-    condition: 'HIGH_IV + BEARISH',
-    built: 'Short Call (naked)',
-    why: 'Sell an OTM call when bearish and IV is elevated. ⚠️ Unlimited upside risk — requires active management and margin.',
-  },
+  { condition: 'BULLISH + LOW_IV', built: 'Long Call, Bull Call Spread', why: 'Buy premium when the engine has upside conviction and options are relatively cheap.' },
+  { condition: 'BEARISH + LOW_IV', built: 'Long Put, Bear Put Spread', why: 'Buy downside exposure when bearish signals align and IV is not expensive.' },
+  { condition: 'HIGH_IV + not BEARISH', built: 'Bull Put Spread', why: 'Sell put premium below price when IV is elevated and the signal is bullish or neutral.' },
+  { condition: 'HIGH_IV + not BULLISH', built: 'Bear Call Spread', why: 'Sell call premium above price when IV is elevated and the signal is bearish or neutral.' },
+  { condition: 'NEUTRAL + HIGH_IV', built: 'Iron Condor', why: 'Sell both sides when the engine expects range-bound movement and premium is rich.' },
+  { condition: 'NEUTRAL + LOW_IV', built: 'Long Straddle', why: 'Buy both sides when the signal is neutral but premium is cheap enough to buy volatility.' },
+  { condition: 'HIGH_IV + not BEARISH', built: 'Covered Call', why: 'Sell an OTM call against 100 shares already owned. Collects income in elevated IV; stock gains are capped at the short strike.' },
+  { condition: 'HIGH_IV + not BEARISH', built: 'Covered Put (Cash-Secured Put)', why: 'Sell an OTM put with cash collateral. Collects income in elevated IV; if assigned you buy the stock at an effective discount.' },
+  { condition: 'HIGH_IV + not BEARISH', built: 'Short Put (naked)', why: 'Sell an OTM put for premium without cash-securing. Requires a margin account. Profit if stock stays above the strike.' },
+  { condition: 'HIGH_IV + BEARISH', built: 'Short Call (naked)', why: 'Sell an OTM call when bearish and IV is elevated. Unlimited upside risk — requires active management and margin.' },
 ]
 
 const signalFlags = [
@@ -91,85 +77,23 @@ const filters = [
 ]
 
 const checklistItems = [
-  {
-    name: 'IV Environment',
-    desc: 'Checks whether you are selling premium in high-IV conditions or buying premium in low-IV conditions. A mismatch (e.g. buying a long call when IV Rank > 70) is a hard fail — the trade starts at a premium disadvantage.',
-    hardFail: true,
-  },
-  {
-    name: 'Directional Bias',
-    desc: 'Confirms the strategy aligns with the engine\'s directional read. A bearish long call or a bullish long put are flagged. Weak confidence (< 30%) triggers a warning.',
-    hardFail: false,
-  },
-  {
-    name: 'Trend Alignment',
-    desc: 'Checks if price is on the right side of the 20-day and 50-day moving averages for the strategy direction. Three out of four alignment checks must pass to avoid a soft fail.',
-    hardFail: false,
-  },
-  {
-    name: 'RSI',
-    desc: 'For bullish trades: RSI should not be overbought (> 75). For bearish trades: RSI should not be oversold (< 25). A "caution zone" (60–75 for bullish, 25–40 for bearish) earns a warning.',
-    hardFail: false,
-  },
-  {
-    name: 'MACD',
-    desc: 'Requires MACD histogram to confirm strategy direction. A confirmed crossover scores a pass; a diverging signal scores a soft fail.',
-    hardFail: false,
-  },
-  {
-    name: 'DTE Window',
-    desc: 'Ensures days-to-expiry are in the 14–56 day sweet spot. Under 14 DTE is a hard fail (theta risk too high). Over 56 DTE earns a warning (premium decay is slow).',
-    hardFail: true,
-  },
-  {
-    name: 'Liquidity',
-    desc: 'All legs must pass the liquidity filter (open interest ≥ 100 and bid/ask spread ≤ 5% of mid). A complete liquidity failure is a hard fail.',
-    hardFail: true,
-  },
-  {
-    name: 'Risk/Reward',
-    desc: 'Credit spreads need R/R ≤ 3:1. Debit spreads need R/R ≤ 4:1. Failing this threshold earns a soft fail.',
-    hardFail: false,
-  },
-  {
-    name: 'Expected Value',
-    desc: 'EV = (PoP × max_profit) − (prob_max_loss × max_loss). Negative EV means the probability-weighted loss exceeds the probability-weighted gain — a hard fail. Highly liquid, efficiently priced tickers like SPY often show negative EV because the options market leaves little room for edge.',
-    hardFail: true,
-  },
-  {
-    name: 'Income Edge (Covered strategies only)',
-    desc: 'Replaces the EV check for Covered Calls and Covered Puts. Evaluates income yield: pass ≥ 1.0% of stock/collateral value, warn 0.6–1.0%, fail < 0.6%. Not a hard fail — income strategies are judged on yield, not speculative EV.',
-    hardFail: false,
-  },
-  {
-    name: 'Probability of Profit',
-    desc: 'Thresholds differ by strategy type. Credit spreads (Bull Put, Bear Call, Iron Condor): pass ≥ 62%, warn 52–62%, fail < 52%. Covered Call / Covered Put: pass ≥ 65%, warn 55–65%, fail < 55% — higher bar because the whole thesis is "stock stays away from the strike." Long / debit trades: pass ≥ 45%, warn 35–45%, fail < 35%.',
-    hardFail: false,
-  },
+  { name: 'IV Environment', desc: 'Checks whether you are selling premium in high-IV conditions or buying premium in low-IV conditions. A mismatch (e.g. buying a long call when IV Rank > 70) is a hard fail — the trade starts at a premium disadvantage.', hardFail: true },
+  { name: 'Directional Bias', desc: 'Confirms the strategy aligns with the engine\'s directional read. A bearish long call or a bullish long put are flagged. Weak confidence (< 30%) triggers a warning.', hardFail: false },
+  { name: 'Trend Alignment', desc: 'Checks if price is on the right side of the 20-day and 50-day moving averages for the strategy direction. Three out of four alignment checks must pass to avoid a soft fail.', hardFail: false },
+  { name: 'RSI', desc: 'For bullish trades: RSI should not be overbought (> 75). For bearish trades: RSI should not be oversold (< 25). A "caution zone" (60–75 for bullish, 25–40 for bearish) earns a warning.', hardFail: false },
+  { name: 'MACD', desc: 'Requires MACD histogram to confirm strategy direction. A confirmed crossover scores a pass; a diverging signal scores a soft fail.', hardFail: false },
+  { name: 'DTE Window', desc: 'Ensures days-to-expiry are in the 14–56 day sweet spot. Under 14 DTE is a hard fail (theta risk too high). Over 56 DTE earns a warning (premium decay is slow).', hardFail: true },
+  { name: 'Liquidity', desc: 'All legs must pass the liquidity filter (open interest ≥ 100 and bid/ask spread ≤ 5% of mid). A complete liquidity failure is a hard fail.', hardFail: true },
+  { name: 'Risk/Reward', desc: 'Credit spreads need R/R ≤ 3:1. Debit spreads need R/R ≤ 4:1. Failing this threshold earns a soft fail.', hardFail: false },
+  { name: 'Expected Value', desc: 'EV = (PoP × max_profit) − (prob_max_loss × max_loss). Negative EV means the probability-weighted loss exceeds the probability-weighted gain — a hard fail. Highly liquid, efficiently priced tickers like SPY often show negative EV because the options market leaves little room for edge.', hardFail: true },
+  { name: 'Income Edge (Covered strategies only)', desc: 'Replaces the EV check for Covered Calls and Covered Puts. Evaluates income yield: pass ≥ 1.0% of stock/collateral value, warn 0.6–1.0%, fail < 0.6%. Not a hard fail — income strategies are judged on yield, not speculative EV.', hardFail: false },
+  { name: 'Probability of Profit', desc: 'Thresholds differ by strategy type. Credit spreads (Bull Put, Bear Call, Iron Condor): pass ≥ 62%, warn 52–62%, fail < 52%. Covered Call / Covered Put: pass ≥ 65%, warn 55–65%, fail < 55% — higher bar because the whole thesis is "stock stays away from the strike." Long / debit trades: pass ≥ 45%, warn 35–45%, fail < 35%.', hardFail: false },
 ]
 
 const verdictRules = [
-  {
-    verdict: 'GO',
-    color: 'text-emerald-400',
-    badge: 'bg-emerald-900/40 border-emerald-700 text-emerald-300',
-    icon: <CheckCircle2 size={15} />,
-    desc: 'No hard fails, zero soft fails, edge ratio ≥ 5% of max loss (no Kelly Edge thin-edge warning), and fewer than 5 warnings total. This is the cleanest actionable verdict.',
-  },
-  {
-    verdict: 'CAUTION',
-    color: 'text-amber-400',
-    badge: 'bg-amber-900/40 border-amber-700 text-amber-300',
-    icon: <AlertTriangle size={15} />,
-    desc: 'No hard fails, but either a thin Kelly edge (EV ÷ max loss below 5%), one soft fail, or five or more warnings. The setup may still be tradeable — reduce size and review every checklist row.',
-  },
-  {
-    verdict: 'NO GO',
-    color: 'text-red-400',
-    badge: 'bg-red-900/40 border-red-700 text-red-300',
-    icon: <XCircle size={15} />,
-    desc: 'One or more hard fails, or 2+ soft fails. The trade does not pass minimum quality thresholds — skip or wait for better conditions.',
-  },
+  { verdict: 'GO', color: 'text-emerald-400', badge: 'bg-emerald-900/40 border-emerald-700 text-emerald-300', icon: <CheckCircle2 size={15} />, desc: 'No hard fails, zero soft fails, edge ratio ≥ 5% of max loss (no Kelly Edge thin-edge warning), and fewer than 5 warnings total. This is the cleanest actionable verdict.' },
+  { verdict: 'CAUTION', color: 'text-amber-400', badge: 'bg-amber-900/40 border-amber-700 text-amber-300', icon: <AlertTriangle size={15} />, desc: 'No hard fails, but either a thin Kelly edge (EV ÷ max loss below 5%), one soft fail, or five or more warnings. The setup may still be tradeable — reduce size and review every checklist row.' },
+  { verdict: 'NO GO', color: 'text-red-400', badge: 'bg-red-900/40 border-red-700 text-red-300', icon: <XCircle size={15} />, desc: 'One or more hard fails, or 2+ soft fails. The trade does not pass minimum quality thresholds — skip or wait for better conditions.' },
 ]
 
 const glossaryTerms = [
@@ -201,1499 +125,1785 @@ const glossaryTerms = [
 ]
 
 const optionReference = [
-  {
-    position: 'Buy a CALL',
-    formalName: 'Long Call',
-    action: 'You pay to have the right to buy stock.',
-    outlook: 'Bullish: You want the price to go UP.',
-  },
-  {
-    position: 'Sell a CALL',
-    formalName: 'Short Call',
-    action: 'You write a contract and must sell stock if assigned.',
-    outlook: 'Bearish: You want the price to stay DOWN.',
-  },
-  {
-    position: 'Buy a PUT',
-    formalName: 'Long Put',
-    action: 'You pay to have the right to sell stock.',
-    outlook: 'Bearish: You want the price to go DOWN.',
-  },
-  {
-    position: 'Sell a PUT',
-    formalName: 'Short Put',
-    action: 'You write a contract and must buy stock if assigned.',
-    outlook: 'Bullish: You want the price to stay UP.',
-  },
+  { position: 'Buy a CALL', formalName: 'Long Call', action: 'You pay to have the right to buy stock.', outlook: 'Bullish: You want the price to go UP.' },
+  { position: 'Sell a CALL', formalName: 'Short Call', action: 'You write a contract and must sell stock if assigned.', outlook: 'Bearish: You want the price to stay DOWN.' },
+  { position: 'Buy a PUT', formalName: 'Long Put', action: 'You pay to have the right to sell stock.', outlook: 'Bearish: You want the price to go DOWN.' },
+  { position: 'Sell a PUT', formalName: 'Short Put', action: 'You write a contract and must buy stock if assigned.', outlook: 'Bullish: You want the price to stay UP.' },
 ]
 
 const optionExamples = [
-  {
-    title: 'Long Call Example',
-    setup: 'Buy 1 call for $3.00 premium.',
-    profit: 'Profit starts above strike + $3.00. Upside is theoretically unlimited.',
-    risk: 'Maximum loss is the $300 premium paid.',
-    bestWhen: 'Best when you are bullish and IV is low enough that premium is not overpriced.',
-  },
-  {
-    title: 'Long Put Example',
-    setup: 'Buy 1 put for $2.50 premium.',
-    profit: 'Profit starts below strike − $2.50. Downside profit grows as the stock falls.',
-    risk: 'Maximum loss is the $250 premium paid.',
-    bestWhen: 'Best when you are bearish and want defined-risk downside exposure.',
-  },
-  {
-    title: 'Bull Put Spread Example',
-    setup: 'Sell a $100 put and buy a $95 put for $1.20 net credit.',
-    profit: 'Maximum profit is $120 if the stock stays above $100 at expiry.',
-    risk: 'Maximum loss is $380: $5 spread width − $1.20 credit, times 100.',
-    bestWhen: 'Best when IV is elevated and the stock is bullish or neutral.',
-  },
-  {
-    title: 'Covered Call Example',
-    setup: 'Own 100 shares and sell 1 OTM call for $1.50 premium.',
-    profit: 'You keep $150 premium; upside is capped if shares are called away.',
-    risk: 'You still carry stock downside risk, partly cushioned by the premium.',
-    bestWhen: 'Best when you own the stock, IV is high, and you are willing to sell at the strike.',
-  },
+  { title: 'Long Call Example', setup: 'Buy 1 call for $3.00 premium.', profit: 'Profit starts above strike + $3.00. Upside is theoretically unlimited.', risk: 'Maximum loss is the $300 premium paid.', bestWhen: 'Best when you are bullish and IV is low enough that premium is not overpriced.' },
+  { title: 'Long Put Example', setup: 'Buy 1 put for $2.50 premium.', profit: 'Profit starts below strike − $2.50. Downside profit grows as the stock falls.', risk: 'Maximum loss is the $250 premium paid.', bestWhen: 'Best when you are bearish and want defined-risk downside exposure.' },
+  { title: 'Bull Put Spread Example', setup: 'Sell a $100 put and buy a $95 put for $1.20 net credit.', profit: 'Maximum profit is $120 if the stock stays above $100 at expiry.', risk: 'Maximum loss is $380: $5 spread width − $1.20 credit, times 100.', bestWhen: 'Best when IV is elevated and the stock is bullish or neutral.' },
+  { title: 'Covered Call Example', setup: 'Own 100 shares and sell 1 OTM call for $1.50 premium.', profit: 'You keep $150 premium; upside is capped if shares are called away.', risk: 'You still carry stock downside risk, partly cushioned by the premium.', bestWhen: 'Best when you own the stock, IV is high, and you are willing to sell at the strike.' },
 ]
 
 const workflowSteps = [
-  {
-    step: '1',
-    title: 'Browse AI Radar',
-    icon: <Brain size={16} />,
-    color: 'text-violet-400',
-    desc: 'Start in AI Radar to survey the ~60 AI/datacenter stocks organized by category (Chips, Software, Pure-Play, Data Centers, Power, Semicon Equipment, Optical Networking, Networking, Applications). Click Analyze to instantly load any ticker.',
-  },
-  {
-    step: '2',
-    title: 'Add to Watchlist',
-    icon: <Star size={16} />,
-    color: 'text-yellow-400',
-    desc: 'Star any ticker to add it to your Watchlist. The Watchlist groups tickers by their AI Radar category and shows last price. Background refresh keeps prices and signals current every 15 minutes.',
-  },
-  {
-    step: '3',
-    title: 'Analyze in Strategy Finder',
-    icon: <BarChart2 size={16} />,
-    color: 'text-sky-400',
-    desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w: 0w, 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.',
-  },
-  {
-    step: '4',
-    title: 'Review Pre-Trade Checklist',
-    icon: <CheckCircle2 size={16} />,
-    color: 'text-emerald-400',
-    desc: 'Each recommendation shows a GO / CAUTION / NO GO verdict badge. Expand the checklist inside each card to see all 10 check items, their pass/warn/fail status, and exact entry timing and exit rules for that specific trade.',
-  },
-  {
-    step: '5',
-    title: 'Scan Trade Signals',
-    icon: <Radar size={16} />,
-    color: 'text-amber-400',
-    desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (0w, 1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.',
-  },
-  {
-    step: '6',
-    title: 'Add to Portfolio',
-    icon: <Briefcase size={16} />,
-    color: 'text-indigo-400',
-    desc: 'Click "Add to Portfolio" on any recommendation. The contract picker shows Kelly Criterion sizing — how many contracts are mathematically optimal for your account size. Kelly data (edge ratio, Half-Kelly %, capital at risk) is saved with the position so you can review your sizing discipline later.',
-  },
-  {
-    step: '7',
-    title: 'Backtest Lab',
-    icon: <FlaskConical size={16} />,
-    color: 'text-violet-400',
-    desc: 'Run walk-forward backtests on historical signals: synthetic Black–Scholes pricing with HV-20×1.15 as an IV proxy, standard exit rules (credit/debit), equity curve, trade log, and stats. For research — not live execution.',
-  },
-  {
-    step: '8',
-    title: 'Trade Journal',
-    icon: <NotebookPen size={16} />,
-    color: 'text-sky-400',
-    desc: 'Save real trades from an expanded recommendation via "Save to Journal". Track open MTM P&L, refresh quotes, add notes, close with exit reason, or delete. Filter by All / Open / Closed / Expired.',
-  },
+  { step: '1', title: 'Browse AI Radar', icon: <Brain size={16} />, color: 'text-violet-400', desc: 'Start in AI Radar to survey the ~60 AI/datacenter stocks organized by category (Chips, Software, Pure-Play, Data Centers, Power, Semicon Equip, Optical Networking, Networking, Applications). Click Analyze to instantly load any ticker.' },
+  { step: '2', title: 'Add to Watchlist', icon: <Star size={16} />, color: 'text-yellow-400', desc: 'Star any ticker to add it to your Watchlist. The Watchlist groups tickers by their AI Radar category and shows last price. Background refresh keeps prices and signals current every 15 minutes.' },
+  { step: '3', title: 'Analyze in Strategy Finder', icon: <BarChart2 size={16} />, color: 'text-sky-400', desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w: 0w, 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.' },
+  { step: '4', title: 'Review Pre-Trade Checklist', icon: <CheckCircle2 size={16} />, color: 'text-emerald-400', desc: 'Each recommendation shows a GO / CAUTION / NO GO verdict badge. Expand the checklist inside each card to see all 10 check items, their pass/warn/fail status, and exact entry timing and exit rules for that specific trade.' },
+  { step: '5', title: 'Scan Trade Signals', icon: <Radar size={16} />, color: 'text-amber-400', desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (0w, 1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.' },
+  { step: '6', title: 'Add to Portfolio', icon: <Briefcase size={16} />, color: 'text-indigo-400', desc: 'Click "Add to Portfolio" on any recommendation. The contract picker shows Kelly Criterion sizing — how many contracts are mathematically optimal for your account size. Kelly data (edge ratio, Half-Kelly %, capital at risk) is saved with the position so you can review your sizing discipline later.' },
+  { step: '7', title: 'Backtest Lab', icon: <FlaskConical size={16} />, color: 'text-violet-400', desc: 'Run walk-forward backtests on historical signals: synthetic Black–Scholes pricing with HV-20×1.15 as an IV proxy, standard exit rules (credit/debit), equity curve, trade log, and stats. For research — not live execution.' },
+  { step: '8', title: 'Trade Journal', icon: <NotebookPen size={16} />, color: 'text-sky-400', desc: 'Save real trades from an expanded recommendation via "Save to Journal". Track open MTM P&L, refresh quotes, add notes, close with exit reason, or delete. Filter by All / Open / Closed / Expired.' },
 ]
 
-// ─── Components ───────────────────────────────────────────────────────────────
+const aiRadarCategories = [
+  { name: 'AI Chips', desc: 'NVDA, AMD, MRVL, AVGO — GPU and custom ASIC designers.' },
+  { name: 'AI Software', desc: 'CRM, NOW, ADBE, ORCL — enterprise AI application layers.' },
+  { name: 'AI Pure-Play', desc: 'SNOW, C3.ai, UPST, PATH — high-growth AI-native companies.' },
+  { name: 'Data Centers', desc: 'EQIX, DLR, CONE, QTS — physical infrastructure for AI compute.' },
+  { name: 'AI Power', desc: 'VST, CEG, TLN, GEV — energy providers for datacenter load.' },
+  { name: 'Semicon Equipment', desc: 'ASML, AMAT, LRCX, KLAC — wafer fabrication equipment.' },
+  { name: 'Optical Networking', desc: 'LITE, CIEN, COHR — high-speed optical interconnect.' },
+  { name: 'AI Networking', desc: 'ANET, CSCO, HPE, ARista — datacenter switching and routing.' },
+  { name: 'AI Applications', desc: 'MSFT, GOOGL, META, AMZN — hyperscaler AI platforms.' },
+]
 
-function InfoCard({
-  icon,
-  title,
-  children,
-  defaultOpen = true,
-}: {
-  icon: ReactNode
-  title: string
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
+const positionLifecycleStates = [
+  { state: 'ACTIVE', icon: <Activity size={14} />, color: 'text-emerald-400', desc: 'Position is open and performing within expected parameters.' },
+  { state: 'PROFIT_TARGET', icon: <Target size={14} />, color: 'text-emerald-400', desc: 'Price has reached the profit target zone. Consider taking partial or full profits.' },
+  { state: 'PROTECT', icon: <ShieldCheck size={14} />, color: 'text-amber-400', desc: 'Price approaching a key level. Tighten stops or consider protective actions.' },
+  { state: 'WATCH', icon: <Eye size={14} />, color: 'text-sky-400', desc: 'Position needs monitoring. Conditions are changing.' },
+  { state: 'EXIT_SOON', icon: <Clock size={14} />, color: 'text-amber-400', desc: 'Expiry approaching or thesis weakening. Plan exit.' },
+  { state: 'STOP_LOSS', icon: <ShieldAlert size={14} />, color: 'text-red-400', desc: 'Stop loss triggered or at risk. Manage immediately.' },
+  { state: 'ROLL_CANDIDATE', icon: <RefreshCw size={14} />, color: 'text-violet-400', desc: 'Position can be rolled forward to extend duration or adjust strikes.' },
+]
+
+const tradeLifecycleStages = [
+  { stage: 'DISCOVER', subtitle: 'Find opportunities', desc: 'Browse AI Radar categories, scan Trade Signals, or load a ticker in Strategy Finder. The engine surfaces candidates based on market conditions.' },
+  { stage: 'ANALYZE', subtitle: 'Evaluate setup quality', desc: 'Run the pre-trade checklist. Each trade gets a GO, CAUTION, or NO GO verdict backed by 10 independent validation checks.' },
+  { stage: 'READY', subtitle: 'Clear to enter', desc: 'Setup quality is GOOD, execution status is READY. Entry conditions are met or imminent. Proceed with position sizing.' },
+  { stage: 'EXECUTE', subtitle: 'Place the trade', desc: 'Choose contract structure in the picker. Kelly sizing determines optimal capital allocation. Add to Portfolio to track.' },
+  { stage: 'MANAGE', subtitle: 'Monitor and adjust', desc: 'Track open P&L, monitor risk flags, set alerts for key levels. The engine provides live decision guidance.' },
+  { stage: 'PROTECT', subtitle: 'Defend profits', desc: 'As price moves in your favor, trail stops or take partial profits. The alert system helps protect gains.' },
+  { stage: 'CLOSE', subtitle: 'Exit the position', desc: 'Close at profit target, stop loss, or expiry. Record exit reason in Trade Journal for post-trade review.' },
+]
+
+const engineStateCards = [
+  { state: 'GO', tone: 'bg-emerald-500/15 text-emerald-300 border-emerald-600/40', def: 'All conditions met. The trade is actionable with full confidence.', when: 'Appears when no hard fails, zero soft fails, edge ratio ≥ 5%, and < 5 warnings.', interpret: 'Proceed with standard position sizing. Entry conditions are favorable.', next: 'Execute the trade. Monitor entry timing.' },
+  { state: 'READY', tone: 'bg-emerald-500/15 text-emerald-300 border-emerald-600/40', def: 'Trade setup is sound and execution timing is aligned.', when: 'The engine has validated all checks and entry conditions appear met.', interpret: 'The setup is worth taking. Follow the execution plan.', next: 'Enter on confirmation. Follow suggested strategy and sizing.' },
+  { state: 'WATCH', tone: 'bg-sky-500/15 text-sky-300 border-sky-600/40', def: 'Trend direction is established but entry timing needs confirmation.', when: 'Bias aligns with position but a confirmation trigger is still needed.', interpret: 'The direction is right but waiting for a better entry point is prudent.', next: 'Set alerts for confirmation triggers. Do not enter without them.' },
+  { state: 'WAIT', tone: 'bg-amber-500/15 text-amber-300 border-amber-600/40', def: 'Setup is constructive but entry is not yet ready.', when: 'Trend may still be intact but conditions to enter are not met.', interpret: 'A quality entry requires patience. Forcing a trade here risks poor execution.', next: 'Wait for pullback, breakout confirmation, or improved conditions.' },
+  { state: 'EXTENDED', tone: 'bg-amber-500/15 text-amber-300 border-amber-600/40', def: 'Price has moved significantly from a key level. Chasing risk is high.', when: 'Price is > 5% from MA20 or RSI is overbought/oversold, or momentum is extreme.', interpret: 'The move already happened. Entering now means buying near the top or selling near the bottom.', next: 'Wait for mean reversion or consolidation before considering entry.' },
+  { state: 'AVOID', tone: 'bg-rose-500/15 text-rose-300 border-rose-700/40', def: 'Risk factors outweigh potential reward. Recommended to skip.', when: 'Hard fails detected, earnings imminent, or VIX extreme.', interpret: 'The trade has material risk factors that make it unsafe to enter.', next: 'Remove from consideration. Re-evaluate after conditions change.' },
+  { state: 'NO GO', tone: 'bg-rose-500/15 text-rose-300 border-rose-700/40', def: 'Trade does not pass minimum quality thresholds.', when: 'One or more hard fails, 2+ soft fails, or negative EV.', interpret: 'The math does not support this trade. Even with a good bias, the risk-adjusted outlook is poor.', next: 'Skip entirely. Find a better setup.' },
+  { state: 'CONFLICT', tone: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-600/40', def: 'Engines disagree on direction or suitability.', when: 'Day trade engine, swing engine, and regular strategy engine produce conflicting signals.', interpret: 'Different timeframes and methodologies give opposing reads. Resolution requires deeper analysis.', next: 'Review the conflict resolution panel. Use the tiebreaker logic or wait for alignment.' },
+]
+
+const execStateCards = [
+  { state: 'ENTER NOW', tone: 'bg-emerald-500/15 text-emerald-300 border-emerald-600/40', def: 'Entry conditions are confirmed. The trade can be placed immediately.', when: 'All confirmation triggers met, no warnings, good liquidity.' },
+  { state: 'WAIT FOR VWAP HOLD', tone: 'bg-amber-500/15 text-amber-300 border-amber-600/40', def: 'Price needs to establish support at or above VWAP before entry.', when: 'Intraday: price is testing VWAP from below for long entries.' },
+  { state: 'WAIT FOR BREAKOUT', tone: 'bg-amber-500/15 text-amber-300 border-amber-600/40', def: 'Waiting for price to break and hold above a resistance level.', when: 'Price is approaching a key level but has not yet cleared it with volume.' },
+  { state: 'WAIT FOR PULLBACK', tone: 'bg-amber-500/15 text-amber-300 border-amber-600/40', def: 'Price is extended. Waiting for a retracement to a better entry level.', when: '5d momentum > 5% or distance to MA20 > 5%.' },
+  { state: 'ENTRY CONDITIONAL', tone: 'bg-sky-500/15 text-sky-300 border-sky-600/40', def: 'Entry requires specific conditions to be met before placement.', when: 'Multiple confirmation triggers are defined and not yet satisfied.' },
+  { state: 'AVOID CHASE', tone: 'bg-rose-500/15 text-rose-300 border-rose-700/40', def: 'Price has moved too far too fast. Do not enter at current levels.', when: '5d momentum exceeds hard threshold or gap is too large.' },
+  { state: 'NO CLEAN ENTRY', tone: 'bg-gray-700/50 text-gray-400 border-gray-600/40', def: 'No viable entry point exists at current prices.', when: 'Entry quality check fails all categories.' },
+]
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function SectionLink({ id, label, icon: Icon, active }: { id: string; label: string; icon: React.ElementType; active: boolean }) {
   return (
-    <section className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <a
+      href={`#${id}`}
+      onClick={e => {
+        e.preventDefault()
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+      }}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+        active
+          ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25'
+          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 border border-transparent'
+      }`}
+    >
+      <Icon size={14} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </a>
+  )
+}
+
+function DocCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <section className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-5 py-4 hover:bg-gray-800/40 transition-colors"
+        className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-800/30 transition-colors"
       >
-        <span className="text-violet-400">{icon}</span>
-        <h2 className="text-base font-bold text-white flex-1 text-left">{title}</h2>
-        {open ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronRight size={16} className="text-gray-500" />}
+        <span className="text-violet-400 shrink-0">{icon}</span>
+        <h3 className="text-sm font-bold text-white flex-1 text-left">{title}</h3>
+        {open ? <ChevronDown size={14} className="text-gray-600" /> : <ChevronRight size={14} className="text-gray-600" />}
       </button>
-      {open && <div className="px-5 pb-5">{children}</div>}
+      {open && <div className="px-4 pb-4">{children}</div>}
     </section>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function StatCard({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5 text-center">
+      <div className="text-lg font-bold text-white">{value}</div>
+      <div className="text-[10px] text-gray-500 font-medium">{label}</div>
+    </div>
+  )
+}
+
+function FormulaBlock({ formula }: { formula: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="relative group">
+      <pre className="bg-gray-950/80 border border-gray-800 rounded-lg px-4 py-3 text-xs font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap">{formula}</pre>
+      <button
+        type="button"
+        onClick={() => { navigator.clipboard.writeText(formula); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+        className="absolute top-2 right-2 rounded-md p-1.5 text-gray-600 hover:text-gray-300 hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        {copied ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
+      </button>
+    </div>
+  )
+}
+
+function BadgePill({ text, cls }: { text: string; cls: string }) {
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}>{text}</span>
+}
+
+function BadgeDot({ tone }: { tone: 'green' | 'amber' | 'red' | 'sky' | 'violet' | 'gray' }) {
+  const colors = { green: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-rose-500', sky: 'bg-sky-500', violet: 'bg-violet-500', gray: 'bg-gray-500' }
+  return <span className={`inline-block w-2 h-2 rounded-full ${colors[tone]} shrink-0`} />
+}
+
+// ─── Options fundamentals helpers ────────────────────────────────────
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-1.5">
+      <span className="text-gray-500 font-semibold shrink-0 w-[72px] text-right text-[10px]">{label}:</span>
+      <span className="text-gray-400 text-[10px] leading-relaxed">{value}</span>
+    </div>
+  )
+}
+
+function PayoffSvg({ type }: { type: string }) {
+  const w = 200, h = 80
+  const profitClr = 'var(--color-emerald-400, #34d399)'
+  const lossClr = 'var(--color-rose-400, #fb7185)'
+  const profitBg = 'rgba(52,211,153,0.08)'
+  const lossBg = 'rgba(251,113,133,0.08)'
+  const markerClr = 'var(--color-violet-400, #a78bfa)'
+
+  const axes = (
+    <>
+      <line x1="15" y1={h-10} x2={w-5} y2={h-10} stroke="var(--color-gray-700, #374151)" strokeWidth="0.5" />
+      <line x1="20" y1="10" x2="20" y2={h-10} stroke="var(--color-gray-700, #374151)" strokeWidth="0.5" />
+      <line x1="20" y1={h/2} x2={w-5} y2={h/2} stroke="var(--color-gray-600, #4b5563)" strokeWidth="0.5" strokeDasharray="2,2" />
+    </>
+  )
+
+  const dash = (x: number, color: string) => (
+    <line x1={x} y1={h-10} x2={x} y2={15} stroke={color} strokeWidth="0.5" strokeDasharray="2,1.5" opacity={0.6} />
+  )
+
+  const path = (d: string, color: string) => (
+    <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+  )
+
+  const area = (d: string, color: string) => (
+    <path d={d} fill={color} />
+  )
+
+  const styles = { maxHeight: 80 } as const
+
+  const go = (children: React.ReactNode) => (
+    <svg viewBox="0 0 200 80" className="w-full h-auto" style={styles}>{axes}{children}</svg>
+  )
+
+  switch (type) {
+    case 'long-call': {
+      const sx = 60
+      return go(<>
+        {dash(sx, markerClr)}
+        {area(`M20,50 L${sx},50 L160,15 L160,50 Z`, profitBg)}
+        {path(`M20,50 L${sx},50 L160,15`, profitClr)}
+        <text x={sx} y={76} fontSize="6" textAnchor="middle" fill={markerClr}>Strike</text>
+        <text x={175} y={54} fontSize="6" textAnchor="end" fill={profitClr}>+</text>
+      </>)
+    }
+    case 'long-put': {
+      const sx = 60
+      return go(<>
+        {dash(sx, markerClr)}
+        {area(`M160,50 L${sx},50 L20,15 L20,50 Z`, profitBg)}
+        {path(`M160,50 L${sx},50 L20,15`, profitClr)}
+        <text x={sx} y={76} fontSize="6" textAnchor="middle" fill={markerClr}>Strike</text>
+        <text x={25} y={54} fontSize="6" textAnchor="start" fill={profitClr}>+</text>
+      </>)
+    }
+    case 'covered-call': {
+      const sx = 80
+      return go(<>
+        {dash(sx, markerClr)}
+        {area(`M20,50 L20,35 L${sx},35 L${sx},15 L160,15 L160,50 Z`, profitBg)}
+        {path(`M20,50 L20,35 L${sx},35 L${sx},15 L160,15`, profitClr)}
+        {area(`M20,50 L20,65 L160,65 Z`, lossBg)}
+        {path(`M20,50 L20,65 L160,65`, lossClr)}
+        <text x={sx} y={76} fontSize="6" textAnchor="middle" fill={markerClr}>Capped</text>
+        <text x={25} y={73} fontSize="5" textAnchor="start" fill={lossClr}>stock risk</text>
+      </>)
+    }
+    case 'cash-secured-put': {
+      const sx = 80
+      return go(<>
+        {dash(sx, markerClr)}
+        {area(`M20,15 L${sx},15 L${sx},50 L20,50 Z`, profitBg)}
+        {path(`M20,15 L${sx},15 L${sx},50 L160,50`, profitClr)}
+        {area(`M${sx},50 L${sx},65 L160,65 Z`, lossBg)}
+        {path(`M${sx},50 L${sx},65 L160,65`, lossClr)}
+        <text x={sx} y={76} fontSize="6" textAnchor="middle" fill={markerClr}>Strike</text>
+      </>)
+    }
+    case 'bull-call-spread': {
+      const ln = 45, sh = 95
+      return go(<>
+        {dash(ln, profitClr)}
+        {dash(sh, markerClr)}
+        {area(`M${ln},50 L${sh},20 L160,20 L160,50 Z`, profitBg)}
+        {path(`M20,50 L${ln},50 L${sh},20 L160,20`, profitClr)}
+        <text x={ln} y={76} fontSize="5" textAnchor="middle" fill={profitClr}>Long</text>
+        <text x={sh} y={76} fontSize="5" textAnchor="middle" fill={markerClr}>Short</text>
+      </>)
+    }
+    case 'bear-put-spread': {
+      const ln = 95, sh = 45
+      return go(<>
+        {dash(sh, markerClr)}
+        {dash(ln, lossClr)}
+        {area(`M${sh},20 L${ln},50 L160,50 L160,20 Z`, profitBg)}
+        {path(`M20,20 L${sh},20 L${ln},50 L160,50`, profitClr)}
+        <text x={sh} y={76} fontSize="5" textAnchor="middle" fill={markerClr}>Short</text>
+        <text x={ln} y={76} fontSize="5" textAnchor="middle" fill={lossClr}>Long</text>
+      </>)
+    }
+    case 'bull-put-spread': {
+      const sh = 45, ln = 95
+      return go(<>
+        {dash(sh, profitClr)}
+        {dash(ln, markerClr)}
+        {area(`M20,15 L${sh},15 L${ln},50 L20,50 Z`, profitBg)}
+        {path(`M20,15 L${sh},15 L${ln},50 L160,50`, profitClr)}
+        <text x={sh} y={76} fontSize="5" textAnchor="middle" fill={profitClr}>Short</text>
+        <text x={ln} y={76} fontSize="5" textAnchor="middle" fill={markerClr}>Long</text>
+      </>)
+    }
+    case 'bear-call-spread': {
+      const sh = 45, ln = 95
+      return go(<>
+        {dash(sh, markerClr)}
+        {dash(ln, lossClr)}
+        {area(`M20,50 L${sh},50 L${ln},15 L160,15 L160,50 Z`, profitBg)}
+        {path(`M20,50 L${sh},50 L${ln},15 L160,15`, profitClr)}
+        <text x={sh} y={76} fontSize="5" textAnchor="middle" fill={markerClr}>Short</text>
+        <text x={ln} y={76} fontSize="5" textAnchor="middle" fill={lossClr}>Long</text>
+      </>)
+    }
+    case 'iron-condor': {
+      const ps = 25, pl = 55, cl = 65, cs = 95
+      return go(<>
+        {dash(ps, markerClr)}
+        {dash(cs, markerClr)}
+        {dash(pl, profitClr)}
+        {dash(cl, lossClr)}
+        {area(`M${ps},50 L${pl},15 L${cl},15 L${cs},50 Z`, profitBg)}
+        {path(`M20,50 L${ps},50 L${pl},15 L${cl},15 L${cs},50 L160,50`, profitClr)}
+        <text x={(ps+pl)/2} y={76} fontSize="4" textAnchor="middle" fill={markerClr}>Puts</text>
+        <text x={(cl+cs)/2} y={76} fontSize="4" textAnchor="middle" fill={markerClr}>Calls</text>
+      </>)
+    }
+    case 'butterfly': {
+      const lx = 25, mx = 60, rx = 95
+      return go(<>
+        {dash(lx, markerClr)}
+        {dash(mx, 'var(--color-violet-400, #a78bfa)')}
+        {dash(rx, markerClr)}
+        {area(`M${lx},50 L${mx},15 L${rx},50 Z`, profitBg)}
+        {path(`M20,50 L${lx},50 L${mx},15 L${rx},50 L160,50`, profitClr)}
+        <text x={mx} y={76} fontSize="5" textAnchor="middle" fill="#a78bfa">ATM</text>
+      </>)
+    }
+    case 'long-straddle': {
+      const sx = 60
+      return go(<>
+        {dash(sx, markerClr)}
+        {area(`M20,50 L${sx},50 L160,50 Z`, profitBg)}
+        {area(`M20,15 L${sx},50 L20,50 Z`, lossBg)}
+        {area(`M160,15 L${sx},50 L160,50 Z`, profitBg)}
+        {path(`M20,15 L${sx},50 L160,15`, profitClr)}
+        <text x={sx} y={76} fontSize="6" textAnchor="middle" fill={markerClr}>ATM</text>
+        <text x={15} y={55} fontSize="5" textAnchor="start" fill={profitClr}>+</text>
+        <text x={185} y={55} fontSize="5" textAnchor="end" fill={profitClr}>+</text>
+      </>)
+    }
+    default:
+      return <div className="text-[10px] text-gray-600 text-center py-2">Payoff diagram</div>
+  }
+}
+
+function lineAxis(w: number, h: number) {
+  return (
+    <>
+      <line x1="15" y1={h-10} x2={w-5} y2={h-10} stroke="var(--color-gray-700, #374151)" strokeWidth="0.5" />
+      <line x1="20" y1="10" x2="20" y2={h-10} stroke="var(--color-gray-700, #374151)" strokeWidth="0.5" />
+      <line x1="20" y1={h/2} x2={w-5} y2={h/2} stroke="var(--color-gray-600, #4b5563)" strokeWidth="0.5" strokeDasharray="2,2" />
+    </>
+  )
+}
+
+function strikeLine(x: number, h: number, color: string) {
+  return <line x1={x} y1={h-10} x2={x} y2={15} stroke={color} strokeWidth="0.5" strokeDasharray="2,1.5" opacity={0.6} />
+}
+
+// ─── Page ───────────────────────────────────────────────────────────
 
 export default function HelpPage() {
-  const { user, canAccessPage } = useApp()
+  const { user } = useApp()
   const isAdmin = normalizeUserRole(user?.role) === 'admin'
-  const showAiRadarHelp = canAccessPage('ai-stocks')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState('overview')
+  const [searchQuery, setSearchQuery] = useState('')
+  const mainRef = useRef<HTMLDivElement>(null)
+  const tickingRef = useRef(false)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (tickingRef.current) return
+      tickingRef.current = true
+      requestAnimationFrame(() => {
+        const offset = 120
+        for (const s of [...NAV_SECTIONS].reverse()) {
+          const el = document.getElementById(s.id)
+          if (el && el.getBoundingClientRect().top <= offset) {
+            setActiveSection(s.id)
+            break
+          }
+        }
+        tickingRef.current = false
+      })
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const filteredNav = useMemo(() => {
+    if (!searchQuery) return NAV_SECTIONS
+    const q = searchQuery.toLowerCase()
+    return NAV_SECTIONS.filter(s => s.label.toLowerCase().includes(q))
+  }, [searchQuery])
+
+  // Preserve the role check (keep ai-radar section hidden for finance accounts)
+  const showAiRadar = true // Help is open-docs
 
   return (
-    <div className="help-page min-h-screen p-4 md:p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
-        <div className="rounded-xl border border-violet-800/40 bg-violet-950/35 px-4 py-3 text-sm text-violet-100">
-          Expanded documentation is coming soon. The sections below remain the live in-app reference.
-        </div>
-        {/* Header */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center shrink-0">
-              <HelpCircle size={20} className="text-white" />
+    <div className="help-page min-h-screen">
+      {/* Mobile sidebar toggle */}
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(v => !v)}
+        className="fixed bottom-6 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg hover:bg-violet-500 transition-colors lg:hidden"
+      >
+        {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+      </button>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      <aside className={`fixed top-0 left-0 z-50 h-full w-60 bg-gray-950 border-r border-gray-800 overflow-y-auto transition-transform duration-200 lg:translate-x-0 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="p-4 border-b border-gray-800">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
+              <HelpCircle size={15} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">OptionAdvisor — Documentation</h1>
-              <p className="text-sm text-gray-400 mt-1 max-w-3xl">
-                A systematic options engine that reads live market signals, builds strategy candidates for the current
-                IV regime and directional bias, runs a 10-point pre-trade checklist, and ranks the survivors by score.
-              </p>
-              <p className="text-xs text-gray-500 mt-3 max-w-3xl border-t border-gray-800/50 pt-3">
-                Documentation matches your account: sections for features you cannot access in the app are hidden
-                (for example, AI Radar for finance-only accounts; Day Trading, Swing Trading, and Auto Trade for non-administrators).
-              </p>
-            </div>
+            <span className="text-sm font-bold text-white">OptionAdvisor Docs</span>
+          </div>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600" />
+            <input
+              type="text"
+              placeholder="Search docs..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-8 pr-3 py-1.5 text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50"
+            />
           </div>
         </div>
-
-        {/* Workflow */}
-        <InfoCard icon={<BookOpen size={18} />} title="How to Use OptionAdvisor — Workflow">
-          <div className="grid gap-3 md:grid-cols-2">
-            {workflowSteps.map(step => (
-              <div key={step.step} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center shrink-0 text-xs font-bold text-gray-300">
-                  {step.step}
-                </div>
-                <div>
-                  <div className={`flex items-center gap-1.5 font-semibold text-sm mb-1 ${step.color}`}>
-                    {step.icon}{step.title}
-                  </div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{step.desc}</p>
-                </div>
-              </div>
-            ))}
+        <nav className="p-3 space-y-1">
+          {filteredNav.map(s => (
+            <SectionLink
+              key={s.id}
+              id={s.id}
+              label={s.label}
+              icon={s.icon}
+              active={activeSection === s.id}
+            />
+          ))}
+        </nav>
+        <div className="p-3 border-t border-gray-800 mt-2">
+          <div className="text-[10px] text-gray-600 leading-relaxed">
+            OptionAdvisor v2.0<br />
+            Institutional documentation
           </div>
-        </InfoCard>
+        </div>
+      </aside>
 
-        {/* Options Fundamentals */}
-        <InfoCard icon={<BookOpen size={18} />} title="Options Fundamentals — Definitions & Examples">
-          <div className="space-y-5">
-            <p className="text-sm text-gray-400">
-              Start here if you want the basics. Buying options means paying premium for a right;
-              selling options means collecting premium while taking on an obligation.
-              One option contract usually controls <span className="text-gray-200 font-semibold">100 shares</span>.
-            </p>
+      {/* ── Main content ────────────────────────────────────────── */}
+      <div ref={mainRef} className="lg:ml-60 min-h-screen">
+        <div className="max-w-4xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-8">
 
-            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="bg-gray-800">
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3">Position</th>
-                    <th className="px-4 py-3">Formal Name</th>
-                    <th className="px-4 py-3">Your Action</th>
-                    <th className="px-4 py-3">Your Outlook</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {optionReference.map(item => (
-                    <tr key={item.position} className="border-t border-gray-700/50">
-                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{item.position}</td>
-                      <td className="px-4 py-3 font-semibold text-violet-300 whitespace-nowrap">{item.formalName}</td>
-                      <td className="px-4 py-3 text-gray-400">{item.action}</td>
-                      <td className="px-4 py-3 text-gray-400">{item.outlook}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {optionExamples.map(item => (
-                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
-                  <div className="text-sm font-semibold text-white mb-2">{item.title}</div>
-                  <div className="space-y-1.5 text-xs leading-relaxed">
-                    <div><span className="text-gray-500">Setup:</span> <span className="text-gray-300">{item.setup}</span></div>
-                    <div><span className="text-emerald-400">Profit:</span> <span className="text-gray-400">{item.profit}</span></div>
-                    <div><span className="text-red-400">Risk:</span> <span className="text-gray-400">{item.risk}</span></div>
-                    <div><span className="text-violet-300">Best when:</span> <span className="text-gray-400">{item.bestWhen}</span></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-amber-900/20 border border-amber-800/50 rounded-xl px-4 py-3 text-xs text-amber-300/90">
-              The examples are simplified teaching cases. Real results depend on strike selection, IV changes,
-              liquidity, assignment, and exit timing.
-            </div>
-          </div>
-        </InfoCard>
-
-        {/* Glossary */}
-        <InfoCard icon={<BookOpen size={18} />} title="Options Glossary">
-          <div className="grid gap-2 md:grid-cols-2">
-            {glossaryTerms.map(item => (
-              <div key={item.term} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                <div className="font-semibold text-violet-300 text-sm">{item.term}</div>
-                <div className="text-xs text-gray-400 mt-1 leading-relaxed">{item.def}</div>
+          {/* ═══════════════════════════════════════════════════════
+             HERO
+             ═══════════════════════════════════════════════════════ */}
+          <section className="rounded-2xl border border-gray-800 bg-gray-900/80 p-6 md:p-8">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center shrink-0">
+                <HelpCircle size={22} className="text-white" />
               </div>
-            ))}
-          </div>
-        </InfoCard>
-
-        {/* AI Radar — discovery radars are not available to finance-only accounts */}
-        {showAiRadarHelp && (
-        <InfoCard icon={<Brain size={18} />} title="AI Radar">
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              AI Radar tracks ~60 stocks across the AI and datacenter infrastructure theme, organized into 9 categories:
-              <span className="text-gray-200"> AI Chips, AI Software, AI Pure-Play, Data Centers, AI Power,
-              Semicon Equipment, Optical Networking, AI Networking, and AI Applications.</span>
-            </p>
-            <p>
-              Each card shows a one-click Analyze button that loads the ticker directly into Strategy Finder with your
-              current weeks-out and spread settings. The Watchlist groups tickers using these same categories so you
-              always know at a glance which theme a position belongs to.
-            </p>
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 mt-2">
-              <div className="text-xs font-semibold text-gray-300 mb-2">Category guide</div>
-              <div className="grid gap-1.5 text-xs grid-cols-1 md:grid-cols-2">
-                {[
-                  ['AI Chips', 'NVDA, AMD, AVGO, MRVL, ARM, MU … — companies designing AI accelerators and memory.'],
-                  ['AI Software', 'MSFT, GOOGL, META, AMZN, PLTR … — hyperscalers and enterprise AI platforms.'],
-                  ['AI Pure-Play', 'AI, SOUN, BBAI, IONQ, RGTI … — small-cap and speculative AI companies.'],
-                  ['Data Centers', 'EQIX, DLR, DELL, VRT … — infrastructure that physically houses AI compute.'],
-                  ['AI Power', 'VST, CEG, NRG, ETR … — utilities and power suppliers for AI data centers.'],
-                  ['Semicon Equip', 'ASML, LRCX, KLAC, AMAT … — equipment used to fabricate AI chips.'],
-                  ['Optical Networking', 'COHR, CIEN, LITE, VIAV … — high-bandwidth fiber optics connecting AI clusters.'],
-                  ['AI Networking', 'ANET, CSCO, INFN … — ethernet switching and routing for AI data flows.'],
-                  ['AI Applications', 'SNOW, DDOG, CRWD, PATH … — SaaS platforms running on or enabling AI.'],
-                ].map(([cat, desc]) => (
-                  <div key={cat} className="flex gap-2">
-                    <span className="font-semibold text-gray-300 shrink-0 w-36">{cat}</span>
-                    <span className="text-gray-500">{desc}</span>
-                  </div>
-                ))}
+              <div>
+                <h1 className="text-2xl font-bold text-white">OptionAdvisor Trading Engine Documentation</h1>
+                <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+                  AI-assisted execution, validation, risk scoring, and portfolio intelligence framework.
+                </p>
               </div>
             </div>
-          </div>
-        </InfoCard>
-        )}
-
-        {/* Pre-Trade Checklist */}
-        <InfoCard icon={<CheckCircle2 size={18} />} title="Pre-Trade Checklist">
-          <div className="space-y-3">
-            <p className="text-sm text-gray-400">
-              Every recommendation is automatically run through 10 checks. Each check is either a
-              <span className="text-red-400 font-semibold"> hard fail</span> (one alone triggers NO GO) or a
-              <span className="text-amber-400 font-semibold"> soft fail</span> (accumulate two → NO GO; one → CAUTION).
-              Multiple warnings can stack toward CAUTION; five or more warnings alone flip the verdict to CAUTION.
-            </p>
-
-            {/* Thin edge → verdict & alerts (v1.01) */}
-            <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
-              <div className="text-violet-300 font-semibold text-sm mb-2">Thin Kelly edge — verdict &amp; alerts (v1.01)</div>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                Edge ratio is <span className="font-mono text-gray-300">EV ÷ max_loss</span> (same units as displayed per-share metrics).
-                When edge ratio is below <span className="text-gray-200 font-semibold">5%</span>, the checklist logs a{' '}
-                <span className="text-gray-200 font-semibold">Kelly Edge</span> warning because small errors in PoP or pricing can erase the modeled edge.
-              </p>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                That warning <span className="text-amber-400 font-semibold">downgrades the verdict to CAUTION</span>, never GO — even if EV is positive and other checks look fine (for example a long call with tiny EV versus large max loss).
-              </p>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Backend email/watchlist GO alerts use the same rule: trades with edge ratio below 5% are excluded so alerts stay aligned with the green GO badge you see in the app.
-              </p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <StatCard value="10" label="Validation Checks" />
+              <StatCard value="3" label="Engine Types" />
+              <StatCard value="15+" label="Strategies" />
+              <StatCard value="Real-time" label="Execution Logic" />
+              <StatCard value="Risk-Aware" label="Positioning" />
             </div>
+          </section>
 
-            {/* Verdict legend */}
-            <div className="grid gap-2 md:grid-cols-3">
-              {verdictRules.map(v => (
-                <div key={v.verdict} className={`flex items-start gap-2 border rounded-xl p-3 ${v.badge}`}>
-                  <span className="shrink-0 mt-0.5">{v.icon}</span>
-                  <div>
-                    <div className="font-bold text-sm">{v.verdict}</div>
-                    <div className="text-xs mt-0.5 opacity-80">{v.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 1 — PLATFORM OVERVIEW
+             ═══════════════════════════════════════════════════════ */}
+          <section id="overview" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <LayoutDashboard size={18} className="text-violet-400" />
+              Platform Overview
+            </h2>
 
-            {/* Check items table */}
-            <div className="overflow-x-auto rounded-xl border border-gray-700/50 mt-1">
-              <table className="w-full min-w-[580px] text-sm">
-                <thead className="bg-gray-800">
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3 w-36">Check</th>
-                    <th className="px-4 py-3 w-20">Type</th>
-                    <th className="px-4 py-3">What It Tests</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {checklistItems.map(item => (
-                    <tr key={item.name} className="border-t border-gray-700/50">
-                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{item.name}</td>
-                      <td className="px-4 py-3">
-                        {item.hardFail
-                          ? <span className="text-xs font-bold text-red-400 bg-red-900/30 border border-red-800 rounded px-1.5 py-0.5">Hard</span>
-                          : <span className="text-xs font-bold text-amber-400 bg-amber-900/30 border border-amber-800 rounded px-1.5 py-0.5">Soft</span>
-                        }
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs leading-relaxed">{item.desc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* EV explainer */}
-            <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-4 mt-1">
-              <div className="flex items-center gap-2 text-blue-300 font-semibold text-sm mb-2">
-                💡 What does "EV $-236/contract" mean?
-              </div>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                Expected Value is calculated as:
-                <span className="font-mono text-blue-300 ml-1">(PoP × max_profit) − (Prob_max_loss × max_loss)</span>
-              </p>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                Example — Bull Put on SPY, 68% PoP, $120 max profit, 12% prob of max loss, $380 max loss:
-              </p>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
-                EV = (0.68 × $120) − (0.12 × $380)<br />
-                EV = $81.60 − $45.60 = <span className="text-emerald-400">+$36</span> ← positive, edge exists
-              </div>
-              <p className="text-xs text-gray-400 leading-relaxed mt-2 mb-2">
-                For efficiently priced tickers like SPY, the market is extremely well-arbitraged. The PoP-weighted
-                gain rarely exceeds the loss-probability-weighted max loss, giving negative EV:
-              </p>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
-                EV = (0.72 × $85) − (0.10 × $415)<br />
-                EV = $61.20 − $41.50... wait, add the "middle" outcomes:<br />
-                Full EV = −$2.36/share = <span className="text-red-400">−$236/contract</span> ← no edge
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Negative EV is a hard fail because, repeated over many trades, a negative-EV strategy
-                loses money in expectation. It does not mean you will lose on this specific trade — but
-                the math does not favor it.
-              </p>
-            </div>
-
-            {/* Why NO GO trades are still shown */}
-            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-gray-300 font-semibold text-sm mb-2">
-                🤔 Why are NO GO trades shown at all?
-              </div>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                The engine scores and ranks the top trades for every ticker regardless of checklist verdict.
-                NO GO trades are shown so you can see <em>why</em> a setup is not ready — the specific fail
-                reason is now shown directly on the collapsed card row. This lets you monitor a ticker and
-                know exactly what needs to change (e.g. IV needs to rise, or wait for a better DTE window)
-                before the trade becomes actionable. They are informational, not actionable.
-              </p>
-            </div>
-
-            <p className="text-xs text-gray-600 pt-1">
-              Hard fail checks: IV Environment (wrong IV regime), DTE Window (&lt;14 days), Liquidity (wide spreads/low OI), Expected Value (negative EV).
-              All other checks are soft fails or warnings.
-            </p>
-          </div>
-        </InfoCard>
-
-        {/* Position Sizing & Capital Risk */}
-        <InfoCard icon={<Scale size={18} />} title="Position Sizing & Capital Risk — Kelly Criterion">
-          <div className="space-y-4 text-sm text-gray-400">
-
-            <p>
-              The engine uses the <span className="text-white font-semibold">Kelly Criterion</span> — a mathematical
-              formula from Operations Research — to answer the most important question in trading:
-              <span className="text-violet-300 font-semibold"> how much of your capital should you put into this trade?</span>
-            </p>
-
-            {/* Core formula */}
-            <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
-              <div className="text-violet-300 font-semibold text-sm mb-3">📐 The Formula</div>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
-                <div><span className="text-violet-400">Kelly %</span>    = EV ÷ max_loss</div>
-                <div><span className="text-violet-400">Half-Kelly %</span> = Kelly % × 0.5   <span className="text-gray-500">← recommended (capped at 20%)</span></div>
-                <div><span className="text-violet-400">Capital to risk</span>  = account_size × Half-Kelly %</div>
-                <div><span className="text-violet-400">Contracts</span>   = floor(capital_to_risk ÷ (max_loss × 100))</div>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Half-Kelly is standard practice — halving protects against estimation error in the PoP inputs.
-                The 20% cap ensures no single trade can ever exceed one-fifth of your account.
-              </p>
-            </div>
-
-            {/* Worked example — WDC */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
-              <div className="text-white font-semibold text-sm mb-3">
-                📋 Worked Example — WDC Bull Put Spread
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 text-xs mb-3">
-                {[
-                  ['Max Profit', '$110 / contract'],
-                  ['Max Loss', '$390 / contract'],
-                  ['Prob of Profit (PoP)', '82%'],
-                  ['EV', '(0.82 × $1.10) − (0.18 × $3.90) = +$0.20/share = +$20/contract'],
-                ].map(([k, v]) => (
-                  <div key={k} className="bg-gray-900/60 rounded-lg px-3 py-2">
-                    <div className="text-gray-500 mb-0.5">{k}</div>
-                    <div className="text-gray-200 font-mono">{v}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1.5">
-                <div><span className="text-violet-400">Edge Ratio</span>  = $0.20 ÷ $3.90 = <span className="text-emerald-400">5.1%</span>  <span className="text-gray-600">← clears 5% minimum</span></div>
-                <div><span className="text-violet-400">Kelly %</span>     = 5.1% of capital</div>
-                <div><span className="text-violet-400">Half-Kelly</span>  = 2.55% of capital</div>
-                <div className="border-t border-gray-700 pt-1.5 mt-1.5">
-                  <span className="text-gray-400">On a </span><span className="text-white">$25,000</span><span className="text-gray-400"> account:</span>
-                </div>
-                <div>  Capital to risk = $25,000 × 2.55% = <span className="text-amber-400">$637</span></div>
-                <div>  Max loss per contract = $390</div>
-                <div>  Recommended contracts = floor($637 ÷ $390) = <span className="text-white font-bold">1 contract</span></div>
-                <div className="border-t border-gray-700 pt-1.5 mt-1.5 text-gray-500">
-                  Actual capital at risk = 1 × $390 = $390 = <span className="text-emerald-400">1.6%</span> of account ✓
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Kelly is telling you: <em>this is a thin-edge trade — stay small</em>. One contract max.
-                The 82% PoP looks attractive but the 1:0.3 R:R means one loss erases 3–4 winners. Size conservatively.
-              </p>
-            </div>
-
-            {/* Thin edge vs solid edge */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-3">
-                <div className="text-amber-400 font-semibold text-sm mb-2">⚠ Thin Edge Warning</div>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  When <span className="font-mono text-amber-300">Edge Ratio &lt; 5%</span>, the engine warns that
-                  estimation error in the PoP calculation could wipe out the edge entirely. The trade is not rejected by the ranking engine —
-                  but the pre-trade verdict becomes <span className="text-amber-400 font-semibold">CAUTION</span>, recommendation cards show the thin-edge callout, and you should size conservatively (often 1 contract or less).
-                </p>
-                <div className="mt-2 font-mono text-xs bg-gray-900/50 rounded-lg p-2 text-gray-400">
-                  EV = $0.05/share → Edge = $0.05/$3.90 = 1.3% ← thin
-                </div>
-              </div>
-              <div className="bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-3">
-                <div className="text-emerald-400 font-semibold text-sm mb-2">✅ Solid Edge</div>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  When <span className="font-mono text-emerald-300">Edge Ratio ≥ 5%</span>, the math supports a
-                  meaningful position. Kelly recommends a larger allocation. Even here, Half-Kelly discipline
-                  keeps you from over-concentrating in any single trade.
-                </p>
-                <div className="mt-2 font-mono text-xs bg-gray-900/50 rounded-lg p-2 text-gray-400">
-                  EV = $0.40/share → Edge = $0.40/$1.20 = 33% ← strong
-                </div>
-              </div>
+              <DocCard icon={<BarChart2 size={15} />} title="Trade Command Center">
+                <p className="text-xs text-gray-400 leading-relaxed">Macro market view showing regime detection, VIX risk, sector heat, and aggregated execution opportunities across all engines. The central dashboard for market awareness.</p>
+              </DocCard>
+              <DocCard icon={<Star size={15} />} title="Signal Feed">
+                <p className="text-xs text-gray-400 leading-relaxed">Unified trade monitoring with readiness filtering. Aggregates Day Trade, Swing Trade, and Regular engine outputs. Filter by verdict, risk, and engine type.</p>
+              </DocCard>
+              <DocCard icon={<Briefcase size={15} />} title="Positions Center">
+                <p className="text-xs text-gray-400 leading-relaxed">Live position management with P&L tracking, lifecycle monitoring, and decision guidance. Each position shows its current state (ACTIVE, PROFIT_TARGET, EXIT_SOON, etc.) with actionable next steps.</p>
+              </DocCard>
+              <DocCard icon={<Zap size={15} />} title="Day Trade Engine">
+                <p className="text-xs text-gray-400 leading-relaxed">Intraday execution logic using VWAP, opening range breakouts, and live momentum. Generates structured strategy recommendations with entry timing and risk levels.</p>
+              </DocCard>
+              <DocCard icon={<TrendingUp size={15} />} title="Swing Trade Engine">
+                <p className="text-xs text-gray-400 leading-relaxed">Multi-day momentum setups using daily OHLCV analysis (MA20/MA50, RSI, MACD, volume trends). Provides entry quality grades, risk assessment, and structured playbooks.</p>
+              </DocCard>
+              <DocCard icon={<SlidersHorizontal size={15} />} title="Strategy Finder">
+                <p className="text-xs text-gray-400 leading-relaxed">Options structure discovery and analysis. Enter a ticker, set parameters (weeks-out, spread width, strategy mode), and the engine builds the best candidates for the current market regime.</p>
+              </DocCard>
             </div>
 
-            {/* EV hard gate */}
-            <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-4">
-              <div className="text-red-400 font-semibold text-sm mb-2">🚫 EV Hard Gate — Negative EV Trades Are Rejected</div>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                Any trade where <span className="font-mono text-red-300">EV ≤ 0</span> is rejected by the engine
-                before it ever reaches you. This is non-negotiable — a negative-EV trade loses money in expectation
-                over many repetitions regardless of how good the setup looks qualitatively.
-              </p>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300">
-                EV = (0.72 × $0.85) − (0.28 × $4.15) = $0.612 − $1.162 = <span className="text-red-400">−$0.55/share</span> → REJECTED
+            {/* Workflow steps */}
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Recommended Workflow</h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {workflowSteps.map(s => (
+                  <div key={s.step} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3 flex gap-3">
+                    <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center shrink-0 text-[10px] font-bold text-gray-300">{s.step}</div>
+                    <div>
+                      <div className={`flex items-center gap-1 text-xs font-semibold mb-0.5 ${s.color}`}>{s.icon}{s.title}</div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">{s.desc}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                This commonly filters out trades on tightly arbitraged tickers (SPY, QQQ) where the options market
-                leaves little room for edge. It is not a bug — the market is simply efficient on those names.
-              </p>
             </div>
+          </section>
 
-            {/* Capital at risk color coding */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
-              <div className="text-white font-semibold text-sm mb-3">🎨 Capital at Risk — Color Thresholds in Contract Picker</div>
-              <div className="space-y-2 text-xs">
-                {[
-                  { color: 'text-gray-300', bg: 'bg-gray-700/40', label: '< 10% of account', meaning: 'Well within Kelly range. No warning.' },
-                  { color: 'text-amber-400', bg: 'bg-amber-900/20', label: '10–20% of account', meaning: 'Approaching the Kelly cap. Acceptable but watch total portfolio exposure.' },
-                  { color: 'text-red-400',   bg: 'bg-red-900/20',   label: '> 20% of account', meaning: 'Exceeds the Half-Kelly cap. A warning banner appears. Consider fewer contracts.' },
-                ].map(item => (
-                  <div key={item.label} className={`flex items-start gap-3 rounded-lg px-3 py-2 ${item.bg}`}>
-                    <span className={`font-mono font-bold shrink-0 w-36 ${item.color}`}>{item.label}</span>
-                    <span className="text-gray-400">{item.meaning}</span>
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 2 — ENGINE ARCHITECTURE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="engine-arch" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <GitBranch size={18} className="text-violet-400" />
+              Engine Architecture
+            </h2>
+
+            {/* Visual flow */}
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-3">Decision Pipeline</div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {['Market Context', 'Signal Engine', 'Validation Engine', 'Execution Timing', 'Risk Filters', 'Strategy Selection', 'Final Verdict'].map((step, i) => (
+                  <div key={step} className="flex items-center gap-1.5">
+                    <span className="rounded-lg border border-gray-700/60 bg-gray-800/60 px-2.5 py-1.5 text-gray-300 font-medium">{step}</span>
+                    {i < 6 && <ChevronRight size={12} className="text-gray-700" />}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Why captured in portfolio */}
-            <div className="bg-blue-950/30 border border-blue-800/50 rounded-xl p-4">
-              <div className="text-blue-300 font-semibold text-sm mb-2">💾 Kelly Data Is Saved to Your Portfolio</div>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                When you add a trade to the Portfolio, the engine saves a snapshot of the Kelly fraction,
-                half-Kelly, edge ratio, actual capital at risk, and your account size at entry.
-                This lets you review later: <em>Did I size this correctly when I entered?
-                Was the edge as strong as I thought? Did I follow the Kelly recommendation?</em>
-              </p>
-              <p className="text-xs text-gray-400 leading-relaxed mt-2">
-                These values are point-in-time — they reflect market conditions at entry, not today.
-                The snapshot is permanent and survives page refreshes.
-              </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DocCard icon={<Gauge size={15} />} title="Trade Quality Score">
+                <p className="text-xs text-gray-400 leading-relaxed">A 0–10 score combining bull/bear signal strength, market context adjustments, extension penalties, and IV/earnings modifiers. Scores ≥ 7 indicate strong setups; scores &lt; 5 trigger NO TRADE.</p>
+              </DocCard>
+              <DocCard icon={<Target size={15} />} title="Execution Timing">
+                <p className="text-xs text-gray-400 leading-relaxed">Separates trend quality from entry timing. A strong trend can still have WAIT execution if price is extended or confirmation is needed. This prevents chasing moves.</p>
+              </DocCard>
+              <DocCard icon={<Brain size={15} />} title="Confidence Scoring">
+                <p className="text-xs text-gray-400 leading-relaxed">Aggregates MA alignment, MACD confirmation, RSI health, volume participation, and VIX context into a composite confidence percentage. Higher confidence does not guarantee profit — it indicates signal consistency.</p>
+              </DocCard>
+              <DocCard icon={<ShieldCheck size={15} />} title="Risk State">
+                <p className="text-xs text-gray-400 leading-relaxed">Derived from risk flags (extension, earnings, IV extremes, VIX, liquidity) and market context. Modifies position sizing guidance and verdict eligibility. HIGH risk states reduce trade quality scores.</p>
+              </DocCard>
             </div>
 
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-3">
-              Kelly Criterion was developed by John L. Kelly Jr. at Bell Labs (1956). It is the mathematically
-              optimal betting/investment fraction for a repeated game with known probabilities and payoffs.
-              In practice, Half-Kelly is used universally because PoP estimates always carry estimation error.
-            </p>
-          </div>
-        </InfoCard>
-
-        {/* Trade Signals */}
-        <InfoCard icon={<Radar size={18} />} title="Trade Signals Page">
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              Trade Signals is your signal dashboard — it shows every watchlist ticker with pre-trade
-              verdicts across five DTE scan windows (0w, 1w, 2w, 4w, 6w) at a glance.
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                {
-                  title: 'Coverage dots',
-                  desc: 'Each ticker shows colored dots for 0w/1w/2w/4w/6w. Green = GO, amber = CAUTION, red = NO GO, gray = not yet fetched. At a glance you can see which DTE windows are tradeable.',
-                },
-                {
-                  title: 'Fetch All Weeks',
-                  desc: 'One button fires four API calls (600ms staggered) for all DTE scan windows simultaneously. Results are cached for 15 minutes — you only need to do this once per session per ticker.',
-                },
-                {
-                  title: 'Week tabs',
-                  desc: 'Each ticker has tabs for each fetched DTE window. Switch tabs to see the best recommendation for that window along with its full verdict breakdown.',
-                },
-                {
-                  title: 'Filters',
-                  desc: 'Filter the entire list by All / GO / CAUTION / NO GO / Not Analyzed. Use this to instantly zero in on the cleanest setups across your whole watchlist.',
-                },
-              ].map(item => (
-                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+            {/* Three engines */}
+            <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+              <h3 className="text-xs font-semibold text-gray-200 mb-3">Three Independent Engines</h3>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 mb-1"><Zap size={13} /> Day Trade</div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Intraday VWAP and ORB logic. 0–1 day holds. Quotes and 1-min/5-min bars. Verdicts: STRONG BUY / BUY / HOLD / AVOID.</p>
                 </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: for nearer-term setups use 0w–1w. For typical monthly front, use 4w. For more time in the trade, use 6w.
-            </p>
-          </div>
-        </InfoCard>
-
-        {/* Portfolio */}
-        <InfoCard icon={<Briefcase size={18} />} title="Portfolio Tracking">
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              The Portfolio page tracks every position you add from a recommendation. Each entry records the full
-              trade structure — strategy, legs, expiry, max profit/loss, PoP, contracts, and the stock price when you added it.
-            </p>
-            <div className="rounded-xl border border-gray-700/60 bg-gray-800/40 px-3 py-2.5 mb-3">
-              <div className="text-xs font-semibold text-gray-200 mb-1.5">Open P&amp;L on each card</div>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                Each open card includes a <span className="text-gray-300">Current P&amp;L</span> tile next to Max Loss (highlighted green or red): today&apos;s option mids vs the mids saved at entry, multiplied by{' '}
-                <span className="font-mono text-gray-300">100 × contract count</span>. Exact formulas and caveats are in the reference block below.
-              </p>
-            </div>
-            <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 px-3 py-2.5 mb-3 space-y-2 text-xs text-gray-400 leading-relaxed">
-              <div className="font-semibold text-violet-200 text-sm">Formulas (reference)</div>
-              <ul className="list-disc pl-4 space-y-1.5">
-                <li>
-                  <span className="text-gray-300">Per-share contribution per leg:</span>{' '}
-                  BUY → <span className="font-mono text-gray-300">current_mid − entry_mid</span>;
-                  SELL → <span className="font-mono text-gray-300">entry_mid − current_mid</span>.
-                </li>
-                <li>
-                  <span className="text-gray-300">Current mid</span> on each leg: if bid and ask are both quoted and positive,{' '}
-                  <span className="font-mono text-gray-300">(bid + ask) / 2</span>; otherwise use last trade price if available.
-                  Strikes must match your saved legs on the expiry chain loaded for your position.
-                </li>
-                <li>
-                  <span className="text-gray-300">Position dollars:</span>{' '}
-                  sum those per-share leg contributions, then multiply by <span className="font-mono text-gray-300">100 × contracts</span>.
-                </li>
-                <li>
-                  <span className="text-gray-300">Exit suggestion percentages</span> compare that dollar estimate (preferring mids above)
-                  to max profit / max loss for the trade — see scenario fallback below when mids are unavailable.
-                </li>
-                <li>
-                  <span className="text-gray-300">Scenario fallback (signals only):</span> if mids cannot be read for every leg,
-                  the engine may use <span className="font-mono text-gray-300">intrinsic value at the cached stock spot</span> vs entry mids
-                  (as if expiry at today&apos;s underlying quote) for the same percentage math — not live option marks.
-                </li>
-                <li>
-                  <span className="text-amber-400/90">This is not your broker&apos;s P&amp;L</span> — spreads, assignments, portfolio margin, and fills will differ.
-                </li>
-              </ul>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                {
-                  title: 'Adding a position',
-                  desc: 'Click "Add to Portfolio" inside any recommendation card. Enter the number of contracts and the actual entry credit received. The portfolio stores the theoretical max profit/loss for later reference.',
-                },
-                {
-                  title: 'Closing a position',
-                  desc: 'When you exit a trade, mark it as Closed and enter your actual P&L%. The position moves to Closed status with an exit date. Closed positions stay visible for your records.',
-                },
-                {
-                  title: 'P&L tracking',
-                  desc: 'Current P&amp;L appears as a highlighted tile beside Max Loss on open positions. Exports still include scenario $ (intrinsic at cached spot) for spreadsheets.',
-                },
-                {
-                  title: 'Refresh prices',
-                  desc: 'Use the refresh (circular arrows) button on Portfolio to refetch analysis for each open position\'s expiry (exact option chain). Open positions also trigger an automatic fetch when you land on Portfolio if that expiry was not cached yet.',
-                },
-                {
-                  title: 'Position sizing',
-                  desc: 'One contract controls 100 shares. A $5-wide put spread sold for $1.50 credit has max profit = $150 and max loss = $350 per contract. Scale contracts conservatively relative to account size.',
-                },
-                {
-                  title: 'Exit suggestions',
-                  desc: 'Suggestions use your estimated dollar P&L when mids exist (otherwise intrinsic-at-spot fallback) versus max profit or loss, plus DTE rules — details under Formulas.',
-                },
-                {
-                  title: 'Export reports',
-                  desc: 'Use the download button on Portfolio to export the current view as XLSX or PDF. Columns include scenario dollars at cached spot, MTM dollars from mids vs entry when available, realized dollars when closed, warnings, max profit/loss, Kelly fields, leg columns, and strategy.',
-                },
-              ].map(item => (
-                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-sky-400 mb-1"><TrendingUp size={13} /> Swing Trade</div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Daily OHLCV multi-day analysis. 2–5 day holds. MA20/MA50, RSI, MACD, momentum, volume, SPY/QQQ context. Decision quality layer adds entry/risk grading.</p>
                 </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Tip: Portfolio loads quotes per position expiry automatically when needed. Manual Refresh forces every open expiry to reload; exports use whatever is cached after those complete.
-            </p>
-          </div>
-        </InfoCard>
-
-        {/* Backtest Lab */}
-        <InfoCard icon={<FlaskConical size={18} />} title="Backtest Lab" defaultOpen={false}>
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              Backtest Lab runs a <span className="text-gray-200 font-semibold">historical simulation</span> on past engine
-              trade signals for a ticker and date range. It helps you see how the strategy rules would have behaved in the past — it is
-              <span className="text-amber-400 font-semibold"> not</span> a guarantee of future results.
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                {
-                  title: 'Pricing model',
-                  desc: 'Options are valued with Black–Scholes using historical volatility (HV-20) scaled by 1.15 as a simple IV stand-in. Liquidity, borrow, dividends, and real intraday IV are not modeled.',
-                },
-                {
-                  title: 'Exits',
-                  desc: 'Credit trades: take profit at ~50% of max credit, stop at ~2× credit loss, or exit at 21 DTE. Debit trades: ~100% gain target, ~50% loss stop, or 5 DTE. Each fill assumes 1 contract (100 shares) per signal.',
-                },
-                {
-                  title: 'Controls',
-                  desc: 'Choose ticker, date range (with presets), strategy mode (all / credit / long / short-or-covered), target weeks out, optional spread width, then Run Backtest. Results include win rate, P&L, Sharpe, drawdown, profit factor, equity curve, and a sortable trade log.',
-                },
-                {
-                  title: 'Backend',
-                  desc: 'The browser calls POST /api/backtest (same-origin; production may mount the app under a path prefix). The server walks saved signals and returns aggregate stats and trade rows — no brokerage connection.',
-                },
-              ].map(item => (
-                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-violet-400 mb-1"><SlidersHorizontal size={13} /> Regular Engine</div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">Strategic options structures (spreads, covered calls, condors). Portfolio-aware with Black-Scholes EV, Kelly sizing, and multi-leg validation.</p>
                 </div>
-              ))}
+              </div>
             </div>
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              Treat outputs as <em>indicative</em>: real fills, slippage, assignment, and IV paths will differ. Past simulation performance is not indicative of future results.
-            </p>
-          </div>
-        </InfoCard>
+          </section>
 
-        {/* Trade Journal */}
-        <InfoCard icon={<NotebookPen size={18} />} title="Trade Journal" defaultOpen={false}>
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              The Trade Journal is for <span className="text-gray-200 font-semibold">trades you actually place</span>. You must be signed in.
-              From Strategy Finder, expand a recommendation and use <span className="text-violet-300 font-semibold">Save to Journal</span> to
-              snapshot the setup (ticker, strategy, legs, scores, bias, etc.).
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                {
-                  title: 'Open vs closed',
-                  desc: 'Open rows show live or last-refreshed stock price and MTM P&L per contract. After you close in real life, use Close Trade in the journal to record exit date, reason, and optional notes.',
-                },
-                {
-                  title: 'Refresh P&L',
-                  desc: 'Use the circular refresh control in the journal header to refetch marks for open entries so MTM updates without reloading the whole page. Closed trades keep stored realized P&L.',
-                },
-                {
-                  title: 'Notes & filters',
-                  desc: 'Each entry supports editable notes. Filter tabs: All, Open, Closed, Expired — to focus on what you still manage vs history.',
-                },
-                {
-                  title: 'Backend',
-                  desc: 'Journal data is stored per user on the server (e.g. save, list, refresh marks, close, patch notes, delete) under authenticated API routes. Deleting an entry is permanent.',
-                },
-              ].map(item => (
-                <div key={item.title} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                  <div className="font-semibold text-gray-200 text-sm mb-1">{item.title}</div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              The journal is separate from Backtest Lab: journal = your real trades; backtest = historical simulation on signals.
-            </p>
-          </div>
-        </InfoCard>
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 3 — TRADE LIFECYCLE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="trade-lifecycle" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Activity size={18} className="text-violet-400" />
+              Trade Lifecycle
+            </h2>
 
-        {/* Engine logic */}
-        <InfoCard icon={<TrendingUp size={18} />} title="Trading Logic Matrix" defaultOpen={false}>
-          <div className="overflow-x-auto rounded-xl border border-gray-700/50">
-            <table className="w-full min-w-[680px] text-sm">
-              <thead className="bg-gray-800">
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                  <th className="px-4 py-3">Condition</th>
-                  <th className="px-4 py-3">Strategies Built</th>
-                  <th className="px-4 py-3">Intent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {strategyRules.map(rule => (
-                  <tr key={rule.condition} className="border-t border-gray-700/50">
-                    <td className="px-4 py-3 font-mono font-bold text-white">{rule.condition}</td>
-                    <td className="px-4 py-3 font-semibold text-violet-300">{rule.built}</td>
-                    <td className="px-4 py-3 text-gray-400">{rule.why}</td>
-                  </tr>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 mb-4">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {tradeLifecycleStages.map((t, i) => (
+                  <div key={t.stage} className="flex items-center gap-1.5">
+                    <div className="rounded-lg border border-gray-700/60 bg-gray-800/60 px-2.5 py-1.5">
+                      <div className="text-[10px] font-bold text-gray-200">{t.stage}</div>
+                    </div>
+                    {i < tradeLifecycleStages.length - 1 && <ChevronRight size={11} className="text-gray-700" />}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {signalFlags.map(flag => (
-              <div key={flag.name} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3">
-                <div className="font-mono text-sm font-bold text-violet-300">{flag.name}</div>
-                <div className="text-xs text-gray-400 mt-1">{flag.logic}</div>
               </div>
-            ))}
-          </div>
-        </InfoCard>
-
-        <InfoCard icon={<Filter size={18} />} title="Exact Build Flow" defaultOpen={false}>
-          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 font-mono text-xs text-gray-300 overflow-x-auto">
-            <pre>{`if BULLISH and LOW_IV:
-  build Long Call
-  build Bull Call Spread
-
-if BEARISH and LOW_IV:
-  build Long Put
-  build Bear Put Spread
-
-if HIGH_IV and not BEARISH:
-  build Bull Put Spread
-
-if HIGH_IV and not BULLISH:
-  build Bear Call Spread
-
-if NEUTRAL and HIGH_IV:
-  build Iron Condor
-
-if NEUTRAL and LOW_IV:
-  build Long Straddle
-
-if HIGH_IV and not BEARISH:
-  build Covered Call          # assumes 100 shares owned
-  build Covered Put           # cash-secured: reserve (strike × 100) cash
-  build Short Put             # naked/margin — no stock or cash requirement
-
-if HIGH_IV and BEARISH:
-  build Short Call            # naked/margin — ⚠️ unlimited upside risk`}</pre>
-          </div>
-          <p className="text-sm text-gray-400 mt-3">
-            After these candidates are built, the engine filters weak trades and ranks the survivors by score.
-          </p>
-        </InfoCard>
-
-        {/* ── EV Models ── */}
-        <InfoCard icon={<Sigma size={18} />} title="Expected Value Models — How EV is Calculated Per Strategy" defaultOpen={false}>
-          <div className="space-y-4 text-sm text-gray-400">
-
-            <p>
-              Different strategies have fundamentally different payoff shapes. The engine uses{' '}
-              <span className="text-white font-semibold">two distinct formulas</span> matched to the math
-              of each structure — not one formula applied everywhere.
-            </p>
-
-            {/* Two-formula overview */}
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="bg-violet-950/40 border border-violet-800/50 rounded-xl p-4">
-                <div className="text-violet-300 font-semibold text-sm mb-2">📐 Formula 1 — Binary EV</div>
-                <div className="text-xs text-gray-400 mb-2">
-                  For <span className="text-white font-semibold">bounded payoff</span> strategies where the
-                  outcome at expiry is either max profit or max loss (or something in between, captured by PoP):
-                </div>
-                <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
-                  <div>EV = (PoP × max_profit)</div>
-                  <div className="pl-5">− ((1 − PoP) × max_loss)</div>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  This is mathematically <em>exact</em> for capped strategies — the distribution has two outcomes and PoP from delta is an unbiased estimate.
-                </p>
-              </div>
-
-              <div className="bg-blue-950/40 border border-blue-800/50 rounded-xl p-4">
-                <div className="text-blue-300 font-semibold text-sm mb-2">📐 Formula 2 — Black-Scholes EV</div>
-                <div className="text-xs text-gray-400 mb-2">
-                  For <span className="text-white font-semibold">unbounded payoff</span> strategies where upside is
-                  theoretically unlimited. A lognormal integral over the full price distribution is required:
-                </div>
-                <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
-                  <div><span className="text-blue-400">CALL:</span> S·e^(μT)·N(d1) − K·N(d2) − premium</div>
-                  <div><span className="text-blue-400">PUT:</span>  K·N(−d2) − S·e^(μT)·N(−d1) − premium</div>
-                  <div className="text-gray-500 mt-1">d1 = (ln(S/K) + (μ + ½σ²)T) / (σ√T)</div>
-                  <div className="text-gray-500">d2 = d1 − σ√T</div>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  μ is a real-world drift based on the engine's directional bias signal (see below). Risk-neutral pricing uses μ=r; this engine uses a signal-adjusted drift for meaningful EV.
-                </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {tradeLifecycleStages.map(t => (
+                  <div key={t.stage} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                    <div className="text-[10px] font-bold text-gray-300">{t.stage}</div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">{t.subtitle}</div>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">{t.desc}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Strategy → formula table */}
-            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
-              <table className="w-full min-w-[620px] text-xs">
-                <thead className="bg-gray-800">
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3 w-44">Strategy</th>
-                    <th className="px-4 py-3 w-36">EV Formula</th>
-                    <th className="px-4 py-3">Why this formula is correct</th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* Position lifecycle states */}
+            <DocCard icon={<Briefcase size={15} />} title="Position Lifecycle States">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {positionLifecycleStates.map(p => (
+                  <div key={p.state} className="flex items-start gap-2.5 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                    <span className={p.color}>{p.icon}</span>
+                    <div>
+                      <div className="text-[11px] font-bold text-gray-200">{p.state}</div>
+                      <p className="text-[10px] text-gray-400 leading-relaxed">{p.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 4 — ENGINE STATES
+             ═══════════════════════════════════════════════════════ */}
+          <section id="engine-states" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Gauge size={18} className="text-violet-400" />
+              Engine States
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Each state represents a distinct verdict from the engine. States determine whether a trade is actionable, needs monitoring, or should be avoided.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {engineStateCards.map(e => (
+                <div key={e.state} className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${e.tone}`}>{e.state}</span>
+                  </div>
+                  <p className="text-xs text-gray-300 leading-relaxed">{e.def}</p>
+                  <div className="text-[10px] text-gray-500 space-y-0.5">
+                    <div><span className="text-gray-600 font-semibold">When:</span> {e.when}</div>
+                    <div><span className="text-gray-600 font-semibold">Interpretation:</span> {e.interpret}</div>
+                    <div><span className="text-gray-600 font-semibold">Next action:</span> {e.next}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 5 — EXECUTION STATES
+             ═══════════════════════════════════════════════════════ */}
+          <section id="execution-states" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Target size={18} className="text-violet-400" />
+              Execution States
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Execution states describe entry timing specifically. A trade can have a strong bias (BULLISH) but still show WAIT execution if the market has not yet provided a clean entry.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {execStateCards.map(e => (
+                <div key={e.state} className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${e.tone}`}>{e.state}</span>
+                  </div>
+                  <p className="text-xs text-gray-300 leading-relaxed mb-1">{e.def}</p>
+                  <div className="text-[10px] text-gray-500">
+                    <span className="text-gray-600 font-semibold">When:</span> {e.when}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 rounded-lg border border-gray-800 bg-amber-950/20 px-4 py-3 text-[11px] text-amber-200/90 leading-relaxed">
+              <span className="font-semibold">Signal quality vs. entry timing:</span> A trade can be fundamentally sound (good bias, good structure) but lack an actionable entry. The engine always evaluates both dimensions independently. Strong signal + poor timing = WAIT.
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 6 — DAY TRADE ENGINE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="day-trade" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Zap size={18} className="text-violet-400" />
+              Day Trade Engine
+            </h2>
+            <div className="space-y-3">
+              <DocCard icon={<Activity size={15} />} title="Core Concepts">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The Day Trade engine analyzes intraday momentum using VWAP (Volume-Weighted Average Price), opening range breakouts, and session-level confirmation. Designed for 0–1 day holds with active management.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'VWAP', desc: 'Volume-Weighted Average Price. Acts as an intraday support/resistance level. Price above VWAP = bullish bias for the session; below = bearish.' },
+                      { label: 'Opening Range High (ORH)', desc: 'The high of the first N minutes of trading. A breakout above ORH with volume signals intraday momentum.' },
+                      { label: 'Opening Range Low (ORL)', desc: 'The low of the first N minutes. A breakdown below ORL signals intraday weakness.' },
+                      { label: 'Breakout Confirmation', desc: 'Price must hold above ORH for a defined period before the engine upgrades the entry signal. Prevents false breakouts.' },
+                      { label: 'Controlled Pullback', desc: 'A retracement to VWAP or ORH that holds and shows buying pressure. Often the best entry for momentum continuation.' },
+                      { label: 'Scalp Target', desc: 'The initial profit objective, typically 1.5–2× the risk amount for intraday positions.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Target size={15} />} title="Verdict Tiers">
+                <div className="space-y-2 text-xs text-gray-400">
                   {[
-                    {
-                      strategy: 'Long Call',
-                      formula: 'Black-Scholes',
-                      color: 'text-blue-400',
-                      reason: 'Upside is unbounded — the stock can go to any price above the strike. Binary EV would need to assume a fixed "max profit" which is arbitrary. BS integrates over the full lognormal distribution.',
-                    },
-                    {
-                      strategy: 'Long Put',
-                      formula: 'Black-Scholes',
-                      color: 'text-blue-400',
-                      reason: 'Same logic as Long Call but inverted. The put payoff is max(K − S, 0); the full lognormal expectation is required to capture tail scenarios where the stock drops sharply.',
-                    },
-                    {
-                      strategy: 'Long Straddle',
-                      formula: 'BS Call + BS Put',
-                      color: 'text-blue-400',
-                      reason: 'A straddle profits from large moves in either direction. EV = BS_EV(call leg) + BS_EV(put leg) using the average ATM IV. Each leg is evaluated independently then summed.',
-                    },
-                    {
-                      strategy: 'Bull Call / Bear Put Spread',
-                      formula: 'Binary EV',
-                      color: 'text-violet-400',
-                      reason: 'Payoff is strictly capped at the spread width. Both max profit and max loss are defined at construction. PoP from the short-leg delta is an unbiased estimator — binary formula is exact.',
-                    },
-                    {
-                      strategy: 'Bull Put / Bear Call Spread',
-                      formula: 'Binary EV',
-                      color: 'text-violet-400',
-                      reason: 'Credit spread: collect premium upfront, max loss = spread width − credit. Payoff is fully bounded. Binary formula captures this exactly.',
-                    },
-                    {
-                      strategy: 'Iron Condor',
-                      formula: 'Binary EV',
-                      color: 'text-violet-400',
-                      reason: 'Two credit spreads combined. Net credit = max profit, max loss = wider spread − credit. Payoff is capped on all sides. Binary EV is exact.',
-                    },
-                    {
-                      strategy: 'Short Put / Short Call',
-                      formula: 'Binary EV (proxied)',
-                      color: 'text-amber-400',
-                      reason: 'True max loss is very large (stock to zero or infinity). The engine proxies max loss at 2× credit — a disciplined stop-loss model. Binary EV applied to this bounded stop captures realistic expected outcome.',
-                    },
-                    {
-                      strategy: 'Covered Call / Put',
-                      formula: 'Binary EV (proxied)',
-                      color: 'text-amber-400',
-                      reason: 'Stock component is not modeled (assumed already owned / cash committed). Premium income EV uses 2× credit as the practical stop proxy. Checklist uses income yield instead of EV as the primary gate.',
-                    },
-                  ].map(row => (
-                    <tr key={row.strategy} className="border-t border-gray-700/50">
-                      <td className="px-4 py-3 font-semibold text-white">{row.strategy}</td>
-                      <td className={`px-4 py-3 font-mono font-bold ${row.color}`}>{row.formula}</td>
-                      <td className="px-4 py-3 text-gray-400 leading-relaxed">{row.reason}</td>
-                    </tr>
+                    { verdict: 'STRONG BUY', tone: 'text-emerald-400', dot: 'green', desc: 'Multiple confirmations align: VWAP hold, OR breakout, volume confirmation, and sector/market tailwind.' },
+                    { verdict: 'BUY', tone: 'text-emerald-400', dot: 'green', desc: 'Primary signals are positive but may lack full confirmation. Good risk/reward setup.' },
+                    { verdict: 'HOLD', tone: 'text-amber-400', dot: 'amber', desc: 'No decisive signal. Wait for clearer direction or better entry.' },
+                    { verdict: 'AVOID', tone: 'text-rose-400', dot: 'red', desc: 'Risk factors dominate. Poor liquidity, failed technical levels, or adverse market conditions.' },
+                  ].map(v => (
+                    <div key={v.verdict} className="flex items-start gap-2">
+                      <BadgeDot tone={v.dot as 'green' | 'amber' | 'red'} />
+                      <div><span className={`font-semibold ${v.tone}`}>{v.verdict}</span><span className="text-gray-500"> — {v.desc}</span></div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </DocCard>
 
-            {/* Real-world drift */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
-              <div className="text-white font-semibold text-sm mb-3">📡 Real-World Drift μ — Connecting Signals to BS Formula</div>
-              <p className="text-xs text-gray-400 mb-3 leading-relaxed">
-                Standard Black-Scholes uses risk-neutral drift (the risk-free rate), which makes EV = 0 for every
-                option — useless for ranking. The engine replaces it with a{' '}
-                <span className="text-white font-semibold">signal-adjusted real-world drift</span> derived from
-                the directional bias and confidence score, so EV reflects the engine's actual conviction:
-              </p>
-              <div className="overflow-x-auto rounded-lg border border-gray-700/50">
+              <DocCard icon={<Clock size={15} />} title="Execution Timing">
+                <div className="space-y-1.5 text-xs text-gray-400">
+                  <p className="text-amber-200/90">Waiting on: VWAP hold · breakout confirmation · controlled pullback hold</p>
+                  <ul className="space-y-1 text-gray-500">
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">VWAP hold:</strong> Price establishes support at VWAP after a period above it. Indicates institutional buying interest.</span></li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Breakout confirmation:</strong> Price breaks above ORH and holds for N minutes with rising volume. Filters fakeouts.</span></li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Controlled pullback:</strong> Price pulls back to VWAP or breakout level without breaking it, then resumes the move. Indicates healthy price action.</span></li>
+                  </ul>
+                </div>
+              </DocCard>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 7 — SWING TRADE ENGINE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="swing-trade" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <TrendingUp size={18} className="text-violet-400" />
+              Swing Trade Engine
+            </h2>
+            <div className="space-y-3">
+              <DocCard icon={<Activity size={15} />} title="Core Concepts">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The Swing Trade engine analyzes daily OHLCV bars (60+ sessions) to identify multi-day momentum setups. It evaluates MA20/MA50 alignment, RSI, MACD, 5-day momentum, volume trends, and SPY/QQQ market context.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: '2–5 Day Setups', desc: 'Target holding period. The engine evaluates setups that can develop over several sessions, not intraday moves.' },
+                      { label: 'Pullback Entries', desc: 'When price is extended from MA20, the engine recommends waiting for a pullback to establish a better entry.' },
+                      { label: 'Breakout Continuation', desc: 'When price breaks a key level with volume and holds, the engine can recommend continuation entries.' },
+                      { label: 'MA20/MA50 Alignment', desc: 'MA20 > MA50 = uptrend. The slope and spacing of these MAs determine trend strength scoring.' },
+                      { label: 'Swing Execution Map', desc: 'Entry zone (pullback level), breakout trigger, risk-below line, and target zone. Each trade has a structured execution map.' },
+                      { label: 'DTE Windows', desc: 'Despite 2–5 day holds, swing uses 21–42 DTE options to reduce gamma risk and allow time for the thesis to develop.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Sigma size={15} />} title="Decision Quality Layer">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>The swing engine adds a Decision Quality Layer that separates trend direction from entry quality:</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'Swing Bias', desc: 'Directional read: STRONG_BULLISH, BULLISH, NEUTRAL, BEARISH, STRONG_BEARISH' },
+                      { label: 'Entry Quality', desc: 'GOOD_ENTRY, CAUTION_ENTRY, WAIT_PULLBACK, LATE_ENTRY, NO_CLEAN_ENTRY' },
+                      { label: 'Risk Level', desc: 'LOW, MEDIUM, HIGH, VERY_HIGH — based on extension, VIX, earnings, IV, liquidity' },
+                      { label: 'Final Action', desc: 'STRONG_GO, READY, WATCH, WAIT_PULLBACK, AVOID_CHASE, NO_TRADE' },
+                    ].map(d => (
+                      <div key={d.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{d.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{d.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<RefreshCw size={15} />} title="Why 21–42 DTE for 3–5 Day Holds">
+                <div className="space-y-1.5 text-xs text-gray-400">
+                  <p>A common question: why use options with 3–6 weeks to expiry when you only hold for 3–5 days?</p>
+                  <ul className="space-y-1 text-gray-500">
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Theta decay curve:</strong> Gamma risk accelerates in the final 2 weeks. Longer DTE reduces the risk of an adverse intraday move wiping out the position.</span></li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Time for thesis to develop:</strong> Swing trades are based on daily closes. A setup may take 2–5 sessions to play out. Longer DTE gives room to be right.</span></li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Exit flexibility:</strong> If the trade moves in your favor early, you can close with significant time premium remaining, improving the risk/reward.</span></li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Earnings and event buffer:</strong> Longer DTE provides a cushion if unexpected events occur during the holding period.</span></li>
+                  </ul>
+                </div>
+              </DocCard>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 8 — REGULAR ENGINE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="regular-engine" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <SlidersHorizontal size={18} className="text-violet-400" />
+              Regular Engine
+            </h2>
+            <div className="space-y-3">
+              <DocCard icon={<Briefcase size={15} />} title="Strategic Options Structures">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The Regular (strategic) engine builds and validates complete option structures — spreads, covered positions, and multi-leg strategies. It applies the full pre-trade checklist, EV calculation, and Kelly sizing to every candidate.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'Strategy Mode Overrides', desc: 'All, Long Options, Credit Spreads, or Straddles mode restricts which strategies the engine considers.' },
+                      { label: 'Spread Construction', desc: 'Credit spreads target ~25 delta short legs. Iron condors target ~20 delta. Debit spreads adjust based on expected move.' },
+                      { label: 'Portfolio-Aware', desc: 'Cross-ticker exposure checks prevent over-concentration in correlated positions.' },
+                      { label: 'Income Trades', desc: 'Covered Calls and Covered Puts use Income Yield instead of EV as the primary quality metric.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Filter size={15} />} title="Strategy Selection Matrix">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                        <th className="px-3 py-2">Condition</th>
+                        <th className="px-3 py-2">Strategies</th>
+                        <th className="px-3 py-2">Why</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategyRules.map(r => (
+                        <tr key={r.condition} className="border-b border-gray-800/50">
+                          <td className="px-3 py-2 font-mono text-[10px] text-violet-300 whitespace-nowrap">{r.condition}</td>
+                          <td className="px-3 py-2 text-gray-200 font-semibold text-[10px]">{r.built}</td>
+                          <td className="px-3 py-2 text-gray-500 text-[10px]">{r.why}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </DocCard>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+              SECTION 9 — OPTIONS FUNDAMENTALS
+              ═══════════════════════════════════════════════════════ */}
+          <section id="options-funda" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BookOpen size={18} className="text-violet-400" />
+              Options Fundamentals
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Professional reference for every option strategy supported by the engine. Each entry includes the ideal market condition, risk profile, IV environment, common mistakes, and a payoff diagram.</p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Long Call */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Long Call</span>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bullish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="long-call" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy a call option. Pay premium for the right to buy stock at the strike." />
+                    <InfoRow label="When" value="Strong bullish conviction, low IV, defined risk tolerance." />
+                    <InfoRow label="Market" value="Bull trend, breakout, momentum expansion." />
+                    <InfoRow label="Risk" value="Limited to premium paid. Unlimited upside." />
+                    <InfoRow label="IV" value="Best in LOW IV — expensive premium erodes edge in high IV." />
+                    <InfoRow label="Mistakes" value="Buying OTM far from price; holding through theta decay too long; buying into earnings." />
+                    <InfoRow label="Max P/L" value="Max Loss = premium paid. Max Profit = unlimited (model truncates at 3× strike). Breakeven = strike + premium." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Long Put */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Long Put</span>
+                  <span className="rounded-full bg-rose-500/15 text-rose-300 border border-rose-700/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bearish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="long-put" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy a put option. Pay premium for the right to sell stock at the strike." />
+                    <InfoRow label="When" value="Strong bearish conviction, low IV, defined risk tolerance." />
+                    <InfoRow label="Market" value="Bear trend, breakdown, panic selling." />
+                    <InfoRow label="Risk" value="Limited to premium paid. Profit grows as stock falls to $0." />
+                    <InfoRow label="IV" value="Best in LOW IV — elevated IV inflates put premiums." />
+                    <InfoRow label="Mistakes" value="Buying far OTM puts expecting a crash; holding through volatility crush." />
+                    <InfoRow label="Max P/L" value="Max Loss = premium paid. Max Profit = strike − premium (stock → $0). Breakeven = strike − premium." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Covered Call */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Covered Call</span>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bullish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="covered-call" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Own 100 shares, sell an OTM call. Collect premium, cap upside at strike." />
+                    <InfoRow label="When" value="Neutral-to-slightly-bullish outlook on shares you already own." />
+                    <InfoRow label="Market" value="Sideways to modestly bullish. Low volatility expected." />
+                    <InfoRow label="Risk" value="Stock downside risk (unhedged). Capped upside at the short strike." />
+                    <InfoRow label="IV" value="Best in HIGH IV — collect richer premium when options are expensive." />
+                    <InfoRow label="Mistakes" value="Selling too low (strike near price) and capping upside too early; selling during strong uptrend." />
+                    <InfoRow label="Max P/L" value="Max Profit = (strike − entry) + premium. Max Loss = stock loss − premium. Breakeven = entry − premium." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cash-Secured Put */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Cash-Secured Put</span>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bullish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="cash-secured-put" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Sell an OTM put with cash collateral. Collect premium; may be assigned shares." />
+                    <InfoRow label="When" value="Bullish or neutral on a stock you want to own at a discount." />
+                    <InfoRow label="Market" value="Bullish or range-bound. Willing to buy the dip." />
+                    <InfoRow label="Risk" value="Obligation to buy 100 shares at strike if stock falls below. Cash collateral required." />
+                    <InfoRow label="IV" value="Best in HIGH IV — elevated premium improves income yield." />
+                    <InfoRow label="Mistakes" value="Selling puts on stocks you do not want to own; assigning too much capital to one trade." />
+                    <InfoRow label="Max P/L" value="Max Profit = premium collected. Max Loss = strike − premium (stock → $0). Breakeven = strike − premium." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bull Call Spread */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Bull Call Spread</span>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bullish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="bull-call-spread" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy lower-strike call, sell higher-strike call. Debit spread with defined risk/reward." />
+                    <InfoRow label="When" value="Moderately bullish. Expect price to rise but not explode past the short strike." />
+                    <InfoRow label="Market" value="Bullish with defined target. Lower cost than a naked long call." />
+                    <InfoRow label="Risk" value="Limited to net debit paid. Profit capped at spread width minus debit." />
+                    <InfoRow label="IV" value="Works in any IV. Better in LOW IV (cheaper to buy)." />
+                    <InfoRow label="Mistakes" value="Choosing strikes too close together (low max profit); paying too much for short-dated spreads." />
+                    <InfoRow label="Max P/L" value="Max Loss = debit paid. Max Profit = spread width − debit. Breakeven = long strike + debit." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bear Put Spread */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Bear Put Spread</span>
+                  <span className="rounded-full bg-rose-500/15 text-rose-300 border border-rose-700/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bearish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="bear-put-spread" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy higher-strike put, sell lower-strike put. Debit spread with defined risk/reward." />
+                    <InfoRow label="When" value="Moderately bearish. Expect price to fall but not crash through the short strike." />
+                    <InfoRow label="Market" value="Bearish with defined target. Lower cost than a naked long put." />
+                    <InfoRow label="Risk" value="Limited to net debit paid. Profit capped at spread width minus debit." />
+                    <InfoRow label="IV" value="Works in any IV. Better in LOW IV (cheaper to buy)." />
+                    <InfoRow label="Mistakes" value="Opening during IV spike (expensive); strikes too narrow for expected move." />
+                    <InfoRow label="Max P/L" value="Max Loss = debit paid. Max Profit = spread width − debit. Breakeven = long strike − debit." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bull Put Spread */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Bull Put Spread</span>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bullish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="bull-put-spread" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Sell higher-strike put, buy lower-strike put. Credit spread. Collect premium upfront." />
+                    <InfoRow label="When" value="Bullish or neutral outlook. Stock expected to stay above short strike." />
+                    <InfoRow label="Market" value="Bullish or range-bound. High IV environments." />
+                    <InfoRow label="Risk" value="Defined: spread width − credit received." />
+                    <InfoRow label="IV" value="Best in HIGH IV — elevates premium collected." />
+                    <InfoRow label="Mistakes" value="Selling too close to price (high assignment risk); not managing when stock drops near short strike." />
+                    <InfoRow label="Max P/L" value="Max Profit = credit received. Max Loss = spread width − credit. Breakeven = short strike − credit." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bear Call Spread */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Bear Call Spread</span>
+                  <span className="rounded-full bg-rose-500/15 text-rose-300 border border-rose-700/40 px-2 py-0.5 text-[9px] font-bold uppercase">Bearish</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="bear-call-spread" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Sell lower-strike call, buy higher-strike call. Credit spread. Collect premium upfront." />
+                    <InfoRow label="When" value="Bearish or neutral outlook. Stock expected to stay below short strike." />
+                    <InfoRow label="Market" value="Bearish or range-bound. High IV environments." />
+                    <InfoRow label="Risk" value="Defined: spread width − credit received." />
+                    <InfoRow label="IV" value="Best in HIGH IV — elevates premium collected." />
+                    <InfoRow label="Mistakes" value="Selling too close to price during uptrend; ignoring upside gap risk." />
+                    <InfoRow label="Max P/L" value="Max Profit = credit received. Max Loss = spread width − credit. Breakeven = short strike + credit." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Iron Condor */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Iron Condor</span>
+                  <span className="rounded-full bg-sky-500/15 text-sky-300 border border-sky-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Neutral</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="iron-condor" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Bull Put Spread + Bear Call Spread at 4 strikes. Range-bound profit zone." />
+                    <InfoRow label="When" value="Stock expected to stay within a defined range. Neutral outlook." />
+                    <InfoRow label="Market" value="Range-bound, low volatility expected. Premium selling opportunity." />
+                    <InfoRow label="Risk" value="Defined on both sides. Max loss = wing width − credit." />
+                    <InfoRow label="IV" value="Best in HIGH IV — maximum premium collection." />
+                    <InfoRow label="Mistakes" value="Wings too narrow (low PoP); opening before known catalysts; not adjusting when one side is threatened." />
+                    <InfoRow label="Max P/L" value="Max Profit = credit received. Max Loss = widest wing − credit. Breakevens = inner strikes ± credit." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Butterfly */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Butterfly</span>
+                  <span className="rounded-full bg-sky-500/15 text-sky-300 border border-sky-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Neutral</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="butterfly" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy 1 lower strike, sell 2 middle strikes, buy 1 higher strike. Tent-shaped payoff." />
+                    <InfoRow label="When" value="Stock expected to land exactly at the middle strike at expiry." />
+                    <InfoRow label="Market" value="Very low volatility, precise price target. Pin action expected." />
+                    <InfoRow label="Risk" value="Limited to net debit paid (typically small)." />
+                    <InfoRow label="IV" value="Works in any IV. Higher IV increases credit but widens breakevens." />
+                    <InfoRow label="Mistakes" value="Wrong strike selection; ignoring commission costs on 4-leg trades; not adjusting when price moves toward the body." />
+                    <InfoRow label="Max P/L" value="Max Profit = spread width − debit (at middle strike). Max Loss = debit paid. Breakevens = middle ± spread width." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Long Straddle */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Long Straddle</span>
+                  <span className="rounded-full bg-sky-500/15 text-sky-300 border border-sky-600/40 px-2 py-0.5 text-[9px] font-bold uppercase">Neutral</span>
+                </div>
+                <div className="p-3 space-y-2 text-[11px]">
+                  <PayoffSvg type="long-straddle" />
+                  <div className="grid gap-1.5">
+                    <InfoRow label="What" value="Buy an ATM call + ATM put at the same strike and expiry. Profits from big moves either direction." />
+                    <InfoRow label="When" value="Expecting a large move but unsure of direction. Earnings, Fed days, catalysts." />
+                    <InfoRow label="Market" value="High volatility expected. Breakout or crash scenarios." />
+                    <InfoRow label="Risk" value="Limited to total premium paid (both legs). Theta decay is double." />
+                    <InfoRow label="IV" value="Best in LOW IV — cheap premium. IV expansion after entry boosts value." />
+                    <InfoRow label="Mistakes" value="Buying straddles when IV is already high (overpaying); holding too long through theta decay." />
+                    <InfoRow label="Max P/L" value="Max Loss = total premium paid. Max Profit = unlimited (either direction). Breakevens = strike ± total premium." />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+              SECTION 10 — STRATEGY GLOSSARY
+              ═══════════════════════════════════════════════════════ */}
+          <section id="strategy-glossary" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BookOpen size={18} className="text-violet-400" />
+              Strategy Glossary
+            </h2>
+
+            {/* Options reference table */}
+            <DocCard icon={<BookOpen size={15} />} title="Options Reference">
+              <div className="overflow-x-auto rounded-lg border border-gray-800">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-900">
-                    <tr className="text-left text-gray-500 uppercase tracking-wide">
-                      <th className="px-3 py-2">Signal</th>
-                      <th className="px-3 py-2">Drift μ formula</th>
-                      <th className="px-3 py-2">Example (confidence = 0.70)</th>
+                  <thead className="bg-gray-800/80">
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+                      <th className="px-3 py-2">Position</th>
+                      <th className="px-3 py-2">Formal Name</th>
+                      <th className="px-3 py-2">Your Action</th>
+                      <th className="px-3 py-2">Outlook</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      { signal: 'Bullish', color: 'text-emerald-400', formula: 'μ = +0.15 × confidence', example: 'μ = +0.15 × 0.70 = +10.5% annualised' },
-                      { signal: 'Bearish', color: 'text-red-400',     formula: 'μ = −0.10 × confidence', example: 'μ = −0.10 × 0.70 = −7.0% annualised' },
-                      { signal: 'Neutral', color: 'text-gray-300',    formula: 'μ = +0.05 (flat)',       example: 'μ = +0.05 = +5.0% (equity risk premium)' },
-                    ].map(r => (
-                      <tr key={r.signal} className="border-t border-gray-700/50">
-                        <td className={`px-3 py-2 font-semibold ${r.color}`}>{r.signal}</td>
-                        <td className="px-3 py-2 font-mono text-gray-300">{r.formula}</td>
-                        <td className="px-3 py-2 text-gray-400">{r.example}</td>
+                    {optionReference.map(item => (
+                      <tr key={item.position} className="border-t border-gray-800/50">
+                        <td className="px-3 py-2 font-semibold text-white text-[11px]">{item.position}</td>
+                        <td className="px-3 py-2 font-semibold text-violet-300 text-[11px]">{item.formalName}</td>
+                        <td className="px-3 py-2 text-gray-400 text-[10px]">{item.action}</td>
+                        <td className="px-3 py-2 text-gray-400 text-[10px]">{item.outlook}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                A strongly bullish signal on a cheap-IV day produces meaningfully positive EV for a Long Call.
-                A bearish signal correctly gives a Long Call negative EV — and the EV Hard Gate then rejects it.
-                This is what "signals driving the EV model" means in practice.
-              </p>
-            </div>
+            </DocCard>
 
-            {/* Why the 10x proxy was wrong */}
-            <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4">
-              <div className="text-amber-400 font-semibold text-sm mb-2">⚠ Why Simple "10× Premium" Proxies Are Wrong</div>
-              <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                An older approach estimated long option EV as{' '}
-                <span className="font-mono text-amber-300">PoP × (10 × premium)</span> — treating 10× cost as a
-                stand-in for "max profit". For a $18.35 AVGO call this produced{' '}
-                <span className="text-red-400 font-semibold">EV = +$8,459/contract</span>, a number that
-                looks exciting but is mathematically meaningless. The 10× cap is arbitrary and not derived
-                from any probability distribution.
-              </p>
-              <div className="font-mono text-xs bg-gray-900/60 rounded-lg p-3 text-gray-300 space-y-1">
-                <div className="text-red-400">❌ Old proxy:  EV = 0.51 × ($1,835 × 10) = +$9,359  ← inflated, arbitrary</div>
-                <div className="text-emerald-400">✅ Black-Scholes: integrates S·e^(μT)·N(d1) − K·N(d2) over lognormal dist.</div>
-                <div className="text-gray-500 mt-1">The BS result is bounded by the actual probability-weighted payoff surface.</div>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                The same inflation problem affected Kelly sizing — a 461% edge ratio caused by the proxy would
-                hit the 20% Half-Kelly hard cap. The BS formula brings edge ratios down to realistic values
-                (typically 3–15% for quality setups), making Kelly sizing meaningful.
-              </p>
-            </div>
-
-          </div>
-        </InfoCard>
-
-        {/* ── Covered Strategies deep-dive ── */}
-        <InfoCard icon={<Briefcase size={18} />} title="Covered Call & Covered Put — Income Strategies" defaultOpen={false}>
-          <div className="space-y-4 text-sm text-gray-400">
-
-            <p>
-              Covered options are <span className="text-white font-semibold">income strategies</span>, not speculative bets.
-              You collect premium upfront and let time decay work in your favor.
-              They appear in <em>All Strategies</em> and <em>Credit Spreads</em> mode when IV Rank ≥ 50 and the signal is not bearish.
-            </p>
-
-            {/* Covered Call */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 space-y-2">
-              <div className="font-bold text-white text-base">📞 Covered Call</div>
-              <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Requires: own 100 shares</div>
-              <p className="text-sm">
-                Sell an OTM call (delta ~0.25–0.32) against shares you already own. You collect the call premium as
-                income immediately. Your upside is <span className="text-emerald-400 font-semibold">capped at the strike price</span> —
-                if the stock is called away at expiry, you keep the premium plus any appreciation up to the strike.
-                Your downside risk is still the stock dropping; the premium provides a small buffer.
-              </p>
-              <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Max Profit</div>
-                  <div className="text-emerald-400 font-semibold">Premium + (Strike − Entry)</div>
-                </div>
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Max Loss</div>
-                  <div className="text-red-400 font-semibold">Stock drops to 0 − premium received</div>
-                </div>
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Breakeven</div>
-                  <div className="text-white font-semibold">Stock Price − Premium</div>
-                </div>
-              </div>
-              <div className="text-xs text-amber-300/80 bg-amber-900/20 border border-amber-800/40 rounded-lg px-3 py-2 mt-1">
-                <span className="font-semibold">Management:</span> Buy back the call at 50% of max credit to lock in gains and free up the stock for further upside.
-                If the stock rallies through the strike, consider <span className="font-semibold">rolling up and out</span> — buying back the current call and selling a higher strike / later expiry call for a net credit.
-              </div>
-            </div>
-
-            {/* Covered Put */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 space-y-2">
-              <div className="font-bold text-white text-base">🛡️ Covered Put (Cash-Secured Put)</div>
-              <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Requires: cash equal to strike × 100 as collateral</div>
-              <p className="text-sm">
-                Sell an OTM put (delta ~0.25–0.32) below the current price, backed by cash.
-                You collect the put premium as income. If the stock stays above the strike,
-                the put expires worthless — you keep the premium and repeat.
-                If the stock falls below the strike and you are <span className="text-violet-400 font-semibold">assigned</span>,
-                you buy 100 shares at the strike price — your effective cost basis is
-                <span className="text-white font-semibold"> (strike − premium received)</span>, a discount to the original price.
-              </p>
-              <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Max Profit</div>
-                  <div className="text-emerald-400 font-semibold">Premium collected</div>
-                </div>
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Max Loss</div>
-                  <div className="text-red-400 font-semibold">Stock drops to 0 from strike − premium</div>
-                </div>
-                <div className="bg-gray-700/40 rounded-lg px-3 py-2">
-                  <div className="text-gray-500 mb-0.5">Breakeven</div>
-                  <div className="text-white font-semibold">Strike − Premium</div>
-                </div>
-              </div>
-              <div className="text-xs text-blue-300/80 bg-blue-950/30 border border-blue-900/40 rounded-lg px-3 py-2 mt-1">
-                <span className="font-semibold">Management:</span> Close at 50% of credit to free up capital early.
-                If assigned, immediately sell a covered call on the acquired shares — this is the first step in the
-                <span className="font-semibold"> Wheel Strategy</span>, which continuously harvests premium income.
-              </div>
-            </div>
-
-            {/* Short Put / Short Call */}
-            <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-4 space-y-2">
-              <div className="font-bold text-white text-base flex items-center gap-2">
-                ⚡ Short Put & Short Call — Naked Selling (Margin Required)
-              </div>
-              <div className="text-xs text-red-300/80 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
-                <span className="font-semibold">Risk Warning:</span> Naked (uncovered) options require a margin account.
-                Short Put has risk down to zero if the stock collapses.
-                <span className="font-bold text-red-300"> Short Call has unlimited loss</span> if the stock rallies — always keep a hard stop at 2× the premium received.
-              </div>
-              <div className="text-sm space-y-1.5">
-                <p>
-                  <span className="text-white font-semibold">Short Put</span> — sell an OTM put for premium without requiring
-                  the full cash collateral of a cash-secured put. Same payoff as Covered Put but uses margin.
-                  Appears when signal is <em>not bearish</em> and IV Rank ≥ 50.
-                </p>
-                <p>
-                  <span className="text-white font-semibold">Short Call</span> — sell an OTM call for premium without owning the
-                  underlying shares. Opposite of a covered call: no stock provides the ceiling.
-                  Appears only when the signal is <em>bearish</em> and IV Rank ≥ 50.
-                  Consider using a <em>Bear Call Spread</em> instead to cap the risk.
-                </p>
-              </div>
-              <div className="text-xs text-gray-400 bg-gray-700/30 rounded-lg px-3 py-2">
-                <span className="font-semibold text-white">Checklist handling:</span> Both strategies use yield-based Income Edge check
-                (pass ≥ 1.0%), PoP ≥ 65%, and option-stop EV model (2× credit = disciplined stop). The R:R filter is bypassed — like all
-                income-sell strategies, the edge comes from high PoP and premium decay, not asymmetric payoff structure.
-              </div>
-            </div>
-
-            {/* Checklist differences */}
-            <div className="bg-violet-950/30 border border-violet-800/40 rounded-xl px-4 py-3">
-              <div className="text-xs font-bold text-violet-400 uppercase tracking-wide mb-2">How the Pre-Trade Checklist differs for covered strategies</div>
-              <div className="space-y-1.5 text-xs text-gray-400">
-                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">Income Edge</span> replaces Expected Value — evaluates yield % on position value (pass ≥ 1.0%, warn 0.6–1.0%). Not a hard fail.</span></div>
-                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">PoP threshold is 65%</span> (vs. 62% for credit spreads) — income strategies need a higher probability cushion to justify the capital tied up.</span></div>
-                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">R:R filter is bypassed</span> — the R:R ratio is unfavorable by design (small premium vs. stock risk); the edge comes from high PoP + premium income, not asymmetric payoff.</span></div>
-                <div className="flex gap-2"><span className="text-violet-400 shrink-0">→</span><span><span className="text-white font-semibold">Trend alignment</span> checks that the stock is above its 50-day MA — for covered call you need the stock to hold up; for covered put you want it near a support level.</span></div>
-              </div>
-            </div>
-
-          </div>
-        </InfoCard>
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          <InfoCard icon={<SlidersHorizontal size={18} />} title="Strategy Mode Overrides" defaultOpen={false}>
-            <div className="strategy-mode-overrides space-y-3 text-sm text-gray-400">
-              <p>
-                <span className="strategy-mode-label font-semibold text-gray-200">All Strategies</span> is fully market-driven.
-                Long Calls and Long Puts have an <span className="strategy-mode-gate text-amber-400 font-semibold">IV gate</span> —
-                they are only built when IV Rank is below 50. Debit spreads (Bull Call Spread, Bear Put Spread)
-                do <em>not</em> have this gate because the short leg offsets the IV cost.
-              </p>
-              <div className="strategy-mode-note bg-amber-900/20 border border-amber-800/50 rounded-xl px-3 py-2.5 text-xs text-amber-300/90">
-                <span className="font-semibold">Why is Long Call missing in "All" mode?</span> When IV Rank ≥ 50
-                and the signal is Bullish, the engine builds a Bull Call Spread instead of a naked Long Call. The
-                spread is cheaper and less exposed to IV crush after a catalyst. An amber banner appears in the
-                results header when this suppression is active. Switch to <span className="font-semibold">Long Options</span> mode to override.
-              </div>
-              <p>
-                <span className="strategy-mode-label font-semibold text-gray-200">Long Options</span> relaxes the IV gate so Long Calls,
-                Long Puts, and Long Straddles appear regardless of IV level.
-              </p>
-              <p>
-                <span className="strategy-mode-label font-semibold text-gray-200">Credit Spreads</span> relaxes the IV gate so Bull Put
-                Spreads, Bear Call Spreads, Iron Condors, Covered Calls, and Covered Puts (cash-secured) appear
-                even when IV Rank is below 50.
-              </p>
-              <p>
-                <span className="strategy-mode-label font-semibold text-gray-200">Straddles</span> limits results to{' '}
-                <em>Long Straddle</em> ideas only (long ATM call and put), regardless of directional bias or IV — use when you want the engine to focus on volatility trades.
-              </p>
-              <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl px-3 py-2.5 text-xs text-blue-300/90">
-                <span className="font-semibold">Covered Call and Covered Put</span> appear in <em>All Strategies</em> and
-                <em> Credit Spreads</em> modes when IV Rank ≥ 50 and the signal is not bearish.
-                They are <span className="font-semibold">income strategies</span>, not speculative directional bets —
-                the checklist uses income yield instead of EV, and PoP thresholds are higher (≥ 65%).
-                These strategies assume stock ownership (Covered Call) or willingness to buy at a discount (Covered Put / cash-secured).
-              </div>
-            </div>
-          </InfoCard>
-
-          <InfoCard icon={<Trophy size={18} />} title="Recommendation Score" defaultOpen={false}>
-            <div className="space-y-2">
-              {scoringRules.map(rule => (
-                <div key={rule.label} className="flex gap-3 bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-2">
-                  <div className="w-16 shrink-0 text-violet-300 font-bold font-mono text-sm">{rule.points}</div>
-                  <div>
-                    <div className="text-sm font-semibold text-white">{rule.label}</div>
-                    <div className="text-xs text-gray-400">{rule.desc}</div>
+            {/* Detailed examples */}
+            <DocCard icon={<BarChart2 size={15} />} title="Strategy Examples & Risk Profiles">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {optionExamples.map(item => (
+                  <div key={item.title} className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3">
+                    <div className="text-xs font-semibold text-white mb-1.5">{item.title}</div>
+                    <div className="space-y-1 text-[10px] leading-relaxed">
+                      <div><span className="text-gray-600">Setup:</span> <span className="text-gray-300">{item.setup}</span></div>
+                      <div><span className="text-emerald-400">Profit:</span> <span className="text-gray-400">{item.profit}</span></div>
+                      <div><span className="text-red-400">Risk:</span> <span className="text-gray-400">{item.risk}</span></div>
+                      <div><span className="text-violet-300">Best when:</span> <span className="text-gray-400">{item.bestWhen}</span></div>
+                    </div>
                   </div>
+                ))}
+              </div>
+            </DocCard>
+
+            {/* Full glossary grid */}
+            <DocCard icon={<HelpCircle size={15} />} title="Complete Options Glossary">
+              <div className="grid gap-2 md:grid-cols-2">
+                {glossaryTerms.map(item => (
+                  <div key={item.term} className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3">
+                    <div className="font-semibold text-violet-300 text-xs">{item.term}</div>
+                    <div className="text-[10px] text-gray-400 mt-1 leading-relaxed">{item.def}</div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+
+            {/* Directional Bias & Confidence */}
+            <DocCard icon={<TrendingUp size={15} />} title="Directional Bias &amp; Confidence">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p>The engine's assessment of where the stock price is likely to move, based on trend analysis, momentum indicators, volume patterns, and market context.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { level: 'High (80–100%)', desc: 'Very strong directional conviction. Multiple trend systems agree, momentum aligned, market context supportive. Suitable for full-position sizing.' },
+                    { level: 'Moderate (60–80%)', desc: 'Strong directional structure. Momentum and market broadly aligned, but secondary indicators lag. Standard position sizing.' },
+                    { level: 'Low (30–60%)', desc: 'Trend exists but lacks strong confirmation. Higher probability of false breakouts. Consider smaller size or debit spreads.' },
+                    { level: 'Very Low (0–30%)', desc: 'Very weak conviction. Trend models disagree, momentum unclear. Consider non-directional strategies or waiting.' },
+                  ].map(c => (
+                    <div key={c.level} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                      <div className="font-semibold text-gray-200 text-[11px]">{c.level}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            {/* AI Guidance Terms */}
+            <DocCard icon={<Brain size={15} />} title="AI Guidance Terms">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { term: 'Strong leader vs QQQ', def: 'The stock is outperforming the Nasdaq 100. A bullish relative strength signal.' },
+                  { term: 'Wait for pullback', def: 'The stock has moved up and is extended. Waiting for a pullback provides better risk/reward.' },
+                  { term: 'Breakout territory', def: 'Stock approaching or breaking a key resistance level. Entering with volume confirmation.' },
+                  { term: 'Liquidity too thin', def: 'Wide bid-ask spreads or low open interest. Skip this setup.' },
+                  { term: 'Avoid chasing extended candles', def: 'Stock moved sharply in a short period. Wait for consolidation.' },
+                  { term: 'Trend is your friend', def: 'The dominant trend supports the trade direction. Trade with the trend.' },
+                  { term: 'Constructive tape', def: 'Healthy market price action. Steady buying, good breadth, controlled volatility.' },
+                ].map(c => (
+                  <div key={c.term} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                    <div className="font-semibold text-gray-200 text-[11px]">{c.term}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{c.def}</div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+
+            {/* Technical Metrics */}
+            <DocCard icon={<Gauge size={15} />} title="Technical Metrics Glossary">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { term: 'RSI (Relative Strength Index)', def: 'A momentum oscillator (0–100). Above 70 = overbought, below 30 = oversold.' },
+                  { term: 'VWAP (Volume-Weighted Average Price)', def: 'Average price weighted by volume. Price above = bullish bias; below = bearish bias.' },
+                  { term: 'Volume Ratio', def: 'Current volume vs average. Above 1.5 confirms move strength.' },
+                  { term: 'DTE (Days to Expiry)', def: 'Days until option expires. Engine prefers 14–56 DTE.' },
+                  { term: 'Distance from 200-MA', def: '% from 200-day MA. Positive = above long-term trend (bullish).' },
+                  { term: 'Distance from 52W High', def: '% from 52-week high. Near 0% = at highs (momentum).' },
+                  { term: 'Trend Score', def: 'Composite metric of multi-timeframe trend analysis. Higher = stronger alignment.' },
+                  { term: 'Edge Score', def: 'Composite quality (0–100) combining Signal Fit, Structure, Liquidity, IV Fit.' },
+                  { term: 'MACD', def: 'Moving Average Convergence Divergence. Crossovers confirm trend direction.' },
+                ].map(c => (
+                  <div key={c.term} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                    <div className="font-semibold text-gray-200 text-[11px]">{c.term}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{c.def}</div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+              SECTION 10 — VALIDATION SYSTEM
+             ═══════════════════════════════════════════════════════ */}
+          <section id="validation" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <CheckCircle2 size={18} className="text-violet-400" />
+              Validation System
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Every trade candidate passes through 10 independent validation checks before reaching a verdict. These checks form the quality gate that separates actionable setups from speculative entries.</p>
+
+            <DocCard icon={<List size={15} />} title="The 10-Point Pre-Trade Checklist">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-3 py-2 w-8">#</th>
+                      <th className="px-3 py-2">Check</th>
+                      <th className="px-3 py-2 w-20">Hard Fail</th>
+                      <th className="px-3 py-2">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {checklistItems.map((c, i) => (
+                      <tr key={c.name} className="border-b border-gray-800/40">
+                        <td className="px-3 py-2 text-gray-600 font-mono">{i + 1}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-200 text-[11px]">{c.name}</td>
+                        <td className="px-3 py-2">
+                          {c.hardFail
+                            ? <BadgePill text="HARD" cls="bg-rose-900/40 border-rose-700/40 text-rose-300" />
+                            : <BadgePill text="SOFT" cls="bg-amber-900/30 border-amber-700/30 text-amber-300" />
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-gray-400 text-[10px]">{c.desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Scale size={15} />} title="Verdict Decision Flow">
+              <div className="rounded-xl border border-gray-800 bg-gray-950/30 p-4 mb-3">
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  {['10 Checks', 'Hard Fail Detection', 'Soft Fail Count', 'Warning Stack', 'Kelly Edge Validation', 'Final Verdict'].map((step, i) => (
+                    <div key={step} className="flex items-center gap-2">
+                      <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 text-gray-300 font-medium">{step}</span>
+                      {i < 5 && <ChevronRight size={11} className="text-gray-700" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {verdictRules.map(v => (
+                  <div key={v.verdict} className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={v.color}>{v.icon}</span>
+                      <BadgePill text={v.verdict} cls={v.badge} />
+                    </div>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">{v.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Trophy size={15} />} title="Recommendation Score (100 pts)">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {scoringRules.map(r => (
+                  <div key={r.label} className="flex items-start gap-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-2">
+                    <div className="shrink-0 w-10 h-5 rounded-md bg-violet-600/20 flex items-center justify-center text-[10px] font-bold text-violet-300">{r.points}</div>
+                    <div>
+                      <div className="text-[11px] font-semibold text-gray-200">{r.label}</div>
+                      <div className="text-[10px] text-gray-400">{r.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 11 — HARD FAIL vs SOFT FAIL
+             ═══════════════════════════════════════════════════════ */}
+          <section id="hard-soft-fail" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <XCircle size={18} className="text-violet-400" />
+              Hard Fail vs Soft Fail
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">The engine uses two failure severity levels. Understanding the difference is critical to interpreting verdicts correctly.</p>
+
+            <div className="grid gap-3 sm:grid-cols-2 mb-4">
+              <div className="rounded-xl border border-rose-800/40 bg-rose-950/20 px-4 py-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <BadgePill text="HARD FAIL" cls="bg-rose-900/40 border-rose-700/40 text-rose-300" />
+                  <span className="text-xs font-bold text-rose-200">Fatal — trade is rejected</span>
+                </div>
+                <ul className="space-y-1.5 text-[11px] text-gray-400">
+                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />A single hard fail triggers an automatic NO GO verdict</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />The trade cannot proceed regardless of other check results</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />Example: EV ≤ 0, DTE &lt; 14, IV environment mismatch, liquidity failure</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />Hard fails protect traders from mathematically unsound or structurally flawed trades</li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <BadgePill text="SOFT FAIL" cls="bg-amber-900/30 border-amber-700/30 text-amber-300" />
+                  <span className="text-xs font-bold text-amber-200">Cautionary — trade is downgraded</span>
+                </div>
+                <ul className="space-y-1.5 text-[11px] text-gray-400">
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Soft fails downgrade the verdict to CAUTION but do not block the trade</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />2+ soft fails trigger a NO GO even with zero hard fails</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Example: RSI caution zone, MACD divergence, weak confidence, borderline risk/reward</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Soft fails signal: "proceed carefully — reduce size, tighten stops"</li>
+                </ul>
+              </div>
+            </div>
+
+            <DocCard icon={<ToggleLeft size={15} />} title="Hard Fail Conditions">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {checklistItems.filter(c => c.hardFail).map(c => (
+                  <div key={c.name} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      <span className="text-[11px] font-bold text-gray-200">{c.name}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400">{c.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+
+            <DocCard icon={<AlertTriangle size={15} />} title="Soft Fail & Warning Accumulation">
+              <div className="space-y-1.5 text-xs text-gray-400">
+                <p>Soft fails and warnings stack to determine the final verdict:</p>
+                <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-4 py-3 space-y-1.5">
+                  {[
+                    { condition: '0 hard fails + 0 soft fails + &lt;5 warnings + edge ≥ 5%', result: 'GO', tone: 'text-emerald-400' },
+                    { condition: '0 hard fails + 1 soft fail OR &lt;5 warnings OR thin edge', result: 'CAUTION', tone: 'text-amber-400' },
+                    { condition: '1+ hard fails OR 2+ soft fails', result: 'NO GO', tone: 'text-red-400' },
+                  ].map(r => (
+                    <div key={r.result} className="flex items-start gap-2 text-[11px]">
+                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-gray-600 shrink-0" />
+                      <span className="text-gray-400">{r.condition} <span className={`font-semibold ${r.tone}`}>→ {r.result}</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 12 — EV / PoP / KELLY
+             ═══════════════════════════════════════════════════════ */}
+          <section id="ev-pop-kelly" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Sigma size={18} className="text-violet-400" />
+              EV / PoP / Kelly
+            </h2>
+
+            <DocCard icon={<Sigma size={15} />} title="Expected Value (EV)">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p className="leading-relaxed">Expected Value measures the probability-weighted average outcome of a trade repeated many times. A positive EV means the trade has a mathematical edge.</p>
+                <FormulaBlock formula="EV = (PoP × Max Profit) − (Prob of Max Loss × Max Loss)" />
+                <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2 space-y-1">
+                  <div className="font-semibold text-gray-200 text-[11px]">Worked example (Bull Put Spread)</div>
+                  <div className="text-[10px] text-gray-400">Max profit = $120, Max loss = $380, PoP = 76%, Prob of max loss = 24%</div>
+                  <div className="text-[10px] text-gray-300 font-mono">EV = ($120 × 0.76) − ($380 × 0.24) = $91.20 − $91.20 = $0.00</div>
+                  <div className="text-[10px] text-amber-200/90">Zero EV means the trade has no mathematical edge. The engine requires EV &gt; 0 to pass the EV check.</div>
+                </div>
+                <p className="text-amber-200/90">A trade with EV ≤ 0 is <strong>automatically rejected</strong> by the EV Hard Gate — no amount of good signal alignment can fix negative expected value.</p>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<ShieldCheck size={15} />} title="Probability of Profit (PoP)">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p>Probability of Profit estimates the likelihood that the trade expires with any profit. Calculated from delta-based probabilities and structure geometry.</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { strategy: 'Credit spreads (Bull Put, Bear Call, Iron Condor)', pass: '≥ 62%', warn: '52–62%', fail: '< 52%' },
+                    { strategy: 'Covered Call / Covered Put', pass: '≥ 65%', warn: '55–65%', fail: '< 55%' },
+                    { strategy: 'Long / Debit trades', pass: '≥ 45%', warn: '35–45%', fail: '< 35%' },
+                  ].map(r => (
+                    <div key={r.strategy} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                      <div className="text-[10px] font-semibold text-gray-200 mb-1">{r.strategy}</div>
+                      <div className="text-[10px] space-y-0.5">
+                        <div><span className="text-emerald-400">Pass:</span> {r.pass}</div>
+                        <div><span className="text-amber-400">Warn:</span> {r.warn}</div>
+                        <div><span className="text-red-400">Fail:</span> {r.fail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Scale size={15} />} title="Kelly Criterion & Position Sizing">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p>The Kelly Criterion calculates the mathematically optimal fraction of capital to risk on a trade:</p>
+                <FormulaBlock formula="Kelly % = EV ÷ Max Loss" />
+                <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-3 space-y-1.5">
+                  <div className="font-semibold text-gray-200 text-[11px]">Worked example (WDC $5 spread)</div>
+                  <div className="text-[10px] text-gray-400">EV = $0.20, Max loss = $3.90</div>
+                  <div className="text-[10px] text-gray-300 font-mono">Kelly% = $0.20 ÷ $3.90 = 5.1%</div>
+                  <div className="text-[10px] text-gray-300 font-mono">Half-Kelly = 5.1% ÷ 2 = 2.55% of capital, capped at 20%</div>
+                  <div className="text-[10px] text-emerald-200/90">Recommended position size: 2.55% of account → 1 contract</div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                    <div className="text-[11px] font-bold text-gray-200 mb-1">Edge Ratio</div>
+                    <FormulaBlock formula="Edge Ratio = EV ÷ Max Loss (as %)" />
+                    <div className="text-[10px] text-gray-400 mt-1">Below 5% = "thin edge" warning. Above 5% = solid edge. Normalizes across different position sizes.</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
+                    <div className="text-[11px] font-bold text-gray-200 mb-1">Capital at Risk</div>
+                    <FormulaBlock formula="Capital at Risk = Contracts × Max Loss × 100" />
+                    <div className="text-[10px] text-gray-400 mt-1">Amber above 10% of account. Red above 20%. Kelly math says &gt;20% is outside optimal range.</div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-2">
+                  <div className="font-semibold text-gray-200 text-[10px] mb-1">Why Half-Kelly?</div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed">Raw Kelly assumes perfect probability estimates, which never exist in trading. Halving the fraction (Half-Kelly) protects against estimation error and reduces drawdown severity. Practitioners widely prefer Half-Kelly over Full-Kelly.</p>
+                </div>
+              </div>
+            </DocCard>
+
+            {/* Preserve existing EV model details */}
+            <DocCard icon={<BarChart2 size={15} />} title="EV Models Per Strategy">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p>The engine uses Black-Scholes EV for multi-leg structures and binary EV for single-leg positions. Each strategy has a specific formula:</p>
+
+                <div className="overflow-x-auto rounded-lg border border-gray-800">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-800/80">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+                        <th className="px-3 py-2">Strategy</th>
+                        <th className="px-3 py-2">EV Model</th>
+                        <th className="px-3 py-2">Max Profit</th>
+                        <th className="px-3 py-2">Max Loss</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['Long Call', 'Black-Scholes', 'Unlimited (model truncates at 3× strike)', 'Premium paid'],
+                        ['Long Put', 'Black-Scholes', 'Strike − Premium (stock → $0)', 'Premium paid'],
+                        ['Bull Put Spread', 'Binary (credit)', 'Credit received', 'Spread width − credit'],
+                        ['Bear Call Spread', 'Binary (credit)', 'Credit received', 'Spread width − credit'],
+                        ['Iron Condor', 'Binary (credit)', 'Credit received', 'Wing width − credit'],
+                        ['Covered Call', 'No EV (Income Yield)', 'Strike + premium − entry', 'Stock loss − premium'],
+                        ['Covered Put', 'No EV (Income Yield)', 'Premium collected', 'Strike − premium'],
+                        ['Short Put (naked)', 'Binary (naked)', 'Premium collected', 'Strike × 100 − premium'],
+                      ].map(row => (
+                        <tr key={row[0]} className="border-t border-gray-800/50">
+                          <td className="px-3 py-2 font-semibold text-gray-200 text-[10px]">{row[0]}</td>
+                          <td className="px-3 py-2 text-gray-400 text-[10px]">{row[1]}</td>
+                          <td className="px-3 py-2 text-emerald-400/80 text-[10px]">{row[2]}</td>
+                          <td className="px-3 py-2 text-red-400/80 text-[10px]">{row[3]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="bg-amber-950/20 border border-amber-800/40 rounded-lg px-4 py-3 text-[11px] text-amber-200/90 leading-relaxed">
+                  <strong>Why positive EV still may be CAUTION:</strong> A trade can have positive EV but still receive a CAUTION verdict. The Edge Ratio (EV ÷ max loss) might be below 5%, meaning the edge is thin relative to the risk. Small model errors or slippage could erase a thin edge entirely. CAUTION with positive EV says "the math works, but the margin is tight."
+                </div>
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 13 — ALERT SYSTEM
+             ═══════════════════════════════════════════════════════ */}
+          <section id="alerts" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Bell size={18} className="text-violet-400" />
+              Alert System
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { title: 'Entry Alerts', desc: 'Triggered when entry conditions are met for a watched trade. Includes price level, confirmation status, and suggested action.' },
+                { title: 'VWAP Alerts', desc: 'Intraday alerts when price crosses VWAP or establishes support/resistance at VWAP. Critical for day trade execution timing.' },
+                { title: 'Breakout Alerts', desc: 'Price breaks a key level (ORH, resistance, MA cross) with volume confirmation. Includes breakout strength assessment.' },
+                { title: 'Profit Protection', desc: 'Price approaches profit target or key resistance. Suggests taking partial profits or trailing stops.' },
+                { title: 'Risk Alerts', desc: 'Adverse price movement, IV expansion, VIX spike, or earnings approaching. Triggers position review.' },
+                { title: 'Assignment Alerts', desc: 'Options approaching expiry ITM. Alerts for assignment risk, early exercise, or roll decisions.' },
+              ].map(a => (
+                <div key={a.title} className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                    <div className="text-xs font-semibold text-gray-200">{a.title}</div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed">{a.desc}</p>
                 </div>
               ))}
             </div>
-          </InfoCard>
-        </div>
+          </section>
 
-        <div className="grid gap-5 lg:grid-cols-2">
-          <InfoCard icon={<Filter size={18} />} title="Filters Before Ranking" defaultOpen={false}>
-            <ul className="space-y-2">
-              {filters.map(item => (
-                <li key={item} className="flex gap-2 text-sm text-gray-400">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
-                  <span>{item}</span>
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 14 — POSITION MANAGEMENT
+             ═══════════════════════════════════════════════════════ */}
+          <section id="position-mgmt" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Briefcase size={18} className="text-violet-400" />
+              Position Management
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">Each position moves through lifecycle stages. The engine provides state-specific guidance for every stage.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                { state: 'WINNER', color: 'text-emerald-400', dot: 'green', desc: 'Position is profitable. Consider trailing stops or partial profit taking. Let winners run with protection.' },
+                { state: 'LOSER', color: 'text-rose-400', dot: 'red', desc: 'Position is underwater. Review thesis: is the move against you or is the timing just off? Cut losses at predefined stop.' },
+                { state: 'PROTECT PROFITS', color: 'text-amber-400', dot: 'amber', desc: 'Price approaching target zone. Tighten stops. Consider scaling out 50% at target and letting the rest run.' },
+                { state: 'ROLL', color: 'text-violet-400', dot: 'violet', desc: 'Position near expiry with remaining thesis. Rolling extends duration at a different strike to maintain exposure.' },
+                { state: 'EXIT SOON', color: 'text-amber-400', dot: 'amber', desc: 'Expiry approaching or thesis weakening. Plan the exit. Do not hold into expiry week without a clear plan.' },
+                { state: 'STOP LOSS', color: 'text-red-400', dot: 'red', desc: 'Stop level hit or at imminent risk. Execute the stop. Preserve capital for the next opportunity.' },
+                { state: 'EXPIRING SOON', color: 'text-gray-400', dot: 'gray', desc: 'Position is in its final week. Gamma risk accelerates. Either close or roll before expiration Friday.' },
+              ].map(p => (
+                <div key={p.state} className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BadgeDot tone={p.dot as 'green' | 'amber' | 'red' | 'sky' | 'violet' | 'gray'} />
+                    <span className={`text-xs font-bold ${p.color}`}>{p.state}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed">{p.desc}</p>
+                </div>
+              ))}
+            </div>
+
+            <DocCard icon={<Clock size={15} />} title="Portfolio Tracking Features">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  'Open P&L with MTM refresh',
+                  'Real-time quote streaming',
+                  'Entry timing and exit rules saved per position',
+                  'Kelly sizing data for post-trade review',
+                  'Roll and adjustment suggestions',
+                  'Exportable trade logs and reports',
+                ].map(f => (
+                  <div key={f} className="flex items-center gap-2 text-[11px] text-gray-400">
+                    <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+                    {f}
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 15 — MARKET COMMAND SUMMARY
+             ═══════════════════════════════════════════════════════ */}
+          <section id="market-summary" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BarChart2 size={18} className="text-violet-400" />
+              Market Command Summary
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { title: 'Market Regime', desc: 'Detects the current market environment (bullish, bearish, range-bound, volatile) using SPY/QQQ trend analysis and VIX regime classification.' },
+                { title: 'VIX Risk', desc: 'The VIX fear gauge is categorized into tiers: Low (&lt; 15), Normal (15–20), Elevated (20–28), High (28–35), Extreme (≥ 35). Each tier modifies engine behavior and position sizing.' },
+                { title: 'Sector Heat', desc: 'Tracks which AI/datacenter sectors are showing relative strength or weakness. Helps rotate capital toward the strongest sub-themes.' },
+                { title: 'Reserve Signal — 52W High', desc: 'Measures SPY\'s position relative to its 52-week high and 200-day MA. Shows: At High, Near High, Far Below, Breaking Above. Indicates market momentum extremes.' },
+              ].map(c => (
+                <div key={c.title} className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3">
+                  <div className="text-xs font-semibold text-gray-200 mb-1">{c.title}</div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed">{c.desc}</p>
+                </div>
+              ))}
+
+              {/* 52W High formula */}
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3 col-span-full">
+                <div className="text-xs font-semibold text-gray-200 mb-1">52-Week High Formula</div>
+                <FormulaBlock formula="distance = ((currentPrice − high52w) / high52w) × 100" />
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-4">
+                  {[
+                    { state: 'At 52W High', when: 'Within 0.5% of high', cls: 'text-emerald-400' },
+                    { state: 'Near High', when: '0.5% – 5% below high', cls: 'text-amber-400' },
+                    { state: 'Far Below', when: '> 5% below high', cls: 'text-gray-400' },
+                    { state: 'Breaking Above', when: 'Exceeds prior high', cls: 'text-emerald-400' },
+                  ].map(d => (
+                    <div key={d.state} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-2.5 py-2 text-center">
+                      <div className={`text-[10px] font-bold ${d.cls}`}>{d.state}</div>
+                      <div className="text-[9px] text-gray-500">{d.when}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <DocCard icon={<ShieldCheck size={15} />} title="Portfolio Exposure">
+                <div className="text-xs text-gray-400 space-y-2">
+                  <p>The Portfolio Exposure widget aggregates all open positions to show:</p>
+                  <ul className="space-y-1 text-[10px] text-gray-500">
+                    <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Total capital deployed vs. available</li>
+                    <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Sector concentration analysis</li>
+                    <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Directional exposure (net long/short)</li>
+                    <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Risk distribution across strategies</li>
+                  </ul>
+                </div>
+              </DocCard>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 16 — PORTFOLIO PHILOSOPHY
+             ═══════════════════════════════════════════════════════ */}
+          <section id="portfolio" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <ShieldCheck size={18} className="text-violet-400" />
+              Portfolio Philosophy
+            </h2>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { rule: 'Do not fight the strong tape', desc: 'If the market is trending strongly upward, avoid aggressive bearish positions. Let the trend be your tailwind.' },
+                  { rule: 'Avoid aggressive puts in bullish markets', desc: 'Selling puts in a bull market is collecting pennies in front of a steamroller. Favor call-based structures in uptrends.' },
+                  { rule: 'Use spreads in high IV', desc: 'Elevated IV means option premiums are expensive. Selling premium via credit spreads captures IV-rich premiums while defining risk.' },
+                  { rule: 'Covered calls for income', desc: 'When you own the stock and IV is elevated, selling OTM calls generates income and provides downside cushion.' },
+                  { rule: 'Avoid chasing extended candles', desc: 'If price has moved 5%+ in 5 days, wait for a pullback. Extended entries have poor risk/reward and high mean-reversion risk.' },
+                  { rule: 'Wait for pullback confirmation', desc: 'A pullback to MA20 or a key level that holds and shows buying pressure is a higher-quality entry than buying the breakout.' },
+                  { rule: 'Position size according to conviction', desc: 'Let Kelly Criterion dictate size. Higher confidence does not mean larger size — it means the math supports the allocation.' },
+                  { rule: 'Cut losses, let winners run', desc: 'Respect your stop levels. A small loss is a good loss. Prematurely closing winners is the most common wealth-limiting behavior.' },
+                ].map(p => (
+                  <div key={p.rule} className="flex items-start gap-2 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5">
+                    <div className="w-1 h-1 rounded-full bg-violet-500 mt-1.5 shrink-0" />
+                    <div>
+                      <div className="text-[11px] font-semibold text-gray-200">{p.rule}</div>
+                      <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{p.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 17 — UI/UX DESIGN RULES
+             ═══════════════════════════════════════════════════════ */}
+          <section id="ui-ux-rules" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Eye size={18} className="text-violet-400" />
+              UI/UX Design Rules
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">These rules document the design system for future development. All pages must follow these standards regardless of feature complexity.</p>
+
+            <DocCard icon={<Eye size={15} />} title="Card & Visual System">
+              <div className="space-y-3 text-xs text-gray-400">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { rule: 'Unified card system', desc: 'All pages use the same card style: rounded-xl border, subtle border colors, bg-gray-900 on dark / bg-white on light.' },
+                    { rule: 'No glassmorphism', desc: 'No backdrop-blur, no transparency layers. Every surface has a solid or near-solid background. Clarity over aesthetics.' },
+                    { rule: 'No transparency windows', desc: 'Overlays and modals have solid backgrounds with optional border accents. No semi-transparent chrome effects.' },
+                    { rule: 'Subtle borders only', desc: 'Borders use 0.5–1px width with muted opacity (border-gray-800 on dark, border-slate-200 on light).' },
+                    { rule: 'Positions Center is canonical', desc: 'The Positions Center card style is the reference implementation. Signal Feed and TCC follow the same patterns.' },
+                    { rule: 'Execution-first UX', desc: 'Every page prioritizes: What is the trade? Can I enter? Where? What structure? What are the risks? Why?' },
+                  ].map(r => (
+                    <div key={r.rule} className="flex items-start gap-2 bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                      <div>
+                        <div className="text-[11px] font-semibold text-gray-200">{r.rule}</div>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{r.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Activity size={15} />} title="Typography & Spacing">
+              <div className="space-y-2 text-xs text-gray-400">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { level: 'Page titles', cls: 'text-2xl font-bold text-white', example: 'Platform Overview' },
+                    { level: 'Section headings', cls: 'text-lg font-bold text-white', example: 'Engine Architecture' },
+                    { level: 'Card headings', cls: 'text-sm font-bold text-white', example: 'Core Concepts' },
+                    { level: 'Body text', cls: 'text-xs text-gray-400 leading-relaxed', example: 'Primary content text' },
+                    { level: 'Labels', cls: 'text-[10px] uppercase tracking-wide text-gray-500', example: 'RISK LEVEL' },
+                    { level: 'Monospace data', cls: 'font-mono text-xs text-gray-300', example: 'EV = $0.20' },
+                  ].map(t => (
+                    <div key={t.level} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                      <div className="text-[10px] font-semibold text-gray-500">{t.level}</div>
+                      <div className={t.cls}>{t.example}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<HelpCircle size={15} />} title="Theme System">
+              <div className="space-y-2 text-xs text-gray-400">
+                <p>Theme tokens defined as CSS custom properties in index.css:</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { var: '--surface-canvas', usage: 'Page backgrounds' },
+                    { var: '--surface-page', usage: 'Section backgrounds' },
+                    { var: '--surface-card', usage: 'Card backgrounds' },
+                    { var: '--surface-raised', usage: 'Hover/elevated states' },
+                    { var: '--border-subtle', usage: 'Border colors (muted)' },
+                    { var: '--border-default', usage: 'Standard borders' },
+                    { var: '--text-primary', usage: 'Primary text' },
+                    { var: '--text-secondary', usage: 'Secondary text' },
+                    { var: '--text-tertiary', usage: 'Muted/label text' },
+                    { var: '--chart-line-*', usage: 'Chart series colors' },
+                  ].map(t => (
+                    <div key={t.var} className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
+                      <code className="text-[10px] font-mono text-violet-300">{t.var}</code>
+                      <span className="text-[10px] text-gray-500">{t.usage}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-2">All Tailwind gray classes (bg-gray-*, text-gray-*, border-gray-*) auto-adapt between dark/light mode via global CSS variable overrides. No per-page scope duplication.</p>
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 18 — FAQ
+             ═══════════════════════════════════════════════════════ */}
+          <section id="faq" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <HelpCircle size={18} className="text-violet-400" />
+              FAQ
+            </h2>
+
+            <DocCard icon={<HelpCircle size={15} />} title="Frequently Asked Questions">
+              <div className="space-y-3">
+                {[
+                  { q: 'Why is a GO trade still waiting?', a: 'GO refers to the trade quality — the setup is sound and passes all checks. But execution timing is a separate dimension. A GO trade can still show WAIT if the entry trigger (pullback, breakout confirmation) has not been met yet.' },
+                  { q: 'Why is a setup EXTENDED?', a: 'Extension means price has moved significantly from a key level (typically 5%+ from MA20, or RSI above 70, or 5-day momentum above 5%). The move already happened — entering now means buying near the top. Wait for a pullback.' },
+                  { q: 'Why can a positive EV still be CAUTION?', a: 'EV measures the expected value per trade, but Edge Ratio (EV ÷ max loss) measures the quality of that edge. If Edge Ratio is below 5%, a small model error or slippage can erase the edge entirely. CAUTION with positive EV says "the math works, but the margin is tight."' },
+                  { q: 'Why are NO GO trades shown?', a: 'NO GO trades are shown for transparency. Even rejected trades help you understand what the engine is seeing and why. When market conditions improve, previously NO GO setups may become actionable.' },
+                  { q: 'Why does Swing use 21–42 DTE for 3–5 day holds?', a: 'Longer DTE reduces gamma risk, gives the thesis time to develop, provides exit flexibility (close early with time premium remaining), and buffers against unexpected events. The holding period is about when you plan to exit; the DTE is about managing risk while you hold.' },
+                  { q: 'What does confidence actually mean?', a: 'Confidence is a composite of signal consistency: MA alignment, MACD confirmation, RSI health, volume participation, and VIX context. Higher confidence means the signals are in greater agreement — it does NOT guarantee profit or predict magnitude.' },
+                  { q: 'What is the difference between WATCH and WAIT?', a: 'WATCH means the direction is established but entry confirmation is needed. WAIT means conditions are not yet favorable for entry. WAIT is a stronger signal to be patient.' },
+                  { q: 'Can I override the engine recommendations?', a: 'The engine is a systematic screen, not an advisor. You have full discretion over every trade. Manual strategy mode overrides (All, Long Options, Credit Spreads, Straddles) let you restrict which strategies the engine considers.' },
+                ].map(faq => (
+                  <div key={faq.q} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-violet-600/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-[8px] font-bold text-violet-400">Q</span>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold text-gray-200 mb-0.5">{faq.q}</div>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">{faq.a}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             FOOTER — RISK WARNINGS
+             ═══════════════════════════════════════════════════════ */}
+          <section className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-5 py-4">
+            <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs mb-3">
+              <AlertTriangle size={15} />
+              Important disclaimers
+            </div>
+            <ul className="space-y-2 text-[11px]">
+              {[
+                'The recommendation list is a systematic screen, not investment advice. Always do your own research before trading.',
+                'Price movement, IV changes, liquidity, assignment risk, and early exits can materially change real P&L.',
+                'One options contract controls 100 shares. Small premium changes can become meaningful dollar swings.',
+                'Defined-risk spreads cap your loss at the spread width minus credit received — but only if held to expiry. Early assignment or leg-out errors can exceed the theoretical max loss.',
+                'Never size a position so large that a max-loss outcome would be devastating. Risk only what you can afford to lose on any single trade.',
+              ].map((d, i) => (
+                <li key={i} className="flex gap-2 text-amber-200/80">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500/50 shrink-0" />
+                  {d}
                 </li>
               ))}
             </ul>
-          </InfoCard>
+            <p className="text-[10px] text-gray-600 mt-4 text-center">Educational use only. Not financial advice. Options trading involves substantial risk of loss.</p>
+          </section>
 
-          <InfoCard icon={<Clock size={18} />} title="Caching & Refresh" defaultOpen={false}>
-            <div className="space-y-3 text-sm text-gray-400">
-              <p>
-                Analysis results are cached for <span className="text-gray-200 font-semibold">15 minutes</span>. During that window,
-                navigating back to a ticker reloads instantly from cache — no extra API calls.
-              </p>
-              <p>
-                A background sweep runs every 15 minutes for all watchlisted tickers that have been previously analyzed.
-                The sweep staggers calls 2 seconds apart to avoid flooding the data provider.
-              </p>
-              <p>
-                Multi-week data (all 5 DTE windows) is cached separately under <span className="font-mono text-xs text-violet-300">multiWeekData</span>.
-                Use the "Fetch All Weeks" button in Trade Signals to populate it. It persists across page navigations for the session.
-              </p>
-            </div>
-          </InfoCard>
         </div>
-
-        {isAdmin && (
-        <InfoCard icon={<Flame size={18} />} title="Day Trading Engine (administrator)">
-          <div className="space-y-5 text-sm text-gray-400">
-
-            {/* intro */}
-            <p>
-              The <span className="font-semibold text-gray-200">Day Trading Engine</span> analyzes
-              real-time intraday data using <span className="text-gray-200">VWAP</span>, <span className="text-gray-200">opening range breakout</span>, <span className="text-gray-200">momentum</span>, <span className="text-gray-200">volume spikes</span>, <span className="text-gray-200">market trend</span>, and <span className="text-gray-200">risk filters</span> to
-              generate tiered verdicts — <span className="text-emerald-300 font-semibold">STRONG GO</span>, <span className="text-emerald-400 font-semibold">GO</span>, <span className="text-amber-300 font-semibold">WATCH</span>, <span className="text-rose-400 font-semibold">NO-GO</span>, or <span className="text-gray-400 font-semibold">WAIT</span> — plus relative strength vs QQQ and an intraday confidence breakdown.
-              It is <span className="text-gray-200">separate</span> from the Swing Trading / Options Scanner engine — it uses 1-minute bars, not multi-week technical data.
-            </p>
-
-            {/* optimized for */}
-            <div>
-              <p className="mb-2 font-semibold text-gray-300">Optimized for:</p>
-              <ul className="space-y-1.5">
-                {[
-                  { dot: 'bg-orange-400', t: 'Day trading — enter and exit within the same session' },
-                  { dot: 'bg-rose-400',   t: '0DTE / 1DTE options — same-day or next-day expiry' },
-                  { dot: 'bg-amber-400',  t: 'Intraday momentum trades — ride fast directional moves' },
-                  { dot: 'bg-violet-400', t: 'Quick scalps — tight targets with defined risk' },
-                ].map(({ dot, t }) => (
-                  <li key={t} className="flex items-start gap-2 text-xs">
-                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-                    <span>{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* mini flow chart */}
-            <div>
-              <p className="mb-3 font-semibold text-gray-300">Engine Flow</p>
-              <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4 space-y-0">
-                {[
-                  { n: 1, label: 'User enters ticker',                     color: 'text-violet-400 border-violet-600/50' },
-                  { n: 2, label: 'Fetch 1-minute intraday data',           color: 'text-blue-400 border-blue-600/50' },
-                  { n: 3, label: 'VWAP, opening range, momentum, volume spike, RS vs QQQ', color: 'text-cyan-400 border-cyan-600/50' },
-                  { n: 4, label: 'Check market context (SPY, QQQ, VIX, earnings/news)', color: 'text-amber-400 border-amber-600/50' },
-                  { n: 5, label: 'Run intraday signal engine',             color: 'text-orange-400 border-orange-600/50' },
-                  { n: 6, label: 'Run risk analyzer',                      color: 'text-rose-400 border-rose-600/50' },
-                ].map((step, idx) => (
-                  <div key={step.n}>
-                    <div className={`flex items-center gap-2.5 rounded-lg border ${step.color.split(' ')[1]} bg-gray-900/60 px-3 py-2`}>
-                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${step.color.split(' ')[1]} text-[10px] font-bold ${step.color.split(' ')[0]}`}>
-                        {step.n}
-                      </span>
-                      <span className={`text-xs font-medium ${step.color.split(' ')[0]}`}>{step.label}</span>
-                    </div>
-                    {idx < 5 && (
-                      <div className="flex justify-center py-0.5">
-                        <ArrowDown size={12} className="text-gray-600" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {/* final output */}
-                <div className="flex justify-center py-0.5">
-                  <ArrowDown size={12} className="text-gray-600" />
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-900/25 px-2 py-1.5 text-center text-[10px] font-bold text-emerald-300 sm:text-xs">STRONG GO</div>
-                  <div className="rounded-lg border border-emerald-600/40 bg-emerald-900/20 px-2 py-1.5 text-center text-[10px] font-bold text-emerald-400 sm:text-xs">GO</div>
-                  <div className="rounded-lg border border-amber-600/45 bg-amber-900/25 px-2 py-1.5 text-center text-[10px] font-bold text-amber-200 sm:text-xs">WATCH</div>
-                  <div className="rounded-lg border border-rose-600/45 bg-rose-900/20 px-2 py-1.5 text-center text-[10px] font-bold text-rose-400 sm:text-xs">NO-GO</div>
-                  <div className="rounded-lg border border-gray-600/40 bg-gray-700/20 px-2 py-1.5 text-center text-[10px] font-bold text-gray-400 sm:text-xs">WAIT</div>
-                </div>
-              </div>
-            </div>
-
-            {/* key terms */}
-            <div>
-              <p className="mb-2 font-semibold text-gray-300">Key Terms</p>
-              <div className="space-y-2">
-                {[
-                  { term: 'VWAP',         def: 'Volume Weighted Average Price — the intraday "fair value" line. Price above = bullish; below = bearish.' },
-                  { term: 'Opening Range', def: 'High and low of the first 15–30 minutes. A breakout above the high is a classic bullish day-trade signal.' },
-                  { term: 'Volume Spike', def: 'A bar with 2× or more volume vs. recent average. Validates breakouts — low-volume breakouts are suspect.' },
-                  { term: 'VIX',          def: 'Market fear gauge. High VIX (>30) adds caution to signals because options premiums become erratic.' },
-                ].map(({ term, def }) => (
-                  <div key={term} className="flex gap-2.5 text-xs">
-                    <span className="mt-0.5 shrink-0 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 font-bold text-gray-300 h-fit">{term}</span>
-                    <span className="leading-relaxed">{def}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-amber-700/30 bg-amber-900/10 px-4 py-3 text-xs text-amber-300/90">
-              <span className="font-semibold">⚡ Note:</span> Open <span className="font-semibold">Day Trade Engine</span> or <span className="font-semibold">Day Trade Watchlist</span> from the sidebar under <span className="font-semibold">Day Trading</span> (administrator accounts only). Intraday engine — separate from the Options Scanner.
-            </div>
-          </div>
-        </InfoCard>
-        )}
-
-        {isAdmin && (
-        <InfoCard icon={<LineChart size={18} />} title="Swing Trading (administrator)">
-          <div className="space-y-4 text-sm text-gray-400">
-            <p>
-              <span className="font-semibold text-gray-200">Swing Trading</span> runs a{' '}
-              <span className="text-gray-200">daily-candle</span> scan geared toward multi-day (often overnight — 2–5 day)
-              setups: moving-average trend and slope, RSI, MACD, short-term momentum and volume versus SPY / VIX context.
-              It complements the Strategy Finder options engine and is{' '}
-              <span className="text-gray-200">different from Day Trading</span>, which uses same-session 1-minute bars, VWAP, and opening-range style inputs.
-            </p>
-
-            <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 px-4 py-3 space-y-2">
-              <div className="text-xs font-semibold text-violet-200">Swing Trade Watchlist</div>
-              <p className="text-xs leading-relaxed">
-                Save up to <span className="text-gray-200 font-semibold">20 symbols</span> on the{' '}
-                <span className="text-gray-200 font-semibold">Swing Trade Watchlist</span> page — persisted on the server for your account like other user data.
-                This surface is restricted to{' '}
-                <span className="text-gray-200 font-semibold">administrators only</span> (same navigation policy as Day Trading).
-              </p>
-            </div>
-
-            <div>
-              <p className="mb-2 font-semibold text-gray-300">Verdict tiers</p>
-              <p className="text-xs text-gray-500 mb-2">
-                The engine labels each scan with one of five tiers (long/short bias is shown separately in the product):
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <div className="rounded-lg border border-emerald-500/50 bg-emerald-900/25 px-2 py-1.5 text-[10px] font-bold text-emerald-300 sm:text-xs">STRONG GO</div>
-                <div className="rounded-lg border border-emerald-600/40 bg-emerald-900/20 px-2 py-1.5 text-[10px] font-bold text-emerald-400 sm:text-xs">GO</div>
-                <div className="rounded-lg border border-amber-600/45 bg-amber-900/25 px-2 py-1.5 text-[10px] font-bold text-amber-200 sm:text-xs">WATCH</div>
-                <div className="rounded-lg border border-gray-600/40 bg-gray-700/20 px-2 py-1.5 text-[10px] font-bold text-gray-400 sm:text-xs">WAIT</div>
-                <div className="rounded-lg border border-rose-600/45 bg-rose-900/20 px-2 py-1.5 text-[10px] font-bold text-rose-400 sm:text-xs">NO-GO</div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-xs text-amber-200/90 leading-relaxed">
-              This scan is informational and educational only. Nothing here is individualized investment advice, a recommendation to buy or sell, or a forecast of outcomes.
-              Options and swing-style trading involve substantial risk; you alone decide whether and how to act.
-            </div>
-
-            <div className="rounded-xl border border-gray-700/50 bg-gray-800/40 px-4 py-3 text-xs text-gray-400">
-              <span className="font-semibold text-gray-300">Where to open it:</span>{' '}
-              In the sidebar, expand <span className="font-semibold text-gray-200">Swing Trading</span> — use{' '}
-              <span className="font-semibold text-gray-200">Swing Trade</span> for a single-symbol scan or{' '}
-              <span className="font-semibold text-gray-200">Swing Trade Watchlist</span> for your saved list (labels match the app).
-            </div>
-          </div>
-        </InfoCard>
-        )}
-
-        {isAdmin && (
-          <InfoCard icon={<Zap size={18} />} title="Auto Trade (administrator)" defaultOpen={false}>
-            <div className="space-y-3 text-sm text-gray-400">
-              <p>
-                The <span className="text-gray-200 font-semibold">Auto Trade</span> page connects to Alpaca paper trading when API keys
-                are configured on the server. Administrators can review account status, positions, and orders — it is not shown to
-                standard or finance accounts.
-              </p>
-              <p className="text-xs text-gray-500">
-                Requires <span className="font-mono text-gray-400">ALPACA_API_KEY</span> and{' '}
-                <span className="font-mono text-gray-400">ALPACA_SECRET_KEY</span> in the deployment environment.
-              </p>
-            </div>
-          </InfoCard>
-        )}
-
-        {/* Reserve Signal / 52W High */}
-        <InfoCard icon={<TrendingUp size={18} />} title="Reserve Signal — 52W High Indicator">
-          <div className="space-y-3 text-sm text-gray-400">
-            <p>
-              The <span className="text-gray-200 font-semibold">Reserve Signal</span> card in the Trade Command Center
-              dashboard shows SPY&apos;s market position relative to two benchmarks: its <span className="text-gray-200">200-day moving average</span>{' '}
-              and its <span className="text-gray-200">52-week high</span>. The 52W High section measures how far the current price sits from the
-              highest price reached in the last 52 weeks.
-            </p>
-
-            <div className="rounded-xl border border-gray-700/60 bg-gray-800/40 px-3 py-2.5 space-y-2">
-              <div className="font-semibold text-gray-200 text-xs">Formula</div>
-              <div className="font-mono text-xs text-gray-400 bg-gray-800/60 rounded-lg px-3 py-2">
-                distance = ((currentPrice − high52w) / high52w) × 100
-              </div>
-              <p className="text-xs text-gray-500">
-                A negative value means price is below the 52-week peak. A positive value means price has broken above
-                the prior 52-week high (breakout).
-              </p>
-            </div>
-
-            <div className="text-xs font-semibold text-gray-200 mb-1">Display states</div>
-            <div className="grid gap-2">
-              {[
-                {
-                  state: 'At 52W High',
-                  when: 'Within 0.5% of the high',
-                  bar: 'Green, 100% full',
-                  color: 'text-emerald-400',
-                  label: 'At 52W High · 0.0% below peak',
-                },
-                {
-                  state: 'Near High',
-                  when: '0.5% – 5% below the high',
-                  bar: 'Amber, 55–95% full',
-                  color: 'text-amber-400',
-                  label: 'Near High · 2.3% below peak',
-                },
-                {
-                  state: 'Far Below High',
-                  when: 'More than 5% below the high',
-                  bar: 'Gray, 5–50% full',
-                  color: 'text-gray-400',
-                  label: '12.4% below 52W high',
-                },
-                {
-                  state: 'Breaking Above',
-                  when: 'Price exceeds the prior 52W high',
-                  bar: 'Green, 100% full',
-                  color: 'text-emerald-400',
-                  label: '+1.8% above prior high',
-                },
-              ].map(item => (
-                <div key={item.state} className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-semibold ${item.color}`}>{item.state}</span>
-                    <span className="text-[10px] text-gray-500">— {item.when}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                    <span>Bar: {item.bar}</span>
-                    <span className="text-gray-600">|</span>
-                    <span>Shows: <span className={item.color}>{item.label}</span></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-2">
-              No backend changes needed — the indicator computes entirely from existing <span className="font-mono text-gray-400">spy_price</span> and{' '}
-              <span className="font-mono text-gray-400">high_52w</span> fields. Hover the &quot;52w High&quot; label for a tooltip
-              explaining the metric.
-            </p>
-          </div>
-        </InfoCard>
-
-        {/* Risk */}
-        <InfoCard icon={<ShieldCheck size={18} />} title="Risk Warnings">
-          <div className="space-y-3 text-sm text-gray-400">
-            <div className="bg-amber-900/20 border border-amber-800/50 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-amber-400 font-semibold mb-2">
-                <AlertTriangle size={15} />
-                Important disclaimers
-              </div>
-              <ul className="space-y-2 text-xs">
-                <li className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span>The recommendation list is a systematic screen, not investment advice. Always do your own research before trading.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span>Price movement, IV changes, liquidity, assignment risk, and early exits can materially change real P&L.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span>One options contract controls 100 shares. Small premium changes can become meaningful dollar swings.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span>Defined-risk spreads cap your loss at the spread width minus credit received — but only if held to expiry. Early assignment or leg-out errors can exceed the theoretical max loss.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span>Never size a position so large that a max-loss outcome would be devastating. Risk only what you can afford to lose on any single trade.</span>
-                </li>
-              </ul>
-            </div>
-            <p className="text-xs text-gray-600 border-t border-gray-800 pt-3 text-center">
-              Educational use only. Not financial advice. Options trading involves substantial risk of loss.
-            </p>
-          </div>
-        </InfoCard>
-
       </div>
     </div>
   )

@@ -1,0 +1,42 @@
+{
+  "name": "Regular Trade — No edge, poor conditions",
+  "engine_type": "regular",
+  "input": {
+    "signals": {
+      "directional_bias": "Neutral",
+      "trend": "sideways",
+      "iv_rank": 25,
+      "bias_confidence": 0.30,
+      "iv_environment": "low",
+      "volatility_regime": "low"
+    },
+    "recommendations": [
+      {
+        "strategy": "Long Call",
+        "bias": "Bullish",
+        "net_credit": -2.50,
+        "expected_value": -0.05,
+        "edge_ratio": -0.02,
+        "dte": 20,
+        "passes_liquidity_filter": false,
+        "passes_rr_filter": false,
+        "warnings": ["Low liquidity", "Poor reward-to-risk"],
+        "scores": {"total_score": 8},
+        "max_profit": 25.00,
+        "max_loss": 2.50,
+        "breakeven_lower": 102.50,
+        "breakeven_upper": 0
+      }
+    ]
+  },
+  "expected": {
+    "market_bias": "NEUTRAL",
+    "setup_quality": "POOR",
+    "final_decision": "AVOID",
+    "execution_timing": "STAND ASIDE",
+    "risk_state": "LOW",
+    "confidence_max": 35,
+    "missing_confirmations": ["Cleaner liquidity", "Better reward-to-risk", "Stronger expected edge"],
+    "must_not_contain": ["ENTER NOW", "READY"]
+  }
+}

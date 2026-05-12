@@ -1,0 +1,51 @@
+{
+  "name": "Day Trade — Strong Bullish, VWAP held, volume spike, ready to enter",
+  "engine_type": "day",
+  "input": {
+    "ticker": "NVDA",
+    "verdict": "STRONG GO",
+    "bias": "long",
+    "reasons": [
+      "Above VWAP (+0.32%)",
+      "Opening range breakout confirmed",
+      "Volume spike confirms participation",
+      "Outperforming QQQ by +0.61%"
+    ],
+    "metrics": {
+      "vix": 14.2,
+      "vwap": 215.40,
+      "last_price": 216.15,
+      "or_high": 215.80,
+      "or_low": 214.50,
+      "or_breakout": "above",
+      "momentum_pct": 0.15,
+      "volume_spike": true,
+      "confidence": {
+        "trend_strength": "HIGH",
+        "breakout_quality": "GOOD",
+        "volume_confirmation": "STRONG",
+        "market_alignment": "STRONG",
+        "risk": "LOW"
+      }
+    },
+    "trader_decision": {
+      "market_state": "MARKET_SUPPORTIVE",
+      "decision_message": "Strong intraday long candidate with VWAP hold and momentum confirmation.",
+      "confirmation_needed": []
+    }
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "STRONG",
+    "final_decision": "READY",
+    "signal_quality": "STRONG GO",
+    "execution_timing": "ENTER NOW",
+    "risk_state": "LOW",
+    "risk_category": "LOW",
+    "confidence_min": 70,
+    "missing_confirmations": [],
+    "must_not_contain": ["WAIT FOR", "ENTRY CONDITIONAL"],
+    "explanation_contains": ["Entry window is open"],
+    "execution_fields_present": ["VWAP", "Opening Range High", "Opening Range Low", "Breakout Level", "Risk Below"]
+  }
+}

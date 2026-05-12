@@ -1,8 +1,12 @@
-import { useCallback, useRef, useState } from 'react'
-import { BarChart2, ChevronDown, ChevronRight, Flame, Loader2, Search, ShieldAlert, TrendingUp } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
 import { analyzeSwingTrade } from '../api/client'
 import type { SwingTradeScanResult } from '../api/client'
 import SwingTradeEnginePanel from '../components/SwingTradeEnginePanel'
+import { useApp } from '../contexts/AppContext'
+import { ROUTES } from '../routing/routes'
+import { getActionButtonClass } from '../utils/semanticTrading'
 
 function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -11,12 +15,19 @@ function axiosDetail(e: unknown): string {
 }
 
 export default function SwingTradePage() {
+  const { addToWatchlist, isWatched } = useApp()
   const [ticker, setTicker] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SwingTradeScanResult | null>(null)
   const [glossaryOpen, setGlossaryOpen] = useState(false)
+  const [enterOpen, setEnterOpen] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const autoRunRef = useRef(false)
 
   const runScan = useCallback(async () => {
     const sym = ticker.trim().toUpperCase()
@@ -38,26 +49,87 @@ export default function SwingTradePage() {
     }
   }, [ticker])
 
+  useEffect(() => {
+    const t = searchParams.get('ticker')?.trim().toUpperCase()
+    if (t && t.length <= 12) {
+      setTicker(t)
+      autoRunRef.current = true
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (autoRunRef.current && ticker.trim()) {
+      autoRunRef.current = false
+      runScan()
+    }
+  }, [ticker, runScan])
+
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 2800)
+    return () => clearTimeout(t)
+  }, [notice])
+
+  const handleAddToWatchlist = useCallback(() => {
+    if (!result) return
+    const already = isWatched(result.ticker)
+    const ok = addToWatchlist({
+      ticker: result.ticker,
+      companyName: result.company_name || undefined,
+      notes: `Swing Trade · ${result.suggested_strategy ? result.suggested_strategy.replace(/_/g, ' ') : 'setup'} · ${result.final_action}`,
+    })
+    if (!ok) {
+      setNotice({ tone: 'info', message: 'Unable to add this ticker to Signal Feed.' })
+      return
+    }
+    setNotice({
+      tone: already ? 'info' : 'success',
+      message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
+    })
+  }, [addToWatchlist, isWatched, result])
+
   return (
-    <div className="swing-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
-      {/* Page header */}
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
-          <TrendingUp size={20} />
+    <div className="swing-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+      {/* Header */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {searchParams.get('from') && (
+              <button
+                type="button"
+                onClick={() => navigate(searchParams.get('from')!)}
+                className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+              >
+                <ArrowLeft size={16} /> Back
+              </button>
+            )}
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
+              <TrendingUp size={20} />
+            </div>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Swing Trade Engine</h1>
+            <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Overnight &amp; Multi-Day</span>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-white">Swing Trade Engine</h1>
-          <p className="text-xs text-gray-500">Daily candles · overnight &amp; multi-day setups</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void runScan()}
+            disabled={loading}
+            className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* Ticker input */}
-      <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
+      <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             ref={inputRef}
-            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
+            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
             placeholder="NVDA, AAPL, SPY…"
             value={ticker}
             onChange={e => setTicker(e.target.value.toUpperCase())}
@@ -82,61 +154,203 @@ export default function SwingTradePage() {
 
       {/* Error */}
       {error && (
-        <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 px-4 py-3 text-sm text-rose-200 flex gap-2">
+        <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
           <ShieldAlert className="shrink-0 mt-0.5" size={16} />
           {error}
         </div>
       )}
 
+      {notice && (
+        <div className={`rounded-xl px-4 py-3 text-sm flex gap-2 ${
+          notice.tone === 'success'
+            ? 'border border-emerald-700/40 bg-emerald-950/20 text-emerald-200'
+            : 'border border-sky-700/40 bg-sky-950/20 text-sky-200'
+        }`}>
+          <ShieldAlert className="shrink-0 mt-0.5" size={16} />
+          {notice.message}
+        </div>
+      )}
+
       {/* Result panel */}
       {result && (
-        <SwingTradeEnginePanel
-          result={result}
-          onRefresh={() => void runScan()}
-          refreshing={loading}
-        />
+        <>
+          <SwingTradeEnginePanel
+            result={result}
+            onRefresh={() => void runScan()}
+            refreshing={loading}
+            onRequestEnterActiveTrade={() => setEnterOpen(true)}
+            onOpenStrategyFinder={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
+            onOpenCommandCenter={() => navigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
+            onCreateAlert={() => setAlertOpen(true)}
+            onAddToWatchlist={handleAddToWatchlist}
+          />
+        </>
       )}
 
       {/* Methodology note */}
-      <section className="rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setGlossaryOpen(v => !v)}
-          className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800/50"
-        >
+      <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">
+        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-secondary hover:bg-surface-muted/30">
           <span className="flex items-center gap-2">
             <BarChart2 size={16} className="text-violet-400" />
             How swing scoring works
           </span>
-          {glossaryOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-        </button>
-        {glossaryOpen && (
-          <div className="px-4 pb-4 space-y-3 text-xs text-gray-500 border-t border-gray-800 pt-3">
-            <p>
-              The engine fetches <span className="text-gray-300">daily candles</span> (60+ bars) and scores seven signal groups for both bull and bear sides, then subtracts a{' '}
-              <span className="text-gray-300">VIX caution penalty</span> when the fear gauge is elevated.
-            </p>
-            <ul className="space-y-1.5 list-none">
-              <li><span className="text-gray-400 font-semibold">MA alignment</span> — price vs MA20 and MA50 (±2 pts)</li>
-              <li><span className="text-gray-400 font-semibold">MA trend</span> — slope and spacing of MA20/MA50 (±2 pts)</li>
-              <li><span className="text-gray-400 font-semibold">RSI</span> — momentum health and extreme zones (±1.5 pts)</li>
-              <li><span className="text-gray-400 font-semibold">MACD</span> — histogram trend + crossover (±2.5 pts)</li>
-              <li><span className="text-gray-400 font-semibold">Momentum</span> — 5-day price change (±1 pt)</li>
-              <li><span className="text-gray-400 font-semibold">Volume</span> — rising vs declining trend (±1.5 pts)</li>
-              <li><span className="text-gray-400 font-semibold">SPY context</span> — SPY vs own MA20 (±0.5 pt)</li>
-            </ul>
-            <div className="space-y-1">
-              <p><span className="text-emerald-400 font-semibold">Market bias</span> explains the trend direction, but the decision card separates that from entry quality and execution readiness.</p>
-              <p><span className="text-amber-300 font-semibold">WAIT / WATCH</span> means the trend can still be constructive while the entry is not ready yet.</p>
-              <p><span className="text-rose-300 font-semibold">AVOID / NO EDGE</span> means risk, pricing, or structure is still too poor to trust.</p>
-            </div>
-            <p className="text-amber-200/70 border border-amber-800/40 bg-amber-950/20 rounded-lg px-3 py-2 leading-relaxed">
-              <Flame size={12} className="inline mr-1" />
-              Educational only — not financial advice. Daily data from Yahoo may lag by one session. Always verify with your broker before trading.
-            </p>
+          <ChevronDown size={16} className="text-muted transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-slate-100 dark:border-white/[0.05] px-4 pb-4 space-y-3 text-xs text-gray-500 pt-3">
+          <p>
+            The engine fetches <span className="text-secondary">daily candles</span> (60+ bars) and scores seven signal groups for both bull and bear sides, then subtracts a{' '}
+            <span className="text-secondary">VIX caution penalty</span> when the fear gauge is elevated.
+          </p>
+          <ul className="space-y-1.5 list-none">
+            <li><span className="font-semibold text-tertiary">MA alignment</span> — price vs MA20 and MA50 (±2 pts)</li>
+            <li><span className="font-semibold text-tertiary">MA trend</span> — slope and spacing of MA20/MA50 (±2 pts)</li>
+            <li><span className="font-semibold text-tertiary">RSI</span> — momentum health and extreme zones (±1.5 pts)</li>
+            <li><span className="font-semibold text-tertiary">MACD</span> — histogram trend + crossover (±2.5 pts)</li>
+            <li><span className="font-semibold text-tertiary">Momentum</span> — 5-day price change (±1 pt)</li>
+            <li><span className="font-semibold text-tertiary">Volume</span> — rising vs declining trend (±1.5 pts)</li>
+            <li><span className="font-semibold text-tertiary">SPY context</span> — SPY vs own MA20 (±0.5 pt)</li>
+          </ul>
+          <div className="space-y-1">
+            <p><span className="text-emerald-400 font-semibold">Market bias</span> explains the trend direction, but the decision card separates that from entry quality and execution readiness.</p>
+            <p><span className="text-amber-300 font-semibold">WAIT / WATCH</span> means the trend can still be constructive while the entry is not ready yet.</p>
+            <p><span className="text-rose-300 font-semibold">AVOID / NO EDGE</span> means risk, pricing, or structure is still too poor to trust.</p>
           </div>
-        )}
-      </section>
+          <p className="text-amber-200/70 border border-amber-800/40 bg-amber-950/20 rounded-lg px-3 py-2 leading-relaxed">
+            <Flame size={12} className="inline mr-1" />
+            Educational only — not financial advice. Daily data from Yahoo may lag by one session. Always verify with your broker before trading.
+          </p>
+        </div>
+      </details>
+
+      {/* Add to Positions modal */}
+      {enterOpen && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <div className="text-base font-bold text-white">Add Swing Position</div>
+              <button
+                type="button"
+                onClick={() => setEnterOpen(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Ticker</span>
+                  <span className="text-gray-200 font-bold">{result.ticker}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Source</span>
+                  <span className="text-gray-200 font-bold">Swing Trade Engine</span>
+                </div>
+                {result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE' && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Strategy</span>
+                    <span className="text-violet-300 font-bold">{result.suggested_strategy.replace(/_/g, ' ')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Final Action</span>
+                  <span className="text-gray-200 font-bold">{result.final_action.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Expected Hold</span>
+                  <span className="text-gray-200 font-bold">{result.expected_holding_period || '3–5 trading days'}</span>
+                </div>
+                {result.recommended_contract_duration && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Contract Window</span>
+                    <span className="text-gray-200 font-bold">{result.recommended_contract_duration} DTE</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Signal Strength</span>
+                  <span className="text-gray-200 font-bold">{Math.min(result.confidence, 95)}</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Position will be tracked in the Positions Center. Configure entry details, strike, and expiry there.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(ROUTES.positions)}
+                  className="flex-1 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Open Positions Center
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnterOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {alertOpen && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <div className="text-base font-bold text-white">Create Swing Alert</div>
+              <button
+                type="button"
+                onClick={() => setAlertOpen(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Ticker</span>
+                  <span className="text-gray-200 font-bold">{result.ticker}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Engine</span>
+                  <span className="text-gray-200 font-bold">Swing Trade</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Alert Focus</span>
+                  <span className="text-amber-300 font-bold">{result.final_action.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="pt-1 text-xs text-gray-300 leading-relaxed">
+                  {result.decision_message || 'Use alerts to catch the next valid pullback, breakout, or risk-management change.'}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Open Alert Center to create a ticker alert with this swing setup in mind.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`${ROUTES.alerts}?ticker=${encodeURIComponent(result.ticker)}`)}
+                  className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Open Alert Center
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

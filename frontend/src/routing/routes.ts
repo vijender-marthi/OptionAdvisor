@@ -14,4 +14,15 @@ export const ROUTES = {
   watchlist: '/watchlistx',
   alerts: '/alerts',
   dayTradeAlerts: '/day-trade-alerts',
+  myTickers: '/my-tickers',
 } as const
+
+export type EngineType = 'DAY' | 'SWING' | 'REGULAR'
+
+export function getEngineRoute(engineType: string, ticker: string): string {
+  const key = engineType.trim().toLowerCase()
+  const encodedTicker = encodeURIComponent(ticker)
+  if (key === 'day') return `${ROUTES.dayTrade}?ticker=${encodedTicker}`
+  if (key === 'swing') return `${ROUTES.swingTrade}?ticker=${encodedTicker}`
+  return `${ROUTES.strategyFinder}?ticker=${encodedTicker}`
+}

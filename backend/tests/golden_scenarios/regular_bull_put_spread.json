@@ -1,0 +1,46 @@
+{
+  "name": "Regular Trade — Bull Put Spread, credit income, ready",
+  "engine_type": "regular",
+  "input": {
+    "signals": {
+      "directional_bias": "Bullish",
+      "trend": "uptrend",
+      "iv_rank": 45,
+      "bias_confidence": 0.82,
+      "iv_environment": "normal",
+      "volatility_regime": "normal",
+      "current_price": 210.00
+    },
+    "recommendations": [
+      {
+        "strategy": "Bull Put Spread",
+        "bias": "Bullish",
+        "net_credit": 1.45,
+        "expected_value": 0.31,
+        "edge_ratio": 0.15,
+        "dte": 30,
+        "passes_liquidity_filter": true,
+        "passes_rr_filter": true,
+        "warnings": [],
+        "scores": {"total_score": 28},
+        "max_profit": 1.45,
+        "max_loss": 3.55,
+        "spread_width": 5.00,
+        "breakeven_lower": 203.55,
+        "breakeven_upper": 0
+      }
+    ]
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "STRONG",
+    "final_decision": "READY",
+    "execution_timing": "ENTER NOW",
+    "signal_quality": "STRONG GO",
+    "risk_state": "MEDIUM",
+    "confidence_min": 65,
+    "missing_confirmations": [],
+    "explanation_contains": ["credit", "short strike", "support"],
+    "execution_fields_present": ["Net Credit", "Breakeven", "Yield %"]
+  }
+}

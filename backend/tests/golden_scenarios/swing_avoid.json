@@ -1,0 +1,29 @@
+{
+  "name": "Swing Trade — Avoid, poor conditions",
+  "engine_type": "swing",
+  "input": {
+    "ticker": "PYPL",
+    "swing_bias": "BEARISH",
+    "entry_quality": "NO_CLEAN_ENTRY",
+    "risk_level": "HIGH",
+    "final_action": "AVOID",
+    "trade_quality_score": 2.1,
+    "decision_message": "Trend is deteriorating. Avoid until structure improves.",
+    "confirmation_needed": [],
+    "reasons": [
+      "Below both MA20 and MA50",
+      "RSI oversold but no reversal pattern",
+      "Volume declining"
+    ]
+  },
+  "expected": {
+    "market_bias": "BEARISH",
+    "setup_quality": "WEAK",
+    "final_decision": "AVOID",
+    "execution_timing": "STAND ASIDE",
+    "risk_state": "HIGH",
+    "confidence_max": 35,
+    "must_not_contain": ["ENTER NOW", "READY", "WATCH"],
+    "explanation_contains": []
+  }
+}

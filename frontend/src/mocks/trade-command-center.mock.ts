@@ -39,6 +39,10 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         signal_quality: 'STRONG GO',
         execution_timing: 'WATCH',
         risk_category: 'HIGH',
+        explanation: {},
+        risk_reason: 'High beta intraday name.',
+        display_confidence: 78,
+        execution_fields: [],
       },
       {
         engine_type: 'swing',
@@ -61,6 +65,10 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         signal_quality: 'GO',
         execution_timing: 'WATCH',
         risk_category: 'MODERATE',
+        explanation: {},
+        risk_reason: 'Volatility remains elevated.',
+        display_confidence: 74,
+        execution_fields: [],
       },
       {
         engine_type: 'regular',
@@ -83,6 +91,10 @@ export const tradeCommandCenterEnvelopeMock: ApiEnvelope<TradeCommandCenterPaylo
         signal_quality: 'GO',
         execution_timing: 'ENTER NOW',
         risk_category: 'MODERATE',
+        explanation: {},
+        risk_reason: 'Avoid forcing rich premium names.',
+        display_confidence: 79,
+        execution_fields: [],
       },
     ],
     recommendations: [

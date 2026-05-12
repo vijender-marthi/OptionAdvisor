@@ -29,6 +29,7 @@ import {
   setAccessToken,
   type AuthLoginResponse,
 } from '../api/client'
+import { fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import {
@@ -164,7 +165,7 @@ interface AppContextValue {
   /** Max symbols allowed on the watchlist for this session (from server; defaults to 15 until loaded). */
   watchlistMax: number
   addToWatchlist: (item: Omit<WatchlistItem, 'addedAt'>) => boolean
-  removeFromWatchlist: (ticker: string) => void
+  removeFromWatchlist: (ticker: string) => Promise<void>
   /** Replace notes for an existing watchlist symbol (persists via user-data save). */
   updateWatchlistNotes: (ticker: string, notes: string) => void
   isWatched: (ticker: string) => boolean
@@ -285,6 +286,11 @@ function save<T>(key: string, val: T) {
   try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
 }
 
+/** Per-user localStorage key for portfolio write-through cache. */
+function portfolioCacheKey(email: string) {
+  return `oa_portfolio_cache_${email.trim().toLowerCase()}`
+}
+
 function activeAlertsOnly(alerts: AlertEntry[], now = Date.now()): AlertEntry[] {
   return alerts.filter(alert => now - alert.detectedAt < ALERT_RETENTION_MS)
 }
@@ -372,6 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastBgRefresh, setLastBgRefresh]           = useState<number | null>(null)
   const [isMarketHours, setIsMarketHours]           = useState<boolean>(isMarketHoursNow)
   const [alerts, setAlerts]                         = useState<AlertEntry[]>(() => activeAlertsOnly(load<AlertEntry[]>('oa_alerts', [])))
+  const [alertCenterActiveCount, setAlertCenterActiveCount] = useState<number | null>(null)
   // Dedup: once an alert fires for (ticker-strategy-expiry), never fire again this session
   const sentAlertKeysRef = useRef<Set<string>>(new Set(load<string[]>('oa_sent_alert_keys', [])))
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
@@ -479,6 +486,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await getUserData(user.email)
         if (cancelled) return
         setWatchlist(data.watchlist)
+        // Warm the local cache so we have a fallback if the server is unreachable later.
+        save(portfolioCacheKey(user.email), data.portfolio)
         setPortfolio(data.portfolio)
         let dt: string[] = Array.isArray(data.day_trade_watchlist)
           ? data.day_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
@@ -511,12 +520,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn('[user-data] load failed:', e)
         if (!cancelled) {
+          // Fall back to the last-known-good portfolio from localStorage so positions
+          // don't vanish when the backend is temporarily unreachable.
+          const cached = load<PortfolioPosition[]>(portfolioCacheKey(user.email), [])
+          setPortfolio(cached)
           setWatchlist([])
-          setPortfolio([])
           setWatchlistMax(15)
           setDayTradeWatchlist([])
           setSwingTradeWatchlist([])
-          setUserDataLoaded(false)
+          // Allow saves to run if we have cached data so positions sync when server recovers.
+          setUserDataLoaded(cached.length > 0)
           setAdvisoryAcceptedAt(null)
           setAdvisoryTermsVersion(null)
         }
@@ -526,6 +539,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadUserData()
     return () => { cancelled = true }
   }, [user?.email])
+
+  // Write-through cache: keep localStorage in sync with every portfolio change.
+  // Gated on userDataLoaded so the initial empty state doesn't wipe a valid cache.
+  useEffect(() => {
+    if (!user?.email || !userDataLoaded) return
+    save(portfolioCacheKey(user.email), portfolio)
+  }, [portfolio, user?.email, userDataLoaded])
 
   // Save per-email watchlist and portfolio changes to SQLite.
   useEffect(() => {
@@ -588,6 +608,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
       clearInterval(id)
+    }
+  }, [user?.email])
+
+  // Sidebar badge should match the normalized Alert Center visible active count.
+  useEffect(() => {
+    if (!user?.email) {
+      setAlertCenterActiveCount(0)
+      return
+    }
+
+    let cancelled = false
+    const loadAlertCenterCount = async () => {
+      try {
+        const env = await fetchAlertCenterPage({ active_only: true })
+        const summaryActive = Number(env?.data?.summary?.active)
+        const fallbackLen = Array.isArray(env?.data?.alerts) ? env.data.alerts.length : 0
+        const nextCount = Number.isFinite(summaryActive) ? summaryActive : fallbackLen
+        if (!cancelled) {
+          setAlertCenterActiveCount(nextCount)
+          if (import.meta.env.DEV) {
+            console.debug('[alerts] sidebar badge source', {
+              endpoint: '/api/alerts',
+              sidebarCount: nextCount,
+              rawPayloadSummary: env?.data?.summary ?? null,
+              rawPayloadCount: fallbackLen,
+            })
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setAlertCenterActiveCount(null)
+        }
+        console.warn('[alerts] alert-center count load failed:', e)
+      }
+    }
+
+    const onRefresh = () => { void loadAlertCenterCount() }
+    void loadAlertCenterCount()
+    const id = setInterval(loadAlertCenterCount, 60_000)
+    window.addEventListener('oa-alert-center-updated', onRefresh as EventListener)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      window.removeEventListener('oa-alert-center-updated', onRefresh as EventListener)
     }
   }, [user?.email])
 
@@ -780,7 +844,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true
   }, [])
 
-  const removeFromWatchlist = useCallback((ticker: string) => {
+  const removeFromWatchlist = useCallback(async (ticker: string) => {
+    try {
+      await removeWatchlistTicker({ ticker })
+    } catch (err) {
+      console.error('removeFromWatchlist API call failed:', err)
+    }
     setWatchlist(prev => prev.filter(w => w.ticker !== ticker))
   }, [])
 
@@ -845,7 +914,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             addedAt: p.addedAt,
             status: p.status,
             pnlPct: p.pnlPct,
-            exitDate: p.exitDate,
+            exitDate: data.exitDate ?? p.exitDate,
+            exit_price: data.exit_price ?? p.exit_price,
+            exit_debit_credit: data.exit_debit_credit ?? p.exit_debit_credit,
+            realized_pnl: data.realized_pnl ?? p.realized_pnl,
+            realized_pnl_percent: data.realized_pnl_percent ?? p.realized_pnl_percent,
+            exit_reason: data.exit_reason ?? p.exit_reason,
+            close_notes: data.close_notes ?? p.close_notes,
+            pnl_overridden: data.pnl_overridden ?? p.pnl_overridden,
+            pnl_override_reason: data.pnl_override_reason ?? p.pnl_override_reason,
           },
     ))
   }, [])
@@ -855,7 +932,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const closePosition = useCallback((id: string, payload: ClosePositionPayload) => {
-    const now = new Date().toISOString()
+    const now = payload.close_date || new Date().toISOString()
     setPortfolio(prev => {
       const idx = prev.findIndex(p => p.id === id && p.status === 'open')
       if (idx < 0) return prev
@@ -866,14 +943,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!Number.isFinite(nClose) || nClose < 1) nClose = 1
       if (nClose > total) nClose = total
 
-      const pnlPct = Number(payload.pnlPct)
-      const safePct = Number.isFinite(pnlPct) ? pnlPct : 0
-
       const scaleRemaining = total > 0 ? (total - nClose) / total : 0
+
+      const closeFields: Partial<PortfolioPosition> = {
+        status: 'closed' as const,
+        exitDate: now,
+        exit_price: payload.exit_price,
+        exit_debit_credit: payload.exit_debit_credit,
+        realized_pnl: payload.realized_pnl,
+        realized_pnl_percent: payload.realized_pnl_percent,
+        exit_reason: payload.exit_reason,
+        close_notes: payload.close_notes,
+        pnl_overridden: payload.pnl_overridden,
+        pnl_override_reason: payload.pnl_override_reason,
+      }
+
+      if (payload.realized_pnl_percent != null) {
+        closeFields.pnlPct = payload.realized_pnl_percent
+      }
 
       if (nClose >= total) {
         return prev.map(p =>
-          p.id === id ? { ...p, status: 'closed' as const, pnlPct: safePct, exitDate: now } : p,
+          p.id === id ? { ...p, ...closeFields } : p,
         )
       }
 
@@ -884,9 +975,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...pos,
         id: newPortfolioLotId(),
         contracts: nClose,
-        status: 'closed',
-        pnlPct: safePct,
-        exitDate: now,
+        ...closeFields,
         notes: closedNotes,
         capital_at_risk:
           pos.capital_at_risk != null
@@ -1307,7 +1396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id)
   }, [refreshWatchlistForAlerts])
 
-  const unreadAlertCount = alerts.filter(a => !a.dismissed).length
+  const unreadAlertCount = alertCenterActiveCount ?? 0
 
   const canAccessPage = useCallback(
     (p: Page) => roleCanAccessPage(user?.role, p),

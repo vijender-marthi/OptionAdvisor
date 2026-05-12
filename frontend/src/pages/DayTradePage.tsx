@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowDown, BarChart2, ChevronDown, ChevronRight, Clock, Flame, Loader2,
-  RefreshCw, Search, ShieldAlert, X, Zap,
+  ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
+  Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
 } from 'lucide-react'
 import { analyzeDayTrade, enterActiveTrade } from '../api/client'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
+import { ROUTES } from '../routing/routes'
+import { getActionButtonClass } from '../utils/semanticTrading'
 
 function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
@@ -15,11 +17,21 @@ function axiosDetail(e: unknown): string {
 }
 
 export default function DayTradePage() {
-  const { dayTradeEngineUI: ui, setDayTradeEngineUI: setUi, canAccessPage, navigate } = useApp()
+  const {
+    dayTradeEngineUI: ui,
+    setDayTradeEngineUI: setUi,
+    canAccessPage,
+    navigate,
+    addToWatchlist,
+    isWatched,
+  } = useApp()
   const [searchParams] = useSearchParams()
+  const routerNavigate = useNavigate()
   const { ticker, loading, error, result, glossaryOpen } = ui
 
   const [enterOpen, setEnterOpen] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
   const [entryPrice, setEntryPrice] = useState('')
   const [contracts, setContracts] = useState('')
@@ -28,29 +40,14 @@ export default function DayTradePage() {
   const [notes, setNotes] = useState('')
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
+  const autoRunRef = useRef(false)
 
-  useEffect(() => {
-    const readTicker = () => {
-      let t = searchParams.get('ticker')?.trim().toUpperCase()
-      if (!t) {
-        const raw = window.location.hash.replace(/^#/, '')
-        const qi = raw.indexOf('?')
-        if (qi >= 0) {
-          const sp = new URLSearchParams(raw.slice(qi))
-          t = sp.get('ticker')?.trim().toUpperCase()
-        }
-      }
-      if (t && t.length <= 12) {
-        setUi(cur => (cur.ticker.trim() === t ? cur : { ...cur, ticker: t }))
-      }
-    }
-    readTicker()
-    window.addEventListener('hashchange', readTicker)
-    return () => window.removeEventListener('hashchange', readTicker)
-  }, [searchParams, setUi])
+  // Stable ref to read latest ticker without it being a useCallback dep
+  const tickerRef = useRef(ticker)
+  tickerRef.current = ticker
 
   const runScan = useCallback(async () => {
-    const sym = ticker.trim().toUpperCase()
+    const sym = tickerRef.current.trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
@@ -71,7 +68,35 @@ export default function DayTradePage() {
         error: axiosDetail(e),
       }))
     }
-  }, [ticker, setUi])
+  }, [setUi]) // stable — no ticker dependency
+
+  // Track last processed URL ticker to avoid reacting to searchParams identity
+  const processedUrlTickerRef = useRef<string | null>(null)
+  const urlTickerRaw = searchParams.get('ticker')
+  const urlTicker = urlTickerRaw?.trim().toUpperCase() ?? null
+
+  useEffect(() => {
+    if (!urlTicker || urlTicker.length > 12) return
+    if (urlTicker === processedUrlTickerRef.current) return
+    processedUrlTickerRef.current = urlTicker
+    if (ticker.trim().toUpperCase() !== urlTicker) {
+      setUi(cur => ({ ...cur, ticker: urlTicker }))
+    }
+    autoRunRef.current = true
+  }, [urlTicker, ticker, setUi])
+
+  useEffect(() => {
+    if (autoRunRef.current && ticker.trim()) {
+      autoRunRef.current = false
+      runScan()
+    }
+  }, [ticker, runScan])
+
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 2800)
+    return () => clearTimeout(t)
+  }, [notice])
 
   const openEnterModal = useCallback(() => {
     if (!result) return
@@ -85,6 +110,25 @@ export default function DayTradePage() {
     setEnterErr(null)
     setEnterOpen(true)
   }, [result])
+
+  const handleAddToWatchlist = useCallback(() => {
+    if (!result) return
+    const already = isWatched(result.ticker)
+    const ok = addToWatchlist({
+      ticker: result.ticker,
+      companyName: result.company_name || undefined,
+      lastPrice: typeof result.metrics?.last_price === 'number' ? result.metrics.last_price : undefined,
+      notes: `Day Trade · ${result.final_decision} · ${result.execution_readiness || result.execution_timing || 'WAIT'}`,
+    })
+    if (!ok) {
+      setNotice({ tone: 'info', message: 'Unable to add this ticker to Signal Feed.' })
+      return
+    }
+    setNotice({
+      tone: already ? 'info' : 'success',
+      message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
+    })
+  }, [addToWatchlist, isWatched, result])
 
   const submitEnter = useCallback(async () => {
     if (!result) return
@@ -144,23 +188,46 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   return (
-    <div className="day-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 text-orange-400">
-          <Zap size={20} />
+    <div className="day-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+      {/* Header */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
+              <Zap size={20} />
+            </div>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Day Trade Engine</h1>
+            <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Intraday</span>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Intraday scanner — 1m bars, VWAP, opening range, momentum, volume, and SPY/VIX context.</p>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-white">Day Trade Engine</h1>
-          <p className="text-xs text-gray-500">Intraday prototype — 1m bars, VWAP, opening range, context</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {searchParams.get('from') && (
+            <button
+              type="button"
+              onClick={() => routerNavigate(searchParams.get('from')!)}
+              className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void runScan()}
+            disabled={loading}
+            className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* Scan */}
-      <section className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5">
+      <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
-            className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white font-mono text-lg uppercase placeholder-gray-600 focus:outline-none focus:border-violet-500"
+            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
             placeholder="SPY, NVDA, …"
             value={ticker}
             onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
@@ -184,55 +251,66 @@ export default function DayTradePage() {
       </section>
 
       {error && (
-        <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 px-4 py-3 text-sm text-rose-200 flex gap-2">
+        <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
           <ShieldAlert className="shrink-0 mt-0.5" size={16} />
           {error}
         </div>
       )}
 
+      {notice && (
+        <div className={`rounded-xl px-4 py-3 text-sm flex gap-2 ${
+          notice.tone === 'success'
+            ? 'border border-emerald-700/40 bg-emerald-950/20 text-emerald-200'
+            : 'border border-sky-700/40 bg-sky-950/20 text-sky-200'
+        }`}>
+          <ShieldAlert className="shrink-0 mt-0.5" size={16} />
+          {notice.message}
+        </div>
+      )}
+
       {result && (
-        <DayTradeEnginePanel
-          result={result}
-          onRefresh={() => void runScan()}
-          refreshing={loading}
-          onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
-        />
+        <>
+          <DayTradeEnginePanel
+            result={result}
+            onRefresh={() => void runScan()}
+            refreshing={loading}
+            onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
+            onOpenStrategyFinder={() => routerNavigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
+            onOpenCommandCenter={() => routerNavigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
+            onCreateAlert={() => setAlertOpen(true)}
+            onAddToWatchlist={handleAddToWatchlist}
+          />
+        </>
       )}
 
       {/* Flow reference */}
-      <section className="rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setUi(cur => ({ ...cur, glossaryOpen: !cur.glossaryOpen }))}
-          className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-300 hover:bg-gray-800/50"
-        >
+      <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">
+        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-secondary hover:bg-surface-muted/30">
           <span className="flex items-center gap-2">
             <BarChart2 size={16} className="text-violet-400" />
             What this prototype does
           </span>
-          {glossaryOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-        </button>
-        {glossaryOpen && (
-          <div className="px-4 pb-4 space-y-3 text-xs text-gray-500 border-t border-gray-800 pt-3">
-            <p>
-              Pulls <span className="text-gray-300">1-minute</span> regular-session candles, builds session{' '}
-              <span className="text-gray-300">VWAP</span>,{' '}
-              <span className="text-gray-300">opening range</span> (first 15 minutes), checks price vs range and VWAP, short lookback{' '}
-              <span className="text-gray-300">momentum</span>, and a simple <span className="text-gray-300">volume spike</span> flag.
-              Blends in <span className="text-gray-300">SPY / QQQ</span> one-day change and <span className="text-gray-300">VIX</span> as risk context.
-            </p>
-            <p className="text-amber-200/70 border border-amber-800/40 bg-amber-950/20 rounded-lg px-3 py-2">
-              <Flame size={12} className="inline mr-1" />
-              Educational only — not financial advice. Intraday data can be delayed; verify prices with your broker.
-            </p>
-            <ul className="space-y-2">
-              <li className="flex gap-2"><Clock size={14} className="shrink-0 text-gray-600" /> Most recent trading day in the feed is analyzed if today has no session yet.</li>
-              <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-gray-600" /> <span className="text-gray-400">Market bias</span> tells you whether the tape is supportive. <span className="text-gray-400">Execution readiness</span> tells you whether the trigger is actually there.</li>
-              <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-gray-600" /> The page now resolves everything into <span className="text-gray-400">READY / WAIT / WATCH / AVOID</span> so a bullish tape does not get mistaken for an immediate entry.</li>
-            </ul>
-          </div>
-        )}
-      </section>
+          <ChevronDown size={16} className="text-muted transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-slate-100 dark:border-white/[0.05] px-4 pb-4 space-y-3 text-xs text-gray-500 pt-3">
+          <p>
+            Pulls <span className="text-secondary">1-minute</span> regular-session candles, builds session{' '}
+            <span className="text-secondary">VWAP</span>,{' '}
+            <span className="text-secondary">opening range</span> (first 15 minutes), checks price vs range and VWAP, short lookback{' '}
+            <span className="text-secondary">momentum</span>, and a simple <span className="text-secondary">volume spike</span> flag.
+            Blends in <span className="text-secondary">SPY / QQQ</span> one-day change and <span className="text-secondary">VIX</span> as risk context.
+          </p>
+          <p className="text-amber-200/70 border border-amber-800/40 bg-amber-950/20 rounded-lg px-3 py-2">
+            <Flame size={12} className="inline mr-1" />
+            Educational only — not financial advice. Intraday data can be delayed; verify prices with your broker.
+          </p>
+          <ul className="space-y-2">
+            <li className="flex gap-2"><Clock size={14} className="shrink-0 text-muted" /> Most recent trading day in the feed is analyzed if today has no session yet.</li>
+            <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-muted" /> <span className="text-tertiary">Market bias</span> tells you whether the tape is supportive. <span className="text-tertiary">Execution readiness</span> tells you whether the trigger is actually there.</li>
+            <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-muted" /> The page now resolves everything into <span className="text-tertiary">READY / WAIT / WATCH / AVOID</span> so a bullish tape does not get mistaken for an immediate entry.</li>
+          </ul>
+        </div>
+      </details>
 
       {enterOpen && result && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
@@ -339,6 +417,62 @@ export default function DayTradePage() {
               >
                 {enterSubmitting ? <Loader2 className="inline animate-spin" size={16} /> : null} Save &amp; open Day Trade Active
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {alertOpen && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <div className="text-base font-bold text-white">Create Day Alert</div>
+              <button
+                type="button"
+                onClick={() => setAlertOpen(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Ticker</span>
+                  <span className="text-gray-200 font-bold">{result.ticker}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Engine</span>
+                  <span className="text-gray-200 font-bold">Day Trade</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Alert Focus</span>
+                  <span className="text-amber-300 font-bold">{(result.execution_readiness || result.execution_timing || result.final_decision).replace(/_/g, ' ')}</span>
+                </div>
+                <div className="pt-1 text-xs text-gray-300 leading-relaxed">
+                  {result.entry_guidance?.action || result.reason || 'Use alerts to catch the next valid VWAP hold, breakout, or intraday risk shift.'}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Open Alert Center to create a ticker alert with this intraday setup in mind.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => routerNavigate(`${ROUTES.alerts}?ticker=${encodeURIComponent(result.ticker)}`)}
+                  className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Open Alert Center
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 font-semibold py-2.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -41,6 +41,24 @@ export interface AlertCenterSections {
   market: UnifiedAlert[]
 }
 
+export interface AlertCenterSummaryResponse {
+  active_count: number
+  items: UnifiedAlert[]
+  by_engine: {
+    day: number
+    swing: number
+    regular: number
+    portfolio: number
+    general: number
+  }
+  by_severity: {
+    critical: number
+    warning: number
+    info: number
+  }
+  rules_count: number
+}
+
 export interface AlertCenterPayload {
   summary: AlertCenterSummary
   sections: AlertCenterSections
@@ -72,6 +90,27 @@ export interface TradeCommandCenterEngine {
   signal_quality: string
   execution_timing: string
   risk_category: string
+  explanation: Record<string, string>
+  risk_reason: string
+  display_confidence: number
+  execution_fields: Array<{ label: string; value: string }>
+  /** Cross-engine score normalisation fields */
+  raw_engine_score?: number
+  normalized_score?: number
+  normalized_state?: string
+  confidence_band?: string
+  execution_bias?: string
+  risk_band?: string
+  normalized_reason?: string
+  option_risk_context?: {
+    theta_risk: string
+    gamma_risk: string
+    iv_risk: string
+    liquidity_risk: string
+    suggested_contract_window: string
+    option_execution_warning: string
+  }
+  engine_score_breakdown?: Record<string, unknown>
 }
 
 export interface TradeCommandCenterRecommendation {
@@ -100,6 +139,27 @@ export interface TradeCommandCenterRecommendation {
   signal_quality?: string
   execution_timing?: string
   risk_category?: string
+  explanation?: Record<string, string>
+  risk_reason?: string
+  display_confidence?: number
+  execution_fields?: Array<{ label: string; value: string }>
+  /** Cross-engine score normalisation fields */
+  raw_engine_score?: number
+  normalized_score?: number
+  normalized_state?: string
+  confidence_band?: string
+  execution_bias?: string
+  risk_band?: string
+  normalized_reason?: string
+  option_risk_context?: {
+    theta_risk: string
+    gamma_risk: string
+    iv_risk: string
+    liquidity_risk: string
+    suggested_contract_window: string
+    option_execution_warning: string
+  }
+  engine_score_breakdown?: Record<string, unknown>
 }
 
 export interface TradeCommandCenterConflict {
@@ -170,6 +230,29 @@ export interface WatchlistXDecisionBlock {
   signal_quality?: string
   execution_timing?: string
   risk_category?: string
+  expected_holding_period?: string
+  recommended_contract_duration?: string
+  explanation?: Record<string, string>
+  risk_reason?: string
+  display_confidence?: number
+  execution_fields?: Array<{ label: string; value: string }>
+  /** Cross-engine score normalisation fields */
+  raw_engine_score?: number
+  normalized_score?: number
+  normalized_state?: string
+  confidence_band?: string
+  execution_bias?: string
+  risk_band?: string
+  normalized_reason?: string
+  engine_score_breakdown?: Record<string, unknown>
+  option_risk_context?: {
+    theta_risk: string
+    gamma_risk: string
+    iv_risk: string
+    liquidity_risk: string
+    suggested_contract_window: string
+    option_execution_warning: string
+  }
 }
 
 export interface WatchlistXMetrics {
@@ -230,6 +313,43 @@ export interface WatchlistXCacheMeta {
   oldest_cache_age_seconds: number
   source: string
   elapsed_ms: number
+}
+
+export interface AiPositionAnalysis {
+  ai_state: string
+  state_label: string
+  health_score: number
+  health_label: string
+  pnl_pct: number
+  momentum_quality: string
+  extension_pct: number
+  extension_risk: string
+  theta_risk: string
+  iv_risk: string
+  trend_risk: string
+  rsi_risk: string
+  liquidity_risk: string
+  market_correlation_risk: string
+  dte: number
+  rsi: number
+  current_price: number
+  ma20: number
+  value_capture_pct: number | null
+  max_profit: number
+  max_loss: number
+  ai_summary: string
+  next_best_action: string
+  timeline_stage: string
+  smart_alerts: Array<{
+    type: string
+    label: string
+    message: string
+    severity: string
+  }>
+  management_playbook: string[]
+  management_actions: string[]
+  is_profitable: boolean
+  strategy_family: string
 }
 
 export interface WatchlistXPayload {

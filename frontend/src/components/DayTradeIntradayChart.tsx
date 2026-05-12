@@ -170,11 +170,11 @@ export default function DayTradeIntradayChart({
         </div>
         <div className="text-[11px] text-gray-500">
           {sessionDate ? `${sessionDate} ET` : 'Last RTH'}{' · '}
-          <span className="text-violet-400">VWAP</span>
+          <span className="text-semantic-accent">VWAP</span>
           {' · '}
-          <span className="text-amber-400/90">OR high / low</span>
+          <span className="text-semantic-warning">OR high / low</span>
           {' · '}
-          <span className="text-slate-400">Opening range (first {orMinutes}×1m)</span>
+          <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
         </div>
       </div>
 
@@ -199,7 +199,7 @@ export default function DayTradeIntradayChart({
               y={PAD.t}
               width={orEndX - orStartX}
               height={innerH}
-              fill="rgb(139, 92, 246)"
+              fill="var(--accent)"
               fillOpacity={0.08}
               clipPath="url(#daytrade-plot-clip)"
             />
@@ -212,7 +212,7 @@ export default function DayTradeIntradayChart({
                 x2={PAD.l + innerW}
                 y1={yAt(yt)}
                 y2={yAt(yt)}
-                stroke="rgb(71, 85, 105)"
+                stroke="var(--chart-grid)"
                 strokeOpacity={0.35}
                 strokeWidth={1}
               />
@@ -221,7 +221,7 @@ export default function DayTradeIntradayChart({
                 y={yAt(yt)}
                 dy="0.35em"
                 textAnchor="end"
-                fill="rgb(148, 163, 184)"
+                fill="var(--chart-axis)"
                 fontSize={10}
                 fontFamily="ui-monospace, monospace"
               >
@@ -235,7 +235,7 @@ export default function DayTradeIntradayChart({
             x2={PAD.l + innerW}
             y1={yAt(orHigh)}
             y2={yAt(orHigh)}
-            stroke="rgb(251, 191, 36)"
+            stroke="var(--chart-line-ma50)"
             strokeWidth={1.2}
             strokeDasharray="6 4"
             strokeOpacity={0.95}
@@ -246,7 +246,7 @@ export default function DayTradeIntradayChart({
             x2={PAD.l + innerW}
             y1={yAt(orLow)}
             y2={yAt(orLow)}
-            stroke="rgb(251, 191, 36)"
+            stroke="var(--chart-line-ma50)"
             strokeWidth={1.2}
             strokeDasharray="6 4"
             strokeOpacity={0.95}
@@ -257,7 +257,7 @@ export default function DayTradeIntradayChart({
             x={PAD.l + innerW - 4}
             y={yAt(orHigh) - 4}
             textAnchor="end"
-            fill="rgb(252, 211, 77)"
+            fill="var(--chart-line-ma50)"
             fontSize={9}
             fontWeight={600}
             clipPath="url(#daytrade-plot-clip)"
@@ -268,7 +268,7 @@ export default function DayTradeIntradayChart({
             x={PAD.l + innerW - 4}
             y={yAt(orLow) + 12}
             textAnchor="end"
-            fill="rgb(252, 211, 77)"
+            fill="var(--chart-line-ma50)"
             fontSize={9}
             fontWeight={600}
             clipPath="url(#daytrade-plot-clip)"
@@ -286,8 +286,8 @@ export default function DayTradeIntradayChart({
               const top = Math.min(yO, yC)
               const bot = Math.max(yO, yC)
               const up = b.c >= b.o
-              const bodyFill = up ? 'rgb(52, 211, 153)' : 'rgb(251, 113, 133)'
-              const wickStroke = 'rgb(100, 116, 139)'
+              const bodyFill = up ? 'var(--bullish)' : 'var(--bearish)'
+              const wickStroke = 'var(--chart-grid)'
               const bh = Math.max(1, bot - top)
               return (
                 <g key={`${b.t}-${i}`}>
@@ -307,7 +307,7 @@ export default function DayTradeIntradayChart({
 
           <polyline
             fill="none"
-            stroke="rgb(167, 139, 250)"
+            stroke="var(--chart-line-iv)"
             strokeWidth={1.5}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -321,7 +321,7 @@ export default function DayTradeIntradayChart({
             width={innerW}
             height={innerH}
             fill="none"
-            stroke="rgb(51, 65, 85)"
+            stroke="var(--chart-grid)"
             strokeWidth={1}
             opacity={0.6}
           />
@@ -335,7 +335,7 @@ export default function DayTradeIntradayChart({
                 x={xAt(times[i]!)}
                 y={H - 10}
                 textAnchor="middle"
-                fill="rgb(148, 163, 184)"
+                fill="var(--chart-axis)"
                 fontSize={10}
               >
                 {fmtEtShort(bar.t)}
@@ -343,7 +343,7 @@ export default function DayTradeIntradayChart({
             )
           })}
 
-          <text x={PAD.l} y={12} fill="rgb(156, 163, 175)" fontSize={10}>
+          <text x={PAD.l} y={12} fill="var(--chart-axis)" fontSize={10}>
             Price · {fmtPrice(yMax)} → {fmtPrice(yMin)}
           </text>
         </svg>

@@ -1,0 +1,46 @@
+{
+  "name": "Day Trade — Bullish bias waiting for VWAP hold",
+  "engine_type": "day",
+  "input": {
+    "ticker": "AMD",
+    "verdict": "GO",
+    "bias": "long",
+    "reasons": [
+      "Price near VWAP",
+      "Momentum improving",
+      "Relative strength neutral"
+    ],
+    "metrics": {
+      "vix": 16.8,
+      "vwap": 142.30,
+      "last_price": 142.15,
+      "or_high": 142.80,
+      "or_low": 141.50,
+      "or_breakout": "inside",
+      "momentum_pct": 0.06,
+      "volume_spike": false,
+      "confidence": {
+        "trend_strength": "MEDIUM",
+        "breakout_quality": "FAIR",
+        "volume_confirmation": "WEAK",
+        "market_alignment": "MEDIUM",
+        "risk": "MEDIUM"
+      }
+    },
+    "trader_decision": {
+      "market_state": "MARKET_MIXED",
+      "decision_message": "Long candidate structure, but VWAP hold is still pending.",
+      "confirmation_needed": ["above VWAP"]
+    }
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "GOOD",
+    "final_decision": "WAIT",
+    "signal_quality": "GO",
+    "execution_timing": "WAIT FOR PULLBACK",
+    "risk_state": "MEDIUM",
+    "missing_confirmations": ["VWAP hold"],
+    "must_not_contain": ["ENTER NOW"]
+  }
+}

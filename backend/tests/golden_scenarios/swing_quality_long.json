@@ -1,0 +1,32 @@
+{
+  "name": "Swing Trade — Quality long, ready to enter",
+  "engine_type": "swing",
+  "input": {
+    "ticker": "MSFT",
+    "swing_bias": "BULLISH",
+    "entry_quality": "GOOD_ENTRY",
+    "risk_level": "MEDIUM",
+    "final_action": "QUALITY_LONG",
+    "trade_quality_score": 8.4,
+    "decision_message": "Trend continuation remains healthy.",
+    "confirmation_needed": [],
+    "reasons": [
+      "MA20 and MA50 rising",
+      "RSI constructive",
+      "Relative strength improving",
+      "SPY supportive"
+    ]
+  },
+  "expected": {
+    "market_bias": "BULLISH",
+    "setup_quality": "GOOD",
+    "final_decision": "READY",
+    "execution_timing": "ENTER NOW",
+    "signal_quality": "GO",
+    "risk_state": "MEDIUM",
+    "confidence_min": 65,
+    "missing_confirmations": [],
+    "must_not_contain": ["AVOID", "WAIT", "WATCH"],
+    "explanation_contains": []
+  }
+}
