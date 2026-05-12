@@ -20,7 +20,7 @@ from math import erf, log, sqrt
 from typing import Optional
 from analysis import MarketSignals, OptionLeg, TradeCandidate
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ def find_strike_by_delta(df: pd.DataFrame, target_delta_range: tuple,
         otm_df = df[df["strike"] <= price]
 
     if otm_df.empty:
-        log.debug(
+        logger.debug(
             "find_strike_by_delta: no %s strikes found for target_delta=%s price=%.2f "
             "(chain has %d rows, none qualify as OTM)",
             option_type, target_delta_range, price, len(df),

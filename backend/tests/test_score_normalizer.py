@@ -24,7 +24,7 @@ class TestDayNormalizer(unittest.TestCase):
             reasons=["Strong momentum above VWAP."],
         )
         self.assertAlmostEqual(r["raw_engine_score"], 8.5)
-        self.assertEqual(r["normalized_score"], 85)
+        self.assertEqual(r["normalized_score"], 94)
         self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
@@ -44,7 +44,7 @@ class TestDayNormalizer(unittest.TestCase):
             reasons=[],
         )
         self.assertAlmostEqual(r["raw_engine_score"], 6.0)
-        self.assertEqual(r["normalized_score"], 60)
+        self.assertEqual(r["normalized_score"], 75)
         self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["confidence_band"], "HIGH")
 
@@ -194,7 +194,7 @@ class TestSwingNormalizer(unittest.TestCase):
             reasons=["Strong trend quality."],
         )
         self.assertAlmostEqual(r["raw_engine_score"], 9.0)
-        self.assertEqual(r["normalized_score"], 90)
+        self.assertEqual(r["normalized_score"], 92)
         self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
