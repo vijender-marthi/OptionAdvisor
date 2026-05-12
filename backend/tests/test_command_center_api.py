@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -150,7 +151,7 @@ class CommandCenterApiTests(unittest.TestCase):
             "netCredit": 1.05,
             "pop": 0.72,
             "ev": 0.84,
-            "detectedAt": 1778508619313,
+            "detectedAt": int(time.time() * 1000) - 60_000,
             "timeWindow": "10:00 AM – 10:15 AM PT",
             "emailSent": True,
             "dismissed": False,
