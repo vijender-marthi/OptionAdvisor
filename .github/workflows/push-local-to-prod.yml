@@ -1,6 +1,7 @@
 name: Push local data to production
 
-on: workflow_dispatch
+"on":
+  workflow_dispatch: {}
 
 jobs:
   push:
@@ -15,29 +16,6 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
-            DB=/mnt/optionadvisor-data/option_advisor.sqlite3
             B64='${{ secrets.PROD_IMPORT_DATA }}'
-            python3 - "$B64" <<'PYEOF'
-import sys, json, base64, sqlite3
-
-DATA = sys.argv[1]
-decoded = json.loads(base64.b64decode(DATA))
-db = "/mnt/optionadvisor-data/option_advisor.sqlite3"
-
-conn = sqlite3.connect(db)
-conn.execute("UPDATE user_state SET portfolio_json = ?, my_tickers_json = ?, day_trade_watchlist_json = ?, updated_at = ? WHERE email = ?", (
-    json.dumps(decoded["portfolio"]),
-    json.dumps(decoded["my_tickers"]),
-    json.dumps(decoded["day_trade_watchlist"]),
-    __import__('datetime').datetime.utcnow().isoformat(),
-    "vijender.marthi@gmail.com"
-))
-conn.execute("DELETE FROM active_trades WHERE email = ?", ("vijender.marthi@gmail.com",))
-conn.commit()
-
-r = conn.execute("SELECT portfolio_json, my_tickers_json FROM user_state WHERE email = ?", ("vijender.marthi@gmail.com",)).fetchone()
-p = len(json.loads(r[0]))
-t = len(json.loads(r[1]))
-conn.close()
-print(f"OK: {p} positions, {t} tickers imported to production")
-PYEOF
+            echo "$B64" | base64 -d > /tmp/import_data.json
+            echo 'aW1wb3J0IGpzb24sIHNxbGl0ZTMKCndpdGggb3BlbigiL3RtcC9pbXBvcnRfZGF0YS5qc29uIikgYXMgZjoKICAgIGRlY29kZWQgPSBqc29uLmxvYWQoZikKCmRiID0gIi9tbnQvb3B0aW9uYWR2aXNvci1kYXRhL29wdGlvbl9hZHZpc29yLnNxbGl0ZTMiCmNvbm4gPSBzcWxpdGUzLmNvbm5lY3QoZGIpCmNvbm4uZXhlY3V0ZSgiVVBEQVRFIHVzZXJfc3RhdGUgU0VUIHBvcnRmb2xpb19qc29uID0gPywgbXlfdGlja2Vyc19qc29uID0gPywgZGF5X3RyYWRlX3dhdGNobGlzdF9qc29uID0gPywgdXBkYXRlZF9hdCA9ID8gV0hFUkUgZW1haWwgPSA/IiwgKAogICAganNvbi5kdW1wcyhkZWNvZGVkWyJwb3J0Zm9saW8iXSksCiAgICBqc29uLmR1bXBzKGRlY29kZWRbIm15X3RpY2tlcnMiXSksCiAgICBqc29uLmR1bXBzKGRlY29kZWRbImRheV90cmFkZV93YXRjaGxpc3QiXSksCiAgICBfX2ltcG9ydF9fKCdkYXRldGltZScpLmRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpLAogICAgInZpamVuZGVyLm1hcnRoaUBnbWFpbC5jb20iCikpCmNvbm4uZXhlY3V0ZSgiREVMRVRFIEZST00gYWN0aXZlX3RyYWRlcyBXSEVSRSBlbWFpbCA9ID8iLCAoInZpamVuZGVyLm1hcnRoaUBnbWFpbC5jb20iLCkpCmNvbm4uY29tbWl0KCkKciA9IGNvbm4uZXhlY3V0ZSgiU0VMRUNUIHBvcnRmb2xpb19qc29uLCBteV90aWNrZXJzX2pzb24gRlJPTSB1c2VyX3N0YXRlIFdIRVJFIGVtYWlsID0gPyIsICgidmlqZW5kZXIubWFydGhpQGdtYWlsLmNvbSIsKSkuZmV0Y2hvbmUoKQpwID0gbGVuKGpzb24ubG9hZHMoclswXSkpCnQgPSBsZW4oanNvbi5sb2FkcyhyWzFdKSkKY29ubi5jbG9zZSgpCnByaW50KCJPSzoge3B9IHBvc2l0aW9ucywge3R9IHRpY2tlcnMgaW1wb3J0ZWQgdG8gcHJvZHVjdGlvbiIuZm9ybWF0KHA9cCwgdD10KSk=' | base64 -d | python3
