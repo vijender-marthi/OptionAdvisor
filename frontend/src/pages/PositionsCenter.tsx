@@ -981,6 +981,20 @@ export default function PositionsCenter() {
     void load()
   }, [load, portfolioRefreshKey])
 
+  const isVisible = typeof document !== 'undefined' ? !document.hidden : true
+  const [pageVisible, setPageVisible] = useState(isVisible)
+  useEffect(() => {
+    const onVis = () => setPageVisible(!document.hidden)
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  useEffect(() => {
+    if (!pageVisible) return
+    const id = setInterval(() => { void load() }, 90_000)
+    return () => clearInterval(id)
+  }, [load, pageVisible, portfolioRefreshKey])
+
   const d = env?.data ?? ({} as Record<string, unknown>)
   const summary = (d.summary ?? {}) as Record<string, unknown>
   const market = (d.market_snapshot ?? {}) as Record<string, unknown>

@@ -1041,6 +1041,39 @@ export default function SwingTradeEnginePanel({
           <ExecMapRow label="Stretch Target" value={execLevels.stretchTarget || ''} tone="text-semantic-warning" />
           <ExecMapRow label="DTE Window" value={result.suggested_expiry_window && result.suggested_expiry_window !== 'No trade' ? result.suggested_expiry_window : ''} />
         </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[500px] border-collapse text-center">
+            <thead>
+              <tr className="border-b border-gray-800">
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BUY HERE</th>
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
+                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="px-1 py-2 text-sm font-bold text-red-400">{execLevels.riskBelow || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-emerald-400">{execLevels.pullbackZone || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-yellow-400">{execLevels.breakoutTrigger || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-violet-400">{execLevels.firstTarget || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-orange-400">{execLevels.stretchTarget || '—'}</td>
+              </tr>
+              <tr>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">get out</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">sell &frac12;</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">sell rest</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="px-4 py-4 border-b border-gray-800 space-y-3">
