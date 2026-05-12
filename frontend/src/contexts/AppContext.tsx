@@ -884,11 +884,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number,
   ) => {
     setPortfolio(prev => {
-      if (prev.some(p => p.status === 'open' && p.ticker === ticker && p.strategy === rec.strategy && p.expiry === rec.expiry))
-        return prev
       const acctSize = load<number>('oa_account_size', 25000)
       return [{
-        id: `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}`,
+        id: `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         ticker, companyName,
         strategy: rec.strategy, bias: rec.bias, legs: rec.legs,
         expiry: rec.expiry, dte: rec.dte,
@@ -900,7 +898,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         breakeven_lower: rec.breakeven_lower,
         breakeven_upper: rec.breakeven_upper,
         addedAt: new Date().toISOString(), entryPrice, status: 'open' as const,
-        // Kelly Criterion snapshot — locked at time of entry for later review
         kelly_fraction: rec.kelly_fraction,
         half_kelly_fraction: rec.half_kelly_fraction,
         edge_ratio: rec.edge_ratio,
@@ -913,7 +910,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addManualPosition = useCallback((pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     setPortfolio(prev => [{
       ...pos,
-      id: `manual-${pos.ticker}-${Date.now()}`,
+      id: `manual-${pos.ticker}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       addedAt: new Date().toISOString(),
       status: 'open' as const,
     }, ...prev])
