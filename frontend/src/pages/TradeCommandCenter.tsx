@@ -1005,37 +1005,44 @@ export default function TradeCommandCenter() {
                   No cross-engine conflicts right now — all active engines are in signal agreement.
                 </div>
               ) : (
-                conflicts.map(conflict => (
-                  <div key={conflict.id} className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{conflict.ticker}</span>
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
-                            {conflict.state === 'CONFLICTING_SIGNALS' ? 'SIGNAL CONFLICT' : conflict.state.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{conflict.summary}</div>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-2 text-sm">
-                      {conflict.signals.map(row => (
-                        <div key={`${conflict.id}-${row.engine_type}`} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <EngineBadge engine={row.engine_type} />
-                            <SignalBadge signal={row.signal} />
+                conflicts.map(conflict => {
+                  const conflictKey = conflict.id
+                  const conflictExpanded = expandedOpportunityId === conflictKey
+                  return (
+                    <div key={conflictKey}>
+                      <button type="button" onClick={() => setExpandedOpportunityId(conflictExpanded ? null : conflictKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <span className="font-mono text-sm font-bold text-slate-900 dark:text-white shrink-0">{conflict.ticker}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
+                          {conflict.state === 'CONFLICTING_SIGNALS' ? 'SIGNAL CONFLICT' : conflict.state.replace(/_/g, ' ')}
+                        </span>
+                        <span className="ml-auto shrink-0 text-slate-400 transition-transform duration-200" style={{ transform: conflictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                          <ChevronDown size={16} />
+                        </span>
+                      </button>
+                      {conflictExpanded && (
+                        <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
+                          <div className="text-sm text-slate-700 dark:text-slate-300">{conflict.summary}</div>
+                          <div className="space-y-2 text-sm">
+                            {conflict.signals.map(row => (
+                              <div key={`${conflict.id}-${row.engine_type}`} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <EngineBadge engine={row.engine_type} />
+                                  <SignalBadge signal={row.signal} />
+                                </div>
+                                {row.note ? <div className="mt-2 text-slate-500">{row.note}</div> : null}
+                              </div>
+                            ))}
                           </div>
-                          {row.note ? <div className="mt-2 text-slate-500">{row.note}</div> : null}
+                          <div className="rounded-xl border border-amber-700/25 bg-amber-500/5 p-3">
+                            <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Root Cause</div>
+                            <div className="mt-1 text-sm text-slate-800 dark:text-slate-200">{conflict.resolution}</div>
+                            <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">ACTION — {conflict.suggested_action}</div>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
-                    <div className="mt-4 rounded-xl border border-amber-700/25 bg-amber-500/5 p-3">
-                      <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Root Cause</div>
-                      <div className="mt-1 text-sm text-slate-800 dark:text-slate-200">{conflict.resolution}</div>
-                      <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">ACTION — {conflict.suggested_action}</div>
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </section>
