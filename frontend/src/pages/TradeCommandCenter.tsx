@@ -1089,20 +1089,53 @@ export default function TradeCommandCenter() {
               </ChartShell>
 
               <ChartShell title="Engine Signal Distribution" subtitle="How each engine is leaning right now.">
-                <div className="h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={charts?.engine_signal_distribution ?? []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="engine" stroke="#6b7280" />
-                      <YAxis stroke="#6b7280" />
-                      <Tooltip />
-                      <Bar dataKey="READY" stackId="a" fill="#34d399" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="WATCH" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="WAIT" stackId="a" fill="#fbbf24" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="AVOID" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="NO_EDGE" stackId="a" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="space-y-4">
+                  {(charts?.engine_signal_distribution ?? []).map(entry => {
+                    const total = (entry.READY || 0) + (entry.WATCH || 0) + (entry.WAIT || 0) + (entry.AVOID || 0) + (entry.NO_EDGE || 0)
+                    const segments = [
+                      { key: 'READY', value: entry.READY || 0, color: '#34d399', label: 'Ready' },
+                      { key: 'WATCH', value: entry.WATCH || 0, color: '#f59e0b', label: 'Watch' },
+                      { key: 'WAIT', value: entry.WAIT || 0, color: '#fbbf24', label: 'Wait' },
+                      { key: 'AVOID', value: entry.AVOID || 0, color: '#ef4444', label: 'Avoid' },
+                      { key: 'NO_EDGE', value: entry.NO_EDGE || 0, color: '#94a3b8', label: 'No Edge' },
+                    ].filter(s => s.value > 0)
+                    return (
+                      <div key={entry.engine}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-semibold text-slate-900 dark:text-white">{entry.engine}</span>
+                          <span className="text-xs text-slate-500">{total} signal{total !== 1 ? 's' : ''}</span>
+                        </div>
+                        {segments.length > 0 ? (
+                          <div className="flex h-7 rounded-lg overflow-hidden">
+                            {segments.map(seg => {
+                              const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
+                              return (
+                                <div key={seg.key} className="flex items-center justify-center text-[10px] font-bold text-white transition-all" style={{ width: `${pct}%`, backgroundColor: seg.color, minWidth: pct > 0 ? '8px' : '0' }} title={`${seg.label}: ${seg.value}`}>
+                                  {pct >= 15 ? seg.label : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] text-slate-500">No signals</div>
+                        )}
+                        <div className="flex flex-wrap gap-3 mt-1">
+                          {segments.map(seg => {
+                            const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
+                            return (
+                              <span key={seg.key} className="flex items-center gap-1 text-[10px] text-slate-500">
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: seg.color }} />
+                                {seg.label} {seg.value} ({pct}%)
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {(charts?.engine_signal_distribution ?? []).length === 0 && (
+                    <div className="h-20 flex items-center justify-center text-xs text-slate-500">No engine signal data available.</div>
+                  )}
                 </div>
               </ChartShell>
 
