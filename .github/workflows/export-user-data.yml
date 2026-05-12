@@ -1,0 +1,24 @@
+name: Export user data from production
+
+on: workflow_dispatch
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export SQLite data for vijender.marthi@gmail.com
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            DB=/mnt/optionadvisor-data/option_advisor.sqlite3
+            echo "===PORTFOLIO_JSON==="
+            sqlite3 "$DB" "SELECT portfolio_json FROM user_state WHERE email = 'vijender.marthi@gmail.com';"
+            echo "===END_PORTFOLIO_JSON==="
+            echo "===MY_TICKERS_JSON==="
+            sqlite3 "$DB" "SELECT my_tickers_json FROM user_state WHERE email = 'vijender.marthi@gmail.com';"
+            echo "===END_MY_TICKERS_JSON==="
