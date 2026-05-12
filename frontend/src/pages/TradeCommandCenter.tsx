@@ -999,7 +999,7 @@ export default function TradeCommandCenter() {
               <ShieldAlert size={18} className="text-violet-400" />
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Cross-Engine Signal Conflicts — Do Not Trade Until Resolved</h2>
             </div>
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-2">
               {conflicts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                   No cross-engine conflicts right now — all active engines are in signal agreement.
