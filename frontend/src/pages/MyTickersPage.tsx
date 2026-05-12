@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, X, Search, AlertTriangle, Check, Undo2, RefreshCw,
-  Pencil, ChevronDown,
+  Pencil, ChevronDown, Calendar,
 } from 'lucide-react'
 import { fetchMyTickers, addMyTicker, updateMyTicker, removeMyTicker, removeMyTickerType, searchTickers } from '../api/commandCenter'
 import type { MyTickerEntry, SearchTickerResult } from '../api/commandCenter'
@@ -312,8 +312,11 @@ export default function MyTickersPage() {
 function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEntry; highlight: boolean; onRemove: () => void; onEdit: () => void }) {
   const avatar = avatarFor(ticker.symbol)
   const types = ticker.trade_types || []
+  const ed = ticker.next_earnings_date
+  const edDays = ticker.next_earnings_days
+  const earningsThisWeek = edDays != null && edDays >= 0 && edDays <= 7
   return (
-    <div className={`flex items-center justify-between gap-4 rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3 transition-colors ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : ''}`}>
+    <div className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'}`}>
       <div className="flex min-w-0 items-center gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
         <div className="min-w-0">
@@ -322,6 +325,12 @@ function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEn
             <button type="button" onClick={onEdit} className="text-gray-500 hover:text-gray-300"><Pencil size={12} /></button>
           </div>
           {ticker.company_name && <div className="truncate text-xs text-gray-500">{ticker.company_name}</div>}
+          {ed && (
+            <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-yellow-400' : 'text-gray-600'}`}>
+              <Calendar size={10} />
+              <span>Earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">

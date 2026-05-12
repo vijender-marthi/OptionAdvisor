@@ -912,6 +912,54 @@ export default function HelpPage() {
                   </ul>
                 </div>
               </DocCard>
+
+              <DocCard icon={<Target size={15} />} title="Swing Trade Map &mdash; Example Setup">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>A structured trade map defines every price level before entry. This removes emotion and forces a plan for pullbacks, breakouts, and exits.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[500px] border-collapse text-center">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">BUY HERE</th>
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
+                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="px-2 py-2 text-sm font-bold text-red-400">$349</td>
+                          <td className="px-2 py-2 text-sm font-bold text-emerald-400">$357&ndash;369</td>
+                          <td className="px-2 py-2 text-sm font-bold text-gray-200">$387</td>
+                          <td className="px-2 py-2 text-sm font-bold text-yellow-400">$393.62</td>
+                          <td className="px-2 py-2 text-sm font-bold text-violet-400">$392.79</td>
+                          <td className="px-2 py-2 text-sm font-bold text-orange-400">$397.78</td>
+                        </tr>
+                        <tr>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">get out</td>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">pullback</td>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">current price</td>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">confirmed</td>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">sell &frac12;</td>
+                          <td className="px-2 pb-2 text-[10px] text-gray-600">sell rest</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="space-y-1 text-gray-500">
+                    <p><strong className="text-gray-300">How to read it:</strong></p>
+                    <ul className="space-y-1">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" /><span><strong className="text-gray-300">Stop loss</strong> at the support level. If price breaks below, the setup is invalid.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" /><span><strong className="text-gray-300">Buy zone</strong> is the pullback range where you enter. Wait for price to dip into this zone before opening.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-yellow-500 shrink-0" /><span><strong className="text-gray-300">Breakout level</strong> confirms the move. Price clearing this level with volume validates the thesis.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" /><span><strong className="text-gray-300">Target 1</strong> is the partial profit zone &mdash; sell half the position to lock in gains.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-orange-500 shrink-0" /><span><strong className="text-gray-300">Target 2</strong> is the final exit. Sell the remaining position for full profit.</span></li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
             </div>
           </section>
 

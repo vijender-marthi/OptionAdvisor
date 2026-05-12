@@ -233,6 +233,8 @@ export interface MyTickerEntry {
   added_date: string
   trade_types: string[]
   is_active: boolean
+  next_earnings_date?: string
+  next_earnings_days?: number | null
 }
 
 export interface SearchTickerResult {

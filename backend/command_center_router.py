@@ -15,7 +15,7 @@ import logging
 import math
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
@@ -1417,6 +1417,37 @@ def _save_my_tickers(email: str, tickers: list[dict[str, Any]]) -> list[dict[str
 def get_my_tickers(auth_email: str = Depends(require_access_email)):
     email = normalize_email(auth_email)
     tickers = _load_my_tickers(email)
+
+    today = date.today()
+    for t in tickers:
+        sym = str(t.get("symbol", "")).upper().strip()
+        if not sym:
+            continue
+        try:
+            cal = bar_cache.get_calendar(sym)
+            if not isinstance(cal, dict):
+                continue
+            ed = cal.get("Earnings Date") or cal.get("Earnings Timestamp")
+            if ed is None:
+                continue
+            if isinstance(ed, (list, tuple)) and len(ed) > 0:
+                d0 = ed[0]
+            else:
+                d0 = ed
+            if isinstance(d0, datetime):
+                d0 = d0.date()
+            elif hasattr(d0, "date") and callable(d0.date) and not isinstance(d0, date):
+                d0 = d0.date()
+            elif isinstance(d0, pd.Timestamp):
+                d0 = d0.date()
+            elif isinstance(d0, str):
+                d0 = pd.Timestamp(d0).date()
+            if not isinstance(d0, date):
+                continue
+            t["next_earnings_date"] = d0.isoformat()
+            t["next_earnings_days"] = (d0 - today).days
+        except Exception:
+            continue
     return api_envelope({"tickers": tickers})
 
 
