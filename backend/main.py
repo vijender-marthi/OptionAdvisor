@@ -2755,6 +2755,24 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
             new_alert_ids.append(alert_id)
             new_alert_items.append(_alert_item_from_dict(alert))
 
+            alert_center_create(
+                email,
+                alert_group="regular_trade",
+                severity="INFO",
+                engine="REGULAR",
+                signal="GO",
+                title=f"{ticker} {rec.strategy} alert is active.",
+                body=f"Score {rec.scores.total_score} \u00b7 {rec.bias} \u00b7 Expiry {rec.expiry} \u00b7 PoP {rec.prob_of_profit * 100:.0f}%" if rec.prob_of_profit else f"Score {rec.scores.total_score} \u00b7 {rec.bias} \u00b7 Expiry {rec.expiry}",
+                meta={
+                    "ticker": ticker,
+                    "alert_type": "REGULAR_TRADE",
+                    "engine_type": "REGULAR",
+                    "recommended_action": f"Open Strategy Finder to review the {rec.strategy} setup.",
+                    "reason": rec.reason or "Regular trade alert from scanner.",
+                },
+                alert_id=alert_id,
+            )
+
     if not new_alert_items:
         return
 
