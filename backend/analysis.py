@@ -130,6 +130,7 @@ class TradeCandidate:
     rationale: str
     exit_plan: str
     warnings: list[str] = field(default_factory=list)
+    time_horizon_tier: str = ""   # "3-week" | "4-week" | "5-week" | "6-week"
 
     # ── Kelly Criterion position sizing ───────────────────────
     # kelly_fraction   : raw Kelly % (EV / max_loss). Uncapped.

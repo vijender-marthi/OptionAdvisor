@@ -133,11 +133,14 @@ def _execution_bias_regular(rec: Optional[dict]) -> str:
 
     if not passes_liq or not passes_rr:
         return "AVOID_CHASE"
-    if dte > 0 and dte < 7:
-        return "WAIT_FOR_CONFIRMATION"
-    if ev > 0.0 and dte >= 14:
+    # 3-6 week window (21-42 DTE): positive EV + passes structure → enter
+    if ev > 0.0 and 21 <= dte <= 42:
         return "ENTER_NOW"
-    if dte >= 7:
+    # DTE in range but zero/negative EV — wait for better setup
+    if 21 <= dte <= 42:
+        return "WAIT_FOR_CONFIRMATION"
+    # Outside 3-6w window — do not enter
+    if dte < 21:
         return "WAIT_FOR_CONFIRMATION"
     return "NO_CLEAN_ENTRY"
 

@@ -40,17 +40,17 @@ MIN_OPEN_INTEREST         = 50      # Each leg must have OI ≥ 50
 MIN_VOLUME                = 5       # Each leg must have volume ≥ 5 (or OI as fallback)
 MIN_MID_PRICE             = 0.05    # Ignore options trading < $0.05
 
-# DTE targets
-DTE_CREDIT_MIN, DTE_CREDIT_MAX  = 21, 50   # Credit spreads: 21–50 DTE sweet spot
-DTE_DEBIT_MIN, DTE_DEBIT_MAX    = 20, 40   # Debit spreads: 20–40 DTE
-DTE_STRADDLE_MIN, DTE_STRADDLE_MAX = 14, 35
-DTE_COVERED_MIN,  DTE_COVERED_MAX  = 21, 45   # Covered calls/puts: standard monthly income window
+# DTE targets — 3-week to 6-week (21–42 DTE) regular trade window
+DTE_CREDIT_MIN, DTE_CREDIT_MAX  = 21, 42   # Credit spreads: 3-6 week sweet spot
+DTE_DEBIT_MIN, DTE_DEBIT_MAX    = 21, 42   # Debit spreads: 3-6 week window
+DTE_STRADDLE_MIN, DTE_STRADDLE_MAX = 21, 42   # Straddles: min 3 weeks for vol plays
+DTE_COVERED_MIN,  DTE_COVERED_MAX  = 21, 42   # Covered calls/puts: 3-6 week income window
 
 # Exit plan parameters
 CREDIT_PROFIT_TARGET_PCT  = 50     # Close credit at 50% of max profit
 DEBIT_PROFIT_TARGET_PCT   = 100    # Close debit at 2x cost (100% gain)
 CREDIT_STOP_LOSS_MULT     = 2.0    # Stop if loss = 2x credit received
-CLOSE_AT_DTE              = 21     # Always close credit spreads at 21 DTE
+CLOSE_AT_DTE_FRACTION     = 0.40   # Close at 40% of entry DTE remaining (dynamic — min 7)
 THIN_EDGE_RATIO           = 0.05    # EV/max_loss below this is vulnerable to PoP estimation error
 HALF_KELLY_CAP            = 0.20    # Never recommend risking more than 20% on one trade
 
@@ -595,9 +595,9 @@ def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
     iv_env = signals.iv_environment
     vol_regime = signals.volatility_regime
 
-    BULLISH = bias == "Bullish"
-    BEARISH = bias == "Bearish"
-    NEUTRAL = bias == "Neutral"
+    BULLISH = bias in ("Bullish", "Mildly Bullish")
+    BEARISH = bias in ("Bearish", "Mildly Bearish")
+    NEUTRAL = not BULLISH and not BEARISH
     HIGH_IV = iv_env in ("High", "Elevated")
     LOW_IV = iv_env in ("Low", "Very Low")
     SELL_REGIME = vol_regime == "Sell Premium"
@@ -731,10 +731,28 @@ def score_iv_fit(signals: MarketSignals, strategy: str) -> int:
     return 5
 
 
+def _time_horizon_tier(dte: int) -> str:
+    """Classify a DTE into a named 3-6 week tier."""
+    if dte < 28:
+        return "3-week"
+    if dte < 35:
+        return "4-week"
+    if dte < 42:
+        return "5-week"
+    return "6-week"
+
+
+def _dynamic_close_dte(entry_dte: int) -> int:
+    """Return the DTE at which to close/roll based on entry DTE (40% of entry, min 7)."""
+    return max(7, int(round(entry_dte * CLOSE_AT_DTE_FRACTION)))
+
+
 def generate_exit_plan(strategy: str, max_profit: float, net_credit: float,
                         expiry: str, dte: int) -> str:
     profit_close_at = round(net_credit * CREDIT_PROFIT_TARGET_PCT / 100, 2) if net_credit > 0 else round(max_profit * DEBIT_PROFIT_TARGET_PCT / 100, 2)
     stop_loss_at = round(net_credit * CREDIT_STOP_LOSS_MULT, 2) if net_credit > 0 else None
+    close_dte = _dynamic_close_dte(dte)
+    hold_days = max(0, dte - close_dte)
 
     SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Short Put", "Short Call"}
 
@@ -743,16 +761,16 @@ def generate_exit_plan(strategy: str, max_profit: float, net_credit: float,
             f"✅ Take profit: Close when P&L reaches 50% of max profit "
             f"(≈ ${profit_close_at:.2f}/share credit remaining to pay). "
             f"🛑 Stop loss: Close if loss exceeds 2× credit received (${stop_loss_at:.2f}/share). "
-            f"⏰ Time exit: Always close by {CLOSE_AT_DTE} DTE to avoid gamma risk "
-            f"(approx {max(0, dte - CLOSE_AT_DTE)} days from entry)."
+            f"⏰ Time exit: Close by {close_dte} DTE to avoid gamma risk "
+            f"(hold approx {hold_days} days, then exit or roll)."
         )
     else:
         return (
             f"✅ Take profit: Close when position gains 100% of cost basis "
             f"(≈ ${profit_close_at:.2f}/share gain). "
             f"🛑 Stop loss: Close if position loses 50% of premium paid. "
-            f"⏰ Time exit: Exit by {CLOSE_AT_DTE} DTE if target not reached — "
-            f"theta decay accelerates significantly in final 3 weeks."
+            f"⏰ Time exit: Exit by {close_dte} DTE if target not reached — "
+            f"theta decay accelerates significantly in the final {close_dte} days."
         )
 
 
@@ -1252,7 +1270,7 @@ def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) ->
             f"✅ Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
             f"🛑 Stop loss: Close immediately if the put doubles in value (loss = credit received = ${net_credit:.2f}/share). "
             f"📉 If near assignment: roll down and out (lower strike, later expiry) for a net credit, OR close and accept assignment if you want the stock at ${strike:.0f}. "
-            f"⏰ Time exit: Close or roll at 21 DTE — gamma risk rises sharply in the final 3 weeks."
+            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — gamma risk rises sharply in the final weeks."
         ),
     )
 
@@ -1312,7 +1330,7 @@ def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) 
             f"🛑 Stop loss: Close IMMEDIATELY if the call doubles in value (loss = credit received = ${net_credit:.2f}/share). "
             f"For naked calls, never let a loss run — the risk is theoretically unlimited. "
             f"📈 If stock approaches the strike: roll up and out (higher strike, later expiry) for a net credit, or close outright. "
-            f"⏰ Time exit: Close or roll at 21 DTE — short OTM calls gain gamma risk rapidly in the final 3 weeks."
+            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — short OTM calls gain gamma risk rapidly in the final weeks."
         ),
     )
 
@@ -1375,7 +1393,7 @@ def _build_covered_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str
             f"📈 If called away at ${strike:.0f}: total option return is ${max_profit:.2f}/share — "
             f"accept assignment or roll the call up and out (higher strike, later expiry) before expiry. "
             f"🛑 Stop loss: Close position if the call is deep ITM and rolling up no longer makes sense. "
-            f"⏰ Time exit: Roll or close at 21 DTE to avoid gamma acceleration on the short call."
+            f"⏰ Time exit: Roll or close at {_dynamic_close_dte(days_to_expiry(expiry))} DTE to avoid gamma acceleration on the short call."
         ),
     )
 
@@ -1436,7 +1454,7 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
             f"📉 If assigned: you own shares at ${be:.2f} effective cost — "
             f"immediately consider selling a covered call (the 'wheel' strategy) to continue collecting income. "
             f"🛑 Stop loss: Buy back the put if it triples in value (loss ≈ 2× credit = ${round(net_credit*2,2):.2f}/share). "
-            f"⏰ Time exit: Close or roll at 21 DTE if the put is near the money and you prefer not to be assigned."
+            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE if the put is near the money and you prefer not to be assigned."
         ),
     )
 
@@ -1515,10 +1533,11 @@ def run_engine(
     puts_f = _tradeable_chain_near_money(puts, price)
 
     # Pick expiries anchored to the user's weeks_out selection.
-    # Allow ±1 week on either side so the nearest listed expiry is always found.
+    # Allow ±10 days so the nearest listed expiry is always within the 3-6w window.
+    # Clamp the floor at DTE_CREDIT_MIN (21) so we never slip below 3-week territory.
     target_dte = weeks_out * 7
-    dte_lo = max(7, target_dte - 7)
-    dte_hi = target_dte + 7
+    dte_lo = max(DTE_CREDIT_MIN, target_dte - 10)
+    dte_hi = target_dte + 10
     exp_credit   = pick_expiry_by_dte(option_dates, dte_lo, dte_hi)
     exp_debit    = pick_expiry_by_dte(option_dates, dte_lo, dte_hi)
     exp_straddle = pick_expiry_by_dte(option_dates, dte_lo, dte_hi)
@@ -1737,6 +1756,7 @@ def run_engine(
             kelly_fraction=t["kelly_fraction"],
             half_kelly_fraction=t["half_kelly_fraction"],
             edge_ratio=t["edge_ratio"],
+            time_horizon_tier=_time_horizon_tier(t["dte"]),
         ))
 
     scored.sort(key=lambda x: x.total_score, reverse=True)

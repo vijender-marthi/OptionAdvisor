@@ -84,6 +84,6 @@ export const ALL_CATEGORIES: AICategory[] = [
   'AI Power', 'Semicon Equip', 'Optical Networking', 'AI Networking', 'AI Applications',
 ]
 
-// Target DTE windows for multi-week analysis
-export const MULTI_WEEK_TARGETS = [0, 1, 2, 4, 6] as const
+// Target DTE windows for multi-week analysis (3-week to 6-week regular trade window)
+export const MULTI_WEEK_TARGETS = [3, 4, 5, 6] as const
 export type WeeksOut = typeof MULTI_WEEK_TARGETS[number]

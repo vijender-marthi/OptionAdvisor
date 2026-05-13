@@ -53,6 +53,7 @@ export interface Recommendation {
   kelly_fraction: number       // raw Kelly % as decimal (e.g. 0.125 = 12.5%)
   half_kelly_fraction: number  // recommended: Kelly × 0.5, capped at 20%
   edge_ratio: number           // EV / max_loss — edge quality measure
+  time_horizon_tier?: string   // "3-week" | "4-week" | "5-week" | "6-week"
 }
 
 export interface Signals {
