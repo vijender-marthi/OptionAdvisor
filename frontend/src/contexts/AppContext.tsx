@@ -9,7 +9,9 @@ import {
   type DayTradeWatchlistPageState,
 } from '../types/dayTradeUi'
 import {
+  INITIAL_SWING_TRADE_ENGINE_PAGE,
   INITIAL_SWING_TRADE_WATCHLIST_PAGE,
+  type SwingTradeEnginePageState,
   type SwingTradeWatchlistPageState,
 } from '../types/swingTradeUi'
 import { isCacheFresh, CACHE_TTL_MS } from '../types'
@@ -195,6 +197,9 @@ interface AppContextValue {
   dayTradeWatchlistUI: DayTradeWatchlistPageState
   setDayTradeWatchlistUI: React.Dispatch<React.SetStateAction<DayTradeWatchlistPageState>>
 
+  /** Swing engine page state survives route changes until explicit refresh/logout. */
+  swingTradeEngineUI: SwingTradeEnginePageState
+  setSwingTradeEngineUI: React.Dispatch<React.SetStateAction<SwingTradeEnginePageState>>
   /** Swing watchlist scans + expanded rows survive route changes until explicit refresh/logout/account switch. */
   swingTradeWatchlistUI: SwingTradeWatchlistPageState
   setSwingTradeWatchlistUI: React.Dispatch<React.SetStateAction<SwingTradeWatchlistPageState>>
@@ -368,6 +373,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dayTradeWatchlistUI, setDayTradeWatchlistUI] = useState<DayTradeWatchlistPageState>(() => ({
     ...INITIAL_DAY_TRADE_WATCHLIST_PAGE,
   }))
+  const [swingTradeEngineUI, setSwingTradeEngineUI] = useState<SwingTradeEnginePageState>(() => ({
+    ...INITIAL_SWING_TRADE_ENGINE_PAGE,
+  }))
   const [swingTradeWatchlistUI, setSwingTradeWatchlistUI] = useState<SwingTradeWatchlistPageState>(() => ({
     ...INITIAL_SWING_TRADE_WATCHLIST_PAGE,
   }))
@@ -407,6 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (prev !== null && curr !== prev) {
       setDayTradeEngineUI({ ...INITIAL_DAY_TRADE_ENGINE_PAGE })
       setDayTradeWatchlistUI({ ...INITIAL_DAY_TRADE_WATCHLIST_PAGE })
+      setSwingTradeEngineUI({ ...INITIAL_SWING_TRADE_ENGINE_PAGE })
       setSwingTradeWatchlistUI({ ...INITIAL_SWING_TRADE_WATCHLIST_PAGE })
     }
     dayTradeSessionEmailRef.current = curr
@@ -1430,6 +1439,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       swingTradeWatchlist, setSwingTradeWatchlist,
       dayTradeEngineUI, setDayTradeEngineUI,
       dayTradeWatchlistUI, setDayTradeWatchlistUI,
+      swingTradeEngineUI, setSwingTradeEngineUI,
       swingTradeWatchlistUI, setSwingTradeWatchlistUI,
       portfolio, addToPortfolio, addManualPosition, updatePortfolioPosition, removeFromPortfolio, closePosition, isInPortfolio,
       tickerCache, getCached, setCached, evictCache,

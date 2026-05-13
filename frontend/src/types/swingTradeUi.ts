@@ -1,5 +1,21 @@
 import type { SwingTradeScanResult } from '../api/client'
 
+export interface SwingTradeEnginePageState {
+  ticker: string
+  result: SwingTradeScanResult | null
+  error: string | null
+  loading: boolean
+  glossaryOpen: boolean
+}
+
+export const INITIAL_SWING_TRADE_ENGINE_PAGE: SwingTradeEnginePageState = {
+  ticker: '',
+  result: null,
+  error: null,
+  loading: false,
+  glossaryOpen: false,
+}
+
 /** Row state for the multi-ticker Swing Trade Watchlist UI (cached in AppContext across routes). */
 export type SwingTradeWatchlistRowState =
   | { status: 'idle' }

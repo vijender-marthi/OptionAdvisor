@@ -15,12 +15,13 @@ function axiosDetail(e: unknown): string {
 }
 
 export default function SwingTradePage() {
-  const { addToWatchlist, isWatched } = useApp()
-  const [ticker, setTicker] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<SwingTradeScanResult | null>(null)
-  const [glossaryOpen, setGlossaryOpen] = useState(false)
+  const {
+    swingTradeEngineUI: ui,
+    setSwingTradeEngineUI: setUi,
+    addToWatchlist,
+    isWatched,
+  } = useApp()
+  const { ticker, loading, error, result, glossaryOpen } = ui
   const [enterOpen, setEnterOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
@@ -32,30 +33,30 @@ export default function SwingTradePage() {
   const runScan = useCallback(async () => {
     const sym = ticker.trim().toUpperCase()
     if (!sym || sym.length > 12) {
-      setError('Enter a valid ticker symbol.')
+      setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
     }
-    setLoading(true)
-    setError(null)
-    setResult(null)
+    setUi(cur => ({ ...cur, loading: true, error: null, result: null }))
     try {
       const data = await analyzeSwingTrade(sym)
-      setResult(data)
-      setTicker(data.ticker)
+      setUi(cur => ({
+        ...cur,
+        loading: false,
+        ticker: data.ticker,
+        result: data,
+      }))
     } catch (e) {
-      setError(axiosDetail(e))
-    } finally {
-      setLoading(false)
+      setUi(cur => ({ ...cur, loading: false, error: axiosDetail(e) }))
     }
-  }, [ticker])
+  }, [ticker, setUi])
 
   useEffect(() => {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (t && t.length <= 12) {
-      setTicker(t)
+      setUi(cur => ({ ...cur, ticker: t }))
       autoRunRef.current = true
     }
-  }, [searchParams])
+  }, [searchParams, setUi])
 
   useEffect(() => {
     if (!autoRunRef.current || !ticker.trim()) return
@@ -133,7 +134,7 @@ export default function SwingTradePage() {
             className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
             placeholder="NVDA, AAPL, SPY…"
             value={ticker}
-            onChange={e => setTicker(e.target.value.toUpperCase())}
+            onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
             onKeyDown={e => e.key === 'Enter' && void runScan()}
             autoComplete="off"
             spellCheck={false}
