@@ -787,6 +787,9 @@ def _compute_positions_pnl(
                 per_position_pnl[pid] = {
                     "pnl": current_result["pnl"],
                     "pnl_pct": current_result["pnl_percent"],
+                    "entry_premium_per_share": current_result.get("entry_premium_per_share"),
+                    "current_mark_per_share": current_result.get("current_mark_per_share"),
+                    "mark_source": current_result.get("mark_source", "stale"),
                 }
             mtm_total += current_result["pnl"]
             day_total += bs_today["pnl"] - bs_yesterday["pnl"]

@@ -716,59 +716,103 @@ export default function DayTradeEnginePanel({
           </div>
         </div>
 
-        {/* ═══ Trade Phase Summary (ENTRY · ACTIVE · EXIT) ═══ */}
-        <div className="grid gap-2 sm:grid-cols-3">
-          {/* ENTRY */}
-          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-emerald-400 mb-1.5">ENTRY</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-200 uppercase text-[10px] tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                <span className="text-violet-300 font-mono text-[11px]">
-                  {eg?.breakout_level != null ? `>$${eg.breakout_level.toFixed(2)}` : eg?.vwap != null ? `>$${eg.vwap.toFixed(2)}` : '—'}
-                </span>
+        {/* ═══ 4-State Trading System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
+            <span>SETUP</span><ChevronRight size={11} /><span>ENTRY</span><ChevronRight size={11} /><span>ACTIVE</span><ChevronRight size={11} /><span>EXIT</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-4">
+            {/* STATE 1: SETUP */}
+            <div className="rounded-xl border border-amber-700/40 bg-amber-950/12 px-3 py-3">
+              <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+                STATE 1: SETUP
               </div>
-              <div className="text-gray-500 text-[10px] leading-relaxed">
-                {eg?.vwap != null && eg?.opening_range_high != null
-                  ? `VWAP $${eg.vwap.toFixed(2)}–ORH $${eg.opening_range_high.toFixed(2)} zone`
-                  : eg?.vwap != null
-                    ? `VWAP $${eg.vwap.toFixed(2)} zone`
-                    : 'Monitor for entry trigger'}
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming'}</span>
+                </div>
+                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                  {eg?.vwap != null && eg?.opening_range_high != null
+                    ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
+                    : eg?.vwap != null
+                      ? `VWAP $${eg.vwap.toFixed(2)}`
+                      : 'Key levels forming'}
+                </div>
+                <div className="text-[10px] text-amber-400/80 font-semibold">
+                  watch {eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'zone'}–{eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'trigger'} zone
+                </div>
               </div>
             </div>
-          </div>
-          {/* ACTIVE */}
-          <div className="rounded-xl border border-amber-800/40 bg-amber-950/10 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-amber-400 mb-1.5">ACTIVE</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-200 text-[10px] uppercase tracking-wide">HOLD</span>
-                <span className="text-emerald-300 font-mono text-[11px]">
-                  {eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
-                </span>
+            {/* STATE 2: ENTRY */}
+            <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/12 px-3 py-3">
+              <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                STATE 2: ENTRY
               </div>
-              <div className="text-gray-500 text-[10px] leading-relaxed">
-                {result.bias === 'short'
-                  ? 'ADD on weakness / breakdown continuation'
-                  : 'ADD on strength / breakout continuation'}
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                  <span className="text-violet-300 font-mono text-[12px] font-semibold">
+                    {eg?.breakout_level != null
+                      ? `break & hold >$${eg.breakout_level.toFixed(2)}`
+                      : eg?.vwap != null
+                        ? `>$${eg.vwap.toFixed(2)} hold`
+                        : '—'}
+                  </span>
+                </div>
+                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                  {eg?.opening_range_high != null
+                    ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
+                    : eg?.vwap != null
+                      ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
+                      : 'await confirmation'}
+                </div>
               </div>
             </div>
-          </div>
-          {/* EXIT */}
-          <div className="rounded-xl border border-red-800/40 bg-red-950/10 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-red-400 mb-1.5">EXIT</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-200 text-[10px] uppercase tracking-wide">SL</span>
-                <span className="text-red-300 font-mono text-[11px]">
-                  {eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
-                </span>
+            {/* STATE 3: ACTIVE */}
+            <div className="rounded-xl border border-sky-700/40 bg-sky-950/12 px-3 py-3">
+              <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
+                STATE 3: ACTIVE
               </div>
-              <div className="text-gray-500 text-[10px] leading-relaxed">
-                {result.bias === 'short'
-                  ? 'EXIT if price breaks above VWAP'
-                  : 'EXIT if VWAP breaks'}
-                {eg?.scalp_target != null && ` · book partial at $${eg.scalp_target.toFixed(2)}`}
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Management Mode</div>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                  <span className="text-emerald-300 font-mono text-[12px] font-semibold">
+                    {eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                  </span>
+                </div>
+                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                  {result.bias === 'short'
+                    ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
+                    : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
+                </div>
+              </div>
+            </div>
+            {/* STATE 4: EXIT */}
+            <div className="rounded-xl border border-red-700/40 bg-red-950/12 px-3 py-3">
+              <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
+                STATE 4: EXIT
+              </div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Completion / Reset</div>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
+                  <span className="text-red-300 font-mono text-[12px] font-semibold">
+                    {eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
+                  </span>
+                </div>
+                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                  {result.bias === 'short'
+                    ? 'VWAP break or loss of ORL'
+                    : 'VWAP break or loss of ORH'}
+                  {eg?.scalp_target != null && ` · full exit / scale out at TP`}
+                </div>
               </div>
             </div>
           </div>

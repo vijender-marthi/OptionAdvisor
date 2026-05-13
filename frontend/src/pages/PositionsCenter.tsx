@@ -617,7 +617,13 @@ function TradingPositionCard({
 }: {
   pos: PortfolioPosition
   expanded: boolean
-  pnlData?: { pnl: number; pnl_pct: number } | null
+  pnlData?: {
+    pnl: number
+    pnl_pct: number
+    entry_premium_per_share?: number
+    current_mark_per_share?: number
+    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+  } | null
   aiAnalysis?: AiPositionAnalysis | null
   onToggle: () => void
   onClose: () => void
@@ -978,8 +984,47 @@ function TradingPositionCard({
               <div><div className="text-muted">Breakeven at Expiry</div>
                 <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.breakeven_lower)}</div></div>
             )}
-            <div><div className="text-muted">Entry</div>
-              <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.entryPrice)}</div></div>
+            {pos.status === 'open' && pnlData?.entry_premium_per_share != null ? (() => {
+              const entryPs = pnlData.entry_premium_per_share!
+              const currPs  = pnlData.current_mark_per_share
+              const isCredit = pos.net_credit >= 0
+              return (
+                <>
+                  <div><div className="text-muted">Premium {isCredit ? 'Received' : 'Paid'}</div>
+                    <div className="font-mono font-bold text-gray-200 tabular-nums">${Math.abs(entryPs).toFixed(2)}<span className="text-[10px] text-gray-500 font-normal">/sh</span></div>
+                    <div className="text-[10px] text-gray-600">${(Math.abs(entryPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
+                  {currPs != null && (
+                    <div><div className="text-muted">Current Premium</div>
+                      <div className={`font-mono font-bold tabular-nums ${pnlData.pnl > 0 ? 'text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-400' : 'text-gray-200'}`}>
+                        ${Math.abs(currPs).toFixed(2)}<span className="text-[10px] opacity-60 font-normal">/sh</span>
+                      </div>
+                      <div className="text-[10px] text-gray-600">${(Math.abs(currPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
+                  )}
+                </>
+              )
+            })(            ) : (
+              <div><div className="text-muted">Entry</div>
+                <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.entryPrice)}</div></div>
+            )}
+            {pos.status === 'open' && pnlData?.entry_premium_per_share != null && pnlData?.current_mark_per_share != null && (() => {
+              const entryPs = pnlData.entry_premium_per_share!
+              const currPs  = pnlData.current_mark_per_share!
+              const diff    = currPs - entryPs
+              const diffPct = entryPs !== 0 ? (diff / Math.abs(entryPs)) * 100 : 0
+              const colored = diff >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              return (
+                <>
+                  <div><div className="text-muted">Change</div>
+                    <div className={`font-mono font-bold tabular-nums ${colored}`}>
+                      {diff >= 0 ? '+' : ''}${diff.toFixed(2)}<span className="text-[10px] opacity-60 font-normal">/sh</span>
+                    </div></div>
+                  <div><div className="text-muted">Change %</div>
+                    <div className={`font-mono font-bold tabular-nums ${colored}`}>
+                      {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                    </div></div>
+                </>
+              )
+            })()}
             <div><div className="text-muted">Added</div>
               <div className="font-semibold text-secondary">{pos.addedAt ? new Date(pos.addedAt).toLocaleDateString() : '—'}</div></div>
             {pos.status === 'closed' && pos.exitDate && (
@@ -1011,6 +1056,74 @@ function TradingPositionCard({
                 <div className={`font-semibold tabular-nums ${pnlColor}`}>{fmtUsd(displayPnl.pnl)}</div></div>
             )}
           </div>
+
+          {/* Premium Tracker */}
+          {pos.status === 'open' && pnlData?.entry_premium_per_share != null && pnlData?.current_mark_per_share != null && (() => {
+            const entry  = pnlData.entry_premium_per_share!
+            const curr   = pnlData.current_mark_per_share!
+            const isCredit = pos.net_credit >= 0
+            // For credit trades: lower current mark = cheaper to close = profit
+            // For debit trades:  higher current mark = option gained value = profit
+            const changePct  = pnlData.pnl_pct                          // already sign-correct from backend
+            const changeAmt  = curr - entry                              // raw per-share delta
+            const isProfiting = pnlData.pnl > 0
+            const changeColor = isProfiting ? 'text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
+            const arrowChar   = isProfiting ? '▲' : pnlData.pnl < 0 ? '▼' : '—'
+            const src = pnlData.mark_source
+            const srcLabel = src === 'live' ? 'Live' : src === 'bs_theoretical' ? 'Est.' : 'Stale'
+            const srcDot   = src === 'live' ? 'bg-emerald-400' : src === 'bs_theoretical' ? 'bg-amber-400' : 'bg-gray-500'
+
+            return (
+              <div className="rounded-lg border border-gray-800/70 bg-black/10 px-3 py-2.5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Premium Tracker</div>
+                  <div className="flex items-center gap-1">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${srcDot}`} />
+                    <span className="text-[10px] text-gray-500">{srcLabel}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  {/* Entry premium */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">
+                      {isCredit ? 'Credit received' : 'Premium paid'}
+                    </div>
+                    <div className="font-mono font-bold text-gray-300 tabular-nums">
+                      ${Math.abs(entry).toFixed(2)}<span className="text-[10px] text-gray-500 font-normal">/sh</span>
+                    </div>
+                    <div className="text-[10px] text-gray-600">
+                      ${(Math.abs(entry) * 100 * pos.contracts).toFixed(0)} total
+                    </div>
+                  </div>
+
+                  {/* Current mark */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">
+                      {isCredit ? 'Cost to close' : 'Current value'}
+                    </div>
+                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
+                      ${Math.abs(curr).toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
+                    </div>
+                    <div className="text-[10px] text-gray-600">
+                      ${(Math.abs(curr) * 100 * pos.contracts).toFixed(0)} total
+                    </div>
+                  </div>
+
+                  {/* Change */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">Change</div>
+                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
+                      <span className="mr-0.5 text-[10px]">{arrowChar}</span>
+                      {changeAmt >= 0 ? '+' : ''}${changeAmt.toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
+                    </div>
+                    <div className={`text-[10px] font-semibold tabular-nums ${changeColor}`}>
+                      {changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Exit Rules */}
           {pos.status === 'open' && (() => {
@@ -1164,7 +1277,12 @@ export default function PositionsCenter() {
   const d = env?.data ?? ({} as Record<string, unknown>)
   const summary = (d.summary ?? {}) as Record<string, unknown>
   const market = (d.market_snapshot ?? {}) as Record<string, unknown>
-  const perPositionPnl = (d.per_position_pnl ?? {}) as Record<string, { pnl: number; pnl_pct: number }>
+  const perPositionPnl = (d.per_position_pnl ?? {}) as Record<string, {
+    pnl: number; pnl_pct: number
+    entry_premium_per_share?: number
+    current_mark_per_share?: number
+    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+  }>
   const aiAnalyses = (d.ai_analyses ?? {}) as Record<string, AiPositionAnalysis>
   const rawTab = positionsTab as string
   const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'open'

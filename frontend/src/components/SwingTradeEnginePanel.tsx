@@ -898,48 +898,105 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
-        {/* ═══ Execution Map Table ═══ */}
-        {(execLevels.pullbackZone || execLevels.breakoutTrigger || execLevels.riskBelow || execLevels.firstTarget || execLevels.stretchTarget) && (
+        {/* ═══ 4-State Swing System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
+        {(execLevels.breakoutTrigger || execLevels.riskBelow) && (
           <div className="space-y-2">
-            <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[500px] border-collapse text-center">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TRIGGER ZONE</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
-                </tr>
-              </thead>
-              <tbody>
-              <tr>
-                <td className="px-1 py-2 text-sm font-bold text-red-400">{execLevels.riskBelow || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-emerald-400">{execLevels.pullbackZone || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-yellow-400">{execLevels.breakoutTrigger || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-violet-400">{execLevels.firstTarget || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-orange-400">{execLevels.stretchTarget || '—'}</td>
-              </tr>
-              <tr>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover if above' : 'get out'}</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover half' : 'sell &frac12;'}</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover rest' : 'sell rest'}</td>
-              </tr>
-            </tbody>
-          </table>
-            </div>
-            {result.bias === 'short' && (
-              <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-3 py-2">
-                <p className="text-[11px] text-amber-300/90 leading-relaxed">
-                  Short bias detected: the table above reflects bearish positioning. STOP LOSS is the level to cover if price breaks upward. TRIGGER ZONE is the pullback area to enter the put.
-                </p>
+            {/* Single-line execution UI */}
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 px-3 py-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 mb-1">SINGLE-LINE EXECUTION</div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-mono font-semibold">
+                <span className="font-bold text-gray-100 uppercase">{result.bias === 'short' ? 'BEARISH' : 'BULLISH'}</span>
+                <span className="text-gray-600">|</span>
+                <span className="text-yellow-300 font-bold">breakout {execLevels.breakoutTrigger}</span>
+                <span className="text-gray-600">|</span>
+                <span className="text-emerald-300 font-semibold">{execLevels.pullbackZone || 'base forming'}</span>
+                <span className="text-gray-600">|</span>
+                <span className="text-violet-300 font-semibold">T1 {execLevels.firstTarget || '—'}</span>
+                <span className="text-orange-300 font-semibold">T2 {execLevels.stretchTarget || '—'}</span>
+                <span className="text-gray-600">|</span>
+                <span className="text-red-300 font-semibold">SL {execLevels.riskBelow}</span>
               </div>
-            )}
+            </div>
+
+            {/* 4-State Grid */}
+            <div className="grid gap-2 sm:grid-cols-4">
+              {/* STATE 1: SETUP */}
+              <div className="rounded-xl border border-amber-700/40 bg-amber-950/12 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+                  STATE 1: SETUP
+                </div>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Base / Accumulation</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                    {result.bias === 'short'
+                      ? `Resistance zone ${execLevels.pullbackZone || 'forming'} — short bias building`
+                      : `Support zone ${execLevels.pullbackZone || 'forming'} — long bias building`}
+                  </div>
+                  <div className="text-[10px] text-amber-400/80 font-semibold">No entry — observe only</div>
+                </div>
+              </div>
+              {/* STATE 2: ENTRY */}
+              <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/12 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                  STATE 2: ENTRY
+                </div>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Confirmation</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                    <span className="text-violet-300 font-mono text-[12px] font-semibold">
+                      {result.bias === 'short'
+                        ? `break & hold below ${execLevels.breakoutTrigger || 'trigger'}`
+                        : `break & hold above ${execLevels.breakoutTrigger || 'trigger'}`}
+                    </span>
+                  </div>
+                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                    Entry on confirmed breakout — no anticipation
+                  </div>
+                </div>
+              </div>
+              {/* STATE 3: ACTIVE */}
+              <div className="rounded-xl border border-sky-700/40 bg-sky-950/12 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
+                  STATE 3: ACTIVE
+                </div>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Trend Holding Phase</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                    <span className="text-emerald-300 font-mono text-[12px] font-semibold">
+                      TP1 {execLevels.firstTarget || '—'} · TP2 {execLevels.stretchTarget || '—'}
+                    </span>
+                  </div>
+                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                    Scale ½ at TP1, trail rest to TP2
+                  </div>
+                </div>
+              </div>
+              {/* STATE 4: EXIT */}
+              <div className="rounded-xl border border-red-700/40 bg-red-950/12 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
+                  STATE 4: EXIT
+                </div>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Invalidated / Complete</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
+                    <span className="text-red-300 font-mono text-[12px] font-semibold">{execLevels.riskBelow || '—'}</span>
+                  </div>
+                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                    {result.bias === 'short'
+                      ? `Breakout fails → cover`
+                      : `Structure breakdown → exit`}
+                    {execLevels.stretchTarget && ` · full exit at TP2`}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
