@@ -816,6 +816,8 @@ export default function SwingTradeEnginePanel({
   const execLevels = computeExecLevels(result, m)
   const riskExplanation = computeRiskExplanation(result, m)
   const tradeMgmt = computeTradeManagement(result, m)
+  type ExitRule = { trigger: string; price: number; action: string; note: string }
+  const exitRules: ExitRule[] = Array.isArray(m.exit_rules) ? (m.exit_rules as ExitRule[]) : []
   const structureReasoning = computeStructureReasoning(result, m)
   const execSummary = computeExecutionSummary(result, m)
   const bestNextAction = computeBestNextAction(result, m, execPlan)
@@ -1223,14 +1225,52 @@ export default function SwingTradeEnginePanel({
         </div>
         <div className="rounded-lg bg-gray-800/30 border border-gray-800/70 px-3 py-2 space-y-2">
           <div className="text-xs text-gray-400 leading-relaxed">{riskExplanation}</div>
-          <div className="space-y-1.5">
-            {tradeMgmt.map((item, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-gray-300 leading-relaxed">
-                <span className="mt-1.5 h-1 w-1 rounded-full bg-semantic-accent shrink-0" />
-                {item}
-              </div>
-            ))}
-          </div>
+
+          {/* ── Structured exit rules table ── */}
+          {exitRules.length > 0 ? (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-1.5 text-left font-medium">When</th>
+                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">At Price</th>
+                    <th className="pb-1.5 text-left font-medium">Do This</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {exitRules.map((rule, i) => {
+                    const isStop   = rule.trigger.toLowerCase().includes('stop loss')
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
+                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
+                    const isClose  = rule.trigger.toLowerCase().includes('close') || rule.trigger.toLowerCase().includes('loses') || rule.trigger.toLowerCase().includes('reclaims')
+                    const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isClose ? 'text-amber-400' : 'text-slate-300'
+                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isClose ? 'text-amber-300' : 'text-gray-200'
+                    return (
+                      <tr key={i} className="group">
+                        <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[30%]">{rule.trigger}</td>
+                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                          ${rule.price.toFixed(2)}
+                        </td>
+                        <td className="py-2 align-top">
+                          <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
+                          <div className="text-[10px] text-gray-500 leading-snug mt-0.5">{rule.note}</div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {tradeMgmt.map((item, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-gray-300 leading-relaxed">
+                  <span className="mt-1.5 h-1 w-1 rounded-full bg-semantic-accent shrink-0" />
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         {contextualAlerts.length > 0 ? (
           <div className="rounded-lg border border-semantic-warning-border bg-semantic-warning-bg px-3 py-2">

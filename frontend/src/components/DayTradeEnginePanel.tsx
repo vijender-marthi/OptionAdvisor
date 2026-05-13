@@ -716,48 +716,63 @@ export default function DayTradeEnginePanel({
           </div>
         </div>
 
-        {/* ═══ Execution Map Table ═══ */}
-        {(eg?.scalp_target != null || eg?.risk_below != null || eg?.pullback_zone || eg?.breakout_level || eg?.vwap) && (
-          <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full min-w-[500px] border-collapse text-center">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TRIGGER ZONE</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
-                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="px-1 py-2 text-sm font-bold text-red-400">{eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}</td>
-                  <td className="px-1 py-2 text-sm font-bold text-emerald-400">{eg?.pullback_zone || '—'}</td>
-                  <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
-                  <td className="px-1 py-2 text-sm font-bold text-yellow-400">{eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : '—'}</td>
-                  <td className="px-1 py-2 text-sm font-bold text-violet-400">{eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : '—'}</td>
-                  <td className="px-1 py-2 text-sm font-bold text-orange-400">{eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : '—'}</td>
-                </tr>
-                <tr>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover if above' : 'get out'}</td>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover half' : 'sell &frac12;'}</td>
-                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover rest' : 'sell rest'}</td>
-                </tr>
-              </tbody>
-            </table>
-            {result.bias === 'short' && (
-              <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-3 py-2">
-                <p className="text-[11px] text-amber-300/90 leading-relaxed">
-                  Short bias detected: the table above reflects bearish positioning. STOP LOSS is the level to cover if price breaks upward. TRIGGER ZONE is the pullback area to enter the put.
-                </p>
+        {/* ═══ Trade Phase Summary (ENTRY · ACTIVE · EXIT) ═══ */}
+        <div className="grid gap-2 sm:grid-cols-3">
+          {/* ENTRY */}
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-emerald-400 mb-1.5">ENTRY</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-200 uppercase text-[10px] tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                <span className="text-violet-300 font-mono text-[11px]">
+                  {eg?.breakout_level != null ? `>$${eg.breakout_level.toFixed(2)}` : eg?.vwap != null ? `>$${eg.vwap.toFixed(2)}` : '—'}
+                </span>
               </div>
-            )}
+              <div className="text-gray-500 text-[10px] leading-relaxed">
+                {eg?.vwap != null && eg?.opening_range_high != null
+                  ? `VWAP $${eg.vwap.toFixed(2)}–ORH $${eg.opening_range_high.toFixed(2)} zone`
+                  : eg?.vwap != null
+                    ? `VWAP $${eg.vwap.toFixed(2)} zone`
+                    : 'Monitor for entry trigger'}
+              </div>
+            </div>
           </div>
-        )}
+          {/* ACTIVE */}
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/10 px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-amber-400 mb-1.5">ACTIVE</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-200 text-[10px] uppercase tracking-wide">HOLD</span>
+                <span className="text-emerald-300 font-mono text-[11px]">
+                  {eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                </span>
+              </div>
+              <div className="text-gray-500 text-[10px] leading-relaxed">
+                {result.bias === 'short'
+                  ? 'ADD on weakness / breakdown continuation'
+                  : 'ADD on strength / breakout continuation'}
+              </div>
+            </div>
+          </div>
+          {/* EXIT */}
+          <div className="rounded-xl border border-red-800/40 bg-red-950/10 px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-red-400 mb-1.5">EXIT</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-200 text-[10px] uppercase tracking-wide">SL</span>
+                <span className="text-red-300 font-mono text-[11px]">
+                  {eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
+                </span>
+              </div>
+              <div className="text-gray-500 text-[10px] leading-relaxed">
+                {result.bias === 'short'
+                  ? 'EXIT if price breaks above VWAP'
+                  : 'EXIT if VWAP breaks'}
+                {eg?.scalp_target != null && ` · book partial at $${eg.scalp_target.toFixed(2)}`}
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {onRequestEnterActiveTrade && (
@@ -1036,15 +1051,60 @@ export default function DayTradeEnginePanel({
           ))}
         </div>
         <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Management Checklist</div>
-          <div className="space-y-1.5">
-            {managementPlan.map((item, index) => (
-              <div key={index} className="flex items-start gap-1.5 text-[11px] text-gray-300 leading-relaxed">
-                <span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />
-                {item}
-              </div>
-            ))}
-          </div>
+          {(() => {
+            type DayExitRule = { trigger: string; price: number; action: string; note: string }
+            const eg = result.entry_guidance
+            const dayExitRules: DayExitRule[] = Array.isArray(eg?.exit_rules) ? (eg.exit_rules as DayExitRule[]) : []
+            if (dayExitRules.length > 0) {
+              return (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                      <th className="pb-1.5 text-left font-medium">When</th>
+                      <th className="pb-1.5 text-right font-medium tabular-nums pr-3">At Price</th>
+                      <th className="pb-1.5 text-left font-medium">Do This</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                    {dayExitRules.map((rule, i) => {
+                      const isStop   = rule.trigger.toLowerCase().includes('stop')
+                      const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
+                      const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
+                      const isEOD    = rule.price === 0
+                      const isVwap   = rule.trigger.toLowerCase().includes('vwap')
+                      const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
+                      const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
+                          <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                            {isEOD ? 'EOD' : `$${rule.price.toFixed(2)}`}
+                          </td>
+                          <td className="py-2 align-top">
+                            <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
+                            <div className="text-[10px] text-gray-500 leading-snug mt-0.5">{rule.note}</div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )
+            }
+            return (
+              <>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Management Checklist</div>
+                <div className="space-y-1.5">
+                  {managementPlan.map((item, index) => (
+                    <div key={index} className="flex items-start gap-1.5 text-[11px] text-gray-300 leading-relaxed">
+                      <span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          })()}
         </div>
       </div>
 

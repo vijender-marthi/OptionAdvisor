@@ -312,6 +312,100 @@ def _confidence_block(
     }
 
 
+def _build_day_exit_rules(
+    bias: str,
+    vwap: Optional[float],
+    breakout_level: Optional[float],
+    scalp_target: Optional[float],
+    risk_below: Optional[float],
+    state: str,
+) -> list[dict]:
+    """
+    Price-specific intraday exit rules ordered by priority.
+    All prices reference levels already shown in the execution map.
+    """
+    if not bias or bias not in ("long", "short"):
+        return []
+
+    rules: list[dict] = []
+
+    if bias == "long":
+        # Target 1 = VWAP (first profit milestone, already in position)
+        if vwap is not None:
+            rules.append({
+                "trigger": "Target 1 — VWAP",
+                "price":   round(vwap, 2),
+                "action":  "Sell ½ position",
+                "note":    f"Move stop to breakout level"
+                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
+            })
+        # Target 2 = scalp target (final intraday exit)
+        if scalp_target is not None:
+            rules.append({
+                "trigger": "Target 2 — scalp target",
+                "price":   scalp_target,
+                "action":  "Sell remaining ½",
+                "note":    "Intraday trade complete — flat before close",
+            })
+        # VWAP loss guard
+        if vwap is not None:
+            rules.append({
+                "trigger": "Price loses VWAP",
+                "price":   round(vwap, 2),
+                "action":  "Exit full position",
+                "note":    "Intraday structure failed — do not hold through VWAP loss",
+            })
+        # Hard stop
+        if risk_below is not None:
+            rules.append({
+                "trigger": "Stop loss — OR Low",
+                "price":   round(risk_below, 2),
+                "action":  "Exit full position",
+                "note":    "Opening Range violated — accept the loss",
+            })
+
+    else:  # short
+        if vwap is not None:
+            rules.append({
+                "trigger": "Target 1 — VWAP",
+                "price":   round(vwap, 2),
+                "action":  "Cover ½ position",
+                "note":    f"Move stop to breakdown level"
+                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
+            })
+        if scalp_target is not None:
+            rules.append({
+                "trigger": "Target 2 — scalp target",
+                "price":   scalp_target,
+                "action":  "Cover remaining ½",
+                "note":    "Intraday trade complete — flat before close",
+            })
+        if vwap is not None:
+            rules.append({
+                "trigger": "Price reclaims VWAP",
+                "price":   round(vwap, 2),
+                "action":  "Exit full position",
+                "note":    "Bearish structure failed — exit immediately",
+            })
+        if risk_below is not None:
+            rules.append({
+                "trigger": "Stop loss — OR High",
+                "price":   round(risk_below, 2),
+                "action":  "Exit full position",
+                "note":    "Opening Range violated to the upside — accept the loss",
+            })
+
+    # Universal end-of-day rule
+    rules.append({
+        "trigger": "Market close (3:55 PM ET)",
+        "price":   0.0,   # 0 signals no specific price — display as "EOD"
+        "action":  "Close all intraday positions",
+        "note":    "Never carry a day-trade position overnight",
+    })
+
+    return rules
+
+
 def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str]) -> dict:
     last_price = metrics.get("last_price")
     vwap = metrics.get("vwap")
@@ -540,6 +634,14 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         "pullback_zone": pullback_zone,
         "risk_below": risk_below,
         "scalp_target": scalp_target,
+        "exit_rules": _build_day_exit_rules(
+            bias=bidir,
+            vwap=vwap,
+            breakout_level=or_high if bidir == "long" else or_low,
+            scalp_target=scalp_target,
+            risk_below=risk_below,
+            state=state,
+        ),
         # New execution guidance fields
         "day_market_phase": day_market_phase,
         "pullback_probability": pullback_prob,

@@ -209,6 +209,7 @@ export interface DayTradeScanResult {
       message: string
       condition: string
     }>
+    exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
   }
   /** Lightweight options execution context — warning-only, not a strategy builder. */
   option_risk_context?: DayOptionRiskContext

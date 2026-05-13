@@ -129,6 +129,7 @@ class TradeCandidate:
 
     rationale: str
     exit_plan: str
+    exit_rules: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     time_horizon_tier: str = ""   # "3-week" | "4-week" | "5-week" | "6-week"
 

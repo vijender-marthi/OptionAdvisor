@@ -48,6 +48,7 @@ export interface Recommendation {
   scores: ScoreBreakdown
   rationale: string
   exit_plan: string
+  exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
   warnings: string[]
   // Kelly Criterion position sizing
   kelly_fraction: number       // raw Kelly % as decimal (e.g. 0.125 = 12.5%)

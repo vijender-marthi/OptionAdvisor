@@ -1662,6 +1662,113 @@ def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Opti
         }
     return {}
 
+
+def _compute_exit_rules(
+    exec_levels: dict,
+    ma20: float,
+    bias: Optional[str],
+    entry_quality: str,
+    risk_level: str,
+) -> list[dict]:
+    """
+    Return a list of concrete, price-specific exit rules for the current setup.
+    Each rule has: trigger, price (float), action, note.
+
+    Rules are ordered by priority: partial profit → full profit → trailing guard →
+    stop loss. All prices come from exec_levels so they are consistent with the
+    execution map the trader sees.
+    """
+    if not exec_levels or bias not in ("long", "short"):
+        return []
+
+    t1   = exec_levels.get("target1")
+    t2   = exec_levels.get("target2")
+    brk  = exec_levels.get("breakout")
+    stop = exec_levels.get("stop")
+
+    if t1 is None or t2 is None or brk is None or stop is None:
+        return []
+
+    rules: list[dict] = []
+
+    # Whether trader should be watching for entry or already positioned.
+    # GOOD_ENTRY / CAUTION_ENTRY → position may already be open.
+    # WAIT / BAD → not yet in.
+    already_in = entry_quality in ("GOOD_ENTRY", "CAUTION_ENTRY")
+
+    if bias == "long":
+        entry_label = f"${brk:.2f}" if not already_in else "entry level"
+
+        rules.append({
+            "trigger": "Target 1 reached",
+            "price":   t1,
+            "action":  "Sell ½ position",
+            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)"
+        })
+        rules.append({
+            "trigger": "Target 2 reached",
+            "price":   t2,
+            "action":  "Sell remaining ½",
+            "note":    "Full exit — trade complete"
+        })
+        rules.append({
+            "trigger": "Price closes below MA20",
+            "price":   round(ma20, 2),
+            "action":  "Exit full position",
+            "note":    "Trend structure broken — do not hold through"
+        })
+        if risk_level in ("HIGH", "VERY_HIGH"):
+            rules.append({
+                "trigger": "Price stalls at Target 1 (no momentum)",
+                "price":   t1,
+                "action":  "Exit full position",
+                "note":    "High-risk setup — take full profit at first target, don't reach for T2"
+            })
+        rules.append({
+            "trigger": "Stop loss",
+            "price":   stop,
+            "action":  "Exit full position",
+            "note":    "Capital preservation — accept the loss, protect the account"
+        })
+
+    else:  # short / bearish
+        entry_label = f"${brk:.2f}" if not already_in else "entry level"
+
+        rules.append({
+            "trigger": "Target 1 reached",
+            "price":   t1,
+            "action":  "Cover ½ position",
+            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)"
+        })
+        rules.append({
+            "trigger": "Target 2 reached",
+            "price":   t2,
+            "action":  "Cover remaining ½",
+            "note":    "Full exit — trade complete"
+        })
+        rules.append({
+            "trigger": "Price closes above MA20",
+            "price":   round(ma20, 2),
+            "action":  "Exit full position",
+            "note":    "Bearish structure failed — exit immediately"
+        })
+        if risk_level in ("HIGH", "VERY_HIGH"):
+            rules.append({
+                "trigger": "Price stalls at Target 1 (no momentum)",
+                "price":   t1,
+                "action":  "Cover full position",
+                "note":    "High-risk setup — take full profit at first target"
+            })
+        rules.append({
+            "trigger": "Stop loss",
+            "price":   stop,
+            "action":  "Exit full position",
+            "note":    "Capital preservation — accept the loss"
+        })
+
+    return rules
+
+
 # ── Main scanner ──────────────────────────────────────────────────────
 
 def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTradeScan:
@@ -2080,8 +2187,18 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
             metrics[guid_key] = decision[guid_key]
 
     # Execution levels (backend-computed, replaces frontend computeExecLevels)
-    metrics["exec_levels"] = _compute_exec_levels(
+    exec_levels = _compute_exec_levels(
         last=last, ma20=ma20, mom_5d_pct=mom_pct, bias=bias,
+    )
+    metrics["exec_levels"] = exec_levels
+
+    # Structured exit rules — price-specific, ordered by priority
+    metrics["exit_rules"] = _compute_exit_rules(
+        exec_levels=exec_levels,
+        ma20=ma20,
+        bias=bias,
+        entry_quality=decision["entry_quality"],
+        risk_level=decision["risk_level"],
     )
 
     scan = SwingTradeScan(

@@ -229,6 +229,95 @@ function deriveAiGuidance(pos: PortfolioPosition): string {
   return `HOLD — ${dte} DTE remaining. Set profit target at 50% of max credit, stop at 2× premium paid, and hard close date at 21 DTE.`
 }
 
+type ExitRule = { trigger: string; price: number | null; action: string; note: string }
+
+function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
+  if (pos.status === 'closed') return []
+
+  const source = deriveEngineSource(pos)
+  const rules: ExitRule[] = []
+
+  const SELLING_STRATS = new Set([
+    'Iron Condor', 'Bull Put Spread', 'Bear Call Spread',
+    'Short Put', 'Short Call', 'Covered Call', 'Covered Put',
+  ])
+  const isCredit = SELLING_STRATS.has(pos.strategy)
+  const dte = pos.dte ?? 0
+
+  // ── User-entered execution map levels (highest priority) ─────────────
+  // If the trader has entered target1/target2/breakout/stopLoss, use them
+  // as the exit triggers since they reflect the trader's own thesis.
+  const hasUserLevels = pos.target1 != null || pos.target2 != null || pos.stopLoss != null
+
+  if (source === 'day') {
+    // Day trades: VWAP-based, always close before EOD
+    if (pos.target1 != null) rules.push({ trigger: 'Target 1 reached', price: pos.target1, action: 'Sell ½ position', note: 'Move stop to breakout / entry level' })
+    if (pos.target2 != null) rules.push({ trigger: 'Target 2 — scalp target', price: pos.target2, action: 'Sell remaining ½', note: 'Intraday trade complete' })
+    if (pos.stopLoss != null) rules.push({ trigger: 'Stop loss', price: pos.stopLoss, action: 'Exit full position', note: 'Capital preservation — accept the loss' })
+    rules.push({ trigger: 'Market close (3:55 PM ET)', price: null, action: 'Close all intraday positions', note: 'Never carry a day-trade overnight' })
+    return rules
+  }
+
+  if (source === 'swing') {
+    if (hasUserLevels) {
+      if (pos.target1 != null) rules.push({ trigger: 'Target 1 reached', price: pos.target1, action: 'Sell ½ position', note: 'Move stop to breakout / entry level' })
+      if (pos.target2 != null) rules.push({ trigger: 'Target 2 reached', price: pos.target2, action: 'Sell remaining ½', note: 'Full exit — trade complete' })
+      if (pos.breakout != null) rules.push({ trigger: 'Price fails to hold breakout', price: pos.breakout, action: 'Exit full position', note: 'Breakout structure failed — do not hold' })
+      if (pos.stopLoss != null) rules.push({ trigger: 'Stop loss', price: pos.stopLoss, action: 'Exit full position', note: 'Capital preservation — accept the loss' })
+    } else {
+      // Derive from position metrics
+      const profitTarget = pos.net_credit >= 0
+        ? round2(pos.max_profit * 0.5)
+        : round2(Math.abs(pos.net_credit) * 2)
+      const stopAmt = pos.net_credit >= 0
+        ? round2(pos.net_credit * 2)
+        : round2(Math.abs(pos.net_credit) * 0.5)
+      rules.push({ trigger: '50% of max profit reached', price: profitTarget, action: 'Sell ½ position', note: 'Lock in gains, trail stop to entry' })
+      rules.push({ trigger: `${Math.max(7, Math.round(dte * 0.4))} DTE remaining`, price: null, action: 'Close or roll position', note: 'Theta decay accelerates — avoid holding to expiry' })
+      rules.push({ trigger: 'Loss reaches 2× entry premium', price: stopAmt, action: 'Exit full position', note: 'Stop loss — protect account capital' })
+    }
+    return rules
+  }
+
+  // ── Regular options ───────────────────────────────────────────────────
+  if (hasUserLevels) {
+    if (pos.target1 != null) rules.push({ trigger: 'Target 1 reached', price: pos.target1, action: isCredit ? 'Buy back / close spread' : 'Sell to close ½', note: 'Partial profit — lock in gains' })
+    if (pos.target2 != null) rules.push({ trigger: 'Target 2 reached', price: pos.target2, action: isCredit ? 'Close full position' : 'Sell to close rest', note: 'Full exit — trade complete' })
+    if (pos.stopLoss != null) rules.push({ trigger: 'Stop loss', price: pos.stopLoss, action: 'Close full position', note: 'Capital preservation' })
+  } else {
+    const profitAmt = isCredit
+      ? round2(pos.net_credit * 0.5)
+      : round2(Math.abs(pos.net_credit) * 2)
+    const stopAmt = isCredit
+      ? round2(pos.net_credit * 2)
+      : round2(Math.abs(pos.net_credit) * 0.5)
+    const closeDte = Math.max(7, Math.round(dte * 0.4))
+
+    rules.push({
+      trigger: isCredit ? '50% of credit captured' : '100% gain on premium',
+      price: profitAmt,
+      action: isCredit ? 'Buy back / close spread' : 'Sell to close',
+      note: isCredit ? `Credit remaining ≈ $${profitAmt.toFixed(2)}/share` : `Target gain ≈ $${profitAmt.toFixed(2)}/share`,
+    })
+    rules.push({
+      trigger: `${closeDte} DTE remaining`,
+      price: null,
+      action: 'Close or roll position',
+      note: `Hold ≈ ${Math.max(0, dte - closeDte)} more days then exit — gamma risk rises sharply`,
+    })
+    rules.push({
+      trigger: isCredit ? 'Loss reaches 2× credit' : '50% loss on premium',
+      price: stopAmt,
+      action: 'Close position — stop loss',
+      note: `Max acceptable loss ≈ $${stopAmt.toFixed(2)}/share`,
+    })
+  }
+
+  return rules
+}
+
+function round2(x: number): number { return Math.round(x * 100) / 100 }
+
 function engineSourceLabel(source: 'day' | 'swing' | 'regular'): string {
   if (source === 'day') return 'Day'
   if (source === 'swing') return 'Swing'
@@ -922,6 +1011,49 @@ function TradingPositionCard({
                 <div className={`font-semibold tabular-nums ${pnlColor}`}>{fmtUsd(displayPnl.pnl)}</div></div>
             )}
           </div>
+
+          {/* Exit Rules */}
+          {pos.status === 'open' && (() => {
+            const rules = deriveExitRules(pos)
+            if (rules.length === 0) return null
+            return (
+              <div className="rounded-lg border border-gray-800/70 bg-black/10 px-3 py-2.5">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Exit Rules</div>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 border-b border-gray-800/50">
+                      <th className="pb-1 text-left font-medium">When</th>
+                      <th className="pb-1 text-right font-medium tabular-nums pr-3">At</th>
+                      <th className="pb-1 text-left font-medium">Do This</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/30">
+                    {rules.map((rule, i) => {
+                      const isStop   = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
+                      const isTarget2 = rule.trigger.toLowerCase().includes('target 2') || rule.trigger.toLowerCase().includes('100%')
+                      const isTarget1 = rule.trigger.toLowerCase().includes('target 1') || rule.trigger.toLowerCase().includes('50%') || rule.trigger.toLowerCase().includes('captured')
+                      const isTime   = rule.price == null
+                      const isEOD    = rule.trigger.toLowerCase().includes('close') && isTime
+                      const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isTime ? 'text-amber-400' : 'text-slate-300'
+                      const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isTime ? 'text-amber-300' : 'text-gray-200'
+                      return (
+                        <tr key={i}>
+                          <td className="py-1.5 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
+                          <td className={`py-1.5 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                            {isEOD ? 'EOD' : isTime ? 'time' : `$${rule.price!.toFixed(2)}`}
+                          </td>
+                          <td className="py-1.5 align-top">
+                            <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
+                            <div className="text-[10px] text-gray-600 leading-snug mt-0.5">{rule.note}</div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
 
           {/* Legs */}
           {pos.legs && pos.legs.length > 0 && (

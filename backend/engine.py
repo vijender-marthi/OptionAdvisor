@@ -758,20 +758,78 @@ def generate_exit_plan(strategy: str, max_profit: float, net_credit: float,
 
     if strategy in SELLING_STRATS:
         return (
-            f"✅ Take profit: Close when P&L reaches 50% of max profit "
+            f"Take profit: Close when P&L reaches 50% of max profit "
             f"(≈ ${profit_close_at:.2f}/share credit remaining to pay). "
-            f"🛑 Stop loss: Close if loss exceeds 2× credit received (${stop_loss_at:.2f}/share). "
-            f"⏰ Time exit: Close by {close_dte} DTE to avoid gamma risk "
+            f"Stop loss: Close if loss exceeds 2× credit received (${stop_loss_at:.2f}/share). "
+            f"Time exit: Close by {close_dte} DTE to avoid gamma risk "
             f"(hold approx {hold_days} days, then exit or roll)."
         )
     else:
         return (
-            f"✅ Take profit: Close when position gains 100% of cost basis "
+            f"Take profit: Close when position gains 100% of cost basis "
             f"(≈ ${profit_close_at:.2f}/share gain). "
-            f"🛑 Stop loss: Close if position loses 50% of premium paid. "
-            f"⏰ Time exit: Exit by {close_dte} DTE if target not reached — "
+            f"Stop loss: Close if position loses 50% of premium paid. "
+            f"Time exit: Exit by {close_dte} DTE if target not reached — "
             f"theta decay accelerates significantly in the final {close_dte} days."
         )
+
+
+def generate_exit_rules(strategy: str, max_profit: float, net_credit: float,
+                         expiry: str, dte: int) -> list[dict]:
+    """
+    Structured exit rules for a regular options trade — same logic as
+    generate_exit_plan but returned as a list so the UI can render a table.
+    """
+    profit_close_at = round(net_credit * CREDIT_PROFIT_TARGET_PCT / 100, 2) if net_credit > 0 else round(max_profit * DEBIT_PROFIT_TARGET_PCT / 100, 2)
+    stop_loss_at    = round(net_credit * CREDIT_STOP_LOSS_MULT, 2) if net_credit > 0 else round(max_profit * 0.5, 2)
+    close_dte       = _dynamic_close_dte(dte)
+    hold_days       = max(0, dte - close_dte)
+
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Short Put", "Short Call"}
+    is_credit = strategy in SELLING_STRATS
+
+    if is_credit:
+        return [
+            {
+                "trigger": "50% of max profit reached",
+                "price":   profit_close_at,
+                "action":  "Close / buy back spread",
+                "note":    f"Credit remaining ≈ ${profit_close_at:.2f}/share — standard credit-spread exit",
+            },
+            {
+                "trigger": f"{close_dte} DTE remaining",
+                "price":   0.0,   # time-based, no single price
+                "action":  "Close or roll position",
+                "note":    f"Hold ≈ {hold_days} days then exit — gamma risk accelerates past this point",
+            },
+            {
+                "trigger": "Loss reaches 2× credit received",
+                "price":   stop_loss_at,
+                "action":  "Close position — stop loss",
+                "note":    f"Max acceptable loss ≈ ${stop_loss_at:.2f}/share — cut and move on",
+            },
+        ]
+    else:
+        return [
+            {
+                "trigger": "100% gain on premium paid",
+                "price":   profit_close_at,
+                "action":  "Close / sell the option",
+                "note":    f"Target gain ≈ ${profit_close_at:.2f}/share — lock in the double",
+            },
+            {
+                "trigger": f"{close_dte} DTE remaining",
+                "price":   0.0,
+                "action":  "Close position regardless",
+                "note":    f"Hold ≈ {hold_days} days then exit — theta decay destroys value past this point",
+            },
+            {
+                "trigger": "50% loss on premium paid",
+                "price":   stop_loss_at,
+                "action":  "Close position — stop loss",
+                "note":    f"Max acceptable loss ≈ ${stop_loss_at:.2f}/share — defined-risk discipline",
+            },
+        ]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -837,6 +895,7 @@ def _build_long_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) -
             f"drift ({signals.bias_confidence}% confidence)."
         ),
         exit_plan=generate_exit_plan("Long Call", realistic_max_profit, -cost, expiry, dte),
+        exit_rules=generate_exit_rules("Long Call", realistic_max_profit, -cost, expiry, dte),
     )
 
 
@@ -895,6 +954,7 @@ def _build_long_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) -> 
             f"drift ({signals.bias_confidence}% confidence)."
         ),
         exit_plan=generate_exit_plan("Long Put", realistic_max_profit, -cost, expiry, dte),
+        exit_rules=generate_exit_rules("Long Put", realistic_max_profit, -cost, expiry, dte),
     )
 
 
@@ -962,6 +1022,7 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
             f"IV rank {signals.iv_rank:.0f}% — {'low IV favors buying spreads.' if signals.iv_rank < 45 else 'note: elevated IV inflates cost.'}"
         ),
         exit_plan=generate_exit_plan(strategy_name, max_profit, -net_debit, expiry, days_to_expiry(expiry)),
+        exit_rules=generate_exit_rules(strategy_name, max_profit, -net_debit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1066,6 +1127,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
             f"IV rank {signals.iv_rank:.0f}% — {'ideal for selling premium.' if signals.iv_rank >= 50 else 'marginal IV for credit selling.'}"
         ),
         exit_plan=generate_exit_plan(strategy_name, max_profit, net_credit, expiry, days_to_expiry(expiry)),
+        exit_rules=generate_exit_rules(strategy_name, max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1153,6 +1215,7 @@ def _build_iron_condor(signals: MarketSignals, calls: pd.DataFrame,
             f"Skew: {signals.skew_signal} — {'put skew elevated, consider wider put wing.' if signals.iv_skew > 5 else 'skew normal, symmetric condor appropriate.'}"
         ),
         exit_plan=generate_exit_plan("Iron Condor", net_credit, net_credit, expiry, days_to_expiry(expiry)),
+        exit_rules=generate_exit_rules("Iron Condor", net_credit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1213,6 +1276,7 @@ def _build_long_straddle(signals, calls, puts, expiry, price) -> Optional[dict]:
             f"Profit zone outside ${be_lower} – ${be_upper}."
         ),
         exit_plan=generate_exit_plan("Long Straddle", realistic_max_profit, -total_cost, expiry, dte),
+        exit_rules=generate_exit_rules("Long Straddle", realistic_max_profit, -total_cost, expiry, dte),
     )
 
 
@@ -1267,11 +1331,12 @@ def _build_short_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) ->
             f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
         ),
         exit_plan=(
-            f"✅ Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
-            f"🛑 Stop loss: Close immediately if the put doubles in value (loss = credit received = ${net_credit:.2f}/share). "
-            f"📉 If near assignment: roll down and out (lower strike, later expiry) for a net credit, OR close and accept assignment if you want the stock at ${strike:.0f}. "
-            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — gamma risk rises sharply in the final weeks."
+            f"Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
+            f"Stop loss: Close immediately if the put doubles in value (loss = credit received = ${net_credit:.2f}/share). "
+            f"If near assignment: roll down and out (lower strike, later expiry) for a net credit, OR close and accept assignment if you want the stock at ${strike:.0f}. "
+            f"Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — gamma risk rises sharply in the final weeks."
         ),
+        exit_rules=generate_exit_rules("Short Put", max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1326,12 +1391,13 @@ def _build_short_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str) 
             f"Signal: {signals.directional_bias} ({int(signals.bias_confidence*100)}% confidence)."
         ),
         exit_plan=(
-            f"✅ Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
-            f"🛑 Stop loss: Close IMMEDIATELY if the call doubles in value (loss = credit received = ${net_credit:.2f}/share). "
+            f"Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to lock in gains. "
+            f"Stop loss: Close IMMEDIATELY if the call doubles in value (loss = credit received = ${net_credit:.2f}/share). "
             f"For naked calls, never let a loss run — the risk is theoretically unlimited. "
-            f"📈 If stock approaches the strike: roll up and out (higher strike, later expiry) for a net credit, or close outright. "
-            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — short OTM calls gain gamma risk rapidly in the final weeks."
+            f"If stock approaches the strike: roll up and out (higher strike, later expiry) for a net credit, or close outright. "
+            f"Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE — short OTM calls gain gamma risk rapidly in the final weeks."
         ),
+        exit_rules=generate_exit_rules("Short Call", max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1388,13 +1454,14 @@ def _build_covered_call(signals: MarketSignals, calls: pd.DataFrame, expiry: str
             f"IV rank {signals.iv_rank:.0f}% — {'elevated IV inflates premium collected; ideal for covered call.' if signals.iv_rank >= 50 else 'moderate IV; premium is smaller than in high-IV regimes.'}"
         ),
         exit_plan=(
-            f"✅ Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free stock for further upside. "
+            f"Take profit: Buy back the call at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free stock for further upside. "
             f"Or let it expire worthless to keep the full ${net_credit:.2f}/share. "
-            f"📈 If called away at ${strike:.0f}: total option return is ${max_profit:.2f}/share — "
+            f"If called away at ${strike:.0f}: total option return is ${max_profit:.2f}/share — "
             f"accept assignment or roll the call up and out (higher strike, later expiry) before expiry. "
-            f"🛑 Stop loss: Close position if the call is deep ITM and rolling up no longer makes sense. "
-            f"⏰ Time exit: Roll or close at {_dynamic_close_dte(days_to_expiry(expiry))} DTE to avoid gamma acceleration on the short call."
+            f"Stop loss: Close position if the call is deep ITM and rolling up no longer makes sense. "
+            f"Time exit: Roll or close at {_dynamic_close_dte(days_to_expiry(expiry))} DTE to avoid gamma acceleration on the short call."
         ),
+        exit_rules=generate_exit_rules("Covered Call", max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1450,12 +1517,13 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
             f"IV rank {signals.iv_rank:.0f}% — {'elevated; premium is rich for cash-secured put.' if signals.iv_rank >= 50 else 'moderate IV; verify the yield justifies tying up capital.'}"
         ),
         exit_plan=(
-            f"✅ Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free up capital. "
-            f"📉 If assigned: you own shares at ${be:.2f} effective cost — "
+            f"Take profit: Buy back the put at 50% of credit (~${round(net_credit*0.5,2):.2f}/share) to free up capital. "
+            f"If assigned: you own shares at ${be:.2f} effective cost — "
             f"immediately consider selling a covered call (the 'wheel' strategy) to continue collecting income. "
-            f"🛑 Stop loss: Buy back the put if it triples in value (loss ≈ 2× credit = ${round(net_credit*2,2):.2f}/share). "
-            f"⏰ Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE if the put is near the money and you prefer not to be assigned."
+            f"Stop loss: Buy back the put if it triples in value (loss ≈ 2× credit = ${round(net_credit*2,2):.2f}/share). "
+            f"Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE if the put is near the money and you prefer not to be assigned."
         ),
+        exit_rules=generate_exit_rules("Covered Put", max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1752,6 +1820,7 @@ def run_engine(
             total_score=total,
             rationale=t["rationale"],
             exit_plan=t["exit_plan"],
+            exit_rules=t.get("exit_rules", []),
             warnings=t.get("warnings", []),
             kelly_fraction=t["kelly_fraction"],
             half_kelly_fraction=t["half_kelly_fraction"],

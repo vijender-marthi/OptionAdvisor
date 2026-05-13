@@ -673,8 +673,41 @@ export default function RecommendationCard({
           {exitOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
         {exitOpen && (
-          <div className="mt-2 p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl text-sm text-indigo-200 leading-relaxed">
-            {rec.exit_plan}
+          <div className="mt-2 p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl">
+            {rec.exit_rules && rec.exit_rules.length > 0 ? (
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400/60 border-b border-indigo-900/60">
+                    <th className="pb-1.5 text-left font-medium">When</th>
+                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">Value</th>
+                    <th className="pb-1.5 text-left font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-indigo-900/40">
+                  {rec.exit_rules.map((rule, i) => {
+                    const isStop   = rule.trigger.toLowerCase().includes('loss')
+                    const isProfit = rule.trigger.toLowerCase().includes('profit') || rule.trigger.toLowerCase().includes('gain')
+                    const isTime   = rule.price === 0
+                    const priceCls = isStop ? 'text-red-400' : isProfit ? 'text-emerald-400' : 'text-amber-300'
+                    const actionCls = isStop ? 'text-red-300' : isProfit ? 'text-emerald-300' : 'text-indigo-200'
+                    return (
+                      <tr key={i}>
+                        <td className="py-2 pr-2 text-indigo-300/70 leading-snug align-top w-[32%]">{rule.trigger}</td>
+                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                          {isTime ? `${rule.price === 0 ? rule.trigger.match(/\d+/)?.[0] ?? '—' : rule.price} DTE` : `$${rule.price.toFixed(2)}/sh`}
+                        </td>
+                        <td className="py-2 align-top">
+                          <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
+                          <div className="text-[10px] text-indigo-300/50 leading-snug mt-0.5">{rule.note}</div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-indigo-200 leading-relaxed">{rec.exit_plan}</p>
+            )}
           </div>
         )}
       </div>
