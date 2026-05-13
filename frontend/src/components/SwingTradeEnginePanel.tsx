@@ -889,142 +889,46 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {onRequestEnterActiveTrade ? (
-            <button type="button" onClick={onRequestEnterActiveTrade} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${execTone === 'green' ? actionButtonClass(execTone) : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-              <PlusCircle size={14} />
-              Add to Positions
-            </button>
-          ) : null}
-          {onCreateAlert ? (
-            <button type="button" onClick={onCreateAlert} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${getActionButtonClass('alert')}`}>
-              <Bell size={14} />
-              Create Alert
-            </button>
-          ) : null}
-          {onOpenStrategyFinder ? (
-            <button type="button" onClick={onOpenStrategyFinder} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}>
-              <BarChart2 size={13} />
-              Strategy Finder
-            </button>
-          ) : null}
-          {onOpenCommandCenter ? (
-            <button type="button" onClick={onOpenCommandCenter} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
-              <Layers size={13} />
-              Command Center
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setSignalsOpen(true)
-              signalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              onViewSignals?.()
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-          >
-            <Search size={13} />
-            View Signals
-          </button>
-          {onAddToWatchlist ? (
-            <button type="button" onClick={onAddToWatchlist} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
-              <Star size={13} />
-              Add to Watchlist
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 1</div>
-          <h2 className="mt-1 text-sm font-bold text-white">Market &amp; Price Context</h2>
-          <p className="mt-1 text-xs text-gray-400">Is the market helping or fighting this trade?</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-          <ExecMapRow label="Current Price" value={lastPrice != null ? `$${lastPrice.toFixed(2)}` : ''} />
-          <ExecMapRow label="Market Strength" value={formatSwingEngineLabel(result.market_bias || result.swing_bias)} tone={toneForExecMap(result.market_bias || result.swing_bias)} />
-          <ExecMapRow label="SPY Support" value={spyBias ? formatSwingEngineLabel(spyBias) : ''} tone={toneForExecMap(spyBias || '')} />
-          <ExecMapRow label="QQQ Support" value={qqqBias ? formatSwingEngineLabel(qqqBias) : ''} tone={toneForExecMap(qqqBias || '')} />
-          <ExecMapRow label="Dist. to MA20" value={distMA20Display ? distMA20Display.text : ''} tone={distMA20Display?.cls} />
-          <ExecMapRow label="Trend Phase" value={formatSwingEngineLabel(marketPhase || 'NEUTRAL')} tone={toneForExecMap(marketPhase || '')} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {biasBadge ? <Badge text={biasBadge.text} tone={biasBadge.tone} /> : null}
-          <Badge text={marketSupportive || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} />
-          {entryBadge ? <Badge text={entryBadge.text} tone={entryBadge.tone} /> : null}
-        </div>
-      </div>
-
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 2</div>
-          <h2 className="mt-1 text-sm font-bold text-white">Technical Analysis</h2>
-          <p className="mt-1 text-xs text-gray-400">Trend, momentum, extension, and volatility should all support the trade.</p>
-        </div>
-
-        <div ref={signalsSectionRef} className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
-          <SignalRow label="Trend" value={signalMap.trend} />
-          <SignalRow label="Momentum" value={signalMap.momentum} />
-          <SignalRow label="RSI" value={signalMap.rsi} />
-          <SignalRow label="Volume" value={signalMap.volume} />
-          <SignalRow label="Liquidity" value={signalMap.liquidity} />
-          <SignalRow label="IV Context" value={signalMap.iv_context} />
-          <SignalRow label="Market Align" value={signalMap.market_alignment} />
-          <SignalRow label="Extension" value={signalMap.extension} />
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-          {ma20 != null ? <ExecMapRow label="MA20" value={`$${ma20.toFixed(2)}`} /> : null}
-          {ma50 != null ? <ExecMapRow label="MA50" value={`$${ma50.toFixed(2)}`} /> : null}
-          {typeof m.rsi === 'number' ? <ExecMapRow label="RSI" value={Number(m.rsi).toFixed(1)} tone={Number(m.rsi) >= 70 ? 'text-semantic-bearish' : Number(m.rsi) >= 50 ? 'text-semantic-bullish' : 'text-semantic-warning'} /> : null}
-          {typeof m.implied_iv_pct === 'number' ? <ExecMapRow label="IV" value={`${Number(m.implied_iv_pct).toFixed(0)}%`} tone={Number(m.implied_iv_pct) > 40 ? 'text-semantic-bearish' : Number(m.implied_iv_pct) > 25 ? 'text-semantic-warning' : 'text-semantic-bullish'} /> : null}
-          {typeof m.hv_20 === 'number' ? <ExecMapRow label="HV20" value={`${Number(m.hv_20).toFixed(0)}%`} tone="text-semantic-accent" /> : null}
-          {volumeRatio != null ? <ExecMapRow label="Volume Ratio" value={`${volumeRatio.toFixed(2)}x`} tone={volumeRatio > 1.5 ? 'text-semantic-bullish' : volumeRatio > 0.7 ? 'text-semantic-warning' : 'text-semantic-bearish'} /> : null}
-        </div>
-
-        <div className="rounded-xl border border-gray-800/90 bg-black/15 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setChartsOpen(v => !v)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
-          >
-            <span>
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Decision Charts</div>
-              <div className="text-xs text-gray-400 mt-0.5">Charts support the setup, but they do not replace the decision rules.</div>
-            </span>
-            {chartsOpen ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
-          </button>
-          {chartsOpen ? (
-            <div className="border-t border-gray-800 px-3 py-3 space-y-3">
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  ['price', 'Price + MA20/MA50'],
-                  ['rsi', 'RSI'],
-                  ['hv', 'IV/HV'],
-                  ['volume', 'Volume'],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setChartTab(value as 'price' | 'rsi' | 'hv' | 'volume')}
-                    className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                      chartTab === value
-                        ? 'border border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
-                        : 'border border-border bg-gray-800 text-secondary hover:bg-gray-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <SwingTradeMetricCharts metrics={m} mode={chartTab === 'hv' ? 'hv' : chartTab} />
-              {chartTab === 'volume' && volumeLabel ? (
-                <div className="text-xs text-gray-400">Volume context: {volumeLabel}</div>
-              ) : null}
+        {/* ═══ Execution Map Table ═══ */}
+        {(execLevels.pullbackZone || execLevels.breakoutTrigger || execLevels.riskBelow || execLevels.firstTarget || execLevels.stretchTarget) && (
+          <div className="space-y-2">
+            <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full min-w-[500px] border-collapse text-center">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TRIGGER ZONE</th>
+                </tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td className="px-1 py-2 text-sm font-bold text-red-400">{execLevels.riskBelow || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-emerald-400">{execLevels.pullbackZone || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-yellow-400">{execLevels.breakoutTrigger || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-violet-400">{execLevels.firstTarget || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-orange-400">{execLevels.stretchTarget || '—'}</td>
+              </tr>
+              <tr>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover if above' : 'get out'}</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover half' : 'sell &frac12;'}</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover rest' : 'sell rest'}</td>
+              </tr>
+            </tbody>
+          </table>
             </div>
-          ) : null}
-        </div>
+            {result.bias === 'short' && (
+              <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                  Short bias detected: the table above reflects bearish positioning. STOP LOSS is the level to cover if price breaks upward. TRIGGER ZONE is the pullback area to enter the put.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-4 border-b border-gray-800 space-y-3">
