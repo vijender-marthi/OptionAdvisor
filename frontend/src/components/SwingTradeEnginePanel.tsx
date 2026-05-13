@@ -519,26 +519,33 @@ function computeExecLevels(result: SwingTradeScanResult, m: Record<string, unkno
   const empty = { pullbackZone: null, breakoutTrigger: null, riskBelow: null, firstTarget: null, stretchTarget: null }
   if (lastPrice == null) return empty
 
-  const mom = mom5d != null ? Math.abs(mom5d) / 100 : 0.05
+  // Use a floor of 2.5% so targets always have meaningful distance.
+  // Low-momentum tickers (mom5d < 2.5%) would otherwise produce targets
+  // below the breakout confirmation level.
+  const mom = mom5d != null ? Math.max(Math.abs(mom5d) / 100, 0.025) : 0.05
 
   if (isBull) {
-    const pbLow = ma20 != null ? ma20 * 0.98 : lastPrice * 0.97
+    const pbLow  = ma20 != null ? ma20 * 0.98  : lastPrice * 0.97
     const pbHigh = ma20 != null ? ma20 * 1.015 : lastPrice * 0.995
+    // Anchor targets to the breakout confirmation level, not current price.
+    // This ensures Target 1 and Target 2 are always reachable AFTER entry.
+    const brkLevel = lastPrice * 1.015
     return {
-      pullbackZone: `${pbLow.toFixed(2)}–${pbHigh.toFixed(2)}`,
-      breakoutTrigger: `$${(lastPrice * 1.015).toFixed(2)}`,
-      riskBelow: ma20 != null ? `$${(ma20 * 0.96).toFixed(2)}` : `$${(lastPrice * 0.95).toFixed(2)}`,
-      firstTarget: `$${(lastPrice * (1 + mom / 2)).toFixed(2)}`,
-      stretchTarget: `$${(lastPrice * (1 + mom)).toFixed(2)}`,
+      pullbackZone:    `${pbLow.toFixed(2)}–${pbHigh.toFixed(2)}`,
+      breakoutTrigger: `$${brkLevel.toFixed(2)}`,
+      riskBelow:       ma20 != null ? `$${(ma20 * 0.96).toFixed(2)}` : `$${(lastPrice * 0.95).toFixed(2)}`,
+      firstTarget:     `$${(brkLevel * (1 + mom * 0.5)).toFixed(2)}`,
+      stretchTarget:   `$${(brkLevel * (1 + mom)).toFixed(2)}`,
     }
   }
 
+  const brkLevel = lastPrice * 0.985
   return {
-    pullbackZone: ma20 != null ? `${(ma20 * 1.01).toFixed(2)}–${(ma20 * 1.025).toFixed(2)}` : `${(lastPrice * 1.005).toFixed(2)}–${(lastPrice * 1.03).toFixed(2)}`,
-    breakoutTrigger: `$${(lastPrice * 0.985).toFixed(2)}`,
-    riskBelow: ma20 != null ? `$${(ma20 * 1.04).toFixed(2)}` : `$${(lastPrice * 1.05).toFixed(2)}`,
-    firstTarget: `$${(lastPrice * (1 - mom / 2)).toFixed(2)}`,
-    stretchTarget: `$${(lastPrice * (1 - mom)).toFixed(2)}`,
+    pullbackZone:    ma20 != null ? `${(ma20 * 1.01).toFixed(2)}–${(ma20 * 1.025).toFixed(2)}` : `${(lastPrice * 1.005).toFixed(2)}–${(lastPrice * 1.03).toFixed(2)}`,
+    breakoutTrigger: `$${brkLevel.toFixed(2)}`,
+    riskBelow:       ma20 != null ? `$${(ma20 * 1.04).toFixed(2)}` : `$${(lastPrice * 1.05).toFixed(2)}`,
+    firstTarget:     `$${(brkLevel * (1 - mom * 0.5)).toFixed(2)}`,
+    stretchTarget:   `$${(brkLevel * (1 - mom)).toFixed(2)}`,
   }
 }
 

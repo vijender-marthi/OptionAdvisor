@@ -135,8 +135,8 @@ def _execution_bias_regular(rec: Optional[dict]) -> str:
         return "AVOID_CHASE"
     # 3-6 week window (21-42 DTE): tiered entry by time-horizon
     if 21 <= dte <= 27:
-        # 3-week: theta accelerating, gamma elevated — need stronger EV to enter
-        if ev > 0.5:
+        # 3-week: theta accelerating — require positive EV above noise floor
+        if ev > 0.10:
             return "ENTER_NOW"
         return "WAIT_FOR_CONFIRMATION"
     if 28 <= dte <= 42:

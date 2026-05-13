@@ -1594,6 +1594,74 @@ def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float
         return None
 
 
+# ── Scan validation ───────────────────────────────────────────────────
+
+def _validate_swing_scan(scan: SwingTradeScan) -> list[str]:
+    """
+    Check scan invariants before caching.  Catches bugs that would
+    produce contradictory or nonsensical results in prod.
+    Returns a list of issue descriptions (empty = valid).
+    """
+    issues: list[str] = []
+    if scan.verdict in ("GO", "STRONG GO") and scan.entry_quality in ("BAD_ENTRY", "NO_CLEAN_ENTRY"):
+        issues.append(f"verdict={scan.verdict} contradicts entry_quality={scan.entry_quality}")
+    if scan.bull_score < 0 or scan.bear_score < 0:
+        issues.append(f"negative score: bull={scan.bull_score} bear={scan.bear_score}")
+    if not (0.0 <= scan.trade_quality_score <= 10.0):
+        issues.append(f"trade_quality_score {scan.trade_quality_score} outside [0, 10]")
+    if scan.bias not in ("long", "short", None):
+        issues.append(f"unexpected bias={scan.bias}")
+    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"):
+        issues.append(f"unexpected verdict={scan.verdict}")
+    return issues
+
+# ── Execution levels ──────────────────────────────────────────────────
+
+def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Optional[str]) -> dict[str, Optional[float]]:
+    """
+    Compute stop loss, pullback zone, breakout trigger, and targets.
+    All targets are anchored to the breakout level so price must confirm
+    above/below before targets are reachable.
+    """
+    mom = max(abs(mom_5d_pct) / 100.0, 0.025)
+    if bias == "long":
+        brk = last * 1.015
+        t1  = brk * (1.0 + mom * 0.5)
+        t2  = brk * (1.0 + mom)
+        pb_lo = ma20 * 0.98
+        pb_hi = ma20 * 1.015
+        stop  = ma20 * 0.96
+        assert t1 > brk, f"BUG: target1 {t1} must be above breakout {brk}"
+        assert t2 > t1,  f"BUG: target2 {t2} must be above target1 {t1}"
+        assert stop < brk, f"BUG: stop {stop} must be below breakout {brk}"
+        return {
+            "pullback_zone_lo": round(pb_lo, 2),
+            "pullback_zone_hi": round(pb_hi, 2),
+            "breakout": round(brk, 2),
+            "target1":  round(t1, 2),
+            "target2":  round(t2, 2),
+            "stop":     round(stop, 2),
+        }
+    if bias == "short":
+        brk = last * 0.985
+        t1  = brk * (1.0 - mom * 0.5)
+        t2  = brk * (1.0 - mom)
+        pb_lo = ma20 * 1.01
+        pb_hi = ma20 * 1.025
+        stop  = ma20 * 1.04
+        assert t1 < brk, f"BUG: target1 {t1} must be below breakout {brk}"
+        assert t2 < t1,  f"BUG: target2 {t2} must be below target1 {t1}"
+        assert stop > brk, f"BUG: stop {stop} must be above breakout {brk}"
+        return {
+            "pullback_zone_lo": round(pb_lo, 2),
+            "pullback_zone_hi": round(pb_hi, 2),
+            "breakout": round(brk, 2),
+            "target1":  round(t1, 2),
+            "target2":  round(t2, 2),
+            "stop":     round(stop, 2),
+        }
+    return {}
+
 # ── Main scanner ──────────────────────────────────────────────────────
 
 def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTradeScan:
@@ -1763,7 +1831,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     else:
         bear += 2.0
         body.append(f"MACD ({macd_val:+.3f}) below signal ({sig_val:+.3f}) — bearish crossover.")
-        if hist_val < 0 and hist_val < hist_prev:
+        if hist_val < hist_prev:
             bear += 0.5
             body.append("MACD histogram expanding negatively — bearish momentum accelerating.")
 
@@ -1985,6 +2053,14 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         gap_percent=None,
     )
 
+    # Reconcile: if decision layer forces no-trade (hard gate like option
+    # liquidity or imminent earnings), scoring-only "GO"/"STRONG GO" would
+    # contradict entry_quality="BAD_ENTRY" — clamp to "WATCH" so downstream
+    # consumers don't act on a conflicting GO signal.
+    if decision["entry_quality"] == "BAD_ENTRY" and decision["final_action"] == "NO_TRADE":
+        if verdict not in ("NO-GO", "WAIT"):
+            verdict = "WATCH"
+
     playbook_hint = compute_playbook_hint(
         bias=bias,
         verdict=verdict,
@@ -2002,6 +2078,11 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
                      "entry_decision", "contextual_alerts"):
         if guid_key in decision:
             metrics[guid_key] = decision[guid_key]
+
+    # Execution levels (backend-computed, replaces frontend computeExecLevels)
+    metrics["exec_levels"] = _compute_exec_levels(
+        last=last, ma20=ma20, mom_5d_pct=mom_pct, bias=bias,
+    )
 
     scan = SwingTradeScan(
         ticker=t,
@@ -2029,6 +2110,11 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         expected_holding_period=decision.get("expected_holding_period", ""),
         recommended_contract_duration=decision.get("recommended_contract_duration", ""),
     )
-    with _swing_scan_lock:
-        _swing_scan_cache[t] = (time.time(), scan)
+    # Validate scan invariants before caching
+    _issues = _validate_swing_scan(scan)
+    if _issues:
+        log.error("SwingTradeScan invariant violation for %s: %s", t, _issues)
+    else:
+        with _swing_scan_lock:
+            _swing_scan_cache[t] = (time.time(), scan)
     return scan

@@ -6,10 +6,13 @@ All Yahoo Finance data is routed through bar_cache — no direct yf calls.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 import math
 import threading
 import time
+
+log = logging.getLogger(__name__)
 
 from typing import Any, Dict, Literal, Optional, Tuple
 
@@ -1050,8 +1053,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         entry_guidance=entry_guidance,
         option_risk_context=option_risk_context,
     )
-    with _scan_lock:
-        _scan_cache[t] = (time.time(), scan)
+    # Validate scan invariants before caching
+    _issues: list[str] = []
+    if scan.bull_score < 0 or scan.bear_score < 0:
+        _issues.append(f"negative score: bull={scan.bull_score} bear={scan.bear_score}")
+    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"):
+        _issues.append(f"unexpected verdict={scan.verdict}")
+    if _issues:
+        log.error("DayTradeScan invariant violation for %s: %s", t, _issues)
+    elif daily_trend_context is None:
+        # Only cache when no external context was injected — a contextualized
+        # scan is specific to that context snapshot and must not overwrite
+        # the canonical (context-free) cache entry.
+        with _scan_lock:
+            _scan_cache[t] = (time.time(), scan)
     return scan
 
 
