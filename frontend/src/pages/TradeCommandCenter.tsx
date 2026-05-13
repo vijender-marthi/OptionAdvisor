@@ -447,6 +447,7 @@ export default function TradeCommandCenter() {
   const [risk, setRisk] = useState('')
   const [showAllRecommendations, setShowAllRecommendations] = useState(false)
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null)
+  const [expandedConflictId, setExpandedConflictId] = useState<string | null>(null)
   const [actionNotice, setActionNotice] = useState<{ tone: 'success' | 'warning' | 'info'; text: string } | null>(null)
   const [expandedEngines, setExpandedEngines] = useState<Set<string>>(new Set())
 
@@ -497,6 +498,21 @@ export default function TradeCommandCenter() {
   const charts = useMemo(() => (payload ? { ...buildFallbackCharts(payload), ...(payload.charts ?? {}) } : null), [payload])
 
   const actionable = useMemo(() => recommendations.filter(isActionable), [recommendations])
+
+  useEffect(() => {
+    if (!env) return
+    const firstEngine = engines[0]
+    if (firstEngine) {
+      setExpandedEngines(prev => {
+        const next = new Set(prev)
+        const key = String(firstEngine.engine_type || '').toLowerCase()
+        if (key) next.add(key)
+        return next
+      })
+    }
+    if (actionable.length > 0 && !expandedOpportunityId) setExpandedOpportunityId(actionable[0].id)
+    if (conflicts.length > 0 && !expandedConflictId) setExpandedConflictId(conflicts[0].id)
+  }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const avoids = useMemo(() => recommendations.filter(isAvoid).slice(0, 4), [recommendations])
   const confidenceScore = summaryNumber(market.confidence_score) || 62
 
@@ -1004,10 +1020,10 @@ export default function TradeCommandCenter() {
               ) : (
                 conflicts.map(conflict => {
                   const conflictKey = conflict.id
-                  const conflictExpanded = expandedOpportunityId === conflictKey
+                  const conflictExpanded = expandedConflictId === conflictKey
                   return (
                     <div key={conflictKey}>
-                      <button type="button" onClick={() => setExpandedOpportunityId(conflictExpanded ? null : conflictKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <button type="button" onClick={() => setExpandedConflictId(conflictExpanded ? null : conflictKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <span className="font-mono text-sm font-bold text-slate-900 dark:text-white shrink-0">{conflict.ticker}</span>
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
                           {conflict.state === 'CONFLICTING_SIGNALS' ? 'SIGNAL CONFLICT' : conflict.state.replace(/_/g, ' ')}
