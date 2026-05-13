@@ -889,6 +889,51 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
+        {/* ═══ Execution Map Table ═══ */}
+        {(execLevels.pullbackZone || execLevels.breakoutTrigger || execLevels.riskBelow || execLevels.firstTarget || execLevels.stretchTarget) && (
+          <div className="space-y-2">
+            <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full min-w-[500px] border-collapse text-center">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TRIGGER ZONE</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
+                </tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td className="px-1 py-2 text-sm font-bold text-red-400">{execLevels.riskBelow || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-emerald-400">{execLevels.pullbackZone || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-yellow-400">{execLevels.breakoutTrigger || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-violet-400">{execLevels.firstTarget || '—'}</td>
+                <td className="px-1 py-2 text-sm font-bold text-orange-400">{execLevels.stretchTarget || '—'}</td>
+              </tr>
+              <tr>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover if above' : 'get out'}</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover half' : 'sell &frac12;'}</td>
+                <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover rest' : 'sell rest'}</td>
+              </tr>
+            </tbody>
+          </table>
+            </div>
+            {result.bias === 'short' && (
+              <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                  Short bias detected: the table above reflects bearish positioning. STOP LOSS is the level to cover if price breaks upward. TRIGGER ZONE is the pullback area to enter the put.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           {onRequestEnterActiveTrade ? (
             <button type="button" onClick={onRequestEnterActiveTrade} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${execTone === 'green' ? actionButtonClass(execTone) : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
@@ -1040,39 +1085,6 @@ export default function SwingTradeEnginePanel({
           <ExecMapRow label="First Target" value={execLevels.firstTarget || ''} tone="text-semantic-bullish" />
           <ExecMapRow label="Stretch Target" value={execLevels.stretchTarget || ''} tone="text-semantic-warning" />
           <ExecMapRow label="DTE Window" value={result.suggested_expiry_window && result.suggested_expiry_window !== 'No trade' ? result.suggested_expiry_window : ''} />
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] border-collapse text-center">
-            <thead>
-              <tr className="border-b border-gray-800">
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BUY HERE</th>
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
-                <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="px-1 py-2 text-sm font-bold text-red-400">{execLevels.riskBelow || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-emerald-400">{execLevels.pullbackZone || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-yellow-400">{execLevels.breakoutTrigger || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-violet-400">{execLevels.firstTarget || '—'}</td>
-                <td className="px-1 py-2 text-sm font-bold text-orange-400">{execLevels.stretchTarget || '—'}</td>
-              </tr>
-              <tr>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">get out</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">sell &frac12;</td>
-                <td className="px-1 pb-2 text-[10px] text-gray-600">sell rest</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </div>
 

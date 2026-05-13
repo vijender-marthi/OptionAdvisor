@@ -58,11 +58,12 @@ export default function SwingTradePage() {
   }, [searchParams])
 
   useEffect(() => {
-    if (autoRunRef.current && ticker.trim()) {
-      autoRunRef.current = false
-      runScan()
-    }
-  }, [ticker, runScan])
+    if (!autoRunRef.current || !ticker.trim()) return
+    const urlT = searchParams.get('ticker')?.trim().toUpperCase()
+    if (urlT && urlT !== ticker.trim().toUpperCase()) return
+    autoRunRef.current = false
+    runScan()
+  }, [ticker, runScan, searchParams])
 
   useEffect(() => {
     if (!notice) return

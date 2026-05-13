@@ -718,40 +718,44 @@ export default function DayTradeEnginePanel({
 
         {/* ═══ Execution Map Table ═══ */}
         {(eg?.scalp_target != null || eg?.risk_below != null || eg?.pullback_zone || eg?.breakout_level || eg?.vwap) && (
-          <div className="rounded-xl border border-gray-800 divide-y divide-gray-800">
-            <div className="grid grid-cols-2 divide-x divide-gray-800">
-              <div className="px-3 py-2 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Entry zone</div>
-                <div className="text-sm font-bold text-emerald-400">{eg?.pullback_zone || '—'}</div>
-                <div className="text-[10px] text-gray-600">{result.bias === 'short' ? 'Buy PUT now or on small bounce' : 'Buy CALL now or on small dip'}</div>
+          <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full min-w-[500px] border-collapse text-center">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TRIGGER ZONE</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
+                  <th className="px-1 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="px-1 py-2 text-sm font-bold text-red-400">{eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}</td>
+                  <td className="px-1 py-2 text-sm font-bold text-emerald-400">{eg?.pullback_zone || '—'}</td>
+                  <td className="px-1 py-2 text-sm font-bold text-gray-200">{lastPrice != null ? `$${lastPrice.toFixed(2)}` : '—'}</td>
+                  <td className="px-1 py-2 text-sm font-bold text-yellow-400">{eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : '—'}</td>
+                  <td className="px-1 py-2 text-sm font-bold text-violet-400">{eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : '—'}</td>
+                  <td className="px-1 py-2 text-sm font-bold text-orange-400">{eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : '—'}</td>
+                </tr>
+                <tr>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover if above' : 'get out'}</td>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">pullback</td>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">current</td>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">confirmed</td>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover half' : 'sell &frac12;'}</td>
+                  <td className="px-1 pb-2 text-[10px] text-gray-600">{result.bias === 'short' ? 'cover rest' : 'sell rest'}</td>
+                </tr>
+              </tbody>
+            </table>
+            {result.bias === 'short' && (
+              <div className="rounded-xl border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                  Short bias detected: the table above reflects bearish positioning. STOP LOSS is the level to cover if price breaks upward. TRIGGER ZONE is the pullback area to enter the put.
+                </p>
               </div>
-              <div className="px-3 py-2 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Better entry</div>
-                <div className="text-sm font-bold text-yellow-400">
-                  {result.bias === 'short'
-                    ? (eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : '—')
-                    : (eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : '—')}
-                </div>
-                <div className="text-[10px] text-gray-600">{result.bias === 'short' ? 'If it bounces up to ORL, then rejects' : 'If it dips to ORH, then holds'}</div>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 divide-x divide-gray-800">
-              <div className="px-3 py-2 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">First target</div>
-                <div className="text-sm font-bold text-violet-400">{eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : '—'}</div>
-                <div className="text-[10px] text-gray-600">{result.bias === 'short' ? 'Cover half' : 'Sell half'}</div>
-              </div>
-              <div className="px-3 py-2 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Scalp target</div>
-                <div className="text-sm font-bold text-orange-400">{eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : '—'}</div>
-                <div className="text-[10px] text-gray-600">{result.bias === 'short' ? 'Cover rest' : 'Sell rest'}</div>
-              </div>
-              <div className="px-3 py-2 space-y-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Stop loss</div>
-                <div className="text-sm font-bold text-red-400">{eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}</div>
-                <div className="text-[10px] text-gray-600">{result.bias === 'short' ? 'Exit if breaks back above' : 'Exit if breaks back below'}</div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
