@@ -2768,7 +2768,7 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
                     "alert_type": "REGULAR_TRADE",
                     "engine_type": "REGULAR",
                     "recommended_action": f"Open Strategy Finder to review the {rec.strategy} setup.",
-                    "reason": rec.reason or "Regular trade alert from scanner.",
+                    "reason": rec.rationale or "Regular trade alert from scanner.",
                 },
                 alert_id=alert_id,
             )

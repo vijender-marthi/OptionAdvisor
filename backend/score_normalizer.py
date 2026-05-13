@@ -144,7 +144,9 @@ def _execution_bias_regular(rec: Optional[dict]) -> str:
         if ev > 0.0:
             return "ENTER_NOW"
         return "WAIT_FOR_CONFIRMATION"
-    # Outside 3-6w window — do not enter
+    # Outside 3-6w window
+    if dte < 21:
+        return "WAIT_FOR_CONFIRMATION"
     return "NO_CLEAN_ENTRY"
 
 
