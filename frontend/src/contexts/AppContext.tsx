@@ -153,6 +153,8 @@ interface AppContextValue {
 
   /** Server-backed watchlist/portfolio finished loading for the signed-in user. */
   userDataLoaded: boolean
+  helpOpen: boolean
+  setHelpOpen: (open: boolean) => void
   /** ISO timestamp when user accepted the advisory disclaimer in the DB, if any. */
   advisoryAcceptedAt: string | null
   advisoryTermsVersion: string | null
@@ -354,6 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [location.pathname, location.search])
 
   const [user, setUser]             = useState<User | null>(() => migrateStoredUser(load<User | null>('oa_user', null)))
+  const [helpOpen, setHelpOpen] = useState(false)
   const [watchlist, setWatchlist]   = useState<WatchlistItem[]>([])
   const [watchlistMax, setWatchlistMax] = useState(15)
   const [watchlistNotice, setWatchlistNotice] = useState<string | null>(null)
@@ -1420,6 +1423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       page, navigate, positionsTab, navigatePositionsTab, navigateToTickerAdvisorFresh,
       pendingTicker, pendingAnalysisOptions, requestAnalysis, clearPendingTicker,
       user, loginWithPassword, registerWithPassword, loginWithGoogleCredential, logout, canAccessPage,
+      helpOpen, setHelpOpen,
       userDataLoaded, advisoryAcceptedAt, advisoryTermsVersion, needsAdvisoryAcknowledgement, acknowledgeAdvisoryDisclaimer,
       watchlist, watchlistMax, addToWatchlist, removeFromWatchlist, removeFromAllWatchlists, updateWatchlistNotes, isWatched, watchlistNotice, clearWatchlistNotice,
       dayTradeWatchlist, setDayTradeWatchlist,

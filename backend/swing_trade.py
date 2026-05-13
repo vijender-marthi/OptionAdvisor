@@ -1712,13 +1712,31 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         bear += 2.0
         body.append(f"Price below 20-day MA ({dist_ma20_pct:+.2f}% below ${ma20:.2f}).")
 
-    # 2 · MA trend structure (±2 pts)
-    if ma20 > ma50:
-        bull += 2.0
-        body.append(f"MA20 > MA50 (${ma20:.2f} > ${ma50:.2f}) — uptrend structure.")
+    # 2 · MA trend structure (proportional to spread, detect convergence)
+    ma_spread_pct = (ma20 - ma50) / ma50 * 100
+    ma20_prev = float(ma20_series.iloc[-2]) if len(ma20_series) > 1 else ma20
+    ma50_prev = float(ma50_series.iloc[-2]) if len(ma50_series) > 1 else ma50
+    prev_spread = (ma20_prev - ma50_prev) / ma50_prev * 100
+    if ma_spread_pct > 0:
+        score = min(3.0, max(0.5, ma_spread_pct * 0.15))
+        converging = prev_spread > ma_spread_pct * 1.05
+        if converging:
+            score *= 0.5
+            body.append(f"MA20 > MA50 but converging (gap {ma_spread_pct:.1f}% from {prev_spread:.1f}%) — trend fading.")
+        else:
+            body.append(f"MA20 > MA50 by {ma_spread_pct:.1f}% — uptrend structure intact.")
+        bull += score
+    elif ma_spread_pct < 0:
+        score = min(3.0, max(0.5, abs(ma_spread_pct) * 0.15))
+        converging = prev_spread < ma_spread_pct * 1.05
+        if converging:
+            score *= 0.5
+            body.append(f"MA20 < MA50 but converging (gap {abs(ma_spread_pct):.1f}% from {abs(prev_spread):.1f}%) — base forming.")
+        else:
+            body.append(f"MA20 < MA50 by {abs(ma_spread_pct):.1f}% — downtrend structure intact.")
+        bear += score
     else:
-        bear += 2.0
-        body.append(f"MA20 < MA50 (${ma20:.2f} < ${ma50:.2f}) — downtrend structure.")
+        body.append(f"MA20 ≈ MA50 (both at ${ma20:.2f}) — flat structure; no trend alignment.")
 
     # 3 · RSI (±1.5 pts)
     rsi_note = f"RSI(14) = {rsi_val:.1f}"
@@ -1789,7 +1807,18 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
             bull = max(0.0, bull)
             bear = max(0.0, bear)
 
-    # ── Verdict logic (unchanged from v1) ─────────────────────────────
+    # ── Extension checks (aligned with decision layer) ─────────────────
+    if bull > bear:
+        _is_very_extended = mom_pct > EXT_5D_HARD
+        _is_extended = not _is_very_extended and (mom_pct > EXT_5D_WARN or dist_ma20_pct > EXT_MA20_WARN or rsi_val > RSI_OB_WARN)
+    elif bear > bull:
+        _is_very_extended = mom_pct < -EXT_5D_HARD
+        _is_extended = not _is_very_extended and (mom_pct < -EXT_5D_WARN or dist_ma20_pct < -EXT_MA20_WARN or rsi_val < RSI_OS_WARN)
+    else:
+        _is_very_extended = False
+        _is_extended = False
+
+    # ── Verdict logic (extension-aware) ─────────────────────────────────
     diff       = bull - bear
     bias: Bias = None
     verdict: Verdict = "WAIT"
@@ -1808,10 +1837,24 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     elif long_edge:
         bias = "long"
         rsi_extended = rsi_val > RSI_OVERBOUGHT
-        if rsi_extended:
+        if rsi_extended or _is_extended or _is_very_extended:
             verdict = "WATCH"
-            prefix  = [
-                f"WATCH — setup is technically bullish but RSI {rsi_val:.0f} is extended; "
+            details = []
+            if rsi_extended:
+                details.append(f"RSI {rsi_val:.0f} is extended")
+            if _is_very_extended:
+                details.append(f"{mom_pct:+.1f}% in 5d — very extended, avoid chase")
+            elif _is_extended:
+                parts = []
+                if mom_pct > EXT_5D_WARN:
+                    parts.append(f"5d momentum {mom_pct:+.1f}%")
+                if dist_ma20_pct > EXT_MA20_WARN:
+                    parts.append(f"price {dist_ma20_pct:.1f}% above MA20")
+                if rsi_val > RSI_OB_WARN and not rsi_extended:
+                    parts.append(f"RSI {rsi_val:.0f}")
+                details.append("; ".join(parts) + " — extended")
+            prefix = [
+                f"WATCH — setup is technically bullish but {'; '.join(details)}; "
                 "wait for a pullback / consolidation before entry.",
                 "Long-bias context (stock long, long calls, short puts).",
             ]
@@ -1835,10 +1878,24 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     elif short_edge:
         bias = "short"
         rsi_extended = rsi_val < RSI_OVERSOLD
-        if rsi_extended:
+        if rsi_extended or _is_extended or _is_very_extended:
             verdict = "WATCH"
-            prefix  = [
-                f"WATCH — setup is technically bearish but RSI {rsi_val:.0f} is oversold; "
+            details = []
+            if rsi_extended:
+                details.append(f"RSI {rsi_val:.0f} is oversold")
+            if _is_very_extended:
+                details.append(f"{mom_pct:+.1f}% in 5d — very extended, avoid chase")
+            elif _is_extended:
+                parts = []
+                if mom_pct < -EXT_5D_WARN:
+                    parts.append(f"5d momentum {mom_pct:+.1f}%")
+                if dist_ma20_pct < -EXT_MA20_WARN:
+                    parts.append(f"price {dist_ma20_pct:.1f}% below MA20")
+                if rsi_val < RSI_OS_WARN and not rsi_extended:
+                    parts.append(f"RSI {rsi_val:.0f}")
+                details.append("; ".join(parts) + " — extended")
+            prefix = [
+                f"WATCH — setup is technically bearish but {'; '.join(details)}; "
                 "short squeeze risk elevated — wait for a bounce to fail.",
                 "Short-bias context (stock short, long puts, short calls).",
             ]

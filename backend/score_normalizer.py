@@ -133,15 +133,18 @@ def _execution_bias_regular(rec: Optional[dict]) -> str:
 
     if not passes_liq or not passes_rr:
         return "AVOID_CHASE"
-    # 3-6 week window (21-42 DTE): positive EV + passes structure → enter
-    if ev > 0.0 and 21 <= dte <= 42:
-        return "ENTER_NOW"
-    # DTE in range but zero/negative EV — wait for better setup
-    if 21 <= dte <= 42:
+    # 3-6 week window (21-42 DTE): tiered entry by time-horizon
+    if 21 <= dte <= 27:
+        # 3-week: theta accelerating, gamma elevated — need stronger EV to enter
+        if ev > 0.5:
+            return "ENTER_NOW"
+        return "WAIT_FOR_CONFIRMATION"
+    if 28 <= dte <= 42:
+        # 4-6 week: sweet spot for credit/debit spreads
+        if ev > 0.0:
+            return "ENTER_NOW"
         return "WAIT_FOR_CONFIRMATION"
     # Outside 3-6w window — do not enter
-    if dte < 21:
-        return "WAIT_FOR_CONFIRMATION"
     return "NO_CLEAN_ENTRY"
 
 

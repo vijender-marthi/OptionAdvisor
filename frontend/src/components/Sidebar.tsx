@@ -81,7 +81,7 @@ const MOBILE_BOTTOM_NAV_SHELL_TABLET =
   'mobile-bottom-nav-shell fixed inset-x-0 bottom-0 z-40 pointer-events-none pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 px-8 sm:px-10 hidden sm:block xl:hidden'
 
 export default function Sidebar() {
-  const { page, navigate, user, logout, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage } = useApp()
+  const { page, navigate, user, logout, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage, setHelpOpen } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
 
@@ -104,7 +104,7 @@ export default function Sidebar() {
       label: 'Analyze',
       items: [
         { id: 'ticker', label: 'Strategy Finder', icon: <Search size={18} /> },
-        { id: 'trade-signals', label: 'Best Trades', icon: <Radar size={18} /> },
+        { id: 'trade-signals', label: 'Strategy Trades', icon: <Radar size={18} /> },
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
       ],
@@ -142,11 +142,14 @@ export default function Sidebar() {
     { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'trade-signals', label: 'Best Trades', icon: <Radar size={18} /> },
+    { id: 'trade-signals', label: 'Strategy Trades', icon: <Radar size={18} /> },
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+    { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
+    { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
     { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+    { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
   ]
 
@@ -188,7 +191,11 @@ export default function Sidebar() {
   }, [dockBottomMobileNav])
 
   const handleMobileNavigate = (target: Page) => {
-    navigate(target)
+    if (target === 'help') {
+      setHelpOpen(true)
+    } else {
+      navigate(target)
+    }
     setPhoneMenuOpen(false)
   }
 
@@ -268,7 +275,7 @@ export default function Sidebar() {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => navigate(item.id)}
+                    onClick={() => item.id === 'help' ? setHelpOpen(true) : navigate(item.id)}
                     title={item.label}
                     className={`relative isolate w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all touch-manipulation
                       ${active

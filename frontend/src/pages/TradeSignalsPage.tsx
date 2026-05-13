@@ -202,7 +202,7 @@ function RecRow({
         )}
         <div className="ml-auto flex items-center gap-1.5">
           <span className="text-[10px] font-mono text-gray-500">{(rec.prob_of_profit * 100).toFixed(0)}% PoP</span>
-          <span className="text-[10px] font-mono text-gray-600">{rec.scores.total_score}/100</span>
+          <span className="text-[10px] font-mono text-gray-600" title="Signal-aligned score (0–100) from the engine; verdict layered on via Pre-Trade Checklist">{rec.scores.total_score}<span className="text-gray-700">/100</span></span>
           <KellyBadge halfKelly={rec.half_kelly_fraction ?? 0} />
           {canFinder && (
             <button type="button" onClick={() => openInFinder(ticker, weeksOut, rec)}

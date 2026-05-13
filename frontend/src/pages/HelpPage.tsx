@@ -21,6 +21,7 @@ const NAV_SECTIONS = [
   { id: 'execution-states', label: 'Execution States',          icon: Target },
   { id: 'day-trade',        label: 'Day Trade Engine',          icon: Zap },
   { id: 'swing-trade',      label: 'Swing Trade Engine',        icon: TrendingUp },
+  { id: 'vix-reference',    label: 'VIX Reference',             icon: Activity },
   { id: 'regular-engine',   label: 'Regular Engine',            icon: SlidersHorizontal },
   { id: 'options-funda',    label: 'Options Fundamentals',      icon: BookOpen },
   { id: 'strategy-glossary',label: 'Strategy Glossary',         icon: BookOpen },
@@ -466,7 +467,7 @@ function strikeLine(x: number, h: number, color: string) {
 
 // ─── Page ───────────────────────────────────────────────────────────
 
-export default function HelpPage() {
+export default function HelpPage({ embedded }: { embedded?: boolean }) {
   const { user } = useApp()
   const isAdmin = normalizeUserRole(user?.role) === 'admin'
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -476,6 +477,7 @@ export default function HelpPage() {
   const tickingRef = useRef(false)
 
   useEffect(() => {
+    if (embedded) return
     const handleScroll = () => {
       if (tickingRef.current) return
       tickingRef.current = true
@@ -493,7 +495,7 @@ export default function HelpPage() {
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [embedded])
 
   const filteredNav = useMemo(() => {
     if (!searchQuery) return NAV_SECTIONS
@@ -504,65 +506,110 @@ export default function HelpPage() {
   // Preserve the role check (keep ai-radar section hidden for finance accounts)
   const showAiRadar = true // Help is open-docs
 
-  return (
-    <div className="help-page min-h-screen">
-      {/* Mobile sidebar toggle */}
-      <button
-        type="button"
-        onClick={() => setSidebarOpen(v => !v)}
-        className="fixed bottom-6 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg hover:bg-violet-500 transition-colors lg:hidden"
-      >
-        {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-      </button>
+  const sidebarContent = (
+    <div className="p-4 border-b border-gray-800">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
+          <HelpCircle size={15} className="text-white" />
+        </div>
+        <span className="text-sm font-bold text-white">OptionAdvisor Docs</span>
+      </div>
+      <div className="relative">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600" />
+        <input
+          type="text"
+          placeholder="Search docs..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-8 pr-3 py-1.5 text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50"
+        />
+      </div>
+    </div>
+  )
 
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+  const sidebarNav = (
+    <nav className="p-3 space-y-1">
+      {filteredNav.map(s => (
+        <SectionLink
+          key={s.id}
+          id={s.id}
+          label={s.label}
+          icon={s.icon}
+          active={activeSection === s.id}
+        />
+      ))}
+    </nav>
+  )
+
+  const sidebarFooter = (
+    <div className="p-3 border-t border-gray-800 mt-2">
+      <div className="text-[10px] text-gray-600 leading-relaxed">
+        OptionAdvisor v2.0<br />
+        Institutional documentation
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={`help-page ${embedded ? 'flex' : 'min-h-screen'}`}>
+      {!embedded && (
+        <>
+          {/* Mobile sidebar toggle */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(v => !v)}
+            className="fixed bottom-6 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg hover:bg-violet-500 transition-colors lg:hidden"
+          >
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+
+          {/* Mobile overlay */}
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+          )}
+
+          {/* ── Sidebar ─────────────────────────────────────────────── */}
+          <aside className={`fixed top-0 left-0 z-50 h-full w-60 bg-gray-950 border-r border-gray-800 overflow-y-auto transition-transform duration-200 lg:translate-x-0 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}>
+            {sidebarContent}
+            {sidebarNav}
+            {sidebarFooter}
+          </aside>
+        </>
       )}
 
-      {/* ── Sidebar ─────────────────────────────────────────────── */}
-      <aside className={`fixed top-0 left-0 z-50 h-full w-60 bg-gray-950 border-r border-gray-800 overflow-y-auto transition-transform duration-200 lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
-              <HelpCircle size={15} className="text-white" />
-            </div>
-            <span className="text-sm font-bold text-white">OptionAdvisor Docs</span>
-          </div>
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600" />
-            <input
-              type="text"
-              placeholder="Search docs..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-8 pr-3 py-1.5 text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50"
-            />
-          </div>
-        </div>
-        <nav className="p-3 space-y-1">
-          {filteredNav.map(s => (
-            <SectionLink
-              key={s.id}
-              id={s.id}
-              label={s.label}
-              icon={s.icon}
-              active={activeSection === s.id}
-            />
-          ))}
-        </nav>
-        <div className="p-3 border-t border-gray-800 mt-2">
-          <div className="text-[10px] text-gray-600 leading-relaxed">
-            OptionAdvisor v2.0<br />
-            Institutional documentation
-          </div>
-        </div>
-      </aside>
+      {embedded && (
+        <>
+          {/* Embedded sidebar: sticky, not fixed */}
+          <aside className="hidden lg:block sticky top-0 w-60 shrink-0 h-[calc(100svh-8rem)] overflow-y-auto bg-gray-950/80 border-r border-gray-800 rounded-l-2xl">
+            {sidebarContent}
+            {sidebarNav}
+            {sidebarFooter}
+          </aside>
+          {/* Mobile sidebar toggle for embedded */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(v => !v)}
+            className="lg:hidden fixed bottom-6 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg hover:bg-violet-500 transition-colors"
+          >
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+          )}
+          <aside className={`lg:hidden fixed top-0 left-0 z-50 h-full w-60 bg-gray-950 border-r border-gray-800 overflow-y-auto transition-transform duration-200 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}>
+            {sidebarContent}
+            {sidebarNav}
+            {sidebarFooter}
+          </aside>
+        </>
+      )}
 
       {/* ── Main content ────────────────────────────────────────── */}
-      <div ref={mainRef} className="lg:ml-60 min-h-screen">
+      <div ref={mainRef} className={embedded ? 'flex-1 min-w-0' : 'lg:ml-60 min-h-screen'}>
         <div className="max-w-4xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-8">
 
           {/* ═══════════════════════════════════════════════════════
@@ -802,53 +849,216 @@ export default function HelpPage() {
               Day Trade Engine
             </h2>
             <div className="space-y-3">
-              <DocCard icon={<Activity size={15} />} title="Core Concepts">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>The Day Trade engine analyzes intraday momentum using VWAP (Volume-Weighted Average Price), opening range breakouts, and session-level confirmation. Designed for 0–1 day holds with active management.</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: 'VWAP', desc: 'Volume-Weighted Average Price. Acts as an intraday support/resistance level. Price above VWAP = bullish bias for the session; below = bearish.' },
-                      { label: 'Opening Range High (ORH)', desc: 'The high of the first N minutes of trading. A breakout above ORH with volume signals intraday momentum.' },
-                      { label: 'Opening Range Low (ORL)', desc: 'The low of the first N minutes. A breakdown below ORL signals intraday weakness.' },
-                      { label: 'Breakout Confirmation', desc: 'Price must hold above ORH for a defined period before the engine upgrades the entry signal. Prevents false breakouts.' },
-                      { label: 'Controlled Pullback', desc: 'A retracement to VWAP or ORH that holds and shows buying pressure. Often the best entry for momentum continuation.' },
-                      { label: 'Scalp Target', desc: 'The initial profit objective, typically 1.5–2× the risk amount for intraday positions.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </DocCard>
 
-              <DocCard icon={<Target size={15} />} title="Verdict Tiers">
-                <div className="space-y-2 text-xs text-gray-400">
-                  {[
-                    { verdict: 'STRONG BUY', tone: 'text-emerald-400', dot: 'green', desc: 'Multiple confirmations align: VWAP hold, OR breakout, volume confirmation, and sector/market tailwind.' },
-                    { verdict: 'BUY', tone: 'text-emerald-400', dot: 'green', desc: 'Primary signals are positive but may lack full confirmation. Good risk/reward setup.' },
-                    { verdict: 'HOLD', tone: 'text-amber-400', dot: 'amber', desc: 'No decisive signal. Wait for clearer direction or better entry.' },
-                    { verdict: 'AVOID', tone: 'text-rose-400', dot: 'red', desc: 'Risk factors dominate. Poor liquidity, failed technical levels, or adverse market conditions.' },
-                  ].map(v => (
-                    <div key={v.verdict} className="flex items-start gap-2">
-                      <BadgeDot tone={v.dot as 'green' | 'amber' | 'red'} />
-                      <div><span className={`font-semibold ${v.tone}`}>{v.verdict}</span><span className="text-gray-500"> — {v.desc}</span></div>
+              <DocCard icon={<Zap size={15} />} title="Overview & Verdict Scale">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Intraday scoring engine using 1-minute RTH bars (9:30–16:00 ET). Produces a <strong className="text-gray-200">bull score</strong> and
+                  <strong className="text-gray-200"> bear score</strong>. Net edge + margin determines the verdict.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'NO-GO'].map((v, i, a) => (
+                    <div key={v} className="flex items-center gap-2">
+                      <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 font-mono font-bold text-gray-200">{v}</span>
+                      {i < a.length - 1 && <ChevronRight size={11} className="text-gray-700" />}
                     </div>
                   ))}
                 </div>
               </DocCard>
 
-              <DocCard icon={<Clock size={15} />} title="Execution Timing">
-                <div className="space-y-1.5 text-xs text-gray-400">
-                  <p className="text-amber-200/90">Waiting on: VWAP hold · breakout confirmation · controlled pullback hold</p>
-                  <ul className="space-y-1 text-gray-500">
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">VWAP hold:</strong> Price establishes support at VWAP after a period above it. Indicates institutional buying interest.</span></li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Breakout confirmation:</strong> Price breaks above ORH and holds for N minutes with rising volume. Filters fakeouts.</span></li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Controlled pullback:</strong> Price pulls back to VWAP or breakout level without breaking it, then resumes the move. Indicates healthy price action.</span></li>
-                  </ul>
+              <DocCard icon={<Activity size={15} />} title="Step 1: Data Fetch">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <div className="space-y-1">
+                    <p><strong className="text-gray-300">Source:</strong> Yahoo Finance 1-minute bars, last 5 days, auto-adjusted</p>
+                    <p><strong className="text-gray-300">Minimum bars:</strong> 25 (MIN_BARS)</p>
+                    <p><strong className="text-gray-300">Session:</strong> Most recent calendar day with RTH bars</p>
+                  </div>
                 </div>
               </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="Step 2: Indicators Computed">
+                <div className="space-y-4 text-xs text-gray-400">
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2a. VWAP</div>
+                    <p>Cumulative volume-weighted average price from session open:</p>
+                    <ul className="space-y-0.5 pl-3 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>TP = (High + Low + Close) / 3</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>VWAP[bar i] = Σ(TP × Volume)[0..i] / Σ(Volume)[0..i]</span></li>
+                    </ul>
+                    <p className="text-gray-500">Zero-volume bars contribute 0. If all volume is zero → VWAP signals suppressed.</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2b. VWAP Slope</div>
+                    <p>Linear regression over last 15 bars of the VWAP series:</p>
+                    <FormulaBlock formula="x = [0, 1, 2, ..., 14]\nslope = polyfit(x, VWAP[-15:], degree=1)[0]\nvwap_slope_pct = slope / VWAP_last × 100" />
+                    <p className="text-gray-500">Thresholds: <span className="font-mono text-gray-300">&gt;+0.001%/bar</span> = rising, <span className="font-mono text-gray-300">&lt;-0.001%/bar</span> = declining, else flat.</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2c. Opening Range (OR)</div>
+                    <p>OR window: first 15 bars (OR_MINUTES) of the session</p>
+                    <ul className="space-y-0.5 pl-3 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR High = max(High) over bars 0..14</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR Low = min(Low) over bars 0..14</span></li>
+                    </ul>
+                    <p className="text-gray-400 mt-1"><strong className="text-gray-300">or_state:</strong> "above" if last &gt; OR High, "below" if last &lt; OR Low, "inside" otherwise.</p>
+                    <p className="text-gray-400"><strong className="text-gray-300">or_historical:</strong> tracks whether price <em>ever</em> broke the OR during the session (flag: broke out then retraced).</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2d. Momentum (30-bar window)</div>
+                    <p><span className="font-mono text-gray-300">mom_bars = min(30, len(session) - 1)</span></p>
+                    <p><span className="font-mono text-gray-300">momentum_pct = (last / close[-mom_bars] − 1) × 100</span></p>
+                    <p className="text-gray-500">At 1 bar/minute this covers the last ~30 minutes of price movement.</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2e. Volume Spike</div>
+                    <p>Baseline: mean volume of mid-session bars (after OR, excluding final bar):</p>
+                    <ul className="space-y-0.5 pl-3 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>avg_vol = mean(Volume[15 : -1])</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>vol_spike = (last_bar_volume &ge; 1.55 × avg_vol)</span></li>
+                    </ul>
+                  </div>
+
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Sigma size={15} />} title="Step 3: Scoring">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                        <th className="px-2 py-1.5 font-semibold">#</th>
+                        <th className="px-2 py-1.5 font-semibold">Signal</th>
+                        <th className="px-2 py-1.5 font-semibold">Condition</th>
+                        <th className="px-2 py-1.5 font-semibold">Points</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['1', 'VWAP position', 'price > VWAP', 'bull += 2.0'],
+                        ['1a', 'VWAP slope up', 'rising (&gt;+0.001%/bar)', 'bull += 0.5'],
+                        ['1b', 'VWAP slope down', 'declining (&lt;-0.001%/bar)', 'bull −= 0.5'],
+                        ['2', 'OR breakout (confirmed)', 'or_state=above + vol_spike', 'bull += 3.0'],
+                        ['2', 'OR breakout (unconfirmed)', 'or_state=above, no spike', 'bull += 1.0'],
+                        ['3', 'Momentum', 'mom_pct &gt; +0.12%', 'bull += 1.5'],
+                        ['4', 'Volume spike', 'vol &gt; 1.55× avg', 'bull += 1.5'],
+                        ['5', 'RS vs QQQ', 'outperforms QQQ &ge;+0.5%', 'bull += 1.0'],
+                        ['5a', 'RS squeeze guard', 'RS&ge;+0.5% but SPY+QQQ down &ge;0.5%', 'bull += 0.5'],
+                        ['6', 'SPY session', 'SPY &ge; +0.25%', 'bull += 0.5'],
+                        ['7', 'VIX caution', 'VIX &ge; 30.0', 'bull −= 0.5 (floor 0)'],
+                        ['8', 'Daily trend aligns', 'swing GO aligns with bias', 'bull += 0.5'],
+                        ['8a', 'Daily trend conflict', 'swing GO opposes bias', 'bull −= 0.5'],
+                      ].map(r => (
+                        <tr key={r[0] + r[1]} className="border-b border-gray-800/40 text-[11px]">
+                          <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
+                          <td className="px-2 py-1.5 font-semibold text-gray-200">{r[1]}</td>
+                          <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                          <td className="px-2 py-1.5 font-mono text-emerald-300">{r[3]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors: same rules flipped (price below VWAP, below OR Low, negative momentum, etc.)</p>
+              </DocCard>
+
+              <DocCard icon={<Gauge size={15} />} title="Step 4: Verdict Logic">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'GO_THRESHOLD', value: '4.5' },
+                      { label: 'MARGIN_GO', value: '2.75' },
+                      { label: 'STRONG_BULL', value: '7.0' },
+                      { label: 'STRONG_DIFF', value: '4.0' },
+                      { label: 'VIX_NO_GO', value: '40.0' },
+                      { label: 'VIX_CAUTION', value: '30.0' },
+                    ].map(t => (
+                      <div key={t.label} className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
+                        <code className="text-[10px] font-mono text-violet-300">{t.label}</code>
+                        <span className="text-[11px] font-bold text-gray-200 font-mono">{t.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-gray-400"><strong className="text-gray-200">soft_edge</strong> = max(bull, bear) &ge; 4.5 AND |bull − bear| &ge; 2.75</p>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Vetoes (checked first):</p>
+                    <ul className="space-y-0.5 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX &ge; 40 → NO-GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />bull&gt;bear + SPY &le; −1.2% → NO-GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />bear&gt;bull + SPY &ge; +1.2% → NO-GO</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">If soft_edge + long bias:</p>
+                    <ul className="space-y-0.5 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />vol_spike + bull &ge; 7.0 + diff &ge; 4.0 → STRONG GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />vol_spike + below STRONG threshold → GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />no vol_spike → WATCH</li>
+                    </ul>
+                    <p className="text-gray-500 mt-1">If not soft_edge → WAIT</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<FlaskConical size={15} />} title="Step 5: Full Worked Example (NVDA, Bullish Day)">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">Inputs</p>
+                    <p className="text-gray-500 font-mono">Last: $152.40 | VWAP: $150.80 (rising +0.0213%/bar) | OR High: $151.20 | OR Low: $149.80</p>
+                    <p className="text-gray-500 font-mono">or_state: "above" | vol_spike: True (2.02×) | momentum_pct: +1.465%</p>
+                    <p className="text-gray-500 font-mono">SPY: +0.45% | QQQ: +0.60% | rs_vs_qqq: +1.45% | VIX: 18.5</p>
+                    <p className="text-gray-500 font-mono">daily_trend_context: bias=long, verdict=GO</p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1 font-semibold">Signal</th>
+                          <th className="px-2 py-1 font-semibold">Points</th>
+                          <th className="px-2 py-1 font-semibold">Running</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['VWAP + slope', '2.0 + 0.5 = 2.5', 'bul 2.5'],
+                          ['OR breakout (confirmed)', '3.0', 'bul 5.5'],
+                          ['Momentum', '1.5', 'bul 7.0'],
+                          ['Volume spike', '1.5', 'bul 8.5'],
+                          ['RS vs QQQ', '1.0', 'bul 9.5'],
+                          ['SPY daily', '0.5', 'bul 10.0'],
+                          ['Daily trend aligns', '0.5', 'bul 10.5'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-1.5 font-mono text-emerald-300">{r[1]}</td>
+                            <td className="px-2 py-1.5 font-mono text-gray-400">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-emerald-950/20 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px]">Result</p>
+                    <p className="text-gray-400">bull = 10.5, bear = 0.0, diff = 10.5</p>
+                    <p className="text-gray-400">soft_edge = True, long_edge = True, vol_spike = True</p>
+                    <p className="text-gray-400">strong_ok: bull(10.5) &ge; 7.0 ✓ AND diff(10.5) &ge; 4.0 ✓</p>
+                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Verdict: STRONG GO, bias: long</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Normalized Score</p>
+                    <p className="text-gray-500 font-mono">raw = 10.5, GO_THRESHOLD = 4.5, STRONG_BULL = 7.0</p>
+                    <p className="text-gray-500 font-mono">raw &ge; 7.0 → norm = 85 + (10.5 − 7.0) / 2.5 × 15 = 100</p>
+                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Normalized score: 100</p>
+                  </div>
+                </div>
+              </DocCard>
+
             </div>
           </section>
 
@@ -861,105 +1071,461 @@ export default function HelpPage() {
               Swing Trade Engine
             </h2>
             <div className="space-y-3">
-              <DocCard icon={<Activity size={15} />} title="Core Concepts">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>The Swing Trade engine analyzes daily OHLCV bars (60+ sessions) to identify multi-day momentum setups. It evaluates MA20/MA50 alignment, RSI, MACD, 5-day momentum, volume trends, and SPY/QQQ market context.</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: '2–5 Day Setups', desc: 'Target holding period. The engine evaluates setups that can develop over several sessions, not intraday moves.' },
-                      { label: 'Pullback Entries', desc: 'When price is extended from MA20, the engine recommends waiting for a pullback to establish a better entry.' },
-                      { label: 'Breakout Continuation', desc: 'When price breaks a key level with volume and holds, the engine can recommend continuation entries.' },
-                      { label: 'MA20/MA50 Alignment', desc: 'MA20 > MA50 = uptrend. The slope and spacing of these MAs determine trend strength scoring.' },
-                      { label: 'Swing Execution Map', desc: 'Entry zone (pullback level), breakout trigger, risk-below line, and target zone. Each trade has a structured execution map.' },
-                      { label: 'DTE Windows', desc: 'Despite 2–5 day holds, swing uses 21–42 DTE options to reduce gamma risk and allow time for the thesis to develop.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
+
+              <DocCard icon={<TrendingUp size={15} />} title="Overview & Verdict Scale">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Multi-day signal engine using daily candles (6 months history). Targets 1–5 session holds. Scores 7 technical signals + market context + VIX.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'NO-GO'].map((v, i, a) => (
+                    <div key={v} className="flex items-center gap-2">
+                      <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 font-mono font-bold text-gray-200">{v}</span>
+                      {i < a.length - 1 && <ChevronRight size={11} className="text-gray-700" />}
+                    </div>
+                  ))}
                 </div>
               </DocCard>
 
-              <DocCard icon={<Sigma size={15} />} title="Decision Quality Layer">
+              <DocCard icon={<Activity size={15} />} title="Step 1: Data Requirements">
                 <div className="space-y-2 text-xs text-gray-400">
-                  <p>The swing engine adds a Decision Quality Layer that separates trend direction from entry quality:</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: 'Swing Bias', desc: 'Directional read: STRONG_BULLISH, BULLISH, NEUTRAL, BEARISH, STRONG_BEARISH' },
-                      { label: 'Entry Quality', desc: 'GOOD_ENTRY, CAUTION_ENTRY, WAIT_PULLBACK, LATE_ENTRY, NO_CLEAN_ENTRY' },
-                      { label: 'Risk Level', desc: 'LOW, MEDIUM, HIGH, VERY_HIGH — based on extension, VIX, earnings, IV, liquidity' },
-                      { label: 'Final Action', desc: 'STRONG_GO, READY, WATCH, WAIT_PULLBACK, AVOID_CHASE, NO_TRADE' },
-                    ].map(d => (
-                      <div key={d.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{d.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{d.desc}</div>
-                      </div>
-                    ))}
+                  <p><strong className="text-gray-300">Source:</strong> Yahoo Finance daily bars, 6-month period, auto-adjusted</p>
+                  <p><strong className="text-gray-300">Minimum bars:</strong> 60 (MIN_BARS) — needed for MA50 stability</p>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="Step 2: Indicators">
+                <div className="space-y-4 text-xs text-gray-400">
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2a. MA20 / MA50 (Simple Moving Average)</div>
+                    <p><span className="font-mono text-gray-300">MA20 = SMA(Close, 20)</span> &nbsp; <span className="font-mono text-gray-300">MA50 = SMA(Close, 50)</span></p>
+                    <p><span className="font-mono text-gray-300">dist_ma20_pct = (last / MA20 − 1) × 100</span></p>
+                    <p className="text-gray-500">Guard: if MA20 or MA50 is NaN (insufficient history) → ValueError raised.</p>
                   </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2b. RSI (14-day Wilder's)</div>
+                    <p>Average gain / average loss over 14 periods using exponential smoothing (com = 13):</p>
+                    <p><span className="font-mono text-gray-300">RSI = 100 − 100 / (1 + avg_gain / avg_loss)</span></p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2c. MACD (12, 26, 9)</div>
+                    <p><span className="font-mono text-gray-300">MACD_line = EMA(Close, 12) − EMA(Close, 26)</span></p>
+                    <p><span className="font-mono text-gray-300">Signal = EMA(MACD_line, 9)</span></p>
+                    <p><span className="font-mono text-gray-300">Histogram = MACD_line − Signal</span></p>
+                    <p className="text-gray-500">Histogram direction matters: expanding = momentum acceleration</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2d. 5-Day Momentum</div>
+                    <p><span className="font-mono text-gray-300">mom_pct = (last / close[−5] − 1) × 100</span></p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">2e. Volume Trend</div>
+                    <p>Classifies last 5 sessions vs 20-day average:</p>
+                    <ul className="space-y-0.5 pl-3 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>bull_expanding: up-day vol &gt; 1.2× avg AND &gt; down-day vol</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>bear_expanding: down-day vol &gt; 1.2× avg AND &gt; up-day vol</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>mixed: no dominant side</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>low: recent volume &lt; 0.7× avg</span></li>
+                    </ul>
+                  </div>
+
                 </div>
               </DocCard>
 
-              <DocCard icon={<RefreshCw size={15} />} title="Why 21–42 DTE for 3–5 Day Holds">
-                <div className="space-y-1.5 text-xs text-gray-400">
-                  <p>A common question: why use options with 3–6 weeks to expiry when you only hold for 3–5 days?</p>
-                  <ul className="space-y-1 text-gray-500">
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Theta decay curve:</strong> Gamma risk accelerates in the final 2 weeks. Longer DTE reduces the risk of an adverse intraday move wiping out the position.</span></li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Time for thesis to develop:</strong> Swing trades are based on daily closes. A setup may take 2–5 sessions to play out. Longer DTE gives room to be right.</span></li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Exit flexibility:</strong> If the trade moves in your favor early, you can close with significant time premium remaining, improving the risk/reward.</span></li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Earnings and event buffer:</strong> Longer DTE provides a cushion if unexpected events occur during the holding period.</span></li>
-                  </ul>
+              <DocCard icon={<Sigma size={15} />} title="Step 3: Scoring">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                        <th className="px-2 py-1.5 font-semibold">#</th>
+                        <th className="px-2 py-1.5 font-semibold">Signal</th>
+                        <th className="px-2 py-1.5 font-semibold">Condition</th>
+                        <th className="px-2 py-1.5 font-semibold">Points</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['1', 'Price vs MA20', 'price &gt; MA20', 'bull += 2.0'],
+                        ['2', 'MA trend structure', 'MA20 &gt; MA50 by X%', 'bull += min(3, max(0.5, X×0.15))'],
+                        ['2a', 'Convergence penalty', 'spread narrowing &gt;5%', 'score × 0.5'],
+                        ['3', 'RSI bullish zone', '55–73', 'bull += 1.5'],
+                        ['3a', 'RSI overbought', '&gt;73', '0 pts + caps → WATCH'],
+                        ['4', 'MACD crossover', 'MACD &gt; Signal', 'bull += 2.0'],
+                        ['4a', 'MACD histogram', 'hist &gt; 0 AND expanding', 'bull += 0.5'],
+                        ['5', '5-day momentum', 'mom &gt; +1.5%', 'bull += 1.0'],
+                        ['6', 'Volume participation', 'bull_expanding', 'bull += 1.5'],
+                        ['7', 'SPY market context', 'SPY BULLISH', 'bull += 0.5'],
+                        ['8', 'VIX caution', 'VIX &ge; 25', 'bull −= 0.5 (floor 0)'],
+                      ].map(r => (
+                        <tr key={r[0] + r[1]} className="border-b border-gray-800/40 text-[11px]">
+                          <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
+                          <td className="px-2 py-1.5 font-semibold text-gray-200">{r[1]}</td>
+                          <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                          <td className="px-2 py-1.5 font-mono text-emerald-300">{r[3]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors all rules (price below MA20, MA20 &lt; MA50, RSI &le; 45, etc.)</p>
               </DocCard>
 
-              <DocCard icon={<Target size={15} />} title="Swing Trade Map &mdash; Example Setup">
+              <DocCard icon={<LineChart size={15} />} title="Step 4: MA Structure — Proportional Scoring Detail">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <p>A structured trade map defines every price level before entry. This removes emotion and forces a plan for pullbacks, breakouts, and exits.</p>
+                  <p>The key fix: score scales with how far apart MA20 and MA50 are.</p>
+                  <FormulaBlock formula="ma_spread_pct = (MA20 - MA50) / MA50 × 100\nscore = min(3.0, max(0.5, ma_spread_pct × 0.15))" />
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[500px] border-collapse text-center">
+                    <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-gray-800">
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">STOP LOSS</th>
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">BUY HERE</th>
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">(today)</th>
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">BREAKOUT</th>
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 1</th>
-                          <th className="px-2 py-1.5 text-[10px] font-semibold text-gray-500">TARGET 2</th>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1 font-semibold">MA20 above MA50 by</th>
+                          <th className="px-2 py-1 font-semibold">Raw</th>
+                          <th className="px-2 py-1 font-semibold">After floor</th>
+                          <th className="px-2 py-1 font-semibold">Final (capped)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td className="px-2 py-2 text-sm font-bold text-red-400">$349</td>
-                          <td className="px-2 py-2 text-sm font-bold text-emerald-400">$357&ndash;369</td>
-                          <td className="px-2 py-2 text-sm font-bold text-gray-200">$387</td>
-                          <td className="px-2 py-2 text-sm font-bold text-yellow-400">$393.62</td>
-                          <td className="px-2 py-2 text-sm font-bold text-violet-400">$392.79</td>
-                          <td className="px-2 py-2 text-sm font-bold text-orange-400">$397.78</td>
-                        </tr>
-                        <tr>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">get out</td>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">pullback</td>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">current price</td>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">confirmed</td>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">sell &frac12;</td>
-                          <td className="px-2 pb-2 text-[10px] text-gray-600">sell rest</td>
-                        </tr>
+                        {[
+                          ['1%', '0.15', '0.50', '0.50'],
+                          ['3%', '0.45', '0.50', '0.50'],
+                          ['5%', '0.75', '0.75', '0.75'],
+                          ['10%', '1.50', '1.50', '1.50'],
+                          ['15%', '2.25', '2.25', '2.25'],
+                          ['20%+', '3.00+', '—', '3.00'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-1 font-mono text-gray-400">{r[1]}</td>
+                            <td className="px-2 py-1 font-mono text-gray-400">{r[2]}</td>
+                            <td className="px-2 py-1 font-mono text-emerald-300">{r[3]}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
-                  <div className="space-y-1 text-gray-500">
-                    <p><strong className="text-gray-300">How to read it:</strong></p>
-                    <ul className="space-y-1">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" /><span><strong className="text-gray-300">Stop loss</strong> at the support level. If price breaks below, the setup is invalid.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" /><span><strong className="text-gray-300">Buy zone</strong> is the pullback range where you enter. Wait for price to dip into this zone before opening.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-yellow-500 shrink-0" /><span><strong className="text-gray-300">Breakout level</strong> confirms the move. Price clearing this level with volume validates the thesis.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" /><span><strong className="text-gray-300">Target 1</strong> is the partial profit zone &mdash; sell half the position to lock in gains.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-orange-500 shrink-0" /><span><strong className="text-gray-300">Target 2</strong> is the final exit. Sell the remaining position for full profit.</span></li>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Convergence Detection</p>
+                    <p><span className="font-mono text-gray-300">prev_spread = (MA20[-2] − MA50[-2]) / MA50[-2] × 100</span></p>
+                    <p><span className="font-mono text-gray-300">converging = prev_spread &gt; ma_spread_pct × 1.05</span></p>
+                    <p className="text-gray-500 mt-1">If converging → score halved. Reason appended: "MA20 &gt; MA50 but converging (gap X% from Y%) — trend fading."</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Gauge size={15} />} title="Step 5: Verdict Logic & Extension Checks">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'GO_THRESHOLD', value: '5.5' },
+                      { label: 'MARGIN_GO', value: '3.0' },
+                      { label: 'STRONG_THRESHOLD', value: '8.0' },
+                      { label: 'STRONG_DIFF', value: '4.0' },
+                      { label: 'VIX_NO_GO', value: '35.0' },
+                      { label: 'VIX_CAUTION', value: '25.0' },
+                      { label: 'EXT_5D_WARN', value: '8.0' },
+                      { label: 'EXT_5D_HARD', value: '12.0' },
+                      { label: 'EXT_MA20_WARN', value: '8.0' },
+                      { label: 'RSI_OVERBOUGHT', value: '73.0' },
+                    ].map(t => (
+                      <div key={t.label} className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
+                        <code className="text-[10px] font-mono text-violet-300">{t.label}</code>
+                        <span className="text-[11px] font-bold text-gray-200 font-mono">{t.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-gray-400"><strong className="text-gray-200">soft_edge</strong> = max(bull, bear) &ge; 5.5 AND |bull − bear| &ge; 3.0</p>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Extension Checks (run before verdict)</p>
+                    <ul className="space-y-0.5 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><span className="font-mono text-gray-300">_is_very_extended</span> = mom_5d &gt; 12% (for long bias)</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><span className="font-mono text-gray-300">_is_extended</span> = mom_5d &gt; 8% OR dist_ma20 &gt; 8% OR RSI &gt; 73</span></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Verdict Rules</p>
+                    <ul className="space-y-0.5 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX &ge; 35 → NO-GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-500 shrink-0" />not soft_edge → WAIT</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />long + (RSI&gt;73 OR extended) → WATCH</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />long + bull &ge; 8.0 + diff &ge; 4.0 → STRONG GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />long + below strong → GO</li>
                     </ul>
                   </div>
                 </div>
               </DocCard>
+
+              <DocCard icon={<FlaskConical size={15} />} title="Step 6: Full Worked Example (AAPL, Strong Bull)">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">Inputs</p>
+                    <p className="text-gray-500 font-mono">Last: $198.50 | MA20: $190.00 | MA50: $175.00 | dist_ma20: +4.47%</p>
+                    <p className="text-gray-500 font-mono">MA20_prev: $189.20 | MA50_prev: $174.80 | RSI: 65.2</p>
+                    <p className="text-gray-500 font-mono">MACD: +1.245 | Signal: +0.980 | Hist: +0.265 (prev +0.190)</p>
+                    <p className="text-gray-500 font-mono">5d mom: +3.49% | Volume: bull_expanding (1.35×) | SPY: BULLISH | VIX: 14.2</p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1 font-semibold">Signal</th>
+                          <th className="px-2 py-1 font-semibold">Points</th>
+                          <th className="px-2 py-1 font-semibold">Running</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Price vs MA20', '2.0', '2.0'],
+                          ['MA structure (8.6% spread)', '1.286', '3.286'],
+                          ['RSI 65.2 (55–73)', '1.5', '4.786'],
+                          ['MACD crossover + hist', '2.0 + 0.5 = 2.5', '7.286'],
+                          ['5d momentum +3.49%', '1.0', '8.286'],
+                          ['Volume bull_expanding', '1.5', '9.786'],
+                          ['SPY BULLISH', '0.5', '10.286'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-1.5 font-mono text-emerald-300">{r[1]}</td>
+                            <td className="px-2 py-1.5 font-mono text-gray-400">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-emerald-950/20 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px]">Result</p>
+                    <p className="text-gray-400">bull = 10.29, bear = 0.0, diff = 10.29</p>
+                    <p className="text-gray-400">soft_edge = True, not extended, strong_ok = True</p>
+                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Verdict: STRONG GO, bias: long</p>
+                    <p className="text-gray-500 font-mono mt-1">Normalized: 85 + (10.29 − 8.0) / 2.0 × 15 = 100</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-amber-950/20 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Convergence Example (Same Stock, Later)</p>
+                    <p className="text-gray-500 font-mono">MA20=$192, MA50=$180 → spread=6.7%</p>
+                    <p className="text-gray-500 font-mono">Prev: MA20=$194, MA50=$179.50 → prev_spread=8.1%</p>
+                    <p className="text-gray-500 font-mono">converging = 8.1 &gt; 6.7×1.05 = 7.0? → YES</p>
+                    <p className="text-gray-500 font-mono">score = min(3, max(0.5, 6.7×0.15)) = 1.0 → ×0.5 = 0.50</p>
+                    <p className="text-amber-400 font-bold text-[11px] mt-1">→ Downgraded from STRONG GO to GO or WATCH</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ShieldCheck size={15} />} title="Step 7: Entry Quality (Decision Layer)">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>After scoring, <span className="font-mono text-gray-300">build_swing_trade_decision()</span> applies additional trade quality gates based on risk flags and extension checks.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1 font-semibold">Entry Quality</th>
+                          <th className="px-2 py-1 font-semibold">Condition</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['GOOD_ENTRY', 'Clean setup, no extension flags, trade_quality_score &ge; 6.5'],
+                          ['CAUTION_ENTRY', 'GOOD_ENTRY but risk_level = HIGH (elevated IV, VIX, earnings)'],
+                          ['WAIT_PULLBACK', 'Price extended from MA20 &gt; 8% or RSI &gt; 73 or 5d momentum &gt; 8%'],
+                          ['WAIT_BREAKOUT_CONFIRMATION', 'Near resistance (52W high / prior swing high)'],
+                          ['LATE_ENTRY', 'Price gapped &gt; 3% today, or 5d momentum &gt; 12% (AVOID_CHASE)'],
+                          ['BAD_ENTRY', 'Very extended (12%+ in 5d), low option liquidity, earnings imminent'],
+                          ['NO_CLEAN_ENTRY', 'Conflicting signals, trade_quality_score &lt; 5.0, or bias is NEUTRAL'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-gray-500 mt-1">
+                    The <span className="font-mono text-gray-300">trade_quality_score</span> is a post-penalty float (0–10) used for final action. Trend direction (verdict) and entry timing (entry_quality) are separate — a GO verdict can coexist with WAIT_PULLBACK when the trend is there but entry price is stretched.
+                  </p>
+                </div>
+              </DocCard>
+
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             VIX REFERENCE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="vix-reference" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Activity size={18} className="text-violet-400" />
+              VIX Reference
+            </h2>
+            <div className="space-y-3">
+
+              <DocCard icon={<BookOpen size={15} />} title="What is VIX?">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <div className="rounded-lg bg-amber-950/20 border border-amber-800/30 px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-amber-200">Simple Definition</p>
+                    <p className="text-gray-300 mt-1">VIX = The market's &ldquo;fear meter&rdquo;</p>
+                    <p className="text-gray-500 mt-1">It measures how much fear or uncertainty investors have about the stock market over the next 30 days. Also called the &ldquo;Fear Index.&rdquo;</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px]">How It Actually Works</p>
+                    <ul className="space-y-1 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" />VIX is calculated from S&amp;P 500 options prices</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" />When traders are scared they buy more put options to protect themselves</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" />More put buying = higher options prices = VIX goes up</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-500 shrink-0" />When traders are confident they buy fewer puts = VIX goes down</li>
+                    </ul>
+                    <div className="mt-2 rounded-lg bg-gray-900/60 border border-gray-800 px-3 py-2">
+                      <p className="font-semibold text-gray-200 text-[10px]">Think of it like insurance prices:</p>
+                      <p className="text-gray-500 text-[10px] mt-0.5">If a hurricane is coming → insurance gets expensive → VIX high</p>
+                      <p className="text-gray-500 text-[10px]">Beautiful sunny weather → insurance is cheap → VIX low</p>
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Activity size={15} />} title="How to Read VIX Numbers">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">VIX Level</th>
+                          <th className="px-2 py-1.5 font-semibold">Market Mood</th>
+                          <th className="px-2 py-1.5 font-semibold">What It Means for Traders</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Below 15', 'Very calm 😴', 'Low fear, bull market cruising'],
+                          ['15–20', 'Normal ✅', 'Healthy market, manageable risk'],
+                          ['20–25', 'Cautious ⚠️', 'Some nervousness, be careful'],
+                          ['25–35', 'Fearful 😰', 'Volatility picking up, reduce risk'],
+                          ['35–50', 'Panic 😱', 'Major selloff, very dangerous'],
+                          ['50+', 'Crisis 🔴', 'Crash level — COVID was 85, 2008 was 80'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className={`px-2 py-1.5 font-bold font-mono ${
+                              r[0] === 'Below 15' || r[0] === '15–20' ? 'text-emerald-400' :
+                              r[0] === '20–25' ? 'text-amber-400' :
+                              r[0] === '25–35' ? 'text-orange-400' :
+                              'text-red-400'
+                            }`}>{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-200">{r[1]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="rounded-lg bg-emerald-950/20 border border-emerald-800/30 px-3 py-2.5">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Your Reading Today: 17.9</p>
+                    <p className="text-emerald-400/80 text-[11px] mt-0.5">Calm and contained — market is NOT panicking</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<RefreshCw size={15} />} title="VIX vs Market Relationship">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>VIX and the stock market almost always move in <strong className="text-gray-200">OPPOSITE</strong> directions:</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { event: 'Market goes UP', vix: 'VIX goes DOWN', mood: '✅ Good', cls: 'text-emerald-400' },
+                      { event: 'Market goes DOWN', vix: 'VIX goes UP', mood: '🔴 Bad', cls: 'text-red-400' },
+                    ].map(r => (
+                      <div key={r.event} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2 text-center">
+                        <div className="text-gray-200 font-semibold text-[11px]">{r.event}</div>
+                        <div className={`font-mono text-[11px] font-bold ${r.cls}`}>{r.vix}</div>
+                        <div className="text-[10px] text-gray-500">{r.mood}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Market Event</th>
+                          <th className="px-2 py-1.5 font-semibold">VIX Did</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['COVID crash March 2020', 'Spiked to 85 🔴'],
+                          ['2008 financial crisis', 'Hit 80 🔴'],
+                          ['Normal bull market', 'Stays 12–18 ✅'],
+                          ['Today', '17.9 ✅'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-1.5 font-mono text-gray-400">{r[1]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Target size={15} />} title="How to Use VIX in Your Trading">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">For Swing Trades</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                            <th className="px-2 py-1 font-semibold">VIX</th>
+                            <th className="px-2 py-1 font-semibold">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            ['Below 20', '✅ Good environment for calls', 'text-emerald-400'],
+                            ['20–25', '⚠️ Be selective, smaller size', 'text-amber-400'],
+                            ['Above 25', '🔴 Avoid new call positions', 'text-red-400'],
+                            ['Above 35', '🔴 Consider puts or stay cash', 'text-red-500'],
+                          ].map(r => (
+                            <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                              <td className={`px-2 py-1 font-bold font-mono ${r[2]}`}>{r[0]}</td>
+                              <td className="px-2 py-1 text-gray-400">{r[1]}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">For Options Specifically</p>
+                    <ul className="space-y-1 text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">High VIX</strong> = Expensive options (premiums are inflated)</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">Low VIX</strong> = Cheaper options (better time to buy calls)</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" /><span>Right now at <strong className="text-emerald-400">17.9</strong> → options are reasonably priced</span></li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<AlertTriangle size={15} />} title="VIX as a Traffic Light">
+                <div className="space-y-2 text-xs text-gray-400">
+                  {[
+                    { level: 'Below 20', light: '🟢 Green Light', action: 'Trade freely', cls: 'text-emerald-400' },
+                    { level: '20–25', light: '🟡 Yellow Light', action: 'Slow down, be careful', cls: 'text-amber-400' },
+                    { level: 'Above 25', light: '🔴 Red Light', action: 'Stop, reduce risk', cls: 'text-red-400' },
+                    { level: 'Above 35', light: '🚨 Emergency', action: 'Protect capital only', cls: 'text-red-500' },
+                  ].map(r => (
+                    <div key={r.level} className="flex items-center gap-3 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                      <span className={`font-bold font-mono text-[11px] ${r.cls}`}>{r.level}</span>
+                      <span className="text-gray-200 text-[11px]">{r.light}</span>
+                      <span className="text-gray-500 text-[10px] ml-auto">{r.action}</span>
+                    </div>
+                  ))}
+                </div>
+              </DocCard>
+
             </div>
           </section>
 

@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar'
 import CopyrightFooter from '../components/CopyrightFooter'
 import AdvisoryDisclaimerModal from '../components/AdvisoryDisclaimerModal'
 import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
+import HelpModal from '../components/HelpModal'
 
 import { useApp } from '../contexts/AppContext'
 import { X } from 'lucide-react'
@@ -40,6 +41,7 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
       </main>
       <AdvisoryDisclaimerModal />
       <FirstLoginHelpModal />
+      <HelpModal />
     </div>
   )
 }

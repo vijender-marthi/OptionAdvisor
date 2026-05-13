@@ -1167,10 +1167,10 @@ def _analyze_ticker(
         # Select the expiry that matches the user's weeks_out target — the same DTE
         # window the engine uses internally so chain pricing, Greeks, and recommendations
         # all refer to the same expiry.  Mirror the engine's pick_expiry_by_dte math:
-        #   target_dte = weeks_out * 7,  window = ±7 days
+        #   target_dte = weeks_out * 7,  window = ±10 days
         target_dte = weeks_out * 7
-        dte_lo = max(7, target_dte - 7)
-        dte_hi = target_dte + 7
+        dte_lo = max(21, target_dte - 10)
+        dte_hi = target_dte + 10
         target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
         if target_expiry is None:
             # Fallback: pick the nearest available expiry beyond dte_lo

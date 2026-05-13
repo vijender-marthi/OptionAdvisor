@@ -311,31 +311,9 @@ def _compute_ticker_engines(ticker: str) -> dict:
     """
     Run all three engines for one ticker and return resolved decision payloads.
     Each engine is isolated — a failure in one does not abort the others.
+    Swing runs first to provide daily trend context to the day engine.
     """
-    # ── Day ──────────────────────────────────────────────────────────────────
-    day_decision = None
-    day_reason   = ""
-    day_raw      = ""
-    day_metrics: dict = {}
-    day_scan     = None
-    try:
-        day_scan = run_day_trade_scan(ticker)
-        day_decision = resolve_trade_decision({
-            "engine_type":     "day",
-            "ticker":          day_scan.ticker,
-            "verdict":         day_scan.verdict,
-            "bias":            day_scan.bias,
-            "reasons":         day_scan.reasons,
-            "metrics":         day_scan.metrics,
-            "trader_decision": day_scan.trader_decision,
-        })
-        day_metrics = dict(day_scan.metrics or {})
-        day_reason  = day_decision.reason
-        day_raw     = str(day_scan.verdict or "")
-    except Exception as exc:
-        day_reason = f"Day evaluation unavailable: {exc}"
-
-    # ── Swing ─────────────────────────────────────────────────────────────────
+    # ── Swing (runs first to provide daily context for day engine) ──────────────
     swing_decision = None
     swing_reason   = ""
     swing_raw      = ""
@@ -362,6 +340,37 @@ def _compute_ticker_engines(ticker: str) -> dict:
         swing_raw    = str(swing_scan.final_action or "")
     except Exception as exc:
         swing_reason = f"Swing evaluation unavailable: {exc}"
+
+    # Build daily trend context from swing scan for the day engine
+    _daily_context: Optional[dict] = None
+    if swing_scan is not None:
+        _sb = getattr(swing_scan, "bias", None)
+        _sv = str(getattr(swing_scan, "verdict", "") or "")
+        if _sb and _sv:
+            _daily_context = {"bias": str(_sb), "verdict": _sv}
+
+    # ── Day (with swing daily trend context) ───────────────────────────────────
+    day_decision = None
+    day_reason   = ""
+    day_raw      = ""
+    day_metrics: dict = {}
+    day_scan     = None
+    try:
+        day_scan = run_day_trade_scan(ticker, daily_trend_context=_daily_context)
+        day_decision = resolve_trade_decision({
+            "engine_type":     "day",
+            "ticker":          day_scan.ticker,
+            "verdict":         day_scan.verdict,
+            "bias":            day_scan.bias,
+            "reasons":         day_scan.reasons,
+            "metrics":         day_scan.metrics,
+            "trader_decision": day_scan.trader_decision,
+        })
+        day_metrics = dict(day_scan.metrics or {})
+        day_reason  = day_decision.reason
+        day_raw     = str(day_scan.verdict or "")
+    except Exception as exc:
+        day_reason = f"Day evaluation unavailable: {exc}"
 
     # ── Regular ───────────────────────────────────────────────────────────────
     regular_decision = None

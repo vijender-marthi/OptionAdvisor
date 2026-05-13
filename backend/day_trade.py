@@ -248,16 +248,16 @@ def _confidence_block(
 ) -> dict[str, str]:
     # Trend strength
     m = abs(momentum_pct)
-    if m >= 0.12:
+    if m >= 0.20:
         trend_strength = "HIGH"
-    elif m >= 0.04:
+    elif m >= 0.07:
         trend_strength = "MEDIUM"
     else:
         trend_strength = "LOW"
 
-    # Breakout quality — or_state is always "above", "below", or "inside"
+    # Breakout quality — OR state with volume confirmation
     if or_state in ("above", "below"):
-        breakout_quality = "GOOD"
+        breakout_quality = "GOOD" if vol_spike else "MODERATE"
     else:
         breakout_quality = "WEAK"
 
@@ -554,7 +554,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     }
 
 
-def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan:
+def run_day_trade_scan(ticker: str, force_refresh: bool = False,
+                       daily_trend_context: Optional[Dict[str, str]] = None) -> DayTradeScan:
     """
     Run intraday day-trade scan for *ticker*.
 
@@ -562,13 +563,14 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     ----------
     ticker        : equity symbol (case-insensitive)
     force_refresh : bypass per-ticker scan cache and shared index caches
+    daily_trend_context : optional dict from swing scan with "bias" and "verdict"
     """
     t = ticker.upper().strip()
     if not t or len(t) > 12:
         raise ValueError("Invalid ticker")
 
-    # --- per-ticker scan result cache ---
-    if not force_refresh:
+    # --- per-ticker scan result cache (bypass when daily context provided) ---
+    if not force_refresh and daily_trend_context is None:
         with _scan_lock:
             entry = _scan_cache.get(t)
             if entry and time.time() - entry[0] < _scan_cache_ttl():
@@ -631,9 +633,19 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     or_was_broken_up   = session_high > or_high
     or_was_broken_down = session_low  < or_low
 
-    mom_bars = min(11, len(session) - 1)
+    mom_bars = min(30, len(session) - 1)
     c0 = float(session["Close"].iloc[-mom_bars])
     momentum_pct = round((last / c0 - 1.0) * 100, 3) if c0 > 0 else 0.0
+
+    # VWAP slope: linear regression over last 15 bars
+    vwap_slope_bars = min(15, len(vwap_ser))
+    if vwap_slope_bars >= 5 and _vwap_is_real:
+        vwap_tail = vwap_ser.iloc[-vwap_slope_bars:].values.astype(float)
+        x = np.arange(vwap_slope_bars, dtype=float)
+        slope = np.polyfit(x, vwap_tail, 1)[0]
+        vwap_slope_pct = round(slope / vwap_last * 100, 6)
+    else:
+        vwap_slope_pct = None
 
     # Volume spike: compare the *last* bar to a "steady session" baseline.
     #
@@ -689,25 +701,54 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
     if not _vwap_is_real:
         body.append("VWAP could not be computed (zero-volume session) — VWAP signals suppressed.")
     elif last > vwap_last:
-        bull += 2.0
-        body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%).")
+        base_vwap = 2.0
+        if vwap_slope_pct is not None:
+            if vwap_slope_pct > 0.001:
+                base_vwap += 0.5
+                body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%) with VWAP rising (+{vwap_slope_pct:.4f}%/bar) — confluence.")
+            elif vwap_slope_pct < -0.001:
+                base_vwap -= 0.5
+                body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%) but VWAP declining ({vwap_slope_pct:.4f}%/bar) — divergence.")
+            else:
+                body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%) with flat VWAP.")
+        else:
+            body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%).")
+        bull += base_vwap
     elif last < vwap_last:
-        bear += 2.0
-        body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%).")
+        base_vwap = 2.0
+        if vwap_slope_pct is not None:
+            if vwap_slope_pct < -0.001:
+                base_vwap += 0.5
+                body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%) with VWAP declining ({vwap_slope_pct:.4f}%/bar) — confluence.")
+            elif vwap_slope_pct > 0.001:
+                base_vwap -= 0.5
+                body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%) but VWAP rising (+{vwap_slope_pct:.4f}%/bar) — divergence.")
+            else:
+                body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%) with flat VWAP.")
+        else:
+            body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%).")
+        bear += base_vwap
 
+    or_weight = 3.0 if vol_spike else 1.0
     if or_state == "above":
-        bull += 3.0
-        body.append("Above opening-range high (bullish breakout).")
+        bull += or_weight
+        if vol_spike:
+            body.append("Above opening-range high with volume confirmation (bullish breakout).")
+        else:
+            body.append("Above opening-range high — no volume confirmation; treat with caution.")
     elif or_state == "below":
-        bear += 3.0
-        body.append("Below opening-range low (bearish breakdown).")
+        bear += or_weight
+        if vol_spike:
+            body.append("Below opening-range low with volume confirmation (bearish breakdown).")
+        else:
+            body.append("Below opening-range low — no volume confirmation; treat with caution.")
     else:
         body.append("Inside opening range (range-bound).")
 
-    if momentum_pct > 0.08:
+    if momentum_pct > 0.12:
         bull += 1.5
         body.append(f"Short-horizon momentum +{momentum_pct:.2f}%.")
-    elif momentum_pct < -0.08:
+    elif momentum_pct < -0.12:
         bear += 1.5
         body.append(f"Short-horizon momentum {momentum_pct:.2f}%.")
 
@@ -787,6 +828,36 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
             # has no meaning and would inflate the diff calculation.
             bull = max(0.0, bull)
             bear = max(0.0, bear)
+
+    # Daily trend context from swing scan (optional adjustment)
+    if daily_trend_context is not None:
+        _swing_bias = daily_trend_context.get("bias", "").lower()
+        _swing_verdict = str(daily_trend_context.get("verdict", "") or "").upper()
+        if _swing_verdict in ("STRONG GO", "GO") and _swing_bias:
+            if _swing_bias == bias:
+                body.append(
+                    f"Daily (swing) trend aligns: {_swing_bias.upper()}. "
+                    f"Swing verdict is {_swing_verdict}."
+                )
+                if bias == "long":
+                    bull += 0.5
+                elif bias == "short":
+                    bear += 0.5
+            elif bias is not None and bias != _swing_bias:
+                body.append(
+                    f"CAUTION — daily (swing) trend CONFLICTS with intraday bias. "
+                    f"Swing signals {_swing_bias.upper()} ({_swing_verdict})."
+                )
+                if bias == "long":
+                    bull -= 0.5
+                elif bias == "short":
+                    bear -= 0.5
+        elif _swing_verdict in ("NO-GO",) and bias:
+            body.append("Swing engine says NO-GO — daily trend does not support any position.")
+            if bias == "long":
+                bull -= 0.5
+            elif bias == "short":
+                bear -= 0.5
 
     diff = bull - bear
     bias: Bias = None
@@ -929,6 +1000,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False) -> DayTradeScan
         "market_state": market_state,
         "vwap": round(vwap_last, 4),
         "vwap_dist_pct": vwap_dist_pct,
+        "vwap_slope_pct": vwap_slope_pct,
         "or_high": round(or_high, 4),
         "or_low": round(or_low, 4),
         "or_breakout": or_state,
