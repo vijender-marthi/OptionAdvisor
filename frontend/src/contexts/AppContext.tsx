@@ -31,7 +31,7 @@ import {
   setAccessToken,
   type AuthLoginResponse,
 } from '../api/client'
-import { fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
+import { addPortfolioPosition, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import {
@@ -920,12 +920,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addManualPosition = useCallback((pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
-    setPortfolio(prev => [{
-      ...pos,
-      id: `manual-${pos.ticker}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      addedAt: new Date().toISOString(),
-      status: 'open' as const,
-    }, ...prev])
+    addPortfolioPosition({ position: pos as unknown as Record<string, unknown> })
+      .then(resp => {
+        if (resp.data?.ok && Array.isArray(resp.data.portfolio)) {
+          setPortfolio(resp.data.portfolio as unknown as PortfolioPosition[])
+        }
+      })
+      .catch(e => {
+        console.warn('[portfolio] add failed, falling back to local state:', e)
+        setPortfolio(prev => [{
+          ...pos,
+          id: `manual-${pos.ticker}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          addedAt: new Date().toISOString(),
+          status: 'open' as const,
+        }, ...prev])
+      })
   }, [])
 
   const updatePortfolioPosition = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {

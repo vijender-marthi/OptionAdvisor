@@ -155,6 +155,13 @@ export async function fetchMarketPosition(): Promise<ApiEnvelope<MarketPositionD
   return data
 }
 
+export async function addPortfolioPosition(payload: {
+  position: Record<string, unknown>
+}): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/add', payload)
+  return data
+}
+
 export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string, unknown>>> {
   if (USE_MOCK) {
     return normalizeCommandCenterEnvelope({})
