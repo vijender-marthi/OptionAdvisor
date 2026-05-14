@@ -479,21 +479,12 @@ function DecisionPanel({ title, decision, ticker }: { title: string; decision: W
         </div>
         {(decision.expected_holding_period || decision.recommended_contract_duration) ? (
           <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Timeframe</div>
-            <div className="mt-1 space-y-0.5 text-sm text-secondary">
-              {decision.expected_holding_period ? (
-                <div>Hold: ~{decision.expected_holding_period}</div>
-              ) : null}
-              {decision.recommended_contract_duration ? (
-                <div>Contract: {decision.recommended_contract_duration} DTE</div>
-              ) : null}
+            <div className="flex items-center gap-3 text-[11px] text-muted">
+              {decision.expected_holding_period && <span>Hold: <span className="font-semibold text-secondary">~{decision.expected_holding_period}</span></span>}
+              {decision.recommended_contract_duration && <span>Contract: <span className="font-semibold text-secondary">{decision.recommended_contract_duration} DTE</span></span>}
             </div>
           </div>
         ) : null}
-        <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Risk</div>
-          <div className={`mt-1 text-sm font-semibold ${riskClass(decision.risk_state)}`}>{decision.risk_category || decision.risk_state || 'MEDIUM'}</div>
-        </div>
         {showOptionRisk ? (
           <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Option execution</div>
@@ -560,50 +551,19 @@ function ExpandedAnalysis({
               AI coach
             </div>
             <div className="mt-2 text-sm leading-5 text-secondary">{row.ai_summary}</div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Agreement reason</div>
+            {row.agreement_reason ? (
+              <div className="mt-2 rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Engine consensus</div>
                 <div className="mt-1 text-sm text-secondary">{row.agreement_reason}</div>
               </div>
-              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Suggested action</div>
-                <div className="mt-1 text-xs text-secondary">
-                  {row.regular.reason || row.swing.reason || row.day.reason || 'Re-check before acting.'}
-                </div>
-              </div>
-              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Notes</div>
-                <div className="mt-1 text-sm text-secondary">{row.notes?.trim() || 'No notes yet.'}</div>
-              </div>
-              <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Added</div>
-                <div className="mt-1 text-sm text-secondary">{fmtDate(row.added_at)}</div>
-              </div>
+            ) : null}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted">
+              {row.notes?.trim() && <span><span className="font-semibold">Note:</span> {row.notes.trim()}</span>}
+              {row.added_at && <span>Added {fmtDate(row.added_at)}</span>}
             </div>
           </div>
         </div>
         <div className="space-y-3">
-          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
-            <div className="text-sm font-semibold text-heading">Actions</div>
-            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-              <button type="button" onClick={onAnalyze} className={`${getActionButtonClass('analyze')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
-                <BarChart3 size={13} />
-                Analyze
-              </button>
-              <button type="button" onClick={onAddToPositions} className={`${getActionButtonClass('trade')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
-                <BriefcaseBusiness size={13} />
-                Add Trade
-              </button>
-              <button type="button" onClick={onCreateAlert} disabled={alertBusy} title={alertBusy ? 'Creating alert\u2026' : 'Create alert'} className={`${getActionButtonClass('alert')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
-                <BellPlus size={13} />
-                {alertBusy ? 'Creating\u2026' : 'Alert'}
-              </button>
-              <button type="button" onClick={onViewChart} className={`${getActionButtonClass('surface')} gap-1.5 px-2.5 py-1.5 text-[11px]`}>
-                <ArrowUpRight size={13} />
-                Ticker detail
-              </button>
-            </div>
-          </div>
           <DecisionPanel title="Day" decision={row.day} ticker={row.ticker} />
           <DecisionPanel title="Swing" decision={row.swing} ticker={row.ticker} />
           <DecisionPanel title="Regular" decision={row.regular} ticker={row.ticker} />
@@ -671,6 +631,7 @@ const WatchlistCard = memo(function WatchlistCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
         <div className="min-w-0 flex-1">
+          {/* Row 1: ticker + fav + agreement state */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <button type="button" onClick={onViewChart} className="font-mono text-base font-bold tracking-tight text-heading hover:text-info">
               {row.ticker}
@@ -679,21 +640,21 @@ const WatchlistCard = memo(function WatchlistCard({
               type="button"
               onClick={onFavorite}
               title={isFavorite ? 'Unfavorite' : 'Favorite'}
-              className={`-ml-0.5 ${isFavorite ? 'text-amber-300' : 'text-gray-500 hover:text-amber-300'}`}
+              className={`-ml-0.5 ${isFavorite ? 'text-amber-400' : 'text-muted hover:text-amber-400'}`}
             >
               <Star size={12} className={isFavorite ? 'fill-current' : ''} />
             </button>
+            <StatusPill value={agreementBadge} agreement />
+          </div>
+          {/* Row 2: company · sector · engine pills · updated */}
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted">
+            <span className="text-secondary font-medium">{row.company_name || row.ticker}</span>
+            {row.sector && <><span className="opacity-30">·</span><span className="opacity-60">{row.sector}</span></>}
+            <span className="opacity-30">·</span>
             <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />
             <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />
             <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
-            <StatusPill value={agreementBadge} agreement />
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-muted">
-            <span className="text-secondary">{row.company_name || row.ticker}</span>
-            {row.sector && <span className="opacity-60">{row.sector}</span>}
-            <span className="opacity-40">&middot;</span>
-            <span className={`font-semibold ${marketContextTone(marketContext)}`}>{String(marketContext).replace(/_/g, ' ')}</span>
-            <span className="opacity-40">&middot;</span>
+            <span className="opacity-30">·</span>
             <span>{updatedLabel}</span>
           </div>
         </div>
@@ -702,8 +663,11 @@ const WatchlistCard = memo(function WatchlistCard({
         <div className="shrink-0 text-right">
           <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
           <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
+          {row.price_change != null && row.price_change !== 0 && (
+            <div className={`text-[10px] tabular-nums ${changeTone}`}>{fmtDayChange(row.price_change)}</div>
+          )}
           {row.alerts_count > 0 && (
-            <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-900/40 px-2 py-0.5 text-[10px] font-medium text-rose-300">
+            <div className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-50 dark:bg-rose-900/30 px-2 py-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-300">
               <BellPlus size={10} /> {row.alerts_count}
             </div>
           )}
@@ -1031,10 +995,10 @@ export default function WatchlistXPage() {
 
   const noticeClass =
     notice?.tone === 'success'
-      ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-100'
+      ? 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-800 dark:text-emerald-100'
       : notice?.tone === 'warning'
-        ? 'border-amber-500/25 bg-amber-500/12 text-amber-100'
-        : 'border-sky-500/25 bg-sky-500/12 text-sky-100'
+        ? 'border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-100'
+        : 'border-sky-500/30 bg-sky-50 dark:bg-sky-500/12 text-sky-800 dark:text-sky-100'
 
   const engineLabel = sourceFilter === 'all' ? 'Overall' : sourceFilter.charAt(0).toUpperCase() + sourceFilter.slice(1)
   const sourceSubtitle = sourceFilter === 'all' ? 'All engines in one view' : `Filtering by ${sourceFilter} engine decision`
@@ -1077,7 +1041,7 @@ export default function WatchlistXPage() {
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Signal Feed</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
             <div className="relative">
-              <button type="button" onClick={() => setShowInfo(!showInfo)} className="text-gray-500 hover:text-gray-300 transition-colors">
+              <button type="button" onClick={() => setShowInfo(!showInfo)} className="text-muted hover:text-secondary transition-colors">
                 <Info size={16} />
               </button>
               {showInfo && (
@@ -1295,35 +1259,32 @@ export default function WatchlistXPage() {
       </section>
 
       <section className="space-y-4 pb-24 sm:pb-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold text-heading">Signal Feed cards</div>
-            <div className="text-sm text-muted">
-              Showing {visibleRows.length} {onlyIgnored ? 'ignored' : engineLabel.toLowerCase()} {stateFilter === 'all' ? 'setups' : `${stateFilter.toUpperCase()} setups`}. {!onlyIgnored && ignoredData.tickers.length > 0 && `${ignoredData.tickers.length} ignored today.`} Client-side filter \u2014 no backend call.
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-muted">
+            Showing <span className="font-semibold text-secondary">{visibleRows.length}</span>{''}
+            {onlyIgnored ? 'ignored' : engineLabel.toLowerCase()}{stateFilter !== 'all' ? ` · ${stateFilter.toUpperCase()}` : ''}{!onlyIgnored && ignoredData.tickers.length > 0 ? ` · ${ignoredData.tickers.length} ignored` : ''}
           </div>
-          <div className="text-sm text-muted">Page {pagination.page} of {pagination.total_pages} · {pagination.total} tickers</div>
         </div>
 
         {loading ? (
-          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/50 px-4 py-16 text-center text-sm text-gray-400">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/50 px-4 py-16 text-center text-sm text-muted">
             <div className="inline-flex items-center gap-2"><RefreshCw size={16} className="animate-spin" /> Loading Signal Feed\u2026</div>
           </div>
         ) : error ? (
-          <div className="rounded-[28px] border border-rose-500/20 bg-rose-500/10 px-4 py-14 text-center text-sm text-rose-100">
+          <div className="rounded-[28px] border border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 px-4 py-14 text-center text-sm text-rose-700 dark:text-rose-300">
             <div>{error}</div>
             <button type="button" onClick={() => void load()} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
           </div>
         ) : visibleRows.length === 0 && ignoredData.tickers.length > 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
-            <div className="text-lg font-semibold text-gray-200">All tickers ignored for today</div>
-            <div className="mt-2 text-sm text-gray-500">Unignore tickers below to see them again, or add more tickers in My Tickers.</div>
-            <button type="button" onClick={() => setShowIgnored(true)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">View ignored tickers</button>
+            <div className="text-lg font-semibold text-heading">All tickers ignored for today</div>
+            <div className="mt-2 text-sm text-muted">Unignore tickers below to see them again, or add more tickers in My Tickers.</div>
+            <button type="button" onClick={() => setShowIgnored(true)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-secondary hover:bg-slate-50 dark:hover:bg-slate-700">View ignored tickers</button>
           </div>
         ) : visibleRows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
-            <div className="text-lg font-semibold text-gray-200">No cards match the current filters</div>
-            <div className="mt-2 text-sm text-gray-500">Try a different state, agreement, trend, or sector combination.</div>
+            <div className="text-lg font-semibold text-heading">No cards match the current filters</div>
+            <div className="mt-2 text-sm text-muted">Try a different state, agreement, trend, or sector combination.</div>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -1345,7 +1306,7 @@ export default function WatchlistXPage() {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm">
-          <div className="text-gray-500">Search, sorting, source filtering, analyze routing, add-trade flow, alert creation, and alert-center deep links remain intact.</div>
+          <div className="text-muted">Page {pagination.page} / {pagination.total_pages} · {pagination.total} tickers total</div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pagination.page <= 1} onClick={() => setParam('page', String(Math.max(1, pagination.page - 1)))} className={`${getActionButtonClass('surface')} gap-2 rounded-xl px-3 py-2 text-sm`}>Previous</button>
             <button type="button" disabled={pagination.page >= pagination.total_pages} onClick={() => setParam('page', String(Math.min(pagination.total_pages, pagination.page + 1)))} className={`${getActionButtonClass('surface')} gap-2 rounded-xl px-3 py-2 text-sm`}>Next</button>
@@ -1381,23 +1342,23 @@ export default function WatchlistXPage() {
 
       {ignoredData.tickers.length > 0 && (
         <div className="fixed bottom-6 left-4 z-40">
-          <button type="button" onClick={() => setShowIgnored(!showIgnored)} className="inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900 px-4 py-2 text-xs text-gray-400 shadow-lg hover:bg-gray-800">
+          <button type="button" onClick={() => setShowIgnored(!showIgnored)} className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-xs text-muted shadow-lg hover:bg-slate-50 dark:hover:bg-slate-800">
             <EyeOff size={12} /> {ignoredData.tickers.length} ignored
           </button>
         </div>
       )}
 
       {showIgnored && ignoredData.tickers.length > 0 && (
-        <div className="fixed bottom-16 left-4 z-40 w-72 rounded-xl border border-gray-800 bg-gray-900 p-3 shadow-xl">
+        <div className="fixed bottom-16 left-4 z-40 w-72 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-300">Ignored today ({ignoredData.tickers.length})</span>
-            <button type="button" onClick={() => setShowIgnored(false)} className="text-gray-500 hover:text-gray-300"><X size={14} /></button>
+            <span className="text-xs font-semibold text-secondary">Ignored today ({ignoredData.tickers.length})</span>
+            <button type="button" onClick={() => setShowIgnored(false)} className="text-muted hover:text-secondary"><X size={14} /></button>
           </div>
           <div className="max-h-48 space-y-1 overflow-y-auto">
             {ignoredData.tickers.map(sym => (
-              <div key={sym} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-800">
-                <span className="text-xs font-medium text-gray-400">{sym}</span>
-                <button type="button" onClick={() => { toggleIgnore(sym); setShowIgnored(false) }} className="text-[10px] text-violet-400 hover:text-violet-300">Unignore</button>
+              <div key={sym} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800">
+                <span className="text-xs font-medium text-muted">{sym}</span>
+                <button type="button" onClick={() => { toggleIgnore(sym); setShowIgnored(false) }} className="text-[10px] text-violet-500 hover:text-violet-400 dark:text-violet-400 dark:hover:text-violet-300">Unignore</button>
               </div>
             ))}
           </div>

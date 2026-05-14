@@ -708,7 +708,7 @@ function TradingPositionCard({
     : pnlData ?? null
 
   const pnlColor = displayPnl
-    ? displayPnl.pnl > 0 ? 'text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
+    ? displayPnl.pnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted'
     : 'text-muted'
 
   const isCredit = pos.net_credit >= 0
@@ -793,18 +793,15 @@ function TradingPositionCard({
       {/* ── Action Strip (always visible) ── */}
       {pos.status === 'open' && (() => {
         const alert = deriveActionAlert(pos, pnlData, aiAnalysis)
-        const stripCls = alert.urgency === 'red'   ? 'border-red-500/25 bg-red-950/20'
-          : alert.urgency === 'amber' ? 'border-amber-500/25 bg-amber-950/15'
-          : alert.urgency === 'blue'  ? 'border-sky-500/25 bg-sky-950/15'
-          : 'border-emerald-500/25 bg-emerald-950/15'
-        const badgeCls = alert.urgency === 'red'   ? 'bg-red-500 text-white'
-          : alert.urgency === 'amber' ? 'bg-amber-500 text-white'
-          : alert.urgency === 'blue'  ? 'bg-sky-500 text-white'
-          : 'bg-emerald-500 text-white'
-        const textCls = alert.urgency === 'red'   ? 'text-red-200'
-          : alert.urgency === 'amber' ? 'text-amber-200'
-          : alert.urgency === 'blue'  ? 'text-sky-200'
-          : 'text-emerald-200'
+        const stripCls = alert.urgency === 'red'   ? 'border-red-500/30'
+          : alert.urgency === 'amber' ? 'border-amber-500/30'
+          : alert.urgency === 'blue'  ? 'border-sky-500/30'
+          : 'border-emerald-500/30'
+        const badgeCls = alert.urgency === 'red'   ? 'bg-red-100 text-red-700 dark:bg-red-600 dark:text-white'
+          : alert.urgency === 'amber' ? 'bg-amber-100 text-amber-700 dark:bg-amber-600 dark:text-white'
+          : alert.urgency === 'blue'  ? 'bg-sky-100 text-sky-700 dark:bg-sky-600 dark:text-white'
+          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-600 dark:text-white'
+        const textCls = 'text-gray-600 dark:text-gray-400'
         return (
           <div className={`flex items-start gap-2.5 border-t px-3 py-2 ${stripCls}`}>
             <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${badgeCls}`}>
@@ -841,7 +838,7 @@ function TradingPositionCard({
 
       {/* ── Expanded details ── */}
       {expanded && (
-        <div className="border-t border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
+        <div className="border-t border-slate-100 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
 
           {aiAnalysis ? (
             /* ── AI Coach ── */
@@ -869,11 +866,11 @@ function TradingPositionCard({
                   </div>
                 </div>
                 <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                  aiAnalysis.health_label === 'STRONG_TREND' ? 'border-emerald-500/30 text-emerald-400'
-                  : aiAnalysis.health_label === 'HEALTHY' ? 'border-emerald-400/30 text-emerald-300'
-                  : aiAnalysis.health_label === 'CAUTION' ? 'border-amber-400/30 text-amber-400'
-                  : aiAnalysis.health_label === 'WEAKENING' ? 'border-orange-400/30 text-orange-400'
-                  : 'border-rose-400/30 text-rose-400'
+                  aiAnalysis.health_label === 'STRONG_TREND' ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400'
+                  : aiAnalysis.health_label === 'HEALTHY' ? 'border-emerald-400/40 text-emerald-600 dark:text-emerald-300'
+                  : aiAnalysis.health_label === 'CAUTION' ? 'border-amber-400/40 text-amber-700 dark:text-amber-400'
+                  : aiAnalysis.health_label === 'WEAKENING' ? 'border-orange-400/40 text-orange-700 dark:text-orange-400'
+                  : 'border-rose-400/40 text-rose-700 dark:text-rose-400'
                 }`}>{aiAnalysis.health_label.replace(/_/g, ' ')}</span>
               </div>
 
@@ -881,11 +878,11 @@ function TradingPositionCard({
               <div className="flex flex-wrap gap-1.5">
                 <AIStatusBadge status={aiAnalysis.state_label} />
                 <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                  aiAnalysis.timeline_stage === 'EXIT_SOON' ? 'border-rose-400/30 text-rose-400'
-                  : aiAnalysis.timeline_stage === 'ROLL_WINDOW' ? 'border-amber-400/30 text-amber-400'
-                  : aiAnalysis.timeline_stage === 'PROFIT_PROTECTION' ? 'border-sky-400/30 text-sky-400'
-                  : aiAnalysis.timeline_stage === 'RISK_MANAGEMENT' ? 'border-orange-400/30 text-orange-400'
-                  : 'border-emerald-400/30 text-emerald-400'
+                  aiAnalysis.timeline_stage === 'EXIT_SOON' ? 'border-rose-400/40 text-rose-700 dark:text-rose-400'
+                  : aiAnalysis.timeline_stage === 'ROLL_WINDOW' ? 'border-amber-400/40 text-amber-700 dark:text-amber-400'
+                  : aiAnalysis.timeline_stage === 'PROFIT_PROTECTION' ? 'border-sky-400/40 text-sky-700 dark:text-sky-400'
+                  : aiAnalysis.timeline_stage === 'RISK_MANAGEMENT' ? 'border-orange-400/40 text-orange-700 dark:text-orange-400'
+                  : 'border-emerald-400/40 text-emerald-700 dark:text-emerald-400'
                 }`}>{aiAnalysis.timeline_stage.replace(/_/g, ' ')}</span>
               </div>
 
@@ -896,8 +893,8 @@ function TradingPositionCard({
               </div>
 
               {/* Next action */}
-              <div className="rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-200">
-                <span className="font-bold uppercase tracking-wide text-violet-300">Next:</span> {aiAnalysis.next_best_action}
+              <div className="rounded-lg border border-violet-400/30 bg-violet-50 dark:bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-700 dark:text-violet-200">
+                <span className="font-bold uppercase tracking-wide text-violet-800 dark:text-violet-300">Next:</span> {aiAnalysis.next_best_action}
               </div>
 
               {/* Smart alerts */}
@@ -906,9 +903,9 @@ function TradingPositionCard({
                   <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Smart Alerts</div>
                   {aiAnalysis.smart_alerts.map((a, i) => (
                     <div key={i} className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] ${
-                      a.severity === 'CRITICAL' ? 'border-rose-400/30 bg-rose-500/10 text-rose-300'
-                      : a.severity === 'WARNING' ? 'border-amber-400/30 bg-amber-500/10 text-amber-300'
-                      : 'border-sky-400/30 bg-sky-500/10 text-sky-300'
+                      a.severity === 'CRITICAL' ? 'border-rose-400/40 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                      : a.severity === 'WARNING' ? 'border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      : 'border-sky-400/40 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300'
                     }`}>
                       <AlertTriangle size={11} className="mt-px shrink-0" />
                       <span>{a.message}</span>
@@ -1032,14 +1029,14 @@ function TradingPositionCard({
               return (
                 <>
                   <div><div className="text-muted">Premium {isCredit ? 'Received' : 'Paid'}</div>
-                    <div className="font-mono font-bold text-gray-200 tabular-nums">${Math.abs(entryPs).toFixed(2)}<span className="text-[10px] text-gray-500 font-normal">/sh</span></div>
-                    <div className="text-[10px] text-gray-600">${(Math.abs(entryPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
+                    <div className="font-mono font-bold text-primary tabular-nums">${Math.abs(entryPs).toFixed(2)}<span className="text-[10px] text-muted font-normal">/sh</span></div>
+                    <div className="text-[10px] text-muted">${(Math.abs(entryPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
                   {currPs != null && (
                     <div><div className="text-muted">Current Premium</div>
-                      <div className={`font-mono font-bold tabular-nums ${pnlData.pnl > 0 ? 'text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-400' : 'text-gray-200'}`}>
+                      <div className={`font-mono font-bold tabular-nums ${pnlData.pnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary'}`}>
                         ${Math.abs(currPs).toFixed(2)}<span className="text-[10px] opacity-60 font-normal">/sh</span>
                       </div>
-                      <div className="text-[10px] text-gray-600">${(Math.abs(currPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
+                      <div className="text-[10px] text-muted">${(Math.abs(currPs) * 100 * pos.contracts).toFixed(0)} total</div></div>
                   )}
                 </>
               )
@@ -1108,51 +1105,51 @@ function TradingPositionCard({
             const changePct  = pnlData.pnl_pct                          // already sign-correct from backend
             const changeAmt  = curr - entry                              // raw per-share delta
             const isProfiting = pnlData.pnl > 0
-            const changeColor = isProfiting ? 'text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
+            const changeColor = isProfiting ? 'text-emerald-600 dark:text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted'
             const arrowChar   = isProfiting ? '▲' : pnlData.pnl < 0 ? '▼' : '—'
             const src = pnlData.mark_source
             const srcLabel = src === 'live' ? 'Live' : src === 'bs_theoretical' ? 'Est.' : 'Stale'
             const srcDot   = src === 'live' ? 'bg-emerald-400' : src === 'bs_theoretical' ? 'bg-amber-400' : 'bg-gray-500'
 
             return (
-              <div className="rounded-lg border border-gray-800/70 bg-black/10 px-3 py-2.5">
+              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] px-3 py-2.5">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Premium Tracker</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Premium Tracker</div>
                   <div className="flex items-center gap-1">
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${srcDot}`} />
-                    <span className="text-[10px] text-gray-500">{srcLabel}</span>
+                    <span className="text-[10px] text-muted">{srcLabel}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   {/* Entry premium */}
                   <div>
-                    <div className="text-[10px] text-gray-500 mb-0.5">
+                    <div className="text-[10px] text-muted mb-0.5">
                       {isCredit ? 'Credit received' : 'Premium paid'}
                     </div>
-                    <div className="font-mono font-bold text-gray-300 tabular-nums">
-                      ${Math.abs(entry).toFixed(2)}<span className="text-[10px] text-gray-500 font-normal">/sh</span>
+                    <div className="font-mono font-bold text-primary tabular-nums">
+                      ${Math.abs(entry).toFixed(2)}<span className="text-[10px] text-muted font-normal">/sh</span>
                     </div>
-                    <div className="text-[10px] text-gray-600">
+                    <div className="text-[10px] text-muted">
                       ${(Math.abs(entry) * 100 * pos.contracts).toFixed(0)} total
                     </div>
                   </div>
 
                   {/* Current mark */}
                   <div>
-                    <div className="text-[10px] text-gray-500 mb-0.5">
+                    <div className="text-[10px] text-muted mb-0.5">
                       {isCredit ? 'Cost to close' : 'Current value'}
                     </div>
                     <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
                       ${Math.abs(curr).toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
                     </div>
-                    <div className="text-[10px] text-gray-600">
+                    <div className="text-[10px] text-muted">
                       ${(Math.abs(curr) * 100 * pos.contracts).toFixed(0)} total
                     </div>
                   </div>
 
                   {/* Change */}
                   <div>
-                    <div className="text-[10px] text-gray-500 mb-0.5">Change</div>
+                    <div className="text-[10px] text-muted mb-0.5">Change</div>
                     <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
                       <span className="mr-0.5 text-[10px]">{arrowChar}</span>
                       {changeAmt >= 0 ? '+' : ''}${changeAmt.toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
@@ -1172,7 +1169,7 @@ function TradingPositionCard({
             if (rules.length === 0) return null
             return (
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Exit Plan</div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">Exit Plan</div>
                 <div className="space-y-1">
                   {rules.map((rule, i) => {
                     const isStop    = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
@@ -1182,17 +1179,17 @@ function TradingPositionCard({
                     const isEOD     = rule.trigger.toLowerCase().includes('close') && isTime
                     const dotCls  = isStop ? 'bg-red-400' : isTarget2 ? 'bg-orange-400' : isTarget1 ? 'bg-emerald-400' : isTime ? 'bg-amber-400' : 'bg-sky-400'
                     const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : 'text-amber-400'
-                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isTime ? 'text-amber-300' : 'text-gray-200'
+                    const actionCls = isStop ? 'text-red-700 dark:text-red-300' : isTarget2 ? 'text-orange-700 dark:text-orange-200' : isTarget1 ? 'text-emerald-700 dark:text-emerald-300' : isTime ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'
                     const priceLabel = isEOD ? 'EOD' : isTime ? 'time-based' : `$${rule.price!.toFixed(2)}`
                     return (
-                      <div key={i} className="flex items-start gap-2 rounded-lg border border-gray-800/40 bg-gray-800/25 px-2.5 py-1.5">
+                      <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] px-2.5 py-1.5">
                         <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span className={`font-mono text-[11px] font-bold tabular-nums ${priceCls}`}>{priceLabel}</span>
                             <span className={`text-[11px] font-semibold ${actionCls}`}>→ {rule.action}</span>
                           </div>
-                          <div className="text-[10px] text-gray-600 leading-snug">{rule.note}</div>
+                          <div className="text-[10px] text-muted leading-snug">{rule.note}</div>
                         </div>
                       </div>
                     )
@@ -1625,7 +1622,7 @@ export default function PositionsCenter() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-3">
           {filtered.map(pos => (
             <TradingPositionCard
               key={pos.id}

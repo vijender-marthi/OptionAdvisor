@@ -860,6 +860,16 @@ export default function SwingTradeEnginePanel({
     : execTone === 'red' ? 'border-l-4 border-l-semantic-bearish'
     : 'border-l-4 border-l-semantic-info'
 
+  // Which of the 4 states is the current market position?
+  const swingActiveState = ((): number => {
+    const fd = String(result.final_action || result.final_decision || '').toUpperCase()
+    if (fd === 'EXIT') return 4
+    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
+    if (['WATCH', 'WATCH_CALL', 'WATCH_PUT', 'WATCH_CALL_OR_DEBIT_SPREAD',
+         'WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].includes(fd)) return 2
+    return 1
+  })()
+
   return (
     <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
       <div className="px-4 pt-4 pb-4 border-b border-gray-800 space-y-4">
@@ -961,29 +971,63 @@ export default function SwingTradeEnginePanel({
               </div>
             </div>
 
+            {/* Progress stepper */}
+            <div className="flex items-center">
+              {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
+                const n = i + 1
+                const isActive = n === swingActiveState
+                const isPast = n < swingActiveState
+                const nodeCls = isActive
+                  ? color === 'amber'   ? 'border-amber-400 bg-amber-500/25 text-amber-200 ring-2 ring-amber-400/40 ring-offset-1 ring-offset-gray-900'
+                    : color === 'emerald' ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40 ring-offset-1 ring-offset-gray-900'
+                    : color === 'sky'     ? 'border-sky-400 bg-sky-500/25 text-sky-200 ring-2 ring-sky-400/40 ring-offset-1 ring-offset-gray-900'
+                    :                      'border-red-400 bg-red-500/25 text-red-200 ring-2 ring-red-400/40 ring-offset-1 ring-offset-gray-900'
+                  : isPast ? 'border-gray-600 bg-gray-700/50 text-gray-500'
+                  : 'border-gray-700 bg-gray-800 text-gray-600'
+                const lblCls = isActive
+                  ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
+                  : isPast ? 'text-gray-500' : 'text-gray-700'
+                return (
+                  <div key={n} className="flex items-center flex-1">
+                    <div className="flex flex-col items-center gap-0.5 flex-1">
+                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${nodeCls}`}>{n}</div>
+                      <span className={`text-[9px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
+                    </div>
+                    {i < 3 && <div className={`h-0.5 w-3 shrink-0 mb-3.5 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
+                  </div>
+                )
+              })}
+            </div>
+
             {/* 4-State Grid */}
             <div className="grid gap-2 sm:grid-cols-4">
               {/* STATE 1: SETUP */}
-              <div className="rounded-xl border border-amber-700/40 bg-amber-950/12 px-3 py-3">
+              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 1 ? 'border-amber-500/60 bg-amber-950/25 ring-2 ring-amber-500/20' : 'border-amber-700/40 bg-amber-950/12'}`}>
+                <div className="px-3 py-3">
                 <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
                   STATE 1: SETUP
-                </div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Base / Accumulation</div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                    {result.bias === 'short'
-                      ? `Resistance zone ${execLevels.pullbackZone || 'forming'} — short bias building`
-                      : `Support zone ${execLevels.pullbackZone || 'forming'} — long bias building`}
-                  </div>
-                  <div className="text-[10px] text-amber-400/80 font-semibold">No entry — observe only</div>
-                </div>
+{swingActiveState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-amber-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
+
               </div>
-              {/* STATE 2: ENTRY */}
-              <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/12 px-3 py-3">
-                <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                  STATE 2: ENTRY
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Base / Accumulation</div>
+              <div className="space-y-1.5 text-xs">
+                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                  {result.bias === 'short'
+                    ? `Resistance zone ${execLevels.pullbackZone || 'forming'} — short bias building`
+                    : `Support zone ${execLevels.pullbackZone || 'forming'} — long bias building`}
+                </div>
+                <div className="text-[10px] text-amber-400/80 font-semibold">No entry — observe only</div>
+              </div>
+            </div>
+            </div>
+            {/* STATE 2: ENTRY */}
+            <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 2 ? 'border-emerald-500/60 bg-emerald-950/25 ring-2 ring-emerald-500/20' : 'border-emerald-700/40 bg-emerald-950/12'}`}>
+              <div className="px-3 py-3">
+              <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                STATE 2: ENTRY
+                {swingActiveState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Confirmation</div>
                 <div className="space-y-1.5 text-xs">
@@ -999,12 +1043,15 @@ export default function SwingTradeEnginePanel({
                     Entry on confirmed breakout — no anticipation
                   </div>
                 </div>
+                </div>
               </div>
-              {/* STATE 3: ACTIVE */}
-              <div className="rounded-xl border border-sky-700/40 bg-sky-950/12 px-3 py-3">
+              {/* STATE 3: IN-PLAY */}
+              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 3 ? 'border-sky-500/60 bg-sky-950/25 ring-2 ring-sky-500/20' : 'border-sky-700/40 bg-sky-950/12'}`}>
+                <div className="px-3 py-3">
                 <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                  STATE 3: ACTIVE
+                  STATE 3: IN-PLAY
+                  {swingActiveState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Trend Holding Phase</div>
                 <div className="space-y-1.5 text-xs">
@@ -1018,12 +1065,15 @@ export default function SwingTradeEnginePanel({
                     Scale ½ at TP1, trail rest to TP2
                   </div>
                 </div>
+                </div>
               </div>
               {/* STATE 4: EXIT */}
-              <div className="rounded-xl border border-red-700/40 bg-red-950/12 px-3 py-3">
+              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 4 ? 'border-red-500/60 bg-red-950/25 ring-2 ring-red-500/20' : 'border-red-700/40 bg-red-950/12'}`}>
+                <div className="px-3 py-3">
                 <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
                   STATE 4: EXIT
+                  {swingActiveState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Invalidated / Complete</div>
                 <div className="space-y-1.5 text-xs">
@@ -1037,6 +1087,7 @@ export default function SwingTradeEnginePanel({
                       : `Structure breakdown → exit`}
                     {execLevels.stretchTarget && ` · full exit at TP2`}
                   </div>
+                </div>
                 </div>
               </div>
             </div>

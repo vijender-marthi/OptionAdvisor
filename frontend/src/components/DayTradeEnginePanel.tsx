@@ -684,7 +684,7 @@ export default function DayTradeEnginePanel({
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
             <div className="mt-1 flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
+              <span className="text-xl font-bold text-white tracking-tight">{result.ticker}</span>
               {result.company_name && (
                 <span className="text-xs text-gray-500 truncate max-w-[220px]">{result.company_name}</span>
               )}
@@ -779,14 +779,31 @@ export default function DayTradeEnginePanel({
 
           return (
           <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
-            {[1,2,3,4].map((n, i) => (
-              <span key={n} className={`flex items-center gap-1.5 ${n === activeState ? 'text-gray-200' : ''}`}>
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ${n === activeState ? 'bg-violet-400' : 'bg-gray-700'}`} />
-                {['SETUP','ENTRY','IN-PLAY','EXIT'][i]}
-                {i < 3 && <ChevronRight size={11} className={n === activeState ? 'text-violet-400' : 'text-gray-700'} />}
-              </span>
-            ))}
+          <div className="flex items-center">
+            {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
+              const n = i + 1
+              const isActive = n === activeState
+              const isPast = n < activeState
+              const nodeCls = isActive
+                ? color === 'amber'   ? 'border-amber-400 bg-amber-500/25 text-amber-200 ring-2 ring-amber-400/40 ring-offset-1 ring-offset-gray-900'
+                  : color === 'emerald' ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40 ring-offset-1 ring-offset-gray-900'
+                  : color === 'sky'     ? 'border-sky-400 bg-sky-500/25 text-sky-200 ring-2 ring-sky-400/40 ring-offset-1 ring-offset-gray-900'
+                  :                      'border-red-400 bg-red-500/25 text-red-200 ring-2 ring-red-400/40 ring-offset-1 ring-offset-gray-900'
+                : isPast ? 'border-gray-600 bg-gray-700/50 text-gray-500'
+                : 'border-gray-700 bg-gray-800 text-gray-600'
+              const lblCls = isActive
+                ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
+                : isPast ? 'text-gray-500' : 'text-gray-700'
+              return (
+                <div key={n} className="flex items-center flex-1">
+                  <div className="flex flex-col items-center gap-0.5 flex-1">
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${nodeCls}`}>{n}</div>
+                    <span className={`text-[9px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
+                  </div>
+                  {i < 3 && <div className={`h-0.5 w-3 shrink-0 mb-3.5 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
+                </div>
+              )
+            })}
           </div>
           <div className="grid gap-2 sm:grid-cols-4">
             {/* STATE 1: SETUP */}
@@ -794,7 +811,8 @@ export default function DayTradeEnginePanel({
               <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                STATE 1: SETUP {activeState === 1 && <span className="text-[9px] text-amber-400 font-normal tracking-normal ml-auto">← HERE</span>}
+                STATE 1: SETUP
+                {activeState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-amber-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
               <div className="space-y-1.5 text-xs">
@@ -819,7 +837,8 @@ export default function DayTradeEnginePanel({
               <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                STATE 2: ENTRY {activeState === 2 && <span className="text-[9px] text-emerald-400 font-normal tracking-normal ml-auto">← HERE</span>}
+                STATE 2: ENTRY
+                {activeState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
               <div className="space-y-1.5 text-xs">
@@ -848,7 +867,8 @@ export default function DayTradeEnginePanel({
               <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                STATE 3: IN-PLAY {activeState === 3 && <span className="text-[9px] text-sky-400 font-normal tracking-normal ml-auto">← HERE</span>}
+                STATE 3: IN-PLAY
+                {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Active</div>
               <div className="space-y-1.5 text-xs">
@@ -871,7 +891,8 @@ export default function DayTradeEnginePanel({
               <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
-                STATE 4: EXIT {activeState === 4 && <span className="text-[9px] text-red-400 font-normal tracking-normal ml-auto">← HERE</span>}
+                STATE 4: EXIT
+                {activeState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Completion / Reset</div>
               <div className="space-y-1.5 text-xs">
