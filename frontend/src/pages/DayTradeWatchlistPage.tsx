@@ -269,7 +269,7 @@ export function DayTradeWatchlistPanel({ embedInHub = false }: { embedInHub?: bo
               <LayoutList size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Day Trade Watchlist</h1>
+              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Day Trade Watchlist</h1>
               <p className="text-xs text-gray-500">
                 Up to {MAX_TICKERS} symbols · synced to your account · same engine as{' '}
                 <span className="text-gray-400">Day Trade Engine</span>

@@ -201,9 +201,19 @@ export interface TradeCommandCenterCharts {
   style_allocation?: Array<{ label: string; value: number }>
 }
 
+export interface OverallDecision {
+  verdict: 'STRONG GO' | 'GO' | 'WATCH' | 'WAIT'
+  label: string
+  confidence: number
+  reason: string
+  engines_agreeing: string[]
+  engines_conflicting: string[]
+}
+
 export interface TradeCommandCenterPayload {
   market_summary: Record<string, unknown>
   engines: TradeCommandCenterEngine[]
+  overall_decision?: OverallDecision
   recommendations: TradeCommandCenterRecommendation[]
   conflicts?: TradeCommandCenterConflict[]
   alerts_summary?: TradeCommandCenterAlertsSummary

@@ -63,7 +63,7 @@ export default function DayTradeAlertsPage() {
             <BellRing size={20} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">Day Trade Alerts</h1>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Day Trade Alerts</h1>
             <p className="text-xs text-gray-500">
               WATCH → GO / STRONG GO on your saved watchlist (server scan ~ every 15 min when the alert window runs)
             </p>

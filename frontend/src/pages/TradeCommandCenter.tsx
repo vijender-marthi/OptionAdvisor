@@ -9,11 +9,14 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   ChevronUp,
+  Clock,
+  LineChart,
   RefreshCw,
   ShieldAlert,
   TrendingUp,
   LayoutGrid,
   Gauge,
+  Zap,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -39,6 +42,7 @@ import MarketIntelligenceStrip from '../components/MarketIntelligenceStrip'
 import ReserveSignalCard from '../components/ReserveSignalCard'
 import type {
   ApiEnvelope,
+  OverallDecision,
   TradeCommandCenterActivity,
   TradeCommandCenterConflict,
   TradeCommandCenterEngine,
@@ -435,6 +439,96 @@ function MarketPositionWidget() {
   )
 }
 
+function OverallDecisionBanner({ od }: { od: OverallDecision }) {
+  const v = od.verdict
+
+  const bannerCls =
+    v === 'STRONG GO' ? 'border-emerald-500/50 bg-emerald-950/20 dark:bg-emerald-900/15' :
+    v === 'GO'        ? 'border-sky-500/40    bg-sky-950/20    dark:bg-sky-900/15'       :
+    v === 'WATCH'     ? 'border-amber-500/40  bg-amber-950/15  dark:bg-amber-900/10'     :
+                        'border-slate-500/30  bg-slate-900/40  dark:bg-slate-800/20'
+
+  const verdictCls =
+    v === 'STRONG GO' ? 'bg-emerald-500 text-white' :
+    v === 'GO'        ? 'bg-sky-500     text-white' :
+    v === 'WATCH'     ? 'bg-amber-500   text-white' :
+                        'bg-slate-600   text-white'
+
+  const dotCls =
+    v === 'STRONG GO' ? 'bg-emerald-400' :
+    v === 'GO'        ? 'bg-sky-400'     :
+    v === 'WATCH'     ? 'bg-amber-400'   :
+                        'bg-slate-500'
+
+  const labelCls =
+    v === 'STRONG GO' ? 'text-semantic-bullish' :
+    v === 'GO'        ? 'text-semantic-info'    :
+    v === 'WATCH'     ? 'text-semantic-warning' :
+                        'text-gray-500'
+
+  const engineTag = (e: string) => {
+    const color =
+      e === 'day'     ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700/40' :
+      e === 'swing'   ? 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700/40' :
+      e === 'regular' ? 'bg-teal-100   text-teal-700   border-teal-200   dark:bg-teal-900/40   dark:text-teal-300   dark:border-teal-700/40'   :
+                        'bg-slate-100  text-slate-600  border-slate-200  dark:bg-slate-700/40  dark:text-slate-300  dark:border-slate-600/40'
+    return (
+      <span key={e} className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase ${color}`}>
+        {e}
+      </span>
+    )
+  }
+
+  return (
+    <section className={`rounded-2xl border p-4 md:p-5 ${bannerCls}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <Zap size={15} className={labelCls} />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Overall Decision</span>
+        </div>
+        <div className="flex items-center gap-2 flex-1 flex-wrap">
+          <span className={`rounded-lg px-3 py-1 text-sm font-black uppercase tracking-wide ${verdictCls}`}>{v}</span>
+          <span className={`text-sm font-semibold ${labelCls}`}>{od.label}</span>
+          <span className="text-xs text-slate-400 font-mono">{od.confidence}% conf.</span>
+        </div>
+        {od.engines_agreeing.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Agree:</span>
+            {od.engines_agreeing.map(engineTag)}
+          </div>
+        )}
+        {od.engines_conflicting.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] text-rose-500 uppercase tracking-wide">Conflict:</span>
+            {od.engines_conflicting.map(engineTag)}
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex items-start gap-2">
+        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+        <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">{od.reason}</p>
+      </div>
+    </section>
+  )
+}
+
+function qualityColor(v: string): string {
+  const u = v.toUpperCase()
+  if (u === 'GOOD' || u === 'READY' || u === 'HIGH') return 'text-green-600 dark:text-green-400'
+  if (u === 'WATCH' || u === 'MEDIUM' || u === 'FAIR') return 'text-amber-600 dark:text-amber-400'
+  if (u === 'AVOID' || u === 'WEAK' || u === 'LOW' || u === 'WAIT') return 'text-red-600 dark:text-red-400'
+  return 'text-slate-900 dark:text-white'
+}
+
+function alertPressureLevel(a: { active_alerts: number; critical_alerts: number; high_iv_warnings: number }): { label: string; color: string } {
+  const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
+  if (total >= 8) return { label: 'Critical', color: '#ef4444' }
+  if (total >= 5) return { label: 'Elevated', color: '#f97316' }
+  if (total >= 3) return { label: 'Active',   color: '#f59e0b' }
+  if (total >= 1) return { label: 'Watch',    color: '#3b82f6' }
+  return           { label: 'Quiet',    color: '#22c55e' }
+}
+
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
   const { addToWatchlist, isWatched, requestAnalysis } = useApp()
@@ -551,7 +645,7 @@ export default function TradeCommandCenter() {
     <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-7xl space-y-8 px-4 py-6 pb-28 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="tcc-hero-title text-3xl">Trade Command Center</h1>
+          <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Trade Command Center</h1>
           <p className="mt-1.5 max-w-3xl text-sm text-gray-500">
             Real-time regime snapshot — engine trust scores, READY/TRADE setups with entry/stop/target, cross-engine conflicts, and smart alerts. Act only when signal quality + execution timing agree.
             {env?.stale ? <span className="text-amber-400"> Live market summary unavailable, using cached defaults.</span> : null}
@@ -644,6 +738,11 @@ export default function TradeCommandCenter() {
             </div>
           </section>
 
+          {/* ═══ OVERALL DECISION ═══ */}
+          {payload.overall_decision ? (
+            <OverallDecisionBanner od={payload.overall_decision} />
+          ) : null}
+
            {/* ═══ ENGINES — Engine Health ═══ */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
@@ -673,14 +772,6 @@ export default function TradeCommandCenter() {
                      engKey === 'swing' ? 'bg-violet-600 hover:bg-violet-500' :
                      'bg-teal-600 hover:bg-teal-500'
 
-                   function qualityColor(v: string): string {
-                     const u = v.toUpperCase()
-                     if (u === 'GOOD' || u === 'READY' || u === 'HIGH') return 'text-green-600 dark:text-green-400'
-                     if (u === 'WATCH' || u === 'MEDIUM' || u === 'FAIR') return 'text-amber-600 dark:text-amber-400'
-                     if (u === 'AVOID' || u === 'WEAK' || u === 'LOW' || u === 'WAIT') return 'text-red-600 dark:text-red-400'
-                     return 'text-slate-900 dark:text-white'
-                   }
-
                    return (
                       <div key={engKey}>
                          <button type="button" onClick={() => setExpandedEngines(prev => { const next = new Set(prev); isExpanded ? next.delete(engKey) : next.add(engKey); return next })} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -692,7 +783,7 @@ export default function TradeCommandCenter() {
                             <div className="h-1.5 w-12 sm:w-16 rounded-full bg-slate-100 dark:bg-slate-700/30">
                               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }} />
                             </div>
-                            <span className="text-[10px] sm:text-[11px] font-bold text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-slate-900 dark:text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
                           </div>
                           <div className="flex flex-wrap items-center gap-1 min-w-0">
                             <span className="text-[10px] sm:text-[11px] text-slate-400 whitespace-nowrap">{card.market_bias || '—'}</span>
@@ -1062,7 +1153,7 @@ export default function TradeCommandCenter() {
 
           <section className="space-y-4">
             <div className="flex items-center gap-2">
-              <BarChart3 size={18} className="text-violet-400" />
+              <LineChart size={18} className="text-violet-400" />
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</h2>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
@@ -1226,45 +1317,26 @@ export default function TradeCommandCenter() {
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Risk &amp; Alert Snapshot</h2>
               </div>
 
-              <div className="mb-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Alert Pressure</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{
-                    color: (() => {
-                      const a = alertsSummary
-                      const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
-                      if (total >= 8) return '#ef4444'
-                      if (total >= 5) return '#f97316'
-                      if (total >= 3) return '#f59e0b'
-                      if (total >= 1) return '#3b82f6'
-                      return '#22c55e'
-                    })(),
-                  }}>
-                    {(() => {
-                      const a = alertsSummary
-                      const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
-                      if (total >= 8) return 'Critical'
-                      if (total >= 5) return 'Elevated'
-                      if (total >= 3) return 'Active'
-                      if (total >= 1) return 'Watch'
-                      return 'Quiet'
-                    })()}
-                  </span>
-                </div>
-                <div className="tcc-alert-bar">
-                  <div className="tcc-alert-bar-segment quiet" style={{ width: '20%' }} />
-                  <div className="tcc-alert-bar-segment watch" style={{ width: '20%' }} />
-                  <div className={`tcc-alert-bar-segment active ${alertsSummary.active_alerts >= 3 ? 'active-fill' : ''}`} style={{ width: '20%' }} />
-                  <div className={`tcc-alert-bar-segment elevated ${alertsSummary.critical_alerts >= 2 || alertsSummary.positions_requiring_exit > 0 ? 'elevated-fill' : ''}`} style={{ width: '20%' }} />
-                  <div className={`tcc-alert-bar-segment critical ${alertsSummary.critical_alerts >= 3 || alertsSummary.positions_requiring_exit >= 2 ? 'critical-fill' : ''}`} style={{ width: '20%' }} />
-                  {(() => {
-                    const a = alertsSummary
-                    const total = a.active_alerts + a.critical_alerts * 2 + a.high_iv_warnings
-                    const pct = Math.min(90, Math.max(5, total * 10))
-                    return <div className="tcc-alert-bar-active" style={{ left: `${pct}%` }} />
-                  })()}
-                </div>
-              </div>
+              {(() => {
+                const pressure = alertPressureLevel(alertsSummary)
+                const pct = Math.min(90, Math.max(5, (alertsSummary.active_alerts + alertsSummary.critical_alerts * 2 + alertsSummary.high_iv_warnings) * 10))
+                return (
+                  <div className="mb-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Alert Pressure</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: pressure.color }}>{pressure.label}</span>
+                    </div>
+                    <div className="tcc-alert-bar">
+                      <div className="tcc-alert-bar-segment quiet" style={{ width: '20%' }} />
+                      <div className="tcc-alert-bar-segment watch" style={{ width: '20%' }} />
+                      <div className={`tcc-alert-bar-segment active ${alertsSummary.active_alerts >= 3 ? 'active-fill' : ''}`} style={{ width: '20%' }} />
+                      <div className={`tcc-alert-bar-segment elevated ${alertsSummary.critical_alerts >= 2 || alertsSummary.positions_requiring_exit > 0 ? 'elevated-fill' : ''}`} style={{ width: '20%' }} />
+                      <div className={`tcc-alert-bar-segment critical ${alertsSummary.critical_alerts >= 3 || alertsSummary.positions_requiring_exit >= 2 ? 'critical-fill' : ''}`} style={{ width: '20%' }} />
+                      <div className="tcc-alert-bar-active" style={{ left: `${pct}%` }} />
+                    </div>
+                  </div>
+                )
+              })()}
 
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
@@ -1334,7 +1406,7 @@ export default function TradeCommandCenter() {
 
             <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
               <div className="mb-4 flex items-center gap-2">
-                <RefreshCw size={18} className="text-violet-400" />
+                <Clock size={18} className="text-violet-400" />
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Decisions / Activity</h2>
               </div>
               <div className="space-y-3">

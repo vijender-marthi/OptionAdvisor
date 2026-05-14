@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { fetchPositionsCenter } from '../api/commandCenter'
+import { ROUTES } from '../routing/routes'
 import { useApp } from '../contexts/AppContext'
 import type { AiPositionAnalysis, ApiEnvelope } from '../types/commandCenter'
 import type { PortfolioPosition, OptionLeg, ClosePositionPayload } from '../types/index'
@@ -604,6 +605,49 @@ function PositionFormFields({
   )
 }
 
+type ActionAlert = {
+  type: 'EXIT_NOW' | 'SELL_HALF' | 'WATCH' | 'MANAGE' | 'HOLD'
+  label: string
+  reason: string
+  urgency: 'red' | 'amber' | 'blue' | 'green'
+}
+
+function deriveActionAlert(
+  pos: PortfolioPosition,
+  pnlData: { pnl: number; pnl_pct: number } | null | undefined,
+  aiAnalysis: AiPositionAnalysis | null | undefined,
+): ActionAlert {
+  const dte = pos.dte ?? 99
+  const pnlPct = pnlData?.pnl_pct ?? 0
+  const pnlDollar = pnlData?.pnl ?? 0
+  const strat = (pos.strategy || '').toLowerCase()
+  const bias = (pos.bias || '').toLowerCase()
+
+  if (dte <= 5)
+    return { type: 'EXIT_NOW', label: 'EXIT NOW', urgency: 'red', reason: `Only ${dte} DTE left — theta is eroding value. Close or roll immediately.` }
+  if (aiAnalysis && aiAnalysis.health_score < 35)
+    return { type: 'EXIT_NOW', label: 'EXIT NOW', urgency: 'red', reason: aiAnalysis.next_best_action || 'Health critical — exit to preserve capital.' }
+
+  const maxProfitTotal = (pos.max_profit ?? 0) * SHARES_PER_OPTION_CONTRACT * pos.contracts
+  if (pos.status === 'open' && maxProfitTotal > 0 && pnlDollar >= maxProfitTotal * 0.5)
+    return { type: 'SELL_HALF', label: 'SELL HALF', urgency: 'amber', reason: `${((pnlDollar / maxProfitTotal) * 100).toFixed(0)}% of max profit captured. Sell ½ now, trail stop to entry.` }
+  if (pos.status === 'open' && pnlPct >= 50)
+    return { type: 'SELL_HALF', label: 'SELL HALF', urgency: 'amber', reason: `${pnlPct.toFixed(0)}% gain — take partial profit and trail stop.` }
+
+  if (dte <= 14)
+    return { type: 'WATCH', label: 'WATCH', urgency: 'amber', reason: `${dte} DTE. At ${Math.max(1, dte - 5)} DTE close if ≥50% max profit, otherwise prepare a roll.` }
+
+  if (strat.includes('spread') || strat.includes('condor') || strat.includes('iron'))
+    return { type: 'MANAGE', label: 'MANAGE', urgency: 'blue', reason: 'Multi-leg: buy back short leg if it goes ITM with <7 DTE. Stop if net loss > 2× credit.' }
+
+  const holdReason = bias.includes('bull')
+    ? 'Bullish thesis intact. Trail stop to last swing low. Target 50% profit for partial close.'
+    : bias.includes('bear')
+    ? 'Bearish thesis intact. Exit if price reclaims VWAP or prior resistance with volume.'
+    : `${dte} DTE remaining. Profit target: 50% of max credit. Stop: 2× premium paid.`
+  return { type: 'HOLD', label: 'HOLD', urgency: 'green', reason: holdReason }
+}
+
 function TradingPositionCard({
   pos,
   expanded,
@@ -745,6 +789,31 @@ function TradingPositionCard({
           ) : null}
         </div>
       </div>
+
+      {/* ── Action Strip (always visible) ── */}
+      {pos.status === 'open' && (() => {
+        const alert = deriveActionAlert(pos, pnlData, aiAnalysis)
+        const stripCls = alert.urgency === 'red'   ? 'border-red-500/25 bg-red-950/20'
+          : alert.urgency === 'amber' ? 'border-amber-500/25 bg-amber-950/15'
+          : alert.urgency === 'blue'  ? 'border-sky-500/25 bg-sky-950/15'
+          : 'border-emerald-500/25 bg-emerald-950/15'
+        const badgeCls = alert.urgency === 'red'   ? 'bg-red-500 text-white'
+          : alert.urgency === 'amber' ? 'bg-amber-500 text-white'
+          : alert.urgency === 'blue'  ? 'bg-sky-500 text-white'
+          : 'bg-emerald-500 text-white'
+        const textCls = alert.urgency === 'red'   ? 'text-red-200'
+          : alert.urgency === 'amber' ? 'text-amber-200'
+          : alert.urgency === 'blue'  ? 'text-sky-200'
+          : 'text-emerald-200'
+        return (
+          <div className={`flex items-start gap-2.5 border-t px-3 py-2 ${stripCls}`}>
+            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${badgeCls}`}>
+              {alert.label}
+            </span>
+            <span className={`text-xs leading-snug ${textCls}`}>{alert.reason}</span>
+          </div>
+        )
+      })()}
 
       {/* ── Footer: actions ── */}
       <div className="flex items-center gap-1 border-t border-slate-100 dark:border-white/[0.05] px-3 py-1.5">
@@ -918,47 +987,19 @@ function TradingPositionCard({
             </div>
           )}
 
-          {/* Metrics — borderless grid */}
+          {/* Metrics — position fundamentals */}
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
-            {aiAnalysis ? (
-              <>
-                <div><div className="text-muted">Health</div>
-                  <div className={`font-semibold tabular-nums ${
-                    aiAnalysis.health_score >= 75 ? 'text-emerald-400' : aiAnalysis.health_score >= 60 ? 'text-amber-400' : aiAnalysis.health_score >= 40 ? 'text-orange-400' : 'text-rose-400'
-                  }`}>{aiAnalysis.health_score}</div></div>
-                <div><div className="text-muted">Momentum</div>
-                  <div className={`font-semibold ${
-                    aiAnalysis.momentum_quality === 'STRONG' ? 'text-emerald-400'
-                    : aiAnalysis.momentum_quality === 'MODERATE' ? 'text-amber-400'
-                    : 'text-rose-400'
-                  }`}>{aiAnalysis.momentum_quality}</div></div>
-                <div><div className="text-muted">Stage</div>
-                  <div className={`font-semibold ${
-                    aiAnalysis.timeline_stage === 'EXIT_SOON' ? 'text-rose-400'
-                    : aiAnalysis.timeline_stage === 'ROLL_WINDOW' ? 'text-amber-400'
-                    : aiAnalysis.timeline_stage === 'PROFIT_PROTECTION' ? 'text-sky-400'
-                    : 'text-emerald-400'
-                  }`}>{aiAnalysis.timeline_stage.replace(/_/g, ' ')}</div></div>
-                <div><div className="text-muted">RSI</div>
-                  <div className={`font-semibold tabular-nums ${
-                    aiAnalysis.rsi > 70 || aiAnalysis.rsi < 30 ? 'text-rose-400' : 'text-secondary'
-                  }`}>{aiAnalysis.rsi.toFixed(1)}</div></div>
-              </>
-            ) : (
-              <>
-                {pos.prob_of_profit != null && (
-                  <div><div className="text-muted">PoP</div>
-                    <div className={`font-semibold tabular-nums ${pos.prob_of_profit >= 60 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.prob_of_profit.toFixed(0)}%</div></div>
-                )}
-                {pos.edge_ratio != null && (
-                  <div><div className="text-muted">Edge</div>
-                    <div className={`font-semibold tabular-nums ${pos.edge_ratio >= 0.05 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.edge_ratio.toFixed(2)}</div></div>
-                )}
-                {pos.kelly_fraction != null && (
-                  <div><div className="text-muted">½ Kelly</div>
-                    <div className="font-semibold tabular-nums text-sky-400">{((pos.half_kelly_fraction ?? pos.kelly_fraction) * 100).toFixed(1)}%</div></div>
-                )}
-              </>
+            {pos.prob_of_profit != null && (
+              <div><div className="text-muted">PoP</div>
+                <div className={`font-semibold tabular-nums ${pos.prob_of_profit >= 60 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.prob_of_profit.toFixed(0)}%</div></div>
+            )}
+            {pos.edge_ratio != null && (
+              <div><div className="text-muted">Edge</div>
+                <div className={`font-semibold tabular-nums ${pos.edge_ratio >= 0.05 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.edge_ratio.toFixed(2)}</div></div>
+            )}
+            {pos.kelly_fraction != null && (
+              <div><div className="text-muted">½ Kelly</div>
+                <div className="font-semibold tabular-nums text-sky-400">{((pos.half_kelly_fraction ?? pos.kelly_fraction) * 100).toFixed(1)}%</div></div>
             )}
             {pos.max_profit != null && pos.max_profit > 0 && (
               <div><div className="text-muted">Max Profit (full expiry)</div>
@@ -1125,45 +1166,38 @@ function TradingPositionCard({
             )
           })()}
 
-          {/* Exit Rules */}
+          {/* Exit Plan */}
           {pos.status === 'open' && (() => {
             const rules = deriveExitRules(pos)
             if (rules.length === 0) return null
             return (
-              <div className="rounded-lg border border-gray-800/70 bg-black/10 px-3 py-2.5">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Exit Rules</div>
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 border-b border-gray-800/50">
-                      <th className="pb-1 text-left font-medium">When</th>
-                      <th className="pb-1 text-right font-medium tabular-nums pr-3">At</th>
-                      <th className="pb-1 text-left font-medium">Do This</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800/30">
-                    {rules.map((rule, i) => {
-                      const isStop   = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
-                      const isTarget2 = rule.trigger.toLowerCase().includes('target 2') || rule.trigger.toLowerCase().includes('100%')
-                      const isTarget1 = rule.trigger.toLowerCase().includes('target 1') || rule.trigger.toLowerCase().includes('50%') || rule.trigger.toLowerCase().includes('captured')
-                      const isTime   = rule.price == null
-                      const isEOD    = rule.trigger.toLowerCase().includes('close') && isTime
-                      const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isTime ? 'text-amber-400' : 'text-slate-300'
-                      const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isTime ? 'text-amber-300' : 'text-gray-200'
-                      return (
-                        <tr key={i}>
-                          <td className="py-1.5 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
-                          <td className={`py-1.5 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
-                            {isEOD ? 'EOD' : isTime ? 'time' : `$${rule.price!.toFixed(2)}`}
-                          </td>
-                          <td className="py-1.5 align-top">
-                            <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
-                            <div className="text-[10px] text-gray-600 leading-snug mt-0.5">{rule.note}</div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Exit Plan</div>
+                <div className="space-y-1">
+                  {rules.map((rule, i) => {
+                    const isStop    = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
+                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2') || rule.trigger.toLowerCase().includes('100%')
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1') || rule.trigger.toLowerCase().includes('50%') || rule.trigger.toLowerCase().includes('captured')
+                    const isTime    = rule.price == null
+                    const isEOD     = rule.trigger.toLowerCase().includes('close') && isTime
+                    const dotCls  = isStop ? 'bg-red-400' : isTarget2 ? 'bg-orange-400' : isTarget1 ? 'bg-emerald-400' : isTime ? 'bg-amber-400' : 'bg-sky-400'
+                    const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : 'text-amber-400'
+                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isTime ? 'text-amber-300' : 'text-gray-200'
+                    const priceLabel = isEOD ? 'EOD' : isTime ? 'time-based' : `$${rule.price!.toFixed(2)}`
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded-lg border border-gray-800/40 bg-gray-800/25 px-2.5 py-1.5">
+                        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className={`font-mono text-[11px] font-bold tabular-nums ${priceCls}`}>{priceLabel}</span>
+                            <span className={`text-[11px] font-semibold ${actionCls}`}>→ {rule.action}</span>
+                          </div>
+                          <div className="text-[10px] text-gray-600 leading-snug">{rule.note}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )
           })()}
@@ -1602,8 +1636,8 @@ export default function PositionsCenter() {
               onToggle={() => toggleExpanded(pos.id)}
               onClose={() => handleClose(pos)}
               onManage={() => handleManage(pos)}
-              onRoll={() => setNotice({ message: 'Roll action not wired yet' })}
-              onAlert={() => setNotice({ message: 'Alert action not wired yet' })}
+              onRoll={() => setNotice({ message: `Roll — open the ${pos.ticker} engine page, verify new expiry/strike, then add the new leg here.` })}
+              onAlert={() => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
             />
           ))}
         </div>
