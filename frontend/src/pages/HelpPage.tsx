@@ -1082,6 +1082,60 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<FlaskConical size={15} />} title="STATE 3 Walkthrough — AMD Long Breakout Example">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>When the engine advances to STATE 3 (IN-PLAY) on a long setup, the panel shows three execution instructions. Here is how to read each one using a real AMD setup.</p>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">Setup snapshot</p>
+                    <p className="font-mono text-gray-500">Bias: LONG · VWAP $446.18 · ORH $447.58</p>
+                    <p className="font-mono text-gray-500">Action at trigger: break &amp; hold above ORH $447.58</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {[
+                      {
+                        label: 'HOLD LONG',
+                        color: 'text-emerald-400',
+                        desc: 'Bias is long. The confirmed trade direction is long — not short. This field flips to HOLD SHORT on bearish setups.',
+                      },
+                      {
+                        label: 'TP $459.19',
+                        color: 'text-emerald-400',
+                        desc: 'Measured-move target — calculated from the opening range size projected above ORH. Scale out or fully exit here. In this case ~$11.61 above the ORH trigger.',
+                      },
+                      {
+                        label: 'trail ORH $447.58',
+                        color: 'text-sky-400',
+                        desc: 'Your trailing stop is the opening range high. Once you enter above $447.58, that level becomes support. If AMD closes back below $447.58, the breakout has failed — exit. You trail the structural level, not a fixed pip stop.',
+                      },
+                      {
+                        label: 'add on strength above $446.18',
+                        color: 'text-amber-400',
+                        desc: '$446.18 is VWAP. If AMD pulls back toward VWAP after the breakout and then bounces with a confirmation candle, that retest is your lower-risk add-on entry. You are adding at a tighter level while the ORH confirms as support above.',
+                      },
+                    ].map(r => (
+                      <div key={r.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className={`font-mono font-bold text-[11px] ${r.color}`}>{r.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{r.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1 font-mono text-[10px] text-gray-500">
+                    <p className="font-semibold text-gray-200 text-[11px] font-sans">Full trade sequence</p>
+                    <p>VWAP &nbsp; $446.18 &nbsp; ← secondary add-on level (pullback + bounce)</p>
+                    <p>ORH &nbsp;&nbsp; $447.58 &nbsp; ← primary entry trigger / trailing stop</p>
+                    <p>TP &nbsp;&nbsp;&nbsp; $459.19 &nbsp; ← measured-move target, scale out here</p>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                    <p className="font-semibold text-amber-300 text-[11px]">Key rule</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">The $1.40 gap between VWAP and ORH is your risk window. If AMD closes back below ORH after entry, stop out immediately — do not wait for it to reach VWAP. The trail is ORH, not VWAP.</p>
+                  </div>
+                </div>
+              </DocCard>
+
               <DocCard icon={<Activity size={15} />} title="Signal Improvements (11 Additions)">
                 <div className="space-y-2 text-xs text-gray-400">
                   <p>Recent engine updates added the following signals and scoring improvements:</p>
@@ -1105,6 +1159,76 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </div>
                     ))}
                   </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Clock size={15} />} title="Best Exit Windows for Day Trades (Pacific Time)">
+                <div className="space-y-3 text-xs text-gray-400">
+
+                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2.5">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Power Hour — 12:00–1:00 PM PT (3:00–4:00 PM ET)</p>
+                    <p className="text-gray-400 text-[10px] mt-1 leading-relaxed">
+                      The best exit window of the day. Volume surges in the final hour as institutions close or rebalance positions.
+                      Moves that started midday often accelerate or reverse hard here. If you're in a profitable trade, the last 30
+                      minutes (12:30–1:00 PM PT) is where you want to be out or scaling out aggressively.
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Time (PT)</th>
+                          <th className="px-2 py-1.5 font-semibold">Market Phase</th>
+                          <th className="px-2 py-1.5 font-semibold">What to do</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['6:30–7:00 AM', 'Opening Range', 'No entry. Let the range form.'],
+                          ['7:00–9:00 AM', 'Mid-Morning', 'Best entry window. Trends establish here.'],
+                          ['9:00–10:30 AM', 'Midday Lull', 'Manage existing positions. Volume dries up, moves fade.'],
+                          ['10:30–12:00 PM', 'Afternoon', 'Momentum can resume. Second entries possible.'],
+                          ['12:00–12:45 PM', 'Power Hour', 'Start scaling out. Take partial profits.'],
+                          ['12:45–1:00 PM', 'Last 15 min', 'Close everything. No new positions.'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-mono text-violet-300 whitespace-nowrap">{r[0]}</td>
+                            <td className="px-2 py-1.5 font-semibold text-gray-200 whitespace-nowrap">{r[1]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                    <p className="font-semibold text-amber-300 text-[11px]">The rules</p>
+                    <ul className="space-y-1 mt-1.5">
+                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                        <span><strong className="text-gray-200">Never hold a day trade into close</strong> (after 12:45 PM PT). There isn't enough time for a new move to develop. You're just holding risk with no reward runway.</span>
+                      </li>
+                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                        <span><strong className="text-gray-200">Scale out, don't dump all at once.</strong> At TP level → take half off. Trail the rest with ORH/ORL stop. Force-close remainder by 12:45 PM PT.</span>
+                      </li>
+                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                        <span><strong className="text-gray-200">If midday (9:00–10:30 AM PT) and you're flat or small profit</strong> — consider closing. The lull kills momentum. A trade that hasn't moved by midday usually won't. The risk of giving back gains is higher than the reward of waiting.</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="rounded-lg border border-red-800/30 bg-red-950/10 px-3 py-2">
+                    <p className="font-semibold text-red-300 text-[11px]">The one rule that matters most</p>
+                    <p className="text-gray-400 text-[10px] mt-1 leading-relaxed">
+                      The market close is not your stop — it's your deadline. If your stop hasn't been hit but the clock hits
+                      12:45 PM PT, you exit anyway. Day trades don't carry overnight. The MarketTimeGate banners in the app
+                      enforce this logic — they flag the caution and no-trade windows automatically.
+                    </p>
+                  </div>
+
                 </div>
               </DocCard>
 
