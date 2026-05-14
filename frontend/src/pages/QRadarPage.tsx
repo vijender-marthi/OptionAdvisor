@@ -369,7 +369,7 @@ export default function QRadarPage() {
                 <div className="w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-700 flex items-center justify-center">
                   <Atom size={18} className="text-cyan-400" />
                 </div>
-                <h1 className="text-2xl font-bold text-white">Quantum Computing Radar</h1>
+                <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Quantum Computing Radar</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
                 Curated universe of pure-play quantum hardware, big tech quantum divisions, enabling technology,

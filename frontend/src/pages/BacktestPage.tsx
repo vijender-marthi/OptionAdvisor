@@ -415,7 +415,7 @@ export default function BacktestPage() {
               <FlaskConical size={20} className="text-violet-400" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-2xl font-bold text-white leading-tight">Backtest Lab</h1>
+              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Backtest Lab</h1>
               <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
                 Walk-forward simulation · Black-Scholes pricing · HV-20 as IV proxy
               </p>

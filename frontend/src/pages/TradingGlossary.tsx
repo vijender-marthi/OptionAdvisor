@@ -513,7 +513,7 @@ export default function TradingGlossary() {
               <BookOpen size={20} className="text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold text-white">Trading Glossary</h1>
+              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Trading Glossary</h1>
               <p className="text-sm text-gray-400 mt-1">
                 Understand every term, signal, and metric used across the platform. Search below or browse by section.
               </p>

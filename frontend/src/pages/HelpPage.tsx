@@ -621,7 +621,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <HelpCircle size={22} className="text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">OptionAdvisor Trading Engine Documentation</h1>
+                <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">OptionAdvisor Trading Engine Documentation</h1>
                 <p className="text-sm text-gray-400 mt-1 max-w-2xl">
                   AI-assisted execution, validation, risk scoring, and portfolio intelligence framework.
                 </p>
@@ -1055,6 +1055,55 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     <p className="text-gray-500 font-mono">raw = 10.5, GO_THRESHOLD = 4.5, STRONG_BULL = 7.0</p>
                     <p className="text-gray-500 font-mono">raw &ge; 7.0 → norm = 85 + (10.5 − 7.0) / 2.5 × 15 = 100</p>
                     <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Normalized score: 100</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="4-State Trading System & Entry Authorization">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The Day Trade engine now organizes the trade lifecycle into four deterministic states with an entry authorization rule:</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { state: '🟡 SETUP', desc: 'Watch / Prepare. Bias forming, key levels identified. No entry allowed. Must define trigger before advancing.' },
+                      { state: '🟢 ENTRY', desc: 'Execution Gate. Breakout confirmation required (break & hold above breakout level, sustained above ORH or VWAP). Entry only if trigger is active — no averaging, no anticipation.' },
+                      { state: '🔵 ACTIVE', desc: 'Management Mode. Position held with trail (ORH/VWAP), partial exit at TP, add on strength. Focus is capital protection + trend continuation.' },
+                      { state: '🔴 EXIT', desc: 'Completion / Reset. Stop hit, target hit, or structure broken. No hope holding. Reset to SETUP.' },
+                    ].map(c => (
+                      <div key={c.state} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.state}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Entry Authorization Rule</p>
+                    <p className="text-gray-400 text-[10px] mt-1">System executes (READY) only when setup quality is STRONG/GOOD, execution readiness is READY, risk is LOW/MEDIUM, and structure is confirmed (or_breakout != "inside"). When all gates pass, pending confirmations are cleared and the system stops saying "wait."</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Activity size={15} />} title="Signal Improvements (11 Additions)">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>Recent engine updates added the following signals and scoring improvements:</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'VWAP Band', desc: '±0.15% band around VWAP. Inside band = "testing," not "above/below." Distance-proportional scoring replaces binary check. VWAP_TEST state added.' },
+                      { label: 'OR Re-test', desc: 'Pullback holding ORH after breakout detected. +0.75 bull bonus. New ENTRY_RETEST state bypasses WAIT_FOR_VOLUME.' },
+                      { label: 'HH/HL Structure', desc: '5-bar swing point scan for higher highs/lows (bull) or lower lows/highs (bear). +0.75 bonus for confirmed structure.' },
+                      { label: 'Volume Median', desc: 'Baseline switched from mean to np.median. Single anomalous burst no longer inflates baseline and suppresses spike detection.' },
+                      { label: 'Pre-market Gap', desc: 'Uses previousClose and session open. Gap ≥1% directional bonus (+0.5). Gap fill proximity detected and reverses bonus.' },
+                      { label: 'OR Width', desc: '(or_high − or_low) / price × 100. Narrow (&lt;0.4%) = coiling +0.5 breakout bonus. Wide (&gt;1.5%) = −0.25 both sides.' },
+                      { label: 'RVOL', desc: 'Cumulative session volume vs time-adjusted avg daily volume. ≥2.5× → +1.0, ≥1.5× → +0.5, below → noted.' },
+                      { label: 'Dual VWAP Slope', desc: 'Micro 15-bar + macro 60-bar slopes. Macro aligned with bias → +0.5. Against bias → −0.5 structural caution.' },
+                      { label: 'Time-of-Day', desc: 'Four session phases (Opening, Mid-Morning, Midday, Power Hour). Midday: −0.25. Power Hour: −0.5 + EOD exit note.' },
+                      { label: 'Adaptive Momentum', desc: 'Window adapts: 15 bars (&lt;60 in session), 30 bars (60–180), 45 bars (&gt;180). Avoids open-to-now noise early.' },
+                      { label: 'Secondary Breakout', desc: 'Counts distinct OR crossings. Second crossing with vol spike → +1.0. Higher conviction than first breakout.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </DocCard>
@@ -1523,6 +1572,42 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       <span className="text-gray-500 text-[10px] ml-auto">{r.action}</span>
                     </div>
                   ))}
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="4-State Swing System & Single-Line Execution">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The Swing Trade engine uses the same 4-state lifecycle as Day Trade with a single-line execution bar for quick reference:</p>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Single-Line Execution</div>
+                    <div className="text-[11px] font-mono">
+                      <span className="font-bold text-gray-100 uppercase">BIAS</span> |<span className="text-yellow-300 font-semibold"> BREAKOUT $T</span> |<span className="text-emerald-300 font-semibold"> BASE ZONE</span> |<span className="text-violet-300"> T1</span> <span className="text-orange-300">T2</span> |<span className="text-red-300"> SL</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { state: '🟡 SETUP', desc: 'Base / Accumulation zone. Support/resistance zone identified. No entry — observe only.' },
+                      { state: '🟢 ENTRY', desc: 'Breakout confirmation required. Entry on confirmed breakout — no anticipation. No intraday timing rules (VWAP, ORH not used).' },
+                      { state: '🔵 ACTIVE', desc: 'Trend Holding Phase. Scale ½ at TP1, trail rest to TP2. Focus on capital protection + continuation.' },
+                      { state: '🔴 EXIT', desc: 'Invalidated / Complete. Stop loss = structural breakdown of base. Target hit = predefined swing extensions (TP1 → TP2 → runners). Reset to SETUP.' },
+                    ].map(c => (
+                      <div key={c.state} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.state}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                    <p className="font-semibold text-amber-300 text-[11px]">Swing Rules</p>
+                    <ul className="space-y-1 text-gray-400 text-[10px] mt-1">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />Entry ONLY on breakout confirmation (no anticipation)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />Stop loss = structural breakdown of base (not arbitrary distance)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />Targets = predefined swing extensions (TP1 → TP2 → runners)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />No emotional labels ("maybe," "pullback," "current")</li>
+                    </ul>
+                  </div>
                 </div>
               </DocCard>
 

@@ -1252,6 +1252,39 @@ html.light .bg-gray-900\/25 { background-color: color-mix(in srgb, var(--surface
 html.light .bg-violet-500\/12 { background-color: color-mix(in srgb, var(--accent-bg) 72%, transparent); }
 html.light .bg-purple-600.text-white { color: #ffffff; }
 
+/* ── Missing light-mode overrides: Day Trade & Swing Trade panels ──────── */
+
+/* bg-black/15 — inner card/tile background used throughout both panels */
+html.light .bg-black\/15 { background-color: rgba(15, 23, 42, 0.04); }
+
+/* 4-state grid: INACTIVE tile backgrounds (dark tints → light tints) */
+html.light .bg-amber-950\/12   { background-color: color-mix(in srgb, var(--warning-bg)  22%, transparent); }
+html.light .bg-emerald-950\/12 { background-color: color-mix(in srgb, var(--bullish-bg)  22%, transparent); }
+html.light .bg-sky-950\/12     { background-color: color-mix(in srgb, var(--info-bg)     22%, transparent); }
+html.light .bg-red-950\/12     { background-color: color-mix(in srgb, var(--bearish-bg)  22%, transparent); }
+
+/* 4-state grid: ACTIVE tile backgrounds */
+html.light .bg-sky-950\/25     { background-color: color-mix(in srgb, var(--info-bg)    52%, transparent); }
+html.light .bg-red-950\/25     { background-color: color-mix(in srgb, var(--bearish-bg) 52%, transparent); }
+
+/* 4-state grid: ACTIVE state borders */
+html.light .border-amber-500\/60   { border-color: color-mix(in srgb, var(--warning-border)  68%, transparent); }
+html.light .border-emerald-500\/60 { border-color: color-mix(in srgb, var(--bullish-border)  68%, transparent); }
+html.light .border-sky-500\/60     { border-color: color-mix(in srgb, var(--info-border)     68%, transparent); }
+html.light .border-red-500\/60     { border-color: color-mix(in srgb, var(--bearish-border)  68%, transparent); }
+
+/* 4-state grid: ACTIVE state ring glow */
+html.light .ring-amber-500\/20   { --tw-ring-color: color-mix(in srgb, var(--warning-border)  24%, transparent); }
+html.light .ring-emerald-500\/20 { --tw-ring-color: color-mix(in srgb, var(--bullish-border)  24%, transparent); }
+html.light .ring-sky-500\/20     { --tw-ring-color: color-mix(in srgb, var(--info-border)     24%, transparent); }
+html.light .ring-red-500\/20     { --tw-ring-color: color-mix(in srgb, var(--bearish-border)  24%, transparent); }
+
+/* Reasoning block left-border accents */
+html.light .border-l-emerald-600\/50 { border-left-color: color-mix(in srgb, var(--bullish-border)  60%, transparent); }
+html.light .border-l-amber-600\/50   { border-left-color: color-mix(in srgb, var(--warning-border)  60%, transparent); }
+html.light .border-l-sky-600\/50     { border-left-color: color-mix(in srgb, var(--info-border)     60%, transparent); }
+html.light .border-l-violet-600\/50  { border-left-color: color-mix(in srgb, var(--accent-border)   60%, transparent); }
+
 /* ── Button variants ─────────────────────────────────────────── */
 .btn {
   display: inline-flex;
@@ -1474,8 +1507,8 @@ html.light .tcc-hero {
   --tcc-hero-bg: #ffffff;
 }
 .tcc-hero-title {
-  font-size: 1.25rem;
   font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--tcc-hero-title-color, #f1f5f9);
 }
 html.light .tcc-hero-title {

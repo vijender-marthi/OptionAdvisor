@@ -178,7 +178,7 @@ export default function AlertsPage() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading flex items-center gap-2">
               <Bell className="text-violet-400" size={22} />
               Trade Alerts
               {unreadAlertCount > 0 && (

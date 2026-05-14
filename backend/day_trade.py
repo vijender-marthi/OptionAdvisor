@@ -936,6 +936,22 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     close_arr = session["Close"].values.astype(float)
     price_structure = _swing_structure(close_arr)
 
+    # Current price position vs OR bounds (need or_state before secondary breakout check).
+    if last > or_high:
+        or_state = "above"
+    elif last < or_low:
+        or_state = "below"
+    else:
+        or_state = "inside"
+    # Historical OR breakout flag: did price REACH outside the OR at any point,
+    # even if it has since retraced back inside?
+    if or_was_broken_up:
+        or_historical = "broke_up"
+    elif or_was_broken_down:
+        or_historical = "broke_down"
+    else:
+        or_historical = "contained"
+
     # Secondary breakout detection: OR was broken earlier but price retraced, then broke again.
     _or_break_count_up   = 0
     _or_break_count_down = 0

@@ -234,7 +234,7 @@ export default function MyTickersPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-heading sm:text-3xl">My Tickers</h1>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">My Tickers</h1>
           </div>
           <p className="mt-1 text-sm text-gray-400">{tickers.length} ticker{tickers.length !== 1 ? 's' : ''} tracked</p>
         </div>

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import {
   RefreshCw, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight,
   ShieldAlert, AlertTriangle, CheckCircle2, Clock, Layers,
-  BarChart2, PlusCircle, Bell, Search, Star, Info,
+  BarChart2, PlusCircle, Bell, Search, Star, Info, Activity,
 } from 'lucide-react'
 import type { SwingTradeScanResult } from '../api/client'
 import {
@@ -308,7 +308,7 @@ function computeReasoning(
     blocks.push({ title: 'WHY THIS STRUCTURE', items: whyStruct, tone: 'violet' })
   }
 
-  // EXECUTION CONDITIONS
+  // ENTRY CONDITIONS
   const execConds: string[] = []
   if (result.entry_quality === 'GOOD_ENTRY') {
     execConds.push('Entry quality is GOOD — conditions align')
@@ -327,7 +327,7 @@ function computeReasoning(
     if (isBull) execConds.push('Monitor for entry trigger confirmation')
     else execConds.push('Wait for clearer entry signal')
   }
-  blocks.push({ title: 'EXECUTION CONDITIONS', items: execConds, tone: 'sky' })
+  blocks.push({ title: 'ENTRY CONDITIONS', items: execConds, tone: 'sky' })
 
   // RISK NOTES
   const riskNotes: string[] = []
@@ -834,6 +834,32 @@ export default function SwingTradeEnginePanel({
   const volumeRatio = typeof m.volume_ratio === 'number' ? m.volume_ratio : null
   const volumeLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
 
+  // Which step is the trader's primary action point right now?
+  const focusStep = ((): number => {
+    const fd = String(result.final_action || result.final_decision || '').toUpperCase()
+    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))                return 5
+    if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].some(v => fd === v)) return 3
+    if (['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT'].some(v => fd === v)) return 2
+    if (['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE'].some(v => fd === v)) return 1
+    return 5
+  })()
+  const focusBadgeText = (() => {
+    const fd = String(result.final_action || result.final_decision || '').toUpperCase()
+    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))                return 'Enter'
+    if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].some(v => fd === v)) return 'Wait'
+    if (['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT'].some(v => fd === v)) return 'Watch'
+    if (['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE'].some(v => fd === v)) return 'Avoid'
+    return 'Focus'
+  })()
+  const focusToneText = execTone === 'green' ? 'text-semantic-bullish'
+    : execTone === 'orange' ? 'text-semantic-warning'
+    : execTone === 'red' ? 'text-semantic-bearish'
+    : 'text-semantic-info'
+  const focusBorderLeft = execTone === 'green' ? 'border-l-4 border-l-semantic-bullish'
+    : execTone === 'orange' ? 'border-l-4 border-l-semantic-warning'
+    : execTone === 'red' ? 'border-l-4 border-l-semantic-bearish'
+    : 'border-l-4 border-l-semantic-info'
+
   return (
     <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
       <div className="px-4 pt-4 pb-4 border-b border-gray-800 space-y-4">
@@ -904,17 +930,34 @@ export default function SwingTradeEnginePanel({
             {/* Single-line execution UI */}
             <div className="rounded-xl border border-gray-800 bg-gray-900/60 px-3 py-2.5">
               <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 mb-1">SINGLE-LINE EXECUTION</div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-mono font-semibold">
-                <span className="font-bold text-gray-100 uppercase">{result.bias === 'short' ? 'BEARISH' : 'BULLISH'}</span>
-                <span className="text-gray-600">|</span>
-                <span className="text-yellow-300 font-bold">breakout {execLevels.breakoutTrigger}</span>
-                <span className="text-gray-600">|</span>
-                <span className="text-emerald-300 font-semibold">{execLevels.pullbackZone || 'base forming'}</span>
-                <span className="text-gray-600">|</span>
-                <span className="text-violet-300 font-semibold">T1 {execLevels.firstTarget || '—'}</span>
-                <span className="text-orange-300 font-semibold">T2 {execLevels.stretchTarget || '—'}</span>
-                <span className="text-gray-600">|</span>
-                <span className="text-red-300 font-semibold">SL {execLevels.riskBelow}</span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="flex flex-col items-center gap-0">
+                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Bias</span>
+                  <span className="font-bold text-gray-100 uppercase text-[12px]">{result.bias === 'short' ? 'BEARISH' : 'BULLISH'}</span>
+                </div>
+                <span className="text-gray-700 text-[14px] font-light">|</span>
+                <div className="flex flex-col items-center gap-0">
+                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Breakout</span>
+                  <span className="text-amber-300 font-bold text-[12px]">{execLevels.breakoutTrigger}</span>
+                </div>
+                <span className="text-gray-700 text-[14px] font-light">|</span>
+                <div className="flex flex-col items-center gap-0">
+                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Base Zone</span>
+                  <span className="text-emerald-300 font-semibold text-[12px]">{execLevels.pullbackZone || 'base forming'}</span>
+                </div>
+                <span className="text-gray-700 text-[14px] font-light">|</span>
+                <div className="flex flex-col items-center gap-0">
+                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Targets</span>
+                  <span className="flex items-center gap-1 text-[12px]">
+                    <span className="text-violet-300 font-semibold">T1 {execLevels.firstTarget || '—'}</span>
+                    <span className="text-orange-300 font-semibold">T2 {execLevels.stretchTarget || '—'}</span>
+                  </span>
+                </div>
+                <span className="text-gray-700 text-[14px] font-light">|</span>
+                <div className="flex flex-col items-center gap-0">
+                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Stop Loss</span>
+                  <span className="text-red-300 font-semibold text-[12px]">{execLevels.riskBelow}</span>
+                </div>
               </div>
             </div>
 
@@ -1046,9 +1089,12 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 1</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 1 ? focusToneText : 'text-semantic-info'}`}>Step 1</div>
+            {focusStep === 1 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Market &amp; Price Context</h2>
           <p className="mt-1 text-xs text-gray-400">Is the market helping or fighting this trade?</p>
         </div>
@@ -1060,16 +1106,21 @@ export default function SwingTradeEnginePanel({
           <ExecMapRow label="Dist. to MA20" value={distMA20Display ? distMA20Display.text : ''} tone={distMA20Display?.cls} />
           <ExecMapRow label="Trend Phase" value={formatSwingEngineLabel(marketPhase || 'NEUTRAL')} tone={toneForExecMap(marketPhase || '')} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {biasBadge ? <Badge text={biasBadge.text} tone={biasBadge.tone} /> : null}
-          <Badge text={marketSupportive || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} />
-          {entryBadge ? <Badge text={entryBadge.text} tone={entryBadge.tone} /> : null}
+        <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-xs text-gray-300 leading-relaxed">
+          {marketSupportive === 'MARKET_SUPPORTIVE'
+            ? `Market backdrop is supportive. ${spyBias ? `SPY is ${formatSwingEngineLabel(spyBias).toLowerCase()}.` : ''} ${distMA20 != null && Math.abs(distMA20) < 3 ? 'Price is near MA20 — ideal base for continuation.' : distMA20 != null && Math.abs(distMA20) > 5 ? 'Price is extended from MA20 — wait for pullback before entry.' : 'Monitor MA20 proximity before committing size.'}`
+            : marketSupportive === 'MARKET_WEAK'
+            ? `Market context is fighting this trade. ${spyBias ? `SPY is ${formatSwingEngineLabel(spyBias).toLowerCase()}.` : ''} Reduce size and require stronger confirmation before entry.`
+            : 'Market context is mixed. Let confirmation from structure and volume matter more than bias alone.'}
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 2 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 2</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 2 ? focusToneText : 'text-semantic-info'}`}>Step 2</div>
+            {focusStep === 2 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Technical Analysis</h2>
           <p className="mt-1 text-xs text-gray-400">Trend, momentum, extension, and volatility should all support the trade.</p>
         </div>
@@ -1088,7 +1139,6 @@ export default function SwingTradeEnginePanel({
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           {ma20 != null ? <ExecMapRow label="MA20" value={`$${ma20.toFixed(2)}`} /> : null}
           {ma50 != null ? <ExecMapRow label="MA50" value={`$${ma50.toFixed(2)}`} /> : null}
-          {typeof m.rsi === 'number' ? <ExecMapRow label="RSI" value={Number(m.rsi).toFixed(1)} tone={Number(m.rsi) >= 70 ? 'text-semantic-bearish' : Number(m.rsi) >= 50 ? 'text-semantic-bullish' : 'text-semantic-warning'} /> : null}
           {typeof m.implied_iv_pct === 'number' ? <ExecMapRow label="IV" value={`${Number(m.implied_iv_pct).toFixed(0)}%`} tone={Number(m.implied_iv_pct) > 40 ? 'text-semantic-bearish' : Number(m.implied_iv_pct) > 25 ? 'text-semantic-warning' : 'text-semantic-bullish'} /> : null}
           {typeof m.hv_20 === 'number' ? <ExecMapRow label="HV20" value={`${Number(m.hv_20).toFixed(0)}%`} tone="text-semantic-accent" /> : null}
           {volumeRatio != null ? <ExecMapRow label="Volume Ratio" value={`${volumeRatio.toFixed(2)}x`} tone={volumeRatio > 1.5 ? 'text-semantic-bullish' : volumeRatio > 0.7 ? 'text-semantic-warning' : 'text-semantic-bearish'} /> : null}
@@ -1138,9 +1188,12 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 3 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 3</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 3 ? focusToneText : 'text-semantic-info'}`}>Step 3</div>
+            {focusStep === 3 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Execution Map</h2>
           <p className="mt-1 text-xs text-gray-400">Where would I enter, where am I wrong, and where is the target?</p>
         </div>
@@ -1154,9 +1207,12 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 4</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 4 ? focusToneText : 'text-semantic-info'}`}>Step 4</div>
+            {focusStep === 4 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Strategy Selection</h2>
           <p className="mt-1 text-xs text-gray-400">Choose the structure that best matches momentum, IV context, and risk appetite.</p>
         </div>
@@ -1209,20 +1265,39 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 5</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 5 ? focusToneText : 'text-semantic-info'}`}>Step 5</div>
+            {focusStep === 5 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Final Decision</h2>
           <p className="mt-1 text-xs text-gray-400">Translate setup quality into a trader action, not just a market opinion.</p>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span>
-              <Badge text={result.final_decision} tone={execTone} />
-              {pullbackProb ? <Badge text={`Pullback ${pullbackProb}`} tone={pullbackProb === 'HIGH' ? 'orange' : pullbackProb === 'LOW' ? 'green' : 'blue'} /> : null}
-              {rrQuality ? <Badge text={`R/R ${rrQuality}`} tone={rrQuality === 'STRONG' ? 'green' : rrQuality === 'MODERATE' ? 'orange' : 'red'} /> : null}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Decision</div>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span>
+              </div>
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Pullback Risk</div>
+                {pullbackProb
+                  ? <Badge text={pullbackProb} tone={pullbackProb === 'HIGH' ? 'orange' : pullbackProb === 'LOW' ? 'green' : 'blue'} />
+                  : <span className="text-[11px] text-gray-500">—</span>}
+              </div>
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">R/R Quality</div>
+                {rrQuality
+                  ? <Badge text={rrQuality} tone={rrQuality === 'STRONG' ? 'green' : rrQuality === 'MODERATE' ? 'blue' : 'orange'} />
+                  : <span className="text-[11px] text-gray-500">—</span>}
+              </div>
+              <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Risk Level</div>
+                <Badge text={result.risk_level} tone={riskBadge?.tone || toneForFinalAction(result.risk_level)} />
+              </div>
             </div>
             <div className="text-sm text-gray-200 leading-relaxed">{result.decision_message || bestNextAction}</div>
             {result.avoid_reason ? (
@@ -1264,9 +1339,12 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 6 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-info">Step 6</div>
+          <div className="flex items-center gap-2">
+            <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 6 ? focusToneText : 'text-semantic-info'}`}>Step 6</div>
+            {focusStep === 6 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[execTone]}`}><Activity size={8} />{focusBadgeText}</span>}
+          </div>
           <h2 className="mt-1 text-sm font-bold text-white">Trade Management Plan</h2>
           <p className="mt-1 text-xs text-gray-400">Plan the response before the trade moves, not after.</p>
         </div>
