@@ -108,7 +108,7 @@ export default function SwingTradePage() {
     addManualPosition({
       ticker: result.ticker,
       companyName: result.company_name,
-      strategy: 'Long Call',
+      strategy: result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE' ? result.suggested_strategy : 'Long Call',
       bias: result.bias === 'short' ? 'Bearish' : 'Bullish',
       legs: [],
       expiry,
