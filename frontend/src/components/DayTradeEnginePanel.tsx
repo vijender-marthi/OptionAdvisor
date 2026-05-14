@@ -8,6 +8,7 @@ import type { DayTradeScanResult } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
+import { MarketTimeGateBanner } from './MarketTimeGate'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -583,6 +584,8 @@ export default function DayTradeEnginePanel({
   const vwapPosition = typeof m.vwap_position === 'string' ? m.vwap_position : null
   const mom = asFiniteNum(m.momentum_pct)
   const lastPrice = asFiniteNum(m.last_price)
+  const sessionChangePct = asFiniteNum(m.session_change_pct)
+  const dayDollarChange = lastPrice != null && sessionChangePct != null ? lastPrice * sessionChangePct / 100 : null
   const vwapValue = asFiniteNum(m.vwap)
   const rvol = asFiniteNum(m.rvol)
   const gapPct = asFiniteNum(m.gap_pct)
@@ -684,9 +687,19 @@ export default function DayTradeEnginePanel({
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
             <div className="mt-1 flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl font-bold text-white tracking-tight">{result.ticker}</span>
+              <span className="text-xl font-bold text-white dark:text-heading tracking-tight">{result.ticker}</span>
               {result.company_name && (
                 <span className="text-xs text-gray-500 truncate max-w-[220px]">{result.company_name}</span>
+              )}
+              {lastPrice != null && (
+                <span className="flex items-center gap-1.5 ml-0.5">
+                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${lastPrice.toFixed(2)}</span>
+                  {sessionChangePct != null && dayDollarChange != null && (
+                    <span className={`text-xs font-semibold font-mono tabular-nums ${dayDollarChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {dayDollarChange >= 0 ? '+' : ''}{dayDollarChange.toFixed(2)} ({sessionChangePct >= 0 ? '+' : ''}{sessionChangePct.toFixed(2)}%)
+                    </span>
+                  )}
+                </span>
               )}
             </div>
             <div className="mt-1 text-sm text-gray-300">
@@ -915,6 +928,8 @@ export default function DayTradeEnginePanel({
           </div>
           )
         })()}
+
+        <MarketTimeGateBanner tradeType="day" />
 
         <div className="flex flex-wrap items-center gap-2">
           {onRequestEnterActiveTrade && (

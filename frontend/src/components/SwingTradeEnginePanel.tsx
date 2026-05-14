@@ -787,6 +787,19 @@ export default function SwingTradeEnginePanel({
   const signalsSectionRef = useRef<HTMLDivElement | null>(null)
 
   const m = result.metrics as Record<string, unknown>
+  const swingLastPrice = typeof m.last_price === 'number' && Number.isFinite(m.last_price) ? m.last_price : null
+  const swingChartSeries = m.chart_series as { points?: Array<{ c: number }> } | undefined
+  let swingDailyDollar: number | null = null
+  let swingDailyPct: number | null = null
+  if (swingChartSeries?.points && swingChartSeries.points.length >= 2) {
+    const pts = swingChartSeries.points
+    const lastC = pts[pts.length - 1]?.c
+    const prevC = pts[pts.length - 2]?.c
+    if (typeof lastC === 'number' && typeof prevC === 'number' && Number.isFinite(lastC) && Number.isFinite(prevC) && prevC !== 0) {
+      swingDailyDollar = lastC - prevC
+      swingDailyPct = (swingDailyDollar / prevC) * 100
+    }
+  }
   const ringTone = toneForFinalAction(result.final_action)
   const execLabel = actionLabel(result.final_action)
   const execTone: 'green' | 'blue' | 'orange' | 'red' = actionTone(result.final_action)
@@ -882,8 +895,18 @@ export default function SwingTradeEnginePanel({
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
             <div className="mt-1 flex flex-wrap items-center gap-2.5">
-              <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
+              <span className="text-xl font-bold text-white dark:text-heading font-mono tracking-tight">{result.ticker}</span>
               {result.company_name ? <span className="truncate text-xs text-gray-500 max-w-[220px]">{result.company_name}</span> : null}
+              {swingLastPrice != null && (
+                <span className="flex items-center gap-1.5 ml-0.5">
+                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
+                  {swingDailyPct != null && swingDailyDollar != null && (
+                    <span className={`text-xs font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
             <div className="mt-1 text-sm text-gray-300">
               {formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} · {result.bias === 'short' ? 'Bearish' : 'Bullish'} swing setup
