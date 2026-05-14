@@ -14,6 +14,7 @@ import {
   TrendingUp,
   LayoutGrid,
   Gauge,
+  Zap,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -39,6 +40,7 @@ import MarketIntelligenceStrip from '../components/MarketIntelligenceStrip'
 import ReserveSignalCard from '../components/ReserveSignalCard'
 import type {
   ApiEnvelope,
+  OverallDecision,
   TradeCommandCenterActivity,
   TradeCommandCenterConflict,
   TradeCommandCenterEngine,
@@ -435,6 +437,79 @@ function MarketPositionWidget() {
   )
 }
 
+function OverallDecisionBanner({ od }: { od: OverallDecision }) {
+  const v = od.verdict
+
+  const bannerCls =
+    v === 'STRONG GO' ? 'border-emerald-500/50 bg-emerald-950/20 dark:bg-emerald-900/15' :
+    v === 'GO'        ? 'border-sky-500/40    bg-sky-950/20    dark:bg-sky-900/15'       :
+    v === 'WATCH'     ? 'border-amber-500/40  bg-amber-950/15  dark:bg-amber-900/10'     :
+                        'border-slate-500/30  bg-slate-900/40  dark:bg-slate-800/20'
+
+  const verdictCls =
+    v === 'STRONG GO' ? 'bg-emerald-500 text-white' :
+    v === 'GO'        ? 'bg-sky-500     text-white' :
+    v === 'WATCH'     ? 'bg-amber-500   text-white' :
+                        'bg-slate-600   text-white'
+
+  const dotCls =
+    v === 'STRONG GO' ? 'bg-emerald-400' :
+    v === 'GO'        ? 'bg-sky-400'     :
+    v === 'WATCH'     ? 'bg-amber-400'   :
+                        'bg-slate-500'
+
+  const labelCls =
+    v === 'STRONG GO' ? 'text-emerald-300' :
+    v === 'GO'        ? 'text-sky-300'     :
+    v === 'WATCH'     ? 'text-amber-300'   :
+                        'text-slate-400'
+
+  const engineTag = (e: string) => {
+    const color =
+      e === 'day'     ? 'bg-orange-900/40  text-orange-300  border-orange-700/40'  :
+      e === 'swing'   ? 'bg-violet-900/40  text-violet-300  border-violet-700/40'  :
+      e === 'regular' ? 'bg-teal-900/40    text-teal-300    border-teal-700/40'    :
+                        'bg-slate-700/40   text-slate-300   border-slate-600/40'
+    return (
+      <span key={e} className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase ${color}`}>
+        {e}
+      </span>
+    )
+  }
+
+  return (
+    <section className={`rounded-2xl border p-4 md:p-5 ${bannerCls}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <Zap size={15} className={labelCls} />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Overall Decision</span>
+        </div>
+        <div className="flex items-center gap-2 flex-1 flex-wrap">
+          <span className={`rounded-lg px-3 py-1 text-sm font-black uppercase tracking-wide ${verdictCls}`}>{v}</span>
+          <span className={`text-sm font-semibold ${labelCls}`}>{od.label}</span>
+          <span className="text-xs text-slate-400 font-mono">{od.confidence}% conf.</span>
+        </div>
+        {od.engines_agreeing.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Agree:</span>
+            {od.engines_agreeing.map(engineTag)}
+          </div>
+        )}
+        {od.engines_conflicting.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] text-rose-500 uppercase tracking-wide">Conflict:</span>
+            {od.engines_conflicting.map(engineTag)}
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex items-start gap-2">
+        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+        <p className="text-xs leading-relaxed text-slate-300">{od.reason}</p>
+      </div>
+    </section>
+  )
+}
+
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
   const { addToWatchlist, isWatched, requestAnalysis } = useApp()
@@ -643,6 +718,11 @@ export default function TradeCommandCenter() {
               </div>
             </div>
           </section>
+
+          {/* ═══ OVERALL DECISION ═══ */}
+          {payload.overall_decision ? (
+            <OverallDecisionBanner od={payload.overall_decision} />
+          ) : null}
 
            {/* ═══ ENGINES — Engine Health ═══ */}
           <section className="space-y-4">

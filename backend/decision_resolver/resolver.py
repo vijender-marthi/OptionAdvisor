@@ -192,11 +192,11 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     volume_confirmation = str(confidence_block.get("volume_confirmation", "")).upper()
     trend_strength = str(confidence_block.get("trend_strength", "")).upper()
     risk_state = _risk_state_from_text(confidence_block.get("risk"), metrics.get("vix"))
+    or_breakout = str(metrics.get("or_breakout", "") or "").lower()
 
+    # Setup quality
     if verdict == "NO-GO":
         setup_quality = "POOR"
-    elif verdict == "WAIT":
-        setup_quality = "WEAK"
     elif breakout_quality == "GOOD" and volume_confirmation == "STRONG" and trend_strength == "HIGH":
         setup_quality = "STRONG"
     elif breakout_quality == "GOOD" or trend_strength in {"HIGH", "MEDIUM"}:
@@ -219,6 +219,11 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     elif verdict in {"STRONG GO", "GO"} and breakout_quality == "GOOD" and volume_confirmation == "STRONG":
         execution = "READY"
         final_decision = "READY"
+        # Resolver confirmed all structural conditions — advisory confirmations are already satisfied.
+        # Only clear pending confirmations when price has actually broken the OR; otherwise keep
+        # them so execution_timing can still report "wait for breakout".
+        if or_breakout != "inside":
+            missing = []
     elif verdict == "WATCH":
         execution = "WATCH"
         final_decision = "WATCH"

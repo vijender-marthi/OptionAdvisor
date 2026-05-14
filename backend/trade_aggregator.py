@@ -507,6 +507,152 @@ def _detect_cross_engine_conflict(day_scan: Any, swing_scan: Any) -> Optional[di
     }
 
 
+def _compute_overall_decision(engine_cards: list[dict]) -> dict:
+    """
+    Option B gating — synthesise the three engine cards into one meta-signal.
+
+    Rules (applied in order):
+      1. Any AVOID  → overall capped at WATCH (even if another engine is READY)
+      2. HARD directional conflict → cap at WATCH
+      3. All three READY/TRADE  → STRONG GO
+      4. Day + Swing both READY → GO
+      5. Day READY, Swing WATCH → GO  (intraday setup; swing confirming)
+      6. Only one engine READY  → WATCH
+      7. Any engine WATCH       → WATCH
+      8. Default                → WAIT
+    """
+    card_by = {str(c.get("engine_type") or "").lower(): c for c in engine_cards}
+    day_c   = card_by.get("day",     {})
+    swing_c = card_by.get("swing",   {})
+    reg_c   = card_by.get("regular", {})
+
+    day_fd   = str(day_c.get("final_decision")   or "NO_EDGE").upper()
+    swing_fd = str(swing_c.get("final_decision") or "NO_EDGE").upper()
+    reg_fd   = str(reg_c.get("final_decision")   or "NO_EDGE").upper()
+
+    _GO     = {"READY", "TRADE"}
+    _WATCH  = {"WATCH"}
+    _AVOID  = {"AVOID", "EXIT"}
+
+    pairs = [("day", day_fd), ("swing", swing_fd), ("regular", reg_fd)]
+    avoiding  = [e for e, fd in pairs if fd in _AVOID]
+    go_list   = [e for e, fd in pairs if fd in _GO]
+    watch_list= [e for e, fd in pairs if fd in _WATCH]
+
+    # Directional conflict between day and swing
+    day_bias   = str(day_c.get("market_bias")   or "").upper()
+    swing_bias = str(swing_c.get("market_bias") or "").upper()
+    hard_conflict = (
+        ("BULL" in day_bias and "BEAR" in swing_bias) or
+        ("BEAR" in day_bias and "BULL" in swing_bias)
+    ) and day_fd in _GO and swing_fd in _GO
+
+    def _avg_conf(*cards: dict) -> int:
+        vals = [int(c.get("confidence") or 0) for c in cards if c]
+        return int(sum(vals) / len(vals)) if vals else 0
+
+    # ── Rule 1: AVOID cap ───────────────────────────────────────────────────
+    if avoiding:
+        return {
+            "verdict":             "WATCH",
+            "label":               "Partial Setup",
+            "confidence":          25 + 15 * len(go_list),
+            "reason":              (
+                f"{', '.join(e.upper() for e in avoiding)} "
+                f"engine{'s' if len(avoiding) > 1 else ''} "
+                f"{'are' if len(avoiding) > 1 else 'is'} signalling AVOID — "
+                "overall capped at WATCH until resolved."
+            ),
+            "engines_agreeing":    go_list + watch_list,
+            "engines_conflicting": avoiding,
+        }
+
+    # ── Rule 2: HARD directional conflict ───────────────────────────────────
+    if hard_conflict:
+        return {
+            "verdict":             "WATCH",
+            "label":               "Directional Conflict",
+            "confidence":          35,
+            "reason":              (
+                f"Day signals {day_bias} while Swing signals {swing_bias} — "
+                "opposing directions active simultaneously. Stand aside or halve size."
+            ),
+            "engines_agreeing":    [],
+            "engines_conflicting": ["day", "swing"],
+        }
+
+    # ── Rule 3: All three READY ──────────────────────────────────────────────
+    if len(go_list) == 3:
+        return {
+            "verdict":             "STRONG GO",
+            "label":               "Full Alignment",
+            "confidence":          min(95, _avg_conf(day_c, swing_c, reg_c) + 10),
+            "reason":              "All three engines confirm — maximum conviction setup across every timeframe.",
+            "engines_agreeing":    ["day", "swing", "regular"],
+            "engines_conflicting": [],
+        }
+
+    # ── Rule 4: Day + Swing both READY ──────────────────────────────────────
+    if day_fd in _GO and swing_fd in _GO:
+        agreeing = ["day", "swing"] + (["regular"] if reg_fd in _WATCH else [])
+        return {
+            "verdict":             "GO",
+            "label":               "Day + Swing Aligned",
+            "confidence":          min(85, _avg_conf(day_c, swing_c)),
+            "reason":              (
+                "Day and Swing engines both READY — high-conviction active setup. "
+                + ("Regular options engine confirming." if reg_fd in _WATCH else "")
+            ).strip(),
+            "engines_agreeing":    agreeing,
+            "engines_conflicting": [],
+        }
+
+    # ── Rule 5: Day READY + Swing WATCH ─────────────────────────────────────
+    if day_fd in _GO and swing_fd in _WATCH:
+        return {
+            "verdict":             "GO",
+            "label":               "Day Ready, Swing Watching",
+            "confidence":          min(72, int(day_c.get("confidence") or 0)),
+            "reason":              "Day engine READY; Swing is watching — intraday entry valid but multi-day follow-through not yet confirmed.",
+            "engines_agreeing":    ["day", "swing"],
+            "engines_conflicting": [],
+        }
+
+    # ── Rule 6: Single READY engine ─────────────────────────────────────────
+    if go_list:
+        lead = go_list[0]
+        lead_c = card_by.get(lead, {})
+        return {
+            "verdict":             "WATCH",
+            "label":               f"{lead.title()} Only",
+            "confidence":          min(55, int(lead_c.get("confidence") or 0)),
+            "reason":              f"Only the {lead.upper()} engine is READY — wait for at least one more engine to confirm before acting.",
+            "engines_agreeing":    go_list + watch_list,
+            "engines_conflicting": [],
+        }
+
+    # ── Rule 7: Any WATCH ────────────────────────────────────────────────────
+    if watch_list:
+        return {
+            "verdict":             "WATCH",
+            "label":               "Monitoring",
+            "confidence":          35,
+            "reason":              "Engines in watch mode — setup developing but entry conditions not yet met.",
+            "engines_agreeing":    watch_list,
+            "engines_conflicting": [],
+        }
+
+    # ── Default: Wait ────────────────────────────────────────────────────────
+    return {
+        "verdict":             "WAIT",
+        "label":               "No Setup",
+        "confidence":          0,
+        "reason":              "No engine is reporting an actionable signal — stand aside.",
+        "engines_agreeing":    [],
+        "engines_conflicting": [],
+    }
+
+
 def run_all_engines_cached(ticker: str) -> dict:
     """Thread-safe cached wrapper around _compute_ticker_engines."""
     key = ticker.strip().upper()
@@ -946,10 +1092,13 @@ def build_command_center_payload(
         elif eng_label and eng_label in style_counts:
             style_counts[eng_label] += 1
 
+    overall_decision = _compute_overall_decision(engine_cards)
+
     return {
-        "engines":         engine_cards,
-        "recommendations": filtered,
-        "conflicts":       conflicts,
+        "engines":          engine_cards,
+        "overall_decision": overall_decision,
+        "recommendations":  filtered,
+        "conflicts":        conflicts,
         "alerts_summary": {
             "active_alerts": 0, "critical_alerts": 0,
             "positions_requiring_exit": 0, "near_expiry_trades": 0,

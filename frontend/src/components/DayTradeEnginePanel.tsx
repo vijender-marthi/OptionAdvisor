@@ -131,7 +131,7 @@ function computeSignals(result: DayTradeScanResult, m: Record<string, unknown>):
   const mom = asFiniteNum(m.momentum_pct)
   const volSpike = !!m.volume_spike
   const rsN = asFiniteNum(m.rs_vs_qqq_pct)
-  const orBreakout = String(m.or_breakout ?? '')
+  const orBreakout = String(m.or_breakout ?? '').toUpperCase()
 
   const trendVal = confidence?.trend_strength ?? null
   const breakoutVal = confidence?.breakout_quality ?? null
@@ -184,7 +184,7 @@ function computeReasoning(result: DayTradeScanResult, m: Record<string, unknown>
   const mom = asFiniteNum(m.momentum_pct)
   const volSpike = !!m.volume_spike
   const rsN = asFiniteNum(m.rs_vs_qqq_pct)
-  const orBreakout = String(m.or_breakout ?? '')
+  const orBreakout = String(m.or_breakout ?? '').toUpperCase()
   const marketBias = result.market_bias
 
   // WHY THIS TRADE
@@ -249,7 +249,7 @@ function computeRiskPanel(result: DayTradeScanResult, m: Record<string, unknown>
   const mom = asFiniteNum(m.momentum_pct)
   const vix = asFiniteNum(m.vix)
   const volSpike = !!m.volume_spike
-  const orBreakout = String(m.or_breakout ?? '')
+  const orBreakout = String(m.or_breakout ?? '').toUpperCase()
 
   const riskTone: 'green' | 'amber' | 'red' | 'gray' = (() => {
     const r = result.risk_state?.toUpperCase()
@@ -362,9 +362,10 @@ function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, un
     )
   }
 
-  if (String(m.or_breakout || '') === 'ABOVE') {
+  const orBreakoutCoach = String(m.or_breakout || '').toUpperCase()
+  if (orBreakoutCoach === 'ABOVE') {
     parts.push('The ticker is trading above the opening range high, which supports continuation.')
-  } else if (String(m.or_breakout || '') === 'BELOW') {
+  } else if (orBreakoutCoach === 'BELOW') {
     parts.push('The ticker is trading below the opening range low, which favors downside continuation.')
   } else {
     parts.push('Opening-range breakout is not fully confirmed yet.')
@@ -440,7 +441,7 @@ function buildDayWalkthrough(result: DayTradeScanResult, m: Record<string, unkno
   const marketBias = formatLabel(result.market_bias)
   const vwapDist = asFiniteNum(m.vwap_dist_pct)
   const volSpike = !!m.volume_spike
-  const orBreakout = String(m.or_breakout || '')
+  const orBreakout = String(m.or_breakout || '').toUpperCase()
   const optionRisk = result.option_risk_context
   const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
   const steps: string[] = []
@@ -579,9 +580,19 @@ export default function DayTradeEnginePanel({
 
   const m = result.metrics ?? {}
   const vwapDist = asFiniteNum(m.vwap_dist_pct)
+  const vwapPosition = typeof m.vwap_position === 'string' ? m.vwap_position : null
   const mom = asFiniteNum(m.momentum_pct)
   const lastPrice = asFiniteNum(m.last_price)
   const vwapValue = asFiniteNum(m.vwap)
+  const rvol = asFiniteNum(m.rvol)
+  const gapPct = asFiniteNum(m.gap_pct)
+  const gapFillRisk = Boolean(m.gap_fill_risk)
+  const orWidthLabel = typeof m.or_width_label === 'string' ? m.or_width_label : null
+  const orWidthPct = asFiniteNum(m.or_width_pct)
+  const sessionPhase = typeof m.session_phase === 'string' ? m.session_phase : null
+  const priceStructure = typeof m.price_structure === 'string' ? m.price_structure : null
+  const secondaryBreakout = Boolean(m.secondary_breakout)
+  const orRetest = Boolean(m.or_retest)
   const spyChg = asFiniteNum(m.spy_change_pct)
   const qqqChg = asFiniteNum(m.qqq_change_pct)
   const vixN = asFiniteNum(m.vix)
@@ -717,16 +728,39 @@ export default function DayTradeEnginePanel({
         </div>
 
         {/* ═══ 4-State Trading System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
-        <div className="space-y-1.5">
+        {(() => {
+          const state = eg?.state || ''
+          const activeMap: Record<string, number> = {
+            'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
+            'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
+            'MONITORING': 1,
+            'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
+            'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3,
+          }
+          const activeState = activeMap[state] ?? 1
+          const stateCls = (n: number) =>
+            n === activeState
+              ? 'ring-2 ring-offset-1 ring-offset-gray-900'
+              : 'opacity-50'
+
+          return (
+          <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
-            <span>SETUP</span><ChevronRight size={11} /><span>ENTRY</span><ChevronRight size={11} /><span>ACTIVE</span><ChevronRight size={11} /><span>EXIT</span>
+            {[1,2,3,4].map((n, i) => (
+              <span key={n} className={`flex items-center gap-1.5 ${n === activeState ? 'text-gray-200' : ''}`}>
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${n === activeState ? 'bg-violet-400' : 'bg-gray-700'}`} />
+                {['SETUP','ENTRY','ACTIVE','EXIT'][i]}
+                {i < 3 && <ChevronRight size={11} className={n === activeState ? 'text-violet-400' : 'text-gray-700'} />}
+              </span>
+            ))}
           </div>
           <div className="grid gap-2 sm:grid-cols-4">
             {/* STATE 1: SETUP */}
-            <div className="rounded-xl border border-amber-700/40 bg-amber-950/12 px-3 py-3">
+            <div className={`rounded-xl border transition-all duration-200 ${activeState === 1 ? 'border-amber-500/60 bg-amber-950/25 ring-2 ring-amber-500/20' : 'border-amber-700/40 bg-amber-950/12 opacity-50'}`}>
+              <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                STATE 1: SETUP
+                STATE 1: SETUP {activeState === 1 && <span className="text-[9px] text-amber-400 font-normal tracking-normal ml-auto">← HERE</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
               <div className="space-y-1.5 text-xs">
@@ -744,12 +778,14 @@ export default function DayTradeEnginePanel({
                   watch {eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'zone'}–{eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'trigger'} zone
                 </div>
               </div>
+              </div>
             </div>
             {/* STATE 2: ENTRY */}
-            <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/12 px-3 py-3">
+            <div className={`rounded-xl border transition-all duration-200 ${activeState === 2 ? 'border-emerald-500/60 bg-emerald-950/25 ring-2 ring-emerald-500/20' : 'border-emerald-700/40 bg-emerald-950/12 opacity-50'}`}>
+              <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                STATE 2: ENTRY
+                STATE 2: ENTRY {activeState === 2 && <span className="text-[9px] text-emerald-400 font-normal tracking-normal ml-auto">← HERE</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
               <div className="space-y-1.5 text-xs">
@@ -771,12 +807,14 @@ export default function DayTradeEnginePanel({
                       : 'await confirmation'}
                 </div>
               </div>
+              </div>
             </div>
             {/* STATE 3: ACTIVE */}
-            <div className="rounded-xl border border-sky-700/40 bg-sky-950/12 px-3 py-3">
+            <div className={`rounded-xl border transition-all duration-200 ${activeState === 3 ? 'border-sky-500/60 bg-sky-950/25 ring-2 ring-sky-500/20' : 'border-sky-700/40 bg-sky-950/12 opacity-50'}`}>
+              <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                STATE 3: ACTIVE
+                STATE 3: ACTIVE {activeState === 3 && <span className="text-[9px] text-sky-400 font-normal tracking-normal ml-auto">← HERE</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Management Mode</div>
               <div className="space-y-1.5 text-xs">
@@ -792,12 +830,14 @@ export default function DayTradeEnginePanel({
                     : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
                 </div>
               </div>
+              </div>
             </div>
             {/* STATE 4: EXIT */}
-            <div className="rounded-xl border border-red-700/40 bg-red-950/12 px-3 py-3">
+            <div className={`rounded-xl border transition-all duration-200 ${activeState === 4 ? 'border-red-500/60 bg-red-950/25 ring-2 ring-red-500/20' : 'border-red-700/40 bg-red-950/12 opacity-50'}`}>
+              <div className="px-3 py-3">
               <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
-                STATE 4: EXIT
+                STATE 4: EXIT {activeState === 4 && <span className="text-[9px] text-red-400 font-normal tracking-normal ml-auto">← HERE</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Completion / Reset</div>
               <div className="space-y-1.5 text-xs">
@@ -814,9 +854,12 @@ export default function DayTradeEnginePanel({
                   {eg?.scalp_target != null && ` · full exit / scale out at TP`}
                 </div>
               </div>
+              </div>
             </div>
           </div>
-        </div>
+          </div>
+          )
+        })()}
 
         <div className="flex flex-wrap items-center gap-2">
           {onRequestEnterActiveTrade && (
@@ -954,12 +997,51 @@ export default function DayTradeEnginePanel({
           <p className="mt-1 text-xs text-gray-400">Why is this entry good or bad right now, and what still needs to happen?</p>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <ExecMapRow label="Execution State" value={formatLabel(result.execution_readiness || result.execution_timing)} tone={toneForExecText(result.execution_readiness || result.execution_timing)} />
+          <ExecMapRow
+            label="VWAP Position"
+            value={vwapPosition === 'above' ? 'Above' : vwapPosition === 'below' ? 'Below' : vwapPosition === 'at' ? 'Testing' : '—'}
+            tone={vwapPosition === 'above' ? 'green' : vwapPosition === 'below' ? 'red' : vwapPosition === 'at' ? 'orange' : 'gray'}
+          />
           <ExecMapRow label="Volume Confirmation" value={signals.volume_confirmation?.text || signals.volume?.text || 'Normal'} tone={toneForExecText(signals.volume_confirmation?.text || signals.volume?.text)} />
           <ExecMapRow label="Breakout Quality" value={signals.breakout_quality?.text || formatLabel(result.setup_quality)} tone={toneForExecText(signals.breakout_quality?.text || result.setup_quality)} />
           <ExecMapRow label="Pullback Probability" value={formatLabel(eg?.pullback_probability)} tone={toneForExecText(eg?.pullback_probability)} />
           <ExecMapRow label="Chase Risk" value={chaseRisk} tone={toneForExecText(chaseRisk)} />
+        </div>
+
+        {/* New signal row */}
+        <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          <ExecMapRow
+            label="RVOL"
+            value={rvol != null ? `${rvol.toFixed(1)}×` : '—'}
+            tone={rvol == null ? 'gray' : rvol >= 2.5 ? 'green' : rvol >= 1.5 ? 'blue' : 'gray'}
+          />
+          <ExecMapRow
+            label="Pre-mkt Gap"
+            value={gapPct != null ? `${gapPct > 0 ? '+' : ''}${gapPct.toFixed(2)}%` : '—'}
+            tone={gapPct == null ? 'gray' : gapFillRisk ? 'orange' : gapPct > 1 ? 'green' : gapPct < -1 ? 'red' : 'gray'}
+          />
+          <ExecMapRow
+            label="OR Width"
+            value={orWidthLabel ? `${orWidthLabel}${orWidthPct != null ? ` (${orWidthPct.toFixed(2)}%)` : ''}` : '—'}
+            tone={orWidthLabel === 'NARROW' ? 'blue' : orWidthLabel === 'WIDE' ? 'orange' : 'gray'}
+          />
+          <ExecMapRow
+            label="Session Phase"
+            value={sessionPhase ? sessionPhase.replace(/_/g, ' ') : '—'}
+            tone={sessionPhase === 'POWER_HOUR' ? 'orange' : sessionPhase === 'MIDDAY' ? 'gray' : sessionPhase === 'OPENING' ? 'blue' : 'green'}
+          />
+          <ExecMapRow
+            label="Price Structure"
+            value={priceStructure === 'HH_HL' ? 'HH/HL ↑' : priceStructure === 'LL_LH' ? 'LL/LH ↓' : priceStructure === 'MIXED' ? 'Mixed' : '—'}
+            tone={priceStructure === 'HH_HL' ? 'green' : priceStructure === 'LL_LH' ? 'red' : 'gray'}
+          />
+          <ExecMapRow
+            label="Setup Flag"
+            value={secondaryBreakout ? '2nd Breakout' : orRetest ? 'OR Re-test' : '—'}
+            tone={secondaryBreakout || orRetest ? 'green' : 'gray'}
+          />
         </div>
 
         <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-2">
