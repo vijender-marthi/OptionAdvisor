@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
 import { analyzeSwingTrade } from '../api/client'
 import type { SwingTradeScanResult } from '../api/client'
-import SwingTradeEnginePanel from '../components/SwingTradeEnginePanel'
+import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -97,11 +97,19 @@ export default function SwingTradePage() {
       ? Math.max(1, parseInt(result.recommended_contract_duration) || 45)
       : 45
     const expiry = new Date(Date.now() + dte * 86400000).toISOString().slice(0, 10)
+    const m = result.metrics as Record<string, unknown>
+    const el = computeExecLevels(result, m)
+    const parsePrice = (s: string | null): number | undefined => {
+      if (!s) return undefined
+      const n = parseFloat(s.replace(/[^0-9.-]/g, ''))
+      return Number.isFinite(n) ? n : undefined
+    }
+    const lastPrice = typeof m.last_price === 'number' ? m.last_price : undefined
     addManualPosition({
       ticker: result.ticker,
       companyName: result.company_name,
-      strategy: result.suggested_strategy || 'Stock',
-      bias: result.bias === 'short' ? 'Bearish' : result.bias === 'long' ? 'Bullish' : 'Neutral',
+      strategy: 'Long Call',
+      bias: result.bias === 'short' ? 'Bearish' : 'Bullish',
       legs: [],
       expiry,
       dte,
@@ -115,9 +123,13 @@ export default function SwingTradePage() {
       contracts: 1,
       breakeven_lower: 0,
       breakeven_upper: 0,
-      entryPrice: 0,
+      entryPrice: lastPrice ?? 0,
       source: 'swing',
       notes: `Swing: ${result.final_action?.replace(/_/g, ' ') || ''}`,
+      target1: parsePrice(el.firstTarget),
+      target2: parsePrice(el.stretchTarget),
+      breakout: parsePrice(el.breakoutTrigger),
+      stopLoss: parsePrice(el.riskBelow),
     })
     setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
     setEnterOpen(false)

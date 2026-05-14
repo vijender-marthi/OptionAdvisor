@@ -20,6 +20,7 @@ import {
 import SwingTradeMetricCharts from './SwingTradeMetricCharts'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass } from '../utils/semanticTrading'
+import { MarketTimeGateBanner } from './MarketTimeGate'
 
 interface Props {
   result: SwingTradeScanResult
@@ -502,7 +503,7 @@ function computeExecPlan(result: SwingTradeScanResult, m: Record<string, unknown
   }
 }
 
-type ExecLevels = {
+export type ExecLevels = {
   pullbackZone: string | null
   breakoutTrigger: string | null
   riskBelow: string | null
@@ -510,7 +511,7 @@ type ExecLevels = {
   stretchTarget: string | null
 }
 
-function computeExecLevels(result: SwingTradeScanResult, m: Record<string, unknown>): ExecLevels {
+export function computeExecLevels(result: SwingTradeScanResult, m: Record<string, unknown>): ExecLevels {
   const lastPrice = typeof m.last_price === 'number' ? m.last_price : null
   const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
   const mom5d = typeof m.momentum_5d_pct === 'number' ? m.momentum_5d_pct : null
@@ -861,12 +862,16 @@ export default function SwingTradeEnginePanel({
     : 'border-l-4 border-l-semantic-info'
 
   // Which of the 4 states is the current market position?
+  // WATCH = setup forming, direction not confirmed → State 1 (observe only)
+  // WAIT  = direction confirmed, waiting for exact entry trigger → State 2 (entry zone)
+  // READY = conditions met, enter now → State 3 (in-play)
+  // EXIT  = invalidated or complete → State 4
   const swingActiveState = ((): number => {
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
     if (fd === 'EXIT') return 4
     if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
-    if (['WATCH', 'WATCH_CALL', 'WATCH_PUT', 'WATCH_CALL_OR_DEBIT_SPREAD',
-         'WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].includes(fd)) return 2
+    if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].includes(fd)) return 2
+    // WATCH variants and AVOID/NO_EDGE → still in setup/observation phase
     return 1
   })()
 
@@ -1010,7 +1015,11 @@ export default function SwingTradeEnginePanel({
 {swingActiveState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 text-white dark:bg-amber-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
 
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Base / Accumulation</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                {['WATCH', 'WATCH_CALL', 'WATCH_PUT', 'WATCH_CALL_OR_DEBIT_SPREAD'].includes(
+                  String(result.final_action || '').toUpperCase()
+                ) ? 'Watching — Setup Not Yet Confirmed' : 'Base / Accumulation'}
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
                   {result.bias === 'short'
@@ -1093,6 +1102,8 @@ export default function SwingTradeEnginePanel({
             </div>
           </div>
         )}
+
+        <MarketTimeGateBanner tradeType="swing" />
 
         <div className="flex flex-wrap items-center gap-2">
           {onRequestEnterActiveTrade ? (
