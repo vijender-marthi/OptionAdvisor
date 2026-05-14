@@ -4,7 +4,7 @@ import {
   HelpCircle, SlidersHorizontal, ShieldCheck, TrendingUp, Filter, Trophy,
   Brain, Star, Briefcase, ChevronDown, ChevronRight, BookOpen,
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
-  FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, Zap, LineChart,
+  FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, ArrowRight, Zap, LineChart,
   Menu, X, Search, Copy, LayoutDashboard, GitBranch, RefreshCw, Gauge,
   Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert, Award, Ban,
 } from 'lucide-react'
@@ -23,6 +23,7 @@ const NAV_SECTIONS = [
   { id: 'swing-trade',      label: 'Swing Trade Engine',        icon: TrendingUp },
   { id: 'vix-reference',    label: 'VIX Reference',             icon: Activity },
   { id: 'regular-engine',   label: 'Regular Engine',            icon: SlidersHorizontal },
+  { id: 'entry-guide',      label: 'Trade Entry Guide',          icon: ArrowRight },
   { id: 'options-funda',    label: 'Options Fundamentals',      icon: BookOpen },
   { id: 'strategy-glossary',label: 'Strategy Glossary',         icon: BookOpen },
   { id: 'validation',       label: 'Validation System',         icon: CheckCircle2 },
@@ -1792,6 +1793,186 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
           </section>
 
           {/* ═══════════════════════════════════════════════════════
+             SECTION 8B — TRADE ENTRY GUIDE
+             ═══════════════════════════════════════════════════════ */}
+          <section id="entry-guide" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <ArrowRight size={18} className="text-violet-400" />
+              Trade Entry Guide
+            </h2>
+            <div className="space-y-3">
+
+              <DocCard icon={<Brain size={15} />} title="When to Use Each Engine">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>Each engine serves a different purpose. Using the wrong one for your hold timeframe is the most common mistake.</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-lg border border-sky-800/30 bg-sky-950/10 px-3 py-2.5">
+                      <div className="font-semibold text-sky-300 text-[11px]">Day Trade Engine</div>
+                      <p className="text-[10px] text-gray-400 mt-1">Intraday entry timing only. Use to find the cleanest entry after swing says READY. Best window: 7:00–9:00 AM PT after opening range settles.<br /><br />Never use as primary signal for a swing trade.</p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2.5">
+                      <div className="font-semibold text-emerald-300 text-[11px]">Swing Engine</div>
+                      <p className="text-[10px] text-gray-400 mt-1">Multi-day directional signal. READY = daily structure supports a move over days.<br /><br />This is your go/no-go decision for swing trades. Use it first.</p>
+                    </div>
+                    <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5">
+                      <div className="font-semibold text-amber-300 text-[11px]">Regular Engine</div>
+                      <p className="text-[10px] text-gray-400 mt-1">Longer holds (1–3 weeks). Confirms the weekly trend. Adds conviction when it aligns with Swing.<br /><br />Use as a conviction-booster for swing trades targeting multi-week moves.</p>
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Clock size={15} />} title="DTE Selection by Hold Intention">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                        <th className="px-2 py-1.5 font-semibold">Hold Plan</th>
+                        <th className="px-2 py-1.5 font-semibold">DTE to Buy</th>
+                        <th className="px-2 py-1.5 font-semibold">Why</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['1–3 days', '14–21 DTE', 'Gives buffer without heavy premium'],
+                        ['3–5 days', '21–30 DTE', 'Sweet spot for swing trades'],
+                        ['5–10 days', '30–45 DTE', 'Theta barely touches you'],
+                        ['10+ days', '45–60 DTE', 'Full swing, no time pressure'],
+                      ].map(r => (
+                        <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                          <td className="px-2 py-1.5 text-gray-200 font-semibold">{r[0]}</td>
+                          <td className="px-2 py-1.5 font-mono text-emerald-300">{r[1]}</td>
+                          <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2 mt-2">
+                  <p className="font-semibold text-emerald-300 text-[10px]">Rule of thumb: buy 3× more DTE than your intended hold. If you plan to hold 5 days, buy 15–21 DTE minimum.</p>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Activity size={15} />} title="The Right Workflow for Multi-Day Swings">
+                <div className="space-y-2 text-xs">
+                  <p className="text-gray-400">When a swing trade targets a multi-day move, follow this order:</p>
+                  <div className="space-y-1.5">
+                    {[
+                      ['1', 'Swing engine says READY', 'Go / No-Go decision'],
+                      ['2', 'Regular engine agrees', 'Higher conviction (bonus)'],
+                      ['3', 'Day trade engine: entry timing', 'When to pull the trigger (7:00–9:00 AM PT)'],
+                      ['4', 'Buy 21–30 DTE calls', 'No theta pressure on the swing'],
+                      ['5', 'Hold until swing target or stop', 'Not a DTE countdown'],
+                    ].map(([num, action, note]) => (
+                      <div key={num} className="flex items-center gap-3 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-[10px] font-bold text-violet-300">{num}</span>
+                        <span className="flex-1 font-semibold text-gray-200 text-[11px]">{action}</span>
+                        <span className="text-[10px] text-gray-500">{note}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<TrendingUp size={15} />} title="Real Example: AMD at $448">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>For AMD at $448 targeting a swing move:</p>
+                  <ul className="space-y-1">
+                    <li className="flex items-start gap-2 text-[10px]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+                      <span>Buy the <strong className="text-gray-200">June 6 expiry</strong> (or nearest Friday ~21 days out)</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-[10px]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+                      <span>Strike: <strong className="text-gray-200">at-the-money</strong> or one strike above current price</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-[10px]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+                      <span>This gives you <strong className="text-gray-200">3 full weeks</strong> for the move to develop</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-[10px]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+                      <span>Theta is <strong className="text-gray-200">mild for the first 10 days</strong> — you're not fighting the clock</span>
+                    </li>
+                  </ul>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Brain size={15} />} title="The Key Mindset Shift">
+                <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 text-xs">
+                  <p className="text-gray-400 leading-relaxed">
+                    <strong className="text-amber-300">With 8 DTE</strong> you were managing time instead of managing the trade.
+                  </p>
+                  <p className="text-gray-400 leading-relaxed mt-2">
+                    <strong className="text-emerald-300">With 21–30 DTE</strong> you check the swing signal once a day, let the move develop, and only act when the setup changes — not because the clock is running out.
+                  </p>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Flame size={15} />} title="Why 8 DTE Fails for Swing Trades">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>You planned a swing trade (multi-day hold, ~10 DTE window) but used the Day Trade engine to time the entry, then compressed the exit to 8 DTE. The day trade engine confirmed the intraday setup was valid. That doesn't automatically mean the multi-day swing move is confirmed.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                      <div className="font-semibold text-sky-300 text-[10px]">Swing Trade</div>
+                      <ul className="mt-1 space-y-0.5 text-[10px] text-gray-500">
+                        <li>Timeframe: Days to weeks</li>
+                        <li>Confirmation: Daily structure, trend</li>
+                        <li>Entry signal: READY on swing engine</li>
+                        <li>Option DTE: 21–45 DTE</li>
+                      </ul>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                      <div className="font-semibold text-amber-300 text-[10px]">Day Trade</div>
+                      <ul className="mt-1 space-y-0.5 text-[10px] text-gray-500">
+                        <li>Timeframe: Hours</li>
+                        <li>Confirmation: Intraday breakout</li>
+                        <li>Entry signal: READY on day engine</li>
+                        <li>Option DTE: Same day or 1 DTE</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-red-800/30 bg-red-950/10 px-3 py-2">
+                    <p className="font-semibold text-red-300 text-[10px]">The specific problem with 8 DTE</p>
+                    <ul className="mt-1 space-y-0.5 text-[10px] text-gray-400">
+                      <li className="flex items-start gap-2"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-red-500" />Day 1–2: entry + settling</li>
+                      <li className="flex items-start gap-2"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-red-500" />Day 3–5: waiting for the move</li>
+                      <li className="flex items-start gap-2"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-red-500" />Day 6–7: theta accelerating hard</li>
+                      <li className="flex items-start gap-2"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-red-500" />Day 8: expiry week — panic or hope</li>
+                    </ul>
+                    <p className="text-[10px] text-gray-400 mt-1">A swing trade needs the move to develop over days. With 8 DTE you're already in theta danger before the swing has time to play out. It became a day trade by necessity even though you intended it as a swing.</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Award size={15} />} title="Summary: The Right Workflow">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <div className="space-y-1.5">
+                    {[
+                      ['Step 1', 'Check Swing Trade engine first. Is it READY?'],
+                      ['Step 2', 'If READY on swing, use Day Trade engine only to time the intraday entry (7:00–9:00 AM PT, after opening range).'],
+                      ['Step 3', "Buy 21–45 DTE options so theta doesn't pressure you while waiting for the swing to develop."],
+                      ['Step 4', 'Set your exit at the swing target, not a DTE countdown.'],
+                    ].map(([step, desc]) => (
+                      <div key={step} className="flex items-start gap-2 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <span className="shrink-0 rounded bg-violet-600/30 px-1.5 py-0.5 text-[9px] font-bold text-violet-300">{step}</span>
+                        <span className="text-[10px] text-gray-400 leading-snug">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                      The day trade engine is a <strong className="text-gray-200">precision entry tool</strong> for swing trades — not the confirmation signal.
+                      The swing engine is the confirmation. You had the tools right, just the order and the DTE selection worked against you.
+                    </p>
+                  </div>
+                </div>
+              </DocCard>
+
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
               SECTION 9 — OPTIONS FUNDAMENTALS
               ═══════════════════════════════════════════════════════ */}
           <section id="options-funda" className="scroll-mt-24">
@@ -2494,6 +2675,91 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               ))}
             </div>
+
+            <DocCard icon={<Activity size={15} />} title="Polling Intervals">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-2 py-1.5 font-semibold">Alert Type</th>
+                      <th className="px-2 py-1.5 font-semibold">Interval</th>
+                      <th className="px-2 py-1.5 font-semibold">Why</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['Day Trade state change', '15 min', 'Day trades move fast — 30 min can miss the entry window entirely.'],
+                      ['Swing Trade state change', '30 min', 'Swing states develop over hours, 30 min is sufficient.'],
+                      ['Position warnings (EXIT, Sell Half)', 'Real-time / 5 min', 'Time-critical — delay costs money.'],
+                    ].map(r => (
+                      <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                        <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                        <td className="px-2 py-1.5 font-mono text-sky-300">{r[1]}</td>
+                        <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Bell size={15} />} title="State Transition Triggers (My Tickers)">
+              <div className="space-y-2 text-xs text-gray-400">
+                <p>The alert scan loop runs every 15 minutes and checks each ticker in your My Tickers list for state changes.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <div className="font-semibold text-sky-300 text-[11px]">Day Trade — poll every 15 min</div>
+                    <ul className="mt-1 space-y-0.5 text-[10px] text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />STATE 1 → 2 — setup advancing, prepare</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />STATE 2 → 3 — entry confirmed, act now</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />STATE 3 → 4 — exit triggered, close</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />STATE 3 → 2 — breakout failed, re-evaluate</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />STATE 2 → 1 — setup invalidated, stand down</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <div className="font-semibold text-emerald-300 text-[11px]">Swing Trade — poll every 30 min</div>
+                    <ul className="mt-1 space-y-0.5 text-[10px] text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Same state transitions as Day Trade</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Swing states develop over hours</li>
+                      <li className="flex gap-2"><span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />Every 2nd scan cycle (15 min × 2)</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                  <p className="font-semibold text-amber-300 text-[11px]">How it works</p>
+                  <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">The scan runs for tickers in your <strong className="text-gray-200">My Tickers</strong> list. Each ticker's last known state is stored in the database. When the engine returns a different state on the next scan, an email alert fires showing the ticker, engine, old state → new state, and the action label. The scan resets at the start of each trading session so stale states don't trigger false alerts.</p>
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<ShieldAlert size={15} />} title="Position Warnings (Positions Center)">
+              <div className="space-y-2 text-xs text-gray-400">
+                <p>Position warnings fire immediately (or within 5 minutes) when a monitored position reaches a critical threshold:</p>
+                <div className="grid gap-1.5">
+                  {[
+                    'EXIT NOW — DTE ≤ 5 or health score critical',
+                    'Sell Half / Scale Out — 50%+ of max profit captured',
+                    'Stop Hit — loss exceeds predefined stop level',
+                    'DTE < 5 on losing position — time decay accelerating',
+                    'Loss > threshold on short-dated option — gamma risk imminent',
+                  ].map(w => (
+                    <div key={w} className="flex items-start gap-2 rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-1.5">
+                      <AlertTriangle size={11} className="mt-0.5 shrink-0 text-amber-400" />
+                      <span className="text-[10px] text-gray-400">{w}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Clock size={15} />} title="Recommended Defaults">
+              <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2.5 text-xs">
+                <p className="text-gray-400 leading-relaxed">
+                  <strong className="text-emerald-300">15 minutes is the right default for day trade.</strong> A state 1→2 transition that you see 30 minutes late is often already STATE 3 or failed. You need to act within the window. Add tickers like AMD, AVGO, NVDA, AAPL, GOOG to your My Tickers list and every state transition will trigger an email alert within 15 minutes.
+                </p>
+              </div>
+            </DocCard>
           </section>
 
           {/* ═══════════════════════════════════════════════════════
