@@ -20,6 +20,7 @@ export default function SwingTradePage() {
     setSwingTradeEngineUI: setUi,
     addToWatchlist,
     isWatched,
+    addManualPosition,
   } = useApp()
   const { ticker, loading, error, result, glossaryOpen } = ui
   const [enterOpen, setEnterOpen] = useState(false)
@@ -89,6 +90,38 @@ export default function SwingTradePage() {
       message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
     })
   }, [addToWatchlist, isWatched, result])
+
+  const handleAddPosition = useCallback(() => {
+    if (!result) return
+    const dte = result.recommended_contract_duration
+      ? Math.max(1, parseInt(result.recommended_contract_duration) || 45)
+      : 45
+    const expiry = new Date(Date.now() + dte * 86400000).toISOString().slice(0, 10)
+    addManualPosition({
+      ticker: result.ticker,
+      companyName: result.company_name,
+      strategy: result.suggested_strategy || 'Stock',
+      bias: result.bias === 'short' ? 'Bearish' : result.bias === 'long' ? 'Bullish' : 'Neutral',
+      legs: [],
+      expiry,
+      dte,
+      net_credit: 0,
+      spread_width: 0,
+      max_profit: 0,
+      max_loss: 0,
+      prob_of_profit: 0,
+      expected_value: 0,
+      scores_total: result.confidence || 0,
+      contracts: 1,
+      breakeven_lower: 0,
+      breakeven_upper: 0,
+      entryPrice: 0,
+      source: 'swing',
+      notes: `Swing: ${result.final_action?.replace(/_/g, ' ') || ''}`,
+    })
+    setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
+    setEnterOpen(false)
+  }, [result, addManualPosition])
 
   return (
     <div className="swing-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
@@ -275,15 +308,15 @@ export default function SwingTradePage() {
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Position will be tracked in the Positions Center. Configure entry details, strike, and expiry there.
+                Adds 1 contract swing position with basic details. Edit entry price, strike, and expiry in Positions Center later.
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => navigate(ROUTES.positions)}
-                  className="flex-1 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 text-sm transition-colors"
+                  onClick={handleAddPosition}
+                  className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 text-sm transition-colors"
                 >
-                  Open Positions Center
+                  Add Position (1 contract)
                 </button>
                 <button
                   type="button"
