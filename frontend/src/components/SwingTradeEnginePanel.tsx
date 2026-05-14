@@ -1007,7 +1007,7 @@ export default function SwingTradeEnginePanel({
                 <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
                   STATE 1: SETUP
-{swingActiveState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-amber-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
+{swingActiveState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 text-white dark:bg-amber-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
 
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Base / Accumulation</div>
@@ -1027,7 +1027,7 @@ export default function SwingTradeEnginePanel({
               <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
                 STATE 2: ENTRY
-                {swingActiveState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
+                {swingActiveState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white dark:bg-emerald-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Confirmation</div>
                 <div className="space-y-1.5 text-xs">
@@ -1051,7 +1051,7 @@ export default function SwingTradeEnginePanel({
                 <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
                   STATE 3: IN-PLAY
-                  {swingActiveState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
+                  {swingActiveState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-500 text-white dark:bg-sky-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Trend Holding Phase</div>
                 <div className="space-y-1.5 text-xs">
@@ -1073,7 +1073,7 @@ export default function SwingTradeEnginePanel({
                 <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
                   STATE 4: EXIT
-                  {swingActiveState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
+                  {swingActiveState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-500 text-white dark:bg-red-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Invalidated / Complete</div>
                 <div className="space-y-1.5 text-xs">
