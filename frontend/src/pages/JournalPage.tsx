@@ -2,11 +2,14 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter,
+  AlertTriangle, DollarSign, BarChart3, Filter, Lightbulb, Plus, Zap,
+  CheckCircle2, XCircle, Eye, ChevronRight,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
+import { useNavigate } from 'react-router-dom'
+import { getActionButtonClass } from '../utils/semanticTrading'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -592,11 +595,14 @@ function EntryCard({
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 
+// ─── Page tab type ────────────────────────────────────────────────────────────
+
 type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'EXPIRED'
 
 export default function JournalPage() {
   const { user, syncJournalEntryCount } = useApp()
   const email = user?.email ?? ''
+  const navigate = useNavigate()
 
   const [entries, setEntries]         = useState<JournalEntry[]>([])
   const [loading, setLoading]         = useState(true)
@@ -785,6 +791,18 @@ export default function JournalPage() {
         </button>
       </div>
 
+      {/* Page header + link to Trade Ideas */}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-800 pb-3">
+        <div className="flex items-center gap-2">
+          <BookOpen size={16} className="text-violet-400" />
+          <span className="font-semibold text-white text-sm">Trade Log</span>
+        </div>
+        <button onClick={() => navigate('/trade-ideas')}
+          className={`${getActionButtonClass('surface')} inline-flex items-center gap-1.5 px-3 py-1.5 text-xs`}>
+          <Lightbulb size={12} />Trade Ideas <ChevronRight size={12} />
+        </button>
+      </div>
+
       {error && (
         <div className="p-3 bg-red-900/20 border border-red-800 rounded-xl text-sm text-red-400 flex items-center gap-2">
           <AlertTriangle size={14} className="shrink-0" />
@@ -876,3 +894,4 @@ export default function JournalPage() {
     </div>
   )
 }
+

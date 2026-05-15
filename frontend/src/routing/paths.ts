@@ -19,7 +19,9 @@ export function locationToPage(pathname: string): Page {
     case 'positions':
       return 'positions'
     case 'watchlist':
+      return 'my-watchlist'
     case 'watchlistx':
+    case 'signal-feed':
       return 'watchlist'
     case 'alerts':
       return 'alert-center'
@@ -38,6 +40,8 @@ export function locationToPage(pathname: string): Page {
       return 'trade-signals'
     case 'journal':
       return 'journal'
+    case 'trade-ideas':
+      return 'trade-ideas'
     case 'auto-trade':
       return 'auto-trade'
     case 'day-trade':
@@ -75,7 +79,9 @@ export function pageToLocation(p: Page): string {
     case 'ai-coach':
       return '/ai-coach'
     case 'watchlist':
-      return '/watchlistx'
+      return '/signal-feed'
+    case 'my-watchlist':
+      return '/watchlist'
     case 'portfolio':
       return '/positions?tab=open'
     case 'positions':
@@ -99,12 +105,14 @@ export function pageToLocation(p: Page): string {
       return '/trade-signals'
     case 'journal':
       return '/journal'
+    case 'trade-ideas':
+      return '/trade-ideas'
     case 'auto-trade':
       return '/auto-trade'
     case 'day-trade':
       return '/day-trade'
     case 'day-trade-watchlist':
-      return '/watchlistx?source=day'
+      return '/signal-feed?source=day'
     case 'day-trade-alerts':
       return '/day-trade-alerts'
     case 'active-trades':
@@ -112,7 +120,7 @@ export function pageToLocation(p: Page): string {
     case 'swing-trade':
       return '/swing-trade'
     case 'swing-trade-watchlist':
-      return '/watchlistx?source=swing'
+      return '/signal-feed?source=swing'
     case 'login':
       return '/login'
     case 'forgot-password':

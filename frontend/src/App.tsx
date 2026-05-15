@@ -22,19 +22,20 @@ const BacktestPage = lazy(() => import('./pages/BacktestPage'))
 const TradeSignalsPage = lazy(() => import('./pages/TradeSignalsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
+const TradeIdeasPage = lazy(() => import('./pages/TradeIdeasPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 const DayTradeAlertsPage = lazy(() => import('./pages/DayTradeAlertsPage'))
 const DayTradePage = lazy(() => import('./pages/DayTradePage'))
 const SwingTradePage = lazy(() => import('./pages/SwingTradePage'))
 const UnifiedWatchlistPage = lazy(() => import('./pages/UnifiedWatchlistPage'))
-const WatchlistXPage = lazy(() => import('./pages/WatchlistXPage'))
+const SignalFeedPage = lazy(() => import('./pages/SignalFeedPage'))
 const MyTickersPage = lazy(() => import('./pages/MyTickersPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
   const tab = params.get('tab')?.trim() ?? 'open'
   if (tab === 'watchlist') {
-    return <Navigate to="/watchlistx" replace />
+    return <Navigate to="/signal-feed" replace />
   }
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -64,7 +65,7 @@ function LegacyHashRedirect() {
     const seg = qi >= 0 ? raw.slice(0, qi) : raw
     const qs = qi >= 0 ? raw.slice(qi) : ''
     const redirects: Record<string, string> = {
-      watchlist: '/watchlistx',
+      watchlist: '/signal-feed',
       portfolio: '/positions?tab=open',
       ticker: '/strategy-finder',
       dashboard: '/trade-command-center',
@@ -115,8 +116,9 @@ function ShellRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/activate" element={<ActivatePage />} />
 
-      <Route path="/day-trade-watchlist" element={<Navigate to="/watchlistx?source=day" replace />} />
-      <Route path="/swing-trade-watchlist" element={<Navigate to="/watchlistx?source=swing" replace />} />
+      <Route path="/day-trade-watchlist" element={<Navigate to="/signal-feed?source=day" replace />} />
+      <Route path="/swing-trade-watchlist" element={<Navigate to="/signal-feed?source=swing" replace />} />
+      <Route path="/watchlistx" element={<Navigate to="/signal-feed" replace />} />
       <Route path="/portfolio" element={<Navigate to="/positions?tab=open" replace />} />
       <Route path="/dashboard" element={<Navigate to="/trade-command-center" replace />} />
       <Route path="/discovery" element={<Navigate to="/strategy-finder" replace />} />
@@ -142,8 +144,9 @@ function ShellRoutes() {
               <Route path="/backtest" element={<BacktestPage />} />
               <Route path="/trade-signals" element={<TradeSignalsPage />} />
               <Route path="/journal" element={<JournalPage />} />
+              <Route path="/trade-ideas" element={<TradeIdeasPage />} />
               <Route path="/auto-trade" element={<AutoTradePage />} />
-              <Route path="/watchlistx" element={<WatchlistXPage />} />
+              <Route path="/signal-feed" element={<SignalFeedPage />} />
               <Route path="/watchlist" element={<UnifiedWatchlistPage />} />
               <Route path="/day-trade" element={<DayTradePage />} />
               <Route path="/day-trade-alerts" element={<DayTradeAlertsPage />} />

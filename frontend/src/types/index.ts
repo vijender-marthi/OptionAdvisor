@@ -207,6 +207,29 @@ export type Page =
   | 'trading-glossary'
   | 'activate'
   | 'my-tickers'
+  | 'my-watchlist'
+  | 'trade-ideas'
+
+export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
+export type TradeIdeaEngine = 'DAY' | 'SWING'
+
+export interface TradeIdea {
+  id: string
+  ticker: string
+  engine: TradeIdeaEngine
+  direction: 'LONG' | 'SHORT'
+  structure: string
+  reason: string
+  status: TradeIdeaStatus
+  entry_price: number
+  target_price: number
+  stop_price: number
+  engine_signal: string
+  engine_state: number
+  notes: string
+  created_at: number
+  updated_at: number
+}
 
 export type UserRole = 'admin' | 'user' | 'finance'
 

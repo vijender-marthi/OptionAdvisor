@@ -3,7 +3,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Lightbulb,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -119,7 +119,9 @@ export default function Sidebar() {
     {
       label: 'Tools',
       items: [
-        { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
+        { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
         { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
       ],
@@ -148,6 +150,7 @@ export default function Sidebar() {
     { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
     { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
     { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
     { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
