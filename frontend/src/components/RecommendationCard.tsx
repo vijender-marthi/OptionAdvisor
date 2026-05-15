@@ -41,19 +41,28 @@ interface TradeStateInfo {
   missing:  string[]      // what's not yet aligned
 }
 
+const FALLBACK_TRADE_STATE: TradeStateInfo = {
+  state: 0, num: 'WATCH', label: 'WAIT', color: 'sky',
+  sublabel: 'Evaluating conditions',
+  action: 'Monitor this setup. Re-evaluate when conditions align.',
+  missing: [],
+}
+
 function deriveRegularTradeState(
   rec: Recommendation,
   signals: Signals,
   verdict: Verdict,
 ): TradeStateInfo {
-  const score    = rec.scores.total_score
-  const isCredit = rec.net_credit > 0
-  const ivRank   = signals.iv_rank ?? 0
+  const score    = rec.scores?.total_score ?? 0
+  const isCredit = (rec.net_credit ?? 0) > 0
+  const ivRank   = signals?.iv_rank ?? 0
   const ivFit    = isCredit ? ivRank >= 30 : ivRank < 50
-  const allFilters = rec.passes_rr_filter && rec.passes_liquidity_filter && (isCredit ? rec.passes_credit_filter : true)
+  const allFilters = (rec.passes_rr_filter ?? false) &&
+                     (rec.passes_liquidity_filter ?? false) &&
+                     (isCredit ? (rec.passes_credit_filter ?? false) : true)
 
   const missing: string[] = []
-  if (!rec.passes_rr_filter)      missing.push('R:R ratio')
+  if (!rec.passes_rr_filter)        missing.push('R:R ratio')
   if (!rec.passes_liquidity_filter) missing.push('liquidity')
   if (isCredit && !rec.passes_credit_filter) missing.push('credit ≥25%')
   if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
@@ -230,7 +239,8 @@ export default function RecommendationCard({
   const verdictLabel = verdict === 'GO' ? '✅ GO' : verdict === 'CAUTION' ? '⚠️ CAUTION' : '🚫 NO GO'
 
   const isCredit = rec.net_credit > 0
-  const tradeState = deriveRegularTradeState(rec, signals, verdict)
+  let tradeState = FALLBACK_TRADE_STATE
+  try { tradeState = deriveRegularTradeState(rec, signals, verdict) } catch { /* never crash the card */ }
   const c = (val: number) => (val * 100)                        // per contract value
   const fmt = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   const rrRatio = rec.risk_reward_ratio
