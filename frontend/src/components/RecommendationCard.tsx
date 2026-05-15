@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen, Zap } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 import { useApp } from '../contexts/AppContext'
-import PreTradeChecklist, { buildChecklist, deriveVerdict } from './PreTradeChecklist'
+import PreTradeChecklist, { buildChecklist, deriveVerdict, type Verdict } from './PreTradeChecklist'
 import { saveToJournal, executeTrade } from '../api/client'
 
 interface Props {
@@ -26,6 +26,79 @@ const biasBadgeClass = (b: string) =>
 
 const scoreColor = (s: number) =>
   s >= 75 ? 'text-green-400' : s >= 55 ? 'text-amber-400' : 'text-red-400'
+
+// ─── Regular-trade 4-state entry system ────────────────────────────────────
+
+type RegularState = 2 | 1 | 0 | -1   // 2=ENTRY, 1=SETUP, 0=WATCH, -1=AVOID
+
+interface TradeStateInfo {
+  state:    RegularState
+  num:      string        // "STATE 2" | "STATE 1" | "WATCH" | "AVOID"
+  label:    string        // "ENTRY" | "SETUP" | "WAIT" | "AVOID"
+  sublabel: string        // one-line context
+  color:    'emerald' | 'amber' | 'sky' | 'red'
+  action:   string        // what to do right now
+  missing:  string[]      // what's not yet aligned
+}
+
+function deriveRegularTradeState(
+  rec: Recommendation,
+  signals: Signals,
+  verdict: Verdict,
+): TradeStateInfo {
+  const score    = rec.scores.total_score
+  const isCredit = rec.net_credit > 0
+  const ivRank   = signals.iv_rank ?? 0
+  const ivFit    = isCredit ? ivRank >= 30 : ivRank < 50
+  const allFilters = rec.passes_rr_filter && rec.passes_liquidity_filter && (isCredit ? rec.passes_credit_filter : true)
+
+  const missing: string[] = []
+  if (!rec.passes_rr_filter)      missing.push('R:R ratio')
+  if (!rec.passes_liquidity_filter) missing.push('liquidity')
+  if (isCredit && !rec.passes_credit_filter) missing.push('credit ≥25%')
+  if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
+  if (score < 70) missing.push(`score ≥70 (now ${score})`)
+
+  // STATE 2: ENTRY — everything aligned, pull the trigger
+  if (verdict === 'GO' && score >= 70 && allFilters && ivFit) {
+    return {
+      state: 2, num: 'STATE 2', label: 'ENTRY', color: 'emerald',
+      sublabel: `Score ${score} · IV Rank ${ivRank.toFixed(0)}% · All filters pass`,
+      action: isCredit
+        ? 'Enter now. Sell the spread, set stop at 2× credit, target 50% profit.'
+        : 'Enter now. Buy to open, set stop at 50% of premium paid, target 100%.',
+      missing: [],
+    }
+  }
+
+  // STATE 1: SETUP — conditions mostly there, one or two things to wait on
+  if ((verdict === 'GO' || verdict === 'CAUTION') && score >= 55 && rec.passes_liquidity_filter) {
+    return {
+      state: 1, num: 'STATE 1', label: 'SETUP', color: 'amber',
+      sublabel: `Score ${score} · Conditions forming`,
+      action: 'Setup in progress. Wait for remaining conditions to align before entry.',
+      missing,
+    }
+  }
+
+  // AVOID — hard failure (NO GO verdict or very low score)
+  if (verdict === 'NO GO' || score < 40) {
+    return {
+      state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
+      sublabel: `Score ${score} · Critical conditions not met`,
+      action: 'Do not enter. Key conditions are not met for this setup.',
+      missing,
+    }
+  }
+
+  // WATCH — conditions building but not ready
+  return {
+    state: 0, num: 'WATCH', label: 'WAIT', color: 'sky',
+    sublabel: `Score ${score} · Waiting for alignment`,
+    action: 'Monitor this setup. Re-evaluate when score reaches 70 and IV fits.',
+    missing,
+  }
+}
 
 function FilterBadge({ label, pass }: { label: string; pass: boolean }) {
   return (
@@ -157,6 +230,7 @@ export default function RecommendationCard({
   const verdictLabel = verdict === 'GO' ? '✅ GO' : verdict === 'CAUTION' ? '⚠️ CAUTION' : '🚫 NO GO'
 
   const isCredit = rec.net_credit > 0
+  const tradeState = deriveRegularTradeState(rec, signals, verdict)
   const c = (val: number) => (val * 100)                        // per contract value
   const fmt = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   const rrRatio = rec.risk_reward_ratio
@@ -194,6 +268,20 @@ export default function RecommendationCard({
         <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full border border-gray-700 shrink-0">
           {rec.dte} DTE
         </span>
+
+        {/* State badge */}
+        {(() => {
+          const cls =
+            tradeState.color === 'emerald' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-1 ring-emerald-500/30' :
+            tradeState.color === 'amber'   ? 'bg-amber-900/50 text-amber-300 border-amber-700' :
+            tradeState.color === 'sky'     ? 'bg-sky-900/40 text-sky-300 border-sky-700' :
+                                             'bg-red-900/40 text-red-300 border-red-800'
+          return (
+            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cls}`}>
+              {tradeState.num}: {tradeState.label}
+            </span>
+          )
+        })()}
 
         {/* Quick stats — visible when collapsed */}
         {!open && (
@@ -251,6 +339,45 @@ export default function RecommendationCard({
       {/* ── Expanded detail ── */}
       {open && (
         <div>
+          {/* ── Entry state guidance strip ── */}
+          {(() => {
+            const s = tradeState
+            const stripBg =
+              s.color === 'emerald' ? 'bg-emerald-950/60 border-emerald-800' :
+              s.color === 'amber'   ? 'bg-amber-950/50 border-amber-800' :
+              s.color === 'sky'     ? 'bg-sky-950/50 border-sky-800' :
+                                     'bg-red-950/50 border-red-900'
+            const labelCls =
+              s.color === 'emerald' ? 'text-emerald-300' :
+              s.color === 'amber'   ? 'text-amber-300' :
+              s.color === 'sky'     ? 'text-sky-300' : 'text-red-300'
+            return (
+              <div className={`mx-3 sm:mx-4 mb-3 rounded-xl border px-3 py-2.5 ${stripBg}`}>
+                <div className="flex items-start gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-bold tracking-wide ${labelCls}`}>
+                        {s.num}: {s.label}
+                      </span>
+                      <span className="text-xs text-gray-400">{s.sublabel}</span>
+                    </div>
+                    <p className="text-xs text-gray-300 mt-1 leading-relaxed">{s.action}</p>
+                    {s.missing.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wide">Waiting on:</span>
+                        {s.missing.map(m => (
+                          <span key={m} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Filter badges + action buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pb-3">
             <div className="flex gap-2 flex-wrap">
