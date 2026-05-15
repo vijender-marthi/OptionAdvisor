@@ -208,7 +208,7 @@ export type Page =
   | 'activate'
   | 'my-tickers'
   | 'my-watchlist'
-  | 'trade-ideas'
+
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
 export type TradeIdeaEngine = 'DAY' | 'SWING'
@@ -340,6 +340,9 @@ export interface PortfolioPosition {
   target2?: number        // second profit target price
   breakout?: number       // breakout trigger level
   stopLoss?: number       // stop loss level
+
+  partial_closed?: boolean   // true when this lot is the remainder after a partial close
+  original_contracts?: number // contract count before any partial close
 }
 
 export const EXIT_REASON_OPTIONS = [

@@ -513,6 +513,35 @@ export const deleteJournalEntry = async (email: string, id: string): Promise<voi
   await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
 }
 
+// ─── Trade Ideas ─────────────────────────────────────────────────────────────
+
+import type { TradeIdea } from '../types'
+
+export const getTradeIdeas = async (email: string): Promise<TradeIdea[]> => {
+  const { data } = await api.get(`/trade-ideas/${encodeURIComponent(email)}`)
+  return (data.ideas ?? []) as TradeIdea[]
+}
+
+export const createTradeIdea = async (
+  email: string,
+  idea: Omit<TradeIdea, 'id' | 'created_at' | 'updated_at'>,
+): Promise<{ id: string }> => {
+  const { data } = await api.post(`/trade-ideas/${encodeURIComponent(email)}`, idea)
+  return data
+}
+
+export const updateTradeIdea = async (
+  email: string,
+  id: string,
+  fields: Partial<Omit<TradeIdea, 'id' | 'ticker' | 'created_at' | 'updated_at'>>,
+): Promise<void> => {
+  await api.patch(`/trade-ideas/${encodeURIComponent(email)}/${id}`, fields)
+}
+
+export const deleteTradeIdea = async (email: string, id: string): Promise<void> => {
+  await api.delete(`/trade-ideas/${encodeURIComponent(email)}/${id}`)
+}
+
 // ─── Alpaca Paper Trading (admin only) ──────────────────────────────────────
 
 export interface AlpacaAccount {

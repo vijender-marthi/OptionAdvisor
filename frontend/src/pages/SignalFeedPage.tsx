@@ -216,7 +216,7 @@ function axiosErrorMessage(err: unknown): string {
     return err.message || 'Request failed'
   }
   if (err instanceof Error) return err.message
-  return 'Failed to load WatchlistX'
+  return 'Failed to load Signal Feed'
 }
 
 function fmtPrice(value?: number | null): string {
@@ -778,7 +778,7 @@ function MobileActionTray({
 }
 
 
-export default function WatchlistXPage() {
+export default function SignalFeedPage() {
   const routerNavigate = useNavigate()
   const { requestAnalysis, removeFromAllWatchlists } = useApp()
   const [searchParams, setSearchParams] = useSearchParams()

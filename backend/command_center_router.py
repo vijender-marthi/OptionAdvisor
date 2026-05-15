@@ -38,12 +38,15 @@ from storage import (
     alert_center_resolve,
     ensure_demo_alert_center_rows,
     get_alert_center_summary,
+    get_journal_entries,
     get_user_state,
     LEGACY_USER_ALERT_RETENTION_MS,
     normalize_email,
     prune_alert_center_items,
+    save_journal_entry,
     save_user_state,
     sync_user_alerts_to_alert_center,
+    update_journal_entry,
 )
 from trade_aggregator import build_command_center_payload
 from position_analyzer import analyze_active_position
@@ -1259,6 +1262,49 @@ def post_watchlist_remove(body: WatchlistTickerBody, auth_email: str = Depends(r
     return api_envelope({"ok": True, "watchlist": saved.get("watchlist")})
 
 
+def _sync_position_to_journal(email: str, pos: dict[str, Any]) -> None:
+    """Auto-create an OPEN journal entry for a new position (dedup by ticker+strategy+expiry)."""
+    ticker = str(pos.get("ticker") or "").strip().upper()
+    strategy = str(pos.get("strategy") or "")
+    expiry = str(pos.get("expiry") or "")
+    if not ticker or not strategy:
+        return
+    existing = get_journal_entries(email, status="OPEN")
+    for e in existing:
+        if (
+            str(e.get("ticker", "")).upper() == ticker
+            and e.get("strategy") == strategy
+            and str(e.get("expiry", ""))[:10] == expiry[:10]
+        ):
+            return  # already tracked
+    added_at = str(pos.get("addedAt") or "")
+    entry_date = added_at[:10] if added_at else date.today().isoformat()
+    try:
+        from datetime import date as _date
+        exp_d = _date.fromisoformat(expiry[:10]) if expiry else None
+        dte = (exp_d - _date.today()).days if exp_d else 0
+    except (ValueError, TypeError):
+        dte = 0
+    save_journal_entry(email, {
+        "ticker": ticker,
+        "company_name": str(pos.get("companyName") or ""),
+        "strategy": strategy,
+        "bias": str(pos.get("bias") or ""),
+        "legs": pos.get("legs") or [],
+        "expiry": expiry,
+        "entry_date": entry_date,
+        "dte_at_entry": max(0, dte),
+        "net_credit": float(pos.get("net_credit") or 0),
+        "max_profit": float(pos.get("max_profit") or 0),
+        "max_loss": float(pos.get("max_loss") or 0),
+        "underlying_entry": float(pos.get("entryPrice") or 0),
+        "prob_of_profit": float(pos.get("prob_of_profit") or 0),
+        "expected_value": float(pos.get("expected_value") or 0),
+        "total_score": int(pos.get("scores_total") or 0),
+        "notes": str(pos.get("notes") or ""),
+    })
+
+
 class PortfolioAddBody(BaseModel):
     position: dict[str, Any]
 
@@ -1273,6 +1319,10 @@ def post_portfolio_add(body: PortfolioAddBody, auth_email: str = Depends(require
     pos.setdefault("status", "open")
     port.append(pos)
     saved = save_user_state(email, state.get("watchlist") or [], port)
+    try:
+        _sync_position_to_journal(email, pos)
+    except Exception:  # noqa: BLE001 — journal sync is best-effort
+        log.warning("journal auto-sync failed for %s / %s", email, pos.get("ticker"))
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
 
 
@@ -1329,10 +1379,37 @@ def post_portfolio_close(body: PortfolioCloseBody, auth_email: str = Depends(req
         if tag:
             p["notes"] = (notes + "\n" if notes else "") + f"[mistake_tag] {tag}"
         found = True
+        closed_pos = p
         break
     if not found:
         raise HTTPException(status_code=404, detail="Open position not found")
     saved = save_user_state(email, state.get("watchlist") or [], port)
+    # Sync close to Journal — find matching OPEN entry and close it
+    try:
+        ticker = str(closed_pos.get("ticker") or "").strip().upper()
+        strategy = str(closed_pos.get("strategy") or "")
+        expiry = str(closed_pos.get("expiry") or "")
+        open_entries = get_journal_entries(email, status="OPEN")
+        for je in open_entries:
+            if (
+                str(je.get("ticker", "")).upper() == ticker
+                and je.get("strategy") == strategy
+                and str(je.get("expiry", ""))[:10] == expiry[:10]
+            ):
+                exit_date = str(closed_pos.get("exitDate") or body.close_date or date.today().isoformat())
+                update_journal_entry(
+                    email,
+                    je["id"],
+                    status="CLOSED",
+                    exit_date=exit_date,
+                    underlying_exit=float(closed_pos.get("exit_price") or 0),
+                    realized_pnl=float(closed_pos.get("realized_pnl") or 0),
+                    exit_reason=str(body.exit_reason or "Manual exit"),
+                    outcome="WIN" if float(closed_pos.get("realized_pnl") or 0) >= 0 else "LOSS",
+                )
+                break
+    except Exception:  # noqa: BLE001
+        log.warning("journal close-sync failed for %s / %s", email, closed_pos.get("ticker"))
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
 
 

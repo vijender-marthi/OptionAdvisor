@@ -22,7 +22,6 @@ const BacktestPage = lazy(() => import('./pages/BacktestPage'))
 const TradeSignalsPage = lazy(() => import('./pages/TradeSignalsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const JournalPage = lazy(() => import('./pages/JournalPage'))
-const TradeIdeasPage = lazy(() => import('./pages/TradeIdeasPage'))
 const AutoTradePage = lazy(() => import('./pages/AutoTradePage'))
 const DayTradeAlertsPage = lazy(() => import('./pages/DayTradeAlertsPage'))
 const DayTradePage = lazy(() => import('./pages/DayTradePage'))
@@ -144,7 +143,6 @@ function ShellRoutes() {
               <Route path="/backtest" element={<BacktestPage />} />
               <Route path="/trade-signals" element={<TradeSignalsPage />} />
               <Route path="/journal" element={<JournalPage />} />
-              <Route path="/trade-ideas" element={<TradeIdeasPage />} />
               <Route path="/auto-trade" element={<AutoTradePage />} />
               <Route path="/signal-feed" element={<SignalFeedPage />} />
               <Route path="/watchlist" element={<UnifiedWatchlistPage />} />

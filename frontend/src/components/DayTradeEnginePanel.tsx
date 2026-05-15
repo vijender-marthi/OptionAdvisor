@@ -558,8 +558,8 @@ interface Props {
   onOpenStrategyFinder?: () => void
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
-  onAddToWatchlist?: () => void
   onViewSignals?: () => void
+  onAddToWatchlist?: () => void
 }
 
 export default function DayTradeEnginePanel({
@@ -571,7 +571,6 @@ export default function DayTradeEnginePanel({
   onOpenStrategyFinder,
   onOpenCommandCenter,
   onCreateAlert,
-  onAddToWatchlist,
   onViewSignals,
 }: Props) {
   const [signalsOpen, setSignalsOpen] = useState(false)
@@ -984,16 +983,6 @@ export default function DayTradeEnginePanel({
             <Search size={13} />
             View Signals
           </button>
-          {onAddToWatchlist && (
-            <button
-              type="button"
-              onClick={onAddToWatchlist}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-            >
-              <Star size={13} />
-              Add to Watchlist
-            </button>
-          )}
         </div>
       </div>
 

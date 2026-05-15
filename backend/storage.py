@@ -289,6 +289,20 @@ def init_db() -> None:
         _migrate_user_state_clear_old_watchlist(conn)
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS ticker_state_last (
+                email      TEXT NOT NULL,
+                ticker     TEXT NOT NULL,
+                engine     TEXT NOT NULL,
+                state_num  INTEGER NOT NULL DEFAULT 1,
+                action     TEXT NOT NULL DEFAULT '',
+                session_date TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (email, ticker, engine)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS user_alerts (
                 email TEXT NOT NULL,
                 alert_id TEXT NOT NULL,
@@ -654,6 +668,63 @@ def save_user_state(
 
 
 DAY_TRADE_ALERT_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
+
+
+def upsert_ticker_state_last(
+    email: str,
+    ticker: str,
+    engine: str,
+    state_num: int,
+    action: str,
+    session_date: str,
+) -> None:
+    normalized = normalize_email(email)
+    t = ticker.upper().strip()
+    eng = engine.upper().strip()
+    if not normalized or not t or not eng:
+        return
+    now_ms = int(time.time() * 1000)
+    sd = (session_date or "").strip()[:10]
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO ticker_state_last (email, ticker, engine, state_num, action, session_date, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email, ticker, engine) DO UPDATE SET
+                state_num    = excluded.state_num,
+                action       = excluded.action,
+                session_date = excluded.session_date,
+                updated_at   = excluded.updated_at
+            """,
+            (normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms),
+        )
+
+
+def get_ticker_state_last(
+    email: str, ticker: str, engine: str
+) -> Optional[dict[str, Any]]:
+    normalized = normalize_email(email)
+    t = ticker.upper().strip()
+    eng = engine.upper().strip()
+    if not normalized or not t or not eng:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT state_num, action, session_date, updated_at
+            FROM ticker_state_last
+            WHERE email = ? AND ticker = ? AND engine = ?
+            """,
+            (normalized, t, eng),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "state_num": int(row["state_num"]),
+        "action": row["action"] or "",
+        "session_date": row["session_date"] or "",
+        "updated_at": int(row["updated_at"]),
+    }
 
 
 def upsert_day_trade_watchlist_last(
@@ -1695,6 +1766,108 @@ def delete_journal_entry(email: str, entry_id: str) -> None:
         conn.execute(
             "DELETE FROM trade_journal WHERE email = ? AND id = ?",
             (normalized, entry_id),
+        )
+
+
+def init_trade_ideas_db() -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trade_ideas (
+                id           TEXT NOT NULL,
+                email        TEXT NOT NULL,
+                ticker       TEXT NOT NULL,
+                engine       TEXT NOT NULL DEFAULT 'SWING',
+                direction    TEXT NOT NULL DEFAULT 'LONG',
+                structure    TEXT NOT NULL DEFAULT '',
+                reason       TEXT NOT NULL DEFAULT '',
+                status       TEXT NOT NULL DEFAULT 'WATCHING',
+                entry_price  REAL NOT NULL DEFAULT 0,
+                target_price REAL NOT NULL DEFAULT 0,
+                stop_price   REAL NOT NULL DEFAULT 0,
+                engine_signal TEXT NOT NULL DEFAULT '',
+                engine_state  INTEGER NOT NULL DEFAULT 1,
+                notes        TEXT NOT NULL DEFAULT '',
+                created_at   INTEGER NOT NULL,
+                updated_at   INTEGER NOT NULL,
+                PRIMARY KEY (email, id)
+            )
+            """
+        )
+
+
+def save_trade_idea(email: str, idea: dict[str, Any]) -> str:
+    import uuid
+    normalized = normalize_email(email)
+    idea_id = str(uuid.uuid4())[:8]
+    now_ms = int(time.time() * 1000)
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO trade_ideas
+              (id, email, ticker, engine, direction, structure, reason, status,
+               entry_price, target_price, stop_price, engine_signal, engine_state, notes,
+               created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                idea_id,
+                normalized,
+                str(idea.get("ticker", "")).upper().strip(),
+                str(idea.get("engine", "SWING")).upper().strip(),
+                str(idea.get("direction", "LONG")).upper().strip(),
+                str(idea.get("structure", "")),
+                str(idea.get("reason", "")),
+                str(idea.get("status", "WATCHING")).upper().strip(),
+                float(idea.get("entry_price") or 0),
+                float(idea.get("target_price") or 0),
+                float(idea.get("stop_price") or 0),
+                str(idea.get("engine_signal", "")),
+                int(idea.get("engine_state") or 1),
+                str(idea.get("notes", "")),
+                now_ms,
+                now_ms,
+            ),
+        )
+    return idea_id
+
+
+def get_trade_ideas(email: str) -> list[dict[str, Any]]:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM trade_ideas WHERE email = ? ORDER BY created_at DESC",
+            (normalized,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_trade_idea(email: str, idea_id: str, **fields: Any) -> None:
+    normalized = normalize_email(email)
+    allowed = {
+        "status", "engine", "direction", "structure", "reason",
+        "entry_price", "target_price", "stop_price",
+        "engine_signal", "engine_state", "notes",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    updates["updated_at"] = int(time.time() * 1000)
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [normalized, idea_id]
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE trade_ideas SET {set_clause} WHERE email = ? AND id = ?",
+            values,
+        )
+
+
+def delete_trade_idea(email: str, idea_id: str) -> None:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM trade_ideas WHERE email = ? AND id = ?",
+            (normalized, idea_id),
         )
 
 

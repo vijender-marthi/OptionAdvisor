@@ -9,7 +9,6 @@ export const ROUTES = {
   signals: '/trade-signals',
   aiCoach: '/ai-coach',
   journal: '/journal',
-  tradeIdeas: '/trade-ideas',
   settings: '/settings',
   positions: '/positions?tab=open',
   watchlist: '/signal-feed',

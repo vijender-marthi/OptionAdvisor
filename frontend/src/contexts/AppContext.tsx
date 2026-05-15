@@ -26,6 +26,7 @@ import {
   getAlerts,
   getJournal,
   getUserData,
+  saveToJournal,
   saveUserData,
   scanBackendAlerts,
   setAccessToken,
@@ -895,6 +896,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addToPortfolio = useCallback((
     rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number,
   ) => {
+    const addedAt = new Date().toISOString()
     setPortfolio(prev => {
       const acctSize = load<number>('oa_account_size', 25000)
       return [{
@@ -909,7 +911,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         contracts,
         breakeven_lower: rec.breakeven_lower,
         breakeven_upper: rec.breakeven_upper,
-        addedAt: new Date().toISOString(), entryPrice, status: 'open' as const,
+        addedAt, entryPrice, status: 'open' as const,
         kelly_fraction: rec.kelly_fraction,
         half_kelly_fraction: rec.half_kelly_fraction,
         edge_ratio: rec.edge_ratio,
@@ -917,7 +919,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         account_size_at_entry: acctSize,
       }, ...prev]
     })
-  }, [])
+    // Auto-sync to Journal — best-effort, don't block the UI
+    const email = userRef.current?.email
+    if (email) {
+      const entryDate = addedAt.slice(0, 10)
+      const expDate = rec.expiry ? new Date(rec.expiry) : null
+      const today = new Date()
+      const dte = expDate ? Math.max(0, Math.round((expDate.getTime() - today.getTime()) / 86_400_000)) : rec.dte
+      saveToJournal(email, {
+        ticker, company_name: companyName,
+        strategy: rec.strategy, bias: rec.bias,
+        legs: rec.legs as object[],
+        expiry: rec.expiry, entry_date: entryDate, dte_at_entry: dte,
+        net_credit: rec.net_credit, max_profit: rec.max_profit, max_loss: rec.max_loss,
+        underlying_entry: entryPrice,
+        prob_of_profit: rec.prob_of_profit, expected_value: rec.expected_value,
+        total_score: rec.scores.total_score,
+      }).catch(() => { /* silent — journal sync is not critical */ })
+    }
+  }, [userRef])
 
   const addManualPosition = useCallback((pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     addPortfolioPosition({ position: pos as unknown as Record<string, unknown> })
@@ -1019,6 +1039,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const remaining: PortfolioPosition = {
         ...pos,
         contracts: total - nClose,
+        partial_closed: true,
+        original_contracts: pos.original_contracts ?? total,
         capital_at_risk:
           pos.capital_at_risk != null
             ? Math.round(pos.capital_at_risk * scaleRemaining * 100) / 100

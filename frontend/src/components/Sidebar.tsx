@@ -3,7 +3,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Lightbulb,
+  BrainCircuit, HelpCircle, ListTodo, Eye,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -120,9 +120,7 @@ export default function Sidebar() {
       label: 'Tools',
       items: [
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
-        { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
-        { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
         { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
       ],
     },
@@ -144,13 +142,13 @@ export default function Sidebar() {
     { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
+    { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
     { id: 'trade-signals', label: 'Strategy Trades', icon: <Radar size={18} /> },
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
     { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
     { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'trade-ideas', label: 'Trade Ideas', icon: <Lightbulb size={18} /> },
     { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
     { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },

@@ -629,10 +629,16 @@ function deriveActionAlert(
     return { type: 'EXIT_NOW', label: 'EXIT NOW', urgency: 'red', reason: aiAnalysis.next_best_action || 'Health critical — exit to preserve capital.' }
 
   const maxProfitTotal = (pos.max_profit ?? 0) * SHARES_PER_OPTION_CONTRACT * pos.contracts
-  if (pos.status === 'open' && maxProfitTotal > 0 && pnlDollar >= maxProfitTotal * 0.5)
+  if (pos.status === 'open' && maxProfitTotal > 0 && pnlDollar >= maxProfitTotal * 0.5) {
+    if (pos.partial_closed)
+      return { type: 'EXIT_NOW', label: 'EXIT', urgency: 'amber', reason: `Already took partial profit. ${((pnlDollar / maxProfitTotal) * 100).toFixed(0)}% of max profit captured on remaining — close the rest.` }
     return { type: 'SELL_HALF', label: 'SELL HALF', urgency: 'amber', reason: `${((pnlDollar / maxProfitTotal) * 100).toFixed(0)}% of max profit captured. Sell ½ now, trail stop to entry.` }
-  if (pos.status === 'open' && pnlPct >= 50)
+  }
+  if (pos.status === 'open' && pnlPct >= 50) {
+    if (pos.partial_closed)
+      return { type: 'EXIT_NOW', label: 'EXIT', urgency: 'amber', reason: `Already took partial profit. ${pnlPct.toFixed(0)}% gain on remaining — close the rest.` }
     return { type: 'SELL_HALF', label: 'SELL HALF', urgency: 'amber', reason: `${pnlPct.toFixed(0)}% gain — take partial profit and trail stop.` }
+  }
 
   if (dte <= 14)
     return { type: 'WATCH', label: 'WATCH', urgency: 'amber', reason: `${dte} DTE. At ${Math.max(1, dte - 5)} DTE close if ≥50% max profit, otherwise prepare a roll.` }

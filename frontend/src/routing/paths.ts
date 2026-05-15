@@ -40,8 +40,6 @@ export function locationToPage(pathname: string): Page {
       return 'trade-signals'
     case 'journal':
       return 'journal'
-    case 'trade-ideas':
-      return 'trade-ideas'
     case 'auto-trade':
       return 'auto-trade'
     case 'day-trade':
@@ -105,8 +103,6 @@ export function pageToLocation(p: Page): string {
       return '/trade-signals'
     case 'journal':
       return '/journal'
-    case 'trade-ideas':
-      return '/trade-ideas'
     case 'auto-trade':
       return '/auto-trade'
     case 'day-trade':

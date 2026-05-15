@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   TrendingUp, TrendingDown, X, Plus, ChevronDown, ChevronUp,
-  Lightbulb, RefreshCw, Trash2, Eye, ArrowLeft, Zap,
+  Lightbulb, RefreshCw, Trash2, Eye, Zap,
 } from 'lucide-react'
 import { getTradeIdeas, createTradeIdea, updateTradeIdea, deleteTradeIdea } from '../api/client'
 import type { TradeIdea, TradeIdeaStatus } from '../types'
 import { useApp } from '../contexts/AppContext'
-import { useNavigate } from 'react-router-dom'
-import { getActionButtonClass } from '../utils/semanticTrading'
 
 const IDEA_ENGINES  = [{ value: 'SWING', label: 'Swing Trade' }, { value: 'DAY', label: 'Day Trade' }]
 const IDEA_DIRECTIONS = [{ value: 'LONG', label: 'Long (Bullish)' }, { value: 'SHORT', label: 'Short (Bearish)' }]
@@ -361,24 +359,4 @@ function IdeasList() {
   )
 }
 
-export default function TradeIdeasPage() {
-  const navigate = useNavigate()
-
-  return (
-    <div className="mx-auto max-w-[1200px] px-4 py-6 space-y-5">
-      <header className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate('/journal')} className={`${getActionButtonClass('surface')} p-1.5 rounded-lg`}>
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <div className="flex items-center gap-2">
-            <Lightbulb size={18} className="text-amber-400" />
-            <h1 className="text-2xl font-bold tracking-tight text-heading">Trade Ideas</h1>
-          </div>
-          <p className="text-sm text-tertiary mt-0.5">Track and manage trade setups across Day and Swing engines.</p>
-        </div>
-      </header>
-      <IdeasList />
-    </div>
-  )
-}
+export default IdeasList
