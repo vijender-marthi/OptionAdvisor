@@ -555,6 +555,7 @@ interface Props {
   refreshing?: boolean
   showRefresh?: boolean
   onRequestEnterActiveTrade?: () => void
+  onAddToPortfolio?: () => void
   onOpenStrategyFinder?: () => void
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
@@ -568,6 +569,7 @@ export default function DayTradeEnginePanel({
   refreshing,
   showRefresh = true,
   onRequestEnterActiveTrade,
+  onAddToPortfolio,
   onOpenStrategyFinder,
   onOpenCommandCenter,
   onCreateAlert,
@@ -931,14 +933,22 @@ export default function DayTradeEnginePanel({
         <MarketTimeGateBanner tradeType="day" />
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onAddToPortfolio}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
+          >
+            <PlusCircle size={14} />
+            Add to Portfolio
+          </button>
           {onRequestEnterActiveTrade && (
             <button
               type="button"
               onClick={onRequestEnterActiveTrade}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
             >
-              <PlusCircle size={14} />
-              Add to Positions
+              <Activity size={14} />
+              Track Intraday
             </button>
           )}
           {onCreateAlert && (

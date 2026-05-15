@@ -280,14 +280,18 @@ export default function RecommendationCard({
         </span>
 
         {/* State badge */}
-        {(() => {
+        {inPortfolio ? (
+          <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full border bg-violet-900/50 text-violet-300 border-violet-700 ring-2 ring-violet-500/40">
+            IN POSITION
+          </span>
+        ) : (() => {
           const cls =
-            tradeState.color === 'emerald' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-1 ring-emerald-500/30' :
-            tradeState.color === 'amber'   ? 'bg-amber-900/50 text-amber-300 border-amber-700' :
-            tradeState.color === 'sky'     ? 'bg-sky-900/40 text-sky-300 border-sky-700' :
-                                             'bg-red-900/40 text-red-300 border-red-800'
+            tradeState.color === 'emerald' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-2 ring-emerald-500/40' :
+            tradeState.color === 'amber'   ? 'bg-amber-900/50 text-amber-300 border-amber-700 ring-2 ring-amber-500/20' :
+            tradeState.color === 'sky'     ? 'bg-sky-900/40 text-sky-300 border-sky-700 ring-2 ring-sky-500/20' :
+                                             'bg-red-900/40 text-red-300 border-red-800 ring-2 ring-red-500/20'
           return (
-            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cls}`}>
+            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full border ${cls}`}>
               {tradeState.num}: {tradeState.label}
             </span>
           )
@@ -349,44 +353,97 @@ export default function RecommendationCard({
       {/* ── Expanded detail ── */}
       {open && (
         <div>
-          {/* ── Entry state guidance strip ── */}
-          {(() => {
-            const s = tradeState
-            const stripBg =
-              s.color === 'emerald' ? 'bg-emerald-950/60 border-emerald-800' :
-              s.color === 'amber'   ? 'bg-amber-950/50 border-amber-800' :
-              s.color === 'sky'     ? 'bg-sky-950/50 border-sky-800' :
-                                     'bg-red-950/50 border-red-900'
-            const labelCls =
-              s.color === 'emerald' ? 'text-emerald-300' :
-              s.color === 'amber'   ? 'text-amber-300' :
-              s.color === 'sky'     ? 'text-sky-300' : 'text-red-300'
-            return (
-              <div className={`mx-3 sm:mx-4 mb-3 rounded-xl border px-3 py-2.5 ${stripBg}`}>
-                <div className="flex items-start gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-bold tracking-wide ${labelCls}`}>
-                        {s.num}: {s.label}
-                      </span>
-                      <span className="text-xs text-gray-400">{s.sublabel}</span>
-                    </div>
-                    <p className="text-xs text-gray-300 mt-1 leading-relaxed">{s.action}</p>
-                    {s.missing.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                        <span className="text-[10px] text-gray-500 uppercase tracking-wide">Waiting on:</span>
-                        {s.missing.map(m => (
-                          <span key={m} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
-                            {m}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+          {/* ── In-position managing strip ── */}
+          {inPortfolio && (
+            <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-violet-700/50 bg-violet-950/25 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Check size={14} className="text-violet-400 shrink-0" />
+                <span className="text-sm font-bold text-violet-300">Already in portfolio — follow your exit rules</span>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                {isCredit
+                  ? 'Target 50% of max profit. Stop out if the position reaches 2× the credit received. Close before the last 7 DTE to avoid gamma risk.'
+                  : 'Target 100% of premium paid. Stop at 50% of premium paid. Close if the thesis is invalidated.'}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="bg-gray-900/60 rounded-lg px-2.5 py-2">
+                  <div className="text-gray-500 text-[10px] mb-0.5">Profit target</div>
+                  <div className="font-mono font-bold text-emerald-400">
+                    +${fmt(c(rec.max_profit * 0.5))}
+                    <span className="text-gray-500 font-normal ml-1 text-[10px]">(50%)</span>
                   </div>
                 </div>
+                {isCredit && (
+                  <div className="bg-gray-900/60 rounded-lg px-2.5 py-2">
+                    <div className="text-gray-500 text-[10px] mb-0.5">Stop loss</div>
+                    <div className="font-mono font-bold text-red-400">
+                      −${fmt(c(rec.net_credit * 2))}
+                      <span className="text-gray-500 font-normal ml-1 text-[10px]">(2× credit)</span>
+                    </div>
+                  </div>
+                )}
+                <div className="bg-gray-900/60 rounded-lg px-2.5 py-2">
+                  <div className="text-gray-500 text-[10px] mb-0.5">Breakeven</div>
+                  <div className="font-mono text-gray-300 text-[11px]">
+                    {rec.breakeven_upper < 990 && rec.breakeven_lower > 0
+                      ? `$${rec.breakeven_lower.toFixed(2)}–$${rec.breakeven_upper.toFixed(2)}`
+                      : rec.breakeven_lower > 0
+                      ? `$${rec.breakeven_lower.toFixed(2)} ↑`
+                      : `$${rec.breakeven_upper.toFixed(2)} ↓`}
+                  </div>
+                </div>
+                <div className="bg-gray-900/60 rounded-lg px-2.5 py-2">
+                  <div className="text-gray-500 text-[10px] mb-0.5">Expiry</div>
+                  <div className="font-mono text-gray-300 text-[11px]">{rec.expiry} · {rec.dte}d</div>
+                </div>
               </div>
-            )
-          })()}
+            </div>
+          )}
+
+          {/* ── 4-State Entry System (STATE 2 → STATE 1 → WATCH → AVOID) ── */}
+          {!inPortfolio && <div className="mx-3 sm:mx-4 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {([
+                { num: 'STATE 2', label: 'ENTRY',    color: 'emerald', bg: 'bg-emerald-950/25', border: 'border-emerald-700/40', activeBorder: 'border-emerald-500/60', activeRing: 'ring-2 ring-emerald-500/20', text: 'text-emerald-300', dot: 'bg-emerald-400', desc: 'Enter now. All conditions aligned.', nowCls: 'dark:bg-emerald-500 dark:text-white bg-emerald-100 text-emerald-700' },
+                { num: 'STATE 1', label: 'SETUP',    color: 'amber',   bg: 'bg-amber-950/25',   border: 'border-amber-700/40',   activeBorder: 'border-amber-500/60',   activeRing: 'ring-2 ring-amber-500/20',   text: 'text-amber-300',   dot: 'bg-amber-400',   desc: 'Conditions forming. Monitor for alignment.', nowCls: 'dark:bg-amber-500 dark:text-white bg-amber-100 text-amber-700' },
+                { num: 'WATCH',   label: 'WAIT',     color: 'sky',     bg: 'bg-sky-950/25',     border: 'border-sky-700/40',     activeBorder: 'border-sky-500/60',     activeRing: 'ring-2 ring-sky-500/20',     text: 'text-sky-300',     dot: 'bg-sky-400',     desc: 'Not ready yet. Keep monitoring.', nowCls: 'dark:bg-sky-500 dark:text-white bg-sky-100 text-sky-700' },
+                { num: 'AVOID',   label: 'AVOID',    color: 'red',     bg: 'bg-red-950/25',     border: 'border-red-800/40',     activeBorder: 'border-red-500/60',     activeRing: 'ring-2 ring-red-500/20',     text: 'text-red-300',    dot: 'bg-red-400',     desc: 'Do not trade. Critical conditions not met.', nowCls: 'dark:bg-red-500 dark:text-white bg-red-100 text-red-700' },
+              ] as const).map(s => {
+                const active = s.color === tradeState.color
+                return (
+                  <div key={s.num} className={`rounded-xl border transition-all duration-200 ${active ? `${s.activeBorder} ${s.bg} ${s.activeRing}` : `${s.border} ${s.bg}`}`}>
+                    <div className="px-3 py-3">
+                      <div className={`flex items-center gap-1.5 ${s.text} text-[11px] font-bold uppercase tracking-[0.12em] mb-2`}>
+                        <span className={`w-2.5 h-2.5 rounded-full ${s.dot} shrink-0`} />
+                        {s.num}: {s.label}
+                        {active && (
+                          <span className={`ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${s.nowCls}`}>
+                            <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse shrink-0" />NOW
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                        {active ? tradeState.sublabel : s.desc}
+                      </div>
+                      <div className="text-xs text-gray-400 leading-relaxed">
+                        {active ? tradeState.action : `Conditions not yet met for ${s.label}.`}
+                      </div>
+                      {active && tradeState.missing.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                          <span className="text-[10px] text-gray-500 uppercase tracking-wide">Waiting on:</span>
+                          {tradeState.missing.map(m => (
+                            <span key={m} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                              {m}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>}
 
           {/* Filter badges + action buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pb-3">

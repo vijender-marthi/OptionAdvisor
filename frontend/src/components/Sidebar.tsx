@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
@@ -8,6 +9,7 @@ import {
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole, roleLabel } from '../permissions'
+import { pageToLocation } from '../routing/paths'
 import ThemeToggle from './ThemeToggle'
 import BetaProductTag from './BetaProductTag'
 
@@ -273,17 +275,15 @@ export default function Sidebar() {
               {group.items.map(item => {
                 const active = page === item.id
                 const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => item.id === 'help' ? setHelpOpen(true) : navigate(item.id)}
-                    title={item.label}
-                    className={`relative isolate w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all touch-manipulation
-                      ${active
-                        ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
-                        : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
-                      } ${collapsed ? 'justify-center' : ''}`}
-                  >
+                const isHelp = item.id === 'help'
+                const linkTo = pageToLocation(item.id)
+                const cls = `relative isolate w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-semibold transition-all touch-manipulation
+                  ${active
+                    ? 'bg-violet-600/20 text-violet-300 border border-violet-700/50'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200 border border-transparent'
+                  } ${collapsed ? 'justify-center' : ''}`
+                const inner = (
+                  <>
                     <span className="shrink-0">{item.icon}</span>
                     {!collapsed && (
                       <>
@@ -298,7 +298,19 @@ export default function Sidebar() {
                     {collapsed && countBadge !== null && (
                       <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-500" />
                     )}
-                  </button>
+                  </>
+                )
+                if (isHelp) {
+                  return (
+                    <button key={item.id} type="button" onClick={() => setHelpOpen(true)} title={item.label} className={cls}>
+                      {inner}
+                    </button>
+                  )
+                }
+                return (
+                  <Link key={item.id} to={linkTo} title={item.label} className={cls}>
+                    {inner}
+                  </Link>
                 )
               })}
             </div>
