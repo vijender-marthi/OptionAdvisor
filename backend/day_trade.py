@@ -913,8 +913,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         """Return 'HH_HL', 'LL_LH', 'MIXED', or 'FLAT' for recent price structure."""
         if len(closes) < window * 2 + 1:
             return "FLAT"
-        highs = [float(session["High"].iloc[i]) for i in range(len(session))]
-        lows  = [float(session["Low"].iloc[i])  for i in range(len(session))]
+        highs = list(closes)
+        lows  = list(closes)
         swing_highs, swing_lows = [], []
         for i in range(window, len(highs) - window):
             if highs[i] == max(highs[i - window: i + window + 1]):
@@ -1289,6 +1289,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         )
 
     # Daily trend context from swing scan (optional adjustment)
+    bias: Bias = None
     if daily_trend_context is not None:
         _swing_bias = daily_trend_context.get("bias", "").lower()
         _swing_verdict = str(daily_trend_context.get("verdict", "") or "").upper()
@@ -1319,7 +1320,6 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 bear -= 0.5
 
     diff = bull - bear
-    bias: Bias = None
     verdict: Verdict = "WAIT"
     soft_edge = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge = soft_edge and diff > 0

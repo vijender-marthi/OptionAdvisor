@@ -1534,7 +1534,7 @@ def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float
         best_diff = 999
         for d in opt_dates:
             dt = datetime.strptime(d, "%Y-%m-%d")
-            dte = (dt - now.date()).days if hasattr(dt, "date") else (dt - now).days
+            dte = (dt.date() - now.date()).days if hasattr(dt, "date") else (dt - now).days
             if 14 <= dte <= 60:
                 diff = abs(dte - target_dte)
                 if diff < best_diff:
@@ -1903,7 +1903,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         bull += score
     elif ma_spread_pct < 0:
         score = min(3.0, max(0.5, abs(ma_spread_pct) * 0.15))
-        converging = prev_spread < ma_spread_pct * 1.05
+        converging = abs(prev_spread) > abs(ma_spread_pct) * 1.05
         if converging:
             score *= 0.5
             body.append(f"MA20 < MA50 but converging (gap {abs(ma_spread_pct):.1f}% from {abs(prev_spread):.1f}%) — base forming.")
