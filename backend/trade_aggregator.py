@@ -870,7 +870,7 @@ def build_command_center_payload(
                 "expiry":                _expiry_label(eng_key, rdata),
                 "risk_level":            _risk_label(p.get("risk_state", "MEDIUM")),
                 "action_label":          _action_label(fd),
-                "recommended_action":    p.get("reason") or "",
+                "recommended_action":    _action_label(fd),
                 "market_bias":           p.get("market_bias") or "NEUTRAL",
                 "setup_quality":         p.get("setup_quality") or "WEAK",
                 "execution_readiness":   p.get("execution_readiness") or "WAIT",
