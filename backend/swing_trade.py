@@ -472,7 +472,7 @@ def build_swing_trade_decision(
 
     # ── 1. Swing bias ──────────────────────────────────────────────────
     swing_bias   = _compute_swing_bias(bull_score, bear_score)
-    is_bullish   = bull_score >= bear_score
+    is_bullish   = bull_score > bear_score
 
     # ── 2. Market ETF special case ─────────────────────────────────────
     if t in _MARKET_ETFS:
@@ -967,7 +967,6 @@ def _compute_pullback_probability(
         score += 7
         reasons.append("price extended above MA20")
 
-    abs_rsi = abs(rsi_val - 50)
     if rsi_val > 70:
         score += 8
         reasons.append("RSI overbought")
@@ -1309,7 +1308,7 @@ def _next_earnings_calendar_days(ticker: str, asof: date, force_refresh: bool = 
 
 def _finalize_playbook_earnings(hint: str, earnings_days: Optional[int]) -> str:
     """Layer rule 7: within 5 calendar days, discourage naked single-leg premium."""
-    if earnings_days is None or not (0 < earnings_days <= 5):
+    if earnings_days is None or not (0 <= earnings_days <= 5):
         return hint
     lower = hint.lower()
     if lower.startswith("long call"):

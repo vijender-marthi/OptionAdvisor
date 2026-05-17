@@ -188,6 +188,34 @@ def _info_opt_float(info: dict[str, Any], key: str) -> Optional[float]:
     return x if math.isfinite(x) else None
 
 
+def _spy_daily_trend(force_refresh: bool = False) -> dict:
+    """SPY daily trend context: pct_change, rsi, ma50_slope."""
+    ctx: dict = {"pct": None, "rsi": None, "ma50_slope": None}
+    try:
+        h = bar_cache.get_history("SPY", period="4mo", interval="1d", force_refresh=force_refresh)
+        if h is None or len(h) < 60:
+            return ctx
+        close = h["Close"].astype(float).sort_index()
+        last_c = float(close.iloc[-1])
+        prev_c = float(close.iloc[-2]) if len(close) > 1 else last_c
+        ctx["pct"] = round((last_c / prev_c - 1.0) * 100, 3) if prev_c > 0 else 0.0
+        delta = close.diff()
+        gain = delta.clip(lower=0.0)
+        loss = (-delta).clip(lower=0.0)
+        avg_g = gain.ewm(com=13, adjust=False).mean()
+        avg_l = loss.ewm(com=13, adjust=False).mean()
+        rs = avg_g / avg_l.replace(0, 1e-10)
+        rsi_ser = 100.0 - 100.0 / (1.0 + rs)
+        ctx["rsi"] = round(float(rsi_ser.iloc[-1]), 1)
+        ma50 = close.rolling(50).mean()
+        ma50_now = float(ma50.iloc[-1])
+        ma50_10ago = float(ma50.iloc[-11]) if len(ma50) >= 11 else ma50_now
+        ctx["ma50_slope"] = round((ma50_now - ma50_10ago) / ma50_10ago * 100, 4) if ma50_10ago > 0 else 0.0
+    except Exception:
+        pass
+    return ctx
+
+
 def _index_change_pct(sym: str, force_refresh: bool = False) -> Optional[float]:
     """Session-to-session % change for an index ticker, via bar_cache."""
     try:
@@ -623,8 +651,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     direction_word = "bullish" if bidir == "long" else "bearish"
     if state == "ENTRY_RETEST":
         or_level = or_high if bidir == "long" else or_low
-        conservative = f"Enter on the pullback to OR level ({or_level:.2f} if available) with volume hold confirmation."
-        aggressive = f"Scale in now — re-test hold is active. Stop just below {or_level:.2f}." if or_level else "Scale in with stop below breakout level."
+        conservative = f"Enter on the pullback to OR level ({(or_level or 0):.2f} if available) with volume hold confirmation."
+        aggressive = f"Scale in now — re-test hold is active. Stop just below {(or_level or 0):.2f}." if or_level else "Scale in with stop below breakout level."
         best_setup = f"OR re-test hold — {direction_word} continuation with tight stop at breakout level."
     elif state == "ENTRY_ACTIVE":
         if vwap is not None and last_price is not None:
@@ -987,23 +1015,6 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         vwap_position = "at"
 
-    # Current price position vs OR bounds (end-of-session check).
-    if last > or_high:
-        or_state = "above"
-    elif last < or_low:
-        or_state = "below"
-    else:
-        or_state = "inside"
-
-    # Historical OR breakout flag: did price REACH outside the OR at any point,
-    # even if it has since retraced back inside?
-    if or_was_broken_up:
-        or_historical = "broke_up"
-    elif or_was_broken_down:
-        or_historical = "broke_down"
-    else:
-        or_historical = "contained"
-
     bull = 0.0
     bear = 0.0
 
@@ -1133,15 +1144,33 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 bear += 1.0
                 body.append(f"Weak RS vs QQQ ({rs_vs_qqq_pct:.2f}%) adds bearish weight.")
 
-    if spy_chg is not None:
-        body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
-        if spy_chg >= 0.25:
-            bull += 0.5
-        elif spy_chg <= -0.25:
-            bear += 0.5
+    _spy_daily = _spy_daily_trend(force_refresh=_fr)
+    _spy_rsi_ok = _spy_daily.get("rsi") is not None and 40 <= _spy_daily["rsi"] <= 70
+    _spy_rsi_extreme = _spy_daily.get("rsi") is not None and _spy_daily["rsi"] > 75
+    _spy_ma50_up = _spy_daily.get("ma50_slope", 0) or 0 > 0
 
-    if qqq_chg is not None:
-        body.append(f"QQQ session-to-session ≈ {qqq_chg:+.2f}%.")
+    if spy_chg is not None and qqq_chg is not None:
+        body.append(f"SPY {spy_chg:+.2f}% · QQQ {qqq_chg:+.2f}%.")
+        if spy_chg >= 0.25 and qqq_chg >= 0.25:
+            if _spy_ma50_up and _spy_rsi_ok:
+                bull += 1.0
+            elif _spy_rsi_extreme:
+                body.append("SPY daily RSI overbought — rally may be exhausted.")
+            else:
+                bull += 0.5
+        elif spy_chg <= -0.25 and qqq_chg <= -0.25:
+            bear += 0.5
+    else:
+        if spy_chg is not None:
+            body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
+            if spy_chg >= 0.25 and _spy_ma50_up and _spy_rsi_ok:
+                bull += 1.0
+            elif spy_chg <= -0.25:
+                bear += 0.5
+            elif spy_chg >= 0.25:
+                bull += 0.5
+        if qqq_chg is not None:
+            body.append(f"QQQ session-to-session ≈ {qqq_chg:+.2f}%.")
 
     if vix_level is not None:
         body.append(f"VIX ≈ {vix_level:.1f}.")
@@ -1175,8 +1204,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     if gap_pct is not None and abs(gap_pct) >= GAP_SIGNIFICANT_PCT:
         if gap_fill_risk:
             body.append(
-                f"Gap {gap_pct:+.2f}% at open but price has retraced near prior close — gap fill in progress; "
-                "avoid chasing the original gap direction."
+                f"{'Gap up' if gap_pct > 0 else 'Gap down'} {gap_pct:+.2f}% at open but price has retraced near prior close "
+                f"(${prior_close:.2f}) — gap fill in progress; avoid chasing."
             )
             if gap_pct > 0:
                 bull -= 0.5
@@ -1276,13 +1305,13 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         and not vol_spike
     )
     if _orh_retest_long:
-        bull += 0.75
+        bull += 1.0
         body.append(
             f"Pullback to ORH re-test ({or_high:.2f}) — price holding above breakout level after a confirmed break; "
             "classic continuation setup."
         )
     elif _orl_retest_short:
-        bear += 0.75
+        bear += 1.0
         body.append(
             f"Pullback to ORL re-test ({or_low:.2f}) — price holding below breakdown level; "
             "continuation short setup."
@@ -1318,6 +1347,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 bull -= 0.5
             elif bias == "short":
                 bear -= 0.5
+
+    bull = max(0.0, min(100.0, bull))
+    bear = max(0.0, min(100.0, bear))
 
     diff = bull - bear
     verdict: Verdict = "WAIT"

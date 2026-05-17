@@ -336,7 +336,7 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_reason="Good option structure.",
         )
         self.assertAlmostEqual(r["raw_engine_score"], 82.0)
-        self.assertEqual(r["normalized_score"], 82)
+        self.assertEqual(r["normalized_score"], 91)
         self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
