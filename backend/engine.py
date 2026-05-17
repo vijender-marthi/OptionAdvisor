@@ -989,9 +989,6 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     max_profit = round(spread_width - net_debit, 2)
     max_loss = net_debit
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
-    short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
-    rop = round(1 - short_delta, 2)
-    ev = compute_ev(max_profit, max_loss, rop)
 
     if option_type == "CALL":
         be = round(buy_leg.strike + net_debit, 2)
@@ -999,6 +996,18 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     else:
         be = round(buy_leg.strike - net_debit, 2)
         be_lower, be_upper = 0, be
+
+    buy_delta = abs(buy_leg.delta) if buy_leg.delta != 0 else 0.50
+    short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
+    if spread_width > 0:
+        delta_at_be = buy_delta + (short_delta - buy_delta) * (be - buy_leg.strike) / spread_width
+    else:
+        delta_at_be = buy_delta
+    if option_type == "CALL":
+        rop = round(max(0.01, min(0.99, 1 - delta_at_be)), 2)
+    else:
+        rop = round(max(0.01, min(0.99, delta_at_be)), 2)
+    ev = compute_ev(max_profit, max_loss, rop)
 
     return dict(
         strategy=strategy_name, bias=bias,
@@ -1114,7 +1123,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         short_leg_delta=short_delta, prob_of_profit=rop,
         prob_of_max_loss=prob_max_loss,
         expected_value=ev,
-        passes_rr_filter=rr <= 5.0,
+        passes_rr_filter=rr <= MIN_RISK_REWARD_RATIO * 2,
         passes_credit_filter=passes_credit,
         passes_liquidity_filter=True,
         rationale=(
@@ -1200,9 +1209,9 @@ def _build_iron_condor(signals: MarketSignals, calls: pd.DataFrame,
         breakeven_lower=be_lower, breakeven_upper=be_upper,
         short_leg_delta=max(short_put_delta, short_call_delta),
         prob_of_profit=rop,
-        prob_of_max_loss=round(short_put_delta * short_call_delta, 3),
+        prob_of_max_loss=round(short_put_delta + short_call_delta, 3),
         expected_value=ev,
-        passes_rr_filter=rr <= 5.0,
+        passes_rr_filter=rr <= MIN_RISK_REWARD_RATIO * 2,
         passes_credit_filter=passes_credit,
         passes_liquidity_filter=True,
         rationale=(
@@ -1614,7 +1623,13 @@ def run_engine(
         return []
 
     def get_chain(expiry):
-        return calls_f, puts_f  # simplified: use same chain for all expiries
+        c = calls_f
+        p = puts_f
+        if "expiration" in c.columns:
+            c = c[c["expiration"] == expiry]
+        if "expiration" in p.columns:
+            p = p[p["expiration"] == expiry]
+        return c, p
 
     candidates_raw = []
 

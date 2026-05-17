@@ -52,7 +52,7 @@ def _confidence_band(confidence: int) -> str:
 def _risk_band_from_vix(vix: Optional[float], default: str = "MEDIUM") -> str:
     if vix is None:
         return default
-    if vix >= 30:
+    if vix >= 25:
         return "HIGH"
     if vix >= 20:
         return "MEDIUM"
@@ -99,7 +99,7 @@ def _execution_bias_day(verdict: str, entry_guidance: dict) -> str:
 
     if should_enter == "YES":
         return "ENTER_NOW"
-    if "PULLBACK" in eg_state or "pullback" in str(eg.get("pullback_probability") or "").lower():
+    if "PULLBACK" in eg_state:
         return "WAIT_FOR_PULLBACK"
     if should_enter == "CONDITIONAL" or "WAIT" in eg_state:
         return "WAIT_FOR_CONFIRMATION"
@@ -233,7 +233,7 @@ def _day_verdict_to_state(verdict: str, vix: Optional[float]) -> str:
     downgrade = vix is not None and vix >= 30
 
     if v == "STRONG-GO":
-        return "WATCH" if downgrade else "GO"
+        return "READY" if downgrade else "GO"
     if v == "GO":
         return "WATCH" if downgrade else "READY"
     if v == "WATCH":

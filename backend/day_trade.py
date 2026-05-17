@@ -369,9 +369,10 @@ def _build_day_exit_rules(
             })
         # VWAP loss guard
         if vwap is not None:
+            vwap_stop = round(vwap * 0.998, 2)
             rules.append({
                 "trigger": "Price loses VWAP",
-                "price":   round(vwap, 2),
+                "price":   vwap_stop,
                 "action":  "Exit full position",
                 "note":    "Intraday structure failed — do not hold through VWAP loss",
             })
@@ -401,9 +402,10 @@ def _build_day_exit_rules(
                 "note":    "Intraday trade complete — flat before close",
             })
         if vwap is not None:
+            vwap_stop = round(vwap * 1.002, 2)
             rules.append({
                 "trigger": "Price reclaims VWAP",
-                "price":   round(vwap, 2),
+                "price":   vwap_stop,
                 "action":  "Exit full position",
                 "note":    "Bearish structure failed — exit immediately",
             })
@@ -855,12 +857,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         session_phase = "OPENING"
     elif session_minutes_elapsed < SESSION_MID_AM_END:
         session_phase = "MID_MORNING"
-    elif session_minutes_elapsed >= SESSION_POWER_HOUR:
-        session_phase = "POWER_HOUR"
     elif session_minutes_elapsed < SESSION_MIDDAY_END:
-        session_phase = "MID_MORNING"
-    else:
         session_phase = "MIDDAY"
+    else:
+        session_phase = "POWER_HOUR"
 
     # OR width — narrow coiling vs wide chaotic open.
     or_width_pct = round((or_high - or_low) / or_low * 100, 3) if or_low > 0 else 0.0
@@ -1178,9 +1178,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 f"Gap {gap_pct:+.2f}% at open but price has retraced near prior close — gap fill in progress; "
                 "avoid chasing the original gap direction."
             )
-            if gap_pct > 0 and bull > bear:
+            if gap_pct > 0:
                 bull -= 0.5
-            elif gap_pct < 0 and bear > bull:
+            elif gap_pct < 0:
                 bear -= 0.5
         else:
             if gap_pct > 0:

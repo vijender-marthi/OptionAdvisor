@@ -111,7 +111,7 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "WATCH")
+        self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_execution_bias_wait_for_confirmation(self) -> None:
