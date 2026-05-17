@@ -8,6 +8,8 @@ import {
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
+import { deriveRegularTradeState } from '../components/RecommendationCard'
+import type { TradeStateInfo, RegularState } from '../components/RecommendationCard'
 import type { Recommendation, AnalyzeResponse } from '../types'
 import { cacheAge } from '../types'
 import { TICKER_CATEGORY_MAP, CATEGORY_BADGE, MULTI_WEEK_TARGETS } from '../data/stockUniverse'
@@ -55,8 +57,9 @@ interface WeekBucket {
   label: string
   dte: number
   expiry: string
-  recommendations: { rec: Recommendation; verdict: Verdict }[]
-  bestVerdict: VerdictOrNone
+  recommendations: { rec: Recommendation; verdict: Verdict; tradeState: TradeStateInfo }[]
+  bestVerdict: VerdictOrNone   // kept for week-dot / tab colours
+  bestState: RegularState | null
 }
 
 function formatExpiryDate(expiry: string): string {
@@ -65,21 +68,38 @@ function formatExpiryDate(expiry: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function topBucketState(recs: { tradeState: TradeStateInfo }[]): RegularState | null {
+  if (recs.some(r => r.tradeState.state === 2))  return 2
+  if (recs.some(r => r.tradeState.state === 1))  return 1
+  if (recs.some(r => r.tradeState.state === 0))  return 0
+  if (recs.some(r => r.tradeState.state === -1)) return -1
+  return null
+}
+
+function stateToVerdict(state: RegularState | null): VerdictOrNone {
+  if (state === 2)  return 'GO'
+  if (state === 1)  return 'CAUTION'
+  if (state === -1) return 'NO GO'
+  return 'NONE'
+}
+
 function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBucket[] {
   const buckets: WeekBucket[] = []
 
-  const primaryRecs = entry.data.recommendations.map(rec => ({
-    rec,
-    verdict: deriveVerdict(buildChecklist(rec, entry.data.signals)),
-  }))
+  const primaryRecs = entry.data.recommendations.map(rec => {
+    const v = deriveVerdict(buildChecklist(rec, entry.data.signals))
+    return { rec, verdict: v, tradeState: deriveRegularTradeState(rec, entry.data.signals, v) }
+  })
   if (primaryRecs.length > 0) {
+    const bs = topBucketState(primaryRecs)
     buckets.push({
       weeksOut: entry.weeksOut,
       label: `${entry.weeksOut}w`,
       dte: primaryRecs[0].rec.dte,
       expiry: primaryRecs[0].rec.expiry,
       recommendations: primaryRecs,
-      bestVerdict: bestVerdict(primaryRecs.map(r => r.verdict)),
+      bestVerdict: stateToVerdict(bs),
+      bestState: bs,
     })
   }
 
@@ -89,17 +109,19 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
       const recs = (data as AnalyzeResponse).recommendations
       if (recs.length === 0) continue
       if (buckets.some(b => b.weeksOut === w)) continue
-      const withVerdicts = recs.map(rec => ({
-        rec,
-        verdict: deriveVerdict(buildChecklist(rec, (data as AnalyzeResponse).signals)),
-      }))
+      const withStates = recs.map(rec => {
+        const v = deriveVerdict(buildChecklist(rec, (data as AnalyzeResponse).signals))
+        return { rec, verdict: v, tradeState: deriveRegularTradeState(rec, (data as AnalyzeResponse).signals, v) }
+      })
+      const bs = topBucketState(withStates)
       buckets.push({
         weeksOut: w,
         label: `${w}w`,
         dte: recs[0].dte,
         expiry: recs[0].expiry,
-        recommendations: withVerdicts,
-        bestVerdict: bestVerdict(withVerdicts.map(r => r.verdict)),
+        recommendations: withStates,
+        bestVerdict: stateToVerdict(bs),
+        bestState: bs,
       })
     }
   }
@@ -109,7 +131,7 @@ function collectWeekBuckets(entry: import('../types').TickerCacheEntry): WeekBuc
 
 function bestRecForFinder(bucket: WeekBucket): Recommendation | null {
   if (bucket.recommendations.length === 0) return null
-  const prefer = bucket.recommendations.filter(r => r.verdict === 'GO' || r.verdict === 'CAUTION')
+  const prefer = bucket.recommendations.filter(r => r.tradeState.state >= 1)
   const pool = prefer.length > 0 ? prefer : bucket.recommendations
   return [...pool].sort((a, b) => b.rec.scores.total_score - a.rec.scores.total_score)[0]!.rec
 }
@@ -162,33 +184,58 @@ function EarningsWarning({ daysUntil, dte }: { daysUntil: number; dte: number })
   )
 }
 
+const normStrategy = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, ' ').trim()
+
+const TRADE_STATE_CLS: Record<TradeStateInfo['color'], string> = {
+  emerald: 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-1 ring-emerald-500/30',
+  amber:   'bg-amber-900/50 text-amber-300 border-amber-700',
+  sky:     'bg-sky-900/40 text-sky-300 border-sky-700',
+  red:     'bg-red-900/40 text-red-300 border-red-800',
+}
+
 // ─── Rec row ─────────────────────────────────────────────────────────────────
 function RecRow({
-  rec, verdict, ticker, weeksOut, openInFinder, earningsWithinDays,
+  rec, tradeState, ticker, weeksOut, openInFinder, earningsWithinDays, openStrategies,
 }: {
   rec: Recommendation
-  verdict: Verdict
+  tradeState: TradeStateInfo
   ticker: string
   weeksOut: number
   openInFinder: (ticker: string, weeksOut: number, rec: Recommendation) => void
   earningsWithinDays?: number | null
+  openStrategies?: Set<string>
 }) {
+  const recInPosition = (openStrategies ?? new Set()).has(normStrategy(rec.strategy))
   const isCredit = rec.net_credit > 0
   const biasClass = rec.bias.toUpperCase().includes('BULLISH')
     ? 'bg-green-900/30 text-green-400 border-green-800'
     : rec.bias.toUpperCase().includes('BEARISH')
     ? 'bg-red-900/30 text-red-400 border-red-800'
     : 'bg-amber-900/30 text-amber-400 border-amber-800'
-  const canFinder = verdict === 'GO' || verdict === 'CAUTION'
+  const canFinder = tradeState.state >= 1
   const maxLoss = rec.max_loss > 0 ? rec.max_loss : null
   const maxProfit = rec.max_profit > 0 ? rec.max_profit : null
   const rr = rec.risk_reward_ratio > 0 ? rec.risk_reward_ratio : null
+  const stateText = tradeState.num === tradeState.label
+    ? tradeState.num
+    : `${tradeState.num}: ${tradeState.label}`
 
   return (
     <div className="py-2 border-b border-gray-800/50 last:border-0">
-      {/* Row 1: verdict, strategy, bias, tier, DTE */}
+      {/* Row 1: state badge, strategy, bias, tier, DTE */}
       <div className="flex items-center gap-2 flex-wrap">
-        <VerdictPill v={verdict} onOpenFinder={canFinder ? () => openInFinder(ticker, weeksOut, rec) : undefined} />
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 cursor-help ${TRADE_STATE_CLS[tradeState.color]}`}
+          title={`${stateText} — ${tradeState.sublabel}\n${tradeState.action}${tradeState.missing.length ? '\nWaiting on: ' + tradeState.missing.join(', ') : ''}`}
+        >
+          {stateText}
+          <Info size={9} className="opacity-50" />
+        </span>
+        {recInPosition && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-600/50 bg-amber-900/30 text-amber-300 shrink-0">
+            IN POSITION
+          </span>
+        )}
         <span className="text-xs font-semibold text-gray-200 min-w-0">{rec.strategy}</span>
         <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${biasClass}`}>
           {rec.bias.includes('Bullish') ? '↑' : rec.bias.includes('Bearish') ? '↓' : '↔'} {rec.bias}
@@ -278,29 +325,33 @@ interface TickerResult {
   priceChangePct: number
   ageMin: number
   buckets: WeekBucket[]
-  topVerdict: VerdictOrNone
+  topVerdict: VerdictOrNone        // kept for week-dot colours
+  topState: RegularState | null    // for filter + sort
   hasFetchedAllWeeks: boolean
   bestGoKelly: number
   earningsWithinDays: number | null
 }
 
-function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize, openInFinder }: {
+function TickerCard({ result, openStrategies = new Set(), onAnalyze, onFetchAllWeeks, onViewPositions, fetching, accountSize, openInFinder }: {
   result: TickerResult
+  openStrategies?: Set<string>
   onAnalyze: () => void
   onFetchAllWeeks: () => void
+  onViewPositions?: () => void
   fetching: boolean
   accountSize: number
   openInFinder: (ticker: string, weeksOut: number, rec: Recommendation) => void
 }) {
   const [expandedWeek, setExpandedWeek] = useState<number | null>(result.buckets[0]?.dte ?? null)
+  const inPosition = openStrategies.size > 0
   const priceUp = result.priceChangePct >= 0
   const aiCat = TICKER_CATEGORY_MAP[result.ticker]
   const catBadge = aiCat ? CATEGORY_BADGE[aiCat] : 'bg-gray-800 text-gray-400 border-gray-700'
 
-  const allRecs = result.buckets.flatMap(b => b.recommendations)
-  const goCount  = allRecs.filter(r => r.verdict === 'GO').length
-  const cauCount = allRecs.filter(r => r.verdict === 'CAUTION').length
-  const noCount  = allRecs.filter(r => r.verdict === 'NO GO').length
+  const allRecs    = result.buckets.flatMap(b => b.recommendations)
+  const entryCount = allRecs.filter(r => r.tradeState.state === 2).length
+  const setupCount = allRecs.filter(r => r.tradeState.state === 1).length
+  const avoidCount = allRecs.filter(r => r.tradeState.state === -1).length
 
   useEffect(() => {
     if (!result.buckets.some(b => b.dte === expandedWeek)) {
@@ -308,10 +359,10 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize,
     }
   }, [expandedWeek, result.buckets])
 
-  // Top-score GO rec for Kelly display
+  // Top-score ENTRY rec for Kelly display
   const topGoRec = result.buckets
     .flatMap(b => b.recommendations)
-    .filter(r => r.verdict === 'GO')
+    .filter(r => r.tradeState.state === 2)
     .sort((a, b) => b.rec.scores.total_score - a.rec.scores.total_score)[0]
 
   // Earnings warning: show if any bucket has earnings within DTE
@@ -344,6 +395,12 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize,
             <span className={`text-xs font-mono ${priceUp ? 'text-emerald-400' : 'text-red-400'}`}>
               ${result.currentPrice.toFixed(2)} {priceUp ? '▲' : '▼'}{Math.abs(result.priceChangePct).toFixed(2)}%
             </span>
+            {inPosition && (
+              <button type="button" onClick={onViewPositions}
+                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 transition-colors shrink-0">
+                IN POSITION
+              </button>
+            )}
             {aiCat && (
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${catBadge}`}>{aiCat}</span>
             )}
@@ -351,9 +408,9 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize,
           <div className="text-xs text-gray-500 mt-0.5 truncate">{result.companyName}</div>
           <div className="text-[10px] text-gray-600 mt-1 truncate">{result.sector}</div>
           <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-            {goCount  > 0 && <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full">{goCount} GO</span>}
-            {cauCount > 0 && <span className="text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded-full">{cauCount} CAUTION</span>}
-            {noCount  > 0 && <span className="text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">{noCount} NO GO</span>}
+            {entryCount > 0 && <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full">{entryCount} ENTRY</span>}
+            {setupCount > 0 && <span className="text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded-full">{setupCount} SETUP</span>}
+            {avoidCount > 0 && <span className="text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">{avoidCount} AVOID</span>}
             <span className="text-[10px] text-gray-600 flex items-center gap-1"><Clock size={9} />{result.ageMin}m ago</span>
           </div>
         </div>
@@ -443,11 +500,12 @@ function TickerCard({ result, onAnalyze, onFetchAllWeeks, fetching, accountSize,
                   <RecRow
                     key={i}
                     rec={r.rec}
-                    verdict={r.verdict}
+                    tradeState={r.tradeState}
                     ticker={result.ticker}
                     weeksOut={b.weeksOut}
                     openInFinder={openInFinder}
                     earningsWithinDays={result.earningsWithinDays}
+                    openStrategies={openStrategies}
                   />
                 ))}
               </div>
@@ -487,12 +545,24 @@ function UnanalyzedCard({ ticker, companyName, onAnalyze }: {
 }
 
 // ─── Main page ───────────────────────────────────────────────────────────────
-type Filter = 'All' | 'GO' | 'CAUTION' | 'NO GO' | 'Not Analyzed'
+type Filter = 'All' | 'Entry' | 'Setup' | 'Watch' | 'Avoid' | 'Not Analyzed'
 type WeekFilter = 'All' | number
 
 export default function TradeSignalsPage() {
   const { tickerCache, requestAnalysis, refreshTicker,
-          refreshingTickers, fetchAllWeeks, fetchingAllWeeks, accountSize } = useApp()
+          refreshingTickers, fetchAllWeeks, fetchingAllWeeks, accountSize,
+          portfolio, navigate } = useApp()
+
+  const openPositionsByTicker = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const p of portfolio) {
+      if (p.status !== 'open') continue
+      const tk = p.ticker.toUpperCase()
+      if (!map.has(tk)) map.set(tk, new Set())
+      map.get(tk)!.add(normStrategy(p.strategy))
+    }
+    return map
+  }, [portfolio])
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [filter, setFilter] = useState<Filter>('All')
   const [selectedWeek, setSelectedWeek] = useState<WeekFilter>('All')
@@ -522,12 +592,12 @@ export default function TradeSignalsPage() {
         const entry = tickerCache[sym]
         if (!entry) return null
         const buckets = collectWeekBuckets(entry)
-        const allVerdicts = buckets.flatMap(b => b.recommendations.map(r => r.verdict))
-        const goRecs = buckets
-          .flatMap(b => b.recommendations)
-          .filter(r => r.verdict === 'GO')
+        const allRecs = buckets.flatMap(b => b.recommendations)
+        const ts = topBucketState(allRecs)
+        const entryRecs = allRecs
+          .filter(r => r.tradeState.state === 2)
           .sort((a, b) => b.rec.scores.total_score - a.rec.scores.total_score)
-        const bestGoKelly = goRecs[0]?.rec.half_kelly_fraction ?? 0
+        const bestGoKelly = entryRecs[0]?.rec.half_kelly_fraction ?? 0
 
         // Earnings: pull from swing metrics if present (earnings_calendar_days_until)
         const swingMeta = (entry.data as any)?.swing_metrics
@@ -544,7 +614,8 @@ export default function TradeSignalsPage() {
           priceChangePct: entry.data.signals.price_change_pct,
           ageMin: cacheAge(entry),
           buckets,
-          topVerdict: bestVerdict(allVerdicts),
+          topVerdict: stateToVerdict(ts),
+          topState: ts,
           hasFetchedAllWeeks: !!entry.multiWeekData,
           bestGoKelly,
           earningsWithinDays,
@@ -552,8 +623,8 @@ export default function TradeSignalsPage() {
       })
       .filter((r): r is TickerResult => r !== null)
       .sort((a, b) => {
-        const order: Record<VerdictOrNone, number> = { 'GO': 0, 'CAUTION': 1, 'NO GO': 2, 'NONE': 3 }
-        return order[a.topVerdict] - order[b.topVerdict]
+        const order = (s: RegularState | null) => s === 2 ? 0 : s === 1 ? 1 : s === 0 ? 2 : s === -1 ? 3 : 4
+        return order(a.topState) - order(b.topState)
       })
   }, [myTickers, tickerCache])
 
@@ -575,20 +646,24 @@ export default function TradeSignalsPage() {
       .map(result => {
         const buckets = result.buckets.filter(b => b.weeksOut === selectedWeek)
         if (buckets.length === 0) return null
+        const filteredRecs = buckets.flatMap(b => b.recommendations)
+        const ts = topBucketState(filteredRecs)
         return {
           ...result,
           buckets,
-          topVerdict: bestVerdict(buckets.flatMap(b => b.recommendations.map(r => r.verdict))),
+          topVerdict: stateToVerdict(ts),
+          topState: ts,
         } satisfies TickerResult
       })
       .filter((r): r is TickerResult => r !== null)
   }, [results, selectedWeek])
 
-  const goCount   = weekFilteredResults.filter(r => r.topVerdict === 'GO').length
-  const cauCount  = weekFilteredResults.filter(r => r.topVerdict === 'CAUTION').length
-  const nogoCount = weekFilteredResults.filter(r => r.topVerdict === 'NO GO').length
+  const entryCount = weekFilteredResults.filter(r => r.topState === 2).length
+  const setupCount = weekFilteredResults.filter(r => r.topState === 1).length
+  const watchCount = weekFilteredResults.filter(r => r.topState === 0).length
+  const avoidCount = weekFilteredResults.filter(r => r.topState === -1).length
   const allGoTrades = weekFilteredResults.reduce((n, r) =>
-    n + r.buckets.reduce((m, b) => m + b.recommendations.filter(x => x.verdict === 'GO').length, 0), 0)
+    n + r.buckets.reduce((m, b) => m + b.recommendations.filter(x => x.tradeState.state === 2).length, 0), 0)
   const weeksTotal = weekFilteredResults.reduce((n, r) => n + r.buckets.length, 0)
 
   const totalKellyPct = weekFilteredResults.filter(r => r.bestGoKelly > 0)
@@ -604,7 +679,11 @@ export default function TradeSignalsPage() {
   const filtered =
     filter === 'All'          ? weekFilteredResults :
     filter === 'Not Analyzed' ? [] :
-    weekFilteredResults.filter(r => r.topVerdict === filter)
+    filter === 'Entry'        ? weekFilteredResults.filter(r => r.topState === 2) :
+    filter === 'Setup'        ? weekFilteredResults.filter(r => r.topState === 1) :
+    filter === 'Watch'        ? weekFilteredResults.filter(r => r.topState === 0) :
+    filter === 'Avoid'        ? weekFilteredResults.filter(r => r.topState === -1) :
+    weekFilteredResults
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true)
@@ -629,7 +708,7 @@ export default function TradeSignalsPage() {
                   <ShieldCheck size={18} className="text-emerald-400" />
                 </div>
                 <div>
-                  <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Strategy Trades</h1>
+                  <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Trade Signals</h1>
                   <p className="text-[11px] text-gray-500 mt-0.5">Options signals · 3-week to 6-week holds · 21–42 DTE window</p>
                 </div>
                 <button type="button" onClick={() => setInfoOpen(o => !o)}
@@ -640,10 +719,12 @@ export default function TradeSignalsPage() {
               </div>
               {infoOpen && (
                 <p className="text-sm text-gray-500 max-w-xl mt-2 leading-relaxed">
-                  Strategy Trades surfaces options setups (credit spreads, debit spreads, covered calls, iron condors)
+                  Trade Signals surfaces options setups (credit spreads, debit spreads, covered calls, iron condors)
                   targeting 3-week to 6-week holds (21–42 DTE). Each ticker card shows up to four expiry windows
-                  (3w / 4w / 5w / 6w). Verdict (GO / CAUTION / NO GO) comes from the Pre-Trade Checklist layered
-                  on the engine's signal-aligned score (0–100). Max profit, max loss, and R:R are shown per trade.
+                  (3w / 4w / 5w / 6w). Each trade is rated across four states: <strong>Entry</strong> (all conditions met — pull the trigger),
+                  <strong> Setup</strong> (conditions forming — wait for alignment), <strong>Watch</strong> (building but not ready — monitor),
+                  or <strong>Avoid</strong> (hard failures — do not trade). State is derived from the engine's signal-aligned score (0–100)
+                  layered with the Pre-Trade Checklist (filters, IV fit). Max profit, max loss, and R:R are shown per trade.
                   Kelly % is Half-Kelly position sizing — the fraction of your account to deploy on one trade.
                   Earnings banners flag when a report falls within the trade window (IV crush risk).
                 </p>
@@ -652,21 +733,30 @@ export default function TradeSignalsPage() {
 
             {/* Stat tiles */}
             <div className="flex items-center gap-2 flex-wrap justify-start lg:justify-end">
-              <div className="bg-emerald-950/60 border border-emerald-800 rounded-xl px-3 py-2 text-center min-w-[52px]">
-                <div className="text-xl font-bold text-emerald-400 font-mono">{goCount}</div>
-                <div className="text-[10px] text-gray-500">Ready</div>
+              <div className="bg-emerald-950/60 border border-emerald-800 rounded-xl px-3 py-2 text-center min-w-[52px] cursor-help"
+                title="Entry (STATE 2): All conditions aligned — score ≥70, filters pass, IV fits. Ready to enter now.">
+                <div className="text-xl font-bold text-emerald-400 font-mono">{entryCount}</div>
+                <div className="text-[10px] text-gray-500">Entry</div>
               </div>
-              <div className="bg-amber-950/50 border border-amber-800 rounded-xl px-3 py-2 text-center min-w-[52px]">
-                <div className="text-xl font-bold text-amber-400 font-mono">{cauCount}</div>
-                <div className="text-[10px] text-gray-500">Caution</div>
+              <div className="bg-amber-950/50 border border-amber-800 rounded-xl px-3 py-2 text-center min-w-[52px] cursor-help"
+                title="Setup (STATE 1): Conditions forming but not fully aligned. Wait for remaining criteria before entering.">
+                <div className="text-xl font-bold text-amber-400 font-mono">{setupCount}</div>
+                <div className="text-[10px] text-gray-500">Setup</div>
               </div>
-              <div className="bg-red-950/40 border border-red-900 rounded-xl px-3 py-2 text-center min-w-[52px]">
-                <div className="text-xl font-bold text-red-400 font-mono">{nogoCount}</div>
-                <div className="text-[10px] text-gray-500">No Go</div>
+              <div className="bg-sky-950/40 border border-sky-900 rounded-xl px-3 py-2 text-center min-w-[52px] cursor-help"
+                title="Watch: Setup building but conditions not ready. Monitor and re-evaluate when alignment improves.">
+                <div className="text-xl font-bold text-sky-400 font-mono">{watchCount}</div>
+                <div className="text-[10px] text-gray-500">Watch</div>
               </div>
-              <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center min-w-[52px]">
+              <div className="bg-red-950/40 border border-red-900 rounded-xl px-3 py-2 text-center min-w-[52px] cursor-help"
+                title="Avoid: Critical conditions not met — hard failures present. Do not enter this trade.">
+                <div className="text-xl font-bold text-red-400 font-mono">{avoidCount}</div>
+                <div className="text-[10px] text-gray-500">Avoid</div>
+              </div>
+              <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center min-w-[52px] cursor-help"
+                title="Total individual Entry-state trades across all tickers and expiry windows.">
                 <div className="text-xl font-bold text-white font-mono">{allGoTrades}</div>
-                <div className="text-[10px] text-gray-500">GO Trades</div>
+                <div className="text-[10px] text-gray-500">Entry Trades</div>
               </div>
               <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center min-w-[52px]">
                 <div className="text-xl font-bold text-violet-400 font-mono">{weeksTotal}</div>
@@ -674,7 +764,7 @@ export default function TradeSignalsPage() {
               </div>
               {totalKellyPct > 0 && (
                 <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center min-w-[68px]"
-                  title={`Deploy ~$${totalCapitalDollars.toLocaleString()} across ${goCount} GO tickers (Half-Kelly sum)`}>
+                  title={`Deploy ~$${totalCapitalDollars.toLocaleString()} across ${entryCount} Entry tickers (Half-Kelly sum)`}>
                   <div className={`text-xl font-bold font-mono ${kellyColor}`}>{totalKellyPct.toFixed(0)}%</div>
                   <div className="text-[10px] text-gray-500">Capital (K)</div>
                 </div>
@@ -738,28 +828,42 @@ export default function TradeSignalsPage() {
 
         {/* Filter pills */}
         <div className="flex gap-2 flex-wrap">
-          {(['All', 'GO', 'CAUTION', 'NO GO', 'Not Analyzed'] as Filter[]).map(f => {
-            const count = f === 'All' ? weekFilteredResults.length + (selectedWeek === 'All' ? unanalyzed.length : 0)
-              : f === 'GO' ? goCount : f === 'CAUTION' ? cauCount : f === 'NO GO' ? nogoCount
+          {(['All', 'Entry', 'Setup', 'Watch', 'Avoid', 'Not Analyzed'] as Filter[]).map(f => {
+            const count =
+              f === 'All'          ? weekFilteredResults.length + (selectedWeek === 'All' ? unanalyzed.length : 0)
+              : f === 'Entry'      ? entryCount
+              : f === 'Setup'      ? setupCount
+              : f === 'Watch'      ? watchCount
+              : f === 'Avoid'      ? avoidCount
               : selectedWeek === 'All' ? unanalyzed.length : 0
             const active = filter === f
             const styleMap: Record<Filter, string> = {
-              'All': 'bg-violet-600 border-violet-500 text-white',
-              'GO': 'bg-emerald-700 border-emerald-600 text-white',
-              'CAUTION': 'bg-amber-700 border-amber-600 text-white',
-              'NO GO': 'bg-red-700 border-red-600 text-white',
+              'All':          'bg-violet-600 border-violet-500 text-white',
+              'Entry':        'bg-emerald-700 border-emerald-600 text-white',
+              'Setup':        'bg-amber-700 border-amber-600 text-white',
+              'Watch':        'bg-sky-700 border-sky-600 text-white',
+              'Avoid':        'bg-red-700 border-red-600 text-white',
               'Not Analyzed': 'bg-gray-600 border-gray-500 text-white',
             }
+            const titleMap: Record<Filter, string> = {
+              'All':          'Show all analyzed tickers',
+              'Entry':        'All conditions aligned — score ≥70, filters pass, IV fits. Ready to enter now.',
+              'Setup':        'Conditions forming but not fully aligned. Wait for remaining criteria before entering.',
+              'Watch':        'Setup building but conditions not ready. Monitor and re-evaluate.',
+              'Avoid':        'Critical conditions not met — hard failures present. Do not enter.',
+              'Not Analyzed': 'Tickers added to My Tickers but not yet analyzed.',
+            }
             return (
-              <button key={f} onClick={() => setFilter(f)}
+              <button key={f} onClick={() => setFilter(f)} title={titleMap[f]}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
                   active ? styleMap[f] : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200'
                 }`}>
-                {f === 'GO' && <CheckCircle2 size={12} />}
-                {f === 'CAUTION' && <AlertTriangle size={12} />}
-                {f === 'NO GO' && <XCircle size={12} />}
+                {f === 'Entry'        && <CheckCircle2 size={12} />}
+                {f === 'Setup'        && <AlertTriangle size={12} />}
+                {f === 'Watch'        && <Clock size={12} />}
+                {f === 'Avoid'        && <XCircle size={12} />}
                 {f === 'Not Analyzed' && <Clock size={12} />}
-                {f === 'All' && <BarChart2 size={12} />}
+                {f === 'All'          && <BarChart2 size={12} />}
                 {f}
                 <span className={`font-mono ${active ? 'opacity-80' : 'text-gray-600'}`}>{count}</span>
               </button>
@@ -788,8 +892,10 @@ export default function TradeSignalsPage() {
               <TickerCard
                 key={result.ticker}
                 result={result}
+                openStrategies={openPositionsByTicker.get(result.ticker.toUpperCase()) ?? new Set()}
                 onAnalyze={() => requestAnalysis(result.ticker)}
                 onFetchAllWeeks={() => fetchAllWeeks(result.ticker)}
+                onViewPositions={() => navigate('portfolio')}
                 fetching={fetchingAllWeeks.has(result.ticker) || refreshingTickers.has(result.ticker)}
                 accountSize={accountSize}
                 openInFinder={openSignalInFinder}
@@ -815,7 +921,7 @@ export default function TradeSignalsPage() {
 
         {weekFilteredResults.length > 0 && (
           <div className="text-xs text-gray-700 text-center py-1 border-t border-gray-800/50">
-            {weeksTotal} DTE windows · {allGoTrades} GO trades · 3w–6w (21–42 DTE) window · cache refreshes every 15 min
+            {weeksTotal} DTE windows · {allGoTrades} Entry trades · 3w–6w (21–42 DTE) window · cache refreshes every 15 min
           </div>
         )}
       </div>

@@ -657,7 +657,7 @@ html.light .day-trade-page,
 html.light .active-trades-page,
 html.light .swing-trade-page,
 html.light .swing-trade-watchlist-page,
-html.light .watchlistx-page {
+html.light .signal-feed-page {
   background-color: var(--surface-canvas);
 }
 
@@ -1227,7 +1227,7 @@ html.light .ticker-page .rounded-full,
 html.light .ticker-page .rounded-xl,
 html.light .ticker-page .rounded-2xl { box-shadow: none; }
 
-/* ── Missing light mode alpha overrides for WatchlistXPage ───── */
+/* ── Missing light mode alpha overrides for SignalFeedPage ───── */
 html.light .bg-gray-950\/95 { background-color: color-mix(in srgb, var(--surface-card) 98%, transparent); }
 html.light .bg-gray-950\/82 { background-color: color-mix(in srgb, var(--surface-card) 96%, transparent); }
 html.light .bg-gray-950\/65 { background-color: color-mix(in srgb, var(--surface-card) 94%, transparent); }

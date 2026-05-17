@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
 import { analyzeSwingTrade } from '../api/client'
+import { fetchMyTickers } from '../api/commandCenter'
 import type { SwingTradeScanResult } from '../api/client'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
@@ -21,8 +22,14 @@ export default function SwingTradePage() {
     addToWatchlist,
     isWatched,
     addManualPosition,
+    portfolio,
   } = useApp()
   const { ticker, loading, error, result, glossaryOpen } = ui
+
+  const existingPositions = useMemo(
+    () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
+    [portfolio, result?.ticker]
+  )
   const [enterOpen, setEnterOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
@@ -30,9 +37,17 @@ export default function SwingTradePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const autoRunRef = useRef(false)
+  const [myTickers, setMyTickers] = useState<string[]>([])
 
-  const runScan = useCallback(async () => {
-    const sym = ticker.trim().toUpperCase()
+  useEffect(() => {
+    fetchMyTickers().then(res => {
+      const symbols = (res.data?.tickers ?? []).map(t => t.symbol).filter(Boolean).slice(0, 10)
+      setMyTickers(symbols)
+    }).catch(() => {})
+  }, [])
+
+  const runScan = useCallback(async (overrideTicker?: string) => {
+    const sym = (overrideTicker || ticker).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
@@ -136,7 +151,7 @@ export default function SwingTradePage() {
   }, [result, addManualPosition])
 
   return (
-    <div className="swing-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="swing-trade-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -150,8 +165,8 @@ export default function SwingTradePage() {
                 <ArrowLeft size={16} /> Back
               </button>
             )}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
-              <TrendingUp size={20} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-700 text-violet-400">
+              <TrendingUp size={18} />
             </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Swing Trade Engine</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Overnight &amp; Multi-Day</span>
@@ -197,6 +212,18 @@ export default function SwingTradePage() {
         <p className="text-[11px] text-gray-500 mt-2">
           Uses daily OHLCV bars from Yahoo Finance. Evaluates MA20/MA50 alignment and slope, RSI, MACD crossover, 5-day momentum, volume trend, and SPY/VIX context for overnight or 2–5 day swing trade setups.
         </p>
+        {myTickers.length > 0 && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <span className="text-xs text-gray-500 self-center">Quick:</span>
+            {myTickers.map(t => (
+              <button key={t} onClick={() => { setUi(cur => ({ ...cur, ticker: t })); void runScan(t) }}
+                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Error */}
@@ -223,9 +250,11 @@ export default function SwingTradePage() {
         <>
           <SwingTradeEnginePanel
             result={result}
+            existingPositions={existingPositions}
             onRefresh={() => void runScan()}
             refreshing={loading}
             onRequestEnterActiveTrade={() => setEnterOpen(true)}
+            onViewPositions={() => navigate(ROUTES.positions)}
             onOpenStrategyFinder={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
             onOpenCommandCenter={() => navigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
             onCreateAlert={() => setAlertOpen(true)}

@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, X, Search, AlertTriangle, Check, Undo2, RefreshCw,
-  Pencil, ChevronDown, Calendar,
+  Pencil, ChevronDown, Calendar, ArrowUpRight, ListTodo,
 } from 'lucide-react'
 import { fetchMyTickers, addMyTicker, updateMyTicker, removeMyTicker, removeMyTickerType, searchTickers } from '../api/commandCenter'
 import type { MyTickerEntry, SearchTickerResult } from '../api/commandCenter'
 import { TICKER_UNIVERSE } from '../data/tickerUniverse'
 import type { TickerEntry } from '../data/tickerUniverse'
+import { getEngineRoute } from '../routing/routes'
 
 type TabFilter = 'all' | 'day' | 'swing' | 'regular'
 const TAB_STORAGE_KEY = 'oa_my_tickers_tab'
@@ -230,10 +231,13 @@ export default function MyTickersPage() {
   }, [showNotice])
 
   return (
-    <div className="mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-600/20 border border-sky-700 flex items-center justify-center shrink-0">
+              <ListTodo size={18} className="text-sky-400" />
+            </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">My Tickers</h1>
           </div>
           <p className="mt-1 text-sm text-gray-400">{tickers.length} ticker{tickers.length !== 1 ? 's' : ''} tracked</p>
@@ -310,11 +314,19 @@ export default function MyTickersPage() {
 }
 
 function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEntry; highlight: boolean; onRemove: () => void; onEdit: () => void }) {
+  const navigate = useNavigate()
   const avatar = avatarFor(ticker.symbol)
   const types = ticker.trade_types || []
   const ed = ticker.next_earnings_date
   const edDays = ticker.next_earnings_days
   const earningsThisWeek = edDays != null && edDays >= 0 && edDays <= 7
+
+  const ENGINE_LABEL: Record<string, string> = {
+    day: 'Day Trade',
+    swing: 'Swing Trade',
+    regular: 'Strategy Finder',
+  }
+
   return (
     <div className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'}`}>
       <div className="flex min-w-0 items-center gap-3">
@@ -336,7 +348,16 @@ function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEn
       <div className="flex items-center gap-2">
         <div className="flex gap-1">
           {types.map(tt => (
-            <span key={tt} className={`rounded px-2 py-0.5 text-[10px] font-medium ${badgeBase(tt)}`}>{TRADE_TYPE_META[tt]?.label || tt}</span>
+            <button
+              key={tt}
+              type="button"
+              onClick={() => navigate(getEngineRoute(tt, ticker.symbol))}
+              title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
+              className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
+            >
+              {TRADE_TYPE_META[tt]?.label || tt}
+              <ArrowUpRight size={9} className="opacity-70" />
+            </button>
           ))}
         </div>
         <button type="button" onClick={onRemove} className="ml-2 shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>

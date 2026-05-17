@@ -2,6 +2,7 @@ import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  Activity,
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
@@ -14,7 +15,6 @@ import {
   Filter,
   Info,
   LineChart as LineChartIcon,
-  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -22,11 +22,11 @@ import {
   X,
 } from 'lucide-react'
 import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { createWatchlistXAlert, fetchWatchlistX } from '../api/commandCenter'
+import { createSignalFeedAlert, fetchSignalFeed } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES, getEngineRoute } from '../routing/routes'
 import AddTickerModal from '../components/AddTickerModal'
-import type { ApiEnvelope, WatchlistXDecisionBlock, WatchlistXMetrics, WatchlistXPayload, WatchlistXRow } from '../types/commandCenter'
+import type { ApiEnvelope, SignalFeedDecisionBlock, SignalFeedMetrics, SignalFeedPayload, SignalFeedRow } from '../types/commandCenter'
 import {
   getActionButtonClass,
   getAgreementBadgeClass,
@@ -54,8 +54,8 @@ type StateFilter = 'all' | 'ready' | 'watch' | 'wait' | 'avoid' | 'conflict' | '
 type AgreementFilter = 'all' | 'strong_agreement' | 'partial_agreement' | 'conflict' | 'extended' | 'no_edge' | 'manage'
 type TrendFilter = 'all' | 'bullish' | 'neutral' | 'bearish'
 
-const FAVORITES_KEY = 'oa_watchlistx_favorites_v1'
-const FILTERS_EXPANDED_KEY = 'oa_watchlistx_filters_expanded_v1'
+const FAVORITES_KEY = 'oa_signal_feed_favorites_v1'
+const FILTERS_EXPANDED_KEY = 'oa_signal_feed_filters_expanded_v1'
 
 const SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
   { value: 'engine_agreement', label: 'Engine agreement' },
@@ -291,7 +291,7 @@ function normalizeTrendFilter(value: string): TrendFilter {
   return 'neutral'
 }
 
-function normalizeAgreementBadge(row: WatchlistXRow): string {
+function normalizeAgreementBadge(row: SignalFeedRow): string {
   const raw = String(row.agreement_badge || '').trim().toUpperCase()
   if (raw) return raw
   const state = String(row.agreement_state || '').trim().toUpperCase()
@@ -302,7 +302,7 @@ function normalizeAgreementBadge(row: WatchlistXRow): string {
   return 'PARTIAL_AGREEMENT'
 }
 
-function decisionSummary(decision: WatchlistXDecisionBlock): string {
+function decisionSummary(decision: SignalFeedDecisionBlock): string {
   const parts = [decision.market_bias, decision.setup_quality, decision.execution_readiness]
     .map(part => String(part || '').trim())
     .filter(Boolean)
@@ -313,7 +313,7 @@ function marketContextTone(value?: string | null): string {
   return getMarketContextBadgeClass(String(value || ''))
 }
 
-function matchesStateFilter(row: WatchlistXRow, stateFilter: StateFilter, sourceFilter: SourceFilter): boolean {
+function matchesStateFilter(row: SignalFeedRow, stateFilter: StateFilter, sourceFilter: SourceFilter): boolean {
   if (stateFilter === 'all') return true
   const target = sourceFilter === 'all'
     ? row.agreement_state
@@ -325,17 +325,17 @@ function matchesStateFilter(row: WatchlistXRow, stateFilter: StateFilter, source
   return String(target || '').trim().toLowerCase() === stateFilter
 }
 
-function matchesAgreementFilter(row: WatchlistXRow, agreementFilter: AgreementFilter): boolean {
+function matchesAgreementFilter(row: SignalFeedRow, agreementFilter: AgreementFilter): boolean {
   if (agreementFilter === 'all') return true
   return normalizeAgreementBadge(row).toLowerCase() === agreementFilter
 }
 
-function metricValue(metrics: WatchlistXMetrics | undefined, key: keyof WatchlistXMetrics): number | null {
+function metricValue(metrics: SignalFeedMetrics | undefined, key: keyof SignalFeedMetrics): number | null {
   const value = metrics?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function WatchlistSparkline({ points, height = 180 }: { points: Array<{ date: string; close: number }>; height?: number }) {
+function SignalFeedSparkline({ points, height = 180 }: { points: Array<{ date: string; close: number }>; height?: number }) {
   if (!points.length) {
     return <div className="flex h-[160px] items-center justify-center text-sm text-gray-500">No chart data yet.</div>
   }
@@ -452,7 +452,7 @@ function OptionRiskPill({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DecisionPanel({ title, decision, ticker }: { title: string; decision: WatchlistXDecisionBlock; ticker?: string }) {
+function DecisionPanel({ title, decision, ticker }: { title: string; decision: SignalFeedDecisionBlock; ticker?: string }) {
   const navigate = useNavigate()
   const optionRisk = decision.option_risk_context
   const showOptionRisk = decision.engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
@@ -520,13 +520,17 @@ function DecisionPanel({ title, decision, ticker }: { title: string; decision: W
 function ExpandedAnalysis({
   row,
   alertBusy,
+  canDay,
+  canSwing,
   onAnalyze,
   onViewChart,
   onCreateAlert,
   onAddToPositions,
 }: {
-  row: WatchlistXRow
+  row: SignalFeedRow
   alertBusy: boolean
+  canDay: boolean
+  canSwing: boolean
   onAnalyze: () => void
   onViewChart: () => void
   onCreateAlert: () => void
@@ -542,9 +546,10 @@ function ExpandedAnalysis({
               Price action
             </div>
             <div className="mt-2">
-              <WatchlistSparkline points={row.chart_points} />
+              <SignalFeedSparkline points={row.chart_points} />
             </div>
           </div>
+          {(canDay || canSwing) && (
           <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-heading">
               <BrainCircuit size={14} className="text-accent" />
@@ -562,10 +567,11 @@ function ExpandedAnalysis({
               {row.added_at && <span>Added {fmtDate(row.added_at)}</span>}
             </div>
           </div>
+          )}
         </div>
         <div className="space-y-3">
-          <DecisionPanel title="Day" decision={row.day} ticker={row.ticker} />
-          <DecisionPanel title="Swing" decision={row.swing} ticker={row.ticker} />
+          {canDay && <DecisionPanel title="Day" decision={row.day} ticker={row.ticker} />}
+          {canSwing && <DecisionPanel title="Swing" decision={row.swing} ticker={row.ticker} />}
           <DecisionPanel title="Regular" decision={row.regular} ticker={row.ticker} />
         </div>
       </div>
@@ -573,13 +579,15 @@ function ExpandedAnalysis({
   )
 }
 
-const WatchlistCard = memo(function WatchlistCard({
+const SignalFeedCard = memo(function SignalFeedCard({
   row,
   isOpen,
   isFavorite,
   isIgnored,
   alertBusy,
   sourceFilter,
+  canDay,
+  canSwing,
   onToggle,
   onAnalyze,
   onViewChart,
@@ -588,12 +596,14 @@ const WatchlistCard = memo(function WatchlistCard({
   onFavorite,
   onIgnore,
 }: {
-  row: WatchlistXRow
+  row: SignalFeedRow
   isOpen: boolean
   isFavorite: boolean
   isIgnored: boolean
   alertBusy: boolean
   sourceFilter: SourceFilter
+  canDay: boolean
+  canSwing: boolean
   onAnalyze: () => void
   onViewChart: () => void
   onCreateAlert: () => void
@@ -651,8 +661,8 @@ const WatchlistCard = memo(function WatchlistCard({
             <span className="text-secondary font-medium">{row.company_name || row.ticker}</span>
             {row.sector && <><span className="opacity-30">·</span><span className="opacity-60">{row.sector}</span></>}
             <span className="opacity-30">·</span>
-            <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />
-            <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />
+            {canDay && <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />}
+            {canSwing && <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />}
             <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
             <span className="opacity-30">·</span>
             <span>{updatedLabel}</span>
@@ -722,6 +732,8 @@ const WatchlistCard = memo(function WatchlistCard({
         <ExpandedAnalysis
           row={row}
           alertBusy={alertBusy}
+          canDay={canDay}
+          canSwing={canSwing}
           onAnalyze={onAnalyze}
           onViewChart={onViewChart}
           onCreateAlert={onCreateAlert}
@@ -744,7 +756,7 @@ function MobileActionTray({
   onRemove,
   onToggle,
 }: {
-  row: WatchlistXRow | null
+  row: SignalFeedRow | null
   isFavorite: boolean
   alertBusy: boolean
   isOpen: boolean
@@ -780,9 +792,26 @@ function MobileActionTray({
 
 export default function SignalFeedPage() {
   const routerNavigate = useNavigate()
-  const { requestAnalysis, removeFromAllWatchlists } = useApp()
+  const { requestAnalysis, removeFromAllWatchlists, canAccessPage } = useApp()
+  const canDay   = canAccessPage('day-trade')
+  const canSwing = canAccessPage('swing-trade')
+
+  if (!canDay && !canSwing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <Star size={36} className="mx-auto mb-3 text-gray-600 opacity-40" />
+          <div className="text-base font-semibold text-gray-400 mb-1">Signal Feed</div>
+          <p className="text-sm text-gray-600">
+            Signal Feed is available to Day Trade and Swing Trade subscribers.
+            Upgrade your plan to access unified cross-engine signals.
+          </p>
+        </div>
+      </div>
+    )
+  }
   const [searchParams, setSearchParams] = useSearchParams()
-  const [env, setEnv] = useState<ApiEnvelope<WatchlistXPayload> | null>(null)
+  const [env, setEnv] = useState<ApiEnvelope<SignalFeedPayload> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -895,7 +924,7 @@ export default function SignalFeedPage() {
       // Passing search in the URL caused searchParams to change on every keystroke
       // (via the deferredSearch effect), which recreated `load` and triggered a
       // redundant backend fetch for each character typed.
-      const next = await fetchWatchlistX({
+      const next = await fetchSignalFeed({
         source: sourceFilter === 'all' ? undefined : sourceFilter,
         sort_by: sortBy,
         sort_dir: sortDir,
@@ -943,7 +972,7 @@ export default function SignalFeedPage() {
 
   const engineCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    const getVal = (row: WatchlistXRow): string => {
+    const getVal = (row: SignalFeedRow): string => {
       if (sourceFilter === 'all') return String(row.agreement_state || '').toLowerCase()
       if (sourceFilter === 'day') return String(row.day_decision || '').toLowerCase()
       if (sourceFilter === 'swing') return String(row.swing_decision || '').toLowerCase()
@@ -1009,16 +1038,16 @@ export default function SignalFeedPage() {
     setFavorites(cur => cur.map(t => t.toUpperCase()).includes(norm) ? cur.filter(t => t.toUpperCase() !== norm) : [...cur, norm])
   }, [])
   const handleAnalyze = useCallback((ticker: string) => requestAnalysis(ticker), [requestAnalysis])
-  const handleTickerDetail = useCallback((row: WatchlistXRow) => routerNavigate(row.actions.chart_url || row.actions.analyze_url || '/'), [routerNavigate])
-  const handleAddToPositions = useCallback((row: WatchlistXRow) => {
+  const handleTickerDetail = useCallback((row: SignalFeedRow) => routerNavigate(row.actions.chart_url || row.actions.analyze_url || '/'), [routerNavigate])
+  const handleAddToPositions = useCallback((row: SignalFeedRow) => {
     if (!row.actions.positions_url) { setNotice({ tone: 'info', message: `${row.ticker} add-trade route is not wired yet.` }); return }
     routerNavigate(row.actions.positions_url)
   }, [routerNavigate])
-  const handleOpenAlerts = useCallback((row: WatchlistXRow) => routerNavigate(row.actions.alerts_url || ROUTES.alerts), [routerNavigate])
-  const handleCreateAlert = useCallback(async (row: WatchlistXRow) => {
+  const handleOpenAlerts = useCallback((row: SignalFeedRow) => routerNavigate(row.actions.alerts_url || ROUTES.alerts), [routerNavigate])
+  const handleCreateAlert = useCallback(async (row: SignalFeedRow) => {
     setAlertBusy(cur => ({ ...cur, [row.id]: true }))
     try {
-      await createWatchlistXAlert({ ticker: row.ticker, agreement_state: row.agreement_state, message: `${row.ticker} ${row.agreement_state.toLowerCase()} watchlist alert`, recommended_action: row.agreement_reason })
+      await createSignalFeedAlert({ ticker: row.ticker, agreement_state: row.agreement_state, message: `${row.ticker} ${row.agreement_state.toLowerCase()} watchlist alert`, recommended_action: row.agreement_reason })
       setNotice({ tone: 'success', message: `${row.ticker} alert created in Alert Center.` })
     } catch (err) {
       setNotice({ tone: 'warning', message: axiosErrorMessage(err) })
@@ -1026,7 +1055,7 @@ export default function SignalFeedPage() {
       setAlertBusy(cur => ({ ...cur, [row.id]: false }))
     }
   }, [])
-  const handleRemove = useCallback((row: WatchlistXRow) => {
+  const handleRemove = useCallback((row: SignalFeedRow) => {
     removeFromAllWatchlists(row.ticker)
     setEnv(cur => cur && cur.data ? { ...cur, data: { ...cur.data, rows: cur.data.rows.filter(r => r.id !== row.id) } } : cur)
     setExpandedId(cur => (cur === row.id ? null : cur))
@@ -1034,10 +1063,13 @@ export default function SignalFeedPage() {
   }, [removeFromAllWatchlists])
 
   return (
-    <div className="watchlistx-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="signal-feed-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-700 flex items-center justify-center shrink-0">
+              <Activity size={18} className="text-indigo-400" />
+            </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Signal Feed</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
             <div className="relative">
@@ -1046,7 +1078,7 @@ export default function SignalFeedPage() {
               </button>
               {showInfo && (
                 <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2.5 text-xs text-gray-600 dark:text-gray-400 shadow-lg">
-                  Card-based Signal Feed for day, swing, and regular setups. Backend decisions stay authoritative; this page only filters, sorts, and stages the actions around them.
+                  Unified SignalFeed separates market bias from actual execution readiness. A bullish backdrop only becomes actionable when setup quality and agreement line up.
                 </div>
               )}
             </div>
@@ -1112,7 +1144,10 @@ export default function SignalFeedPage() {
 
           {/* Engine tabs: All / Day / Swing / Regular / Ignored */}
           <div className="flex gap-1 overflow-x-auto">
-            {SOURCE_OPTIONS.map(opt => (
+            {SOURCE_OPTIONS.filter(opt =>
+              opt.value === 'all' || opt.value === 'regular' ||
+              (opt.value === 'day' && canDay) || (opt.value === 'swing' && canSwing)
+            ).map(opt => (
               <button key={opt.value} type="button"
                 onClick={() => setParam('source', opt.value === 'all' ? null : opt.value, true)}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -1292,7 +1327,7 @@ export default function SignalFeedPage() {
               const isOpen = expandedId === row.id
               const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
               return (
-                <WatchlistCard key={row.id} row={row} sourceFilter={sourceFilter}
+                <SignalFeedCard key={row.id} row={row} sourceFilter={sourceFilter} canDay={canDay} canSwing={canSwing}
                   isOpen={isOpen} isFavorite={isFavorite} isIgnored={ignoredSet.has(row.ticker.toUpperCase())} alertBusy={Boolean(alertBusy[row.id])}
                   onToggle={toggleExpanded} onAnalyze={() => handleAnalyze(row.ticker)}
                   onViewChart={() => handleTickerDetail(row)}
@@ -1319,13 +1354,6 @@ export default function SignalFeedPage() {
         onClose={() => setShowAddTicker(false)}
         onAdded={() => { setNotice({ tone: 'success', message: 'Ticker added successfully.' }); void load() }}
       />
-
-      {/* Mobile FAB for adding ticker */}
-      <button type="button" onClick={() => setShowAddTicker(true)}
-        className="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-500 sm:hidden"
-      >
-        <Plus size={20} />
-      </button>
 
       <MobileActionTray
         row={activeRow}

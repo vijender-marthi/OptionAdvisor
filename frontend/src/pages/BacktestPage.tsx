@@ -405,7 +405,7 @@ export default function BacktestPage() {
   }
 
   return (
-    <div className="backtest-page min-h-screen px-3 pt-3 pb-10 sm:px-4 sm:pt-4 sm:pb-12 md:px-6 md:pt-6">
+    <div className="backtest-page min-h-screen p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-4 sm:space-y-5">
 
         {/* ── Header ─────────────────────────────────────────── */}

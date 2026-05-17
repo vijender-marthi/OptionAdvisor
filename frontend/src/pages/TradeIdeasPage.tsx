@@ -49,8 +49,12 @@ function ideaStructureLabel(s: string) {
 }
 
 function AddIdeaModal({ onClose, onSave }: { onClose: () => void; onSave: (idea: Omit<TradeIdea, 'id' | 'created_at' | 'updated_at'>) => void }) {
+  const { canAccessPage } = useApp()
+  const visibleEngines = IDEA_ENGINES.filter(e =>
+    e.value === 'SWING' ? canAccessPage('swing-trade') : e.value === 'DAY' ? canAccessPage('day-trade') : true
+  )
   const [ticker,    setTicker]    = useState('')
-  const [engine,    setEngine]    = useState<'DAY' | 'SWING'>('SWING')
+  const [engine,    setEngine]    = useState<'DAY' | 'SWING'>((visibleEngines[0]?.value ?? 'SWING') as 'DAY' | 'SWING')
   const [direction, setDirection] = useState<'LONG' | 'SHORT'>('LONG')
   const [structure, setStructure] = useState(IDEA_STRUCTURES[0].value)
   const [reason,    setReason]    = useState(IDEA_REASONS[0].value)
@@ -104,7 +108,7 @@ function AddIdeaModal({ onClose, onSave }: { onClose: () => void; onSave: (idea:
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 block mb-1.5">Engine</label>
               <div className="flex rounded-lg border border-gray-700 overflow-hidden">
-                {IDEA_ENGINES.map(e => (
+                {visibleEngines.map(e => (
                   <button key={e.value} onClick={() => setEngine(e.value as 'DAY' | 'SWING')}
                     className={`flex-1 py-2 text-xs font-semibold transition-colors ${engine === e.value ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}>
                     {e.value === 'DAY' ? <Zap size={11} className="inline mr-1" /> : <TrendingUp size={11} className="inline mr-1" />}{e.value}

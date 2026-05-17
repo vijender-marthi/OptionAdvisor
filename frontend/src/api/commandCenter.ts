@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AlertCenterPayload, AlertCenterSummaryResponse, ApiEnvelope, TradeCommandCenterPayload, WatchlistXPayload } from '../types/commandCenter'
+import type { AlertCenterPayload, AlertCenterSummaryResponse, ApiEnvelope, TradeCommandCenterPayload, SignalFeedPayload } from '../types/commandCenter'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -170,7 +170,7 @@ export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string,
   return normalizeCommandCenterEnvelope(data)
 }
 
-export async function fetchWatchlistX(params: {
+export async function fetchSignalFeed(params: {
   search?: string
   source?: string
   sort_by?: string
@@ -179,8 +179,8 @@ export async function fetchWatchlistX(params: {
   page_size?: number
   /** Pass true only when user explicitly clicks Refresh — not on normal page load */
   refresh?: boolean
-}): Promise<ApiEnvelope<WatchlistXPayload>> {
-  const { data } = await api.get<ApiEnvelope<WatchlistXPayload>>('/watchlistx', {
+}): Promise<ApiEnvelope<SignalFeedPayload>> {
+  const { data } = await api.get<ApiEnvelope<SignalFeedPayload>>('/signal-feed', {
     params: {
       search: params.search || undefined,
       source: params.source || undefined,
@@ -195,22 +195,22 @@ export async function fetchWatchlistX(params: {
 }
 
 /** Explicit cache-refresh — only called when user clicks Refresh button */
-export async function refreshWatchlistX(): Promise<ApiEnvelope<{
+export async function refreshSignalFeed(): Promise<ApiEnvelope<{
   ok: boolean
   refreshed_tickers: string[]
   cache: { cache_hits: number; cache_misses: number; elapsed_ms: number }
 }>> {
-  const { data } = await api.post('/watchlistx/refresh')
+  const { data } = await api.post('/signal-feed/refresh')
   return data
 }
 
-export async function createWatchlistXAlert(payload: {
+export async function createSignalFeedAlert(payload: {
   ticker: string
   agreement_state: string
   message?: string
   recommended_action?: string
 }): Promise<ApiEnvelope<{ ok: boolean; id: string }>> {
-  const { data } = await api.post<ApiEnvelope<{ ok: boolean; id: string }>>('/watchlistx/alerts', payload)
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; id: string }>>('/signal-feed/alerts', payload)
   return data
 }
 

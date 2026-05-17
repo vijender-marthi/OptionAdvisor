@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
-  Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Star, Search, Radar,
+  Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
   BrainCircuit, HelpCircle, ListTodo, Eye,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
@@ -13,12 +13,12 @@ import { pageToLocation } from '../routing/paths'
 import ThemeToggle from './ThemeToggle'
 import BetaProductTag from './BetaProductTag'
 
-type ProfileRole = 'user' | 'admin' | 'finance'
+type ProfileRole = 'user' | 'admin' | 'day' | 'swing' | 'finance'
 
 function profileRole(role: UserRole | undefined | null): ProfileRole {
   if (!role) return 'user'
   const r = normalizeUserRole(role)
-  if (r === 'admin' || r === 'finance') return r
+  if (r === 'admin' || r === 'day' || r === 'swing' || r === 'finance') return r
   return 'user'
 }
 
@@ -51,6 +51,26 @@ const PROFILE: Record<
     logout: 'sidebar-profile-logout text-amber-200/80 hover:text-red-400',
     roleTagClass:
       'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-amber-300/95',
+  },
+  day: {
+    card:
+      'sidebar-profile-card sidebar-profile-day bg-orange-950/45 border border-orange-600/40 ring-1 ring-inset ring-orange-400/15',
+    avatar: 'bg-orange-600',
+    name: 'sidebar-profile-name text-orange-50',
+    email: 'sidebar-profile-email text-orange-200/65',
+    logout: 'sidebar-profile-logout text-orange-200/80 hover:text-red-400',
+    roleTagClass:
+      'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-orange-300/95',
+  },
+  swing: {
+    card:
+      'sidebar-profile-card sidebar-profile-swing bg-blue-950/45 border border-blue-600/40 ring-1 ring-inset ring-blue-400/15',
+    avatar: 'bg-blue-600',
+    name: 'sidebar-profile-name text-blue-50',
+    email: 'sidebar-profile-email text-blue-200/65',
+    logout: 'sidebar-profile-logout text-blue-200/80 hover:text-red-400',
+    roleTagClass:
+      'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-blue-300/95',
   },
   finance: {
     card:
@@ -96,7 +116,7 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
-        { id: 'watchlist', label: 'Signal Feed', icon: <Star size={18} /> },
+        { id: 'watchlist', label: 'Signal Feed', icon: <Activity size={18} /> },
         { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
@@ -106,9 +126,7 @@ export default function Sidebar() {
       label: 'Analyze',
       items: [
         { id: 'ticker', label: 'Strategy Finder', icon: <Search size={18} /> },
-        { id: 'trade-signals', label: 'Strategy Trades', icon: <Radar size={18} /> },
-        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
-        { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+        { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
       ],
     },
     {
@@ -127,6 +145,13 @@ export default function Sidebar() {
       ],
     },
     {
+      label: 'Advanced Tools',
+      items: [
+        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
+        { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+      ],
+    },
+    {
       label: 'Support',
       items: [
         { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
@@ -139,13 +164,13 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
     { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'watchlist', label: 'Signal Feed', icon: <Star size={23} /> },
+    { id: 'watchlist', label: 'Signal Feed', icon: <Activity size={23} /> },
     { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
     { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
     { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
-    { id: 'trade-signals', label: 'Strategy Trades', icon: <Radar size={18} /> },
+    { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
     { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
@@ -288,6 +313,12 @@ export default function Sidebar() {
                     {!collapsed && (
                       <>
                         <span className="min-w-0 flex-1 text-left truncate">{item.label}</span>
+                        {item.id === 'ticker' && (
+                          <span className="shrink-0 flex items-center gap-1 rounded-full border border-emerald-600/40 bg-emerald-950/40 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            ACTIVE
+                          </span>
+                        )}
                         {countBadge !== null && (
                           <span className="shrink-0 bg-violet-700 text-violet-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center leading-none tabular-nums">
                             {countBadge}
@@ -433,7 +464,7 @@ export default function Sidebar() {
               <div className="max-h-[70svh] overflow-y-auto overscroll-contain p-3">
                 <div className="grid grid-cols-2 gap-2">
                   {[...visibleMobilePrimaryItems, ...visibleMobileMoreItems].map(item => {
-                    const active = page === item.id
+                const active = page === item.id
                     const countBadge = typeof item.badge === 'number' && item.badge > 0 ? item.badge : null
                     return (
                       <button

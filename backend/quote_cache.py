@@ -1,5 +1,5 @@
 """
-quote_cache.py — Shared in-process quote cache for WatchlistX and engines.
+quote_cache.py — Shared in-process quote cache for SignalFeed and engines.
 
 Provides:
   get_quotes(tickers, force_refresh=False) -> dict[ticker, QuoteData]

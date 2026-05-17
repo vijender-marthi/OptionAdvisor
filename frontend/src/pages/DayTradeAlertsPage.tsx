@@ -56,7 +56,7 @@ export default function DayTradeAlertsPage() {
   }
 
   return (
-    <div className="day-trade-page mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:px-6 pb-24">
+    <div className="day-trade-page mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6 pb-24">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600/20 text-teal-300">

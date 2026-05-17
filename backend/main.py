@@ -1471,7 +1471,7 @@ def _user_analyze_ttl() -> int:
     return ANALYZE_CACHE_TTL_MARKET_HOURS if in_market else ANALYZE_CACHE_TTL_OFF_HOURS
 
 
-def _watchlistx_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
+def _signal_feed_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
 
     def ensure_item(ticker: str, *, source: str, notes: str | None = None, added_at: str | None = None) -> None:
@@ -1507,7 +1507,7 @@ def _watchlistx_source_items(state: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(merged.values(), key=lambda x: (str(x.get("ticker") or "")))
 
 
-def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str = "", reason: str = "") -> dict[str, Any]:
+def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str = "", reason: str = "") -> dict[str, Any]:
     reason_text = str(reason or "")
     if decision is None:
         final_decision = "WATCH"
@@ -1583,7 +1583,7 @@ def _watchlistx_decision_payload(decision: Any, *, label: str, raw_signal: str =
     }
 
 
-def _watchlistx_agreement_state(
+def _signal_feed_agreement_state(
     *,
     ticker: str,
     decisions: list[str],
@@ -1612,7 +1612,7 @@ def _watchlistx_agreement_state(
     return "WATCH", f"{ticker} needs more confirmation before it graduates to a ready state."
 
 
-def _watchlistx_agreement_badge(
+def _signal_feed_agreement_badge(
     *,
     decisions: list[str],
     reasons: list[str],
@@ -1641,7 +1641,7 @@ def _watchlistx_agreement_badge(
     return "NO_EDGE"
 
 
-def _watchlistx_sort_key(row: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
+def _signal_feed_sort_key(row: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
     metrics = row.get("metrics") or {}
     if sort_by == "price_change":
         return (float(row.get("price_change_pct") or 0.0), str(row.get("ticker") or ""))
@@ -1673,7 +1673,7 @@ def _watchlistx_sort_key(row: dict[str, Any], sort_by: str) -> tuple[Any, ...]:
     return (str(row.get("ticker") or ""),)
 
 
-def _watchlistx_ai_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _signal_feed_ai_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
     ready = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "READY")
     watch = sum(1 for row in rows if str(row.get("agreement_state", "")).upper() == "WATCH")
@@ -1694,7 +1694,7 @@ def _watchlistx_ai_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         best_focus = "Add tickers to start the unified evaluation pipeline."
 
     message = (
-        "Unified WatchlistX separates market bias from actual execution readiness. "
+        "Unified SignalFeed separates market bias from actual execution readiness. "
         "A bullish backdrop only becomes actionable when setup quality and agreement line up."
     )
     if extended > 0:
@@ -1715,7 +1715,7 @@ def _watchlistx_ai_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _watchlistx_market_context_label(day_metrics: dict[str, Any], swing_metrics: dict[str, Any]) -> str:
+def _signal_feed_market_context_label(day_metrics: dict[str, Any], swing_metrics: dict[str, Any]) -> str:
     swing_label = str(swing_metrics.get("market_context") or "").strip().upper()
     if swing_label:
         return swing_label
@@ -1729,7 +1729,7 @@ def _watchlistx_market_context_label(day_metrics: dict[str, Any], swing_metrics:
     return "MARKET_MIXED"
 
 
-class WatchlistXAlertCreateBody(BaseModel):
+class SignalFeedAlertCreateBody(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
     agreement_state: str = "WATCH"
     message: str = ""
@@ -1765,8 +1765,8 @@ def analyze(req: AnalyzeRequest):
     return data
 
 
-@app.get("/api/watchlistx")
-def get_watchlistx(
+@app.get("/api/signal-feed")
+def get_signal_feed(
     auth_email: str = Depends(require_access_email),
     search: str | None = None,
     source: str | None = None,
@@ -1784,7 +1784,7 @@ def get_watchlistx(
     if not state.get("my_tickers"):
         _seed_default_my_tickers(email)
         state = get_user_state(email)
-    source_items = _watchlistx_source_items(state)
+    source_items = _signal_feed_source_items(state)
     source_filter = str(source or "").strip().lower()
     if source_filter in {"day", "swing", "regular"}:
         source_items = [
@@ -1900,9 +1900,9 @@ def get_watchlistx(
             change_pct = _q.change_percent
         _row_cache_age = round(_q.cache_age_seconds, 1) if _q else 0.0
         _row_quote_source = _q.source if _q else "unavailable"
-        regular_payload = _watchlistx_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
-        day_payload = _watchlistx_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
-        swing_payload = _watchlistx_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
+        regular_payload = _signal_feed_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
+        day_payload = _signal_feed_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
+        swing_payload = _signal_feed_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
 
         # ── Attach day-trade option risk context ───────────────────────────────
         if day_scan is not None:
@@ -1955,7 +1955,7 @@ def get_watchlistx(
                 decision_reason=regular_reason,
             ))
 
-        agreement_state, agreement_reason = _watchlistx_agreement_state(
+        agreement_state, agreement_reason = _signal_feed_agreement_state(
             ticker=ticker,
             decisions=[
                 day_payload["final_decision"],
@@ -1974,7 +1974,7 @@ def get_watchlistx(
             ],
             in_portfolio=ticker in portfolio_tickers,
         )
-        agreement_badge = _watchlistx_agreement_badge(
+        agreement_badge = _signal_feed_agreement_badge(
             decisions=[
                 day_payload["final_decision"],
                 swing_payload["final_decision"],
@@ -2006,7 +2006,7 @@ def get_watchlistx(
             "bull_score": round(dominant_bull, 2) if dominant_bull else None,
             "bear_score": round(dominant_bear, 2) if dominant_bear else None,
             "trend_score": round(trend_score, 2) if trend_score else None,
-            "market_context": _watchlistx_market_context_label(day_metrics, swing_metrics),
+            "market_context": _signal_feed_market_context_label(day_metrics, swing_metrics),
         }
 
         chart_points = []
@@ -2073,7 +2073,7 @@ def get_watchlistx(
 
     sort_key = sort_by.strip().lower()
     reverse = sort_dir.strip().lower() != "asc"
-    rows.sort(key=lambda row: _watchlistx_sort_key(row, sort_key), reverse=reverse)
+    rows.sort(key=lambda row: _signal_feed_sort_key(row, sort_key), reverse=reverse)
 
     total = len(rows)
     page = max(1, int(page))
@@ -2126,7 +2126,7 @@ def get_watchlistx(
                     or str(row.get("trend") or "").upper() == "STRONG_DOWNTREND"
                 ),
             },
-            "ai_summary": _watchlistx_ai_summary(rows),
+            "ai_summary": _signal_feed_ai_summary(rows),
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -2149,14 +2149,14 @@ def get_watchlistx(
     )
 
 
-@app.post("/api/watchlistx/refresh")
-def refresh_watchlistx(
+@app.post("/api/signal-feed/refresh")
+def refresh_signal_feed(
     auth_email: str = Depends(require_access_email),
 ):
     """
-    Force-refresh the WatchlistX quote cache and engine scan caches for the
+    Force-refresh the SignalFeed quote cache and engine scan caches for the
     user's current watchlist tickers.  Returns the same payload as GET
-    /api/watchlistx?refresh=true but via an explicit POST so the frontend
+    /api/signal-feed?refresh=true but via an explicit POST so the frontend
     can distinguish intentional refreshes from page loads.
     """
     import time as _time
@@ -2164,7 +2164,7 @@ def refresh_watchlistx(
 
     email = normalize_email(auth_email)
     state = get_user_state(email)
-    source_items = _watchlistx_source_items(state)
+    source_items = _signal_feed_source_items(state)
     all_tickers = [
         str(item.get("ticker") or "").strip().upper()
         for item in source_items
@@ -2196,9 +2196,9 @@ def refresh_watchlistx(
     )
 
 
-@app.post("/api/watchlistx/alerts")
-def create_watchlistx_alert(
-    body: WatchlistXAlertCreateBody,
+@app.post("/api/signal-feed/alerts")
+def create_signal_feed_alert(
+    body: SignalFeedAlertCreateBody,
     auth_email: str = Depends(require_access_email),
 ):
     email = normalize_email(auth_email)

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
 } from 'lucide-react'
 import { analyzeDayTrade, enterActiveTrade } from '../api/client'
+import { fetchMyTickers } from '../api/commandCenter'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -25,10 +26,16 @@ export default function DayTradePage() {
     addToWatchlist,
     isWatched,
     addManualPosition,
+    portfolio,
   } = useApp()
   const [searchParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const { ticker, loading, error, result, glossaryOpen } = ui
+
+  const existingPositions = useMemo(
+    () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
+    [portfolio, result?.ticker]
+  )
 
   const [enterOpen, setEnterOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
@@ -49,13 +56,21 @@ export default function DayTradePage() {
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const autoRunRef = useRef(false)
+  const [myTickers, setMyTickers] = useState<string[]>([])
+
+  useEffect(() => {
+    fetchMyTickers().then(res => {
+      const symbols = (res.data?.tickers ?? []).map(t => t.symbol).filter(Boolean).slice(0, 10)
+      setMyTickers(symbols)
+    }).catch(() => {})
+  }, [])
 
   // Stable ref to read latest ticker without it being a useCallback dep
   const tickerRef = useRef(ticker)
   tickerRef.current = ticker
 
-  const runScan = useCallback(async () => {
-    const sym = tickerRef.current.trim().toUpperCase()
+  const runScan = useCallback(async (overrideTicker?: string) => {
+    const sym = (overrideTicker || tickerRef.current).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
@@ -263,13 +278,13 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   return (
-    <div className="day-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="day-trade-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
-              <Zap size={20} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 border border-orange-700 text-orange-400">
+              <Zap size={18} />
             </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Day Trade Engine</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Intraday</span>
@@ -312,7 +327,7 @@ export default function DayTradePage() {
           />
           <button
             type="button"
-            onClick={runScan}
+            onClick={() => runScan()}
             disabled={loading}
             className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
           >
@@ -323,6 +338,18 @@ export default function DayTradePage() {
         <p className="text-[11px] text-gray-500 mt-2">
           Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
         </p>
+        {myTickers.length > 0 && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <span className="text-xs text-gray-500 self-center">Quick:</span>
+            {myTickers.map(t => (
+              <button key={t} onClick={() => { setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
+                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {error && (
@@ -347,9 +374,11 @@ export default function DayTradePage() {
         <>
           <DayTradeEnginePanel
             result={result}
+            existingPositions={existingPositions}
             onRefresh={() => void runScan()}
             refreshing={loading}
             onAddToPortfolio={openPortfolioModal}
+            onViewPositions={() => routerNavigate(ROUTES.positions)}
             onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
             onOpenStrategyFinder={() => routerNavigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
             onOpenCommandCenter={() => routerNavigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}

@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle, RefreshCw, PlusCircle, Bell, BarChart2, Search, Star,
+  AlertTriangle, BriefcaseBusiness, Check, CheckCircle, RefreshCw, PlusCircle, Bell, BarChart2, Search, Star,
   TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, ShieldAlert,
   Activity, Target, Zap, Info, Layers,
 } from 'lucide-react'
 import type { DayTradeScanResult } from '../api/client'
+import type { PortfolioPosition } from '../types'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
@@ -551,11 +552,13 @@ function MiniBarChart({
 
 interface Props {
   result: DayTradeScanResult
+  existingPositions?: PortfolioPosition[]
   onRefresh?: () => void
   refreshing?: boolean
   showRefresh?: boolean
   onRequestEnterActiveTrade?: () => void
   onAddToPortfolio?: () => void
+  onViewPositions?: () => void
   onOpenStrategyFinder?: () => void
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
@@ -565,16 +568,20 @@ interface Props {
 
 export default function DayTradeEnginePanel({
   result,
+  existingPositions = [],
   onRefresh,
   refreshing,
   showRefresh = true,
   onRequestEnterActiveTrade,
   onAddToPortfolio,
+  onViewPositions,
   onOpenStrategyFinder,
   onOpenCommandCenter,
   onCreateAlert,
   onViewSignals,
 }: Props) {
+  const inPosition = existingPositions.length > 0
+  const latestPos  = existingPositions[existingPositions.length - 1]
   const [signalsOpen, setSignalsOpen] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
@@ -930,9 +937,47 @@ export default function DayTradeEnginePanel({
           )
         })()}
 
+        {inPosition && latestPos && (
+          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Check size={14} className="text-amber-400 shrink-0" />
+              <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">Already in Position</span>
+              {latestPos.source && (
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  latestPos.source === 'day'   ? 'border-orange-600/40 bg-orange-900/30 text-orange-300' :
+                  latestPos.source === 'swing' ? 'border-blue-600/40 bg-blue-900/30 text-blue-300' :
+                                                 'border-gray-600/40 bg-gray-800/50 text-gray-400'
+                }`}>{latestPos.source}</span>
+              )}
+              {existingPositions.length > 1 && (
+                <span className="text-[10px] text-amber-400/70">{existingPositions.length} open positions</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-200/80">
+              {latestPos.strategy && <span><span className="text-amber-400/60">Strategy</span> {latestPos.strategy}</span>}
+              {latestPos.contracts > 0 && <span><span className="text-amber-400/60">Contracts</span> {latestPos.contracts}</span>}
+              {latestPos.entryPrice > 0 && <span><span className="text-amber-400/60">Entry px</span> ${latestPos.entryPrice.toFixed(2)}</span>}
+              {latestPos.addedAt && <span><span className="text-amber-400/60">Added</span> {latestPos.addedAt.slice(0, 10)}</span>}
+            </div>
+            <p className="text-[11px] text-amber-200/70 leading-snug">
+              Follow your exit rules — manage this position rather than adding again without a clear plan.
+            </p>
+          </div>
+        )}
+
         <MarketTimeGateBanner tradeType="day" />
 
         <div className="flex flex-wrap items-center gap-2">
+          {inPosition ? (
+            <button
+              type="button"
+              onClick={onViewPositions}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50`}
+            >
+              <BriefcaseBusiness size={14} />
+              View Positions
+            </button>
+          ) : (
           <button
             type="button"
             onClick={onAddToPortfolio}
@@ -941,6 +986,7 @@ export default function DayTradeEnginePanel({
             <PlusCircle size={14} />
             Add to Portfolio
           </button>
+          )}
           {onRequestEnterActiveTrade && (
             <button
               type="button"
