@@ -285,3 +285,8 @@ export async function removeMyTickerType(symbol: string, tradeType: string): Pro
   const { data } = await api.delete<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>(`/my-tickers/${encodeURIComponent(symbol)}/type/${encodeURIComponent(tradeType)}`)
   return data
 }
+
+export async function reorderMyTickers(symbols: string[]): Promise<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>> {
+  const { data } = await api.put<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>('/my-tickers/reorder', { symbols })
+  return data
+}

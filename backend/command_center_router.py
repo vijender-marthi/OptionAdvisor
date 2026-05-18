@@ -1639,3 +1639,30 @@ def delete_my_ticker_type(symbol: str, trade_type: str, auth_email: str = Depend
 
     updated = _save_my_tickers(email, tickers)
     return api_envelope({"ok": True, "tickers": updated})
+
+
+class MyTickersReorderBody(BaseModel):
+    symbols: list[str]
+
+
+@command_center_router.put("/my-tickers/reorder")
+def put_my_tickers_reorder(body: MyTickersReorderBody, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    tickers = _load_my_tickers(email)
+
+    ordered: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for sym in body.symbols:
+        key = sym.strip().upper()
+        for t in tickers:
+            if str(t.get("symbol", "")).upper() == key:
+                ordered.append(t)
+                seen.add(key)
+                break
+
+    for t in tickers:
+        if str(t.get("symbol", "")).upper() not in seen:
+            ordered.append(t)
+
+    updated = _save_my_tickers(email, ordered)
+    return api_envelope({"ok": True, "tickers": updated})
