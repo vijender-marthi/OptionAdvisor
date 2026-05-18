@@ -412,19 +412,30 @@ function computeIntradayManagementPlan(result: DayTradeScanResult, m: Record<str
   const volSpike = !!m.volume_spike
   const orBreakout = String(m.or_breakout || '').toUpperCase()
   const eg = result.entry_guidance
+  const isShort = result.bias === 'short'
 
   if (orBreakout === 'ABOVE' || orBreakout === 'BELOW') {
-    items.push('If the breakout works, scale some size into strength and keep the stop anchored to structure.')
+    items.push(isShort
+      ? 'If the breakdown extends, scale into weakness and keep the stop anchored above the trigger level.'
+      : 'If the breakout extends, scale into strength and keep the stop anchored to the breakout level.')
   }
-  if (vwapDist != null && vwapDist >= 0) {
-    items.push('If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.')
+  if (isShort) {
+    items.push(vwapDist != null && vwapDist <= 0
+      ? 'If price reclaims VWAP after entry, cut size immediately — the breakdown thesis is invalidated.'
+      : 'If price fails to break below VWAP, do not force entry; wait for the structure to develop.')
   } else {
-    items.push('If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
+    items.push(vwapDist != null && vwapDist >= 0
+      ? 'If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.'
+      : 'If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
   }
   if (!volSpike) {
-    items.push('If volume stays weak, avoid adding size even if price drifts higher.')
+    items.push(isShort
+      ? 'If volume stays weak, avoid adding to the short even if price drifts lower — low-volume drops reverse fast.'
+      : 'If volume stays weak, avoid adding size even if price drifts higher.')
   } else {
-    items.push('If volume fades after the entry candle, tighten stops under the most recent support.')
+    items.push(isShort
+      ? 'If volume fades after the entry candle, tighten stops above the most recent resistance.'
+      : 'If volume fades after the entry candle, tighten stops under the most recent support.')
   }
   if (mom != null && Math.abs(mom) > 2) {
     items.push('If extension keeps increasing, protect profits early and avoid turning an intraday trade into a hope trade.')
@@ -432,9 +443,11 @@ function computeIntradayManagementPlan(result: DayTradeScanResult, m: Record<str
     items.push('If momentum cools while structure holds, partial scale-outs are fine before reloading on confirmation.')
   }
   if (eg?.avoid) {
-    items.push(`Avoid condition: ${eg.avoid}`)
+    items.push(`Avoid: ${eg.avoid}`)
   } else {
-    items.push('If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
+    items.push(isShort
+      ? 'If price reclaims above the breakdown trigger and closes there, the short thesis is broken — step aside.'
+      : 'If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
   }
   return items
 }
@@ -448,18 +461,29 @@ function buildDayWalkthrough(result: DayTradeScanResult, m: Record<string, unkno
   const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
   const steps: string[] = []
 
+  const isShortWalk = result.bias === 'short'
   steps.push(result.market_bias ? `Market is ${marketBias.toLowerCase()}.` : 'Market context is mixed.')
   steps.push(
-    vwapDist != null && vwapDist >= 0
-      ? 'Price is holding above VWAP, so intraday structure is constructive.'
-      : 'Price is not holding above VWAP yet, so structure is still fragile.'
+    isShortWalk
+      ? vwapDist != null && vwapDist <= 0
+        ? 'Price is below VWAP — bearish intraday structure is confirmed.'
+        : 'Price is still above VWAP, so the short structure is not yet confirmed.'
+      : vwapDist != null && vwapDist >= 0
+        ? 'Price is holding above VWAP, so intraday structure is constructive.'
+        : 'Price is not holding above VWAP yet, so structure is still fragile.'
   )
   steps.push(
     orBreakout === 'ABOVE'
-      ? 'The breakout is present, but it still needs continuation quality.'
+      ? isShortWalk
+        ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
+        : 'The breakout is present, but it still needs continuation quality.'
       : orBreakout === 'BELOW'
-        ? 'Breakdown pressure exists, but follow-through still matters.'
-        : 'Opening-range confirmation is still missing.'
+        ? isShortWalk
+          ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
+          : 'Breakdown pressure exists below the opening range.'
+        : isShortWalk
+          ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
+          : 'Opening-range confirmation is still missing.'
   )
   steps.push(
     volSpike
@@ -522,28 +546,68 @@ function MiniLineChart({
 function MiniBarChart({
   values,
   color,
+  avgRef,
 }: {
   values: number[]
   color: string
+  /** Historical average volume for this time of day (same units as values). */
+  avgRef?: number
 }) {
   if (values.length < 2) {
     return <div className="rounded-lg border border-gray-800/80 bg-black/20 px-3 py-6 text-xs text-gray-500">Not enough data.</div>
   }
-  const max = Math.max(...values, 1)
+  const hasAvg = avgRef != null && avgRef > 0
+  const max = Math.max(...values, hasAvg ? avgRef : 0, 1)
+  const avgPct = hasAvg ? Math.min(94, (avgRef / max) * 100) : null
+
   return (
     <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3">
-      <div className="flex h-44 items-end gap-[2px]">
-        {values.map((value, index) => (
+      <div className="relative flex h-44 items-end gap-[2px]">
+        {values.map((value, index) => {
+          const aboveAvg = hasAvg ? value >= avgRef : true
+          return (
+            <div
+              key={`${index}-${value}`}
+              className="flex-1 rounded-t-sm"
+              style={{
+                height: `${Math.max(6, (value / max) * 100)}%`,
+                background: aboveAvg ? 'var(--chart-line-iv)' : color,
+                opacity: aboveAvg ? 0.88 : 0.45,
+              }}
+            />
+          )
+        })}
+        {avgPct != null && (
           <div
-            key={`${index}-${value}`}
-            className="flex-1 rounded-t-sm"
-            style={{
-              height: `${Math.max(6, (value / max) * 100)}%`,
-              background: color,
-            }}
-          />
-        ))}
+            className="pointer-events-none absolute inset-x-0"
+            style={{ bottom: `${avgPct}%` }}
+          >
+            <svg width="100%" height="1" className="overflow-visible">
+              <line
+                x1="0" y1="0" x2="100%" y2="0"
+                stroke="rgb(251 191 36 / 0.80)"
+                strokeWidth="1.5"
+                strokeDasharray="5 3"
+              />
+            </svg>
+            <span className="absolute right-0 -top-4 whitespace-nowrap rounded bg-black/75 px-1 py-0.5 text-[9px] font-semibold text-amber-300">
+              avg
+            </span>
+          </div>
+        )}
       </div>
+      {avgPct != null && (
+        <div className="mt-2 flex items-center gap-1.5 text-[10px]">
+          <svg width="16" height="6" className="shrink-0 overflow-visible">
+            <line x1="0" y1="3" x2="16" y2="3" stroke="rgb(251 191 36 / 0.75)" strokeWidth="1.5" strokeDasharray="4 2" />
+          </svg>
+          <span className="text-amber-400/80">avg vol for time of day</span>
+          <span className="ml-auto text-gray-500">
+            <span className="text-cyan-400">■</span> above avg&nbsp;
+            <span className="text-gray-500">■</span> below avg
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -637,6 +701,11 @@ export default function DayTradeEnginePanel({
   const currentPrice = eg?.current_price ?? lastPrice
   const breakoutLevel = eg?.breakout_level
   const volumeSeries = chartBars?.map(bar => bar.v) ?? []
+  // Implied average volume for the current time of day: backend rvol = lastBar.v / avg_vol_for_time
+  const lastChartBar = chartBars?.[chartBars.length - 1] ?? null
+  const avgVolForTimeOfDay = lastChartBar != null && rvol != null && rvol > 0
+    ? lastChartBar.v / rvol
+    : null
   const momentumSeries = chartBars?.length
     ? chartBars.map(bar => ((bar.c / chartBars[0].o) - 1) * 100)
     : []
@@ -864,21 +933,33 @@ export default function DayTradeEnginePanel({
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'PUT / SHORT' : 'CALL / LONG'}</span>
                   <span className="text-violet-300 font-mono text-[12px] font-semibold">
-                    {eg?.breakout_level != null
-                      ? `break & hold >$${eg.breakout_level.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `>$${eg.vwap.toFixed(2)} hold`
-                        : '—'}
+                    {result.bias === 'short'
+                      ? eg?.breakout_level != null
+                        ? `close & hold <$${eg.breakout_level.toFixed(2)}`
+                        : eg?.vwap != null
+                          ? `<$${eg.vwap.toFixed(2)} — hold below`
+                          : '—'
+                      : eg?.breakout_level != null
+                        ? `close & hold >$${eg.breakout_level.toFixed(2)}`
+                        : eg?.vwap != null
+                          ? `>$${eg.vwap.toFixed(2)} — hold above`
+                          : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {eg?.opening_range_high != null
-                    ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
-                    : eg?.vwap != null
-                      ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
-                      : 'await confirmation'}
+                  {result.bias === 'short'
+                    ? eg?.opening_range_low != null
+                      ? `sustained below ORL $${eg.opening_range_low.toFixed(2)} — no reclaim`
+                      : eg?.vwap != null
+                        ? `sustained below VWAP $${eg.vwap.toFixed(2)}`
+                        : 'await rejection confirmation'
+                    : eg?.opening_range_high != null
+                      ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
+                      : eg?.vwap != null
+                        ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
+                        : 'await breakout confirmation'}
                 </div>
               </div>
               </div>
@@ -1098,18 +1179,22 @@ export default function DayTradeEnginePanel({
             <ExecMapRow label="VWAP" value={eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : vwapValue != null ? `$${vwapValue.toFixed(2)}` : null} tone={vwapTone} />
             <ExecMapRow label="ORH" value={eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : null} tone={orBreakoutTone} />
             <ExecMapRow label="ORL" value={eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : null} tone={orBreakoutTone} />
-            <ExecMapRow label="Breakout Level" value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
-            <ExecMapRow label="Pullback Zone" value={eg?.pullback_zone ?? null} />
+            <ExecMapRow label={result.bias === 'short' ? 'Breakdown Level' : 'Breakout Level'} value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
+            <ExecMapRow label={result.bias === 'short' ? 'Bounce Zone' : 'Pullback Zone'} value={eg?.pullback_zone ?? null} />
             <ExecMapRow label="Scalp Target" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
-            <ExecMapRow label="Risk Below" value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
+            <ExecMapRow label={result.bias === 'short' ? 'Stop Above' : 'Stop Below'} value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
           </div>
           )
         })()}
 
         <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-xs text-gray-300 leading-relaxed">
-          {vwapDist != null && vwapDist >= 0
-            ? 'Price above VWAP and above the opening structure supports continuation, but the best entry still depends on breakout quality and volume.'
-            : 'Until price reclaims VWAP or confirms the breakdown, intraday structure is still incomplete.'}
+          {result.bias === 'short'
+            ? vwapDist != null && vwapDist <= 0
+              ? 'Price is below VWAP — bearish structure is confirmed. Look for a clean breakdown below ORL with volume expansion to trigger the PUT.'
+              : 'Price is still above VWAP — wait for it to break and hold below before committing to a short position.'
+            : vwapDist != null && vwapDist >= 0
+              ? 'Price above VWAP and above the opening structure supports continuation. Best entry still depends on breakout quality and volume expansion.'
+              : 'Until price reclaims VWAP with conviction, intraday structure is incomplete for a long entry.'}
         </div>
       </div>
 
@@ -1438,7 +1523,7 @@ export default function DayTradeEnginePanel({
 
               {chartTab === 'volume' ? (
                 <div className="space-y-2">
-                  <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" />
+                  <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" avgRef={avgVolForTimeOfDay ?? undefined} />
                   <div className="text-xs text-gray-400">Volume should expand into the breakout candle, not shrink while price stretches.</div>
                 </div>
               ) : null}
