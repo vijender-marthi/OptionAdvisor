@@ -349,6 +349,7 @@ function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, un
   const marketBias = formatLabel(result.market_bias).toLowerCase()
   const pullbackProb = formatLabel(result.entry_guidance?.pullback_probability).toLowerCase()
   const shouldEnter = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+  const isShort = result.bias === 'short'
 
   parts.push(
     result.market_bias
@@ -357,38 +358,58 @@ function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, un
   )
 
   if (vwapDist != null) {
-    parts.push(
-      vwapDist >= 0
-        ? 'Price is holding above VWAP, so intraday structure is constructive.'
-        : 'Price is below VWAP, so reclaim confirmation still matters.'
-    )
+    if (isShort) {
+      parts.push(
+        vwapDist <= 0
+          ? 'Price is below VWAP — the bearish structure is in place.'
+          : 'Price is still above VWAP, so the short setup needs VWAP to break first.'
+      )
+    } else {
+      parts.push(
+        vwapDist >= 0
+          ? 'Price is holding above VWAP, so intraday structure is constructive.'
+          : 'Price is below VWAP, so a reclaim is needed before the long setup confirms.'
+      )
+    }
   }
 
   const orBreakoutCoach = String(m.or_breakout || '').toUpperCase()
-  if (orBreakoutCoach === 'ABOVE') {
-    parts.push('The ticker is trading above the opening range high, which supports continuation.')
-  } else if (orBreakoutCoach === 'BELOW') {
-    parts.push('The ticker is trading below the opening range low, which favors downside continuation.')
+  if (isShort) {
+    if (orBreakoutCoach === 'BELOW') {
+      parts.push('Price broke below the opening range low — downside continuation is favored.')
+    } else if (orBreakoutCoach === 'ABOVE') {
+      parts.push('Price is above the opening range — wait for a rejection and breakdown before shorting.')
+    } else {
+      parts.push('Price is inside the opening range — wait for a clean breakdown below ORL.')
+    }
   } else {
-    parts.push('Opening-range breakout is not fully confirmed yet.')
+    if (orBreakoutCoach === 'ABOVE') {
+      parts.push('The ticker is trading above the opening range high, which supports continuation.')
+    } else if (orBreakoutCoach === 'BELOW') {
+      parts.push('Price is below the opening range — a reclaim of ORL is needed before going long.')
+    } else {
+      parts.push('Opening-range breakout is not yet confirmed.')
+    }
   }
 
   if (volSpike) {
-    parts.push('Volume participation is expanding.')
+    parts.push('Volume is confirming the move.')
   } else {
     parts.push('Volume is not fully confirming yet.')
   }
 
   if (shouldEnter === 'YES') {
-    parts.push('Execution is ready if VWAP support remains intact.')
+    parts.push(isShort
+      ? 'Execution is ready — breakdown and structure align.'
+      : 'Execution is ready if VWAP support remains intact.')
   } else if (shouldEnter === 'CONDITIONAL') {
-    parts.push('Execution is conditional, so wait for the next confirmation candle.')
+    parts.push('Execution is conditional — wait for the next confirmation candle.')
   } else {
-    parts.push('Execution is not ready yet, so patience is better than chasing.')
+    parts.push('Execution is not ready yet. Patience is the trade.')
   }
 
   if (mom != null && Math.abs(mom) > 2) {
-    parts.push('Momentum is extended, so protect against chase risk.')
+    parts.push('Momentum is extended — protect against chase risk.')
   } else if (pullbackProb && pullbackProb !== '—') {
     parts.push(`Pullback probability is ${pullbackProb}.`)
   }
@@ -910,14 +931,22 @@ export default function DayTradeEnginePanel({
                   <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming'}</span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {eg?.vwap != null && eg?.opening_range_high != null
-                    ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
-                    : eg?.vwap != null
-                      ? `VWAP $${eg.vwap.toFixed(2)}`
-                      : 'Key levels forming'}
+                  {result.bias === 'short'
+                    ? eg?.vwap != null && eg?.opening_range_low != null
+                      ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
+                      : eg?.vwap != null
+                        ? `VWAP $${eg.vwap.toFixed(2)}`
+                        : 'Key resistance levels forming'
+                    : eg?.vwap != null && eg?.opening_range_high != null
+                      ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
+                      : eg?.vwap != null
+                        ? `VWAP $${eg.vwap.toFixed(2)}`
+                        : 'Key levels forming'}
                 </div>
                 <div className="text-[10px] text-amber-400/80 font-semibold">
-                  watch {eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'zone'}–{eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'trigger'} zone
+                  {result.bias === 'short'
+                    ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
+                    : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
                 </div>
               </div>
               </div>
@@ -972,7 +1001,7 @@ export default function DayTradeEnginePanel({
                 STATE 3: IN-PLAY
                 {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Active</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active'}</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
@@ -1006,9 +1035,9 @@ export default function DayTradeEnginePanel({
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
                   {result.bias === 'short'
-                    ? 'VWAP break or loss of ORL'
-                    : 'VWAP break or loss of ORH'}
-                  {eg?.scalp_target != null && ` · full exit / scale out at TP`}
+                    ? 'VWAP reclaimed above · or ORL closed back above → cover'
+                    : 'VWAP lost below · or ORH closed back below → exit'}
+                  {eg?.scalp_target != null && ` · scale out at TP`}
                 </div>
               </div>
               </div>
@@ -1516,7 +1545,9 @@ export default function DayTradeEnginePanel({
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
                       ? 'Session view: watch the relationship between price, VWAP, and the opening range before forcing an entry.'
-                      : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear the opening-range trigger with real participation.'}
+                      : result.bias === 'short'
+                        ? 'VWAP + OR view: the cleanest short setups stay below VWAP and break through ORL with real participation — not just a wick.'
+                        : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear ORH with real participation — not just a wick.'}
                   </div>
                 </div>
               ) : null}
@@ -1524,7 +1555,7 @@ export default function DayTradeEnginePanel({
               {chartTab === 'volume' ? (
                 <div className="space-y-2">
                   <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" avgRef={avgVolForTimeOfDay ?? undefined} />
-                  <div className="text-xs text-gray-400">Volume should expand into the breakout candle, not shrink while price stretches.</div>
+                  <div className="text-xs text-gray-400">{result.bias === 'short' ? 'Volume should expand into the breakdown candle — low-volume drops are traps, not entries.' : 'Volume should expand into the breakout candle, not shrink while price stretches.'}</div>
                 </div>
               ) : null}
 

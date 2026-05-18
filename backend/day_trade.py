@@ -655,32 +655,58 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         aggressive = f"Scale in now — re-test hold is active. Stop just below {(or_level or 0):.2f}." if or_level else "Scale in with stop below breakout level."
         best_setup = f"OR re-test hold — {direction_word} continuation with tight stop at breakout level."
     elif state == "ENTRY_ACTIVE":
-        if vwap is not None and last_price is not None:
-            conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
+        if bidir == "short":
+            if vwap is not None and last_price is not None:
+                conservative = f"Wait for a bounce into VWAP zone ({pullback_zone}) to fade into the short."
+            else:
+                conservative = "Wait for a bounce to resistance with volume rejection confirmation."
+            if or_low is not None:
+                aggressive = f"Continuation below ORL ({or_low:.2f}) with expanding volume."
+            else:
+                aggressive = "Continuation on breakdown momentum follow-through with expanding volume."
+            best_setup = f"{direction_word.capitalize()} continuation with defined stop above recent swing high."
         else:
-            conservative = "Wait for pullback to support with volume confirmation."
-        if or_high is not None:
-            aggressive = f"Continuation above ORH ({or_high:.2f}) with expanding volume."
-        else:
-            aggressive = "Continuation on momentum follow-through with expanding volume."
-        best_setup = f"{direction_word.capitalize()} continuation with defined stop below recent swing low."
+            if vwap is not None and last_price is not None:
+                conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
+            else:
+                conservative = "Wait for pullback to support with volume confirmation."
+            if or_high is not None:
+                aggressive = f"Continuation above ORH ({or_high:.2f}) with expanding volume."
+            else:
+                aggressive = "Continuation on momentum follow-through with expanding volume."
+            best_setup = f"{direction_word.capitalize()} continuation with defined stop below recent swing low."
     elif state in ("WAIT_FOR_VOLUME",):
-        conservative = "Wait for volume spike to confirm breakout before entry."
-        aggressive = "Not recommended — wait for volume confirmation."
-        best_setup = "Breakout with volume spike above ORH/ORL threshold."
+        if bidir == "short":
+            conservative = "Wait for volume spike to confirm the breakdown before entering."
+            aggressive = "Not recommended — wait for volume to confirm directional conviction."
+            best_setup = f"Breakdown below ORL ({or_low:.2f} if available) with volume spike confirmation." if or_low else "Breakdown below ORL with volume spike confirmation."
+        else:
+            conservative = "Wait for volume spike to confirm the breakout before entering."
+            aggressive = "Not recommended — wait for volume confirmation."
+            best_setup = f"Breakout above ORH ({or_high:.2f} if available) with volume spike confirmation." if or_high else "Breakout above ORH with volume spike confirmation."
     elif "VWAP" in state:
         if vwap is not None:
-            conservative = f"Wait for price to reclaim and hold VWAP ({vwap:.2f})."
-            aggressive = "Only above VWAP with volume expansion for long entries."
-            best_setup = f"Pullback to VWAP with {direction_word} continuation setup."
+            if bidir == "short":
+                conservative = f"Wait for price to break and hold below VWAP ({vwap:.2f})."
+                aggressive = "Only below VWAP with volume expansion for short entries."
+                best_setup = f"VWAP rejection with {direction_word} continuation below {vwap:.2f}."
+            else:
+                conservative = f"Wait for price to reclaim and hold VWAP ({vwap:.2f})."
+                aggressive = "Only above VWAP with volume expansion for long entries."
+                best_setup = f"Pullback to VWAP with {direction_word} continuation setup."
         else:
-            conservative = "Wait for price to reclaim VWAP."
-            aggressive = "Not recommended until VWAP hold."
+            conservative = "Wait for price to confirm VWAP interaction."
+            aggressive = "Not recommended until VWAP direction is clear."
             best_setup = "No clear setup yet — monitor for VWAP interaction."
     else:
-        conservative = "Wait for opening range breakout or VWAP hold."
-        aggressive = "Not recommended at current levels."
-        best_setup = "No clear day trade setup yet."
+        if bidir == "short":
+            conservative = "Wait for opening range breakdown or VWAP failure."
+            aggressive = "Not recommended at current levels."
+            best_setup = "No clear short setup yet."
+        else:
+            conservative = "Wait for opening range breakout or VWAP hold."
+            aggressive = "Not recommended at current levels."
+            best_setup = "No clear day trade setup yet."
 
     # Contextual alerts
     day_alerts: list[dict[str, str]] = []
