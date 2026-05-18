@@ -925,6 +925,68 @@ def _send_day_trade_escalation_email(email: str, user_name: str | None, items: l
         return {"sent": False, "message": f"Email failed: {str(e)}"}
 
 
+def _detect_day_trade_level_alert(
+    t: str, r: Any, session_date: str
+) -> tuple[str, str, str]:
+    """Return (level_key, title, body) if price is testing a key OR/VWAP level, else ('','','')."""
+    m: dict = dict(r.metrics or {})
+    or_high = float(m.get("or_high") or 0)
+    or_low = float(m.get("or_low") or 0)
+    or_state = str(m.get("or_state") or "inside").lower()
+    or_historical = str(m.get("or_historical") or "contained").lower()
+    last_price = float(m.get("last_price") or 0)
+    vwap = float(m.get("vwap") or 0)
+    rvol = float(m.get("rvol") or 1.0)
+
+    if not last_price:
+        return "", "", ""
+
+    LEVEL_BAND = 0.4  # within 0.4% counts as "testing the level"
+
+    # ORL retest from below after breakdown — short re-entry signal
+    if (
+        or_historical == "broke_down"
+        and or_state == "below"
+        and or_low > 0
+        and 0 <= (or_low - last_price) / or_low * 100 <= LEVEL_BAND
+    ):
+        key = f"orl_retest_{session_date}"
+        title = f"⚡ {t} — OR Low Retest (Short Re-entry)"
+        body = (
+            f"Price ${last_price:.2f} testing ORL ${or_low:.2f} from below after breakdown. "
+            f"Watch for rejection candle — potential short re-entry."
+        )
+        return key, title, body
+
+    # ORH retest from above after breakout — long re-entry signal
+    if (
+        or_historical == "broke_up"
+        and or_state == "above"
+        and or_high > 0
+        and 0 <= (last_price - or_high) / or_high * 100 <= LEVEL_BAND
+    ):
+        key = f"orh_retest_{session_date}"
+        title = f"⚡ {t} — OR High Retest (Long Re-entry)"
+        body = (
+            f"Price ${last_price:.2f} retesting ORH ${or_high:.2f} from above after breakout. "
+            f"Watch for hold and continuation — potential long re-entry."
+        )
+        return key, title, body
+
+    # VWAP test with elevated volume — inflection point signal
+    if vwap > 0 and abs(last_price - vwap) / vwap * 100 <= 0.2 and rvol >= 1.2:
+        direction = "from below" if last_price >= vwap else "from above"
+        key = f"vwap_test_{session_date}"
+        title = f"⚡ {t} — VWAP Test (Vol {rvol:.1f}×)"
+        body = (
+            f"Price ${last_price:.2f} testing VWAP ${vwap:.2f} {direction} with RVOL {rvol:.1f}×. "
+            f"Watch for hold or rejection at this pivot."
+        )
+        return key, title, body
+
+    return "", "", ""
+
+
 def _scan_user_day_trade_watchlist(user_state: dict) -> None:
     email = user_state.get("email", "").strip().lower()
     if not email or user_state.get("role") != "admin":
@@ -936,12 +998,16 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
     user_name = email.split("@")[0] or email
     escalations: list[dict] = []
 
+    # Build set of watchlist tickers (used later to avoid double-scanning active trades)
+    watchlist_tickers: set[str] = set()
+
     for ti, ticker in enumerate(symbols):
         if ti:
             time.sleep(0.6)
         t = str(ticker).strip().upper()
         if not t:
             continue
+        watchlist_tickers.add(t)
         try:
             r = run_day_trade_scan(t)
         except Exception as exc:
@@ -951,16 +1017,33 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
         session_date = str((r.metrics or {}).get("session_date") or "").strip()[:10]
         now_verdict = _norm_day_trade_verdict(r.verdict)
         prev_row = get_day_trade_watchlist_last(email, t)
+        prev_level_key = (prev_row or {}).get("level_alert_key", "") if prev_row else ""
+
+        # --- Level-retest alert detection ---
+        new_level_key, level_title, level_body = _detect_day_trade_level_alert(t, r, session_date)
+        if new_level_key and new_level_key != prev_level_key:
+            alert_center_create(
+                email,
+                alert_group="day-trade",
+                severity="WARNING",
+                engine="DAY_TRADE",
+                signal="LEVEL_RETEST",
+                title=level_title,
+                body=level_body,
+                meta={"ticker": t, "level_key": new_level_key},
+            )
+        carry_level_key = new_level_key if new_level_key else prev_level_key
 
         if not prev_row:
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
             continue
 
         prev_session = (prev_row.get("session_date") or "").strip()[:10]
         prev_verdict = _norm_day_trade_verdict(prev_row.get("verdict"))
 
         if prev_session and session_date and prev_session != session_date:
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+            # New session — reset level key
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
             continue
 
         if prev_verdict == "WATCH" and now_verdict in {"GO", "STRONG GO"}:
@@ -983,7 +1066,51 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                 }
             )
 
-        upsert_day_trade_watchlist_last(email, t, now_verdict, session_date)
+        upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+
+    # --- Scan active-trade tickers for level alerts (not in main watchlist) ---
+    try:
+        active_rows = list_active_trades_open_opened_today_et(email)
+        active_tickers = sorted({str(r["ticker"]).upper() for r in active_rows if r.get("ticker")})
+        for ti, t in enumerate(active_tickers):
+            if t in watchlist_tickers:
+                continue  # already scanned above
+            if ti:
+                time.sleep(0.6)
+            try:
+                r = run_day_trade_scan(t)
+            except Exception as exc:
+                print(f"[day-trade-scan/active] {email} {t} failed: {exc}", flush=True)
+                continue
+
+            session_date = str((r.metrics or {}).get("session_date") or "").strip()[:10]
+            now_verdict = _norm_day_trade_verdict(r.verdict)
+            prev_row = get_day_trade_watchlist_last(email, t)
+            prev_level_key = (prev_row or {}).get("level_alert_key", "") if prev_row else ""
+
+            new_level_key, level_title, level_body = _detect_day_trade_level_alert(t, r, session_date)
+
+            # New session resets level key
+            prev_session = (prev_row.get("session_date") or "").strip()[:10] if prev_row else ""
+            if prev_session and session_date and prev_session != session_date:
+                upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
+                continue
+
+            if new_level_key and new_level_key != prev_level_key:
+                alert_center_create(
+                    email,
+                    alert_group="day-trade",
+                    severity="WARNING",
+                    engine="DAY_TRADE",
+                    signal="LEVEL_RETEST",
+                    title=level_title,
+                    body=level_body,
+                    meta={"ticker": t, "level_key": new_level_key, "source": "active_trade"},
+                )
+            carry_level_key = new_level_key if new_level_key else prev_level_key
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+    except Exception as exc:
+        print(f"[day-trade-scan/active] {email} active-trades scan failed: {exc}", flush=True)
 
     if not escalations:
         return

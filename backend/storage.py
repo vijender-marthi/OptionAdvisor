@@ -171,6 +171,13 @@ def _migrate_active_trades_option_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE active_trades ADD COLUMN option_expiry TEXT")
 
 
+def _migrate_day_trade_watchlist_last(conn: sqlite3.Connection) -> None:
+    """Add level_alert_key column if it doesn't exist (tracks which level alert fired today)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(day_trade_watchlist_last)").fetchall()}
+    if "level_alert_key" not in cols:
+        conn.execute("ALTER TABLE day_trade_watchlist_last ADD COLUMN level_alert_key TEXT DEFAULT ''")
+
+
 def _migrate_alert_center_items(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(alert_center_items)").fetchall()}
     if "updated_at_ms" not in cols:
@@ -352,10 +359,12 @@ def init_db() -> None:
                 verdict TEXT NOT NULL,
                 session_date TEXT NOT NULL DEFAULT '',
                 updated_at INTEGER NOT NULL,
+                level_alert_key TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (email, ticker)
             )
             """
         )
+        _migrate_day_trade_watchlist_last(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS day_trade_alert_events (
@@ -750,6 +759,7 @@ def upsert_day_trade_watchlist_last(
     ticker: str,
     verdict: str,
     session_date: str,
+    level_alert_key: str = "",
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -757,17 +767,19 @@ def upsert_day_trade_watchlist_last(
         return
     now_ms = int(time.time() * 1000)
     sd = (session_date or "").strip()[:10]
+    lak = (level_alert_key or "").strip()
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO day_trade_watchlist_last (email, ticker, verdict, session_date, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO day_trade_watchlist_last (email, ticker, verdict, session_date, updated_at, level_alert_key)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker) DO UPDATE SET
                 verdict = excluded.verdict,
                 session_date = excluded.session_date,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                level_alert_key = excluded.level_alert_key
             """,
-            (normalized, t, verdict.strip().upper(), sd, now_ms),
+            (normalized, t, verdict.strip().upper(), sd, now_ms, lak),
         )
 
 
@@ -779,7 +791,7 @@ def get_day_trade_watchlist_last(email: str, ticker: str) -> Optional[dict[str, 
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT verdict, session_date, updated_at
+            SELECT verdict, session_date, updated_at, level_alert_key
             FROM day_trade_watchlist_last
             WHERE email = ? AND ticker = ?
             """,
@@ -791,6 +803,7 @@ def get_day_trade_watchlist_last(email: str, ticker: str) -> Optional[dict[str, 
         "verdict": row["verdict"],
         "session_date": row["session_date"] or "",
         "updated_at": int(row["updated_at"]),
+        "level_alert_key": row["level_alert_key"] or "",
     }
 
 
