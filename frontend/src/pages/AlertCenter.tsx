@@ -17,7 +17,7 @@ function fmtTime(value?: string | null): string {
   if (!value) return '—'
   const ts = Date.parse(value)
   if (!Number.isFinite(ts)) return '—'
-  return new Date(ts).toLocaleString()
+  return new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET'
 }
 
 function SeverityBadge({ severity }: { severity: UnifiedAlert['severity'] }) {
