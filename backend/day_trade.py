@@ -1404,6 +1404,46 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         chg_str = f"SPY {spy_chg:+.2f}%" if spy_chg is not None else f"QQQ {qqq_chg:+.2f}%"
         verdict = "NO-GO"
         prefix = [f"Strong positive broad market ({chg_str}) vs bearish stock tilt."]
+    elif (
+        # Compound NO-GO: long bias signalled but entry trigger never fired.
+        # CALL entry requires an ORH break — if OR is still intact all session,
+        # RVOL is weak (no institutional participation), and the market is leaning
+        # against the bias, the setup is a false positive. Flag it rather than
+        # letting it show as "Bullish GO/WATCH" with an unreachable entry condition.
+        diff > 0
+        and or_historical == "contained"          # ORH never broken today
+        and (rvol is not None and rvol < 0.75)    # < 75 % of expected volume
+        and spy_chg is not None and spy_chg <= -0.25
+        and qqq_chg is not None and qqq_chg <= -0.25
+    ):
+        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
+        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
+        verdict = "NO-GO"
+        prefix = [
+            f"NO-GO — CALL entry condition not met all session: ORH never broken "
+            f"(price contained inside opening range), {_rvol_str} "
+            f"(no institutional participation), market leaning bearish ({_mkt_str}). "
+            "Bullish bias exists on VWAP position alone but the actual trigger has not fired — "
+            "do not anticipate the breakout.",
+        ]
+    elif (
+        # Mirror: short bias but ORL never broken + weak RVOL + bullish market.
+        diff < 0
+        and or_historical == "contained"
+        and (rvol is not None and rvol < 0.75)
+        and spy_chg is not None and spy_chg >= 0.25
+        and qqq_chg is not None and qqq_chg >= 0.25
+    ):
+        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
+        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
+        verdict = "NO-GO"
+        prefix = [
+            f"NO-GO — PUT entry condition not met all session: ORL never broken "
+            f"(price contained inside opening range), {_rvol_str} "
+            f"(no institutional participation), market leaning bullish ({_mkt_str}). "
+            "Bearish bias exists on VWAP position alone but the actual trigger has not fired — "
+            "do not anticipate the breakdown.",
+        ]
     elif not soft_edge:
         verdict = "WAIT"
         prefix = ["No clear intraday edge — scores too close or too low."]
