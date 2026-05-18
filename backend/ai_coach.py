@@ -209,6 +209,7 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
         "_rs_vs_qqq":        float(metrics.get("rs_vs_qqq_pct") or 0),
         "_scalp_target":     float(eg.get("scalp_target") or 0),
         "_risk_below":       float(eg.get("risk_below") or 0),
+        "_bounce_scenario":  str(metrics.get("bounce_scenario") or ""),
     }
 
 
@@ -312,17 +313,17 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     Used when no LLM API key is configured, or as a fallback on API failure.
     Produces the identical JSON shape so the frontend works identically.
     """
-    ticker          = signal.get("ticker", "")
-    price           = float(signal.get("price") or 0)
-    vwap            = float(signal.get("vwap") or 0)
-    orh             = float(signal.get("orh") or 0)
-    orl             = float(signal.get("orl") or 0)
-    bias            = str(signal.get("bias") or "neutral")
-    conf            = int(signal.get("confidence") or 50)
-    risk            = str(signal.get("risk") or "MEDIUM")
+    ticker           = signal.get("ticker", "")
+    price            = float(signal.get("price") or 0)
+    vwap             = float(signal.get("vwap") or 0)
+    orh              = float(signal.get("orh") or 0)
+    orl              = float(signal.get("orl") or 0)
+    bias             = str(signal.get("bias") or "neutral")
+    conf             = int(signal.get("confidence") or 50)
+    risk             = str(signal.get("risk") or "MEDIUM")
     # Honour the engine verdict forwarded via signal["action"]:
     # NO-GO → "AVOID", WATCH/WAIT → "WATCH", GO/STRONG GO → "ENTER"
-    engine_action   = str(signal.get("action") or "WATCH").upper()
+    engine_action    = str(signal.get("action") or "WATCH").upper()
     vol_ok = bool(signal.get("volume_confirmed"))
     pvv    = signal.get("price_vs_vwap", "below")
     pvo    = signal.get("price_vs_or",   "inside_or")
@@ -330,6 +331,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     rs     = float(signal.get("_rs_vs_qqq") or 0)
     scalp  = float(signal.get("_scalp_target") or 0)
     stop   = float(signal.get("_risk_below") or 0)
+    bounce = str(signal.get("_bounce_scenario") or "")
 
     is_bear   = bias == "bearish"
     is_bull   = bias == "bullish"
@@ -393,7 +395,32 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
             "No trade today."
         )
     elif is_bear:
-        if vol_ok and pvo == "below_orl":
+        if bounce == "vwap_rejection" and pvo == "below_orl":
+            # Price bounced after breakdown but sellers rejected it AT VWAP (never reached ORL)
+            summary = (
+                f"{ticker} bounce rejected at VWAP {vwap_str} after ORL breakdown — "
+                f"sellers stepped in early. {vol_txt.capitalize()}. "
+                f"PUT entry at {vwap_str}, stop above {vwap_str}, target ORL {orl_str}."
+            )
+        elif bounce == "orl_rejection_retest" and pvo == "below_orl":
+            # Bounce reached ORL, got rejected — highest-conviction re-entry
+            summary = (
+                f"{ticker} bounce rejected at ORL {orl_str} — full retest complete, sellers hold. "
+                f"{vol_txt.capitalize()}. "
+                f"Strongest PUT re-entry: stop above {orl_str}, target below day low."
+            )
+        elif bounce == "no_mans_land" and pvo == "below_orl":
+            summary = (
+                f"{ticker} broke below ORL {orl_str} but price is churning between "
+                f"VWAP {vwap_str} and ORL {orl_str}. No clean rejection level — wait."
+            )
+        elif bounce == "vwap_test" and pvo == "below_orl":
+            summary = (
+                f"{ticker} bouncing into VWAP {vwap_str} after ORL breakdown — "
+                f"rejection not confirmed yet. {vol_txt.capitalize()}. "
+                f"Wait for volume at VWAP before entering PUT."
+            )
+        elif vol_ok and pvo == "below_orl":
             summary = (
                 f"{ticker} below VWAP {vwap_str} and ORL {orl_str}. Bearish bias, {vol_txt}. "
                 "Breakdown active."
@@ -426,13 +453,20 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
                 f"Bullish bias, {vol_txt}. Wait for ORH break and hold to enter CALL."
             )
 
-    # Entry condition (≤20 words)
+    # Entry condition (≤20 words) — bounce-scenario-aware
     if is_bear:
-        entry_condition = (
-            f"Bounce to {orl_str} then rejection candle with volume"
-            if pvo != "below_orl" else
-            f"Close and hold below {orl_str} with expanding volume"
-        )
+        if bounce == "vwap_rejection" and pvo == "below_orl":
+            entry_condition = f"Rejection candle at VWAP {vwap_str} with volume spike — enter PUT"
+        elif bounce == "orl_rejection_retest" and pvo == "below_orl":
+            entry_condition = f"Rejection candle at ORL {orl_str} — highest conviction PUT entry"
+        elif bounce == "no_mans_land" and pvo == "below_orl":
+            entry_condition = f"Wait — price must reach VWAP {vwap_str} or ORL {orl_str} and reject"
+        elif bounce == "vwap_test" and pvo == "below_orl":
+            entry_condition = f"VWAP {vwap_str} failure + volume spike to confirm rejection"
+        elif pvo != "below_orl":
+            entry_condition = f"Bounce to {orl_str} then rejection candle with volume"
+        else:
+            entry_condition = f"Close and hold below {orl_str} with expanding volume"
     else:
         entry_condition = (
             f"Break above {orh_str} with volume-confirmed continuation candle"
@@ -444,11 +478,18 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     if engine_action == "AVOID" or bias == "neutral":
         invalidation = f"Entry trigger not met — OR intact, low RVOL, unfavourable market"
     elif is_bear:
-        invalidation = f"{ticker} reclaims VWAP {vwap_str} on volume" if vwap else f"{ticker} closes above ORL"
+        if bounce == "vwap_rejection":
+            invalidation = f"{ticker} reclaims VWAP {vwap_str} and holds — rejection failed"
+        elif bounce == "orl_rejection_retest":
+            invalidation = f"{ticker} reclaims ORL {orl_str} — setup invalidated"
+        elif bounce == "no_mans_land":
+            invalidation = f"No entry yet — wait for VWAP or ORL rejection"
+        else:
+            invalidation = f"{ticker} reclaims VWAP {vwap_str} on volume" if vwap else f"{ticker} closes above ORL"
     else:
         invalidation = f"{ticker} loses VWAP {vwap_str} on volume" if vwap else f"{ticker} closes below ORH"
 
-    # State labels
+    # State labels — bounce-scenario-aware
     if engine_action == "AVOID" or bias == "neutral":
         setup_lbl    = "NO TRADE — CONDITIONS NOT MET"
         setup_detail = f"OR not broken, volume absent, market context unfavourable — stand aside"
@@ -457,12 +498,34 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         add_cond     = "No position to add — entry trigger never fired"
         exit_cond    = "N/A — no position"
     elif is_bear:
-        setup_lbl    = "SHORT BIAS FORMING"
-        setup_detail = "VWAP and ORL acting as resistance — watch for rejection"
-        entry_trig   = f"Close & hold <{orl_str}" if orl else f"Close below VWAP {vwap_str}"
-        inplay_lbl   = "BREAKDOWN ACTIVE"
-        add_cond     = f"Add on weakness below {orl_str}" if orl else "Add on continuation"
-        exit_cond    = "VWAP reclaimed above or ORL closed back above → cover"
+        if bounce == "vwap_rejection":
+            setup_lbl    = "VWAP REJECTION SHORT"
+            setup_detail = f"Bounce capped at VWAP {vwap_str} — sellers stepped in before ORL"
+            entry_trig   = f"Rejection candle at VWAP {vwap_str} + volume spike"
+            inplay_lbl   = "VWAP FADE ACTIVE"
+            add_cond     = f"Add on break below {orl_str}" if orl else "Add on continuation below VWAP"
+            exit_cond    = f"VWAP {vwap_str} reclaimed and held → cover immediately"
+        elif bounce == "orl_rejection_retest":
+            setup_lbl    = "ORL RETEST REJECTION"
+            setup_detail = f"Full bounce to ORL {orl_str} rejected — strongest short re-entry"
+            entry_trig   = f"Rejection candle at ORL {orl_str} + volume"
+            inplay_lbl   = "RETEST SHORT ACTIVE"
+            add_cond     = f"Add on new lows below session low"
+            exit_cond    = f"ORL {orl_str} reclaimed → cover"
+        elif bounce == "no_mans_land":
+            setup_lbl    = "WAIT — NO CLEAN LEVEL"
+            setup_detail = f"Price between VWAP {vwap_str} and ORL {orl_str} — no rejection yet"
+            entry_trig   = f"Reach VWAP {vwap_str} or ORL {orl_str} with rejection candle + volume"
+            inplay_lbl   = "NO ACTIVE TRADE"
+            add_cond     = "No position — waiting for clean rejection level"
+            exit_cond    = "N/A — no position"
+        else:
+            setup_lbl    = "SHORT BIAS FORMING"
+            setup_detail = "VWAP and ORL acting as resistance — watch for rejection"
+            entry_trig   = f"Close & hold <{orl_str}" if orl else f"Close below VWAP {vwap_str}"
+            inplay_lbl   = "BREAKDOWN ACTIVE"
+            add_cond     = f"Add on weakness below {orl_str}" if orl else "Add on continuation"
+            exit_cond    = "VWAP reclaimed above or ORL closed back above → cover"
     else:
         setup_lbl    = "LONG BIAS FORMING"
         setup_detail = "VWAP and ORH acting as support — watch for breakout"
@@ -487,9 +550,37 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
                    "then": "Stand aside — market context overrides bullish VWAP lean",
                    "action": "AVOID", "confidence": "high"})
     elif is_bear:
-        dt.append({"if": f"{ticker} rejects at {orl_str} with volume", "then": f"Enter PUT, target ${scalp:.2f}", "action": "ENTER", "confidence": "high"})
-        dt.append({"if": f"{ticker} reclaims VWAP {vwap_str}", "then": "Short thesis invalidated — no trade", "action": "AVOID", "confidence": "high"})
-        dt.append({"if": f"{ticker} drops below ${price * 0.98:.2f} without bounce", "then": "Missed entry — do not chase", "action": "WAIT", "confidence": "high"})
+        if bounce == "vwap_rejection":
+            dt.append({"if": f"{ticker} rejection candle at VWAP {vwap_str} with volume spike",
+                       "then": f"Enter PUT — stop above {vwap_str}, target ORL {orl_str}",
+                       "action": "ENTER", "confidence": "high"})
+            dt.append({"if": f"{ticker} reclaims VWAP {vwap_str} and holds 1 bar",
+                       "then": "Rejection failed — exit any position immediately",
+                       "action": "AVOID", "confidence": "high"})
+            dt.append({"if": f"{ticker} fades below ${scalp:.2f} without VWAP reclaim",
+                       "then": "Breakdown continuation — hold and trail stop", "action": "WAIT", "confidence": "medium"})
+        elif bounce == "orl_rejection_retest":
+            dt.append({"if": f"{ticker} rejection candle at ORL {orl_str} with volume",
+                       "then": f"Enter PUT — stop above {orl_str}, target new session low",
+                       "action": "ENTER", "confidence": "high"})
+            dt.append({"if": f"{ticker} reclaims ORL {orl_str}",
+                       "then": "Setup invalidated — no trade", "action": "AVOID", "confidence": "high"})
+            dt.append({"if": f"{ticker} immediately breaks to new lows without retest",
+                       "then": "Missed the entry — do not chase", "action": "WAIT", "confidence": "high"})
+        elif bounce == "no_mans_land":
+            dt.append({"if": f"{ticker} reaches VWAP {vwap_str} with rejection candle + volume",
+                       "then": f"Enter PUT at VWAP — stop above {vwap_str}, target {orl_str}",
+                       "action": "ENTER", "confidence": "medium"})
+            dt.append({"if": f"{ticker} reaches ORL {orl_str} with rejection candle + volume",
+                       "then": f"Enter PUT at ORL — strongest entry, stop above {orl_str}",
+                       "action": "ENTER", "confidence": "high"})
+            dt.append({"if": f"Price chops in no-man's land without reaching either level",
+                       "then": "Stand aside — no clean stop available in the middle",
+                       "action": "WAIT", "confidence": "high"})
+        else:
+            dt.append({"if": f"{ticker} rejects at {orl_str} with volume", "then": f"Enter PUT, target ${scalp:.2f}", "action": "ENTER", "confidence": "high"})
+            dt.append({"if": f"{ticker} reclaims VWAP {vwap_str}", "then": "Short thesis invalidated — no trade", "action": "AVOID", "confidence": "high"})
+            dt.append({"if": f"{ticker} drops below ${price * 0.98:.2f} without bounce", "then": "Missed entry — do not chase", "action": "WAIT", "confidence": "high"})
     else:
         dt.append({"if": f"{ticker} breaks above {orh_str} with volume", "then": f"Enter CALL, target ${scalp:.2f}", "action": "ENTER", "confidence": "high"})
         dt.append({"if": f"{ticker} loses VWAP {vwap_str}", "then": "Long thesis invalidated — no trade", "action": "AVOID", "confidence": "high"})
@@ -501,6 +592,14 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     # Best next step (≤15 words)
     if engine_action == "AVOID" or bias == "neutral":
         best = "No trade — OR not broken, RVOL weak, market unfavourable. Stand aside."
+    elif is_bear and bounce == "vwap_rejection":
+        best = f"VWAP rejection confirmed — enter PUT, stop above {vwap_str}, target ORL {orl_str}"
+    elif is_bear and bounce == "orl_rejection_retest":
+        best = f"ORL retest rejection — enter PUT, tight stop above {orl_str}, bigger target"
+    elif is_bear and bounce == "no_mans_land":
+        best = f"Wait — price between VWAP and ORL. No trade until clean level rejection."
+    elif is_bear and bounce == "vwap_test":
+        best = f"Bouncing toward VWAP {vwap_str} — wait for rejection candle + volume spike"
     elif not vol_ok:
         best = f"Wait for volume-confirmed {'rejection' if is_bear else 'breakout'} candle before entry"
     elif action == "ENTER":

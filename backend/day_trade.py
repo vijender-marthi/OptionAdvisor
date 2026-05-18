@@ -533,6 +533,25 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "Price is inside the opening range \u2014 waiting for breakdown."
             action = "Enter only after price breaks below Opening Range Low with volume confirmation."
             avoid = "Do not enter while price is inside the opening range."
+        elif bounce_scenario == "no_mans_land":
+            state = "WAIT_BOUNCE_LEVEL"
+            summary = (
+                f"Price churning between VWAP (${vwap:.2f}) and ORL (${or_low:.2f}) \u2014 "
+                "no clean rejection level. Wait."
+            )
+            action = (
+                f"Wait for price to reach and reject either VWAP (${vwap:.2f}) or ORL (${or_low:.2f}). "
+                "No entry in no-man's land."
+            )
+            avoid = "Do not short in the middle \u2014 both VWAP and ORL are too far for a clean stop."
+        elif bounce_scenario == "vwap_test":
+            state = "VWAP_TEST"
+            summary = (
+                f"Bouncing into VWAP (${vwap:.2f}) \u2014 rejection not yet confirmed. "
+                "Volume needed to validate the fade."
+            )
+            action = "Wait for a volume spike as price fails the VWAP band before entering PUT."
+            avoid = f"Avoid shorting until VWAP rejection is confirmed with volume."
         elif not volume_spike:
             state = "WAIT_FOR_VOLUME"
             summary = "Breakdown detected but volume confirmation is pending."
@@ -540,9 +559,34 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             avoid = "Avoid chasing a low-volume breakdown."
         else:
             state = "ENTRY_ACTIVE"
-            summary = "Entry window is active. Price is below VWAP, breakdown is confirmed, and momentum is supported."
-            action = "Entry conditions met. Consider scaling in with defined stop."
-            avoid = ""
+            if bounce_scenario == "vwap_rejection":
+                summary = (
+                    f"VWAP rejection confirmed (${vwap:.2f}) \u2014 sellers stepped in before ORL. "
+                    f"Valid PUT entry. Target ORL ${or_low:.2f}."
+                )
+                action = (
+                    f"Enter PUT near ${last_price:.2f}. Stop just above VWAP ${vwap:.2f} "
+                    f"(+0.2%). Target ORL ${or_low:.2f}."
+                )
+                avoid = (
+                    f"If price reclaims VWAP (${vwap:.2f}) and holds for 1 bar \u2014 rejection failed; exit immediately."
+                )
+            elif bounce_scenario == "orl_rejection_retest":
+                summary = (
+                    f"ORL rejection confirmed (${or_low:.2f}) \u2014 strongest PUT re-entry. "
+                    "Bigger target below day low."
+                )
+                action = (
+                    f"Enter PUT near ORL ${or_low:.2f}. Stop just above ${or_low:.2f} (+0.2%). "
+                    f"Target: extension below day low."
+                )
+                avoid = (
+                    f"If price reclaims ORL (${or_low:.2f}) \u2014 setup invalidated; cut the position."
+                )
+            else:
+                summary = "Entry window is active. Price is below VWAP, breakdown is confirmed, and momentum is supported."
+                action = "Entry conditions met. Consider scaling in with defined stop."
+                avoid = ""
 
     # State machine confirmed all entry gates — clear aspirational confirmations from trader_decision
     if state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
@@ -553,19 +597,42 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     if session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         avoid = "Power hour entry — must exit before close. No overnight holds."
 
+    # Bounce-scenario tier \u2014 read from metrics (computed in scoring phase)
+    bounce_scenario = str(metrics.get("bounce_scenario") or "")
+
     scalp_target = None
     if last_price is not None:
         if bidir == "long":
-            scalp_target = round(last_price * 1.015, 2)
+            if bounce_scenario == "vwap_rejection_long" and vwap is not None:
+                scalp_target = round(or_high, 2) if or_high else round(last_price * 1.015, 2)
+            else:
+                scalp_target = round(last_price * 1.015, 2)
         elif bidir == "short":
-            scalp_target = round(last_price * 0.985, 2)
+            if bounce_scenario == "vwap_rejection" and or_low is not None:
+                scalp_target = round(or_low, 2)   # target: ORL from VWAP rejection
+            elif bounce_scenario == "orl_rejection_retest" and or_low is not None:
+                scalp_target = round(or_low * 0.985, 2)  # target: below ORL after ORL rejection
+            else:
+                scalp_target = round(last_price * 0.985, 2)
 
     pullback_zone = ""
     if vwap is not None and last_price is not None:
         lo, hi = min(vwap, last_price), max(vwap, last_price)
         pullback_zone = f"{lo:.2f}\u2013{hi:.2f}"
 
-    risk_below = or_low if bidir == "long" else or_high
+    # Stops \u2014 bounce scenarios use tight level-specific stops rather than full OR range
+    if bidir == "long":
+        if bounce_scenario == "vwap_rejection_long" and vwap is not None:
+            risk_below = round(vwap * 0.998, 2)   # stop just below VWAP support
+        else:
+            risk_below = or_low
+    elif bidir == "short":
+        if bounce_scenario == "vwap_rejection" and vwap is not None:
+            risk_below = round(vwap * 1.002, 2)   # stop just above VWAP rejection
+        elif bounce_scenario == "orl_rejection_retest" and or_low is not None:
+            risk_below = round(or_low * 1.002, 2) # stop just above ORL rejection
+        else:
+            risk_below = or_high
 
     # ── Derived execution guidance ────────────────────────────────────
     abs_mom = abs(momentum_pct) if momentum_pct else 0.0
@@ -619,6 +686,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         should_now = "YES"
     elif state in ("WAIT_FOR_VOLUME", "VWAP_TEST"):
         should_now = "CONDITIONAL"
+    elif state == "WAIT_BOUNCE_LEVEL":
+        should_now = "NO"
     else:
         should_now = "NO"
 
@@ -656,15 +725,40 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         best_setup = f"OR re-test hold — {direction_word} continuation with tight stop at breakout level."
     elif state == "ENTRY_ACTIVE":
         if bidir == "short":
-            if vwap is not None and last_price is not None:
+            if bounce_scenario == "vwap_rejection" and vwap is not None and or_low is not None:
+                conservative = (
+                    f"Enter near current price (${last_price:.2f}). "
+                    f"Stop just above VWAP ${vwap:.2f}. Smaller size — target is ORL ${or_low:.2f}."
+                )
+                aggressive = (
+                    f"Scale in now at VWAP rejection (${vwap:.2f}). "
+                    f"Full stop above VWAP. Target ORL ${or_low:.2f} then reassess."
+                )
+                best_setup = (
+                    f"VWAP rejection PUT — sellers denied the bounce. "
+                    f"Entry ${last_price:.2f}, stop above ${vwap:.2f}, target ORL ${or_low:.2f}."
+                )
+            elif bounce_scenario == "orl_rejection_retest" and or_low is not None:
+                conservative = (
+                    f"Enter near ORL (${or_low:.2f}) with 1-bar rejection confirmation. "
+                    f"Stop just above ${or_low:.2f}. Target: new session low."
+                )
+                aggressive = (
+                    f"Fade the ORL rejection now (${or_low:.2f}). "
+                    f"Stop just above ORL. Target extension below day low."
+                )
+                best_setup = (
+                    f"ORL retest rejection PUT — highest conviction re-entry. "
+                    f"Entry near ${or_low:.2f}, tight stop, bigger target below day low."
+                )
+            elif vwap is not None and last_price is not None:
                 conservative = f"Wait for a bounce into VWAP zone ({pullback_zone}) to fade into the short."
+                aggressive = f"Continuation below ORL ({or_low:.2f}) with expanding volume." if or_low else "Continuation on breakdown momentum with expanding volume."
+                best_setup = f"Bearish continuation with defined stop above recent swing high."
             else:
                 conservative = "Wait for a bounce to resistance with volume rejection confirmation."
-            if or_low is not None:
-                aggressive = f"Continuation below ORL ({or_low:.2f}) with expanding volume."
-            else:
                 aggressive = "Continuation on breakdown momentum follow-through with expanding volume."
-            best_setup = f"{direction_word.capitalize()} continuation with defined stop above recent swing high."
+                best_setup = "Bearish continuation with defined stop above recent swing high."
         else:
             if vwap is not None and last_price is not None:
                 conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
@@ -1343,6 +1437,71 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             "continuation short setup."
         )
 
+    # ── #3b Bounce-rejection tier (after ORL breakdown) ─────────────────────
+    # After a breakdown, price may bounce toward resistance. WHERE the bounce gets
+    # rejected determines entry quality:
+    #   "vwap_rejection"       — bounce capped at VWAP (sellers stepped in early).
+    #                            Valid PUT entry; entry near VWAP, stop above VWAP.
+    #                            Sellers so aggressive they won't let price reach ORL —
+    #                            actually MORE bearish than an ORL retest.
+    #   "orl_rejection_retest" — bounce reached ORL from below, now being rejected.
+    #                            Strongest PUT re-entry; entry near ORL, bigger target.
+    #   "no_mans_land"         — price churning between VWAP and ORL, no clean level.
+    #                            Wait — no rejection confirmation yet.
+    #   (long-side mirror: orh_rejection and vwap_rejection_long handled symmetrically)
+    _bounce_scenario: str = ""
+    if or_historical == "broke_down" and or_state == "below" and or_low > 0 and vwap_last > 0:
+        _pct_below_orl  = (or_low  - last) / or_low   * 100   # >0 means below ORL
+        _pct_from_vwap  = (last - vwap_last) / vwap_last * 100 # <0 means below VWAP
+        # Near VWAP from below, still a healthy distance from ORL
+        if abs(_pct_from_vwap) <= 0.45 and _pct_below_orl > 0.55:
+            if vol_spike:
+                _bounce_scenario = "vwap_rejection"
+                bear += 1.2   # strong signal — early rejection = heavy selling pressure
+                body.append(
+                    f"VWAP rejection short ({vwap_last:.2f}) — bounce capped before reaching ORL. "
+                    f"Sellers stepped in at VWAP; stops above ${vwap_last:.2f}."
+                )
+            else:
+                _bounce_scenario = "vwap_test"  # testing, not yet confirmed
+                body.append(
+                    f"Bouncing into VWAP ({vwap_last:.2f}) — rejection not confirmed. "
+                    "Wait for volume to confirm the fade."
+                )
+        # Near ORL from below — existing _orl_retest_short covers holding; add vol-confirmed rejection
+        elif 0 < _pct_below_orl <= 0.55 and _pct_from_vwap < -0.3:
+            if vol_spike:
+                _bounce_scenario = "orl_rejection_retest"
+                bear += 0.8   # already scored by _orl_retest_short path, smaller add here
+                body.append(
+                    f"ORL rejection confirmed ({or_low:.2f}) — volume spike at resistance. "
+                    "Highest-conviction PUT re-entry."
+                )
+            else:
+                _bounce_scenario = "orl_rejection_retest"  # use same bucket, no extra score
+        # Price between VWAP and ORL with no clean level nearby
+        elif _pct_below_orl > 0.55 and _pct_from_vwap < -0.45:
+            _bounce_scenario = "no_mans_land"
+            body.append(
+                f"Price between VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no clean rejection level. "
+                "Wait for a test of either level before considering entry."
+            )
+
+    # Mirror for long-side bounce scenarios after ORH breakout
+    elif or_historical == "broke_up" and or_state == "above" and or_high > 0 and vwap_last > 0:
+        _pct_above_orh  = (last - or_high)  / or_high   * 100
+        _pct_from_vwap  = (last - vwap_last) / vwap_last * 100
+        if abs(_pct_from_vwap) <= 0.45 and _pct_above_orh > 0.55:
+            if vol_spike:
+                _bounce_scenario = "vwap_rejection_long"
+                bull += 1.2
+                body.append(
+                    f"VWAP support hold ({vwap_last:.2f}) after ORH breakout — pullback absorbed at VWAP. "
+                    f"Stops below ${vwap_last:.2f}."
+                )
+        elif _pct_above_orh > 0.55 and _pct_from_vwap > 0.45:
+            _bounce_scenario = "no_mans_land_long"
+
     # Daily trend context from swing scan (optional adjustment)
     bias: Bias = None
     if daily_trend_context is not None:
@@ -1579,6 +1738,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "price_structure": price_structure,
         "secondary_breakout": secondary_breakout_up or secondary_breakout_down,
         "or_retest": _orh_retest_long or _orl_retest_short,
+        "bounce_scenario": _bounce_scenario,
         "spy_change_pct": spy_chg,
         "qqq_change_pct": qqq_chg,
         "spy_session_change_pct": spy_session_pct,
