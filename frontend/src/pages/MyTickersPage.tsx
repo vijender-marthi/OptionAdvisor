@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, X, Search, AlertTriangle, Check, Undo2, RefreshCw,
-  Pencil, ChevronDown, Calendar,
+  Pencil, ChevronDown, ChevronUp, Calendar, ArrowUpRight, ListTodo,
 } from 'lucide-react'
-import { fetchMyTickers, addMyTicker, updateMyTicker, removeMyTicker, removeMyTickerType, searchTickers } from '../api/commandCenter'
+import { fetchMyTickers, addMyTicker, updateMyTicker, removeMyTicker, removeMyTickerType, reorderMyTickers, searchTickers } from '../api/commandCenter'
 import type { MyTickerEntry, SearchTickerResult } from '../api/commandCenter'
 import { TICKER_UNIVERSE } from '../data/tickerUniverse'
 import type { TickerEntry } from '../data/tickerUniverse'
+import { getEngineRoute } from '../routing/routes'
 
 type TabFilter = 'all' | 'day' | 'swing' | 'regular'
 const TAB_STORAGE_KEY = 'oa_my_tickers_tab'
@@ -125,6 +126,62 @@ export default function MyTickersPage() {
     return tickers.filter(t => (t.trade_types || []).includes(activeTab))
   }, [tickers, activeTab])
 
+  const handleMove = useCallback(async (symbol: string, direction: 'up' | 'down') => {
+    const idx = tickers.findIndex(t => t.symbol === symbol)
+    if (idx === -1) return
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (target < 0 || target >= tickers.length) return
+
+    const reordered = [...tickers]
+    const [moved] = reordered.splice(idx, 1)
+    reordered.splice(target, 0, moved)
+    setTickers(reordered)
+    try {
+      await reorderMyTickers(reordered.map(t => t.symbol))
+    } catch { /* ignore */ }
+  }, [tickers])
+
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
+    setDragIndex(idx)
+    e.dataTransfer.effectAllowed = 'move'
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(idx)
+  }, [])
+
+  const handleDragEnd = useCallback(() => {
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent, dropIdx: number) => {
+    e.preventDefault()
+    setDragOverIndex(null)
+    if (dragIndex == null || dragIndex === dropIdx) {
+      setDragIndex(null)
+      return
+    }
+    const reordered = [...filteredTickers]
+    const [moved] = reordered.splice(dragIndex, 1)
+    reordered.splice(dropIdx, 0, moved)
+    // Map back to full ticker order
+    const movedSym = moved.symbol
+    const full = tickers.filter(t => t.symbol !== movedSym)
+    const insertAt = tickers.findIndex(t => t.symbol === reordered[dropIdx]?.symbol)
+    full.splice(insertAt >= 0 ? insertAt : full.length, 0, moved)
+    setTickers(full)
+    setDragIndex(null)
+    try {
+      await reorderMyTickers(full.map(t => t.symbol))
+    } catch { /* ignore */ }
+  }, [dragIndex, filteredTickers, tickers])
+
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showNotice = useCallback((tone: string, message: string) => {
     setNotice({ tone, message })
@@ -230,10 +287,13 @@ export default function MyTickersPage() {
   }, [showNotice])
 
   return (
-    <div className="mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-600/20 border border-sky-700 flex items-center justify-center shrink-0">
+              <ListTodo size={18} className="text-sky-400" />
+            </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">My Tickers</h1>
           </div>
           <p className="mt-1 text-sm text-gray-400">{tickers.length} ticker{tickers.length !== 1 ? 's' : ''} tracked</p>
@@ -284,6 +344,15 @@ export default function MyTickersPage() {
               highlight={highlightSymbol === ticker.symbol}
               onRemove={() => handleRemove(ticker)}
               onEdit={() => handleEdit(ticker)}
+              onMoveUp={idx > 0 ? () => handleMove(ticker.symbol, 'up') : undefined}
+              onMoveDown={idx < filteredTickers.length - 1 ? () => handleMove(ticker.symbol, 'down') : undefined}
+              draggable
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={(e) => handleDrop(e, idx)}
+              onDragEnd={handleDragEnd}
+              isDragGhost={dragIndex === idx}
+              isDropTarget={dragOverIndex === idx}
             />
           ))}
         </div>
@@ -309,19 +378,52 @@ export default function MyTickersPage() {
   )
 }
 
-function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEntry; highlight: boolean; onRemove: () => void; onEdit: () => void }) {
+function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, draggable, onDragStart, onDragOver, onDrop, onDragEnd, isDragGhost, isDropTarget }: {
+  ticker: MyTickerEntry
+  highlight: boolean
+  onRemove: () => void
+  onEdit: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  draggable?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDrop?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  isDragGhost?: boolean
+  isDropTarget?: boolean
+}) {
+  const navigate = useNavigate()
   const avatar = avatarFor(ticker.symbol)
   const types = ticker.trade_types || []
   const ed = ticker.next_earnings_date
   const edDays = ticker.next_earnings_days
   const earningsThisWeek = edDays != null && edDays >= 0 && edDays <= 7
+
+  const ENGINE_LABEL: Record<string, string> = {
+    day: 'Day Trade',
+    swing: 'Swing Trade',
+    regular: 'Strategy Finder',
+  }
+
   return (
-    <div className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-colors ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'}`}>
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-all ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 border-violet-500/50 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-white">{ticker.symbol}</span>
+            <div className="flex flex-col gap-0.5">
+              {onMoveUp && <button type="button" onClick={onMoveUp} className="text-gray-600 hover:text-gray-300 -mb-0.5"><ChevronUp size={10} /></button>}
+              {onMoveDown && <button type="button" onClick={onMoveDown} className="text-gray-600 hover:text-gray-300 -mt-0.5"><ChevronDown size={10} /></button>}
+            </div>
             <button type="button" onClick={onEdit} className="text-gray-500 hover:text-gray-300"><Pencil size={12} /></button>
           </div>
           {ticker.company_name && <div className="truncate text-xs text-gray-500">{ticker.company_name}</div>}
@@ -336,7 +438,16 @@ function TickerRow({ ticker, highlight, onRemove, onEdit }: { ticker: MyTickerEn
       <div className="flex items-center gap-2">
         <div className="flex gap-1">
           {types.map(tt => (
-            <span key={tt} className={`rounded px-2 py-0.5 text-[10px] font-medium ${badgeBase(tt)}`}>{TRADE_TYPE_META[tt]?.label || tt}</span>
+            <button
+              key={tt}
+              type="button"
+              onClick={() => navigate(getEngineRoute(tt, ticker.symbol))}
+              title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
+              className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
+            >
+              {TRADE_TYPE_META[tt]?.label || tt}
+              <ArrowUpRight size={9} className="opacity-70" />
+            </button>
           ))}
         </div>
         <button type="button" onClick={onRemove} className="ml-2 shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>

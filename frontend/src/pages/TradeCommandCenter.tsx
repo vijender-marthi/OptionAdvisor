@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ShieldAlert,
   TrendingUp,
+  LayoutDashboard,
   LayoutGrid,
   Gauge,
   Zap,
@@ -531,7 +532,9 @@ function alertPressureLevel(a: { active_alerts: number; critical_alerts: number;
 
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
-  const { addToWatchlist, isWatched, requestAnalysis } = useApp()
+  const { addToWatchlist, isWatched, requestAnalysis, canAccessPage } = useApp()
+  const canDay   = canAccessPage('day-trade')
+  const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<TradeCommandCenterPayload> | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -578,9 +581,32 @@ export default function TradeCommandCenter() {
 
   const payload = env?.data ?? null
   const market = payload?.market_summary ?? {}
-  const engines = payload?.engines ?? []
-  const recommendations = payload?.recommendations ?? []
-  const conflicts = payload?.conflicts && payload.conflicts.length > 0 ? payload.conflicts : buildFallbackConflicts(recommendations)
+  const allEngines = payload?.engines ?? []
+  const allRecommendations = payload?.recommendations ?? []
+
+  // Filter to engines the current role can access
+  const engines = allEngines.filter(e => {
+    const t = String(e.engine_type || '').toLowerCase()
+    if (t === 'day')   return canDay
+    if (t === 'swing') return canSwing
+    return true  // regular — always visible
+  })
+  const recommendations = allRecommendations.filter(r => {
+    const t = String(r.engine_type || '').toLowerCase()
+    if (t === 'day')   return canDay
+    if (t === 'swing') return canSwing
+    return true
+  })
+  const conflicts = payload?.conflicts
+    ? payload.conflicts.filter(c =>
+        c.signals.some(s => {
+          const t = String(s.engine_type || '').toLowerCase()
+          if (t === 'day')   return canDay
+          if (t === 'swing') return canSwing
+          return true
+        })
+      )
+    : buildFallbackConflicts(recommendations)
   const alertsSummary = payload?.alerts_summary ?? {
     active_alerts: 0,
     critical_alerts: 0,
@@ -589,7 +615,20 @@ export default function TradeCommandCenter() {
     high_iv_warnings: 0,
   }
   const recentActivity = payload?.recent_activity ?? []
-  const charts = useMemo(() => (payload ? { ...buildFallbackCharts(payload), ...(payload.charts ?? {}) } : null), [payload])
+  const charts = useMemo(() => {
+    if (!payload) return null
+    const raw = { ...buildFallbackCharts(payload), ...(payload.charts ?? {}) }
+    // Filter style_allocation bars to only the engines this role can see
+    if (raw.style_allocation) {
+      raw.style_allocation = raw.style_allocation.filter((s: { label: string; value: number }) => {
+        const l = s.label.toLowerCase()
+        if (l === 'day')   return canDay
+        if (l === 'swing') return canSwing
+        return true
+      })
+    }
+    return raw
+  }, [payload, canDay, canSwing])
 
   const actionable = useMemo(() => recommendations.filter(isActionable), [recommendations])
 
@@ -642,10 +681,15 @@ export default function TradeCommandCenter() {
         : 'border-sky-700/40 bg-sky-950/30 text-sky-200'
 
   return (
-    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-7xl space-y-8 px-4 py-6 pb-28 md:p-6">
+    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-6xl space-y-6 px-4 pt-4 pb-28 md:px-6 md:pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Trade Command Center</h1>
+          <div className="flex flex-wrap items-center gap-2.5 mb-1">
+            <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center shrink-0">
+              <LayoutDashboard size={18} className="text-violet-400" />
+            </div>
+            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Trade Command Center</h1>
+          </div>
           <p className="mt-1.5 max-w-3xl text-sm text-gray-500">
             Real-time regime snapshot — engine trust scores, READY/TRADE setups with entry/stop/target, cross-engine conflicts, and smart alerts. Act only when signal quality + execution timing agree.
             {env?.stale ? <span className="text-amber-400"> Live market summary unavailable, using cached defaults.</span> : null}
@@ -702,7 +746,7 @@ export default function TradeCommandCenter() {
               </div>
               {env?.fetched_at ? <span className="text-[10px] text-gray-600">Updated {new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
             </div>
-            <div className="grid gap-4 xs:grid-cols-2 md:grid-cols-4">
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
               <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
                 <GaugeMeter value={marketModeToValue(String(market.market_mode ?? ''))} label="Market Regime" states={['Bearish','Defensive','Neutral','Bullish','Euphoric']} />
               </div>
@@ -751,7 +795,26 @@ export default function TradeCommandCenter() {
             </div>
             <div className="border-t border-slate-100 dark:border-white/[0.05]" />
             <div className="flex flex-col gap-2">
-              {engines.length === 0 ? (
+              {/* Locked-engine notices for engines this role can't access */}
+              {!canDay && (
+                <div className="flex items-center gap-3 rounded-xl border border-dashed border-orange-700/30 bg-orange-950/10 px-4 py-3 text-sm text-orange-400/70">
+                  <Zap size={15} className="shrink-0 opacity-50" />
+                  <div>
+                    <span className="font-semibold">Day Trade Engine</span>
+                    <span className="ml-2 text-[11px] text-orange-500/60 uppercase tracking-wide">— Administrator access required</span>
+                  </div>
+                </div>
+              )}
+              {!canSwing && (
+                <div className="flex items-center gap-3 rounded-xl border border-dashed border-violet-700/30 bg-violet-950/10 px-4 py-3 text-sm text-violet-400/70">
+                  <TrendingUp size={15} className="shrink-0 opacity-50" />
+                  <div>
+                    <span className="font-semibold">Swing Trade Engine</span>
+                    <span className="ml-2 text-[11px] text-violet-500/60 uppercase tracking-wide">— Swing Trader plan required</span>
+                  </div>
+                </div>
+              )}
+              {engines.length === 0 && canDay && canSwing ? (
                 <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
                   No engine data loaded — check that the backend is running and the last scan completed successfully.
                 </div>
@@ -833,7 +896,7 @@ export default function TradeCommandCenter() {
                                 ))}
                               </div>
                             ) : null}
-                            {detailRoute ? (
+                            {detailRoute && canAccessPage(engKey === 'day' ? 'day-trade' : engKey === 'swing' ? 'swing-trade' : 'ticker') ? (
                               <button type="button" onClick={() => navigate(detailRoute)} className={`inline-flex items-center gap-1.5 rounded-lg text-white font-semibold px-3 py-2 text-xs transition-colors ${buttonAccent}`}>
                                 Open {String(card.engine_type || '').toUpperCase()} Engine
                                 <ArrowRight size={14} />
@@ -850,34 +913,34 @@ export default function TradeCommandCenter() {
 
           {/* ═══ OPPORTUNITIES ═══ */}
           <section className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <BriefcaseBusiness size={18} className="text-emerald-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Setups — Ready to Trade</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Setups</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAllRecommendations(prev => !prev)}
                 className="btn btn-outline gap-2 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide"
               >
-                {showAllRecommendations ? 'Hide full table' : 'Show all recommendations'}
+                {showAllRecommendations ? 'Hide full table' : 'Show all'}
               </button>
             </div>
             <div className="border-t border-slate-100 dark:border-white/[0.05]" />
 
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
               <label className="text-xs text-slate-500">
                 Engine Type
-                <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
+                <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
-                  <option value="day">Day</option>
-                  <option value="swing">Swing</option>
+                  {canDay   && <option value="day">Day</option>}
+                  {canSwing && <option value="swing">Swing</option>}
                   <option value="regular">Regular</option>
                 </select>
               </label>
               <label className="text-xs text-slate-500">
                 Signal
-                <select value={signal} onChange={e => setSignal(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
+                <select value={signal} onChange={e => setSignal(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="READY">READY</option>
                   <option value="WATCH">WATCH</option>
@@ -888,7 +951,7 @@ export default function TradeCommandCenter() {
               </label>
               <label className="text-xs text-slate-500">
                 Direction
-                <select value={direction} onChange={e => setDirection(e.target.value)} className="mt-1 block w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
+                <select value={direction} onChange={e => setDirection(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="call">Call</option>
                   <option value="put">Put</option>
@@ -898,7 +961,7 @@ export default function TradeCommandCenter() {
               </label>
               <label className="text-xs text-slate-500">
                 Risk
-                <select value={risk} onChange={e => setRisk(e.target.value)} className="mt-1 block w-32 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
+                <select value={risk} onChange={e => setRisk(e.target.value)} className="mt-1 block w-full sm:w-32 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
                   <option value="">All</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -920,8 +983,8 @@ export default function TradeCommandCenter() {
                     const recKey = rec.id
                     return (
                       <div key={recKey}>
-                        <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
                             <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                             <EngineBadge engine={rec.engine_type} />
                             <SignalQualityBadge quality={rec.signal_quality || ''} />
@@ -1098,7 +1161,7 @@ export default function TradeCommandCenter() {
             ) : null}
           </section>
 
-          <section className="space-y-4">
+          {(canDay || canSwing) && <section className="space-y-4">
             <div className="flex items-center gap-2">
               <ShieldAlert size={18} className="text-violet-400" />
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Cross-Engine Signal Conflicts — Do Not Trade Until Resolved</h2>
@@ -1149,7 +1212,7 @@ export default function TradeCommandCenter() {
                 })
               )}
             </div>
-          </section>
+          </section>}
 
           <section className="space-y-4">
             <div className="flex items-center gap-2">
@@ -1194,7 +1257,12 @@ export default function TradeCommandCenter() {
 
               <ChartShell title="Engine Signal Distribution" subtitle="How each engine is leaning right now.">
                 <div className="space-y-4">
-                  {(charts?.engine_signal_distribution ?? []).map(entry => {
+                  {(charts?.engine_signal_distribution ?? []).filter(entry => {
+                    const e = entry.engine.toLowerCase()
+                    if (e === 'day')   return canDay
+                    if (e === 'swing') return canSwing
+                    return true
+                  }).map(entry => {
                     const total = (entry.READY || 0) + (entry.WATCH || 0) + (entry.WAIT || 0) + (entry.AVOID || 0) + (entry.NO_EDGE || 0)
                     const segments = [
                       { key: 'READY', value: entry.READY || 0, color: '#34d399', label: 'Ready' },
@@ -1237,7 +1305,12 @@ export default function TradeCommandCenter() {
                       </div>
                     )
                   })}
-                  {(charts?.engine_signal_distribution ?? []).length === 0 && (
+                  {(charts?.engine_signal_distribution ?? []).filter(entry => {
+                    const e = entry.engine.toLowerCase()
+                    if (e === 'day')   return canDay
+                    if (e === 'swing') return canSwing
+                    return true
+                  }).length === 0 && (
                     <div className="h-20 flex items-center justify-center text-xs text-slate-500">No engine signal data available.</div>
                   )}
                 </div>

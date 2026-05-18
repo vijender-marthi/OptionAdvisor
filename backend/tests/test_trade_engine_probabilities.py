@@ -110,9 +110,9 @@ def _years_to_expiry(expiry: str) -> float:
 def _directional_drift(bias: str, confidence: int) -> float:
     confidence_fraction = confidence / 100.0
     if bias in ("Bullish", "Mildly Bullish"):
-        return 0.15 * confidence_fraction
+        return 0.12 * confidence_fraction
     if bias in ("Bearish", "Mildly Bearish"):
-        return -0.10 * confidence_fraction
+        return -0.12 * confidence_fraction
     return 0.05
 
 

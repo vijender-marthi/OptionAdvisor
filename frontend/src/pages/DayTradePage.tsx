@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
 } from 'lucide-react'
 import { analyzeDayTrade, enterActiveTrade } from '../api/client'
+import { fetchMyTickers } from '../api/commandCenter'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -24,13 +25,27 @@ export default function DayTradePage() {
     navigate,
     addToWatchlist,
     isWatched,
+    addManualPosition,
+    portfolio,
   } = useApp()
   const [searchParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const { ticker, loading, error, result, glossaryOpen } = ui
 
+  const existingPositions = useMemo(
+    () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
+    [portfolio, result?.ticker]
+  )
+
   const [enterOpen, setEnterOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
+  const [portfolioOpen, setPortfolioOpen] = useState(false)
+  const [portfolioContracts, setPortfolioContracts] = useState('')
+  const [portfolioEntryPrice, setPortfolioEntryPrice] = useState('')
+  const [portfolioExpiry, setPortfolioExpiry] = useState('')
+  const [portfolioNotes, setPortfolioNotes] = useState('')
+  const [portfolioErr, setPortfolioErr] = useState<string | null>(null)
+  const [portfolioSubmitting, setPortfolioSubmitting] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
   const [entryPrice, setEntryPrice] = useState('')
@@ -41,13 +56,21 @@ export default function DayTradePage() {
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const autoRunRef = useRef(false)
+  const [myTickers, setMyTickers] = useState<string[]>([])
+
+  useEffect(() => {
+    fetchMyTickers().then(res => {
+      const symbols = (res.data?.tickers ?? []).map(t => t.symbol).filter(Boolean).slice(0, 10)
+      setMyTickers(symbols)
+    }).catch(() => {})
+  }, [])
 
   // Stable ref to read latest ticker without it being a useCallback dep
   const tickerRef = useRef(ticker)
   tickerRef.current = ticker
 
-  const runScan = useCallback(async () => {
-    const sym = tickerRef.current.trim().toUpperCase()
+  const runScan = useCallback(async (overrideTicker?: string) => {
+    const sym = (overrideTicker || tickerRef.current).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
@@ -131,6 +154,72 @@ export default function DayTradePage() {
     })
   }, [addToWatchlist, isWatched, result])
 
+  const openPortfolioModal = useCallback(() => {
+    if (!result) return
+    setPortfolioContracts('1')
+    setPortfolioEntryPrice('')
+    setPortfolioExpiry('')
+    setPortfolioNotes('')
+    setPortfolioErr(null)
+    setPortfolioOpen(true)
+  }, [result])
+
+  const submitPortfolio = useCallback(() => {
+    if (!result) return
+    const c = parseInt(portfolioContracts, 10)
+    if (!Number.isFinite(c) || c <= 0) {
+      setPortfolioErr('Contracts must be a positive whole number.')
+      return
+    }
+    let ep = 0
+    if (portfolioEntryPrice.trim()) {
+      ep = parseFloat(portfolioEntryPrice)
+      if (!Number.isFinite(ep) || ep < 0) {
+        setPortfolioErr('Entry price must be a positive number.')
+        return
+      }
+    }
+    let expiryOut = ''
+    if (portfolioExpiry.trim()) {
+      const ex = portfolioExpiry.trim().slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ex)) {
+        setPortfolioErr('Expiry must be YYYY-MM-DD.')
+        return
+      }
+      expiryOut = ex
+    }
+    const lastU = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price as number : 0
+    const bias = result.bias ?? 'neutral'
+    const direction = bias === 'short' ? 'bearish' : 'bullish'
+    setPortfolioSubmitting(true)
+    addManualPosition({
+      ticker: result.ticker,
+      companyName: result.company_name ?? result.ticker,
+      strategy: 'Day Trade',
+      bias: direction,
+      legs: [],
+      expiry: expiryOut || new Date().toISOString().slice(0, 10),
+      dte: 0,
+      net_credit: ep > 0 ? -ep : 0,
+      spread_width: 0,
+      max_profit: 0,
+      max_loss: ep > 0 ? ep : 0,
+      prob_of_profit: 0,
+      expected_value: 0,
+      scores_total: 0,
+      contracts: c,
+      breakeven_lower: 0,
+      breakeven_upper: 0,
+      entryPrice: lastU,
+      source: 'day',
+      notes: portfolioNotes.trim() || undefined,
+    })
+    setPortfolioSubmitting(false)
+    setPortfolioOpen(false)
+    setNotice({ tone: 'success', message: `${result.ticker} day trade added to Positions Center.` })
+    navigate('positions')
+  }, [result, portfolioContracts, portfolioEntryPrice, portfolioExpiry, portfolioNotes, addManualPosition, navigate])
+
   const submitEnter = useCallback(async () => {
     if (!result) return
     const ep = parseFloat(entryPrice)
@@ -189,13 +278,13 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   return (
-    <div className="day-trade-page mx-auto min-h-screen max-w-[1680px] space-y-4 px-4 py-5 text-primary lg:px-6">
+    <div className="day-trade-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 text-violet-400">
-              <Zap size={20} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 border border-orange-700 text-orange-400">
+              <Zap size={18} />
             </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Day Trade Engine</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Intraday</span>
@@ -238,7 +327,7 @@ export default function DayTradePage() {
           />
           <button
             type="button"
-            onClick={runScan}
+            onClick={() => runScan()}
             disabled={loading}
             className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
           >
@@ -249,6 +338,18 @@ export default function DayTradePage() {
         <p className="text-[11px] text-gray-500 mt-2">
           Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
         </p>
+        {myTickers.length > 0 && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <span className="text-xs text-gray-500 self-center">Quick:</span>
+            {myTickers.map(t => (
+              <button key={t} onClick={() => { setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
+                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {error && (
@@ -273,8 +374,11 @@ export default function DayTradePage() {
         <>
           <DayTradeEnginePanel
             result={result}
+            existingPositions={existingPositions}
             onRefresh={() => void runScan()}
             refreshing={loading}
+            onAddToPortfolio={openPortfolioModal}
+            onViewPositions={() => routerNavigate(ROUTES.positions)}
             onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
             onOpenStrategyFinder={() => routerNavigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
             onOpenCommandCenter={() => routerNavigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
@@ -312,6 +416,83 @@ export default function DayTradePage() {
           </ul>
         </div>
       </details>
+
+      {portfolioOpen && result && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
+          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <div className="text-base font-bold text-white">Add to Positions Center</div>
+              <button
+                type="button"
+                onClick={() => setPortfolioOpen(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 flex items-center gap-3">
+                <span className="font-mono font-bold text-white text-base">{result.ticker}</span>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${result.bias === 'short' ? 'bg-rose-900/60 text-rose-300' : 'bg-emerald-900/60 text-emerald-300'}`}>
+                  {result.bias === 'short' ? 'BEARISH' : 'BULLISH'}
+                </span>
+                <span className="text-xs text-gray-500 ml-auto">{result.final_decision}</span>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Contracts</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  inputMode="numeric"
+                  placeholder="1"
+                  value={portfolioContracts}
+                  onChange={e => setPortfolioContracts(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Option premium paid (optional)</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  inputMode="decimal"
+                  placeholder="e.g. 2.45"
+                  value={portfolioEntryPrice}
+                  onChange={e => setPortfolioEntryPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Expiry (optional, YYYY-MM-DD)</label>
+                <input
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                  placeholder="2026-05-16"
+                  value={portfolioExpiry}
+                  onChange={e => setPortfolioExpiry(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Notes (optional)</label>
+                <textarea
+                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[60px]"
+                  placeholder="Plan / context"
+                  value={portfolioNotes}
+                  onChange={e => setPortfolioNotes(e.target.value)}
+                />
+              </div>
+              {portfolioErr && (
+                <div className="text-rose-300 text-xs">{portfolioErr}</div>
+              )}
+              <button
+                type="button"
+                onClick={submitPortfolio}
+                disabled={portfolioSubmitting}
+                className="w-full rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold py-2.5"
+              >
+                Save to Positions Center
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {enterOpen && result && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>

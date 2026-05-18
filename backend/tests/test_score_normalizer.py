@@ -111,7 +111,7 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "WATCH")
+        self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_execution_bias_wait_for_confirmation(self) -> None:
@@ -336,7 +336,7 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_reason="Good option structure.",
         )
         self.assertAlmostEqual(r["raw_engine_score"], 82.0)
-        self.assertEqual(r["normalized_score"], 82)
+        self.assertEqual(r["normalized_score"], 91)
         self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")

@@ -222,7 +222,7 @@ export interface TradeCommandCenterPayload {
   filters?: Record<string, unknown>
 }
 
-export interface WatchlistXDecisionBlock {
+export interface SignalFeedDecisionBlock {
   engine: 'day' | 'swing' | 'regular' | string
   market_bias: string
   setup_quality: string
@@ -265,7 +265,7 @@ export interface WatchlistXDecisionBlock {
   }
 }
 
-export interface WatchlistXMetrics {
+export interface SignalFeedMetrics {
   rsi?: number | null
   relative_strength?: number | null
   volume_ratio?: number | null
@@ -276,7 +276,7 @@ export interface WatchlistXMetrics {
   market_context?: string | null
 }
 
-export interface WatchlistXRow {
+export interface SignalFeedRow {
   id: string
   ticker: string
   company_name: string
@@ -294,7 +294,7 @@ export interface WatchlistXRow {
   agreement_badge?: 'STRONG_AGREEMENT' | 'PARTIAL_AGREEMENT' | 'CONFLICT' | 'EXTENDED' | 'NO_EDGE' | 'MANAGE' | string
   agreement_reason: string
   alerts_count: number
-  metrics?: WatchlistXMetrics
+  metrics?: SignalFeedMetrics
   sources: string[]
   notes?: string | null
   added_at?: string
@@ -304,9 +304,9 @@ export interface WatchlistXRow {
   quote_source?: string
   ai_summary: string
   chart_points: Array<{ date: string; close: number }>
-  day: WatchlistXDecisionBlock
-  swing: WatchlistXDecisionBlock
-  regular: WatchlistXDecisionBlock
+  day: SignalFeedDecisionBlock
+  swing: SignalFeedDecisionBlock
+  regular: SignalFeedDecisionBlock
   actions: {
     analyze_url: string
     chart_url: string
@@ -315,7 +315,7 @@ export interface WatchlistXRow {
   }
 }
 
-export interface WatchlistXCacheMeta {
+export interface SignalFeedCacheMeta {
   used_cache: boolean
   cache_hits: number
   cache_misses: number
@@ -362,7 +362,7 @@ export interface AiPositionAnalysis {
   strategy_family: string
 }
 
-export interface WatchlistXPayload {
+export interface SignalFeedPayload {
   summary: {
     total: number
     ready: number
@@ -391,6 +391,6 @@ export interface WatchlistXPayload {
     sort_by: string
     sort_dir: 'asc' | 'desc'
   }
-  cache?: WatchlistXCacheMeta
-  rows: WatchlistXRow[]
+  cache?: SignalFeedCacheMeta
+  rows: SignalFeedRow[]
 }

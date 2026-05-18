@@ -251,7 +251,7 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertEqual(body["option_risk_context"]["theta_risk"], "HIGH")
         self.assertEqual(body["option_risk_context"]["suggested_contract_window"], "0DTE")
 
-    def test_watchlistx_unifies_engine_rows_and_paginates(self) -> None:
+    def test_signal_feed_unifies_engine_rows_and_paginates(self) -> None:
         storage.save_user_state(
             "ccc_user@example.com",
             [],
@@ -361,7 +361,7 @@ class CommandCenterApiTests(unittest.TestCase):
             patch.object(main_module, "run_swing_trade_scan", side_effect=fake_swing_scan),
             patch.object(main_module, "resolve_trade_decision", side_effect=fake_resolve),
         ):
-            r = self.client.get("/api/watchlistx", params={"page_size": 2, "source": "day"})
+            r = self.client.get("/api/signal-feed", params={"page_size": 2, "source": "day"})
 
         self.assertEqual(r.status_code, 200)
         body = r.json()

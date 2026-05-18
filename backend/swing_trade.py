@@ -27,7 +27,7 @@ import pandas as pd
 import bar_cache
 from analysis import build_hv_series, compute_hv, compute_iv_rank
 
-Verdict = Literal["STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"]
+Verdict = Literal["STRONG GO", "GO", "WATCH", "WAIT", "NO-GO", "AVOID"]
 Bias    = Optional[Literal["long", "short"]]
 
 # ── Scoring constants ─────────────────────────────────────────────────
@@ -229,7 +229,7 @@ def _base_risk_level(
     """Baseline risk level from VIX and extension, before flag upgrades."""
     if vix_level is not None and vix_level >= VIX_NO_GO:
         return "VERY_HIGH"
-    if vix_level is not None and vix_level >= 28:
+    if vix_level is not None and vix_level >= VIX_CAUTION:
         return "HIGH"
     # Extension on the active side
     ext_long  = is_bullish  and (rsi_val > RSI_OVERBOUGHT or dist_ma20_pct > 12 or mom_5d_pct > 12)
@@ -472,7 +472,7 @@ def build_swing_trade_decision(
 
     # ── 1. Swing bias ──────────────────────────────────────────────────
     swing_bias   = _compute_swing_bias(bull_score, bear_score)
-    is_bullish   = bull_score >= bear_score
+    is_bullish   = bull_score > bear_score
 
     # ── 2. Market ETF special case ─────────────────────────────────────
     if t in _MARKET_ETFS:
@@ -540,9 +540,6 @@ def build_swing_trade_decision(
         }
 
     # ── 3. Collect risk flags (Phase 2 fields silently skipped if None) ─
-    if gap_percent is not None and abs(gap_percent) > GAP_HARD:
-        risk_flags.append("LARGE_GAP")
-
     if earnings_within_days is not None:
         if earnings_within_days <= 2:
             risk_flags.append("EARNINGS_IMMINENT")
@@ -558,9 +555,6 @@ def build_swing_trade_decision(
     if option_liquidity_score is not None and option_liquidity_score < 4:
         risk_flags.append("LOW_OPTION_LIQUIDITY")
 
-    if near_resistance is True:
-        risk_flags.append("NEAR_RESISTANCE")
-
     if vix_level is not None and vix_level >= VIX_NO_GO:
         risk_flags.append("VIX_EXTREME")   # hard gate: matches scoring engine NO-GO
         risk_flags.append("VIX_ELEVATED")  # also flag caution
@@ -569,19 +563,13 @@ def build_swing_trade_decision(
 
     # ── 4. Extension checks ────────────────────────────────────────────
     if is_bullish:
-        is_very_extended = (
-            mom_5d_pct > EXT_5D_HARD
-            or (gap_percent is not None and gap_percent > GAP_HARD)
-        )
+        is_very_extended = mom_5d_pct > EXT_5D_HARD
         is_extended = (
             not is_very_extended
             and (mom_5d_pct > EXT_5D_WARN or dist_ma20_pct > EXT_MA20_WARN or rsi_val > RSI_OB_WARN)
         )
     else:
-        is_very_extended = (
-            mom_5d_pct < -EXT_5D_HARD
-            or (gap_percent is not None and gap_percent < -GAP_HARD)
-        )
+        is_very_extended = mom_5d_pct < -EXT_5D_HARD
         is_extended = (
             not is_very_extended
             and (mom_5d_pct < -EXT_5D_WARN or dist_ma20_pct < -EXT_MA20_WARN or rsi_val < RSI_OS_WARN)
@@ -979,7 +967,6 @@ def _compute_pullback_probability(
         score += 7
         reasons.append("price extended above MA20")
 
-    abs_rsi = abs(rsi_val - 50)
     if rsi_val > 70:
         score += 8
         reasons.append("RSI overbought")
@@ -1321,7 +1308,7 @@ def _next_earnings_calendar_days(ticker: str, asof: date, force_refresh: bool = 
 
 def _finalize_playbook_earnings(hint: str, earnings_days: Optional[int]) -> str:
     """Layer rule 7: within 5 calendar days, discourage naked single-leg premium."""
-    if earnings_days is None or not (0 < earnings_days <= 5):
+    if earnings_days is None or not (0 <= earnings_days <= 5):
         return hint
     lower = hint.lower()
     if lower.startswith("long call"):
@@ -1402,6 +1389,10 @@ def compute_playbook_hint(
 
     if verdict == "NO-GO":
         hint = "No trade — risk gate (e.g. very high VIX)."
+        return _finalize_playbook_earnings(hint, earnings_days)
+
+    if verdict == "AVOID":
+        hint = "Avoid chase — move already happened, wait for a meaningful pullback before entry."
         return _finalize_playbook_earnings(hint, earnings_days)
 
     # Rules 3 & 6 — align with scan verdict + RSI extension
@@ -1534,7 +1525,7 @@ def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float
         best_diff = 999
         for d in opt_dates:
             dt = datetime.strptime(d, "%Y-%m-%d")
-            dte = (dt - now.date()).days if hasattr(dt, "date") else (dt - now).days
+            dte = (dt.date() - now.date()).days if hasattr(dt, "date") else (dt - now).days
             if 14 <= dte <= 60:
                 diff = abs(dte - target_dte)
                 if diff < best_diff:
@@ -1611,11 +1602,22 @@ def _validate_swing_scan(scan: SwingTradeScan) -> list[str]:
         issues.append(f"trade_quality_score {scan.trade_quality_score} outside [0, 10]")
     if scan.bias not in ("long", "short", None):
         issues.append(f"unexpected bias={scan.bias}")
-    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"):
+    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO", "AVOID"):
         issues.append(f"unexpected verdict={scan.verdict}")
     return issues
 
 # ── Execution levels ──────────────────────────────────────────────────
+
+def _exec_levels_fallback(last: float) -> dict[str, Optional[float]]:
+    return {
+        "pullback_zone_lo": None,
+        "pullback_zone_hi": None,
+        "breakout": None,
+        "target1":  None,
+        "target2":  None,
+        "stop":     None,
+    }
+
 
 def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Optional[str]) -> dict[str, Optional[float]]:
     """
@@ -1631,9 +1633,15 @@ def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Opti
         pb_lo = ma20 * 0.98
         pb_hi = ma20 * 1.015
         stop  = ma20 * 0.96
-        assert t1 > brk, f"BUG: target1 {t1} must be above breakout {brk}"
-        assert t2 > t1,  f"BUG: target2 {t2} must be above target1 {t1}"
-        assert stop < brk, f"BUG: stop {stop} must be below breakout {brk}"
+        if not (t1 > brk):
+            log.warning("_compute_exec_levels: target1 %s <= breakout %s for long bias; returning defaults", t1, brk)
+            return _exec_levels_fallback(last)
+        if not (t2 > t1):
+            log.warning("_compute_exec_levels: target2 %s <= target1 %s for long bias; returning defaults", t2, t1)
+            return _exec_levels_fallback(last)
+        if not (stop < brk):
+            log.warning("_compute_exec_levels: stop %s >= breakout %s for long bias; returning defaults", stop, brk)
+            return _exec_levels_fallback(last)
         return {
             "pullback_zone_lo": round(pb_lo, 2),
             "pullback_zone_hi": round(pb_hi, 2),
@@ -1649,9 +1657,15 @@ def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Opti
         pb_lo = ma20 * 1.01
         pb_hi = ma20 * 1.025
         stop  = ma20 * 1.04
-        assert t1 < brk, f"BUG: target1 {t1} must be below breakout {brk}"
-        assert t2 < t1,  f"BUG: target2 {t2} must be below target1 {t1}"
-        assert stop > brk, f"BUG: stop {stop} must be above breakout {brk}"
+        if not (t1 < brk):
+            log.warning("_compute_exec_levels: target1 %s >= breakout %s for short bias; returning defaults", t1, brk)
+            return _exec_levels_fallback(last)
+        if not (t2 < t1):
+            log.warning("_compute_exec_levels: target2 %s >= target1 %s for short bias; returning defaults", t2, t1)
+            return _exec_levels_fallback(last)
+        if not (stop > brk):
+            log.warning("_compute_exec_levels: stop %s <= breakout %s for short bias; returning defaults", stop, brk)
+            return _exec_levels_fallback(last)
         return {
             "pullback_zone_lo": round(pb_lo, 2),
             "pullback_zone_hi": round(pb_hi, 2),
@@ -1903,7 +1917,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         bull += score
     elif ma_spread_pct < 0:
         score = min(3.0, max(0.5, abs(ma_spread_pct) * 0.15))
-        converging = prev_spread < ma_spread_pct * 1.05
+        converging = abs(prev_spread) > abs(ma_spread_pct) * 1.05
         if converging:
             score *= 0.5
             body.append(f"MA20 < MA50 but converging (gap {abs(ma_spread_pct):.1f}% from {abs(prev_spread):.1f}%) — base forming.")
@@ -1938,7 +1952,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     else:
         bear += 2.0
         body.append(f"MACD ({macd_val:+.3f}) below signal ({sig_val:+.3f}) — bearish crossover.")
-        if hist_val < hist_prev:
+        if hist_val < hist_prev and hist_val < 0:
             bear += 0.5
             body.append("MACD histogram expanding negatively — bearish momentum accelerating.")
 
@@ -2012,14 +2026,18 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     elif long_edge:
         bias = "long"
         rsi_extended = rsi_val > RSI_OVERBOUGHT
-        if rsi_extended or _is_extended or _is_very_extended:
+        if _is_very_extended:
+            verdict = "AVOID"
+            prefix = [
+                f"AVOID — {mom_pct:+.1f}% in 5d — very extended, avoid chase.",
+                "Long-bias context (stock long, long calls, short puts).",
+            ]
+        elif rsi_extended or _is_extended:
             verdict = "WATCH"
             details = []
             if rsi_extended:
                 details.append(f"RSI {rsi_val:.0f} is extended")
-            if _is_very_extended:
-                details.append(f"{mom_pct:+.1f}% in 5d — very extended, avoid chase")
-            elif _is_extended:
+            if _is_extended:
                 parts = []
                 if mom_pct > EXT_5D_WARN:
                     parts.append(f"5d momentum {mom_pct:+.1f}%")
@@ -2053,14 +2071,18 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     elif short_edge:
         bias = "short"
         rsi_extended = rsi_val < RSI_OVERSOLD
-        if rsi_extended or _is_extended or _is_very_extended:
+        if _is_very_extended:
+            verdict = "AVOID"
+            prefix = [
+                f"AVOID — {mom_pct:+.1f}% in 5d — very extended, avoid chase.",
+                "Short-bias context (stock short, long puts, short calls).",
+            ]
+        elif rsi_extended or _is_extended:
             verdict = "WATCH"
             details = []
             if rsi_extended:
                 details.append(f"RSI {rsi_val:.0f} is oversold")
-            if _is_very_extended:
-                details.append(f"{mom_pct:+.1f}% in 5d — very extended, avoid chase")
-            elif _is_extended:
+            if _is_extended:
                 parts = []
                 if mom_pct < -EXT_5D_WARN:
                     parts.append(f"5d momentum {mom_pct:+.1f}%")

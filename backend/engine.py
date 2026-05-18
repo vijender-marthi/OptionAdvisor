@@ -438,9 +438,9 @@ def directional_drift(directional_bias: str, bias_confidence: int) -> float:
     """
     confidence = max(0.0, min(1.0, bias_confidence / 100.0))
     if directional_bias in ("Bullish", "Mildly Bullish"):
-        return 0.15 * confidence
+        return 0.12 * confidence
     if directional_bias in ("Bearish", "Mildly Bearish"):
-        return -0.10 * confidence
+        return -0.12 * confidence
     return 0.05
 
 
@@ -613,7 +613,7 @@ def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
         "Iron Condor":      (NEUTRAL and SELL_REGIME, SELL_REGIME, NEUTRAL),
         "Long Straddle":    (NEUTRAL and BUY_REGIME, BUY_REGIME, NEUTRAL),
         "Covered Call":     (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
-        "Covered Put":      (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
+        "Cash-Secured Put": (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
         "Short Put":        (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
         "Short Call":       (not BULLISH and SELL_REGIME, SELL_REGIME, not BULLISH),
     }
@@ -707,7 +707,7 @@ def score_iv_fit(signals: MarketSignals, strategy: str) -> int:
     iv_rank = signals.iv_rank
     iv_vs_hv = signals.iv_vs_hv
 
-    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Covered Put", "Short Put", "Short Call"}
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Cash-Secured Put", "Short Put", "Short Call"}
     BUYING_STRATS  = {"Long Call", "Long Put", "Bull Call Spread", "Bear Put Spread", "Long Straddle"}
 
     if strategy in SELLING_STRATS:
@@ -754,7 +754,7 @@ def generate_exit_plan(strategy: str, max_profit: float, net_credit: float,
     close_dte = _dynamic_close_dte(dte)
     hold_days = max(0, dte - close_dte)
 
-    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Short Put", "Short Call"}
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Cash-Secured Put", "Short Put", "Short Call"}
 
     if strategy in SELLING_STRATS:
         return (
@@ -785,7 +785,7 @@ def generate_exit_rules(strategy: str, max_profit: float, net_credit: float,
     close_dte       = _dynamic_close_dte(dte)
     hold_days       = max(0, dte - close_dte)
 
-    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Short Put", "Short Call"}
+    SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Cash-Secured Put", "Short Put", "Short Call"}
     is_credit = strategy in SELLING_STRATS
 
     if is_credit:
@@ -989,9 +989,6 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     max_profit = round(spread_width - net_debit, 2)
     max_loss = net_debit
     rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
-    short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
-    rop = round(1 - short_delta, 2)
-    ev = compute_ev(max_profit, max_loss, rop)
 
     if option_type == "CALL":
         be = round(buy_leg.strike + net_debit, 2)
@@ -999,6 +996,18 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
     else:
         be = round(buy_leg.strike - net_debit, 2)
         be_lower, be_upper = 0, be
+
+    buy_delta = abs(buy_leg.delta) if buy_leg.delta != 0 else 0.50
+    short_delta = abs(sell_leg.delta) if sell_leg.delta != 0 else 0.25
+    if spread_width > 0:
+        delta_at_be = buy_delta + (short_delta - buy_delta) * (be - buy_leg.strike) / spread_width
+    else:
+        delta_at_be = buy_delta
+    if option_type == "CALL":
+        rop = round(max(0.05, min(0.95, 1 - delta_at_be)), 2)
+    else:
+        rop = round(max(0.05, min(0.95, delta_at_be)), 2)
+    ev = compute_ev(max_profit, max_loss, rop)
 
     return dict(
         strategy=strategy_name, bias=bias,
@@ -1042,6 +1051,9 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
             buy_target = sell_leg.strike - otm_dist
         buy_row = puts.iloc[(puts["strike"] - buy_target).abs().argsort()[:1]].iloc[0]
         if buy_row["strike"] >= sell_leg.strike:
+            if spread_width_override:
+                logger.warning("%s Bull Put Spread suppressed — buy strike %.2f >= sell strike %.2f with width override %d",
+                              signals.directional_bias, buy_row["strike"], sell_leg.strike, spread_width_override)
             return None
         buy_leg = build_option_leg(buy_row, "BUY", "PUT", expiry, price)
 
@@ -1060,6 +1072,9 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
             buy_target = sell_leg.strike + otm_dist
         buy_row = calls.iloc[(calls["strike"] - buy_target).abs().argsort()[:1]].iloc[0]
         if buy_row["strike"] <= sell_leg.strike:
+            if spread_width_override:
+                logger.warning("%s Bear Call Spread suppressed — buy strike %.2f <= sell strike %.2f with width override %d",
+                              signals.directional_bias, buy_row["strike"], sell_leg.strike, spread_width_override)
             return None
         buy_leg = build_option_leg(buy_row, "BUY", "CALL", expiry, price)
 
@@ -1114,7 +1129,7 @@ def _build_credit_spread(signals, calls, puts, option_type, strategy_name,
         short_leg_delta=short_delta, prob_of_profit=rop,
         prob_of_max_loss=prob_max_loss,
         expected_value=ev,
-        passes_rr_filter=rr <= 5.0,
+        passes_rr_filter=rr <= MIN_RISK_REWARD_RATIO * 2,
         passes_credit_filter=passes_credit,
         passes_liquidity_filter=True,
         rationale=(
@@ -1200,9 +1215,9 @@ def _build_iron_condor(signals: MarketSignals, calls: pd.DataFrame,
         breakeven_lower=be_lower, breakeven_upper=be_upper,
         short_leg_delta=max(short_put_delta, short_call_delta),
         prob_of_profit=rop,
-        prob_of_max_loss=round(short_put_delta * short_call_delta, 3),
+        prob_of_max_loss=round(short_put_delta + short_call_delta, 3),
         expected_value=ev,
-        passes_rr_filter=rr <= 5.0,
+        passes_rr_filter=rr <= MIN_RISK_REWARD_RATIO * 2,
         passes_credit_filter=passes_credit,
         passes_liquidity_filter=True,
         rationale=(
@@ -1495,7 +1510,7 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
     yield_pct = round(net_credit / strike * 100, 2)  # income yield on cash collateral
 
     return dict(
-        strategy="Covered Put", bias="Neutral/Bullish",
+        strategy="Cash-Secured Put", bias="Neutral/Bullish",
         legs=[leg], expiry=expiry, dte=days_to_expiry(expiry),
         net_credit=net_credit, spread_width=0,
         max_profit=max_profit, max_loss=max_loss,
@@ -1523,7 +1538,7 @@ def _build_covered_put(signals: MarketSignals, puts: pd.DataFrame, expiry: str) 
             f"Stop loss: Buy back the put if it triples in value (loss ≈ 2× credit = ${round(net_credit*2,2):.2f}/share). "
             f"Time exit: Close or roll at {_dynamic_close_dte(days_to_expiry(expiry))} DTE if the put is near the money and you prefer not to be assigned."
         ),
-        exit_rules=generate_exit_rules("Covered Put", max_profit, net_credit, expiry, days_to_expiry(expiry)),
+        exit_rules=generate_exit_rules("Cash-Secured Put", max_profit, net_credit, expiry, days_to_expiry(expiry)),
     )
 
 
@@ -1614,7 +1629,13 @@ def run_engine(
         return []
 
     def get_chain(expiry):
-        return calls_f, puts_f  # simplified: use same chain for all expiries
+        c = calls_f
+        p = puts_f
+        if "expiration" in c.columns:
+            c = c[c["expiration"] == expiry]
+        if "expiration" in p.columns:
+            p = p[p["expiration"] == expiry]
+        return c, p
 
     candidates_raw = []
 
@@ -1746,7 +1767,7 @@ def run_engine(
 
         # Credit filter
         if not t["passes_credit_filter"]:
-            if t["strategy"] in ("Covered Call", "Covered Put", "Short Put", "Short Call"):
+            if t["strategy"] in ("Covered Call", "Cash-Secured Put", "Short Put", "Short Call"):
                 warnings_list.append(f"Income yield is only {t['credit_pct_of_width']:.2f}% — below minimum threshold for the capital required.")
             else:
                 warnings_list.append(f"Credit is only {t['credit_pct_of_width']:.1f}% of spread width (min {MIN_CREDIT_PCT_OF_WIDTH}%)")

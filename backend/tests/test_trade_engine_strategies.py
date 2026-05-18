@@ -243,7 +243,7 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
         )
 
         self.assertIn("Covered Call", strategies)
-        self.assertIn("Covered Put", strategies)
+        self.assertIn("Cash-Secured Put", strategies)
         self.assertIn("Short Put", strategies)
 
     def test_short_or_covered_bearish_builds_short_call(self):
@@ -438,7 +438,7 @@ class TradeEngineStrategyCoverageTest(unittest.TestCase):
         bs_ev_long.assert_not_called()
 
         VERTICAL_SPREADS = {"Bull Put Spread", "Bear Call Spread"}
-        INCOME_STRATEGIES = {"Covered Call", "Covered Put", "Short Put", "Short Call"}
+        INCOME_STRATEGIES = {"Covered Call", "Cash-Secured Put", "Short Put", "Short Call"}
 
         for trade in [*credit_trades, *income_trades]:
             if trade.strategy in VERTICAL_SPREADS:

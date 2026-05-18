@@ -67,7 +67,7 @@ class UserDataRequest(BaseModel):
 
 class UserDataResponse(BaseModel):
     email: str
-    """Effective role: admin | user | finance (stored in SQLite; finance env list optional)."""
+    """Effective role: admin | swing | user | finance (stored in SQLite; finance env list optional)."""
     role: str = "user"
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
@@ -302,6 +302,8 @@ class DayTradeResponse(BaseModel):
     execution_fields: list[dict] = Field(default_factory=list)
     entry_guidance: dict = Field(default_factory=dict)
     option_risk_context: dict = Field(default_factory=dict)
+    # Structured AI coaching summary (Anthropic / OpenAI / deterministic fallback)
+    ai_coach: dict = Field(default_factory=dict)
 
 
 class SwingTradeRequest(BaseModel):

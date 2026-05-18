@@ -3,7 +3,7 @@ trade_aggregator.py
 ===================
 Shared per-ticker engine running + aggregation for:
   - /trade-command-center  (command_center_router.py)
-  - /watchlistx             (main.py can reuse the helpers)
+  - /signal-feed             (main.py can reuse the helpers)
 
 Imports ONLY from engine modules, analysis, storage, models.
 Never imports from main.py to avoid the circular import that would arise because
@@ -77,7 +77,7 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 # ---------------------------------------------------------------------------
 # Watchlist source items
-# Mirrors _watchlistx_source_items() in main.py — must stay in sync.
+# Mirrors _signal_feed_source_items() in main.py — must stay in sync.
 # ---------------------------------------------------------------------------
 
 def get_source_items(state: dict) -> list[dict]:
@@ -223,7 +223,7 @@ def _analyze_regular(ticker: str) -> Optional[dict]:
 
 # ---------------------------------------------------------------------------
 # Decision payload builder
-# Mirrors _watchlistx_decision_payload() in main.py — keep in sync.
+# Mirrors _signal_feed_decision_payload() in main.py — keep in sync.
 # ---------------------------------------------------------------------------
 
 def decision_payload(
@@ -235,7 +235,7 @@ def decision_payload(
 ) -> dict:
     """
     Normalise a ResolvedTradeDecision (or None) into a flat dict.
-    Preserves the resolver's final_decision verbatim (no watchlistx remapping)
+    Preserves the resolver's final_decision verbatim (no signal_feed remapping)
     so the command center gets READY / WATCH / WAIT / AVOID / EXIT / NO_EDGE.
 
     Normalized scoring fields are added by _compute_ticker_engines() after
@@ -870,7 +870,7 @@ def build_command_center_payload(
                 "expiry":                _expiry_label(eng_key, rdata),
                 "risk_level":            _risk_label(p.get("risk_state", "MEDIUM")),
                 "action_label":          _action_label(fd),
-                "recommended_action":    p.get("reason") or "",
+                "recommended_action":    _action_label(fd),
                 "market_bias":           p.get("market_bias") or "NEUTRAL",
                 "setup_quality":         p.get("setup_quality") or "WEAK",
                 "execution_readiness":   p.get("execution_readiness") or "WAIT",

@@ -219,26 +219,44 @@ def _normalize_strike(raw: Optional[float]) -> Optional[float]:
     return v
 
 
+# Always-admin accounts (local + production). DB role is ignored for these.
+_SUPERADMIN_EMAILS: frozenset[str] = frozenset({
+    "vijender.marthi@gmail.com",
+})
+
+
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
-    Resolve role from SQLite user_state.role (admin | finance | user).
+    Resolve role from SQLite user_state.role (admin | day | swing | finance | user).
 
-    Admin is database-only: set user_state.role = 'admin' for that user's email
-    (Auto Trade / Execute Paper Trade require admin).
+    Access tiers:
+      admin  — Day Trade + Swing Trade + Regular + all admin tools
+      day    — Day Trade + Regular (no Swing Trade)
+      swing  — Swing Trade + Regular (no Day Trade)
+      user   — Regular (Strategy Finder) only
+      finance — Regular only, minus stock-discovery radars
 
-    OPTION_ADVISOR_FINANCE_EMAILS (comma-separated) may promote accounts from
-    default user → finance when DB role is still user (optional org-wide policy).
-    Finance env never overrides admin.
+    Superadmin emails (_SUPERADMIN_EMAILS) are always resolved to admin
+    regardless of the DB value.
+
+    OPTION_ADVISOR_FINANCE_EMAILS (comma-separated env var) may promote
+    accounts from user → finance. Finance env never overrides admin/day/swing.
     """
     load_dotenv(Path(__file__).with_name(".env"), override=False)
+    n = normalize_email(email)
+    if n in _SUPERADMIN_EMAILS:
+        return "admin"
     r = (stored_role or "user").strip().lower()
     if r == "admin":
         return "admin"
+    if r == "day":
+        return "day"
+    if r == "swing":
+        return "swing"
     if r == "finance":
         return "finance"
     if r not in ("user", ""):
         return "user"
-    n = normalize_email(email)
     finance = {
         normalize_email(x.strip())
         for x in os.getenv("OPTION_ADVISOR_FINANCE_EMAILS", "").split(",")
@@ -251,7 +269,7 @@ def effective_user_role(email: str, stored_role: Optional[str]) -> str:
 
 def watchlist_limit_for_role(role: str) -> int:
     """
-    Unified WatchlistX no longer enforces practical item limits.
+    Unified SignalFeed no longer enforces practical item limits.
 
     We still return a large integer for backwards-compatible payloads / older UI
     that expects a numeric ``watchlist_max`` field.

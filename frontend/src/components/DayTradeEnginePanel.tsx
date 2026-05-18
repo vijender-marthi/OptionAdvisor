@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle, RefreshCw, PlusCircle, Bell, BarChart2, Search, Star,
+  AlertTriangle, BriefcaseBusiness, Check, CheckCircle, RefreshCw, PlusCircle, Bell, BarChart2, Search, Star,
   TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, ShieldAlert,
   Activity, Target, Zap, Info, Layers,
 } from 'lucide-react'
-import type { DayTradeScanResult } from '../api/client'
+import type { AiCoachResult, DayTradeScanResult } from '../api/client'
+import type { PortfolioPosition } from '../types'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
@@ -348,6 +349,7 @@ function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, un
   const marketBias = formatLabel(result.market_bias).toLowerCase()
   const pullbackProb = formatLabel(result.entry_guidance?.pullback_probability).toLowerCase()
   const shouldEnter = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+  const isShort = result.bias === 'short'
 
   parts.push(
     result.market_bias
@@ -356,38 +358,58 @@ function computeIntradaySummary(result: DayTradeScanResult, m: Record<string, un
   )
 
   if (vwapDist != null) {
-    parts.push(
-      vwapDist >= 0
-        ? 'Price is holding above VWAP, so intraday structure is constructive.'
-        : 'Price is below VWAP, so reclaim confirmation still matters.'
-    )
+    if (isShort) {
+      parts.push(
+        vwapDist <= 0
+          ? 'Price is below VWAP — the bearish structure is in place.'
+          : 'Price is still above VWAP, so the short setup needs VWAP to break first.'
+      )
+    } else {
+      parts.push(
+        vwapDist >= 0
+          ? 'Price is holding above VWAP, so intraday structure is constructive.'
+          : 'Price is below VWAP, so a reclaim is needed before the long setup confirms.'
+      )
+    }
   }
 
   const orBreakoutCoach = String(m.or_breakout || '').toUpperCase()
-  if (orBreakoutCoach === 'ABOVE') {
-    parts.push('The ticker is trading above the opening range high, which supports continuation.')
-  } else if (orBreakoutCoach === 'BELOW') {
-    parts.push('The ticker is trading below the opening range low, which favors downside continuation.')
+  if (isShort) {
+    if (orBreakoutCoach === 'BELOW') {
+      parts.push('Price broke below the opening range low — downside continuation is favored.')
+    } else if (orBreakoutCoach === 'ABOVE') {
+      parts.push('Price is above the opening range — wait for a rejection and breakdown before shorting.')
+    } else {
+      parts.push('Price is inside the opening range — wait for a clean breakdown below ORL.')
+    }
   } else {
-    parts.push('Opening-range breakout is not fully confirmed yet.')
+    if (orBreakoutCoach === 'ABOVE') {
+      parts.push('The ticker is trading above the opening range high, which supports continuation.')
+    } else if (orBreakoutCoach === 'BELOW') {
+      parts.push('Price is below the opening range — a reclaim of ORL is needed before going long.')
+    } else {
+      parts.push('Opening-range breakout is not yet confirmed.')
+    }
   }
 
   if (volSpike) {
-    parts.push('Volume participation is expanding.')
+    parts.push('Volume is confirming the move.')
   } else {
     parts.push('Volume is not fully confirming yet.')
   }
 
   if (shouldEnter === 'YES') {
-    parts.push('Execution is ready if VWAP support remains intact.')
+    parts.push(isShort
+      ? 'Execution is ready — breakdown and structure align.'
+      : 'Execution is ready if VWAP support remains intact.')
   } else if (shouldEnter === 'CONDITIONAL') {
-    parts.push('Execution is conditional, so wait for the next confirmation candle.')
+    parts.push('Execution is conditional — wait for the next confirmation candle.')
   } else {
-    parts.push('Execution is not ready yet, so patience is better than chasing.')
+    parts.push('Execution is not ready yet. Patience is the trade.')
   }
 
   if (mom != null && Math.abs(mom) > 2) {
-    parts.push('Momentum is extended, so protect against chase risk.')
+    parts.push('Momentum is extended — protect against chase risk.')
   } else if (pullbackProb && pullbackProb !== '—') {
     parts.push(`Pullback probability is ${pullbackProb}.`)
   }
@@ -411,19 +433,30 @@ function computeIntradayManagementPlan(result: DayTradeScanResult, m: Record<str
   const volSpike = !!m.volume_spike
   const orBreakout = String(m.or_breakout || '').toUpperCase()
   const eg = result.entry_guidance
+  const isShort = result.bias === 'short'
 
   if (orBreakout === 'ABOVE' || orBreakout === 'BELOW') {
-    items.push('If the breakout works, scale some size into strength and keep the stop anchored to structure.')
+    items.push(isShort
+      ? 'If the breakdown extends, scale into weakness and keep the stop anchored above the trigger level.'
+      : 'If the breakout extends, scale into strength and keep the stop anchored to the breakout level.')
   }
-  if (vwapDist != null && vwapDist >= 0) {
-    items.push('If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.')
+  if (isShort) {
+    items.push(vwapDist != null && vwapDist <= 0
+      ? 'If price reclaims VWAP after entry, cut size immediately — the breakdown thesis is invalidated.'
+      : 'If price fails to break below VWAP, do not force entry; wait for the structure to develop.')
   } else {
-    items.push('If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
+    items.push(vwapDist != null && vwapDist >= 0
+      ? 'If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.'
+      : 'If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
   }
   if (!volSpike) {
-    items.push('If volume stays weak, avoid adding size even if price drifts higher.')
+    items.push(isShort
+      ? 'If volume stays weak, avoid adding to the short even if price drifts lower — low-volume drops reverse fast.'
+      : 'If volume stays weak, avoid adding size even if price drifts higher.')
   } else {
-    items.push('If volume fades after the entry candle, tighten stops under the most recent support.')
+    items.push(isShort
+      ? 'If volume fades after the entry candle, tighten stops above the most recent resistance.'
+      : 'If volume fades after the entry candle, tighten stops under the most recent support.')
   }
   if (mom != null && Math.abs(mom) > 2) {
     items.push('If extension keeps increasing, protect profits early and avoid turning an intraday trade into a hope trade.')
@@ -431,9 +464,11 @@ function computeIntradayManagementPlan(result: DayTradeScanResult, m: Record<str
     items.push('If momentum cools while structure holds, partial scale-outs are fine before reloading on confirmation.')
   }
   if (eg?.avoid) {
-    items.push(`Avoid condition: ${eg.avoid}`)
+    items.push(`Avoid: ${eg.avoid}`)
   } else {
-    items.push('If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
+    items.push(isShort
+      ? 'If price reclaims above the breakdown trigger and closes there, the short thesis is broken — step aside.'
+      : 'If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
   }
   return items
 }
@@ -447,18 +482,29 @@ function buildDayWalkthrough(result: DayTradeScanResult, m: Record<string, unkno
   const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
   const steps: string[] = []
 
+  const isShortWalk = result.bias === 'short'
   steps.push(result.market_bias ? `Market is ${marketBias.toLowerCase()}.` : 'Market context is mixed.')
   steps.push(
-    vwapDist != null && vwapDist >= 0
-      ? 'Price is holding above VWAP, so intraday structure is constructive.'
-      : 'Price is not holding above VWAP yet, so structure is still fragile.'
+    isShortWalk
+      ? vwapDist != null && vwapDist <= 0
+        ? 'Price is below VWAP — bearish intraday structure is confirmed.'
+        : 'Price is still above VWAP, so the short structure is not yet confirmed.'
+      : vwapDist != null && vwapDist >= 0
+        ? 'Price is holding above VWAP, so intraday structure is constructive.'
+        : 'Price is not holding above VWAP yet, so structure is still fragile.'
   )
   steps.push(
     orBreakout === 'ABOVE'
-      ? 'The breakout is present, but it still needs continuation quality.'
+      ? isShortWalk
+        ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
+        : 'The breakout is present, but it still needs continuation quality.'
       : orBreakout === 'BELOW'
-        ? 'Breakdown pressure exists, but follow-through still matters.'
-        : 'Opening-range confirmation is still missing.'
+        ? isShortWalk
+          ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
+          : 'Breakdown pressure exists below the opening range.'
+        : isShortWalk
+          ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
+          : 'Opening-range confirmation is still missing.'
   )
   steps.push(
     volSpike
@@ -521,28 +567,68 @@ function MiniLineChart({
 function MiniBarChart({
   values,
   color,
+  avgRef,
 }: {
   values: number[]
   color: string
+  /** Historical average volume for this time of day (same units as values). */
+  avgRef?: number
 }) {
   if (values.length < 2) {
     return <div className="rounded-lg border border-gray-800/80 bg-black/20 px-3 py-6 text-xs text-gray-500">Not enough data.</div>
   }
-  const max = Math.max(...values, 1)
+  const hasAvg = avgRef != null && avgRef > 0
+  const max = Math.max(...values, hasAvg ? avgRef : 0, 1)
+  const avgPct = hasAvg ? Math.min(94, (avgRef / max) * 100) : null
+
   return (
     <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3">
-      <div className="flex h-44 items-end gap-[2px]">
-        {values.map((value, index) => (
+      <div className="relative flex h-44 items-end gap-[2px]">
+        {values.map((value, index) => {
+          const aboveAvg = hasAvg ? value >= avgRef : true
+          return (
+            <div
+              key={`${index}-${value}`}
+              className="flex-1 rounded-t-sm"
+              style={{
+                height: `${Math.max(6, (value / max) * 100)}%`,
+                background: aboveAvg ? 'var(--chart-line-iv)' : color,
+                opacity: aboveAvg ? 0.88 : 0.45,
+              }}
+            />
+          )
+        })}
+        {avgPct != null && (
           <div
-            key={`${index}-${value}`}
-            className="flex-1 rounded-t-sm"
-            style={{
-              height: `${Math.max(6, (value / max) * 100)}%`,
-              background: color,
-            }}
-          />
-        ))}
+            className="pointer-events-none absolute inset-x-0"
+            style={{ bottom: `${avgPct}%` }}
+          >
+            <svg width="100%" height="1" className="overflow-visible">
+              <line
+                x1="0" y1="0" x2="100%" y2="0"
+                stroke="rgb(251 191 36 / 0.80)"
+                strokeWidth="1.5"
+                strokeDasharray="5 3"
+              />
+            </svg>
+            <span className="absolute right-0 -top-4 whitespace-nowrap rounded bg-black/75 px-1 py-0.5 text-[9px] font-semibold text-amber-300">
+              avg
+            </span>
+          </div>
+        )}
       </div>
+      {avgPct != null && (
+        <div className="mt-2 flex items-center gap-1.5 text-[10px]">
+          <svg width="16" height="6" className="shrink-0 overflow-visible">
+            <line x1="0" y1="3" x2="16" y2="3" stroke="rgb(251 191 36 / 0.75)" strokeWidth="1.5" strokeDasharray="4 2" />
+          </svg>
+          <span className="text-amber-400/80">avg vol for time of day</span>
+          <span className="ml-auto text-gray-500">
+            <span className="text-cyan-400">■</span> above avg&nbsp;
+            <span className="text-gray-500">■</span> below avg
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -551,10 +637,13 @@ function MiniBarChart({
 
 interface Props {
   result: DayTradeScanResult
+  existingPositions?: PortfolioPosition[]
   onRefresh?: () => void
   refreshing?: boolean
   showRefresh?: boolean
   onRequestEnterActiveTrade?: () => void
+  onAddToPortfolio?: () => void
+  onViewPositions?: () => void
   onOpenStrategyFinder?: () => void
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
@@ -564,15 +653,20 @@ interface Props {
 
 export default function DayTradeEnginePanel({
   result,
+  existingPositions = [],
   onRefresh,
   refreshing,
   showRefresh = true,
   onRequestEnterActiveTrade,
+  onAddToPortfolio,
+  onViewPositions,
   onOpenStrategyFinder,
   onOpenCommandCenter,
   onCreateAlert,
   onViewSignals,
 }: Props) {
+  const inPosition = existingPositions.length > 0
+  const latestPos  = existingPositions[existingPositions.length - 1]
   const [signalsOpen, setSignalsOpen] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
@@ -621,13 +715,22 @@ export default function DayTradeEnginePanel({
     ['iv_risk', optionRisk.iv_risk],
     ['liquidity_risk', optionRisk.liquidity_risk],
   ] as const) : []
-  const intradaySummary = computeIntradaySummary(result, m)
-  const bestNextStep = computeBestNextStep(result)
-  const managementPlan = computeIntradayManagementPlan(result, m)
+  // AI Coach — use structured data when available, fall back to deterministic helpers
+  const ac: AiCoachResult | undefined = result.ai_coach as AiCoachResult | undefined
+  const hasAiCoach = !!ac?.summary
+
+  const intradaySummary  = hasAiCoach ? (ac!.summary) : computeIntradaySummary(result, m)
+  const bestNextStep     = hasAiCoach ? (ac!.best_next_step) : computeBestNextStep(result)
+  const managementPlan   = computeIntradayManagementPlan(result, m)
   const walkthroughSteps = buildDayWalkthrough(result, m)
   const currentPrice = eg?.current_price ?? lastPrice
   const breakoutLevel = eg?.breakout_level
   const volumeSeries = chartBars?.map(bar => bar.v) ?? []
+  // Implied average volume for the current time of day: backend rvol = lastBar.v / avg_vol_for_time
+  const lastChartBar = chartBars?.[chartBars.length - 1] ?? null
+  const avgVolForTimeOfDay = lastChartBar != null && rvol != null && rvol > 0
+    ? lastChartBar.v / rvol
+    : null
   const momentumSeries = chartBars?.length
     ? chartBars.map(bar => ((bar.c / chartBars[0].o) - 1) * 100)
     : []
@@ -762,14 +865,59 @@ export default function DayTradeEnginePanel({
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
-            <BarChart2 size={12} />
-            AI Coach Summary
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+              <BarChart2 size={12} />
+              AI Coach Summary
+            </div>
+            {hasAiCoach && ac!._source && (
+              <span className="text-[9px] text-gray-600 font-mono uppercase tracking-widest">
+                {ac!._source === 'anthropic' ? '⚡ Claude' : ac!._source === 'openai' ? '⚡ GPT' : '◎ engine'}
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+
+          {/* Entry condition + invalidation — from ai_coach when available */}
+          {hasAiCoach && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Decision Tree — IF/THEN nodes */}
+          {hasAiCoach && ac!.decision_tree.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+              {ac!.decision_tree.map((node, i) => {
+                const actionColor =
+                  node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                  node.action === 'EXIT'  ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                  node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                  'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                return (
+                  <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                    <span className="font-semibold">IF</span> {node.if} →{' '}
+                    <span className="font-semibold">THEN</span> {node.then}
+                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>
+                      {node.action}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <div className="text-[11px] text-semantic-accent leading-relaxed">
-            Best setup: {computeBestNextStep(result)}
+            Best setup: {bestNextStep}
           </div>
         </div>
 
@@ -829,17 +977,27 @@ export default function DayTradeEnginePanel({
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming'}</span>
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">
+                    {hasAiCoach ? ac!.states.setup.label : (result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming')}
+                  </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {eg?.vwap != null && eg?.opening_range_high != null
-                    ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
-                    : eg?.vwap != null
-                      ? `VWAP $${eg.vwap.toFixed(2)}`
-                      : 'Key levels forming'}
+                  {hasAiCoach
+                    ? ac!.states.setup.detail
+                    : result.bias === 'short'
+                      ? eg?.vwap != null && eg?.opening_range_low != null
+                        ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
+                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key resistance levels forming'
+                      : eg?.vwap != null && eg?.opening_range_high != null
+                        ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
+                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key levels forming'}
                 </div>
                 <div className="text-[10px] text-amber-400/80 font-semibold">
-                  watch {eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'zone'}–{eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'trigger'} zone
+                  {hasAiCoach
+                    ? ac!.states.setup.key_levels.map(l => `$${l.toFixed(2)}`).join(' · ')
+                    : result.bias === 'short'
+                      ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
+                      : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
                 </div>
               </div>
               </div>
@@ -855,21 +1013,33 @@ export default function DayTradeEnginePanel({
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'PUT / SHORT' : 'CALL / LONG'}</span>
                   <span className="text-violet-300 font-mono text-[12px] font-semibold">
-                    {eg?.breakout_level != null
-                      ? `break & hold >$${eg.breakout_level.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `>$${eg.vwap.toFixed(2)} hold`
-                        : '—'}
+                    {result.bias === 'short'
+                      ? eg?.breakout_level != null
+                        ? `close & hold <$${eg.breakout_level.toFixed(2)}`
+                        : eg?.vwap != null
+                          ? `<$${eg.vwap.toFixed(2)} — hold below`
+                          : '—'
+                      : eg?.breakout_level != null
+                        ? `close & hold >$${eg.breakout_level.toFixed(2)}`
+                        : eg?.vwap != null
+                          ? `>$${eg.vwap.toFixed(2)} — hold above`
+                          : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {eg?.opening_range_high != null
-                    ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
-                    : eg?.vwap != null
-                      ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
-                      : 'await confirmation'}
+                  {result.bias === 'short'
+                    ? eg?.opening_range_low != null
+                      ? `sustained below ORL $${eg.opening_range_low.toFixed(2)} — no reclaim`
+                      : eg?.vwap != null
+                        ? `sustained below VWAP $${eg.vwap.toFixed(2)}`
+                        : 'await rejection confirmation'
+                    : eg?.opening_range_high != null
+                      ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
+                      : eg?.vwap != null
+                        ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
+                        : 'await breakout confirmation'}
                 </div>
               </div>
               </div>
@@ -882,18 +1052,24 @@ export default function DayTradeEnginePanel({
                 STATE 3: IN-PLAY
                 {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Active</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                {hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
                   <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                    {eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                    {hasAiCoach && ac!.states.in_play.target > 0
+                      ? `TP $${ac!.states.in_play.target.toFixed(2)}`
+                      : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
-                    : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
+                  {hasAiCoach
+                    ? ac!.states.in_play.add_condition
+                    : result.bias === 'short'
+                      ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
+                      : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
                 </div>
               </div>
               </div>
@@ -906,19 +1082,25 @@ export default function DayTradeEnginePanel({
                 STATE 4: EXIT
                 {activeState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Completion / Reset</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                {hasAiCoach ? ac!.states.exit.label : 'Completion / Reset'}
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
                   <span className="text-red-300 font-mono text-[12px] font-semibold">
-                    {eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
+                    {hasAiCoach && ac!.states.exit.stop_loss > 0
+                      ? `$${ac!.states.exit.stop_loss.toFixed(2)}`
+                      : eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? 'VWAP break or loss of ORL'
-                    : 'VWAP break or loss of ORH'}
-                  {eg?.scalp_target != null && ` · full exit / scale out at TP`}
+                  {hasAiCoach
+                    ? ac!.states.exit.exit_condition
+                    : result.bias === 'short'
+                      ? 'VWAP reclaimed above · or ORL closed back above → cover'
+                      : 'VWAP lost below · or ORH closed back below → exit'}
+                  {eg?.scalp_target != null && ` · scale out at TP`}
                 </div>
               </div>
               </div>
@@ -928,17 +1110,64 @@ export default function DayTradeEnginePanel({
           )
         })()}
 
+        {inPosition && latestPos && (
+          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Check size={14} className="text-amber-400 shrink-0" />
+              <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">Already in Position</span>
+              {latestPos.source && (
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  latestPos.source === 'day'   ? 'border-orange-600/40 bg-orange-900/30 text-orange-300' :
+                  latestPos.source === 'swing' ? 'border-blue-600/40 bg-blue-900/30 text-blue-300' :
+                                                 'border-gray-600/40 bg-gray-800/50 text-gray-400'
+                }`}>{latestPos.source}</span>
+              )}
+              {existingPositions.length > 1 && (
+                <span className="text-[10px] text-amber-400/70">{existingPositions.length} open positions</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-200/80">
+              {latestPos.strategy && <span><span className="text-amber-400/60">Strategy</span> {latestPos.strategy}</span>}
+              {latestPos.contracts > 0 && <span><span className="text-amber-400/60">Contracts</span> {latestPos.contracts}</span>}
+              {latestPos.entryPrice > 0 && <span><span className="text-amber-400/60">Entry px</span> ${latestPos.entryPrice.toFixed(2)}</span>}
+              {latestPos.addedAt && <span><span className="text-amber-400/60">Added</span> {latestPos.addedAt.slice(0, 10)}</span>}
+            </div>
+            <p className="text-[11px] text-amber-200/70 leading-snug">
+              Follow your exit rules — manage this position rather than adding again without a clear plan.
+            </p>
+          </div>
+        )}
+
         <MarketTimeGateBanner tradeType="day" />
 
         <div className="flex flex-wrap items-center gap-2">
+          {inPosition ? (
+            <button
+              type="button"
+              onClick={onViewPositions}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50`}
+            >
+              <BriefcaseBusiness size={14} />
+              View Positions
+            </button>
+          ) : (
+          <button
+            type="button"
+            onClick={onAddToPortfolio}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
+          >
+            <PlusCircle size={14} />
+            Add to Portfolio
+          </button>
+          )}
           {onRequestEnterActiveTrade && (
             <button
               type="button"
               onClick={onRequestEnterActiveTrade}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
             >
-              <PlusCircle size={14} />
-              Add to Positions
+              <Activity size={14} />
+              Track Intraday
             </button>
           )}
           {onCreateAlert && (
@@ -1042,18 +1271,22 @@ export default function DayTradeEnginePanel({
             <ExecMapRow label="VWAP" value={eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : vwapValue != null ? `$${vwapValue.toFixed(2)}` : null} tone={vwapTone} />
             <ExecMapRow label="ORH" value={eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : null} tone={orBreakoutTone} />
             <ExecMapRow label="ORL" value={eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : null} tone={orBreakoutTone} />
-            <ExecMapRow label="Breakout Level" value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
-            <ExecMapRow label="Pullback Zone" value={eg?.pullback_zone ?? null} />
+            <ExecMapRow label={result.bias === 'short' ? 'Breakdown Level' : 'Breakout Level'} value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
+            <ExecMapRow label={result.bias === 'short' ? 'Bounce Zone' : 'Pullback Zone'} value={eg?.pullback_zone ?? null} />
             <ExecMapRow label="Scalp Target" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
-            <ExecMapRow label="Risk Below" value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
+            <ExecMapRow label={result.bias === 'short' ? 'Stop Above' : 'Stop Below'} value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
           </div>
           )
         })()}
 
         <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-xs text-gray-300 leading-relaxed">
-          {vwapDist != null && vwapDist >= 0
-            ? 'Price above VWAP and above the opening structure supports continuation, but the best entry still depends on breakout quality and volume.'
-            : 'Until price reclaims VWAP or confirms the breakdown, intraday structure is still incomplete.'}
+          {result.bias === 'short'
+            ? vwapDist != null && vwapDist <= 0
+              ? 'Price is below VWAP — bearish structure is confirmed. Look for a clean breakdown below ORL with volume expansion to trigger the PUT.'
+              : 'Price is still above VWAP — wait for it to break and hold below before committing to a short position.'
+            : vwapDist != null && vwapDist >= 0
+              ? 'Price above VWAP and above the opening structure supports continuation. Best entry still depends on breakout quality and volume expansion.'
+              : 'Until price reclaims VWAP with conviction, intraday structure is incomplete for a long entry.'}
         </div>
       </div>
 
@@ -1175,6 +1408,14 @@ export default function DayTradeEnginePanel({
         ) : (
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 text-xs text-gray-400">
             No option-risk overlay is available for this symbol yet. Use the equity setup first, then verify contract quality separately.
+          </div>
+        )}
+
+        {/* AI Coach options note */}
+        {hasAiCoach && ac!.options_note && (
+          <div className="rounded-xl border border-violet-700/40 bg-violet-950/20 px-3 py-2.5 flex items-start gap-2">
+            <span className="mt-0.5 text-[10px] text-violet-400 font-bold uppercase tracking-widest shrink-0">AI Coach</span>
+            <span className="text-[11px] text-gray-300 leading-relaxed">{ac!.options_note}</span>
           </div>
         )}
       </div>
@@ -1375,15 +1616,17 @@ export default function DayTradeEnginePanel({
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
                       ? 'Session view: watch the relationship between price, VWAP, and the opening range before forcing an entry.'
-                      : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear the opening-range trigger with real participation.'}
+                      : result.bias === 'short'
+                        ? 'VWAP + OR view: the cleanest short setups stay below VWAP and break through ORL with real participation — not just a wick.'
+                        : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear ORH with real participation — not just a wick.'}
                   </div>
                 </div>
               ) : null}
 
               {chartTab === 'volume' ? (
                 <div className="space-y-2">
-                  <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" />
-                  <div className="text-xs text-gray-400">Volume should expand into the breakout candle, not shrink while price stretches.</div>
+                  <MiniBarChart values={volumeSeries} color="var(--chart-line-rsi)" avgRef={avgVolForTimeOfDay ?? undefined} />
+                  <div className="text-xs text-gray-400">{result.bias === 'short' ? 'Volume should expand into the breakdown candle — low-volume drops are traps, not entries.' : 'Volume should expand into the breakout candle, not shrink while price stretches.'}</div>
                 </div>
               ) : null}
 

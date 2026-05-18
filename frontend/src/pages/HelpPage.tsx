@@ -93,9 +93,10 @@ const checklistItems = [
 ]
 
 const verdictRules = [
-  { verdict: 'GO', color: 'text-emerald-400', badge: 'bg-emerald-900/40 border-emerald-700 text-emerald-300', icon: <CheckCircle2 size={15} />, desc: 'No hard fails, zero soft fails, edge ratio ≥ 5% of max loss (no Kelly Edge thin-edge warning), and fewer than 5 warnings total. This is the cleanest actionable verdict.' },
-  { verdict: 'CAUTION', color: 'text-amber-400', badge: 'bg-amber-900/40 border-amber-700 text-amber-300', icon: <AlertTriangle size={15} />, desc: 'No hard fails, but either a thin Kelly edge (EV ÷ max loss below 5%), one soft fail, or five or more warnings. The setup may still be tradeable — reduce size and review every checklist row.' },
-  { verdict: 'NO GO', color: 'text-red-400', badge: 'bg-red-900/40 border-red-700 text-red-300', icon: <XCircle size={15} />, desc: 'One or more hard fails, or 2+ soft fails. The trade does not pass minimum quality thresholds — skip or wait for better conditions.' },
+  { verdict: 'STATE 2: ENTRY', color: 'text-emerald-400', badge: 'bg-emerald-900/40 border-emerald-700 text-emerald-300', icon: <CheckCircle2 size={15} />, desc: 'All conditions aligned. Score ≥ 70, IV fits the strategy, all filters pass, and internal verdict is GO. Execute at the next clean entry point — no averaging, no anticipation.' },
+  { verdict: 'STATE 1: SETUP', color: 'text-amber-400', badge: 'bg-amber-900/40 border-amber-700 text-amber-300', icon: <AlertTriangle size={15} />, desc: 'Conditions mostly there. Score ≥ 55 and liquidity passes, but one soft fail, thin edge, or IV mismatch remains. Monitor and prepare — do not enter yet.' },
+  { verdict: 'WATCH', color: 'text-sky-400', badge: 'bg-sky-900/40 border-sky-700 text-sky-300', icon: <Eye size={15} />, desc: 'Conditions building but not ready. Score is between 40–55 or multiple filters are failing. Set alerts and re-analyze when the score reaches 70 and IV fits.' },
+  { verdict: 'AVOID', color: 'text-red-400', badge: 'bg-red-900/40 border-red-700 text-red-300', icon: <XCircle size={15} />, desc: 'Hard fail present or score below 40. Internal verdict is NO GO. The trade does not pass minimum thresholds — skip entirely and wait for conditions to change.' },
 ]
 
 const glossaryTerms = [
@@ -144,8 +145,8 @@ const workflowSteps = [
   { step: '1', title: 'Browse AI Radar', icon: <Brain size={16} />, color: 'text-violet-400', desc: 'Start in AI Radar to survey the ~60 AI/datacenter stocks organized by category (Chips, Software, Pure-Play, Data Centers, Power, Semicon Equip, Optical Networking, Networking, Applications). Click Analyze to instantly load any ticker.' },
   { step: '2', title: 'Add to Watchlist', icon: <Star size={16} />, color: 'text-yellow-400', desc: 'Star any ticker to add it to your Watchlist. The Watchlist groups tickers by their AI Radar category and shows last price. Background refresh keeps prices and signals current every 15 minutes.' },
   { step: '3', title: 'Analyze in Strategy Finder', icon: <BarChart2 size={16} />, color: 'text-sky-400', desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w: 0w, 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.' },
-  { step: '4', title: 'Review Pre-Trade Checklist', icon: <CheckCircle2 size={16} />, color: 'text-emerald-400', desc: 'Each recommendation shows a GO / CAUTION / NO GO verdict badge. Expand the checklist inside each card to see all 10 check items, their pass/warn/fail status, and exact entry timing and exit rules for that specific trade.' },
-  { step: '5', title: 'Scan Trade Signals', icon: <Radar size={16} />, color: 'text-amber-400', desc: 'Trade Signals shows every watchlist ticker with pre-trade verdicts for analyzed DTE windows (0w, 1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by GO / CAUTION / NO GO to find the best setups across your list.' },
+  { step: '4', title: 'Review Pre-Trade Checklist', icon: <CheckCircle2 size={16} />, color: 'text-emerald-400', desc: 'Each recommendation card shows a state badge (STATE 2: ENTRY, STATE 1: SETUP, WATCH, AVOID) and total score. Expand the card to see the pre-trade checklist with all check items, their pass/warn/fail status, and exact entry timing and exit rules for that specific trade.' },
+  { step: '5', title: 'Scan Trade Signals', icon: <Radar size={16} />, color: 'text-amber-400', desc: 'Trade Signals shows every watchlist ticker with 4-state entry ratings for analyzed DTE windows (0w, 1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by Entry / Setup / Watch / Avoid to find the best setups across your list.' },
   { step: '6', title: 'Add to Portfolio', icon: <Briefcase size={16} />, color: 'text-indigo-400', desc: 'Click "Add to Portfolio" on any recommendation. The contract picker shows Kelly Criterion sizing — how many contracts are mathematically optimal for your account size. Kelly data (edge ratio, Half-Kelly %, capital at risk) is saved with the position so you can review your sizing discipline later.' },
   { step: '7', title: 'Backtest Lab', icon: <FlaskConical size={16} />, color: 'text-violet-400', desc: 'Run walk-forward backtests on historical signals: synthetic Black–Scholes pricing with HV-20×1.15 as an IV proxy, standard exit rules (credit/debit), equity curve, trade log, and stats. For research — not live execution.' },
   { step: '8', title: 'Trade Journal', icon: <NotebookPen size={16} />, color: 'text-sky-400', desc: 'Save real trades from an expanded recommendation via "Save to Journal". Track open MTM P&L, refresh quotes, add notes, close with exit reason, or delete. Filter by All / Open / Closed / Expired.' },
@@ -175,7 +176,7 @@ const positionLifecycleStates = [
 
 const tradeLifecycleStages = [
   { stage: 'DISCOVER', subtitle: 'Find opportunities', desc: 'Browse AI Radar categories, scan Trade Signals, or load a ticker in Strategy Finder. The engine surfaces candidates based on market conditions.' },
-  { stage: 'ANALYZE', subtitle: 'Evaluate setup quality', desc: 'Run the pre-trade checklist. Each trade gets a GO, CAUTION, or NO GO verdict backed by 10 independent validation checks.' },
+  { stage: 'ANALYZE', subtitle: 'Evaluate setup quality', desc: 'Run the pre-trade checklist. Each trade receives a 4-state entry rating — STATE 2: ENTRY, STATE 1: SETUP, WATCH, or AVOID — backed by 10 independent validation checks.' },
   { stage: 'READY', subtitle: 'Clear to enter', desc: 'Setup quality is GOOD, execution status is READY. Entry conditions are met or imminent. Proceed with position sizing.' },
   { stage: 'EXECUTE', subtitle: 'Place the trade', desc: 'Choose contract structure in the picker. Kelly sizing determines optimal capital allocation. Add to Portfolio to track.' },
   { stage: 'MANAGE', subtitle: 'Monitor and adjust', desc: 'Track open P&L, monitor risk flags, set alerts for key levels. The engine provides live decision guidance.' },
@@ -469,8 +470,15 @@ function strikeLine(x: number, h: number, color: string) {
 // ─── Page ───────────────────────────────────────────────────────────
 
 export default function HelpPage({ embedded }: { embedded?: boolean }) {
-  const { user } = useApp()
+  const { user, canAccessPage } = useApp()
   const isAdmin = normalizeUserRole(user?.role) === 'admin'
+  const canDay   = canAccessPage('day-trade')
+  const canSwing = canAccessPage('swing-trade')
+  const visibleNavSections = NAV_SECTIONS.filter(s =>
+    s.id !== 'day-trade' && s.id !== 'swing-trade'
+      ? true
+      : s.id === 'day-trade' ? canDay : canSwing
+  )
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
@@ -484,7 +492,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
       tickingRef.current = true
       requestAnimationFrame(() => {
         const offset = 120
-        for (const s of [...NAV_SECTIONS].reverse()) {
+        for (const s of [...visibleNavSections].reverse()) {
           const el = document.getElementById(s.id)
           if (el && el.getBoundingClientRect().top <= offset) {
             setActiveSection(s.id)
@@ -499,10 +507,10 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
   }, [embedded])
 
   const filteredNav = useMemo(() => {
-    if (!searchQuery) return NAV_SECTIONS
+    if (!searchQuery) return visibleNavSections
     const q = searchQuery.toLowerCase()
-    return NAV_SECTIONS.filter(s => s.label.toLowerCase().includes(q))
-  }, [searchQuery])
+    return visibleNavSections.filter(s => s.label.toLowerCase().includes(q))
+  }, [searchQuery, visibleNavSections])
 
   // Preserve the role check (keep ai-radar section hidden for finance accounts)
   const showAiRadar = true // Help is open-docs
@@ -1767,6 +1775,58 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<Layers size={15} />} title="4-State Entry System">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>Every recommendation card and the Trade Signals page shows one of four entry states. The state is derived from the internal pre-trade checklist verdict combined with score, IV fit, and filter results.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      {
+                        num: 'STATE 2', label: 'ENTRY', color: 'emerald',
+                        badgeCls: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+                        conditions: 'Internal verdict = GO · Score ≥ 70 · IV fits strategy · All filters pass (R:R, liquidity, credit ≥ 25%)',
+                        action: 'Enter now. Sell credit spreads: stop at 2× credit, target 50% profit. Buy debit: stop at 50% of premium, target 100%.',
+                      },
+                      {
+                        num: 'STATE 1', label: 'SETUP', color: 'amber',
+                        badgeCls: 'bg-amber-900/50 text-amber-300 border-amber-700',
+                        conditions: 'Verdict = GO or CAUTION · Score ≥ 55 · Liquidity passes · One soft fail, thin edge, or IV mismatch remains',
+                        action: 'Setup in progress. Monitor the missing conditions listed on the card. Do not enter — one or more gates are not yet cleared.',
+                      },
+                      {
+                        num: 'WATCH', label: 'WATCH', color: 'sky',
+                        badgeCls: 'bg-sky-900/40 text-sky-300 border-sky-700',
+                        conditions: 'No hard fails · Score 40–55 · Multiple filters failing or IV not yet aligned',
+                        action: 'Set an alert and re-analyze when conditions improve. The directional bias may be forming but the structure is not ready.',
+                      },
+                      {
+                        num: 'AVOID', label: 'AVOID', color: 'red',
+                        badgeCls: 'bg-red-900/40 text-red-300 border-red-800',
+                        conditions: 'Verdict = NO GO OR score < 40. Hard fail present (EV ≤ 0, DTE too short, liquidity failure, IV mismatch)',
+                        action: 'Skip entirely. The trade fails minimum quality thresholds. Re-evaluate after conditions change.',
+                      },
+                    ].map(s => (
+                      <div key={s.num} className="rounded-lg border border-gray-700/50 bg-gray-800/30 px-3 py-2.5 space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${s.badgeCls}`}>{s.num}: {s.label}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-gray-300">When: </span>
+                          <span className="text-[10px]">{s.conditions}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-gray-300">Action: </span>
+                          <span className="text-[10px]">{s.action}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-violet-800/30 bg-violet-950/10 px-3 py-2">
+                    <p className="text-[10px] text-violet-300 font-semibold mb-0.5">Reading the state badge tooltip</p>
+                    <p className="text-[10px]">Hover the state badge on any recommendation card to see the exact score, IV Rank, and which conditions are still missing. The tooltip lists each unmet condition so you know precisely what to watch for.</p>
+                  </div>
+                </div>
+              </DocCard>
+
               <DocCard icon={<Filter size={15} />} title="Strategy Selection Matrix">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -2372,10 +2432,10 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               </div>
             </DocCard>
 
-            <DocCard icon={<Scale size={15} />} title="Verdict Decision Flow">
+            <DocCard icon={<Scale size={15} />} title="Entry State Decision Flow">
               <div className="rounded-xl border border-gray-800 bg-gray-950/30 p-4 mb-3">
                 <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  {['10 Checks', 'Hard Fail Detection', 'Soft Fail Count', 'Warning Stack', 'Kelly Edge Validation', 'Final Verdict'].map((step, i) => (
+                  {['10 Checks', 'Hard Fail Detection', 'Soft Fail Count', 'Warning Stack', 'Kelly Edge Validation', 'Entry State'].map((step, i) => (
                     <div key={step} className="flex items-center gap-2">
                       <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 text-gray-300 font-medium">{step}</span>
                       {i < 5 && <ChevronRight size={11} className="text-gray-700" />}
@@ -2383,7 +2443,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   ))}
                 </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {verdictRules.map(v => (
                   <div key={v.verdict} className="rounded-lg border border-gray-800 bg-black/20 px-3 py-3">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -2428,7 +2488,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   <span className="text-xs font-bold text-rose-200">Fatal — trade is rejected</span>
                 </div>
                 <ul className="space-y-1.5 text-[11px] text-gray-400">
-                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />A single hard fail triggers an automatic NO GO verdict</li>
+                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />A single hard fail triggers an automatic AVOID state</li>
                   <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />The trade cannot proceed regardless of other check results</li>
                   <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />Example: EV ≤ 0, DTE &lt; 14, IV environment mismatch, liquidity failure</li>
                   <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />Hard fails protect traders from mathematically unsound or structurally flawed trades</li>
@@ -2441,8 +2501,8 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   <span className="text-xs font-bold text-amber-200">Cautionary — trade is downgraded</span>
                 </div>
                 <ul className="space-y-1.5 text-[11px] text-gray-400">
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Soft fails downgrade the verdict to CAUTION but do not block the trade</li>
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />2+ soft fails trigger a NO GO even with zero hard fails</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Soft fails downgrade the trade to STATE 1: SETUP — conditions forming but not ready to enter</li>
+                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />2+ soft fails can push the state to AVOID even with zero hard fails</li>
                   <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Example: RSI caution zone, MACD divergence, weak confidence, borderline risk/reward</li>
                   <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />Soft fails signal: "proceed carefully — reduce size, tighten stops"</li>
                 </ul>
@@ -2468,9 +2528,10 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <p>Soft fails and warnings stack to determine the final verdict:</p>
                 <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-4 py-3 space-y-1.5">
                   {[
-                    { condition: '0 hard fails + 0 soft fails + &lt;5 warnings + edge ≥ 5%', result: 'GO', tone: 'text-emerald-400' },
-                    { condition: '0 hard fails + 1 soft fail OR &lt;5 warnings OR thin edge', result: 'CAUTION', tone: 'text-amber-400' },
-                    { condition: '1+ hard fails OR 2+ soft fails', result: 'NO GO', tone: 'text-red-400' },
+                    { condition: '0 hard fails + 0 soft fails + &lt;5 warnings + edge ≥ 5% + score ≥ 70 + IV fits', result: 'STATE 2: ENTRY', tone: 'text-emerald-400' },
+                    { condition: '0 hard fails + score ≥ 55 + liquidity passes (1 soft fail or thin edge or warnings ≥ 5)', result: 'STATE 1: SETUP', tone: 'text-amber-400' },
+                    { condition: '0 hard fails + score 40–55 (not yet setup-ready)', result: 'WATCH', tone: 'text-sky-400' },
+                    { condition: '1+ hard fails OR score &lt; 40', result: 'AVOID', tone: 'text-red-400' },
                   ].map(r => (
                     <div key={r.result} className="flex items-start gap-2 text-[11px]">
                       <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-gray-600 shrink-0" />
@@ -2994,7 +3055,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   { q: 'Why are NO GO trades shown?', a: 'NO GO trades are shown for transparency. Even rejected trades help you understand what the engine is seeing and why. When market conditions improve, previously NO GO setups may become actionable.' },
                   { q: 'Why does Swing use 21–42 DTE for 3–5 day holds?', a: 'Longer DTE reduces gamma risk, gives the thesis time to develop, provides exit flexibility (close early with time premium remaining), and buffers against unexpected events. The holding period is about when you plan to exit; the DTE is about managing risk while you hold.' },
                   { q: 'What does confidence actually mean?', a: 'Confidence is a composite of signal consistency: MA alignment, MACD confirmation, RSI health, volume participation, and VIX context. Higher confidence means the signals are in greater agreement — it does NOT guarantee profit or predict magnitude.' },
-                  { q: 'What is the difference between WATCH and WAIT?', a: 'WATCH means the direction is established but entry confirmation is needed. WAIT means conditions are not yet favorable for entry. WAIT is a stronger signal to be patient.' },
+                  { q: 'What do the state badges mean?', a: 'STATE 2: ENTRY (emerald with glow) — all conditions aligned, enter now. STATE 1: SETUP (amber) — conditions forming, monitor for alignment. WATCH (sky) — not ready yet, keep monitoring. AVOID (red) — critical conditions not met, do not trade.' },
                   { q: 'Can I override the engine recommendations?', a: 'The engine is a systematic screen, not an advisor. You have full discretion over every trade. Manual strategy mode overrides (All, Long Options, Credit Spreads, Straddles) let you restrict which strategies the engine considers.' },
                 ].map(faq => (
                   <div key={faq.q} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5">

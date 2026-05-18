@@ -52,7 +52,7 @@ def _confidence_band(confidence: int) -> str:
 def _risk_band_from_vix(vix: Optional[float], default: str = "MEDIUM") -> str:
     if vix is None:
         return default
-    if vix >= 30:
+    if vix >= 25:
         return "HIGH"
     if vix >= 20:
         return "MEDIUM"
@@ -99,7 +99,7 @@ def _execution_bias_day(verdict: str, entry_guidance: dict) -> str:
 
     if should_enter == "YES":
         return "ENTER_NOW"
-    if "PULLBACK" in eg_state or "pullback" in str(eg.get("pullback_probability") or "").lower():
+    if "PULLBACK" in eg_state:
         return "WAIT_FOR_PULLBACK"
     if should_enter == "CONDITIONAL" or "WAIT" in eg_state:
         return "WAIT_FOR_CONFIRMATION"
@@ -233,7 +233,7 @@ def _day_verdict_to_state(verdict: str, vix: Optional[float]) -> str:
     downgrade = vix is not None and vix >= 30
 
     if v == "STRONG-GO":
-        return "WATCH" if downgrade else "GO"
+        return "READY" if downgrade else "GO"
     if v == "GO":
         return "WATCH" if downgrade else "READY"
     if v == "WATCH":
@@ -343,9 +343,9 @@ def _swing_quality_to_state(
     if tqs >= 5.0:
         return "WATCH"
 
-    # Low-score: use final_action labels
+    # Low-score: use final_action labels but don't elevate to GO when score is low
     if fa.startswith("STRONG_GO") or fa in ("QUALITY_LONG", "QUALITY_SHORT", "STRONG_GO_CALL", "STRONG_GO_PUT"):
-        return "WATCH" if downgrade else "GO"
+        return "WATCH"  # score too low for full GO elevation
     if fa.startswith("WATCH") or fa.startswith("WAIT_PULLBACK"):
         return "WATCH"
     if fa.startswith("WAIT_BREAKOUT") or fa.startswith("WAIT"):
@@ -362,6 +362,21 @@ def _swing_quality_to_state(
 # Regular (options) engine normalizer
 # ---------------------------------------------------------------------------
 
+def _regular_score_to_norm(raw: float) -> int:
+    """Map total_score (0-100) to 0-100 normalized scale anchored on state thresholds:
+      GO    >= 70  →  ~85
+      READY >= 50  →  ~60
+      WATCH >= 30  →  ~30
+    """
+    if raw >= 70:
+        return min(100, int(round(85 + (raw - 70) / 30 * 15)))
+    if raw >= 50:
+        return int(round(60 + (raw - 50) / 20 * 25))
+    if raw >= 30:
+        return int(round(30 + (raw - 30) / 20 * 30))
+    return int(round(raw / 30 * 30))
+
+
 def normalize_regular_score(
     *,
     top_candidate: Optional[dict],
@@ -377,7 +392,7 @@ def normalize_regular_score(
     if top_candidate is not None:
         scores = top_candidate.get("scores") or {}
         raw = float(scores.get("total_score") or 0.0)
-        norm_score = min(int(round(raw)), 100)
+        norm_score = _regular_score_to_norm(raw)
 
     sig = signals or {}
     bias_conf = int(sig.get("bias_confidence") or 0)

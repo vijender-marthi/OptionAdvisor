@@ -143,6 +143,49 @@ export interface DayOptionRiskContext {
   option_execution_warning: string
 }
 
+// ─── AI Coach types ────────────────────────────────────────────────────────────
+
+export type AiCoachAction    = 'WATCH' | 'ENTER' | 'EXIT' | 'HOLD'
+export type AiCoachSetupType = 'CALL' | 'PUT' | 'SPREAD' | 'NONE'
+export type AiCoachBias      = 'bullish' | 'bearish' | 'neutral'
+export type AiCoachRisk      = 'LOW' | 'MEDIUM' | 'HIGH'
+export type AiCoachTreeAction = 'ENTER' | 'WAIT' | 'EXIT' | 'AVOID'
+
+export interface AiCoachResult {
+  ticker:     string
+  timestamp:  string
+  setup_type: AiCoachSetupType
+  bias:       AiCoachBias
+  confidence: number
+  action:     AiCoachAction
+  risk:       AiCoachRisk
+  market_context: {
+    spy_alignment:    boolean
+    spy_note:         string
+    volume_confirmed: boolean
+    relative_strength: 'strong' | 'weak' | 'neutral'
+  }
+  summary:         string
+  entry_condition: string
+  invalidation:    string
+  states: {
+    setup:   { label: string; detail: string; key_levels: number[] }
+    entry:   { label: string; trigger: string; price: number }
+    in_play: { label: string; target: number; trail_level: number; add_condition: string }
+    exit:    { label: string; stop_loss: number; exit_condition: string }
+  }
+  decision_tree: Array<{
+    if:         string
+    then:       string
+    action:     AiCoachTreeAction
+    confidence: 'high' | 'medium' | 'low'
+  }>
+  best_next_step: string
+  options_note:   string
+  /** 'anthropic' | 'openai' | 'deterministic' — for debugging */
+  _source?: string
+}
+
 /** Intraday day-trade scan — verdict tiers: STRONG GO, GO, WATCH, NO-GO, WAIT. */
 export interface DayTradeScanResult {
   ticker: string
@@ -213,6 +256,8 @@ export interface DayTradeScanResult {
   }
   /** Lightweight options execution context — warning-only, not a strategy builder. */
   option_risk_context?: DayOptionRiskContext
+  /** Structured AI coaching summary — Anthropic / OpenAI / deterministic fallback. */
+  ai_coach?: AiCoachResult
 }
 
 export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {

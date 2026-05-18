@@ -17,7 +17,7 @@ function fmtTime(value?: string | null): string {
   if (!value) return '—'
   const ts = Date.parse(value)
   if (!Number.isFinite(ts)) return '—'
-  return new Date(ts).toLocaleString()
+  return new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET'
 }
 
 function SeverityBadge({ severity }: { severity: UnifiedAlert['severity'] }) {
@@ -85,7 +85,15 @@ function longText(text: string): boolean {
 
 export default function AlertCenter() {
   const navigate = useNavigate()
-  const { requestAnalysis } = useApp()
+  const { requestAnalysis, canAccessPage } = useApp()
+  const canDay   = canAccessPage('day-trade')
+  const canSwing = canAccessPage('swing-trade')
+
+  const visibleSections = SECTION_ORDER.filter(s => {
+    if (s.key === 'day_trade')   return canDay
+    if (s.key === 'swing_trade') return canSwing
+    return true
+  })
   const [payload, setPayload] = useState<AlertCenterPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [engineType, setEngineType] = useState('')
@@ -133,7 +141,13 @@ export default function AlertCenter() {
     void load()
   }, [load])
 
-  const alerts = payload?.alerts ?? []
+  const allAlerts = payload?.alerts ?? []
+  const alerts = allAlerts.filter(a => {
+    const t = String(a.engine_type || '').toUpperCase()
+    if (t === 'DAY')   return canDay
+    if (t === 'SWING') return canSwing
+    return true
+  })
   const sections = payload?.sections ?? {
     day_trade: [],
     swing_trade: [],
@@ -174,7 +188,7 @@ export default function AlertCenter() {
   }
 
   return (
-    <div className="oa-cc-page mx-auto max-w-6xl space-y-6 px-4 py-6">
+    <div className="oa-cc-page mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-100">Alert Center</h1>
@@ -209,8 +223,8 @@ export default function AlertCenter() {
             className="mt-1 block w-full min-w-[100px] sm:w-36 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
           >
             <option value="">All</option>
-            <option value="DAY">Day</option>
-            <option value="SWING">Swing</option>
+            {canDay   && <option value="DAY">Day</option>}
+            {canSwing && <option value="SWING">Swing</option>}
             <option value="REGULAR">Regular</option>
             <option value="PORTFOLIO">Portfolio</option>
             <option value="MARKET">Market</option>
@@ -261,7 +275,7 @@ export default function AlertCenter() {
         </label>
       </div>
 
-      {SECTION_ORDER.map(section => {
+      {visibleSections.map(section => {
         const rows = sections[section.key] ?? []
         const open = !collapsed[section.key]
         return (

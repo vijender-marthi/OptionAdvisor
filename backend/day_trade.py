@@ -188,6 +188,34 @@ def _info_opt_float(info: dict[str, Any], key: str) -> Optional[float]:
     return x if math.isfinite(x) else None
 
 
+def _spy_daily_trend(force_refresh: bool = False) -> dict:
+    """SPY daily trend context: pct_change, rsi, ma50_slope."""
+    ctx: dict = {"pct": None, "rsi": None, "ma50_slope": None}
+    try:
+        h = bar_cache.get_history("SPY", period="4mo", interval="1d", force_refresh=force_refresh)
+        if h is None or len(h) < 60:
+            return ctx
+        close = h["Close"].astype(float).sort_index()
+        last_c = float(close.iloc[-1])
+        prev_c = float(close.iloc[-2]) if len(close) > 1 else last_c
+        ctx["pct"] = round((last_c / prev_c - 1.0) * 100, 3) if prev_c > 0 else 0.0
+        delta = close.diff()
+        gain = delta.clip(lower=0.0)
+        loss = (-delta).clip(lower=0.0)
+        avg_g = gain.ewm(com=13, adjust=False).mean()
+        avg_l = loss.ewm(com=13, adjust=False).mean()
+        rs = avg_g / avg_l.replace(0, 1e-10)
+        rsi_ser = 100.0 - 100.0 / (1.0 + rs)
+        ctx["rsi"] = round(float(rsi_ser.iloc[-1]), 1)
+        ma50 = close.rolling(50).mean()
+        ma50_now = float(ma50.iloc[-1])
+        ma50_10ago = float(ma50.iloc[-11]) if len(ma50) >= 11 else ma50_now
+        ctx["ma50_slope"] = round((ma50_now - ma50_10ago) / ma50_10ago * 100, 4) if ma50_10ago > 0 else 0.0
+    except Exception:
+        pass
+    return ctx
+
+
 def _index_change_pct(sym: str, force_refresh: bool = False) -> Optional[float]:
     """Session-to-session % change for an index ticker, via bar_cache."""
     try:
@@ -369,9 +397,10 @@ def _build_day_exit_rules(
             })
         # VWAP loss guard
         if vwap is not None:
+            vwap_stop = round(vwap * 0.998, 2)
             rules.append({
                 "trigger": "Price loses VWAP",
-                "price":   round(vwap, 2),
+                "price":   vwap_stop,
                 "action":  "Exit full position",
                 "note":    "Intraday structure failed — do not hold through VWAP loss",
             })
@@ -401,9 +430,10 @@ def _build_day_exit_rules(
                 "note":    "Intraday trade complete — flat before close",
             })
         if vwap is not None:
+            vwap_stop = round(vwap * 1.002, 2)
             rules.append({
                 "trigger": "Price reclaims VWAP",
-                "price":   round(vwap, 2),
+                "price":   vwap_stop,
                 "action":  "Exit full position",
                 "note":    "Bearish structure failed — exit immediately",
             })
@@ -621,36 +651,62 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     direction_word = "bullish" if bidir == "long" else "bearish"
     if state == "ENTRY_RETEST":
         or_level = or_high if bidir == "long" else or_low
-        conservative = f"Enter on the pullback to OR level ({or_level:.2f} if available) with volume hold confirmation."
-        aggressive = f"Scale in now — re-test hold is active. Stop just below {or_level:.2f}." if or_level else "Scale in with stop below breakout level."
+        conservative = f"Enter on the pullback to OR level ({(or_level or 0):.2f} if available) with volume hold confirmation."
+        aggressive = f"Scale in now — re-test hold is active. Stop just below {(or_level or 0):.2f}." if or_level else "Scale in with stop below breakout level."
         best_setup = f"OR re-test hold — {direction_word} continuation with tight stop at breakout level."
     elif state == "ENTRY_ACTIVE":
-        if vwap is not None and last_price is not None:
-            conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
+        if bidir == "short":
+            if vwap is not None and last_price is not None:
+                conservative = f"Wait for a bounce into VWAP zone ({pullback_zone}) to fade into the short."
+            else:
+                conservative = "Wait for a bounce to resistance with volume rejection confirmation."
+            if or_low is not None:
+                aggressive = f"Continuation below ORL ({or_low:.2f}) with expanding volume."
+            else:
+                aggressive = "Continuation on breakdown momentum follow-through with expanding volume."
+            best_setup = f"{direction_word.capitalize()} continuation with defined stop above recent swing high."
         else:
-            conservative = "Wait for pullback to support with volume confirmation."
-        if or_high is not None:
-            aggressive = f"Continuation above ORH ({or_high:.2f}) with expanding volume."
-        else:
-            aggressive = "Continuation on momentum follow-through with expanding volume."
-        best_setup = f"{direction_word.capitalize()} continuation with defined stop below recent swing low."
+            if vwap is not None and last_price is not None:
+                conservative = f"Wait for pullback into VWAP zone ({pullback_zone}) with volume confirmation."
+            else:
+                conservative = "Wait for pullback to support with volume confirmation."
+            if or_high is not None:
+                aggressive = f"Continuation above ORH ({or_high:.2f}) with expanding volume."
+            else:
+                aggressive = "Continuation on momentum follow-through with expanding volume."
+            best_setup = f"{direction_word.capitalize()} continuation with defined stop below recent swing low."
     elif state in ("WAIT_FOR_VOLUME",):
-        conservative = "Wait for volume spike to confirm breakout before entry."
-        aggressive = "Not recommended — wait for volume confirmation."
-        best_setup = "Breakout with volume spike above ORH/ORL threshold."
+        if bidir == "short":
+            conservative = "Wait for volume spike to confirm the breakdown before entering."
+            aggressive = "Not recommended — wait for volume to confirm directional conviction."
+            best_setup = f"Breakdown below ORL ({or_low:.2f} if available) with volume spike confirmation." if or_low else "Breakdown below ORL with volume spike confirmation."
+        else:
+            conservative = "Wait for volume spike to confirm the breakout before entering."
+            aggressive = "Not recommended — wait for volume confirmation."
+            best_setup = f"Breakout above ORH ({or_high:.2f} if available) with volume spike confirmation." if or_high else "Breakout above ORH with volume spike confirmation."
     elif "VWAP" in state:
         if vwap is not None:
-            conservative = f"Wait for price to reclaim and hold VWAP ({vwap:.2f})."
-            aggressive = "Only above VWAP with volume expansion for long entries."
-            best_setup = f"Pullback to VWAP with {direction_word} continuation setup."
+            if bidir == "short":
+                conservative = f"Wait for price to break and hold below VWAP ({vwap:.2f})."
+                aggressive = "Only below VWAP with volume expansion for short entries."
+                best_setup = f"VWAP rejection with {direction_word} continuation below {vwap:.2f}."
+            else:
+                conservative = f"Wait for price to reclaim and hold VWAP ({vwap:.2f})."
+                aggressive = "Only above VWAP with volume expansion for long entries."
+                best_setup = f"Pullback to VWAP with {direction_word} continuation setup."
         else:
-            conservative = "Wait for price to reclaim VWAP."
-            aggressive = "Not recommended until VWAP hold."
+            conservative = "Wait for price to confirm VWAP interaction."
+            aggressive = "Not recommended until VWAP direction is clear."
             best_setup = "No clear setup yet — monitor for VWAP interaction."
     else:
-        conservative = "Wait for opening range breakout or VWAP hold."
-        aggressive = "Not recommended at current levels."
-        best_setup = "No clear day trade setup yet."
+        if bidir == "short":
+            conservative = "Wait for opening range breakdown or VWAP failure."
+            aggressive = "Not recommended at current levels."
+            best_setup = "No clear short setup yet."
+        else:
+            conservative = "Wait for opening range breakout or VWAP hold."
+            aggressive = "Not recommended at current levels."
+            best_setup = "No clear day trade setup yet."
 
     # Contextual alerts
     day_alerts: list[dict[str, str]] = []
@@ -855,12 +911,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         session_phase = "OPENING"
     elif session_minutes_elapsed < SESSION_MID_AM_END:
         session_phase = "MID_MORNING"
-    elif session_minutes_elapsed >= SESSION_POWER_HOUR:
-        session_phase = "POWER_HOUR"
     elif session_minutes_elapsed < SESSION_MIDDAY_END:
-        session_phase = "MID_MORNING"
-    else:
         session_phase = "MIDDAY"
+    else:
+        session_phase = "POWER_HOUR"
 
     # OR width — narrow coiling vs wide chaotic open.
     or_width_pct = round((or_high - or_low) / or_low * 100, 3) if or_low > 0 else 0.0
@@ -913,8 +967,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         """Return 'HH_HL', 'LL_LH', 'MIXED', or 'FLAT' for recent price structure."""
         if len(closes) < window * 2 + 1:
             return "FLAT"
-        highs = [float(session["High"].iloc[i]) for i in range(len(session))]
-        lows  = [float(session["Low"].iloc[i])  for i in range(len(session))]
+        highs = list(closes)
+        lows  = list(closes)
         swing_highs, swing_lows = [], []
         for i in range(window, len(highs) - window):
             if highs[i] == max(highs[i - window: i + window + 1]):
@@ -986,23 +1040,6 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         vwap_position = "below"
     else:
         vwap_position = "at"
-
-    # Current price position vs OR bounds (end-of-session check).
-    if last > or_high:
-        or_state = "above"
-    elif last < or_low:
-        or_state = "below"
-    else:
-        or_state = "inside"
-
-    # Historical OR breakout flag: did price REACH outside the OR at any point,
-    # even if it has since retraced back inside?
-    if or_was_broken_up:
-        or_historical = "broke_up"
-    elif or_was_broken_down:
-        or_historical = "broke_down"
-    else:
-        or_historical = "contained"
 
     bull = 0.0
     bear = 0.0
@@ -1133,15 +1170,33 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 bear += 1.0
                 body.append(f"Weak RS vs QQQ ({rs_vs_qqq_pct:.2f}%) adds bearish weight.")
 
-    if spy_chg is not None:
-        body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
-        if spy_chg >= 0.25:
-            bull += 0.5
-        elif spy_chg <= -0.25:
-            bear += 0.5
+    _spy_daily = _spy_daily_trend(force_refresh=_fr)
+    _spy_rsi_ok = _spy_daily.get("rsi") is not None and 40 <= _spy_daily["rsi"] <= 70
+    _spy_rsi_extreme = _spy_daily.get("rsi") is not None and _spy_daily["rsi"] > 75
+    _spy_ma50_up = _spy_daily.get("ma50_slope", 0) or 0 > 0
 
-    if qqq_chg is not None:
-        body.append(f"QQQ session-to-session ≈ {qqq_chg:+.2f}%.")
+    if spy_chg is not None and qqq_chg is not None:
+        body.append(f"SPY {spy_chg:+.2f}% · QQQ {qqq_chg:+.2f}%.")
+        if spy_chg >= 0.25 and qqq_chg >= 0.25:
+            if _spy_ma50_up and _spy_rsi_ok:
+                bull += 1.0
+            elif _spy_rsi_extreme:
+                body.append("SPY daily RSI overbought — rally may be exhausted.")
+            else:
+                bull += 0.5
+        elif spy_chg <= -0.25 and qqq_chg <= -0.25:
+            bear += 0.5
+    else:
+        if spy_chg is not None:
+            body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
+            if spy_chg >= 0.25 and _spy_ma50_up and _spy_rsi_ok:
+                bull += 1.0
+            elif spy_chg <= -0.25:
+                bear += 0.5
+            elif spy_chg >= 0.25:
+                bull += 0.5
+        if qqq_chg is not None:
+            body.append(f"QQQ session-to-session ≈ {qqq_chg:+.2f}%.")
 
     if vix_level is not None:
         body.append(f"VIX ≈ {vix_level:.1f}.")
@@ -1175,12 +1230,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     if gap_pct is not None and abs(gap_pct) >= GAP_SIGNIFICANT_PCT:
         if gap_fill_risk:
             body.append(
-                f"Gap {gap_pct:+.2f}% at open but price has retraced near prior close — gap fill in progress; "
-                "avoid chasing the original gap direction."
+                f"{'Gap up' if gap_pct > 0 else 'Gap down'} {gap_pct:+.2f}% at open but price has retraced near prior close "
+                f"(${prior_close:.2f}) — gap fill in progress; avoid chasing."
             )
-            if gap_pct > 0 and bull > bear:
+            if gap_pct > 0:
                 bull -= 0.5
-            elif gap_pct < 0 and bear > bull:
+            elif gap_pct < 0:
                 bear -= 0.5
         else:
             if gap_pct > 0:
@@ -1276,19 +1331,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         and not vol_spike
     )
     if _orh_retest_long:
-        bull += 0.75
+        bull += 1.0
         body.append(
             f"Pullback to ORH re-test ({or_high:.2f}) — price holding above breakout level after a confirmed break; "
             "classic continuation setup."
         )
     elif _orl_retest_short:
-        bear += 0.75
+        bear += 1.0
         body.append(
             f"Pullback to ORL re-test ({or_low:.2f}) — price holding below breakdown level; "
             "continuation short setup."
         )
 
     # Daily trend context from swing scan (optional adjustment)
+    bias: Bias = None
     if daily_trend_context is not None:
         _swing_bias = daily_trend_context.get("bias", "").lower()
         _swing_verdict = str(daily_trend_context.get("verdict", "") or "").upper()
@@ -1318,8 +1374,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             elif bias == "short":
                 bear -= 0.5
 
+    bull = max(0.0, min(100.0, bull))
+    bear = max(0.0, min(100.0, bear))
+
     diff = bull - bear
-    bias: Bias = None
     verdict: Verdict = "WAIT"
     soft_edge = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge = soft_edge and diff > 0
@@ -1346,6 +1404,46 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         chg_str = f"SPY {spy_chg:+.2f}%" if spy_chg is not None else f"QQQ {qqq_chg:+.2f}%"
         verdict = "NO-GO"
         prefix = [f"Strong positive broad market ({chg_str}) vs bearish stock tilt."]
+    elif (
+        # Compound NO-GO: long bias signalled but entry trigger never fired.
+        # CALL entry requires an ORH break — if OR is still intact all session,
+        # RVOL is weak (no institutional participation), and the market is leaning
+        # against the bias, the setup is a false positive. Flag it rather than
+        # letting it show as "Bullish GO/WATCH" with an unreachable entry condition.
+        diff > 0
+        and or_historical == "contained"          # ORH never broken today
+        and (rvol is not None and rvol < 0.75)    # < 75 % of expected volume
+        and spy_chg is not None and spy_chg <= -0.25
+        and qqq_chg is not None and qqq_chg <= -0.25
+    ):
+        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
+        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
+        verdict = "NO-GO"
+        prefix = [
+            f"NO-GO — CALL entry condition not met all session: ORH never broken "
+            f"(price contained inside opening range), {_rvol_str} "
+            f"(no institutional participation), market leaning bearish ({_mkt_str}). "
+            "Bullish bias exists on VWAP position alone but the actual trigger has not fired — "
+            "do not anticipate the breakout.",
+        ]
+    elif (
+        # Mirror: short bias but ORL never broken + weak RVOL + bullish market.
+        diff < 0
+        and or_historical == "contained"
+        and (rvol is not None and rvol < 0.75)
+        and spy_chg is not None and spy_chg >= 0.25
+        and qqq_chg is not None and qqq_chg >= 0.25
+    ):
+        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
+        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
+        verdict = "NO-GO"
+        prefix = [
+            f"NO-GO — PUT entry condition not met all session: ORL never broken "
+            f"(price contained inside opening range), {_rvol_str} "
+            f"(no institutional participation), market leaning bullish ({_mkt_str}). "
+            "Bearish bias exists on VWAP position alone but the actual trigger has not fired — "
+            "do not anticipate the breakdown.",
+        ]
     elif not soft_edge:
         verdict = "WAIT"
         prefix = ["No clear intraday edge — scores too close or too low."]

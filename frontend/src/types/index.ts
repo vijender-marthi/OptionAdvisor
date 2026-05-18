@@ -231,7 +231,7 @@ export interface TradeIdea {
   updated_at: number
 }
 
-export type UserRole = 'admin' | 'user' | 'finance'
+export type UserRole = 'admin' | 'day' | 'swing' | 'user' | 'finance'
 
 // ─── Alert system ───────────────────────────────────────────
 
