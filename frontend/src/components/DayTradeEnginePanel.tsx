@@ -578,8 +578,10 @@ function MiniBarChart({
     return <div className="rounded-lg border border-gray-800/80 bg-black/20 px-3 py-6 text-xs text-gray-500">Not enough data.</div>
   }
   const hasAvg = avgRef != null && avgRef > 0
-  const max = Math.max(...values, hasAvg ? avgRef : 0, 1)
-  const avgPct = hasAvg ? Math.min(94, (avgRef / max) * 100) : null
+  // Scale bars to their own max — don't let avgRef inflate the scale and squish bars
+  const max = Math.max(...values, 1)
+  // If avgRef > max of bars, cap line at 96% (off the top = all below avg today)
+  const avgPct = hasAvg ? Math.min(96, (avgRef / max) * 100) : null
 
   return (
     <div className="rounded-xl border border-gray-800/80 bg-black/20 p-3">
@@ -623,9 +625,9 @@ function MiniBarChart({
             <line x1="0" y1="3" x2="16" y2="3" stroke="rgb(251 191 36 / 0.75)" strokeWidth="1.5" strokeDasharray="4 2" />
           </svg>
           <span className="text-amber-400/80">avg vol for time of day</span>
-          <span className="ml-auto text-gray-500">
-            <span className="text-cyan-400">■</span> above avg&nbsp;
-            <span className="text-gray-500">■</span> below avg
+          <span className="ml-auto flex items-center gap-1 text-gray-400">
+            <span className="text-cyan-400">■</span> above avg
+            <span className="ml-1 text-gray-500">■</span> below avg
           </span>
         </div>
       )}
