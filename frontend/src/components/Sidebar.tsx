@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Bot,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -150,6 +150,7 @@ export default function Sidebar() {
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+        { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
       ],
     },
     {
@@ -175,6 +176,7 @@ export default function Sidebar() {
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
     { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+    { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
     { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
     { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
