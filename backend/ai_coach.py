@@ -312,14 +312,17 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     Used when no LLM API key is configured, or as a fallback on API failure.
     Produces the identical JSON shape so the frontend works identically.
     """
-    ticker = signal.get("ticker", "")
-    price  = float(signal.get("price") or 0)
-    vwap   = float(signal.get("vwap") or 0)
-    orh    = float(signal.get("orh") or 0)
-    orl    = float(signal.get("orl") or 0)
-    bias   = str(signal.get("bias") or "neutral")
-    conf   = int(signal.get("confidence") or 50)
-    risk   = str(signal.get("risk") or "MEDIUM")
+    ticker          = signal.get("ticker", "")
+    price           = float(signal.get("price") or 0)
+    vwap            = float(signal.get("vwap") or 0)
+    orh             = float(signal.get("orh") or 0)
+    orl             = float(signal.get("orl") or 0)
+    bias            = str(signal.get("bias") or "neutral")
+    conf            = int(signal.get("confidence") or 50)
+    risk            = str(signal.get("risk") or "MEDIUM")
+    # Honour the engine verdict forwarded via signal["action"]:
+    # NO-GO → "AVOID", WATCH/WAIT → "WATCH", GO/STRONG GO → "ENTER"
+    engine_action   = str(signal.get("action") or "WATCH").upper()
     vol_ok = bool(signal.get("volume_confirmed"))
     pvv    = signal.get("price_vs_vwap", "below")
     pvo    = signal.get("price_vs_or",   "inside_or")
@@ -353,8 +356,10 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     else:
         setup_type = "SPREAD" if conf >= 60 else "NONE"
 
-    # Action
-    if not vol_ok or pvo == "inside_or":
+    # Action — respect the engine's NO-GO verdict first, then derive locally
+    if engine_action == "AVOID":
+        action = "WATCH"   # surface as WATCH (no entry), summary will say NO TRADE
+    elif not vol_ok or pvo == "inside_or":
         action = "WATCH"
     elif conf >= 70 and vol_ok:
         action = "ENTER"
@@ -379,18 +384,47 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     orl_str  = f"${orl:.2f}"  if orl  else "ORL"
     orh_str  = f"${orh:.2f}"  if orh  else "ORH"
     vol_txt  = "volume confirmed" if vol_ok else "volume unconfirmed"
-    if is_bear:
+    if engine_action == "AVOID" or bias == "neutral":
+        # NO-GO verdict: entry trigger not met, market context contradicts bias
+        or_range = f"{orl_str}–{orh_str}" if (orl and orh) else (orh_str if orh else orl_str)
         summary = (
-            f"{ticker} below VWAP {vwap_str} and ORL {orl_str}. Bearish bias, {vol_txt}. "
-            + ("Breakdown active." if vol_ok and pvo == "below_orl"
-               else "Wait for rejection candle with volume before entering PUT.")
+            f"{ticker} VWAP {vwap_str}, OR range {or_range}. "
+            f"No valid entry — OR not broken, {vol_txt}, market context unfavourable. "
+            "No trade today."
         )
-    else:
-        summary = (
-            f"{ticker} above VWAP {vwap_str} and ORH {orh_str}. Bullish bias, {vol_txt}. "
-            + ("Breakout active." if vol_ok and pvo == "above_orh"
-               else "Wait for breakout candle with volume before entering CALL.")
-        )
+    elif is_bear:
+        if vol_ok and pvo == "below_orl":
+            summary = (
+                f"{ticker} below VWAP {vwap_str} and ORL {orl_str}. Bearish bias, {vol_txt}. "
+                "Breakdown active."
+            )
+        elif pvo == "below_orl":
+            summary = (
+                f"{ticker} broke below ORL {orl_str} — VWAP {vwap_str} now resistance. "
+                f"Bearish bias, {vol_txt}. Wait for volume confirmation before entering PUT."
+            )
+        else:
+            summary = (
+                f"{ticker} below VWAP {vwap_str}, watching ORL {orl_str} breakdown. "
+                f"Bearish bias, {vol_txt}. Wait for ORL break and hold to enter PUT."
+            )
+    else:  # bullish
+        if vol_ok and pvo == "above_orh":
+            summary = (
+                f"{ticker} above VWAP {vwap_str} and ORH {orh_str}. Bullish bias, {vol_txt}. "
+                "Breakout active."
+            )
+        elif pvo == "above_orh":
+            summary = (
+                f"{ticker} broke above ORH {orh_str} — VWAP {vwap_str} now support. "
+                f"Bullish bias, {vol_txt}. Wait for volume confirmation before entering CALL."
+            )
+        else:
+            # Price is inside OR (above VWAP but ORH not yet broken)
+            summary = (
+                f"{ticker} above VWAP {vwap_str}, watching ORH {orh_str} breakout. "
+                f"Bullish bias, {vol_txt}. Wait for ORH break and hold to enter CALL."
+            )
 
     # Entry condition (≤20 words)
     if is_bear:
@@ -407,13 +441,22 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Invalidation (≤15 words)
-    if is_bear:
+    if engine_action == "AVOID" or bias == "neutral":
+        invalidation = f"Entry trigger not met — OR intact, low RVOL, unfavourable market"
+    elif is_bear:
         invalidation = f"{ticker} reclaims VWAP {vwap_str} on volume" if vwap else f"{ticker} closes above ORL"
     else:
         invalidation = f"{ticker} loses VWAP {vwap_str} on volume" if vwap else f"{ticker} closes below ORH"
 
     # State labels
-    if is_bear:
+    if engine_action == "AVOID" or bias == "neutral":
+        setup_lbl    = "NO TRADE — CONDITIONS NOT MET"
+        setup_detail = f"OR not broken, volume absent, market context unfavourable — stand aside"
+        entry_trig   = f"ORH {orh_str} break + volume + market tailwind required"
+        inplay_lbl   = "NO ACTIVE TRADE"
+        add_cond     = "No position to add — entry trigger never fired"
+        exit_cond    = "N/A — no position"
+    elif is_bear:
         setup_lbl    = "SHORT BIAS FORMING"
         setup_detail = "VWAP and ORL acting as resistance — watch for rejection"
         entry_trig   = f"Close & hold <{orl_str}" if orl else f"Close below VWAP {vwap_str}"
@@ -432,7 +475,18 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
 
     # Decision tree
     dt: list[dict] = []
-    if is_bear:
+    if engine_action == "AVOID" or bias == "neutral":
+        # NO-GO tree: show what conditions would need to change to reconsider
+        dt.append({"if": f"{ticker} breaks {orh_str} with 2× volume + market turns bullish",
+                   "then": "Reconsider long setup — conditions still require confirmation",
+                   "action": "WAIT", "confidence": "low"})
+        dt.append({"if": f"RVOL stays below 0.75× through midday",
+                   "then": "No trade — institutional participation absent all session",
+                   "action": "AVOID", "confidence": "high"})
+        dt.append({"if": f"Market (SPY/QQQ) remains bearish",
+                   "then": "Stand aside — market context overrides bullish VWAP lean",
+                   "action": "AVOID", "confidence": "high"})
+    elif is_bear:
         dt.append({"if": f"{ticker} rejects at {orl_str} with volume", "then": f"Enter PUT, target ${scalp:.2f}", "action": "ENTER", "confidence": "high"})
         dt.append({"if": f"{ticker} reclaims VWAP {vwap_str}", "then": "Short thesis invalidated — no trade", "action": "AVOID", "confidence": "high"})
         dt.append({"if": f"{ticker} drops below ${price * 0.98:.2f} without bounce", "then": "Missed entry — do not chase", "action": "WAIT", "confidence": "high"})
@@ -440,12 +494,14 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         dt.append({"if": f"{ticker} breaks above {orh_str} with volume", "then": f"Enter CALL, target ${scalp:.2f}", "action": "ENTER", "confidence": "high"})
         dt.append({"if": f"{ticker} loses VWAP {vwap_str}", "then": "Long thesis invalidated — no trade", "action": "AVOID", "confidence": "high"})
         dt.append({"if": f"{ticker} extends to ${price * 1.02:.2f} without pullback", "then": "Missed entry — do not chase", "action": "WAIT", "confidence": "high"})
-    if not spy_aligns and spy_b != "neutral":
+    if not (engine_action == "AVOID" or bias == "neutral") and not spy_aligns and spy_b != "neutral":
         bad_spy = "bearish" if is_bull else "bullish"
         dt.append({"if": f"SPY reverses {bad_spy} while {ticker} holds", "then": "Exit position — market context flipped", "action": "EXIT", "confidence": "medium"})
 
     # Best next step (≤15 words)
-    if not vol_ok:
+    if engine_action == "AVOID" or bias == "neutral":
+        best = "No trade — OR not broken, RVOL weak, market unfavourable. Stand aside."
+    elif not vol_ok:
         best = f"Wait for volume-confirmed {'rejection' if is_bear else 'breakout'} candle before entry"
     elif action == "ENTER":
         best = f"Enter {'PUT' if is_bear else 'CALL'} — stop at ${stop:.2f}"
@@ -453,14 +509,16 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         best = f"Watch for {'ORL rejection' if is_bear else 'ORH breakout'} with volume"
 
     # Options note (≤30 words)
-    if conf > 80 and vol_ok:
+    if engine_action == "AVOID" or bias == "neutral":
+        opts = "No options position — entry conditions not met. Preserve capital, no theta risk to manage."
+    elif conf > 80 and vol_ok:
         opts = f"Confidence {conf} — naked {'PUT' if is_bear else 'CALL'} acceptable. "
     elif conf >= 60:
         opts = f"Confidence {conf} — {'PUT spread' if is_bear else 'CALL spread'} preferred over naked option. "
     else:
         opts = f"Confidence {conf} — WATCH only, no options entry yet. "
 
-    if action == "WATCH":
+    if action == "WATCH" and not (engine_action == "AVOID" or bias == "neutral"):
         opts += "Theta risk rises if setup extends past midday without entry."
     elif action == "ENTER" and setup_type == "SPREAD":
         opts += f"Spread limits risk relative to naked option at this confidence level."
