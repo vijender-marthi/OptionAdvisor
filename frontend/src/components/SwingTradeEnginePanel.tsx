@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import {
   RefreshCw, TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight,
   ShieldAlert, AlertTriangle, Check, CheckCircle2, Clock, Layers,
-  BarChart2, BriefcaseBusiness, PlusCircle, Bell, Search, Star, Info, Activity,
+  BarChart2, BriefcaseBusiness, PlusCircle, Bell, Search, Lightbulb, Info, Activity,
 } from 'lucide-react'
 import type { SwingTradeScanResult } from '../api/client'
 import type { PortfolioPosition } from '../types'
@@ -33,7 +33,7 @@ interface Props {
   onOpenStrategyFinder?: () => void
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
-  onAddToWatchlist?: () => void
+  onSaveToJournal?: () => void
   onViewSignals?: () => void
 }
 
@@ -782,7 +782,7 @@ export default function SwingTradeEnginePanel({
   onOpenStrategyFinder,
   onOpenCommandCenter,
   onCreateAlert,
-  onAddToWatchlist,
+  onSaveToJournal,
   onViewSignals,
 }: Props) {
   const inPosition = existingPositions.length > 0
@@ -1205,10 +1205,10 @@ export default function SwingTradeEnginePanel({
             <Search size={13} />
             View Signals
           </button>
-          {onAddToWatchlist ? (
-            <button type="button" onClick={onAddToWatchlist} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
-              <Star size={13} />
-              Add to Watchlist
+          {onSaveToJournal ? (
+            <button type="button" onClick={onSaveToJournal} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
+              <Lightbulb size={13} />
+              Save to Journal
             </button>
           ) : null}
         </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
-import { analyzeSwingTrade } from '../api/client'
+import { analyzeSwingTrade, createTradeIdea } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import type { SwingTradeScanResult } from '../api/client'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
@@ -19,10 +19,9 @@ export default function SwingTradePage() {
   const {
     swingTradeEngineUI: ui,
     setSwingTradeEngineUI: setUi,
-    addToWatchlist,
-    isWatched,
     addManualPosition,
     portfolio,
+    user,
   } = useApp()
   const { ticker, loading, error, result, glossaryOpen } = ui
 
@@ -88,23 +87,53 @@ export default function SwingTradePage() {
     return () => clearTimeout(t)
   }, [notice])
 
-  const handleAddToWatchlist = useCallback(() => {
-    if (!result) return
-    const already = isWatched(result.ticker)
-    const ok = addToWatchlist({
-      ticker: result.ticker,
-      companyName: result.company_name || undefined,
-      notes: `Swing Trade · ${result.suggested_strategy ? result.suggested_strategy.replace(/_/g, ' ') : 'setup'} · ${result.final_action}`,
-    })
-    if (!ok) {
-      setNotice({ tone: 'info', message: 'Unable to add this ticker to Signal Feed.' })
-      return
+  const handleSaveToJournal = useCallback(async () => {
+    if (!result || !user?.email) return
+    const m = result.metrics as Record<string, unknown>
+    const el = computeExecLevels(result, m)
+    const parsePrice = (s: string | null | undefined): number => {
+      if (!s) return 0
+      const n = parseFloat(s.replace(/[^0-9.-]/g, ''))
+      return Number.isFinite(n) ? n : 0
     }
-    setNotice({
-      tone: already ? 'info' : 'success',
-      message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
-    })
-  }, [addToWatchlist, isWatched, result])
+    // Map suggested_strategy → idea structure
+    const STRATEGY_MAP: Record<string, string> = {
+      LONG_CALL: 'LONG_CALL', LONG_PUT: 'LONG_PUT',
+      CALL_SPREAD: 'CALL_SPREAD', PUT_SPREAD: 'PUT_SPREAD',
+      CSP: 'CSP', CC: 'CC',
+    }
+    const structure = STRATEGY_MAP[result.suggested_strategy ?? '']
+      ?? (result.bias === 'short' ? 'LONG_PUT' : 'LONG_CALL')
+    // Map final_action → idea reason
+    const REASON_MAP: Record<string, string> = {
+      TRADE_NOW:        'BREAKOUT_SETUP',
+      WAIT_FOR_PULLBACK:'PULLBACK_ENTRY',
+      WAIT_FOR_BREAKOUT:'BREAKOUT_SETUP',
+      WAIT_FOR_VOLUME:  'VOLUME_CONFIRM',
+      WATCH:            'MARKET_ALIGNING',
+      NO_TRADE:         'WAITING_ENTRY',
+    }
+    const reason = REASON_MAP[result.final_action ?? ''] ?? 'WAITING_ENTRY'
+    try {
+      await createTradeIdea(user.email, {
+        ticker:       result.ticker,
+        engine:       'SWING',
+        direction:    result.bias === 'short' ? 'SHORT' : 'LONG',
+        structure,
+        reason,
+        status:       'WATCHING',
+        entry_price:  typeof m.last_price === 'number' ? m.last_price : 0,
+        target_price: parsePrice(el.firstTarget),
+        stop_price:   parsePrice(el.riskBelow),
+        engine_signal: result.decision_label || result.final_action || '',
+        engine_state:  1,
+        notes: '',
+      })
+      setNotice({ tone: 'success', message: `${result.ticker} saved to Journal → Trade Ideas.` })
+    } catch {
+      setNotice({ tone: 'info', message: 'Failed to save idea. Please try again.' })
+    }
+  }, [result, user])
 
   const handleAddPosition = useCallback(() => {
     if (!result) return
@@ -258,7 +287,7 @@ export default function SwingTradePage() {
             onOpenStrategyFinder={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
             onOpenCommandCenter={() => navigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
             onCreateAlert={() => setAlertOpen(true)}
-            onAddToWatchlist={handleAddToWatchlist}
+            onSaveToJournal={() => void handleSaveToJournal()}
           />
         </>
       )}
