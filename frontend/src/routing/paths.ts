@@ -112,7 +112,7 @@ export function pageToLocation(p: Page): string {
     case 'day-trade-alerts':
       return '/day-trade-alerts'
     case 'active-trades':
-      return '/positions?tab=open&style=day'
+      return '/active-trades'
     case 'swing-trade':
       return '/swing-trade'
     case 'swing-trade-watchlist':

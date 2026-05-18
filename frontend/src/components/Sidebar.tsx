@@ -148,6 +148,7 @@ export default function Sidebar() {
       label: 'Advanced Tools',
       items: [
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
+        { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
       ],
     },
@@ -172,6 +173,7 @@ export default function Sidebar() {
     { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
     { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
     { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
+    { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
     { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
     { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
