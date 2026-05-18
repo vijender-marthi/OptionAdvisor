@@ -52,6 +52,7 @@ from bar_cache import get_history as _bc_hist, get_info as _bc_info
 from bar_cache import get_option_dates as _bc_opt_dates, get_option_chain as _bc_chain
 from analysis import generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade
+from ai_coach import get_ai_coach
 from swing_trade import run_swing_trade_scan
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
@@ -2249,6 +2250,25 @@ def day_trade_scan(
                 "trader_decision": r.trader_decision,
             }
         )
+        # Build AI coaching summary from the resolved scan + decision fields
+        _scan_dict_for_coach = {
+            "ticker":             r.ticker,
+            "bias":               r.bias,
+            "verdict":            r.verdict,
+            "confidence":         resolved.confidence,
+            "display_confidence": int(resolved.display_confidence or 0),
+            "metrics":            dict(r.metrics or {}),
+            "entry_guidance":     dict(r.entry_guidance or {}),
+        }
+        try:
+            ai_coach_result = get_ai_coach(
+                _scan_dict_for_coach,
+                risk_state=resolved.risk_state or "MEDIUM",
+            )
+        except Exception as _coach_exc:  # noqa: BLE001
+            log.warning("AI coach error for %s: %s", r.ticker, _coach_exc)
+            ai_coach_result = {}
+
         return DayTradeResponse(
             ticker=r.ticker,
             company_name=r.company_name,
@@ -2277,6 +2297,7 @@ def day_trade_scan(
             execution_fields=list(resolved.execution_fields or []),
             entry_guidance=dict(r.entry_guidance or {}),
             option_risk_context=dict(r.option_risk_context or {}),
+            ai_coach=ai_coach_result,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

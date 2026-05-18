@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight, ShieldAlert,
   Activity, Target, Zap, Info, Layers,
 } from 'lucide-react'
-import type { DayTradeScanResult } from '../api/client'
+import type { AiCoachResult, DayTradeScanResult } from '../api/client'
 import type { PortfolioPosition } from '../types'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
@@ -715,9 +715,13 @@ export default function DayTradeEnginePanel({
     ['iv_risk', optionRisk.iv_risk],
     ['liquidity_risk', optionRisk.liquidity_risk],
   ] as const) : []
-  const intradaySummary = computeIntradaySummary(result, m)
-  const bestNextStep = computeBestNextStep(result)
-  const managementPlan = computeIntradayManagementPlan(result, m)
+  // AI Coach — use structured data when available, fall back to deterministic helpers
+  const ac: AiCoachResult | undefined = result.ai_coach as AiCoachResult | undefined
+  const hasAiCoach = !!ac?.summary
+
+  const intradaySummary  = hasAiCoach ? (ac!.summary) : computeIntradaySummary(result, m)
+  const bestNextStep     = hasAiCoach ? (ac!.best_next_step) : computeBestNextStep(result)
+  const managementPlan   = computeIntradayManagementPlan(result, m)
   const walkthroughSteps = buildDayWalkthrough(result, m)
   const currentPrice = eg?.current_price ?? lastPrice
   const breakoutLevel = eg?.breakout_level
@@ -861,14 +865,59 @@ export default function DayTradeEnginePanel({
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
-            <BarChart2 size={12} />
-            AI Coach Summary
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+              <BarChart2 size={12} />
+              AI Coach Summary
+            </div>
+            {hasAiCoach && ac!._source && (
+              <span className="text-[9px] text-gray-600 font-mono uppercase tracking-widest">
+                {ac!._source === 'anthropic' ? '⚡ Claude' : ac!._source === 'openai' ? '⚡ GPT' : '◎ engine'}
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+
+          {/* Entry condition + invalidation — from ai_coach when available */}
+          {hasAiCoach && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Decision Tree — IF/THEN nodes */}
+          {hasAiCoach && ac!.decision_tree.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+              {ac!.decision_tree.map((node, i) => {
+                const actionColor =
+                  node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                  node.action === 'EXIT'  ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                  node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                  'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                return (
+                  <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                    <span className="font-semibold">IF</span> {node.if} →{' '}
+                    <span className="font-semibold">THEN</span> {node.then}
+                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>
+                      {node.action}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <div className="text-[11px] text-semantic-accent leading-relaxed">
-            Best setup: {computeBestNextStep(result)}
+            Best setup: {bestNextStep}
           </div>
         </div>
 
@@ -928,25 +977,27 @@ export default function DayTradeEnginePanel({
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming'}</span>
+                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">
+                    {hasAiCoach ? ac!.states.setup.label : (result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming')}
+                  </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? eg?.vwap != null && eg?.opening_range_low != null
-                      ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `VWAP $${eg.vwap.toFixed(2)}`
-                        : 'Key resistance levels forming'
-                    : eg?.vwap != null && eg?.opening_range_high != null
-                      ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `VWAP $${eg.vwap.toFixed(2)}`
-                        : 'Key levels forming'}
+                  {hasAiCoach
+                    ? ac!.states.setup.detail
+                    : result.bias === 'short'
+                      ? eg?.vwap != null && eg?.opening_range_low != null
+                        ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
+                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key resistance levels forming'
+                      : eg?.vwap != null && eg?.opening_range_high != null
+                        ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
+                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key levels forming'}
                 </div>
                 <div className="text-[10px] text-amber-400/80 font-semibold">
-                  {result.bias === 'short'
-                    ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
-                    : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
+                  {hasAiCoach
+                    ? ac!.states.setup.key_levels.map(l => `$${l.toFixed(2)}`).join(' · ')
+                    : result.bias === 'short'
+                      ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
+                      : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
                 </div>
               </div>
               </div>
@@ -1001,18 +1052,24 @@ export default function DayTradeEnginePanel({
                 STATE 3: IN-PLAY
                 {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active'}</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                {hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
                   <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                    {eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                    {hasAiCoach && ac!.states.in_play.target > 0
+                      ? `TP $${ac!.states.in_play.target.toFixed(2)}`
+                      : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
-                    : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
+                  {hasAiCoach
+                    ? ac!.states.in_play.add_condition
+                    : result.bias === 'short'
+                      ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
+                      : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
                 </div>
               </div>
               </div>
@@ -1025,18 +1082,24 @@ export default function DayTradeEnginePanel({
                 STATE 4: EXIT
                 {activeState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Completion / Reset</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                {hasAiCoach ? ac!.states.exit.label : 'Completion / Reset'}
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
                   <span className="text-red-300 font-mono text-[12px] font-semibold">
-                    {eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
+                    {hasAiCoach && ac!.states.exit.stop_loss > 0
+                      ? `$${ac!.states.exit.stop_loss.toFixed(2)}`
+                      : eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
                   </span>
                 </div>
                 <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? 'VWAP reclaimed above · or ORL closed back above → cover'
-                    : 'VWAP lost below · or ORH closed back below → exit'}
+                  {hasAiCoach
+                    ? ac!.states.exit.exit_condition
+                    : result.bias === 'short'
+                      ? 'VWAP reclaimed above · or ORL closed back above → cover'
+                      : 'VWAP lost below · or ORH closed back below → exit'}
                   {eg?.scalp_target != null && ` · scale out at TP`}
                 </div>
               </div>
@@ -1345,6 +1408,14 @@ export default function DayTradeEnginePanel({
         ) : (
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 text-xs text-gray-400">
             No option-risk overlay is available for this symbol yet. Use the equity setup first, then verify contract quality separately.
+          </div>
+        )}
+
+        {/* AI Coach options note */}
+        {hasAiCoach && ac!.options_note && (
+          <div className="rounded-xl border border-violet-700/40 bg-violet-950/20 px-3 py-2.5 flex items-start gap-2">
+            <span className="mt-0.5 text-[10px] text-violet-400 font-bold uppercase tracking-widest shrink-0">AI Coach</span>
+            <span className="text-[11px] text-gray-300 leading-relaxed">{ac!.options_note}</span>
           </div>
         )}
       </div>

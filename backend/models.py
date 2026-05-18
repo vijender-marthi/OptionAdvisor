@@ -302,6 +302,8 @@ class DayTradeResponse(BaseModel):
     execution_fields: list[dict] = Field(default_factory=list)
     entry_guidance: dict = Field(default_factory=dict)
     option_risk_context: dict = Field(default_factory=dict)
+    # Structured AI coaching summary (Anthropic / OpenAI / deterministic fallback)
+    ai_coach: dict = Field(default_factory=dict)
 
 
 class SwingTradeRequest(BaseModel):
