@@ -105,20 +105,42 @@ export default function SwingTradePage() {
       ? String(se.expiry)
       : new Date(Date.now() + dte * 86400000).toISOString().slice(0, 10)
     const lastPrice = typeof m.last_price === 'number' ? m.last_price : 0
+
+    // Parse option type from leg descriptor like "Long $430C" or "Short $440P"
+    const parseOptType = (leg: string): string => {
+      const last = leg.trim().slice(-1)
+      return last === 'P' ? 'PUT' : 'CALL'
+    }
+    const buildLegs = (): object[] => {
+      if (!se) return []
+      const legs: object[] = [{
+        action: 'BUY',
+        option_type: parseOptType(String(se.long_leg || '')),
+        strike: Number(se.long_strike ?? 0),
+        expiry,
+        delta: 0,
+        mid_price: lastPrice,
+      }]
+      if (se.short_leg && se.short_strike) {
+        legs.push({
+          action: 'SELL',
+          option_type: parseOptType(String(se.short_leg)),
+          strike: Number(se.short_strike),
+          expiry,
+          delta: 0,
+          mid_price: lastPrice,
+        })
+      }
+      return legs
+    }
+
     try {
       await saveToJournal(user.email, {
         ticker:           result.ticker,
         company_name:     result.company_name || '',
         strategy:         String(se?.strategy || result.suggested_strategy || (result.bias === 'short' ? 'Long Put' : 'Long Call')),
         bias:             result.bias === 'long' ? 'Bullish' : result.bias === 'short' ? 'Bearish' : 'Neutral',
-        legs:             se ? [{
-          action: 'BUY',
-          option_type: String(se?.long_leg || result.bias === 'short' ? 'PUT' : 'CALL'),
-          strike: Number(se?.long_strike ?? 0),
-          expiry,
-          delta: 0,
-          mid_price: lastPrice,
-        }] : [],
+        legs:             buildLegs(),
         expiry,
         entry_date:       today,
         dte_at_entry:     dte,
