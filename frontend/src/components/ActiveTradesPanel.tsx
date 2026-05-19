@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Activity, Loader2, RefreshCw, XCircle } from 'lucide-react'
 import {
   exitActiveTrade,
@@ -36,6 +37,7 @@ export default function ActiveTradesPanel({
   variant?: 'page' | 'embedded'
 }) {
   const { canAccessPage, user } = useApp()
+  const navigate = useNavigate()
   const allowed = !!user && canAccessPage('active-trades')
   const [rows, setRows] = useState<ActiveTradeRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -191,6 +193,7 @@ export default function ActiveTradesPanel({
       ) : (
         <OpenPositionsFeedTable
           rows={feedRows}
+          onTickerClick={(ticker) => navigate(`/day-trade?ticker=${encodeURIComponent(ticker)}`)}
           emptyMessage={
             <span className="text-sm">
               No open trades for today’s session yet. Run the Day Trade Engine and tap{' '}

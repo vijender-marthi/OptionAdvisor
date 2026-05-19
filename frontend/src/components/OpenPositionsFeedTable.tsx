@@ -23,9 +23,11 @@ export interface OpenPositionsFeedRow {
 export default function OpenPositionsFeedTable({
   rows,
   emptyMessage,
+  onTickerClick,
 }: {
   rows: OpenPositionsFeedRow[]
   emptyMessage: ReactNode
+  onTickerClick?: (ticker: string) => void
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-800/45 bg-gray-950/22 shadow-[0_0_0_1px_rgba(255,255,255,0.015)]">
@@ -55,7 +57,16 @@ export default function OpenPositionsFeedTable({
                 <td className="py-2.5 px-3 whitespace-nowrap">
                   <PositionCategoryPill kind={r.categoryKind} />
                 </td>
-                <td className="py-2.5 px-3 font-semibold font-mono text-violet-300 whitespace-nowrap">{r.ticker}</td>
+                <td className="py-2.5 px-3 whitespace-nowrap">
+                  {onTickerClick ? (
+                    <button type="button" onClick={() => onTickerClick(r.ticker)}
+                      className="font-semibold font-mono text-violet-300 hover:text-violet-200 hover:underline cursor-pointer transition-colors">
+                      {r.ticker}
+                    </button>
+                  ) : (
+                    <span className="font-semibold font-mono text-violet-300">{r.ticker}</span>
+                  )}
+                </td>
                 <td className="py-2.5 px-3 text-gray-300">{r.strategy}</td>
                 <td className="py-2.5 px-3 tabular-nums text-gray-400">{r.contracts}</td>
                 <td className="py-2.5 px-3 text-xs tabular-nums text-gray-400">{r.expiry}</td>
