@@ -312,6 +312,11 @@ function EntryCard({
                 >
                   {entry.ticker}
                 </button>
+                <span className="text-[10px] font-mono text-slate-500 dark:text-gray-500">
+                  {entry.current_price > 0
+                    ? `${entry.net_credit !== 0 && entry.legs.length > 0 ? 'stock ' : ''}$${entry.current_price.toFixed(2)}`
+                    : '—'}
+                </span>
                 <ArrowUpRight size={10} className="text-slate-400 dark:text-slate-500 shrink-0" />
                 {entry.trade_type && (
                   <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${

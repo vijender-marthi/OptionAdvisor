@@ -37,6 +37,7 @@ export default function SwingTradePage() {
   const navigate = useNavigate()
   const autoRunRef = useRef(false)
   const [myTickers, setMyTickers] = useState<string[]>([])
+  const [savedToJournal, setSavedToJournal] = useState(false)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -162,7 +163,9 @@ export default function SwingTradePage() {
           el.riskBelow ? `Stop: ${el.riskBelow}` : '',
         ].filter(Boolean).join(' · '),
       })
-      setNotice({ tone: 'success', message: `${result.ticker} (1×${se?.strategy || 'swing'}) saved to Trade Journal.` })
+      setNotice({ tone: 'success', message: `${result.ticker} (1× swing) saved to Trade Journal.` })
+      setSavedToJournal(true)
+      setTimeout(() => setSavedToJournal(false), 4000)
     } catch {
       setNotice({ tone: 'info', message: 'Failed to save to journal. Please try again.' })
     }
@@ -321,6 +324,7 @@ export default function SwingTradePage() {
             onOpenCommandCenter={() => navigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
             onCreateAlert={() => setAlertOpen(true)}
             onSaveToJournal={() => void handleSaveToJournal()}
+            savedToJournal={savedToJournal}
           />
         </>
       )}

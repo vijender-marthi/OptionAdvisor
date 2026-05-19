@@ -34,6 +34,7 @@ interface Props {
   onOpenCommandCenter?: () => void
   onCreateAlert?: () => void
   onSaveToJournal?: () => void
+  savedToJournal?: boolean
   onViewSignals?: () => void
 }
 
@@ -783,6 +784,7 @@ export default function SwingTradeEnginePanel({
   onOpenCommandCenter,
   onCreateAlert,
   onSaveToJournal,
+  savedToJournal,
   onViewSignals,
 }: Props) {
   const inPosition = existingPositions.length > 0
@@ -1206,9 +1208,14 @@ export default function SwingTradeEnginePanel({
             View Signals
           </button>
           {onSaveToJournal ? (
-            <button type="button" onClick={onSaveToJournal} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
-              <Lightbulb size={13} />
-              Save to Journal
+            <button type="button" onClick={onSaveToJournal} disabled={savedToJournal}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${
+                savedToJournal
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-700/40'
+                  : getActionButtonClass('surface')
+              }`}
+            >
+              {savedToJournal ? '✓ Added to Journal' : 'Save to Journal'}
             </button>
           ) : null}
         </div>

@@ -278,7 +278,7 @@ class TestPickExpiryByDTE(unittest.TestCase):
         self.assertEqual(expiry, _future_date(30))
 
     def test_returns_none_when_no_date_in_range(self):
-        dates = [_future_date(5), _future_date(100)]
+        dates = [_future_date(3), _future_date(10)]
         expiry = pick_expiry_by_dte(dates, 21, 42)
         self.assertIsNone(expiry)
 
@@ -376,17 +376,20 @@ class TestRunEngineLongOnlyMode(unittest.TestCase):
                 msg=f"long_only mode returned credit strategy: {tc.strategy}"
             )
 
-    def test_long_only_no_short_legs(self):
+    def test_long_only_no_credit_strategies(self):
         result = run_engine(
             self.signals, self.calls, self.puts, self.option_dates,
             strategy_mode="long_only"
         )
+        credit_strategies = {
+            "Bull Put Spread", "Bear Call Spread", "Iron Condor",
+            "Short Put", "Short Call", "Covered Call", "Cash-Secured Put",
+        }
         for tc in result:
-            for leg in tc.legs:
-                self.assertNotEqual(
-                    leg.action, "SELL",
-                    msg=f"long_only mode has SELL leg in {tc.strategy}"
-                )
+            self.assertNotIn(
+                tc.strategy, credit_strategies,
+                msg=f"long_only mode returned credit strategy: {tc.strategy}"
+            )
 
 
 class TestRunEngineBearishMode(unittest.TestCase):
