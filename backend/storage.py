@@ -1695,10 +1695,26 @@ def init_journal_db() -> None:
                 last_refreshed  INTEGER NOT NULL DEFAULT 0,
                 notes           TEXT NOT NULL DEFAULT '',
                 created_at      INTEGER NOT NULL,
+                trade_type      TEXT NOT NULL DEFAULT 'regular',
+                engine_signal   TEXT NOT NULL DEFAULT '',
+                engine_state    INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (email, id)
             )
             """
         )
+
+        try:
+            conn.execute("ALTER TABLE trade_journal ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'regular'")
+        except Exception:
+            pass  # column already exists
+        try:
+            conn.execute("ALTER TABLE trade_journal ADD COLUMN engine_signal TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE trade_journal ADD COLUMN engine_state INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
 
 
 def save_journal_entry(email: str, entry: dict[str, Any]) -> str:
@@ -1715,8 +1731,10 @@ def save_journal_entry(email: str, entry: dict[str, Any]) -> str:
                 legs_json, expiry, entry_date, dte_at_entry,
                 net_credit, max_profit, max_loss, underlying_entry,
                 prob_of_profit, expected_value, total_score,
-                status, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+                status, notes, created_at,
+                trade_type, engine_signal, engine_state
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?,
+                ?, ?, ?)
             """,
             (
                 entry_id, normalized,
@@ -1737,6 +1755,9 @@ def save_journal_entry(email: str, entry: dict[str, Any]) -> str:
                 int(entry.get("total_score", 0)),
                 entry.get("notes", ""),
                 now_ms,
+                str(entry.get("trade_type", "regular")),
+                str(entry.get("engine_signal", "")),
+                int(entry.get("engine_state", 0)),
             ),
         )
     return entry_id
@@ -1779,6 +1800,7 @@ def update_journal_entry(email: str, entry_id: str, **fields) -> None:
         "strategy", "bias", "underlying_entry", "net_credit",
         "max_profit", "max_loss", "prob_of_profit", "expected_value",
         "total_score", "expiry", "entry_date", "company_name",
+        "trade_type", "engine_signal", "engine_state",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

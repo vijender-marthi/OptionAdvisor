@@ -555,4 +555,7 @@ export interface JournalEntry {
   last_refreshed: number
   notes: string
   created_at: number
+  trade_type: string
+  engine_signal: string
+  engine_state: number
 }

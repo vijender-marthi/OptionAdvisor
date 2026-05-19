@@ -546,6 +546,7 @@ export const saveToJournal = async (email: string, payload: {
   net_credit: number; max_profit: number; max_loss: number
   underlying_entry: number; prob_of_profit: number; expected_value: number
   total_score: number; notes?: string
+  trade_type?: string; engine_signal?: string; engine_state?: number
 }): Promise<{ id: string }> => {
   const { data } = await api.post(`/journal/save?email=${encodeURIComponent(email)}`, payload)
   return data

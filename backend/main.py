@@ -3346,6 +3346,9 @@ class JournalSaveRequest(_BM):
     expected_value: float = 0.0
     total_score: int = 0
     notes: str = ""
+    trade_type: str = "regular"
+    engine_signal: str = ""
+    engine_state: int = 0
 
 
 class JournalCloseRequest(_BM):
@@ -3371,6 +3374,9 @@ class JournalUpdateRequest(_BM):
     total_score: Optional[int] = None
     company_name: Optional[str] = None
     notes: Optional[str] = None
+    trade_type: Optional[str] = None
+    engine_signal: Optional[str] = None
+    engine_state: Optional[int] = None
 
 
 def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:

@@ -2,12 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter, Lightbulb,
+  AlertTriangle, DollarSign, BarChart3, Filter,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
-import IdeasList from './TradeIdeasPage'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -271,7 +270,18 @@ function EntryCard({
         >
           <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
             <div className="min-w-0 sm:w-28 sm:shrink-0">
-              <div className="font-semibold text-white text-sm tracking-tight">{entry.ticker}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-white text-sm tracking-tight">{entry.ticker}</span>
+                {entry.trade_type && (
+                  <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
+                    entry.trade_type === 'day' ? 'border-violet-600/40 bg-violet-950/40 text-violet-300' :
+                    entry.trade_type === 'swing' ? 'border-sky-600/40 bg-sky-950/40 text-sky-300' :
+                    'border-emerald-600/40 bg-emerald-950/40 text-emerald-300'
+                  }`}>
+                    {entry.trade_type}
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">
                 {entry.company_name || '—'}
               </div>
@@ -476,6 +486,14 @@ function EntryCard({
               ))}
             </div>
 
+            {/* Engine signal at creation */}
+            {entry.engine_signal && (
+              <div className="mt-2 px-3 text-[11px] text-gray-500">
+                Signal at creation: <span className="font-semibold text-gray-300">{entry.engine_signal}</span>
+                {entry.engine_state > 0 && <span className="ml-2 text-gray-600">· State {entry.engine_state}</span>}
+              </div>
+            )}
+
             {/* Legs table */}
             {entry.legs && entry.legs.length > 0 && (
               <div className="mt-3 bg-gray-800 rounded-xl p-2 sm:p-3 font-mono text-[10px] sm:text-xs overflow-x-auto touch-pan-x">
@@ -603,7 +621,6 @@ export default function JournalPage() {
   const [loading, setLoading]         = useState(true)
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'log' | 'ideas'>('log')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [deleting, setDeleting]       = useState(false)
@@ -794,36 +811,6 @@ export default function JournalPage() {
         </div>
       )}
 
-      {/* Tab bar: Trade Log | Trade Ideas */}
-      <div className="flex items-center gap-1 border-b border-gray-800 pb-0">
-        <button
-          onClick={() => setActiveTab('log')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
-            activeTab === 'log'
-              ? 'bg-gray-900 border-gray-700 text-white'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          <BookOpen size={15} />
-          Trade Log
-        </button>
-        <button
-          onClick={() => setActiveTab('ideas')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
-            activeTab === 'ideas'
-              ? 'bg-gray-900 border-gray-700 text-white'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          <Lightbulb size={15} />
-          Trade Ideas
-        </button>
-      </div>
-
-      {activeTab === 'ideas' ? (
-        <IdeasList />
-      ) : (
-        <>
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
@@ -903,8 +890,6 @@ export default function JournalPage() {
             />
           ))}
         </div>
-      )}
-      </>
       )}
     </div>
     </div>
