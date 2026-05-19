@@ -301,17 +301,6 @@ function EntryCard({
             <div className="min-w-0 sm:w-32 sm:shrink-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-slate-900 dark:text-white text-sm tracking-tight">{entry.ticker}</span>
-                <span className={`text-xs font-bold font-mono ${
-                  entry.current_price > 0
-                    ? entry.net_credit !== 0 && entry.legs.length > 0
-                      ? 'text-violet-600 dark:text-violet-400'
-                      : 'text-slate-800 dark:text-slate-200'
-                    : 'text-slate-400 dark:text-slate-600'
-                }`}>
-                  {entry.current_price > 0
-                    ? `$${entry.current_price.toFixed(2)}`
-                    : '—'}
-                </span>
                 {entry.trade_type && (
                   <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
                     entry.trade_type === 'day' ? 'border-violet-600/40 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' :
@@ -325,6 +314,20 @@ function EntryCard({
               <div className="text-xs text-slate-500 dark:text-gray-500 truncate sm:max-w-[120px]">
                 {entry.company_name || '—'}
               </div>
+            </div>
+
+            {/* Current price */}
+            <div className="min-w-0 sm:w-20 sm:shrink-0 text-right sm:text-left">
+              <div className={`text-xs font-bold font-mono ${
+                entry.current_price > 0
+                  ? 'text-slate-800 dark:text-slate-200'
+                  : 'text-slate-400 dark:text-slate-600'
+              }`}>
+                {entry.current_price > 0
+                  ? `$${entry.current_price.toFixed(2)}`
+                  : '—'}
+              </div>
+              <div className="text-[9px] text-slate-400 dark:text-gray-600">Price</div>
             </div>
 
             {(() => {

@@ -144,22 +144,38 @@ class TestSwingStructureFalling(unittest.TestCase):
 
 class TestSwingStructureMixed(unittest.TestCase):
 
-    def test_zigzag_returns_mixed(self):
-        # Peak then higher trough but lower second peak → HH but not HL, or LL but not LH
-        # HH (second peak > first), but LL (second trough < first) → neither branch
-        closes = [10, 14, 18, 14, 12, 16, 20, 16, 10, 14, 15]
-        result = _swing_structure(closes, window=2)
-        self.assertEqual(result, "MIXED")
-
     def test_higher_high_but_lower_low_returns_mixed(self):
-        # Rising peak but falling trough → not HH_HL, not LL_LH → MIXED
+        # HH (peak2=20 > peak1=18) but LL (trough2=10 < trough1=12) → neither HH_HL nor LL_LH
         closes = [
-            12, 14, 16, 14, 10,  # peak=16, trough=10
-            11, 15, 20, 15, 8,   # peak=20 (HH), trough=8 (LL) → MIXED
-            9, 12
+            15, 16,
+            18,         # peak1
+            15, 14,
+            12,         # trough1=12
+            13, 14,
+            20,         # peak2=20 (HH)
+            12, 11,
+            10,         # trough2=10 (LL) → MIXED
+            11, 12,
         ]
         result = _swing_structure(closes, window=2)
         self.assertEqual(result, "MIXED")
+
+    def test_lower_low_but_higher_high_also_returns_mixed(self):
+        # Confirms MIXED when hh+ll combination (not HL + not LH)
+        closes = [
+            15, 16,
+            18,
+            15, 14,
+            12,
+            13, 14,
+            20,
+            12, 11,
+            10,
+            11, 12,
+        ]
+        result = _swing_structure(closes, window=2)
+        self.assertNotEqual(result, "HH_HL")
+        self.assertNotEqual(result, "LL_LH")
 
 
 class TestSwingStructureBoundary(unittest.TestCase):

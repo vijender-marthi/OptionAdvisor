@@ -277,7 +277,8 @@ class TestPickExpiryByDTE(unittest.TestCase):
         expiry = pick_expiry_by_dte(dates, 21, 42)
         self.assertEqual(expiry, _future_date(30))
 
-    def test_returns_none_when_no_date_in_range(self):
+    def test_returns_none_when_all_dates_too_short(self):
+        # 3 and 10 day expiries are both < dte_min-5=16, so relaxed fallback also returns None
         dates = [_future_date(3), _future_date(10)]
         expiry = pick_expiry_by_dte(dates, 21, 42)
         self.assertIsNone(expiry)
