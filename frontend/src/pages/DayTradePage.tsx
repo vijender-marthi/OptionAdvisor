@@ -57,6 +57,7 @@ export default function DayTradePage() {
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const autoRunRef = useRef(false)
   const [myTickers, setMyTickers] = useState<string[]>([])
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -84,6 +85,7 @@ export default function DayTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      setLastRefreshed(new Date())
     } catch (e) {
       setUi(cur => ({
         ...cur,
@@ -121,6 +123,13 @@ export default function DayTradePage() {
     const t = setTimeout(() => setNotice(null), 2800)
     return () => clearTimeout(t)
   }, [notice])
+
+  // Auto-refresh every 5 minutes when a result is loaded
+  useEffect(() => {
+    if (!result) return
+    const id = setInterval(() => void runScan(), 300_000)
+    return () => clearInterval(id)
+  }, [result, runScan])
 
   const openEnterModal = useCallback(() => {
     if (!result) return
@@ -309,6 +318,11 @@ export default function DayTradePage() {
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
           </button>
+          {lastRefreshed && (
+            <span className="text-[10px] text-gray-500 whitespace-nowrap">
+              Updated {lastRefreshed.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </header>
 
