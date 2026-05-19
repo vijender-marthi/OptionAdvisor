@@ -30,14 +30,14 @@ const PAD = { l: 56, r: 10, t: 18, b: 34 }
 function fmtEtShort(iso: string) {
   if (!iso || typeof iso !== 'string') return ''
   try {
-    // Parse the ISO string which carries the ET offset (e.g. "2026-05-19T09:30:00-04:00")
-    const match = iso.match(/T(\d{2}):(\d{2})/)
-    if (!match) return ''
-    const h = parseInt(match[1], 10)
-    const m = match[2]
-    const ampm = h >= 12 ? 'PM' : 'AM'
-    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-    return `${h12}:${m} ${ampm}`
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/Los_Angeles',
+    })
   } catch {
     return ''
   }
@@ -174,7 +174,7 @@ export default function DayTradeIntradayChart({
           Session chart (1m)
         </div>
         <div className="text-[11px] text-gray-500">
-          {sessionDate ? `${sessionDate} ET` : 'Last RTH'}{' · '}
+          {sessionDate ? `${sessionDate} PT` : 'Last RTH'}{' · '}
           <span className="text-semantic-accent">VWAP</span>
           {' · '}
           <span className="text-semantic-warning">OR high / low</span>
