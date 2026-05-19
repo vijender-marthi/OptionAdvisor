@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
   AlertTriangle, DollarSign, BarChart3, Filter, ArrowUpRight,
 } from 'lucide-react'
-import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry } from '../api/client'
+import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry, executeTrade } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES, getEngineRoute } from '../routing/routes'
@@ -190,6 +190,7 @@ function EntryCard({
   onNotesSave,
   onUpdate,
   onNavigate,
+  userRole,
 }: {
   entry: JournalEntry
   onClose: (id: string, reason: string, notes: string) => Promise<void>
@@ -197,6 +198,7 @@ function EntryCard({
   onNotesSave: (id: string, notes: string) => Promise<void>
   onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>
   onNavigate?: (url: string) => void
+  userRole?: string | null
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showClose, setShowClose] = useState(false)
@@ -206,6 +208,9 @@ function EntryCard({
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [savingField, setSavingField] = useState(false)
+  const [executingTrade, setExecutingTrade] = useState(false)
+  const [executedTrade, setExecutedTrade] = useState(false)
+  const [tradeError, setTradeError] = useState<string | null>(null)
 
   const isOpen    = entry.status === 'OPEN'
   const isClosed  = entry.status === 'CLOSED'
@@ -251,6 +256,30 @@ function EntryCard({
   const biasColor =
     (entry.bias || '').includes('Bullish') ? 'text-emerald-400' :
     (entry.bias || '').includes('Bearish') ? 'text-red-400' : 'text-amber-400'
+
+  const handleExecuteTrade = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!userRole || executedTrade || executingTrade) return
+    setExecutingTrade(true)
+    setTradeError(null)
+    try {
+      await executeTrade({
+        email: entry.email || '',
+        ticker: entry.ticker,
+        strategy: entry.strategy,
+        legs: entry.legs as object[],
+        contracts: 1,
+      })
+      setExecutedTrade(true)
+      setTimeout(() => setExecutedTrade(false), 8000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Trade execution failed'
+      setTradeError(msg)
+      setTimeout(() => setTradeError(null), 6000)
+    } finally {
+      setExecutingTrade(false)
+    }
+  }
 
   return (
     <>
@@ -618,7 +647,7 @@ function EntryCard({
             </div>
 
             {/* Action buttons */}
-            <div className="mt-3 flex gap-1.5 flex-wrap">
+            <div className="mt-3 flex gap-1.5 flex-wrap items-center">
               {isOpen && (
                 <button
                   type="button"
@@ -630,6 +659,24 @@ function EntryCard({
                 >
                   <CheckSquare size={16} />
                 </button>
+              )}
+              {userRole === 'admin' && entry.legs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExecuteTrade}
+                  disabled={executingTrade}
+                  title={executedTrade ? 'Trade executed' : 'Execute Alpaca paper trade'}
+                  className={`inline-flex h-10 items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-colors shrink-0 ${
+                    executedTrade
+                      ? 'bg-emerald-900/30 border-emerald-700 text-emerald-300'
+                      : 'bg-amber-900/30 border-amber-700 text-amber-300 hover:bg-amber-900/50'
+                  }`}
+                >
+                  {executingTrade ? '…' : executedTrade ? '✓ Executed' : 'Paper Trade'}
+                </button>
+              )}
+              {tradeError && (
+                <span className="text-xs text-red-400 ml-1">{tradeError}</span>
               )}
               <button
                 type="button"
@@ -928,6 +975,8 @@ export default function JournalPage() {
               onDeleteConfirm={handleDeleteConfirm}
               onNotesSave={handleNotesSave}
               onUpdate={handleUpdate}
+              onNavigate={routerNavigate}
+              userRole={user?.role}
             />
           ))}
         </div>
