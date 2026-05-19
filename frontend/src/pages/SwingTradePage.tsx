@@ -114,13 +114,14 @@ export default function SwingTradePage() {
     }
     const buildLegs = (): object[] => {
       if (!se) return []
+      const debit = Number(se.est_debit ?? 0)  // net debit per share for the spread
       const legs: object[] = [{
         action: 'BUY',
         option_type: parseOptType(String(se.long_leg || '')),
         strike: Number(se.long_strike ?? 0),
         expiry,
         delta: 0,
-        mid_price: lastPrice,
+        mid_price: debit,  // spread net debit per share as entry price
       }]
       if (se.short_leg && se.short_strike) {
         legs.push({
@@ -129,7 +130,7 @@ export default function SwingTradePage() {
           strike: Number(se.short_strike),
           expiry,
           delta: 0,
-          mid_price: lastPrice,
+          mid_price: 0,  // sell leg entry at 0; net debit captures the cost
         })
       }
       return legs

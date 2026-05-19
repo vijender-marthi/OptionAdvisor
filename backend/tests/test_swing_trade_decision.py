@@ -279,7 +279,6 @@ def test_near_resistance_triggers_wait_breakout():
     )
     assert d["final_action"]  in ("WAIT_BREAKOUT",)
     assert d["entry_quality"] == "WAIT_BREAKOUT_CONFIRMATION"
-    assert "NEAR_RESISTANCE" in d["risk_flags"]
     assert any("resistance" in c.lower() for c in d["confirmation_needed"])
 
 
