@@ -2061,6 +2061,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     _week_high = float(raw["High"].iloc[-_week_bars:].max())
     _week_low  = float(raw["Low"].iloc[-_week_bars:].min())
     _week_span = _week_high - _week_low
+    bias = "bullish" if last > ma20 else "bearish"
     if _week_span > 0:
         if bias == "bullish":
             _weekly_range_used_pct = round((last - _week_low) / _week_span * 100, 1)
