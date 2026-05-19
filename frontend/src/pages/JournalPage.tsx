@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter,
+  AlertTriangle, DollarSign, BarChart3, Filter, ArrowUpRight,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
+import { ROUTES, getEngineRoute } from '../routing/routes'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,9 +46,9 @@ function dteLabel(expiry: string): string {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  OPEN:    'bg-blue-900/40 text-blue-300 border-blue-700',
-  CLOSED:  'bg-gray-800 text-gray-400 border-gray-700',
-  EXPIRED: 'bg-amber-900/30 text-amber-400 border-amber-700',
+  OPEN:    'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
+  CLOSED:  'bg-slate-100 text-slate-600 border-slate-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700',
+  EXPIRED: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700',
 }
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -79,14 +81,14 @@ function PriceDiff({ current, entry }: { current: number; entry: number }) {
 
 // ─── Stat card ───────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color = 'text-gray-200' }: {
+function StatCard({ label, value, sub, color = 'text-slate-900 dark:text-gray-200' }: {
   label: string; value: string; sub?: string; color?: string
 }) {
   return (
-    <div className="bg-gray-800 rounded-xl px-3 py-2">
-      <div className="text-gray-500 mb-0.5 text-xs">{label}</div>
+    <div className="bg-slate-100 dark:bg-gray-800 rounded-xl px-3 py-2">
+      <div className="text-slate-500 dark:text-gray-500 mb-0.5 text-xs">{label}</div>
       <div className={`font-semibold font-mono text-sm sm:text-base ${color} break-words`}>{value}</div>
-      {sub && <div className="text-gray-600 text-xs mt-0.5">{sub}</div>}
+      {sub && <div className="text-slate-400 dark:text-gray-600 text-xs mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -114,12 +116,12 @@ function CloseModal({ entry, onClose, onConfirm }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-5 shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-white">Close Trade</div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+          className="w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 shadow-2xl"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="font-bold text-slate-900 dark:text-white">Close Trade</div>
+            <button onClick={onClose} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -187,12 +189,14 @@ function EntryCard({
   onDeleteConfirm,
   onNotesSave,
   onUpdate,
+  onNavigate,
 }: {
   entry: JournalEntry
   onClose: (id: string, reason: string, notes: string) => Promise<void>
   onDeleteConfirm: (id: string) => void
   onNotesSave: (id: string, notes: string) => Promise<void>
   onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>
+  onNavigate?: (url: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showClose, setShowClose] = useState(false)
@@ -261,28 +265,36 @@ function EntryCard({
         />
       )}
 
-      <div className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-2xl overflow-hidden transition-colors">
+      <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden transition-colors hover:border-slate-300 dark:hover:border-white/[0.12]">
         {/* Header row — grid/flex aligned with Watchlist ticker rows */}
         <button
           type="button"
           onClick={() => setExpanded(o => !o)}
-          className="w-full text-left touch-manipulation transition-colors hover:bg-gray-800/30 active:bg-gray-800/40"
+          className="w-full text-left touch-manipulation transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30 active:bg-slate-100 dark:active:bg-slate-800/40"
         >
           <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
-            <div className="min-w-0 sm:w-28 sm:shrink-0">
+            <div className="min-w-0 sm:w-32 sm:shrink-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-white text-sm tracking-tight">{entry.ticker}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onNavigate?.(getEngineRoute(entry.trade_type || 'regular', entry.ticker)) }}
+                  className="font-semibold text-slate-900 dark:text-white text-sm tracking-tight hover:text-violet-600 dark:hover:text-violet-300 transition-colors cursor-pointer"
+                  title={`Open ${entry.ticker} in ${entry.trade_type || 'regular'} engine`}
+                >
+                  {entry.ticker}
+                </button>
+                <ArrowUpRight size={10} className="text-slate-400 dark:text-slate-500 shrink-0" />
                 {entry.trade_type && (
                   <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
-                    entry.trade_type === 'day' ? 'border-violet-600/40 bg-violet-950/40 text-violet-300' :
-                    entry.trade_type === 'swing' ? 'border-sky-600/40 bg-sky-950/40 text-sky-300' :
-                    'border-emerald-600/40 bg-emerald-950/40 text-emerald-300'
+                    entry.trade_type === 'day' ? 'border-violet-600/40 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' :
+                    entry.trade_type === 'swing' ? 'border-sky-600/40 bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300' :
+                    'border-emerald-600/40 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                   }`}>
                     {entry.trade_type}
                   </span>
                 )}
               </div>
-              <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">
+              <div className="text-xs text-slate-500 dark:text-gray-500 truncate sm:max-w-[120px]">
                 {entry.company_name || '—'}
               </div>
             </div>
@@ -297,7 +309,7 @@ function EntryCard({
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
               const pct = hasBoth ? (diff / ep) * 100 : 0
-              const color = hasBoth ? (diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-gray-200') : 'text-gray-200'
+              const color = hasBoth ? (diff > 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200') : 'text-slate-500 dark:text-gray-200'
               return (
                 <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
                   <div className={`text-sm font-semibold font-mono ${color}`}>
@@ -306,9 +318,14 @@ function EntryCard({
                       <span className="text-[10px] ml-1 font-normal">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-slate-500 dark:text-gray-500">
                     {ep > 0 ? `entry $${ep.toFixed(2)}` : '—'}
                   </div>
+                  {hasOptionEntry && entry.current_price > 0 && (
+                    <div className="text-[10px] text-slate-400 dark:text-gray-600">
+                      stock ${entry.current_price.toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -364,7 +381,7 @@ function EntryCard({
 
         {/* Expanded detail */}
         {expanded && (
-          <div className="border-t border-gray-800 px-4 py-3 bg-gray-800/30">
+          <div className="border-t border-slate-200 dark:border-gray-800 px-4 py-3 bg-slate-50 dark:bg-gray-800/30">
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3 text-xs">
               {[
                 { label: 'Entry Date', value: fmtDate(entry.entry_date), note: '' },
@@ -638,6 +655,7 @@ type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'EXPIRED'
 
 export default function JournalPage() {
   const { user, syncJournalEntryCount } = useApp()
+  const routerNavigate = useNavigate()
   const email = user?.email ?? ''
 
   const [entries, setEntries]         = useState<JournalEntry[]>([])
