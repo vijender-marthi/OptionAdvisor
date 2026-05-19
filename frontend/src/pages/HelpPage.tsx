@@ -1145,9 +1145,9 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
-              <DocCard icon={<Activity size={15} />} title="Signal Improvements (11 Additions)">
+              <DocCard icon={<Activity size={15} />} title="Signal Improvements (13 Additions)">
                 <div className="space-y-2 text-xs text-gray-400">
-                  <p>Recent engine updates added the following signals and scoring improvements:</p>
+                  <p>Engine updates added the following signals and scoring improvements:</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       { label: 'VWAP Band', desc: '±0.15% band around VWAP. Inside band = "testing," not "above/below." Distance-proportional scoring replaces binary check. VWAP_TEST state added.' },
@@ -1161,6 +1161,8 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       { label: 'Time-of-Day', desc: 'Four session phases (Opening, Mid-Morning, Midday, Power Hour). Midday: −0.25. Power Hour: −0.5 + EOD exit note.' },
                       { label: 'Adaptive Momentum', desc: 'Window adapts: 15 bars (&lt;60 in session), 30 bars (60–180), 45 bars (&gt;180). Avoids open-to-now noise early.' },
                       { label: 'Secondary Breakout', desc: 'Counts distinct OR crossings. Second crossing with vol spike → +1.0. Higher conviction than first breakout.' },
+                      { label: 'False-Positive NO-GO Veto', desc: 'Compound veto fires when: OR never broken (contained) + RVOL < 0.75× + market bearish (SPY & QQQ both ≤ −0.25%). Prevents bullish CALL signal when the actual breakout trigger has never fired.' },
+                      { label: 'Bounce-Rejection Tiers', desc: 'After ORL breakdown, the engine detects WHERE a bounce gets rejected. VWAP rejection scores bear +1.2 (more bearish than ORL retest). See "Bounce-Rejection Entry Tiers" card below.' },
                     ].map(c => (
                       <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
                         <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
@@ -1168,6 +1170,256 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </div>
                     ))}
                   </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="Bounce-Rejection Entry Tiers (After ORL Breakdown)">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>
+                    After a breakdown below ORL, price often bounces. <strong className="text-gray-200">Where</strong> the bounce gets rejected
+                    determines the entry tier, stop placement, and target size. The engine detects four states via{' '}
+                    <code className="font-mono text-violet-300 text-[10px]">bounce_scenario</code>:
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Scenario</th>
+                          <th className="px-2 py-1.5 font-semibold">Meaning</th>
+                          <th className="px-2 py-1.5 font-semibold">Bear</th>
+                          <th className="px-2 py-1.5 font-semibold">Entry</th>
+                          <th className="px-2 py-1.5 font-semibold">Stop</th>
+                          <th className="px-2 py-1.5 font-semibold">Target</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['vwap_rejection', 'Bounce capped at VWAP (sellers stepped in early)', '+1.2', 'Near VWAP', 'Just above VWAP +0.2%', 'ORL'],
+                          ['orl_rejection_retest', 'Bounce reached ORL, now rejected', '+0.8', 'Near ORL', 'Just above ORL +0.2%', 'Below day low'],
+                          ['no_mans_land', 'Churning between VWAP and ORL', '—', 'WAIT', 'No clean stop', '—'],
+                          ['vwap_test', 'Approaching VWAP, volume unconfirmed', '—', 'WAIT', '—', '—'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
+                            <td className="px-2 py-1.5 font-mono text-rose-300">{r[2]}</td>
+                            <td className="px-2 py-1.5 text-gray-300">{r[3]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[4]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[5]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-amber-300 text-[11px]">Key insight — VWAP rejection is MORE bearish, not less</p>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                      When sellers are so aggressive that they reject a bounce <em>before</em> it even reaches ORL, that's a sign of heavy
+                      selling pressure — stronger than a bounce that gets all the way to ORL. The engine scores <code className="font-mono text-violet-300">vwap_rejection</code> at
+                      bear +1.2 vs <code className="font-mono text-violet-300">orl_rejection_retest</code> at +0.8 to reflect this.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">Detection thresholds</p>
+                    <ul className="space-y-0.5 pl-3 text-gray-500 text-[10px]">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">VWAP rejection:</strong> or_historical = broke_down, or_state = below, price within ±0.45% of VWAP, price &gt;0.55% below ORL, vol_spike = true</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">ORL retest:</strong> same breakdown conditions, price within 0.55% of ORL from below, price &gt;0.3% below VWAP</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">No-man's land:</strong> price more than 0.55% below ORL AND more than 0.45% below VWAP — stuck in between, no clean level</span></li>
+                    </ul>
+                  </div>
+
+                  <p className="text-[10px] text-gray-500">
+                    AI Coach summary, entry condition, decision tree, and best_next_step all adapt to the active bounce scenario tier.
+                    Long-side mirror logic also applies: after ORH breakout, VWAP support hold is scored bull +1.2.
+                  </p>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Bell size={15} />} title="Key-Level Price Alerts">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>
+                    Beyond WATCH→GO verdict escalation, the scanner fires <strong className="text-gray-200">level-retest alerts</strong> when
+                    price approaches a key structural level with volume. These fire for both watchlist tickers and tickers
+                    tracked in <strong className="text-gray-200">Track Intraday</strong>.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Alert type</th>
+                          <th className="px-2 py-1.5 font-semibold">Trigger condition</th>
+                          <th className="px-2 py-1.5 font-semibold">Example title</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['ORL Retest', 'or_historical = broke_down, or_state = below, price within 0.4% of ORL from below', '⚡ AMD — OR Low Retest (Short Re-entry)'],
+                          ['ORH Retest', 'or_historical = broke_up, or_state = above, price within 0.4% of ORH from above', '⚡ NVDA — OR High Retest (Long Re-entry)'],
+                          ['VWAP Test', 'Price within 0.2% of VWAP in either direction, RVOL ≥ 1.2×', '⚡ TSLA — VWAP Test (Vol 1.4×)'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-semibold text-gray-200 whitespace-nowrap">{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
+                            <td className="px-2 py-1.5 font-mono text-amber-300 text-[10px]">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'Deduplication', desc: 'Each alert type fires at most once per session per ticker. The level_alert_key is persisted in the database and compared before firing. A new trading day resets all keys.' },
+                      { label: 'Active Trades Coverage', desc: 'The scanner loops over open active-trade tickers (Track Intraday, opened today) after finishing the main watchlist. Tickers not on the watchlist still get level alerts.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Gauge size={15} />} title="Volume Chart — avg vol for time of day">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>
+                    The volume tab shows each 1-minute bar colour-coded against a yellow dashed reference line labelled
+                    <strong className="text-gray-200"> avg vol for time of day</strong>.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: '🟦 Cyan bar', desc: 'That bar\'s volume was at or above the historical average for this time slot (bar ≥ avg line).' },
+                      { label: '⬛ Gray bar', desc: 'That bar\'s volume was below average. Most bars will be gray on low-RVOL days.' },
+                      { label: '— Yellow line', desc: 'Derived from the last bar\'s RVOL: avg = last_bar_volume / rvol. Represents what "normal" volume looks like for this time of day.' },
+                      { label: 'All bars below line', desc: 'Normal for low-RVOL sessions. The line near the top means the entire session ran below historical average — useful context for entry decisions.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Reading the chart</p>
+                    <ul className="space-y-0.5 text-gray-500 text-[10px]">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-cyan-400 shrink-0" /><span>RVOL 1.5×+: several cyan spikes visible, bars reaching or exceeding the avg line. Volume is confirming moves.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-500 shrink-0" /><span>RVOL 0.3×: all bars gray, avg line near the top. Session volume is light — breakouts without volume spike are suspect.</span></li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Target size={15} />} title="Confluence Zone Trading — AI Coach Strategy">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>
+                    The AI Coach uses <strong className="text-gray-200">Confluence Zone Trading</strong> as its core strategy.
+                    A confluence zone forms when two or more key levels stack within <strong className="text-gray-200">$0.10</strong> of each other.
+                  </p>
+
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-amber-300 text-[11px]">Confluence strength tiers</p>
+                    <div className="grid gap-1.5 text-[10px]">
+                      {[
+                        { badge: 'EXTREME', color: 'bg-amber-500/20 text-amber-300', desc: '3+ levels within $0.10, OR specifically VWAP + ORL within $0.10 (highest conviction)' },
+                        { badge: 'STRONG', color: 'bg-amber-500/10 text-amber-400/80', desc: 'Any 2 levels (VWAP, ORL, ORH) within $0.10 of each other' },
+                        { badge: 'NONE', color: 'bg-gray-800/40 text-gray-500', desc: 'Levels spread apart — no zone, no structured entry' },
+                      ].map(t => (
+                        <div key={t.badge} className="flex items-start gap-2">
+                          <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${t.color}`}>{t.badge}</span>
+                          <span className="text-gray-400">{t.desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px]">Zone role — determined by price position</p>
+                    <ul className="space-y-0.5 text-[10px] text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-rose-500 shrink-0" /><span><strong className="text-gray-300">RESISTANCE</strong> — price is below the zone. Zone acts as ceiling. Look for bounce → rejection → PUT entry.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" /><span><strong className="text-gray-300">SUPPORT</strong> — price is above the zone. Zone acts as floor. Look for pullback → bounce → CALL entry.</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" /><span><strong className="text-gray-300">CHOP</strong> — price is at the zone. No trade — wait for directional resolution with volume.</span></li>
+                    </ul>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px]">Entry gate — all three required</p>
+                    <ul className="space-y-0.5 text-[10px] text-gray-500">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span>Price within <strong className="text-gray-300">$0.50</strong> of the confluence zone</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span><strong className="text-gray-300">Rejection candle</strong> (for PUT) or <strong className="text-gray-300">Bounce candle</strong> (for CALL) forms at the zone</span></li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span><strong className="text-gray-300">RVOL &gt; 1.2×</strong> at the moment of the candle</span></li>
+                    </ul>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">RVOL</th>
+                          <th className="px-2 py-1.5 font-semibold">Meaning</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['< 0.8×', 'No trade — wait', 'text-rose-400'],
+                          ['0.8–1.2×', 'Watch closely — not yet confirmed', 'text-amber-400'],
+                          ['> 1.2×', 'Valid entry', 'text-emerald-400'],
+                          ['> 1.5×', 'High conviction entry', 'text-emerald-300'],
+                        ].map(r => (
+                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
+                            <td className={`px-2 py-1.5 font-mono font-bold ${r[2]}`}>{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px]">No-trade conditions (any one blocks entry)</p>
+                    <ul className="space-y-0.5 text-[10px] text-gray-500">
+                      {[
+                        'Daily range already > 60% used',
+                        'RVOL < 0.8× at entry zone',
+                        'Price in chop zone (at confluence)',
+                        'No confluence zone detected',
+                        'R/R ratio < 1:2',
+                        'Entry missed — price already moved past zone',
+                      ].map(r => (
+                        <li key={r} className="flex gap-2">
+                          <span className="mt-1.5 h-1 w-1 rounded-full bg-rose-500 shrink-0" />
+                          <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px] mb-1">AI Coach output fields (new)</p>
+                    <div className="grid gap-1.5 text-[10px]">
+                      {[
+                        { field: 'confluence', desc: 'Detected zone: price, converging levels, strength, zone role' },
+                        { field: 'entry_gate', desc: 'Valid (true/false), trigger price, trigger condition, RVOL required, candle type' },
+                        { field: 'trade', desc: 'Direction, entry price, target, stop, R/R ratio, r_r_valid flag' },
+                        { field: 'no_trade_reason', desc: 'Human-readable explanation of why entry is blocked (null when entry is valid)' },
+                        { field: 'confluence_note', desc: '≤20-word description of the active zone, shown in the amber banner' },
+                      ].map(f => (
+                        <div key={f.field} className="flex gap-2">
+                          <code className="shrink-0 font-mono text-[9px] text-violet-300 bg-violet-950/30 px-1.5 py-0.5 rounded">{f.field}</code>
+                          <span className="text-gray-400">{f.desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-gray-500">
+                    Options tier: confidence &gt; 80 = naked option acceptable; 60–80 = debit spread preferred; &lt; 60 = watch only, no trade.
+                    SPY alignment adds +10 confidence; SPY conflict deducts −15.
+                  </p>
                 </div>
               </DocCard>
 
