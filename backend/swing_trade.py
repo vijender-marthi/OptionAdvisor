@@ -2057,28 +2057,6 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     dist_ma50_pct = round((last / ma50 - 1.0) * 100, 2)
 
     # Weekly range exhaustion — 5-session high/low window
-    _week_bars = min(5, len(raw))
-    _week_high = float(raw["High"].iloc[-_week_bars:].max())
-    _week_low  = float(raw["Low"].iloc[-_week_bars:].min())
-    _week_span = _week_high - _week_low
-    bias = "bullish" if last > ma20 else "bearish"
-    if _week_span > 0:
-        if bias == "bullish":
-            _weekly_range_used_pct = round((last - _week_low) / _week_span * 100, 1)
-        else:
-            _weekly_range_used_pct = round((_week_high - last) / _week_span * 100, 1)
-        _weekly_range_used_pct = max(0.0, min(100.0, _weekly_range_used_pct))
-    else:
-        _weekly_range_used_pct = 0.0
-    if _weekly_range_used_pct >= 70:
-        _weekly_range_phase = "EXTENDED"
-    elif _weekly_range_used_pct >= 50:
-        _weekly_range_phase = "LATE"
-    elif _weekly_range_used_pct >= 30:
-        _weekly_range_phase = "MID"
-    else:
-        _weekly_range_phase = "EARLY"
-
     idx_last = raw.index[-1]
     asof_date = idx_last.date() if hasattr(idx_last, "date") else pd.Timestamp(idx_last).date()
     hv_20 = compute_hv(close, 20)
@@ -2338,6 +2316,30 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     )
 
     reasons = prefix + body
+
+    # Weekly range exhaustion — uses final scored bias ("long"/"short"), not MA proxy
+    _week_bars = min(5, len(raw))
+    _week_high = float(raw["High"].iloc[-_week_bars:].max())
+    _week_low  = float(raw["Low"].iloc[-_week_bars:].min())
+    _week_span = _week_high - _week_low
+    if _week_span > 0:
+        if bias == "long":
+            _weekly_range_used_pct = round((last - _week_low) / _week_span * 100, 1)
+        elif bias == "short":
+            _weekly_range_used_pct = round((_week_high - last) / _week_span * 100, 1)
+        else:
+            _weekly_range_used_pct = round(abs(last - (_week_low + _week_span / 2)) / (_week_span / 2) * 50, 1)
+        _weekly_range_used_pct = max(0.0, min(100.0, _weekly_range_used_pct))
+    else:
+        _weekly_range_used_pct = 0.0
+    if _weekly_range_used_pct >= 70:
+        _weekly_range_phase = "EXTENDED"
+    elif _weekly_range_used_pct >= 50:
+        _weekly_range_phase = "LATE"
+    elif _weekly_range_used_pct >= 30:
+        _weekly_range_phase = "MID"
+    else:
+        _weekly_range_phase = "EARLY"
 
     metrics = {
         "session_date":    session_date,
