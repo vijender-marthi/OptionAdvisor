@@ -145,7 +145,7 @@ export interface DayOptionRiskContext {
 
 // ─── AI Coach types ────────────────────────────────────────────────────────────
 
-export type AiCoachAction    = 'WATCH' | 'ENTER' | 'EXIT' | 'HOLD'
+export type AiCoachAction    = 'WATCH' | 'ENTER' | 'EXIT' | 'HOLD' | 'AVOID'
 export type AiCoachSetupType = 'CALL' | 'PUT' | 'SPREAD' | 'NONE'
 export type AiCoachBias      = 'bullish' | 'bearish' | 'neutral'
 export type AiCoachRisk      = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -182,6 +182,33 @@ export interface AiCoachResult {
   }>
   best_next_step: string
   options_note:   string
+  /** Confluence zone detection */
+  confluence?: {
+    detected: boolean
+    zone_price: number
+    levels_converging: string[]
+    strength: 'EXTREME' | 'STRONG' | 'NONE'
+    zone_role: 'RESISTANCE' | 'SUPPORT' | 'CHOP' | 'NONE'
+  }
+  /** Entry gate validation */
+  entry_gate?: {
+    valid: boolean
+    trigger_price: number
+    trigger_condition: string
+    rvol_required: number
+    candle_required: 'rejection' | 'bounce' | 'breakout' | 'none'
+  }
+  /** Trade levels with R/R */
+  trade?: {
+    direction: 'PUT' | 'CALL' | 'NONE'
+    entry_price: number
+    target: number
+    stop: number
+    risk_reward: number
+    r_r_valid: boolean
+  }
+  no_trade_reason?: string | null
+  confluence_note?: string
   /** 'anthropic' | 'openai' | 'deterministic' — for debugging */
   _source?: string
 }

@@ -29,54 +29,61 @@ COACH_CACHE_TTL = 900  # 15 minutes — matches day trade scan cache
 
 # ── System / coaching prompt ────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """\
-You are an AI Trading Coach embedded in a professional options trading platform.
-Your job is to analyze trading signals from a trading engine and return a
-structured JSON coaching summary.
+You are an expert intraday options trading signal engine embedded in a professional platform.
+Your strategy is Confluence Zone Trading. Analyze the signal and return structured JSON only.
 
-STRICT RULES:
-- Always respond with valid JSON only
-- No preamble, no markdown, no explanation outside JSON
-- Never use free text summaries — all output must be typed structured fields
-- All price levels must be numbers, not strings
-- Confidence must be 0-100 integer
-- Bias must be: "bullish" | "bearish" | "neutral"
-- Action must be: "WATCH" | "ENTER" | "EXIT" | "HOLD"
-- Setup type must be: "CALL" | "PUT" | "SPREAD" | "NONE"
-- Risk must be: "LOW" | "MEDIUM" | "HIGH"
+CORE STRATEGY:
+━━━━━━━━━━━━━━
+CONFLUENCE DETECTION: Zone exists when ANY 2+ levels within $0.10 of each other:
+  - VWAP, ORL (Opening Range Low), ORH (Opening Range High), prev_close
+  - Strength: 2 levels = STRONG, 3+ levels = EXTREME, VWAP+ORL specifically = EXTREME
 
-INPUT: You will receive a signal JSON from the trading engine:
+DIRECTIONAL BIAS:
+  - Price BELOW confluence = zone is RESISTANCE → PUT bias
+  - Price ABOVE confluence = zone is SUPPORT → CALL bias
+  - Price AT confluence = CHOP → no trade
+
+ENTRY TRIGGER (ALL THREE required):
+  1. Price within $0.50 of confluence zone
+  2. Rejection candle (PUT) or Bounce candle (CALL)
+  3. RVOL > 1.2x at moment of candle
+  (RVOL < 0.8x = no trade; 0.8-1.2x = watch; >1.2x = valid; >1.5x = high conviction)
+
+BROKEN LEVEL RULE: ORL broken → ORL becomes resistance. VWAP declining below ORL = double resistance.
+
+NO TRADE WHEN: daily_range_used_pct > 60 | RVOL < 0.8 | price in chop zone | R/R < 1:2 | entry missed
+
+SPY ALIGNMENT: ticker bias matches SPY = +10 confidence; conflicts SPY = -15 confidence
+
+OPTIONS RULES: confidence > 80 = naked ok; 60-80 = spread preferred; < 60 = watch only; R/R < 1:2 = AVOID
+
+STRICT OUTPUT RULES:
+- Return valid JSON only, no markdown, no explanation
+- All price levels must be numbers
+- Confidence: 0-100 integer
+- bias: "bullish" | "bearish" | "neutral"
+- action: "WATCH" | "ENTER" | "EXIT" | "HOLD" | "AVOID"
+- setup_type: "CALL" | "PUT" | "SPREAD" | "NONE"
+- risk: "LOW" | "MEDIUM" | "HIGH"
+
+INPUT signal JSON fields:
+  ticker, price, vwap, orh, orl, rvol, bias, confidence, action, risk,
+  volume_confirmed, price_vs_vwap, price_vs_or, price_vs_orl, price_vs_orh,
+  spy_bias, spy_vs_vwap, spy_vs_orh, session_phase, daily_range_used_pct,
+  option_expiry_days, _bounce_scenario, _scalp_target, _risk_below
+
+OUTPUT exactly this JSON structure:
 {
   "ticker": string,
-  "price": number,
-  "vwap": number,
-  "orh": number,
-  "orl": number,
-  "bias": string,
-  "confidence": number,
-  "action": string,
-  "risk": string,
-  "volume_confirmed": boolean,
-  "price_vs_vwap": "above" | "below",
-  "price_vs_or": "above_orh" | "inside_or" | "below_orl",
-  "spy_bias": "bullish" | "bearish" | "neutral",
-  "spy_vs_vwap": "above" | "below",
-  "spy_vs_orh": "above" | "below" | "inside"
-}
-
-OUTPUT: Return exactly this JSON structure, nothing else:
-{
-  "ticker": string,
-  "timestamp": ISO8601 string,
+  "timestamp": ISO8601,
   "setup_type": "CALL" | "PUT" | "SPREAD" | "NONE",
   "bias": "bullish" | "bearish" | "neutral",
   "confidence": number,
-  "action": "WATCH" | "ENTER" | "EXIT" | "HOLD",
+  "action": "WATCH" | "ENTER" | "EXIT" | "HOLD" | "AVOID",
   "risk": "LOW" | "MEDIUM" | "HIGH",
   "market_context": {
-    "spy_alignment": boolean,
-    "spy_note": string,
-    "volume_confirmed": boolean,
-    "relative_strength": "strong" | "weak" | "neutral"
+    "spy_alignment": boolean, "spy_note": string,
+    "volume_confirmed": boolean, "relative_strength": "strong" | "weak" | "neutral"
   },
   "summary": string,
   "entry_condition": string,
@@ -87,44 +94,35 @@ OUTPUT: Return exactly this JSON structure, nothing else:
     "in_play": { "label": string, "target": number, "trail_level": number, "add_condition": string },
     "exit": { "label": string, "stop_loss": number, "exit_condition": string }
   },
+  "confluence": {
+    "detected": boolean,
+    "zone_price": number,
+    "levels_converging": [string],
+    "strength": "EXTREME" | "STRONG" | "NONE",
+    "zone_role": "RESISTANCE" | "SUPPORT" | "CHOP" | "NONE"
+  },
+  "entry_gate": {
+    "valid": boolean,
+    "trigger_price": number,
+    "trigger_condition": string,
+    "rvol_required": number,
+    "candle_required": "rejection" | "bounce" | "breakout" | "none"
+  },
+  "trade": {
+    "direction": "PUT" | "CALL" | "NONE",
+    "entry_price": number,
+    "target": number,
+    "stop": number,
+    "risk_reward": number,
+    "r_r_valid": boolean
+  },
+  "no_trade_reason": string | null,
   "decision_tree": [
     { "if": string, "then": string, "action": "ENTER"|"WAIT"|"EXIT"|"AVOID", "confidence": "high"|"medium"|"low" }
   ],
   "best_next_step": string,
   "options_note": string
 }
-
-COACHING LOGIC RULES:
-
-1. SPY ALIGNMENT
-   - If ticker bias CONFLICTS with SPY bias, lower confidence by 15 points
-   - If ticker bias ALIGNS with SPY bias, raise confidence by 10 points
-   - Always note divergence/alignment in market_context.spy_note
-
-2. SETUP TYPE LOGIC
-   - above VWAP + bullish bias = CALL (or SPREAD if confidence < 70)
-   - below VWAP + bearish bias = PUT (or SPREAD if confidence < 70)
-   - Inside OR + no volume confirmation = NONE
-   - confidence < 60 = NONE
-
-3. DECISION TREE RULES
-   - Always include minimum 3 IF/THEN nodes
-   - Node 1: Primary entry confirmation scenario
-   - Node 2: Bias invalidation scenario
-   - Node 3: Missed entry / chase warning
-   - Add Node 4 if SPY divergence exists
-
-4. OPTIONS SPECIFIC
-   - Flag theta risk if action is WATCH
-   - confidence > 80 = naked option acceptable
-   - confidence 60-80 = spread preferred
-   - confidence < 60 = WATCH only, no options
-
-5. VOLUME RULES
-   - volume_confirmed: false = action must be WATCH, never ENTER
-
-6. RISK/REWARD
-   - If implied R/R < 1:2, flag as poor in options_note
 """
 
 _USER_TEMPLATE = "Analyze this trading signal and return the structured JSON coaching summary:\n{signal_json}"
@@ -189,6 +187,47 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
     }
     action = action_map.get(verdict.upper(), "WATCH")
 
+    # RVOL direct value
+    rvol = float(metrics.get("rvol") or 1.0)
+
+    # price_vs_orl / price_vs_orh (granular, separate from price_vs_or)
+    _orl = float(eg.get("opening_range_low") or metrics.get("or_low") or 0)
+    _orh = float(eg.get("opening_range_high") or metrics.get("or_high") or 0)
+    _price = float(metrics.get("last_price") or 0)
+    if _orl > 0 and abs(_price - _orl) / _orl * 100 <= 0.1:
+        price_vs_orl = "at"
+    elif _price < _orl:
+        price_vs_orl = "below"
+    else:
+        price_vs_orl = "above"
+    if _orh > 0 and abs(_price - _orh) / _orh * 100 <= 0.1:
+        price_vs_orh = "at"
+    elif _price > _orh:
+        price_vs_orh = "above"
+    else:
+        price_vs_orh = "below"
+
+    # session_phase (lowercase for prompt clarity)
+    session_phase = str(metrics.get("session_phase") or "").lower()
+
+    # daily_range_used_pct — from chart_bars in metrics
+    _chart_bars = metrics.get("chart_bars") or []
+    if _chart_bars:
+        _highs = [b.get("h", 0) for b in _chart_bars if b.get("h")]
+        _lows  = [b.get("l", float("inf")) for b in _chart_bars if b.get("l")]
+        _day_high = max(_highs) if _highs else _price
+        _day_low  = min(_lows)  if _lows  else _price
+        _day_range = _day_high - _day_low
+        daily_range_used_pct = round((_price - _day_low) / _day_range * 100, 1) if _day_range > 0 else 50.0
+    else:
+        daily_range_used_pct = 50.0
+
+    # option_expiry_days — days until next Friday (standard weekly)
+    _now = datetime.now(timezone.utc)
+    _dow = _now.weekday()   # 0=Mon, 4=Fri
+    _days_to_fri = (4 - _dow) % 7
+    option_expiry_days = max(1, _days_to_fri if _days_to_fri > 0 else 7)
+
     return {
         "ticker":            scan_dict.get("ticker", ""),
         "price":             round(price, 2),
@@ -210,6 +249,12 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
         "_scalp_target":     float(eg.get("scalp_target") or 0),
         "_risk_below":       float(eg.get("risk_below") or 0),
         "_bounce_scenario":  str(metrics.get("bounce_scenario") or ""),
+        "rvol":                  round(rvol, 2),
+        "price_vs_orl":          price_vs_orl,
+        "price_vs_orh":          price_vs_orh,
+        "session_phase":         session_phase,
+        "daily_range_used_pct":  daily_range_used_pct,
+        "option_expiry_days":    option_expiry_days,
     }
 
 
@@ -222,7 +267,7 @@ _REQUIRED_KEYS = {
 }
 _VALID_SETUP_TYPES = {"CALL", "PUT", "SPREAD", "NONE"}
 _VALID_BIASES      = {"bullish", "bearish", "neutral"}
-_VALID_ACTIONS     = {"WATCH", "ENTER", "EXIT", "HOLD"}
+_VALID_ACTIONS     = {"WATCH", "ENTER", "EXIT", "HOLD", "AVOID"}
 _VALID_RISKS       = {"LOW", "MEDIUM", "HIGH"}
 
 
@@ -260,6 +305,19 @@ def _validate_coach_result(raw: dict[str, Any]) -> dict[str, Any]:
     # decision_tree must be a list
     if not isinstance(raw.get("decision_tree"), list):
         raw["decision_tree"] = []
+
+    # New confluence fields — optional, default to safe values if absent
+    if "confluence" not in raw or not isinstance(raw.get("confluence"), dict):
+        raw["confluence"] = {"detected": False, "zone_price": 0.0, "levels_converging": [],
+                             "strength": "NONE", "zone_role": "NONE"}
+    if "entry_gate" not in raw or not isinstance(raw.get("entry_gate"), dict):
+        raw["entry_gate"] = {"valid": False, "trigger_price": 0.0,
+                             "trigger_condition": "", "rvol_required": 1.2, "candle_required": "none"}
+    if "trade" not in raw or not isinstance(raw.get("trade"), dict):
+        raw["trade"] = {"direction": "NONE", "entry_price": 0.0, "target": 0.0,
+                        "stop": 0.0, "risk_reward": 0.0, "r_r_valid": False}
+    raw.setdefault("no_trade_reason", None)
+    raw.setdefault("confluence_note", "")
 
     return raw
 
@@ -303,6 +361,147 @@ def _call_openai(signal: dict[str, Any], model: str | None = None) -> dict[str, 
         max_tokens=1024,
     )
     return _validate_coach_result(json.loads(resp.choices[0].message.content))
+
+
+# ── Confluence Zone helpers ──────────────────────────────────────────────────────
+
+def _detect_confluence_zone(
+    price: float, vwap: float, orh: float, orl: float,
+    band: float = 0.10,
+) -> dict:
+    """Detect whether key intraday levels cluster within `band` dollars of each other."""
+    named = {"VWAP": vwap, "ORL": orl, "ORH": orh}
+    named = {k: v for k, v in named.items() if v > 0}
+    if len(named) < 2:
+        return {"detected": False, "zone_price": 0.0, "levels_converging": [],
+                "strength": "NONE", "zone_role": "NONE"}
+
+    converging: list[str] = []
+    zone_prices: list[float] = []
+    level_names = list(named.keys())
+    for i in range(len(level_names)):
+        for j in range(i + 1, len(level_names)):
+            n1, n2 = level_names[i], level_names[j]
+            if abs(named[n1] - named[n2]) <= band:
+                if n1 not in converging:
+                    converging.append(n1)
+                if n2 not in converging:
+                    converging.append(n2)
+                zone_prices.append((named[n1] + named[n2]) / 2)
+
+    if not converging:
+        return {"detected": False, "zone_price": 0.0, "levels_converging": [],
+                "strength": "NONE", "zone_role": "NONE"}
+
+    zone_price = round(sum(zone_prices) / len(zone_prices), 2)
+
+    # Strength: VWAP+ORL together = always EXTREME (highest conviction)
+    if "VWAP" in converging and "ORL" in converging:
+        strength = "EXTREME"
+    elif len(converging) >= 3:
+        strength = "EXTREME"
+    else:
+        strength = "STRONG"
+
+    # Zone role based on price vs zone
+    if price < zone_price * 0.9995:
+        zone_role = "RESISTANCE"
+    elif price > zone_price * 1.0005:
+        zone_role = "SUPPORT"
+    else:
+        zone_role = "CHOP"
+
+    return {
+        "detected":          True,
+        "zone_price":        zone_price,
+        "levels_converging": converging,
+        "strength":          strength,
+        "zone_role":         zone_role,
+    }
+
+
+def _build_entry_gate(
+    price: float, confluence: dict, rvol: float, vol_ok: bool,
+) -> dict:
+    """Validate whether entry conditions are currently met at the confluence zone."""
+    if not confluence["detected"]:
+        return {"valid": False, "trigger_price": 0.0,
+                "trigger_condition": "No confluence zone — wait for level alignment",
+                "rvol_required": 1.2, "candle_required": "none"}
+
+    zone = confluence["zone_price"]
+    zone_role = confluence["zone_role"]
+    within_zone = abs(price - zone) <= 0.50
+    rvol_ok = rvol >= 1.2
+
+    if zone_role == "RESISTANCE":
+        candle = "rejection"
+        cond = f"Bounce to ${zone:.2f} rejection candle with RVOL > 1.2x"
+    elif zone_role == "SUPPORT":
+        candle = "bounce"
+        cond = f"Pullback to ${zone:.2f} bounce candle with RVOL > 1.2x"
+    else:
+        candle = "none"
+        cond = f"Price at chop zone ${zone:.2f} — wait for clear directional move"
+
+    valid = within_zone and rvol_ok and vol_ok and zone_role != "CHOP"
+    return {
+        "valid":             valid,
+        "trigger_price":     zone,
+        "trigger_condition": cond,
+        "rvol_required":     1.2,
+        "candle_required":   candle,
+    }
+
+
+def _build_trade_levels(
+    direction: str, entry_price: float, scalp_target: float,
+    risk_below: float, orl: float, orh: float,
+) -> dict:
+    """Build trade entry/target/stop and compute R/R ratio."""
+    if direction == "PUT":
+        stop = round(risk_below, 2) if risk_below > entry_price else round(entry_price * 1.003, 2)
+        target = round(scalp_target, 2) if scalp_target < entry_price else round(entry_price * 0.975, 2)
+    elif direction == "CALL":
+        stop = round(risk_below, 2) if risk_below < entry_price else round(entry_price * 0.997, 2)
+        target = round(scalp_target, 2) if scalp_target > entry_price else round(entry_price * 1.025, 2)
+    else:
+        return {"direction": "NONE", "entry_price": 0.0, "target": 0.0,
+                "stop": 0.0, "risk_reward": 0.0, "r_r_valid": False}
+
+    risk   = abs(entry_price - stop)
+    reward = abs(entry_price - target)
+    rr     = round(reward / risk, 1) if risk > 0 else 0.0
+    return {
+        "direction":   direction,
+        "entry_price": round(entry_price, 2),
+        "target":      target,
+        "stop":        stop,
+        "risk_reward": rr,
+        "r_r_valid":   rr >= 2.0,
+    }
+
+
+def _build_no_trade_reason(
+    daily_range_used_pct: float, rvol: float, confluence: dict,
+    trade: dict, price: float,
+) -> "str | None":
+    """Return a concise no-trade reason string, or None if conditions are met."""
+    reasons: list[str] = []
+    if daily_range_used_pct > 60:
+        reasons.append(f"Daily range {daily_range_used_pct:.0f}% used")
+    if rvol < 0.8:
+        reasons.append(f"RVOL {rvol:.1f}x below threshold")
+    if not confluence["detected"]:
+        reasons.append("No confluence zone detected")
+    elif confluence["zone_role"] == "CHOP":
+        reasons.append("Price in chop zone")
+    zone = confluence.get("zone_price") or 0
+    if zone and abs(price - zone) > 2.0:
+        reasons.append(f"Price ${abs(price - zone):.2f} away from entry zone")
+    if trade.get("direction") != "NONE" and not trade.get("r_r_valid"):
+        reasons.append(f"R/R {trade.get('risk_reward', 0):.1f}:1 below 2:1 minimum")
+    return ". ".join(reasons) if reasons else None
 
 
 # ── Deterministic fallback ───────────────────────────────────────────────────────
@@ -622,6 +821,30 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     elif action == "ENTER" and setup_type == "SPREAD":
         opts += f"Spread limits risk relative to naked option at this confidence level."
 
+    # ── Confluence Zone extensions ───────────────────────────────────────────
+    _rvol          = float(signal.get("rvol") or 1.0)
+    _drp           = float(signal.get("daily_range_used_pct") or 50.0)
+    _confluence    = _detect_confluence_zone(price, vwap, orh, orl)
+    _entry_gate    = _build_entry_gate(price, _confluence, _rvol, vol_ok)
+    _trade_dir     = "PUT" if is_bear else ("CALL" if is_bull else "NONE")
+    _entry_px      = price  # use current price as entry reference
+    _trade         = _build_trade_levels(_trade_dir, _entry_px, scalp, stop, orl, orh)
+    _no_trade      = _build_no_trade_reason(_drp, _rvol, _confluence, _trade, price)
+
+    # Confluence note (≤20 words)
+    if _confluence["detected"]:
+        lvls = " + ".join(_confluence["levels_converging"])
+        _conf_note = (
+            f"{lvls} within $0.10 at ${_confluence['zone_price']:.2f} — "
+            f"{_confluence['strength'].lower()} {_confluence['zone_role'].lower()} zone"
+        )
+    else:
+        _conf_note = "No confluence zone detected — levels spread apart"
+
+    # Boost confidence if confluence at entry zone
+    if _confluence["detected"] and _entry_gate["valid"]:
+        conf = min(100, conf + 8)
+
     return {
         "ticker":          ticker,
         "timestamp":       datetime.now(timezone.utc).isoformat(),
@@ -648,6 +871,11 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         "decision_tree":   dt,
         "best_next_step":  best,
         "options_note":    opts,
+        "confluence":      _confluence,
+        "entry_gate":      _entry_gate,
+        "trade":           _trade,
+        "no_trade_reason": _no_trade,
+        "confluence_note": _conf_note,
         "_source":         "deterministic",
     }
 

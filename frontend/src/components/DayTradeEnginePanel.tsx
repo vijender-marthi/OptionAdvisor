@@ -895,6 +895,67 @@ export default function DayTradeEnginePanel({
             </div>
           )}
 
+          {/* Confluence Zone */}
+          {hasAiCoach && ac!.confluence?.detected && (
+            <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${
+                  ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' :
+                  'bg-amber-500/10 text-amber-400/80'
+                }`}>
+                  {ac!.confluence.strength}
+                </span>
+                <span className="text-[10px] font-semibold text-amber-300">
+                  {ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}
+                </span>
+                <span className="ml-auto text-[10px] text-amber-400/60">
+                  {ac!.confluence.levels_converging.join(' + ')}
+                </span>
+              </div>
+              {ac!.confluence_note && (
+                <div className="mt-1 text-[10px] text-gray-400">{ac!.confluence_note}</div>
+              )}
+              {/* Entry gate status */}
+              {ac!.entry_gate && (
+                <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
+                  ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-gray-500'
+                }`}>
+                  <span>{ac!.entry_gate.valid ? '✓' : '○'}</span>
+                  <span>{ac!.entry_gate.valid ? 'Entry valid' : 'Entry not yet valid'} — {ac!.entry_gate.trigger_condition}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Trade R/R */}
+          {hasAiCoach && ac!.trade && ac!.trade.direction !== 'NONE' && ac!.trade.entry_price > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-1">
+              {[
+                { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
+                { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
+                { label: 'Stop', value: `$${ac!.trade.stop.toFixed(2)}` },
+                { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`,
+                  highlight: ac!.trade.r_r_valid },
+              ].map(({ label, value, highlight }) => (
+                <div key={label} className={`rounded border px-2 py-1 text-center ${
+                  highlight ? 'border-semantic-bullish/30 bg-semantic-bullish/5' : 'border-gray-800/60 bg-black/20'
+                }`}>
+                  <div className="text-[9px] text-gray-500">{label}</div>
+                  <div className={`text-[11px] font-mono font-semibold ${
+                    highlight ? 'text-semantic-bullish' : 'text-gray-200'
+                  }`}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* No-trade reason */}
+          {hasAiCoach && ac!.no_trade_reason && (
+            <div className="mt-1.5 rounded border border-gray-700/40 bg-black/10 px-2.5 py-1.5 text-[10px] text-gray-500">
+              ⚠ {ac!.no_trade_reason}
+            </div>
+          )}
+
           {/* Decision Tree — IF/THEN nodes */}
           {hasAiCoach && ac!.decision_tree.length > 0 && (
             <div className="space-y-1.5">
