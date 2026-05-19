@@ -2056,6 +2056,28 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     dist_ma20_pct = round((last / ma20 - 1.0) * 100, 2)
     dist_ma50_pct = round((last / ma50 - 1.0) * 100, 2)
 
+    # Weekly range exhaustion — 5-session high/low window
+    _week_bars = min(5, len(raw))
+    _week_high = float(raw["High"].iloc[-_week_bars:].max())
+    _week_low  = float(raw["Low"].iloc[-_week_bars:].min())
+    _week_span = _week_high - _week_low
+    if _week_span > 0:
+        if bias == "bullish":
+            _weekly_range_used_pct = round((last - _week_low) / _week_span * 100, 1)
+        else:
+            _weekly_range_used_pct = round((_week_high - last) / _week_span * 100, 1)
+        _weekly_range_used_pct = max(0.0, min(100.0, _weekly_range_used_pct))
+    else:
+        _weekly_range_used_pct = 0.0
+    if _weekly_range_used_pct >= 70:
+        _weekly_range_phase = "EXTENDED"
+    elif _weekly_range_used_pct >= 50:
+        _weekly_range_phase = "LATE"
+    elif _weekly_range_used_pct >= 30:
+        _weekly_range_phase = "MID"
+    else:
+        _weekly_range_phase = "EARLY"
+
     idx_last = raw.index[-1]
     asof_date = idx_last.date() if hasattr(idx_last, "date") else pd.Timestamp(idx_last).date()
     hv_20 = compute_hv(close, 20)
@@ -2341,6 +2363,8 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "iv_rank_hv_proxy": iv_rank_opt,
         "earnings_calendar_days_until": earnings_within_days,
         "chart_series": chart_series,
+        "weekly_range_used_pct": _weekly_range_used_pct,
+        "weekly_range_phase":    _weekly_range_phase,
     }
 
     # ── Option liquidity score (activates LOW_OPTION_LIQUIDITY gate) ──

@@ -211,8 +211,8 @@ function EntryCard({
   const pnlColor  = pnlValue > 0 ? 'text-emerald-400' : pnlValue < 0 ? 'text-red-400' : 'text-gray-400'
   const pnlLabel  = isOpen ? 'MTM P&L' : 'Realized P&L'
 
-  // pnl per contract
-  const pnlContract = pnlValue * 100
+  // pnl per contract (current_pnl from backend is already per-contract dollars)
+  const pnlContract = pnlValue
 
   const handleSaveNotes = async () => {
     setSavingNotes(true)
@@ -288,8 +288,12 @@ function EntryCard({
             </div>
 
             {(() => {
-              const ep = entry.underlying_entry
-              const cp = entry.current_price
+              // For option trades with legs, show option market value vs entry debit
+              const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
+              const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
+              const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
+              const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
+              const cp = hasOptionEntry ? currentOptPx : entry.current_price
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
               const pct = hasBoth ? (diff / ep) * 100 : 0
@@ -391,20 +395,45 @@ function EntryCard({
               ))}
             </div>
 
-            {/* Price comparison: entry vs current (open) or entry vs exit (closed/expired) */}
+            {/* Price comparison: entry vs current (open) — shows option value for trades with legs */}
             {isOpen && entry.current_price > 0 && (
               <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-x-3 gap-y-1">
-                <span className="text-gray-500">
-                  Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
-                </span>
-                <span className="text-gray-500">
-                  Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
-                </span>
-                {entry.underlying_entry > 0 && (
-                  <span className="text-gray-500">
-                    P&L: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
-                  </span>
-                )}
+                {(() => {
+                  const hasOpt = entry.net_credit !== 0 && entry.legs.length > 0
+                  const eOpt = hasOpt ? Math.abs(entry.net_credit) : 0
+                  const cOpt = hasOpt ? eOpt + (entry.current_pnl / 100) : 0
+                  return (
+                    <>
+                      {hasOpt ? (
+                        <>
+                          <span className="text-gray-500">
+                            Entry: <span className="font-mono text-gray-300">${eOpt.toFixed(2)}/sh</span>
+                          </span>
+                          <span className="text-gray-500">
+                            Current: <span className="font-mono text-gray-300">${cOpt.toFixed(2)}/sh</span>
+                          </span>
+                          <span className="text-gray-500">
+                            P&L: <PriceDiff current={cOpt} entry={eOpt} />
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-500">
+                            Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
+                          </span>
+                          <span className="text-gray-500">
+                            Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
+                          </span>
+                          {entry.underlying_entry > 0 && (
+                            <span className="text-gray-500">
+                              P&L: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
 
@@ -418,17 +447,11 @@ function EntryCard({
                     Exit: <span className="font-mono text-gray-300">${entry.underlying_exit.toFixed(2)}</span>
                   </span>
                 )}
-                {entry.underlying_entry > 0 && entry.underlying_exit > 0 && (
+                {(entry.underlying_entry > 0 || Math.abs(entry.realized_pnl) > 0) && (
                   <span className="text-gray-500">
-                    Chg: <PriceDiff current={entry.underlying_exit} entry={entry.underlying_entry} />
+                    P&L: <span className={`font-mono font-bold ${pnlColor}`}>{fmt$(pnlContract)}</span>
                   </span>
                 )}
-                <span className="text-gray-500">
-                  Reason: <span className="text-gray-300">{EXIT_LABELS[entry.exit_reason] ?? entry.exit_reason}</span>
-                </span>
-                <span className="text-gray-500">
-                  P&L: <span className={`font-mono font-bold ${pnlColor}`}>{fmt$(pnlContract)}</span>
-                </span>
               </div>
             )}
 

@@ -30,6 +30,7 @@ const NAV_SECTIONS = [
   { id: 'hard-soft-fail',   label: 'Hard Fail vs Soft Fail',    icon: XCircle },
   { id: 'ev-pop-kelly',     label: 'EV / PoP / Kelly',          icon: Sigma },
   { id: 'alerts',           label: 'Alert System',              icon: Bell },
+  { id: 'range-analysis',   label: 'Range & R/R Analysis',      icon: Gauge },
   { id: 'position-mgmt',    label: 'Position Management',       icon: Briefcase },
   { id: 'market-summary',   label: 'Market Command Summary',    icon: BarChart2 },
   { id: 'portfolio',        label: 'Portfolio Philosophy',      icon: ShieldCheck },
@@ -3071,6 +3072,153 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <p className="text-gray-400 leading-relaxed">
                   <strong className="text-emerald-300">15 minutes is the right default for day trade.</strong> A state 1→2 transition that you see 30 minutes late is often already STATE 3 or failed. You need to act within the window. Add tickers like AMD, AVGO, NVDA, AAPL, GOOG to your My Tickers list and every state transition will trigger an email alert within 15 minutes.
                 </p>
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION — RANGE & R/R ANALYSIS
+             ═══════════════════════════════════════════════════════ */}
+          <section id="range-analysis" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Gauge size={18} className="text-violet-400" />
+              Daily Range & R/R Analysis
+            </h2>
+
+            <DocCard icon={<BarChart2 size={15} />} title="What Is Daily Range Used?">
+              <p className="text-[11px] text-gray-400 leading-relaxed mb-3">
+                Every stock has a typical daily range — the distance from the session low to the session high. "Range Used %" tells you how much of that range has already been consumed by the time you look at a trade entry. Entering when most of the range is gone means chasing a nearly finished move.
+              </p>
+              <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 font-mono text-[11px] text-gray-300 space-y-1 mb-3">
+                <div><span className="text-gray-600">Day High:  </span>$730.36</div>
+                <div><span className="text-gray-600">Day Low:   </span>$647.79</div>
+                <div><span className="text-gray-600">Range:     </span>$82.57 (100%)</div>
+                <div className="border-t border-gray-800 pt-1 mt-1"><span className="text-gray-600">Price now: </span>$716.93</div>
+                <div><span className="text-gray-600">From low:  </span>$69.14 / $82.57 = <span className="text-rose-400 font-bold">83.7% used</span></div>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Think of it like a fuel tank. The stock started the day with $82 of range. It has already consumed $69 of that fuel. Only $13 remains. Buying a CALL at $716 targeting $727 means you are betting on the last 12% of the tank reaching the destination — while risking $53 if the stop is at $663.
+              </p>
+            </DocCard>
+
+            <DocCard icon={<Gauge size={15} />} title="Range Phase Thresholds">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-3 py-2 font-semibold">Phase</th>
+                      <th className="px-3 py-2 font-semibold">Range Used</th>
+                      <th className="px-3 py-2 font-semibold">Meaning</th>
+                      <th className="px-3 py-2 font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['EARLY',     '0 – 40%',  'Big move still possible. Most fuel remains.',        'Enter with full confidence when other signals align.', 'text-emerald-400'],
+                      ['MID',       '40 – 65%', 'Decent room left. Entry is acceptable.',             'Consider entry. Watch for confirmation.', 'text-sky-400'],
+                      ['LATE',      '65 – 80%', 'Getting tight. Reward is shrinking.',                'Require tighter confirmation. Reduce size.', 'text-amber-400'],
+                      ['EXHAUSTED', '80%+',     'Tank nearly empty. Move is mostly over.',            'Avoid new entries. Wait for a pullback and reset.', 'text-rose-400'],
+                    ].map(([phase, range, meaning, action, tone]) => (
+                      <tr key={phase} className="border-b border-gray-800/40">
+                        <td className={`px-3 py-2 font-bold font-mono text-[11px] ${tone}`}>{phase}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-gray-300">{range}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-400">{meaning}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-400">{action}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2 text-[11px] text-gray-400">
+                <strong className="text-emerald-300">Golden rule:</strong> Enter trades when range is 0–50% used. That is when the most fuel remains and R/R is cleanest. On most tickers the best CALL or PUT entry is in the first 60–90 minutes of the session, when the opening range is fresh.
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Scale size={15} />} title="Risk/Reward (R/R) Requirements">
+              <p className="text-[11px] text-gray-400 leading-relaxed mb-3">
+                R/R = (Target − Entry) / (Entry − Stop). A 1:1 ratio means you risk $1 to make $1. Day trade options have additional theta decay, so the bar is higher than for stock trades.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-3 py-2 font-semibold">R/R</th>
+                      <th className="px-3 py-2 font-semibold">Signal</th>
+                      <th className="px-3 py-2 font-semibold">For Options</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['2:1 +',  '✅ Strong',  'Ideal. Theta decay is well offset by the reward potential.', 'text-emerald-400'],
+                      ['1.5:1',  '✅ Good',    'Acceptable for day trades with clear confirmation.', 'text-emerald-400'],
+                      ['1:1',    '⚠️ Borderline', 'Minimum viable. Only take with high-conviction confirmation.', 'text-amber-400'],
+                      ['0.5:1',  '🔴 Poor',   'Avoid. You need a very high win rate to break even.', 'text-rose-400'],
+                      ['< 0.5:1','❌ Terrible','Do not enter. The math does not work regardless of confidence.', 'text-rose-400'],
+                    ].map(([rr, signal, desc, tone]) => (
+                      <tr key={rr} className="border-b border-gray-800/40">
+                        <td className={`px-3 py-2 font-bold font-mono text-[11px] ${tone}`}>{rr}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-300">{signal}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-400">{desc}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 rounded-lg border border-rose-800/30 bg-rose-950/10 px-3 py-2 text-[11px] text-gray-400">
+                <strong className="text-rose-300">MU example (above):</strong> Entry $716 → Target $727 = $11 reward. Entry $716 → Stop $663 = $53 risk. R/R = 0.2:1. This is a terrible trade — you risk $53 to make $11, even with a bullish structure. The move was already 88% done.
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Target size={15} />} title="Combining Range + R/R">
+              <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
+                Both signals must be acceptable before entering. A good R/R with an exhausted range still means chasing. A good range phase with poor R/R still means the setup is misaligned.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { range: 'EARLY (20%)', rr: '2.5:1', verdict: '✅ ENTER', tone: 'border-emerald-800/40 bg-emerald-950/15 text-emerald-300' },
+                  { range: 'MID (55%)',   rr: '1.5:1', verdict: '✅ CONSIDER', tone: 'border-sky-800/40 bg-sky-950/15 text-sky-300' },
+                  { range: 'LATE (72%)',  rr: '1.2:1', verdict: '⚠️ REDUCE SIZE', tone: 'border-amber-800/40 bg-amber-950/15 text-amber-300' },
+                  { range: 'EXHAUSTED (88%)', rr: '0.2:1', verdict: '❌ DO NOT ENTER', tone: 'border-rose-800/40 bg-rose-950/15 text-rose-300' },
+                ].map(item => (
+                  <div key={item.verdict} className={`rounded-lg border px-3 py-2.5 ${item.tone}`}>
+                    <div className="text-[10px] font-bold uppercase tracking-wide opacity-60 mb-1">Scenario</div>
+                    <div className="text-[11px] font-mono">Range: {item.range} · R/R: {item.rr}</div>
+                    <div className="mt-1 text-xs font-bold">{item.verdict}</div>
+                  </div>
+                ))}
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Gauge size={15} />} title="Swing Trade: Weekly Range Used">
+              <p className="text-[11px] text-gray-400 mb-3">
+                Swing trades operate over days-to-weeks. The same &ldquo;gas tank&rdquo; concept applies to the
+                5-session (weekly) high/low range — entering after a ticker has already traveled most of its
+                weekly range means chasing a nearly complete move.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-gray-500 text-left">
+                      <th className="pb-2 pr-4 font-semibold">Phase</th>
+                      <th className="pb-2 pr-4 font-semibold">Weekly Range Used</th>
+                      <th className="pb-2 font-semibold">Guidance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-900">
+                    {[
+                      { phase: 'EARLY',    range: '< 30%',  color: 'text-emerald-400', guidance: 'Fresh move. Full position size appropriate.' },
+                      { phase: 'MID',      range: '30–50%', color: 'text-sky-400',     guidance: 'Still room to run. Normal size.' },
+                      { phase: 'LATE',     range: '50–70%', color: 'text-amber-400',   guidance: 'Compressed reward. Reduce size, wait for pullback.' },
+                      { phase: 'EXTENDED', range: '≥ 70%',  color: 'text-rose-400',    guidance: 'Move nearly complete. Avoid new entries; watch for reversal.' },
+                    ].map(row => (
+                      <tr key={row.phase}>
+                        <td className={`py-2 pr-4 font-mono font-bold ${row.color}`}>{row.phase}</td>
+                        <td className="py-2 pr-4 font-mono text-gray-300">{row.range}</td>
+                        <td className="py-2 text-gray-400">{row.guidance}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </DocCard>
           </section>

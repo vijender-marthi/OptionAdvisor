@@ -867,6 +867,61 @@ export default function DayTradeEnginePanel({
           </div>
         </div>
 
+        {/* ── Daily Range & R/R row ── */}
+        {(() => {
+          const rangeUsed  = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
+          const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
+          const rrRatio    = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
+          const warning    = typeof m.range_warning === 'string' ? m.range_warning : null
+          if (rangeUsed == null && rrRatio == null) return null
+
+          const phaseTone =
+            rangePhase === 'EXHAUSTED' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' :
+            rangePhase === 'LATE'      ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' :
+            rangePhase === 'MID'       ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' :
+                                         'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+
+          const rrTone =
+            rrRatio == null              ? 'text-gray-500' :
+            rrRatio < 0.5               ? 'text-rose-400' :
+            rrRatio < 1.0               ? 'text-amber-400' :
+                                           'text-emerald-400'
+
+          const rrIcon = rrRatio != null && rrRatio < 0.5 ? '❌' : rrRatio != null && rrRatio < 1.0 ? '⚠️' : '✅'
+
+          return (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {rangeUsed != null && rangePhase && (
+                  <div className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${phaseTone}`}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Range Used</span>
+                    <span className="font-mono font-bold">{rangeUsed.toFixed(0)}%</span>
+                    <span className="opacity-60">·</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide">{rangePhase}</span>
+                  </div>
+                )}
+                {rrRatio != null && (
+                  <div className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-700/50 bg-black/15 px-2.5 py-1.5 text-xs font-semibold`}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600">R/R</span>
+                    <span className={`font-mono font-bold ${rrTone}`}>{rrRatio.toFixed(1)}:1</span>
+                    <span>{rrIcon}</span>
+                  </div>
+                )}
+              </div>
+              {warning && (
+                <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                  rangePhase === 'EXHAUSTED'
+                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                }`}>
+                  <span className="shrink-0 mt-0.5">⚠️</span>
+                  <span>{warning}</span>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">

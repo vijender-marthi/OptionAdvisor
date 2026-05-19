@@ -1749,7 +1749,33 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "rs_vs_qqq_label": _rs_label(t, rs_vs_qqq_pct) if rs_vs_qqq_pct is not None else None,
         "confidence": conf,
         "chart_bars": chart_bars,
+        "session_high": round(session_high, 4),
+        "session_low": round(session_low, 4),
     }
+
+    # ── Daily range exhaustion analysis ───────────────────────────────
+    _range_span = session_high - session_low
+    if _range_span > 0:
+        # Direction-aware: long bias = how much upside used; short = how much downside used
+        if bias == "long":
+            _daily_range_used_pct = round((last - session_low) / _range_span * 100, 1)
+        else:
+            _daily_range_used_pct = round((session_high - last) / _range_span * 100, 1)
+    else:
+        _daily_range_used_pct = 0.0
+    _daily_range_used_pct = max(0.0, min(100.0, _daily_range_used_pct))
+
+    if _daily_range_used_pct >= 80:
+        _daily_range_phase = "EXHAUSTED"
+    elif _daily_range_used_pct >= 65:
+        _daily_range_phase = "LATE"
+    elif _daily_range_used_pct >= 40:
+        _daily_range_phase = "MID"
+    else:
+        _daily_range_phase = "EARLY"
+
+    metrics["daily_range_used_pct"] = _daily_range_used_pct
+    metrics["daily_range_phase"]    = _daily_range_phase
 
     trader_decision = build_trader_decision(
         ticker=t,
@@ -1765,6 +1791,31 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     )
 
     entry_guidance = build_day_entry_guidance(metrics, trader_decision, bias)
+
+    # ── Entry R/R ratio ───────────────────────────────────────────────
+    _eg_scalp   = entry_guidance.get("scalp_target")
+    _eg_risk    = entry_guidance.get("risk_below")
+    _eg_price   = entry_guidance.get("current_price") or last
+    if _eg_scalp and _eg_risk and _eg_price:
+        _reward = abs(_eg_scalp - _eg_price)
+        _risk   = abs(_eg_price - _eg_risk)
+        metrics["entry_rr_ratio"] = round(_reward / _risk, 2) if _risk > 0 else None
+    else:
+        metrics["entry_rr_ratio"] = None
+
+    # Range warning — fires when daily move is nearly exhausted
+    if _daily_range_phase == "EXHAUSTED":
+        metrics["range_warning"] = (
+            f"Daily range {_daily_range_used_pct:.0f}% used — the move is nearly complete. "
+            f"Entering now chases the tail. Wait for a pullback before reassessing."
+        )
+    elif _daily_range_phase == "LATE":
+        metrics["range_warning"] = (
+            f"Daily range {_daily_range_used_pct:.0f}% used — late-stage entry. "
+            f"Reward shrinks as range nears exhaustion. Require tighter confirmation."
+        )
+    else:
+        metrics["range_warning"] = None
 
     option_risk_context = build_day_option_risk_context(t, info)
 

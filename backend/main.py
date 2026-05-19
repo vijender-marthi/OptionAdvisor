@@ -2983,18 +2983,24 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     if not email:
         return
 
-    my_tickers = user_state.get("my_tickers") or []
-    if not my_tickers:
+    # my_tickers uses "symbol" key; support both for safety
+    raw_tickers = user_state.get("my_tickers") or []
+    if not raw_tickers:
+        return
+
+    if not user_state.get("alert_email_enabled", True):
         return
 
     user_name = email.split("@")[0] or email
     session_date_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     day_escalations: list[dict] = []
-    swing_escalations: list[dict] = []
 
-    for ti, mt_item in enumerate(my_tickers):
-        ticker = str(mt_item.get("ticker") if isinstance(mt_item, dict) else mt_item).strip().upper()
+    for ti, mt_item in enumerate(raw_tickers):
+        if isinstance(mt_item, dict):
+            ticker = str(mt_item.get("symbol") or mt_item.get("ticker") or "").strip().upper()
+        else:
+            ticker = str(mt_item).strip().upper()
         if not ticker:
             continue
         if ti:
@@ -3003,10 +3009,16 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
         # ── Day Trade state scan ──────────────────────────────────────
         try:
             dr = run_day_trade_scan(ticker)
-            eg = dr.execution_gate if hasattr(dr, "execution_gate") else None
-            eg_state = str((eg or {}).get("state") or "") if isinstance(eg, dict) else (eg.state if eg and hasattr(eg, "state") else "")
+            eg = dr.entry_guidance if isinstance(dr.entry_guidance, dict) else {}
+            eg_state = str(eg.get("state") or "")
             now_state = _day_trade_active_state(eg_state)
-            now_action = str(dr.final_decision or "").upper().strip()
+
+            # Correct action: entry_guidance.action is "GO"/"WATCH" etc;
+            # trader_decision.suggested_action is the human-readable directive
+            eg_action    = str(eg.get("action") or "").upper().strip()
+            td_action    = str((dr.trader_decision or {}).get("suggested_action") or eg_action).upper().strip()
+            now_action   = td_action or eg_action or eg_state
+
             sd = str((dr.metrics or {}).get("session_date") or session_date_today)[:10]
 
             prev = get_ticker_state_last(email, ticker, "DAY")
@@ -3014,79 +3026,64 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                 upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
             else:
                 prev_state = int(prev.get("state_num") or 1)
-                prev_sd = (prev.get("session_date") or "")[:10]
+                prev_sd    = (prev.get("session_date") or "")[:10]
                 if prev_sd and sd and prev_sd != sd:
+                    # New session — reset baseline without alerting
                     upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
                 elif prev_state != now_state:
-                    direction = _STATE_DIRECTION.get((prev_state, now_state), f"{prev_state}→{now_state}")
-                    now_ms = int(time.time() * 1000)
+                    direction = _STATE_DIRECTION.get((prev_state, now_state), f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}")
+                    bias_raw  = str(getattr(dr, "bias", "") or "").lower()
+                    bias_label = "BULLISH / LONG" if bias_raw == "long" else "BEARISH / SHORT" if bias_raw == "short" else bias_raw.upper()
+                    m = dr.metrics or {}
                     day_escalations.append({
-                        "id": f"dt-state-{ticker}-{now_ms}",
-                        "ticker": ticker,
-                        "companyName": getattr(dr, "company_name", None) or ticker,
-                        "engine": "DAY",
-                        "prevState": prev_state,
-                        "prevLabel": _STATE_LABEL.get(prev_state, str(prev_state)),
-                        "nowState": now_state,
-                        "nowLabel": _STATE_LABEL.get(now_state, str(now_state)),
-                        "direction": direction,
-                        "action": now_action,
-                        "bias": getattr(dr, "bias", "") or "",
-                        "sessionDate": sd,
+                        "id":           f"dt-state-{ticker}-{int(time.time() * 1000)}",
+                        "ticker":       ticker,
+                        "companyName":  getattr(dr, "company_name", None) or ticker,
+                        "engine":       "DAY",
+                        "prevState":    prev_state,
+                        "prevLabel":    _STATE_LABEL.get(prev_state, str(prev_state)),
+                        "nowState":     now_state,
+                        "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                        "direction":    direction,
+                        "action":       now_action,
+                        "egAction":     eg_action,
+                        "bias":         bias_label,
+                        "sessionDate":  sd,
+                        # Trading detail for rich email
+                        "currentPrice": eg.get("current_price") or m.get("last_price"),
+                        "vwap":         eg.get("vwap") or m.get("vwap"),
+                        "orh":          eg.get("opening_range_high") or m.get("or_high"),
+                        "orl":          eg.get("opening_range_low") or m.get("or_low"),
+                        "breakoutLevel":eg.get("breakout_level"),
+                        "scalp_target": eg.get("scalp_target"),
+                        "riskBelow":    eg.get("risk_below"),
+                        "summary":      eg.get("summary") or eg.get("action") or "",
+                        "decisionMsg":  str((dr.trader_decision or {}).get("decision_message") or ""),
                     })
                     upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
 
-        time.sleep(0.5)
-
-        # ── Swing Trade state scan ────────────────────────────────────
-        try:
-            sr = run_swing_trade_scan(ticker)
-            final_action = str(getattr(sr, "final_action", None) or getattr(sr, "final_decision", None) or "").upper().strip()
-            now_state = _swing_active_state(final_action)
-            sd = session_date_today
-
-            prev = get_ticker_state_last(email, ticker, "SWING")
-            if prev is None:
-                upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
-            elif prev.get("state_num") != now_state:
-                prev_state = int(prev.get("state_num") or 1)
-                direction = _STATE_DIRECTION.get((prev_state, now_state), f"{prev_state}→{now_state}")
-                now_ms = int(time.time() * 1000)
-                swing_escalations.append({
-                    "id": f"sw-state-{ticker}-{now_ms}",
-                    "ticker": ticker,
-                    "companyName": getattr(sr, "company_name", None) or ticker,
-                    "engine": "SWING",
-                    "prevState": prev_state,
-                    "prevLabel": _STATE_LABEL.get(prev_state, str(prev_state)),
-                    "nowState": now_state,
-                    "nowLabel": _STATE_LABEL.get(now_state, str(now_state)),
-                    "direction": direction,
-                    "action": final_action,
-                    "bias": getattr(sr, "bias", "") or "",
-                    "sessionDate": sd,
-                })
-                upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
-        except Exception as exc:
-            print(f"[state-scan] SWING {email} {ticker} failed: {exc}", flush=True)
-
-    # ── Fire email alerts ─────────────────────────────────────────────
-    all_escalations = day_escalations + swing_escalations
-    if not all_escalations:
+    if not day_escalations:
         return
 
     public_base = _option_advisor_public_base()
-    if not _smtp_config().get("host"):
-        return
-    if not user_state.get("alert_email_enabled", True):
-        return
-
     try:
-        _send_state_transition_email(email, user_name, all_escalations, public_base=public_base)
+        count = len(day_escalations)
+        tickers_str = ", ".join(sorted({it["ticker"] for it in day_escalations}))
+        subject = f"⚡ OptionAdvisor: {count} day-trade state change{'s' if count != 1 else ''} — {tickers_str}"
+        html_body = _build_state_transition_email_html(email, user_name, day_escalations, public_base=public_base)
+        _deliver_html_email(email, user_name, subject, html_body)
+        print(f"[state-scan] sent {count} DAY state alert(s) to {email}", flush=True)
     except Exception as exc:
         print(f"[state-scan] email failed for {email}: {exc}", flush=True)
+
+
+def _fmt_price(v: object) -> str:
+    try:
+        return f"${float(v):.2f}" if v is not None else "—"  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "—"
 
 
 def _build_state_transition_email_html(
@@ -3099,109 +3096,112 @@ def _build_state_transition_email_html(
     display_name = (user_name or "").strip() or email
     base = public_base.rstrip("/")
     signal_feed_url = f"{base}/signal-feed"
-    positions_url = f"{base}/positions"
+    day_trade_url   = f"{base}/day-trade"
 
-    rows_html = ""
+    cards_html = ""
     for it in items:
-        ticker = html.escape(str(it.get("ticker", "")).upper())
-        company = html.escape(str(it.get("companyName") or ticker))
-        engine = html.escape(str(it.get("engine", "")))
+        ticker     = html.escape(str(it.get("ticker", "")).upper())
+        company    = html.escape(str(it.get("companyName") or ticker))
         prev_label = html.escape(str(it.get("prevLabel", "")))
-        now_label = html.escape(str(it.get("nowLabel", "")))
-        direction = html.escape(str(it.get("direction", "")))
-        action = html.escape(str(it.get("action", "")))
-        bias = html.escape(str(it.get("bias", "")))
+        now_label  = html.escape(str(it.get("nowLabel", "")))
+        direction  = html.escape(str(it.get("direction", "")))
+        bias       = html.escape(str(it.get("bias", "")))
+        eg_action  = html.escape(str(it.get("egAction") or it.get("action", "")))
+        summary    = html.escape(str(it.get("summary", "")))
+        dec_msg    = html.escape(str(it.get("decisionMsg", "")))
+        session    = html.escape(str(it.get("sessionDate", "")))
 
-        is_entry = it.get("nowState") == 3
-        is_exit = it.get("nowState") == 4
-        row_color = "#166534" if is_entry else "#991b1b" if is_exit else "#92400e"
-        badge_bg = "#dcfce7" if is_entry else "#fee2e2" if is_exit else "#fef3c7"
-        badge_color = "#166534" if is_entry else "#991b1b" if is_exit else "#92400e"
+        price  = _fmt_price(it.get("currentPrice"))
+        vwap   = _fmt_price(it.get("vwap"))
+        orh    = _fmt_price(it.get("orh"))
+        orl    = _fmt_price(it.get("orl"))
+        brk    = _fmt_price(it.get("breakoutLevel"))
+        tgt    = _fmt_price(it.get("scalp_target"))
+        risk   = _fmt_price(it.get("riskBelow"))
 
-        rows_html += f"""
-        <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:700;font-family:monospace;font-size:14px;">{ticker}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px;">{company}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:11px;">
-            <span style="background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">{engine}</span>
-          </td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">{prev_label} →</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">
-            <span style="background:{badge_bg};color:{badge_color};padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;">{now_label}</span>
-          </td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:11px;color:{row_color};font-weight:600;">{direction}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#64748b;">{action} · {bias}</td>
-        </tr>"""
+        now_state = it.get("nowState", 1)
+        is_inplay = now_state == 3
+        is_exit   = now_state == 4
+        is_entry  = now_state == 2
+
+        # Header accent colour
+        hdr_bg   = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#1e3a5f"
+        badge_bg = "#dcfce7" if is_inplay else "#fee2e2" if is_exit else "#fef3c7" if is_entry else "#e0e7ff"
+        badge_fg = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#3730a3"
+
+        # Bias colour
+        bias_color = "#166534" if "BULL" in bias.upper() or "LONG" in bias.upper() else \
+                     "#991b1b" if "BEAR" in bias.upper() or "SHORT" in bias.upper() else "#64748b"
+
+        ticker_url = html.escape(f"{day_trade_url}?ticker={it.get('ticker', '').upper()}")
+
+        levels_html = ""
+        level_pairs = [
+            ("Price", price), ("VWAP", vwap), ("ORH", orh), ("ORL", orl),
+            ("Breakout", brk), ("Target", tgt), ("Risk Below", risk),
+        ]
+        for lbl, val in level_pairs:
+            if val and val != "—":
+                levels_html += f'<span style="margin-right:14px;white-space:nowrap;"><span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> <span style="font-family:monospace;font-weight:700;font-size:12px;color:#1e293b;">{val}</span></span>'
+
+        summary_row = f'<p style="margin:8px 0 0;font-size:12px;color:#374151;">{summary}</p>' if summary else ""
+        dec_row     = f'<p style="margin:6px 0 0;font-size:11px;color:#64748b;font-style:italic;">{dec_msg}</p>' if dec_msg else ""
+
+        cards_html += f"""
+<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+  <div style="background:{hdr_bg};padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>
+      <a href="{ticker_url}" style="color:#ffffff;font-family:monospace;font-size:16px;font-weight:800;text-decoration:none;">{ticker}</a>
+      <span style="color:rgba(255,255,255,0.7);font-size:12px;margin-left:8px;">{company}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="background:rgba(255,255,255,0.15);color:#ffffff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DAY TRADE</span>
+      <span style="color:rgba(255,255,255,0.7);font-size:11px;">{prev_label} →</span>
+      <span style="background:{badge_bg};color:{badge_fg};padding:3px 10px;border-radius:4px;font-size:11px;font-weight:800;">{now_label}</span>
+    </div>
+  </div>
+  <div style="background:#ffffff;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:700;color:{bias_color};">{bias}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:12px;font-weight:600;color:#7c3aed;">{direction}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:11px;color:#64748b;">Signal: <strong>{eg_action}</strong></span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:10px;color:#94a3b8;">{session}</span>
+    </div>
+    <div style="background:#f8fafc;border-radius:6px;padding:8px 10px;flex-wrap:wrap;">
+      {levels_html}
+    </div>
+    {summary_row}
+    {dec_row}
+  </div>
+</div>"""
 
     return f"""<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:680px;margin:0 auto;padding:24px 16px;">
-    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:20px 24px;border-radius:12px 12px 0 0;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:32px;height:32px;background:#7c3aed;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">📊</div>
-        <div>
-          <div style="color:#e0e7ff;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;">OptionAdvisor</div>
-          <div style="color:#ffffff;font-size:16px;font-weight:700;">State Transition Alert</div>
-        </div>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:640px;margin:0 auto;padding:20px 12px;">
+    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:18px 22px;border-radius:12px 12px 0 0;">
+      <div style="color:#e0e7ff;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;">OptionAdvisor · Day Trade</div>
+      <div style="color:#ffffff;font-size:18px;font-weight:800;">State Change Alert</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:2px;">Scanned every 15 min during market hours</div>
+    </div>
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;padding:18px 16px;">
+      <p style="color:#374151;font-size:13px;margin:0 0 16px 0;">Hi <strong>{html.escape(display_name)}</strong>, the following tickers in your <strong>My Tickers</strong> list changed day-trade state:</p>
+      {cards_html}
+      <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="{html.escape(day_trade_url)}" style="background:#7c3aed;color:#ffffff;padding:9px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;">Open Day Trade</a>
+        <a href="{html.escape(signal_feed_url)}" style="background:#0f172a;color:#ffffff;padding:9px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Signal Feed</a>
       </div>
     </div>
-    <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;padding:20px 24px;">
-      <p style="color:#374151;font-size:14px;margin:0 0 16px;">Hi {html.escape(display_name)}, one or more tickers in your <strong>My Tickers</strong> list changed engine state:</p>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead>
-            <tr style="background:#f8fafc;text-align:left;">
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Ticker</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Company</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Engine</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">From</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Now</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Signal</th>
-              <th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;border-bottom:2px solid #e2e8f0;">Action</th>
-            </tr>
-          </thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-      </div>
-      <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
-        <a href="{html.escape(signal_feed_url)}" style="background:#7c3aed;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Open Signal Feed</a>
-        <a href="{html.escape(positions_url)}" style="background:#0f172a;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Positions Center</a>
-      </div>
-    </div>
-    <div style="padding:12px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;">
-      <p style="color:#94a3b8;font-size:11px;margin:0;">Alerts fire when a My Tickers ticker changes state. Day Trade checks every 15 min · Swing Trade checks every 30 min during market hours.</p>
+    <div style="padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;">
+      <p style="color:#94a3b8;font-size:10px;margin:0;">Alerts fire on state transitions for My Tickers · Day trade engine scans every 15 min during market hours. Prices are intraday snapshots — verify live before acting.</p>
     </div>
   </div>
 </body>
 </html>"""
-
-
-def _send_state_transition_email(
-    email: str,
-    user_name: str | None,
-    items: list[dict],
-    *,
-    public_base: str,
-) -> None:
-    cfg = _smtp_config()
-    if not cfg.get("host") or not cfg.get("password"):
-        return
-    count = len(items)
-    tickers = ", ".join(sorted({it["ticker"] for it in items}))
-    subject = f"OptionAdvisor: {count} state change{'s' if count != 1 else ''} — {tickers}"
-    html_body = _build_state_transition_email_html(email, user_name, items, public_base=public_base)
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = cfg.get("from_addr") or cfg.get("user") or email
-    msg["To"] = email
-    msg.attach(MIMEText(html_body, "html"))
-    with smtplib.SMTP(cfg["host"], int(cfg.get("port", 587))) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(cfg.get("user") or email, cfg["password"])
-        server.sendmail(msg["From"], [email], msg.as_string())
 
 
 def _alert_scan_loop() -> None:

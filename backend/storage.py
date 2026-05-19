@@ -584,7 +584,8 @@ def list_user_states() -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT email, watchlist_json, portfolio_json, role,
-                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled
+                   day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled,
+                   my_tickers_json
             FROM user_state
             ORDER BY updated_at DESC
             """
@@ -611,6 +612,7 @@ def list_user_states() -> list[dict[str, Any]]:
                 SWING_TRADE_WATCHLIST_MAX_TICKERS,
             ),
             "alert_email_enabled": _alert_email_cell(row),
+            "my_tickers": json.loads(row["my_tickers_json"] or "[]"),
         }
         for row in rows
     ]

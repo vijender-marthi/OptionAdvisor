@@ -1389,6 +1389,40 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
+        {/* ── Weekly Range Exhaustion ── */}
+        {(() => {
+          const weeklyPct   = typeof m.weekly_range_used_pct === 'number' ? m.weekly_range_used_pct : null
+          const weeklyPhase = typeof m.weekly_range_phase === 'string' ? m.weekly_range_phase : null
+          if (weeklyPct === null || weeklyPhase === null) return null
+
+          const phaseStyle: Record<string, string> = {
+            EXTENDED: 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+            LATE:     'bg-amber-500/15 border-amber-500/30 text-amber-300',
+            MID:      'bg-sky-500/15 border-sky-500/30 text-sky-300',
+            EARLY:    'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+          }
+          const badgeStyle = phaseStyle[weeklyPhase] ?? phaseStyle.MID
+          const isWarning = weeklyPhase === 'EXTENDED' || weeklyPhase === 'LATE'
+
+          return (
+            <div className="mt-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold font-mono ${badgeStyle}`}>
+                  {weeklyPct.toFixed(0)}% · {weeklyPhase}
+                </span>
+                <span className="text-[10px] text-gray-500">5-day range used</span>
+              </div>
+              {isWarning && (
+                <div className={`rounded-lg border px-2.5 py-2 text-[11px] ${weeklyPhase === 'EXTENDED' ? 'border-rose-500/30 bg-rose-500/8 text-rose-300' : 'border-amber-500/30 bg-amber-500/8 text-amber-300'}`}>
+                  {weeklyPhase === 'EXTENDED'
+                    ? `Weekly range ${weeklyPct.toFixed(0)}% used — extended move. Wait for a pullback before initiating a new position.`
+                    : `Weekly range ${weeklyPct.toFixed(0)}% used — late stage. Risk/reward is compressed; size down or wait for confirmation.`}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* ── Option Entry Suggestion ── */}
         {(() => {
           type SpreadEntry = {
