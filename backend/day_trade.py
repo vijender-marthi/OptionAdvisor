@@ -621,6 +621,7 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         pullback_zone = f"{lo:.2f}\u2013{hi:.2f}"
 
     # Stops \u2014 bounce scenarios use tight level-specific stops rather than full OR range
+    risk_below = None
     if bidir == "long":
         if bounce_scenario == "vwap_rejection_long" and vwap is not None:
             risk_below = round(vwap * 0.998, 2)   # stop just below VWAP support
