@@ -486,6 +486,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     action = "Review the setup before entry."
     avoid = "Standard risk management applies."
 
+    # Bounce-scenario tier — read from metrics (computed in scoring phase)
+    bounce_scenario = str(metrics.get("bounce_scenario") or "")
+
     if bidir == "long":
         if vwap_pos == "below":
             state = "WAIT_FOR_VWAP_HOLD"
@@ -596,9 +599,6 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     session_phase = str(metrics.get("session_phase") or "")
     if session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         avoid = "Power hour entry — must exit before close. No overnight holds."
-
-    # Bounce-scenario tier \u2014 read from metrics (computed in scoring phase)
-    bounce_scenario = str(metrics.get("bounce_scenario") or "")
 
     scalp_target = None
     if last_price is not None:
