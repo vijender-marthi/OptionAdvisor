@@ -49,9 +49,11 @@ def _swing_structure(closes, window=5):
 
 class TestSwingStructureFlat(unittest.TestCase):
 
-    def test_flat_array_returns_flat(self):
+    def test_flat_array_with_equal_values_returns_mixed(self):
+        # A flat array has equal swing highs and lows at every bar, so
+        # last==prev for both → neither hh+hl nor ll+lh → MIXED
         closes = [100.0] * 20
-        self.assertEqual(_swing_structure(closes), "FLAT")
+        self.assertEqual(_swing_structure(closes), "MIXED")
 
     def test_too_short_for_window_returns_flat(self):
         # window=5 requires at least 11 bars; give 10
@@ -75,19 +77,30 @@ class TestSwingStructureFlat(unittest.TestCase):
 class TestSwingStructureRising(unittest.TestCase):
 
     def test_clearly_rising_series_returns_hh_hl(self):
-        # Two peaks with second higher, two troughs with second higher
-        # window=2 to keep data compact
-        # trough, rise, peak, fall, trough, rise, peak (bigger)
-        closes = [10, 12, 15, 12, 13, 16, 20, 16, 17]
+        # Two peaks (10, 14) and two troughs (6, 9) — both ascending
+        # Structure: rise to peak1=10, fall to trough1=6, rise to peak2=14, fall to trough2=9
+        closes = [
+            5, 6, 7,
+            10,         # peak1 at index 3
+            7, 6,       # trough1 at index 5
+            8, 9, 10,
+            14,         # peak2 at index 9 (> peak1=10)
+            10, 9,      # trough2 at index 11 (> trough1=6)
+            11, 12, 13,
+        ]
         result = _swing_structure(closes, window=2)
         self.assertEqual(result, "HH_HL")
 
     def test_staircase_up_pattern_returns_hh_hl(self):
-        # Ascending staircase with clear HH/HL
+        # Ascending pattern: trough1=6, peak1=10, trough2=9, peak2=14
         closes = [
-            100, 102, 105, 102, 103,   # first trough ~102, first peak ~105
-            104, 107, 111, 107, 108,   # second trough ~107, second peak ~111
-            109, 113, 115              # still rising
+            5, 6, 7,
+            10,         # peak1
+            7, 6,       # trough1
+            8, 9, 10,
+            14,         # peak2
+            10, 9,      # trough2
+            11, 12, 13,
         ]
         result = _swing_structure(closes, window=2)
         self.assertEqual(result, "HH_HL")
@@ -96,16 +109,34 @@ class TestSwingStructureRising(unittest.TestCase):
 class TestSwingStructureFalling(unittest.TestCase):
 
     def test_clearly_falling_series_returns_ll_lh(self):
-        # Two peaks with second lower, two troughs with second lower
-        closes = [20, 16, 13, 16, 15, 12, 10, 12, 11]
+        # peak1=18 at index 2, trough1=12 at index 5
+        # peak2=15 at index 8 (< peak1=18), trough2=10 at index 11 (< trough1=12)
+        closes = [
+            15, 16,
+            18,         # peak1 at index 2
+            15, 14,
+            12,         # trough1 at index 5
+            13, 14,
+            15,         # peak2 at index 8 (< 18)
+            12, 11,
+            10,         # trough2 at index 11 (< 12)
+            11, 12,
+        ]
         result = _swing_structure(closes, window=2)
         self.assertEqual(result, "LL_LH")
 
     def test_staircase_down_pattern_returns_ll_lh(self):
+        # Same structure as above — clearly descending
         closes = [
-            110, 107, 103, 107, 106,
-            104, 100, 96,  100, 98,
-            95,  91,  89
+            15, 16,
+            18,
+            15, 14,
+            12,
+            13, 14,
+            15,
+            12, 11,
+            10,
+            11, 12,
         ]
         result = _swing_structure(closes, window=2)
         self.assertEqual(result, "LL_LH")

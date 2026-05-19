@@ -384,6 +384,12 @@ function EntryCard({
               <div className="text-xs">
                 <span className="text-violet-300 font-semibold truncate block" title={entry.strategy}>{entry.strategy}</span>
                 <span className="text-gray-500">
+                  {(() => {
+                    const optPx = entry.net_credit !== 0 && entry.legs.length > 0
+                      ? Math.abs(entry.net_credit) + (entry.current_pnl / 100)
+                      : 0
+                    return optPx > 0 ? `$${optPx.toFixed(2)} · ` : ''
+                  })()}
                   +${(entry.max_profit * 100).toFixed(0)} max · {(entry.prob_of_profit * 100).toFixed(0)}% PoP
                 </span>
               </div>
