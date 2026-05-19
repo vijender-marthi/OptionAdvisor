@@ -661,6 +661,63 @@ html.light .signal-feed-page {
   background-color: var(--surface-canvas);
 }
 
+/* ── Day Trade Engine Panel — light theme text contrast ────────────────── */
+html.light .day-trade-engine-panel .text-gray-100,
+html.light .day-trade-page .text-gray-100 { color: #0f172a !important; }
+html.light .day-trade-engine-panel .text-gray-200,
+html.light .day-trade-page .text-gray-200 { color: #1e293b !important; }
+html.light .day-trade-engine-panel .text-gray-300,
+html.light .day-trade-page .text-gray-300 { color: #334155 !important; }
+html.light .day-trade-engine-panel .text-gray-400,
+html.light .day-trade-page .text-gray-400 { color: #475569 !important; }
+html.light .day-trade-engine-panel .text-gray-500,
+html.light .day-trade-page .text-gray-500 { color: #64748b !important; }
+html.light .day-trade-engine-panel .text-gray-600,
+html.light .day-trade-page .text-gray-600 { color: #94a3b8 !important; }
+html.light .day-trade-engine-panel .bg-gray-900\/70,
+html.light .day-trade-page .bg-gray-900\/70 { background-color: #f8fafc !important; }
+html.light .day-trade-engine-panel .bg-black\/10,
+html.light .day-trade-page .bg-black\/10 { background-color: #f1f5f9 !important; }
+html.light .day-trade-engine-panel .bg-black\/15,
+html.light .day-trade-page .bg-black\/15 { background-color: #f1f5f9 !important; }
+html.light .day-trade-engine-panel .bg-black\/20,
+html.light .day-trade-page .bg-black\/20 { background-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .bg-black\/75,
+html.light .day-trade-page .bg-black\/75 { background-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .border-gray-700\/40,
+html.light .day-trade-page .border-gray-700\/40 { border-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .border-gray-700\/50,
+html.light .day-trade-page .border-gray-700\/50 { border-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .border-gray-800\/80,
+html.light .day-trade-page .border-gray-800\/80 { border-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .border-gray-800\/90,
+html.light .day-trade-page .border-gray-800\/90 { border-color: #e2e8f0 !important; }
+html.light .day-trade-engine-panel .bg-gray-700\/50,
+html.light .day-trade-page .bg-gray-700\/50 { background-color: #f1f5f9 !important; }
+html.light .day-trade-engine-panel .bg-gray-800\/60,
+html.light .day-trade-page .bg-gray-800\/60 { background-color: #f1f5f9 !important; }
+
+/* 4-state card backgrounds */
+html.light .day-trade-engine-panel .bg-amber-950\/25 { background-color: #fffbeb !important; }
+html.light .day-trade-engine-panel .bg-amber-950\/12 { background-color: #fffbeb !important; }
+html.light .day-trade-engine-panel .bg-emerald-950\/25 { background-color: #ecfdf5 !important; }
+html.light .day-trade-engine-panel .bg-emerald-950\/12 { background-color: #ecfdf5 !important; }
+html.light .day-trade-engine-panel .bg-sky-950\/25 { background-color: #f0f9ff !important; }
+html.light .day-trade-engine-panel .bg-sky-950\/12 { background-color: #f0f9ff !important; }
+html.light .day-trade-engine-panel .bg-red-950\/25 { background-color: #fef2f2 !important; }
+html.light .day-trade-engine-panel .bg-red-950\/12 { background-color: #fef2f2 !important; }
+html.light .day-trade-engine-panel .ring-offset-gray-900 { --tw-ring-offset-color: #ffffff !important; }
+
+/* Stepper circles */
+html.light .day-trade-engine-panel .border-gray-600 { border-color: #cbd5e1 !important; }
+html.light .day-trade-engine-panel .border-gray-700 { border-color: #cbd5e1 !important; }
+html.light .day-trade-engine-panel .bg-gray-600 { background-color: #cbd5e1 !important; }
+
+/* Shared bg-gray-800 — keep last so it doesn't conflict with above */
+html.light .bg-gray-800 {
+  background-color: #f1f5f9 !important;
+}
+
 /* ── Mobile navigation ───────────────────────────────────────────────────── */
 html.dark .mobile-bottom-nav-shell,
 html.light .mobile-bottom-nav-shell {

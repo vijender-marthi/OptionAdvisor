@@ -780,7 +780,7 @@ export default function DayTradeEnginePanel({
     : 'border-l-4 border-l-semantic-info'
 
   return (
-    <div className={`rounded-2xl border border-border bg-gray-900/70 overflow-hidden ${
+    <div className={`day-trade-engine-panel rounded-2xl border border-border bg-gray-900/70 overflow-hidden ${
       decisionTone === 'green' ? 'ring-1 ring-semantic-bullish-border' :
       decisionTone === 'blue' ? 'ring-1 ring-semantic-info-border' :
       decisionTone === 'orange' ? 'ring-1 ring-semantic-warning-border' :
@@ -973,7 +973,7 @@ export default function DayTradeEnginePanel({
               {/* Entry gate status */}
               {ac!.entry_gate && (
                 <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
-                  ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-gray-500'
+                  ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-slate-500 dark:text-gray-500'
                 }`}>
                   <span>{ac!.entry_gate.valid ? '✓' : '○'}</span>
                   <span>{ac!.entry_gate.valid ? 'Entry valid' : 'Entry not yet valid'} — {ac!.entry_gate.trigger_condition}</span>
@@ -1006,7 +1006,7 @@ export default function DayTradeEnginePanel({
 
           {/* No-trade reason */}
           {hasAiCoach && ac!.no_trade_reason && (
-            <div className="mt-1.5 rounded border border-gray-700/40 bg-black/10 px-2.5 py-1.5 text-[10px] text-gray-500">
+            <div className="mt-1.5 rounded border border-slate-300 dark:border-gray-700/40 bg-slate-50 dark:bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-300">
               ⚠ {ac!.no_trade_reason}
             </div>
           )}
