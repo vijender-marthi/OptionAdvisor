@@ -3476,6 +3476,9 @@ def journal_save(email: str, req: JournalSaveRequest, auth_email: str = Depends(
     import datetime
     entry_dict = req.dict()
     entry_dict.setdefault("entry_date", datetime.date.today().isoformat())
+    # Set current_price to entry price so it shows immediately (refreshed on demand)
+    if not entry_dict.get("current_price") and entry_dict.get("underlying_entry"):
+        entry_dict["current_price"] = entry_dict["underlying_entry"]
     entry_id = save_journal_entry(normalized, entry_dict)
     return {"id": entry_id, "ok": True}
 
@@ -3489,6 +3492,18 @@ def journal_list(email: str, auth_email: str = Depends(require_access_email), st
     # Inject email for _refresh_entry
     for e in entries:
         e["email"] = normalized
+    # Auto-refresh OPEN entries that have stale (zero) current_price
+    for e in entries:
+        if e.get("status") == "OPEN" and not e.get("current_price"):
+            from storage import update_journal_entry
+            try:
+                info = bar_cache.get_info(e["ticker"])
+                px = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+                if px > 0:
+                    update_journal_entry(normalized, e["id"], current_price=round(px, 2))
+                    e["current_price"] = round(px, 2)
+            except Exception:
+                pass
     return {"entries": entries}
 
 
