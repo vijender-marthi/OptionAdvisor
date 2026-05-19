@@ -1588,6 +1588,187 @@ def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float
         return None
 
 
+def _suggest_spread_entry(
+    ticker: str,
+    strategy: str,
+    exec_levels: dict,
+    recommended_contract_duration: str,
+) -> Optional[dict]:
+    """
+    Suggest concrete option legs for the recommended spread strategy.
+    Returns a dict with long_strike, short_strike (if spread), expiry, estimated
+    debit/credit, max_gain, max_loss, and breakeven — or None when chain is unavailable.
+    """
+    try:
+        strat = strategy.upper()
+        if strat not in ("CALL_DEBIT_SPREAD", "PUT_DEBIT_SPREAD", "LONG_CALL", "LONG_PUT"):
+            return None
+
+        brk   = exec_levels.get("breakout")
+        t1    = exec_levels.get("target1")
+        if brk is None or t1 is None:
+            return None
+
+        # Parse DTE range → target midpoint
+        target_dte = 35
+        if recommended_contract_duration:
+            parts = recommended_contract_duration.replace("–", "-").split("-")
+            nums = [int(p.strip()) for p in parts if p.strip().isdigit()]
+            if len(nums) == 2:
+                target_dte = (nums[0] + nums[1]) // 2
+            elif len(nums) == 1:
+                target_dte = nums[0]
+
+        opt_dates = list(bar_cache.get_option_dates(ticker) or [])
+        if not opt_dates:
+            return None
+
+        now = datetime.now()
+        best_expiry = None
+        best_diff = 999
+        for d in opt_dates:
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            dte = (dt.date() - now.date()).days
+            if dte >= 7:
+                diff = abs(dte - target_dte)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_expiry = d
+        if best_expiry is None:
+            return None
+
+        calls_raw, puts_raw = bar_cache.get_option_chain(ticker, best_expiry)
+
+        is_call = strat in ("CALL_DEBIT_SPREAD", "LONG_CALL")
+        chain = calls_raw if is_call else puts_raw
+        if chain is None or chain.empty:
+            return None
+
+        strikes = sorted(chain["strike"].unique().tolist())
+        if not strikes:
+            return None
+
+        def nearest_at_or_above(level: float) -> Optional[float]:
+            above = [s for s in strikes if s >= level]
+            return above[0] if above else strikes[-1]
+
+        def nearest_at_or_below(level: float) -> Optional[float]:
+            below = [s for s in strikes if s <= level]
+            return below[-1] if below else strikes[0]
+
+        def get_mid(strike: float) -> Optional[float]:
+            row = chain[chain["strike"] == strike]
+            if row.empty:
+                return None
+            bid = float(row.iloc[0].get("bid", 0) or 0)
+            ask = float(row.iloc[0].get("ask", 0) or 0)
+            if ask <= 0:
+                return None
+            return round((bid + ask) / 2, 2)
+
+        if strat == "CALL_DEBIT_SPREAD":
+            long_strike  = nearest_at_or_above(brk)
+            short_strike = nearest_at_or_below(t1)
+            if long_strike >= short_strike:
+                short_strike = nearest_at_or_above(t1)
+            long_mid  = get_mid(long_strike)
+            short_mid = get_mid(short_strike)
+            if long_mid is None:
+                return None
+            est_debit  = round(long_mid - (short_mid or 0), 2)
+            width      = round(short_strike - long_strike, 2)
+            max_gain   = round((width - est_debit) * 100, 2)
+            max_loss   = round(est_debit * 100, 2)
+            breakeven  = round(long_strike + est_debit, 2)
+            return {
+                "strategy":     "CALL DEBIT SPREAD",
+                "long_leg":     f"Long ${long_strike:.0f}C",
+                "short_leg":    f"Short ${short_strike:.0f}C",
+                "long_strike":  long_strike,
+                "short_strike": short_strike,
+                "expiry":       best_expiry,
+                "est_debit":    est_debit,
+                "width":        width,
+                "max_gain":     max_gain,
+                "max_loss":     max_loss,
+                "breakeven":    breakeven,
+                "entry_note":   f"Enter on break & hold above ${brk:.2f}",
+            }
+
+        if strat == "PUT_DEBIT_SPREAD":
+            long_strike  = nearest_at_or_below(brk)
+            short_strike = nearest_at_or_above(t1)
+            if long_strike <= short_strike:
+                short_strike = nearest_at_or_below(t1)
+            long_mid  = get_mid(long_strike)
+            short_mid = get_mid(short_strike)
+            if long_mid is None:
+                return None
+            est_debit  = round(long_mid - (short_mid or 0), 2)
+            width      = round(long_strike - short_strike, 2)
+            max_gain   = round((width - est_debit) * 100, 2)
+            max_loss   = round(est_debit * 100, 2)
+            breakeven  = round(long_strike - est_debit, 2)
+            return {
+                "strategy":     "PUT DEBIT SPREAD",
+                "long_leg":     f"Long ${long_strike:.0f}P",
+                "short_leg":    f"Short ${short_strike:.0f}P",
+                "long_strike":  long_strike,
+                "short_strike": short_strike,
+                "expiry":       best_expiry,
+                "est_debit":    est_debit,
+                "width":        width,
+                "max_gain":     max_gain,
+                "max_loss":     max_loss,
+                "breakeven":    breakeven,
+                "entry_note":   f"Enter on break & hold below ${brk:.2f}",
+            }
+
+        if strat == "LONG_CALL":
+            long_strike = nearest_at_or_above(brk)
+            long_mid    = get_mid(long_strike)
+            if long_mid is None:
+                return None
+            return {
+                "strategy":    "LONG CALL",
+                "long_leg":    f"Long ${long_strike:.0f}C",
+                "short_leg":   None,
+                "long_strike": long_strike,
+                "short_strike": None,
+                "expiry":      best_expiry,
+                "est_debit":   long_mid,
+                "width":       None,
+                "max_gain":    None,
+                "max_loss":    round(long_mid * 100, 2),
+                "breakeven":   round(long_strike + long_mid, 2),
+                "entry_note":  f"Enter on break & hold above ${brk:.2f}",
+            }
+
+        if strat == "LONG_PUT":
+            long_strike = nearest_at_or_below(brk)
+            long_mid    = get_mid(long_strike)
+            if long_mid is None:
+                return None
+            return {
+                "strategy":    "LONG PUT",
+                "long_leg":    f"Long ${long_strike:.0f}P",
+                "short_leg":   None,
+                "long_strike": long_strike,
+                "short_strike": None,
+                "expiry":      best_expiry,
+                "est_debit":   long_mid,
+                "width":       None,
+                "max_gain":    None,
+                "max_loss":    round(long_mid * 100, 2),
+                "breakeven":   round(long_strike - long_mid, 2),
+                "entry_note":  f"Enter on break & hold below ${brk:.2f}",
+            }
+
+        return None
+    except Exception:
+        return None
+
+
 # ── Scan validation ───────────────────────────────────────────────────
 
 def _validate_swing_scan(scan: SwingTradeScan) -> list[str]:
@@ -2216,6 +2397,14 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         last=last, ma20=ma20, mom_5d_pct=mom_pct, bias=bias,
     )
     metrics["exec_levels"] = exec_levels
+
+    # Option spread entry suggestion (strikes, expiry, debit, breakeven)
+    metrics["spread_entry"] = _suggest_spread_entry(
+        ticker=t,
+        strategy=decision["suggested_strategy"],
+        exec_levels=exec_levels,
+        recommended_contract_duration=decision.get("recommended_contract_duration", ""),
+    )
 
     # Structured exit rules — price-specific, ordered by priority
     metrics["exit_rules"] = _compute_exit_rules(

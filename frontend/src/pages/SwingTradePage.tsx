@@ -90,29 +90,57 @@ export default function SwingTradePage() {
   const handleSaveToJournal = useCallback(async () => {
     if (!result || !user?.email) return
     const m = result.metrics as Record<string, unknown>
+    const el = computeExecLevels(result, m)
+    const se = m.spread_entry as Record<string, unknown> | null | undefined
     const today = new Date().toISOString().split('T')[0]
+    const parsePrice = (s: string | null | undefined): number => {
+      if (!s) return 0
+      const n = parseFloat(String(s).replace(/[^0-9.-]/g, ''))
+      return Number.isFinite(n) ? n : 0
+    }
+    const dte = result.recommended_contract_duration
+      ? Math.max(1, parseInt(result.recommended_contract_duration) || 45)
+      : 45
+    const expiry = se?.expiry
+      ? String(se.expiry)
+      : new Date(Date.now() + dte * 86400000).toISOString().slice(0, 10)
+    const lastPrice = typeof m.last_price === 'number' ? m.last_price : 0
     try {
       await saveToJournal(user.email, {
         ticker:           result.ticker,
         company_name:     result.company_name || '',
-        strategy:         result.suggested_strategy || (result.bias === 'short' ? 'Long Put' : 'Long Call'),
-        bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
-        legs:             [],
-        expiry:           '',
+        strategy:         String(se?.strategy || result.suggested_strategy || (result.bias === 'short' ? 'Long Put' : 'Long Call')),
+        bias:             result.bias === 'long' ? 'Bullish' : result.bias === 'short' ? 'Bearish' : 'Neutral',
+        legs:             se ? [{
+          action: 'BUY',
+          option_type: String(se?.long_leg || result.bias === 'short' ? 'PUT' : 'CALL'),
+          strike: Number(se?.long_strike ?? 0),
+          expiry,
+          delta: 0,
+          mid_price: lastPrice,
+        }] : [],
+        expiry,
         entry_date:       today,
-        dte_at_entry:     0,
-        net_credit:       0,
-        max_profit:       0,
-        max_loss:         0,
-        underlying_entry: typeof m.last_price === 'number' ? m.last_price : 0,
+        dte_at_entry:     dte,
+        net_credit:       se ? -Number(se.est_debit ?? 0) : 0,
+        max_profit:       Number(se?.max_gain ?? 0),
+        max_loss:         Number(se?.max_loss ?? 0),
+        underlying_entry: lastPrice,
         prob_of_profit:   0,
         expected_value:   0,
         total_score:      result.trade_quality_score ?? 0,
         trade_type:       'swing',
         engine_signal:    result.decision_label || result.final_action || '',
         engine_state:     1,
+        notes:            [
+          el.pullbackZone ? `Pullback: ${el.pullbackZone}` : '',
+          el.breakoutTrigger ? `Breakout: ${el.breakoutTrigger}` : '',
+          el.firstTarget ? `Target: ${el.firstTarget}` : '',
+          el.stretchTarget ? `Stretch: ${el.stretchTarget}` : '',
+          el.riskBelow ? `Stop: ${el.riskBelow}` : '',
+        ].filter(Boolean).join(' · '),
       })
-      setNotice({ tone: 'success', message: `${result.ticker} saved to Trade Journal.` })
+      setNotice({ tone: 'success', message: `${result.ticker} (1×${se?.strategy || 'swing'}) saved to Trade Journal.` })
     } catch {
       setNotice({ tone: 'info', message: 'Failed to save to journal. Please try again.' })
     }

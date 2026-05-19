@@ -1388,6 +1388,71 @@ export default function SwingTradeEnginePanel({
             })}
           </div>
         </div>
+
+        {/* ── Option Entry Suggestion ── */}
+        {(() => {
+          type SpreadEntry = {
+            strategy: string
+            long_leg: string
+            short_leg: string | null
+            long_strike: number
+            short_strike: number | null
+            expiry: string
+            est_debit: number
+            width: number | null
+            max_gain: number | null
+            max_loss: number
+            breakeven: number
+            entry_note: string
+          }
+          const se = m.spread_entry as SpreadEntry | null | undefined
+          if (!se) return null
+          const isSpread = se.short_leg != null
+          return (
+            <div className="mt-3 rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-violet-400">Suggested Entry</div>
+                <span className="rounded-md border border-violet-500/30 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">{se.strategy}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[7rem]">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Buy</div>
+                  <div className="text-sm font-bold text-emerald-300 font-mono">{se.long_leg}</div>
+                </div>
+                {isSpread && (
+                  <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[7rem]">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Sell</div>
+                    <div className="text-sm font-bold text-rose-300 font-mono">{se.short_leg}</div>
+                  </div>
+                )}
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[6rem]">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Expiry</div>
+                  <div className="text-sm font-bold text-gray-200 font-mono">{se.expiry}</div>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[5.5rem]">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Est. Debit</div>
+                  <div className="text-sm font-bold text-amber-300 font-mono">${se.est_debit.toFixed(2)}</div>
+                </div>
+                {isSpread && se.max_gain != null && (
+                  <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[5.5rem]">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Max Gain</div>
+                    <div className="text-sm font-bold text-emerald-300 font-mono">${se.max_gain.toFixed(0)}</div>
+                  </div>
+                )}
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[5.5rem]">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Max Loss</div>
+                  <div className="text-sm font-bold text-rose-300 font-mono">${se.max_loss.toFixed(0)}</div>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-black/20 px-2.5 py-2 min-w-[5.5rem]">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Breakeven</div>
+                  <div className="text-sm font-bold text-sky-300 font-mono">${se.breakeven.toFixed(2)}</div>
+                </div>
+              </div>
+              <div className="text-[11px] text-violet-300/80">{se.entry_note}</div>
+              <div className="text-[10px] text-gray-600">Prices are estimated mid-market at scan time. Verify live before placing order.</div>
+            </div>
+          )
+        })()}
       </div>
 
       <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
