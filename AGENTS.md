@@ -48,12 +48,26 @@ cd frontend && npm run dev
 
 ## Theme system
 
+- **Dark-first design**: All components default to dark mode colors (`bg-gray-900`, `text-gray-100`, `border-gray-700`, etc.). Light mode is handled via CSS overrides in `frontend/src/index.css` scoped under `html.light`.
+- **Two approaches for light theme**:
+  - **Preferred**: Use Tailwind's `dark:` variant for paired classes (e.g. `text-slate-700 dark:text-gray-200`, `bg-white dark:bg-slate-900`, `border-slate-200 dark:border-white/[0.07]`). This is the cleanest pattern and matches the rest of the app.
+  - **Fallback** (for components with many dark-only classes like `DayTradeEnginePanel`): Add `html.light .scope-class .class-name { property: value !important; }` rules in `index.css`. Always scope to the page or component container (`.day-trade-page`, `.day-trade-engine-panel`) to avoid leaking.
+- **DO NOT use `text-gray-100/200/300/400/500` without a `dark:` variant or CSS override** — these are invisible on white backgrounds in light mode.
+- **DO NOT use `bg-black/*`, `bg-gray-900/*`, `bg-*-950/*` without a light-mode counterpart** — these render as very dark overlays on light pages.
+- **Semantic color tokens** in `tailwind.config.js`: `surface-{canvas,page,card,elevated}`, `text-{primary,secondary,tertiary}`, `border-{subtle,default,strong}`, `semantic-{bullish,bearish,warning,accent,conflict,info}`. Use these for theme-consistent styling.
 - Theme tokens live as CSS custom properties in `frontend/src/index.css`. Two block scopes: `:root, html.dark` and `html.light`.
-- All Tailwind gray classes (`bg-gray-900`, `text-gray-100`, `border-gray-700`) auto-adapt via `html.light .className` overrides using CSS variables + `color-mix()` for alpha variants. **No per-page scope duplication** — a single global override covers all pages.
-- `tailwind.config.js` extends `colors` with semantic aliases: `surface-{canvas,page,card,elevated}`, `text-{primary,secondary,tertiary}`, `border-{subtle,default,strong}`, `semantic-{bullish,bearish,warning,accent,...}`.
 - The `AppContext` uses `oa_theme` localStorage key. System `prefers-color-scheme` fallback + live listener when no saved preference.
-- Adding a new color variant (e.g. `bg-gray-700/30`): add an `html.light .bg-gray-700\/30` override in index.css with `color-mix(in srgb, var(--surface-raised) 70%, transparent)`.
 - Charts (Recharts): theme-aware via `--sw-chart-*` tokens cascading from `--chart-*` variables. No per-chart updates needed.
+
+## Font / Text conventions
+
+- **Monospace prices**: Always use `font-mono` for prices, P&L values, strikes, and any numeric financial data.
+- **Small text**: `text-[10px]` and `text-[11px]` are common for secondary labels, badges, and timestamps. Ensure these have sufficient contrast in light mode — test with `text-slate-700 dark:text-gray-300` or similar.
+- **Badges / pills**: Use `rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider` pattern for state/type badges.
+- **Tabular numbers**: Use `tabular-nums` for any columnar numeric data to prevent layout shift.
+- **Link vs plain**: Navigation links use the ticker as a clickable `<button>` with `hover:text-violet-600`; the down chevron indicates expandability, so don't add separate arrow icons for "open" actions.
+- **Card pattern**: Use `rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden` for cards matching the rest of the app. Avoid dark-only classes like `bg-gray-900 border-gray-800`.
+- **Light mode contrast check**: Any text that is `text-gray-*` below `text-gray-700` or `text-*-200/300` must have a dark background behind it, OR a light-mode override. If in doubt, add a `dark:` variant pair.
 
 ## Testing quirks
 
