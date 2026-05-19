@@ -14,6 +14,7 @@ All yfinance calls are routed through bar_cache — no direct yf usage.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ import pandas as pd
 
 import bar_cache
 from analysis import build_hv_series, compute_hv, compute_iv_rank
+
+log = logging.getLogger(__name__)
 
 Verdict = Literal["STRONG GO", "GO", "WATCH", "WAIT", "NO-GO", "AVOID"]
 Bias    = Optional[Literal["long", "short"]]
