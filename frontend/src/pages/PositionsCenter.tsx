@@ -1424,11 +1424,7 @@ export default function PositionsCenter() {
   }, [closePosition, toggleExpanded])
 
   const handleManage = useCallback((pos: PortfolioPosition) => {
-    if (pos.status === 'closed') {
-      setReviewingClosedId(pos.id)
-    } else {
-      setEditingId(pos.id)
-    }
+    setEditingId(pos.id)
   }, [])
 
   const handleEdit = useCallback((id: string) => {
