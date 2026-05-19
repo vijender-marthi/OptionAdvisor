@@ -718,6 +718,24 @@ html.light .bg-gray-800 {
   background-color: #f1f5f9 !important;
 }
 
+/* ── MarketTimeGateBanner — light theme ─────────────────────────────────── */
+html.light .day-trade-page .bg-red-950\/30,
+html.light .swing-trade-page .bg-red-950\/30 { background-color: #fef2f2 !important; }
+html.light .day-trade-page .bg-amber-950\/20,
+html.light .swing-trade-page .bg-amber-950\/20 { background-color: #fffbeb !important; }
+html.light .day-trade-page .text-red-300,
+html.light .swing-trade-page .text-red-300 { color: #dc2626 !important; }
+html.light .day-trade-page .text-amber-300,
+html.light .swing-trade-page .text-amber-300 { color: #d97706 !important; }
+html.light .day-trade-page .text-red-200\/80,
+html.light .swing-trade-page .text-red-200\/80 { color: #b91c1c !important; }
+html.light .day-trade-page .text-amber-200\/80,
+html.light .swing-trade-page .text-amber-200\/80 { color: #b45309 !important; }
+html.light .day-trade-page .text-red-400,
+html.light .swing-trade-page .text-red-400 { color: #dc2626 !important; }
+html.light .day-trade-page .text-amber-400,
+html.light .swing-trade-page .text-amber-400 { color: #d97706 !important; }
+
 /* ── Mobile navigation ───────────────────────────────────────────────────── */
 html.dark .mobile-bottom-nav-shell,
 html.light .mobile-bottom-nav-shell {
