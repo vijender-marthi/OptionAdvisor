@@ -8,3 +8,4 @@ backend/__pycache__/
 frontend/dist/
 frontend/node_modules/
 .venv/
+.claude/worktrees/
