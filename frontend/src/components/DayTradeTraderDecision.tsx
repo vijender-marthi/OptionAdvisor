@@ -182,8 +182,8 @@ export function DayTradeTraderDecisionExpanded({ td }: { td: DayTraderDecision }
       <p className="text-sm text-gray-200 leading-snug">{td.decision_message}</p>
       <p className="text-[11px] text-amber-200/85 leading-snug">{td.risk_warning}</p>
       {td.market_guidance ? (
-        <p className="text-[10px] text-gray-500 leading-snug border-t border-gray-800/80 pt-2">
-          <span className="font-semibold text-gray-400">Market context:</span> {td.market_guidance}
+        <p className="text-[10px] text-amber-600/90 dark:text-amber-400/85 leading-snug border-t border-gray-800/80 pt-2">
+          <span className="font-semibold text-amber-700 dark:text-amber-300">Market context:</span> {td.market_guidance}
         </p>
       ) : null}
       {conf.length > 0 ? (
