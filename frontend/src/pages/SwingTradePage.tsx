@@ -41,7 +41,9 @@ export default function SwingTradePage() {
 
   useEffect(() => {
     fetchMyTickers().then(res => {
-      const symbols = (res.data?.tickers ?? []).map(t => t.symbol).filter(Boolean).slice(0, 10)
+      const symbols = (res.data?.tickers ?? [])
+        .filter(t => (t.trade_types || []).includes('swing'))
+        .map(t => t.symbol).filter(Boolean).slice(0, 10)
       setMyTickers(symbols)
     }).catch(() => {})
   }, [])
