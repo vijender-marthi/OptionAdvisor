@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle,
-  Briefcase,
-  BrainCircuit,
-  ChevronDown,
+  AlertTriangle, ArrowUpRight, BarChart3, BookOpen, BrainCircuit, Briefcase, Check, ChevronDown,
   ChevronUp,
   Clock,
   DollarSign,
+  Download,
   Edit3,
   Filter,
   Info,
@@ -35,6 +33,7 @@ import {
   getProfitLossTextClass,
   getPositionCategoryClass,
 } from '../utils/semanticTrading'
+import * as XLSX from 'xlsx'
 
 const TABS = [
   { id: 'open', label: 'Open Positions' },
@@ -1431,6 +1430,38 @@ export default function PositionsCenter() {
     setEditingId(id)
   }, [])
 
+  const handleExportXlsx = useCallback(() => {
+    const rows = filtered.map(p => ({
+      'Ticker': p.ticker,
+      'Status': p.status === 'open' ? 'Open' : 'Closed',
+      'Strategy': p.strategy || '',
+      'Bias': p.bias || '',
+      'Expiry': p.expiry || '',
+      'Contracts': p.contracts,
+      'Entry Price': p.net_credit ? Math.abs(p.net_credit).toFixed(2) : (p.entryPrice || 0),
+      'Close Price': p.exit_debit_credit ?? '',
+      'Net Credit $': (p.net_credit || 0).toFixed(2),
+      'Max Profit $': (p.max_profit || 0).toFixed(2),
+      'Max Loss $': (p.max_loss || 0).toFixed(2),
+      'Realized P&L $': p.realized_pnl ?? '',
+      'Realized P&L %': p.realized_pnl_percent ?? '',
+      'P&L %': p.pnlPct ?? '',
+      'Stock Entry Price': p.entryPrice || 0,
+      'Stock Close Price': p.exit_price ?? '',
+      'Entry Date': p.addedAt ? new Date(p.addedAt).toLocaleDateString() : '',
+      'Exit Date': p.exitDate ? new Date(p.exitDate).toLocaleDateString() : '',
+      'Exit Reason': p.exit_reason || '',
+      'Notes': p.notes || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Positions')
+    const colWidths = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, 14) }))
+    ws['!cols'] = colWidths
+    const tabLabel = tab === 'open' ? 'Open' : 'Closed'
+    XLSX.writeFile(wb, `positions-${tabLabel.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }, [filtered, tab])
+
   const [notice, setNotice] = useState<{ message: string } | null>(null)
 
   useEffect(() => {
@@ -1506,6 +1537,9 @@ export default function PositionsCenter() {
             </button>
             <button type="button" onClick={() => void load()} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${getActionButtonClass('surface')}`} title="Refresh">
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button type="button" onClick={handleExportXlsx} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${getActionButtonClass('surface')}`} title="Export to XLSX">
+              <Download size={16} />
             </button>
             <button type="button" title="Settings" onClick={() => navigate('settings')} className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${getActionButtonClass('surface')}`}>
               <Settings size={16} />
