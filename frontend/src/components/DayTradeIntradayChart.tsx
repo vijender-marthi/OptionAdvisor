@@ -28,14 +28,19 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
 const PAD = { l: 56, r: 10, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'America/New_York',
-  })
+  if (!iso || typeof iso !== 'string') return ''
+  try {
+    // Parse the ISO string which carries the ET offset (e.g. "2026-05-19T09:30:00-04:00")
+    const match = iso.match(/T(\d{2}):(\d{2})/)
+    if (!match) return ''
+    const h = parseInt(match[1], 10)
+    const m = match[2]
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${m} ${ampm}`
+  } catch {
+    return ''
+  }
 }
 
 function fmtPrice(n: number) {
