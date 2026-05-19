@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter, ArrowUpRight,
+  AlertTriangle, DollarSign, BarChart3, Filter,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry, executeTrade } from '../api/client'
 import type { JournalEntry } from '../types'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES, getEngineRoute } from '../routing/routes'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -189,7 +187,6 @@ function EntryCard({
   onDeleteConfirm,
   onNotesSave,
   onUpdate,
-  onNavigate,
   userRole,
 }: {
   entry: JournalEntry
@@ -197,7 +194,6 @@ function EntryCard({
   onDeleteConfirm: (id: string) => void
   onNotesSave: (id: string, notes: string) => Promise<void>
   onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void>
-  onNavigate?: (url: string) => void
   userRole?: string | null
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -304,15 +300,18 @@ function EntryCard({
           <div className="grid grid-cols-2 gap-3 px-4 py-3 sm:flex sm:items-center sm:flex-wrap">
             <div className="min-w-0 sm:w-32 sm:shrink-0">
               <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onNavigate?.(getEngineRoute(entry.trade_type || 'regular', entry.ticker)) }}
-                  className="font-semibold text-slate-900 dark:text-white text-sm tracking-tight hover:text-violet-600 dark:hover:text-violet-300 transition-colors cursor-pointer"
-                  title={`Open ${entry.ticker} in ${entry.trade_type || 'regular'} engine`}
-                >
-                  {entry.ticker}
-                </button>
-                <ArrowUpRight size={10} className="text-slate-400 dark:text-slate-500 shrink-0" />
+                <span className="font-semibold text-slate-900 dark:text-white text-sm tracking-tight">{entry.ticker}</span>
+                <span className={`text-xs font-bold font-mono ${
+                  entry.current_price > 0
+                    ? entry.net_credit !== 0 && entry.legs.length > 0
+                      ? 'text-violet-600 dark:text-violet-400'
+                      : 'text-slate-800 dark:text-slate-200'
+                    : 'text-slate-400 dark:text-slate-600'
+                }`}>
+                  {entry.current_price > 0
+                    ? `$${entry.current_price.toFixed(2)}`
+                    : '—'}
+                </span>
                 {entry.trade_type && (
                   <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
                     entry.trade_type === 'day' ? 'border-violet-600/40 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' :
@@ -355,9 +354,6 @@ function EntryCard({
             })()}
 
             <div className="flex items-center sm:hidden">
-              <span className="text-[10px] font-mono text-slate-500 dark:text-gray-500">
-                {entry.current_price > 0 ? `$${entry.current_price.toFixed(2)}` : '—'}
-              </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
                 {entry.status}
               </span>
@@ -394,9 +390,6 @@ function EntryCard({
             </div>
 
             <div className="w-28 shrink-0 hidden sm:flex flex-col items-end gap-0.5 justify-center">
-              <span className="text-[10px] font-mono text-slate-500 dark:text-gray-500">
-                {entry.current_price > 0 ? `$${entry.current_price.toFixed(2)}` : '—'}
-              </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLORS[entry.status] ?? 'bg-gray-800 text-gray-400 border-gray-700'}`}>
                 {entry.status}
               </span>
@@ -709,7 +702,6 @@ type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'EXPIRED'
 
 export default function JournalPage() {
   const { user, syncJournalEntryCount } = useApp()
-  const routerNavigate = useNavigate()
   const email = user?.email ?? ''
 
   const [entries, setEntries]         = useState<JournalEntry[]>([])
@@ -982,7 +974,6 @@ export default function JournalPage() {
               onDeleteConfirm={handleDeleteConfirm}
               onNotesSave={handleNotesSave}
               onUpdate={handleUpdate}
-              onNavigate={routerNavigate}
               userRole={user?.role}
             />
           ))}
