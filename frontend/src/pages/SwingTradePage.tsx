@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
-import { analyzeSwingTrade, createTradeIdea } from '../api/client'
+import { analyzeSwingTrade, saveToJournal } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import type { SwingTradeScanResult } from '../api/client'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
@@ -90,48 +90,31 @@ export default function SwingTradePage() {
   const handleSaveToJournal = useCallback(async () => {
     if (!result || !user?.email) return
     const m = result.metrics as Record<string, unknown>
-    const el = computeExecLevels(result, m)
-    const parsePrice = (s: string | null | undefined): number => {
-      if (!s) return 0
-      const n = parseFloat(s.replace(/[^0-9.-]/g, ''))
-      return Number.isFinite(n) ? n : 0
-    }
-    // Map suggested_strategy → idea structure
-    const STRATEGY_MAP: Record<string, string> = {
-      LONG_CALL: 'LONG_CALL', LONG_PUT: 'LONG_PUT',
-      CALL_SPREAD: 'CALL_SPREAD', PUT_SPREAD: 'PUT_SPREAD',
-      CSP: 'CSP', CC: 'CC',
-    }
-    const structure = STRATEGY_MAP[result.suggested_strategy ?? '']
-      ?? (result.bias === 'short' ? 'LONG_PUT' : 'LONG_CALL')
-    // Map final_action → idea reason
-    const REASON_MAP: Record<string, string> = {
-      TRADE_NOW:        'BREAKOUT_SETUP',
-      WAIT_FOR_PULLBACK:'PULLBACK_ENTRY',
-      WAIT_FOR_BREAKOUT:'BREAKOUT_SETUP',
-      WAIT_FOR_VOLUME:  'VOLUME_CONFIRM',
-      WATCH:            'MARKET_ALIGNING',
-      NO_TRADE:         'WAITING_ENTRY',
-    }
-    const reason = REASON_MAP[result.final_action ?? ''] ?? 'WAITING_ENTRY'
+    const today = new Date().toISOString().split('T')[0]
     try {
-      await createTradeIdea(user.email, {
-        ticker:       result.ticker,
-        engine:       'SWING',
-        direction:    result.bias === 'short' ? 'SHORT' : 'LONG',
-        structure,
-        reason,
-        status:       'WATCHING',
-        entry_price:  typeof m.last_price === 'number' ? m.last_price : 0,
-        target_price: parsePrice(el.firstTarget),
-        stop_price:   parsePrice(el.riskBelow),
-        engine_signal: result.decision_label || result.final_action || '',
-        engine_state:  1,
-        notes: '',
+      await saveToJournal(user.email, {
+        ticker:           result.ticker,
+        company_name:     result.company_name || '',
+        strategy:         result.suggested_strategy || (result.bias === 'short' ? 'Long Put' : 'Long Call'),
+        bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
+        legs:             [],
+        expiry:           '',
+        entry_date:       today,
+        dte_at_entry:     0,
+        net_credit:       0,
+        max_profit:       0,
+        max_loss:         0,
+        underlying_entry: typeof m.last_price === 'number' ? m.last_price : 0,
+        prob_of_profit:   0,
+        expected_value:   0,
+        total_score:      result.trade_quality_score ?? 0,
+        trade_type:       'swing',
+        engine_signal:    result.decision_label || result.final_action || '',
+        engine_state:     1,
       })
-      setNotice({ tone: 'success', message: `${result.ticker} saved to Journal → Trade Ideas.` })
+      setNotice({ tone: 'success', message: `${result.ticker} saved to Trade Journal.` })
     } catch {
-      setNotice({ tone: 'info', message: 'Failed to save idea. Please try again.' })
+      setNotice({ tone: 'info', message: 'Failed to save to journal. Please try again.' })
     }
   }, [result, user])
 
