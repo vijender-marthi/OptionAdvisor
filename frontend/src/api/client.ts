@@ -458,6 +458,22 @@ export const sendAlertEmail = async (
   return data
 }
 
+export const clearAllCaches = async (): Promise<{
+  ok: boolean
+  total_entries_cleared: number
+  cleared: {
+    bar_cache: number
+    quote_cache: number
+    analysis_cache: number
+    analyze_user_cache: number
+    day_scan_cache: number
+    swing_scan_cache: number
+  }
+}> => {
+  const { data } = await api.post('/cache/clear')
+  return data
+}
+
 export const sendTestEmail = async (
   email: string,
   userName?: string,

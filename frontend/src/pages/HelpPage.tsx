@@ -3047,6 +3047,104 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               </div>
             </DocCard>
 
+            <DocCard icon={<Target size={15} />} title="Day Trade Smart Alerts (My Tickers — 3 Alert Types)">
+              <div className="space-y-3 text-xs text-gray-400">
+                <p>Beyond state-change emails, the scan loop emits three purpose-built alerts that fire independently of state transitions. Each fires <strong className="text-gray-200">once per session per ticker</strong> and resets the next trading day.</p>
+
+                {/* Gap 1 — Take-profit */}
+                <div className="rounded-lg border border-yellow-800/40 bg-yellow-950/10 px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">💰</span>
+                    <span className="font-semibold text-yellow-300 text-[11px]">Gap 1 — Take-Profit Target Hit</span>
+                    <span className="ml-auto font-mono text-[10px] text-gray-500">alertType: TARGET_REACHED</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">When:</strong> State is IN-PLAY (3) and last price ≥ scalp target (long) or ≤ scalp target (short).</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">Scalp target:</strong> entry price × 1.015 for longs (+1.5%), × 0.985 for shorts (−1.5%). Special: VWAP-rejection longs target OR high; ORL-rejection shorts target extension below day low.</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">Action:</strong> Exit now or move stop to breakeven. The email gold card shows current price, target, VWAP, risk level.</p>
+                  <div className="rounded bg-gray-900/60 px-2 py-1 font-mono text-[10px] text-gray-400">
+                    Subject: 💰 OptionAdvisor: Take-profit target hit — MU
+                  </div>
+                  <p className="text-[10px] text-gray-500">Why it matters: without this alert, winners ride back to zero. MU today: +61% on calls; AMD today: +61% on puts — both recovered the full move after the target. Gap 1 is the exit you set automatically.</p>
+                </div>
+
+                {/* Gap 2 — Stalling breakout */}
+                <div className="rounded-lg border border-orange-800/40 bg-orange-950/10 px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">⚠️</span>
+                    <span className="font-semibold text-orange-300 text-[11px]">Gap 2 — Breakout Stalling (Weak Follow-Through)</span>
+                    <span className="ml-auto font-mono text-[10px] text-gray-500">alertType: WEAK_BREAKOUT</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">When:</strong> State is IN-PLAY (3) for ≥ 30 minutes and price has not extended ≥ 0.3% past ORH (long) or ORL (short).</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">Thresholds:</strong> wait = 30 min (2 scan cycles), extension = 0.3% beyond ORH/ORL. Both are tunable constants.</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">Action:</strong> Exit or set hard stop at ORH. Price is stalling — time decay is working against any options held. The orange card shows elapsed IN-PLAY time, current price vs ORH/ORL, and NARROW OR badge if applicable.</p>
+                  <div className="rounded bg-gray-900/60 px-2 py-1 font-mono text-[10px] text-gray-400">
+                    Subject: ⚠️ OptionAdvisor: Breakout stalling — TSLA
+                  </div>
+                  <p className="text-[10px] text-gray-500">Why it matters: TSLA today entered IN-PLAY at $404 (ORH) but never exceeded $405.21 (ORH+0.3%). Without Gap 2, you'd hold a dead call for 2+ hours through a full reversal to $405 → $401. Gap 2 fires at 30 min and says exit.</p>
+                </div>
+
+                {/* Gap 3 — Narrow OR */}
+                <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🟡</span>
+                    <span className="font-semibold text-amber-300 text-[11px]">Gap 3 — Narrow OR Caution (Pre-Entry Filter)</span>
+                    <span className="ml-auto font-mono text-[10px] text-gray-500">field: narrowOrCaution</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">When:</strong> A state-change alert fires for ENTRY → IN-PLAY and OR width % {'<'} 1.5%. OR width = (ORH − ORL) / ORL × 100.</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">What it does:</strong> Does not block the entry — adds an amber ⚠️ warning strip inside the IN-PLAY email card and a gold border. The NARROW OR badge shows in the card header.</p>
+                  <p className="text-[11px] leading-relaxed"><strong className="text-gray-200">Action:</strong> Half-size or skip. Require price to hold {'>'} 0.5% past ORH for 2+ bars before adding full size.</p>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] mt-1">
+                    <div className="rounded bg-gray-900/60 px-2 py-1">
+                      <span className="text-gray-500">TSLA (flagged):</span><br />
+                      <span className="font-mono text-amber-300">$4 / $400 = 1.00% ✗</span>
+                    </div>
+                    <div className="rounded bg-gray-900/60 px-2 py-1">
+                      <span className="text-gray-500">MU (clean):</span><br />
+                      <span className="font-mono text-emerald-300">$40 / $660 = 6.06% ✓</span>
+                    </div>
+                    <div className="rounded bg-gray-900/60 px-2 py-1">
+                      <span className="text-gray-500">AMD (clean):</span><br />
+                      <span className="font-mono text-emerald-300">$18 / $411 = 4.38% ✓</span>
+                    </div>
+                    <div className="rounded bg-gray-900/60 px-2 py-1">
+                      <span className="text-gray-500">AVGO (clean, no IN-PLAY):</span><br />
+                      <span className="font-mono text-emerald-300">$10 / $408 = 2.45% ✓</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500">Threshold 1.5% is tunable via <span className="font-mono">_NARROW_OR_ALERT_PCT</span> in main.py. Raise to 2.0% for more conservative filtering; lower to 0.8% to only flag extreme compression.</p>
+                </div>
+
+                {/* Summary table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                        <th className="px-2 py-1.5 font-semibold">Alert</th>
+                        <th className="px-2 py-1.5 font-semibold">Color</th>
+                        <th className="px-2 py-1.5 font-semibold">Fires when</th>
+                        <th className="px-2 py-1.5 font-semibold">Your action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['💰 Take-Profit', 'Gold card', 'Price hits scalp target while IN-PLAY', 'Exit or trail stop to breakeven'],
+                        ['⚠ Stalling', 'Orange card', '30 min IN-PLAY, <0.3% past ORH/ORL', 'Exit or hard stop at ORH'],
+                        ['🟡 Narrow OR', 'Amber strip on green card', 'OR width <1.5% on IN-PLAY entry', 'Half-size or skip entirely'],
+                        ['⚡ State Change', 'Green/Red/Amber card', 'State number changes (1↔2↔3)', 'Context — know where you are'],
+                      ].map(r => (
+                        <tr key={r[0]} className="border-b border-gray-800/40">
+                          <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                          <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
+                          <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
+                          <td className="px-2 py-1.5 text-gray-300">{r[3]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </DocCard>
+
             <DocCard icon={<ShieldAlert size={15} />} title="Position Warnings (Positions Center)">
               <div className="space-y-2 text-xs text-gray-400">
                 <p>Position warnings fire immediately (or within 5 minutes) when a monitored position reaches a critical threshold:</p>

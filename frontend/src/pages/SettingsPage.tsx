@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Activity, Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Server, RefreshCw } from 'lucide-react'
+import { Activity, Bell, Database, Mail, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { getEmailStatus, sendTestEmail } from '../api/client'
+import { getEmailStatus, sendTestEmail, clearAllCaches } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
@@ -70,6 +70,8 @@ export default function SettingsPage() {
   const [buyingPowerInput, setBuyingPowerInput] = useState(String(accountSize))
   const [testingEmail, setTestingEmail] = useState(false)
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
     provider: 'sendgrid' | 'smtp' | 'none'
@@ -95,6 +97,20 @@ export default function SettingsPage() {
   const handleBuyingPowerSave = () => {
     const val = parseFloat(buyingPowerInput)
     if (!isNaN(val) && val > 0) setAccountSize(val)
+  }
+
+  const handleClearCache = async () => {
+    if (clearingCache) return
+    setClearingCache(true)
+    setCacheResult(null)
+    try {
+      const res = await clearAllCaches()
+      setCacheResult({ ok: res.ok, total: res.total_entries_cleared })
+    } catch {
+      setCacheResult({ ok: false, total: 0 })
+    } finally {
+      setClearingCache(false)
+    }
   }
 
   const handleTestEmail = async () => {
@@ -177,6 +193,121 @@ export default function SettingsPage() {
         )}
       </SettingsCard>
 
+      {/* Monitor / Troubleshooting — Admin only */}
+      {user?.role === 'admin' && (
+        <div>
+          {/* Section header with admin badge */}
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <Wrench size={13} className="text-amber-500" />
+            <span className="text-xs font-bold uppercase tracking-[0.15em] text-amber-500">Monitor / Troubleshooting</span>
+            <span className="bg-amber-900/50 text-amber-300 border border-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+              ADMIN
+            </span>
+          </div>
+
+          <div className="bg-gray-900 border border-amber-900/40 rounded-2xl px-5 py-2 divide-y divide-gray-800">
+
+            {/* Info row */}
+            <div className="py-3 flex items-center gap-2">
+              <Activity size={13} className="text-gray-500 shrink-0" />
+              <span className="text-xs text-gray-500">
+                Yahoo Finance data is cached in-memory. Off-hours TTL: quotes 15 min · bars 5–60 min · engine scans vary.
+                Use Force Clear when prices show wrong direction or stale change%.
+              </span>
+            </div>
+
+            {/* API health check row */}
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center shrink-0 text-emerald-500">
+                  <Activity size={15} />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-100">API Status</div>
+                  <div className="text-xs text-gray-500">Backend health check</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await fetch('/api/health')
+                    alert(r.ok ? '✅ API OK' : `⚠️ API returned ${r.status}`)
+                  } catch { alert('❌ API unreachable') }
+                }}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-emerald-600
+                           text-gray-300 hover:text-emerald-300 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              >
+                Test
+              </button>
+            </div>
+
+            {/* Database check row */}
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center shrink-0 text-violet-400">
+                  <Database size={15} />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-100">Database</div>
+                  <div className="text-xs text-gray-500">SQLite connection check</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await fetch('/api/admin/db-check', { headers: { 'X-Access-Email': '' } })
+                    const d = await r.json()
+                    alert(d.ok ? '✅ DB OK' : `❌ DB error: ${d.error}`)
+                  } catch { alert('❌ DB check failed') }
+                }}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-violet-600
+                           text-gray-300 hover:text-violet-300 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              >
+                Check
+              </button>
+            </div>
+
+            {/* Force Clear Cache row */}
+            <div className="py-4 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="mt-0.5 w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center shrink-0 text-amber-500">
+                  <RefreshCw size={17} />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold text-gray-100 tracking-tight">Force Clear Cache</span>
+                  <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+                    Wipes all 6 in-memory caches: price bars (OHLCV), live quotes, engine analysis,
+                    analyze-user results, day trade scans, swing trade scans. Next load re-fetches
+                    everything live from Yahoo Finance.
+                  </p>
+                  {cacheResult && (
+                    <div className={`mt-2 flex items-center gap-1.5 text-xs ${cacheResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {cacheResult.ok
+                        ? <><CheckCircle2 size={13} /><span>Cleared {cacheResult.total} cached entries — next load fetches fresh data.</span></>
+                        : <><AlertTriangle size={13} /><span>Cache clear failed — check backend logs.</span></>
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleClearCache}
+                disabled={clearingCache}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-amber-900/30 border border-gray-700
+                           hover:border-amber-600 text-gray-300 hover:text-amber-300 text-xs font-semibold rounded-xl
+                           transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                <RefreshCw size={13} className={clearingCache ? 'animate-spin' : ''} />
+                {clearingCache ? 'Clearing...' : 'Clear Cache'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* How alerts work */}
       <SettingsCard title="How Alerts Work">
         <div className="py-4 space-y-3 text-sm text-gray-400 leading-relaxed">
@@ -250,84 +381,6 @@ export default function SettingsPage() {
       )}
       </div>
 
-      {user?.role === 'admin' && (
-        <SettingsCard title="🔧 Monitor / Troubleshooting">
-          <div className="space-y-4">
-            {/* System health row */}
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Activity size={16} className="text-emerald-500" />
-                <div>
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">API Status</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Backend API health check</div>
-                </div>
-              </div>
-              <button type="button" onClick={async () => {
-                try {
-                  const r = await fetch('/api/health')
-                  alert(r.ok ? 'API OK' : `API returned ${r.status}`)
-                } catch { alert('API unreachable') }
-              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                Test
-              </button>
-            </div>
-
-            {/* Version info */}
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Server size={16} className="text-violet-500" />
-                <div>
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">App Version</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Current deployment tag</div>
-                </div>
-              </div>
-              <code className="text-xs font-mono text-slate-600 dark:text-slate-400">
-                v1.34.34
-              </code>
-            </div>
-
-            {/* Database check */}
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Server size={16} className="text-amber-500" />
-                <div>
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Database</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">SQLite connection</div>
-                </div>
-              </div>
-              <button type="button" onClick={async () => {
-                try {
-                  const r = await fetch('/api/admin/db-check')
-                  const d = await r.json()
-                  alert(d.ok ? 'DB OK' : `DB error: ${d.error}`)
-                } catch { alert('DB check failed') }
-              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                Check
-              </button>
-            </div>
-
-            {/* Refresh all caches */}
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <RefreshCw size={16} className="text-sky-500" />
-                <div>
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Flush Cache</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Clear bar_cache and force refresh on next scan</div>
-                </div>
-              </div>
-              <button type="button" onClick={async () => {
-                try {
-                  const r = await fetch('/api/admin/flush-cache', { method: 'POST' })
-                  const d = await r.json()
-                  alert(d.ok ? 'Cache flushed' : `Error: ${d.error}`)
-                } catch { alert('Flush failed') }
-              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                Flush
-              </button>
-            </div>
-          </div>
-        </SettingsCard>
-      )}
     </div>
   )
 }

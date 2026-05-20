@@ -36,6 +36,14 @@ _scan_cache: Dict[str, Tuple[float, "DayTradeScan"]] = {}
 _scan_lock  = threading.Lock()
 
 
+def clear_scan_cache() -> int:
+    """Wipe the day-trade scan result cache. Returns number of entries cleared."""
+    with _scan_lock:
+        n = len(_scan_cache)
+        _scan_cache.clear()
+    return n
+
+
 def _scan_cache_ttl() -> int:
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZI
@@ -1754,28 +1762,53 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     }
 
     # ── Daily range exhaustion analysis ───────────────────────────────
+    # Correct formula: (today's H-L range) / (14-day ATR)
+    # Tells you what fraction of the *typical* daily range has been consumed.
+    # The old formula — (last - low) / (high - low) — just measured whether
+    # price was near the session high, which is always ~100% on up-trending
+    # days and gives false EXHAUSTED readings (e.g. AVGO: 97% old vs 58% ATR).
     _range_span = session_high - session_low
-    if _range_span > 0:
-        # Direction-aware: long bias = how much upside used; short = how much downside used
+    _atr14: float = 0.0
+    try:
+        _daily_bars = bar_cache.get_history(t, period="20d", interval="1d",
+                                            force_refresh=_fr)
+        if _daily_bars is not None and len(_daily_bars) >= 5:
+            _tr_series = (_daily_bars["High"] - _daily_bars["Low"])
+            _atr14 = float(_tr_series.rolling(min(14, len(_tr_series))).mean().iloc[-1])
+    except Exception:
+        _atr14 = 0.0
+
+    if _atr14 > 0 and _range_span >= 0:
+        # Primary: fraction of historical ATR consumed today
+        _daily_range_used_pct = round(_range_span / _atr14 * 100, 1)
+    elif _range_span > 0:
+        # Fallback (no daily history): use intraday-only ratio, direction-aware
         if bias == "long":
             _daily_range_used_pct = round((last - session_low) / _range_span * 100, 1)
         else:
             _daily_range_used_pct = round((session_high - last) / _range_span * 100, 1)
     else:
         _daily_range_used_pct = 0.0
-    _daily_range_used_pct = max(0.0, min(100.0, _daily_range_used_pct))
+    _daily_range_used_pct = max(0.0, min(150.0, _daily_range_used_pct))  # allow >100% on high-ATR days
 
+    # Thresholds based on ATR fraction:
+    #   ≥100% = full ATR consumed (rare extended day) → EXHAUSTED
+    #   ≥ 80% = 80–99% of ATR used                   → EXHAUSTED
+    #   ≥ 60% = 60–79% of ATR used                   → LATE
+    #   ≥ 35% = 35–59% of ATR used                   → MID
+    #   < 35% = early-session, range still wide open  → EARLY
     if _daily_range_used_pct >= 80:
         _daily_range_phase = "EXHAUSTED"
-    elif _daily_range_used_pct >= 65:
+    elif _daily_range_used_pct >= 60:
         _daily_range_phase = "LATE"
-    elif _daily_range_used_pct >= 40:
+    elif _daily_range_used_pct >= 35:
         _daily_range_phase = "MID"
     else:
         _daily_range_phase = "EARLY"
 
     metrics["daily_range_used_pct"] = _daily_range_used_pct
     metrics["daily_range_phase"]    = _daily_range_phase
+    metrics["atr14"]                = round(_atr14, 2) if _atr14 > 0 else None
 
     trader_decision = build_trader_decision(
         ticker=t,
@@ -1803,15 +1836,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         metrics["entry_rr_ratio"] = None
 
-    # Range warning — fires when daily move is nearly exhausted
+    # Range warning — fires when daily move is nearly exhausted vs 14-day ATR
+    _atr_ctx = f" (14-day ATR ${_atr14:.2f})" if _atr14 > 0 else ""
     if _daily_range_phase == "EXHAUSTED":
         metrics["range_warning"] = (
-            f"Daily range {_daily_range_used_pct:.0f}% used — the move is nearly complete. "
+            f"Daily range {_daily_range_used_pct:.0f}% of ATR consumed{_atr_ctx} — the typical daily move is nearly complete. "
             f"Entering now chases the tail. Wait for a pullback before reassessing."
         )
     elif _daily_range_phase == "LATE":
         metrics["range_warning"] = (
-            f"Daily range {_daily_range_used_pct:.0f}% used — late-stage entry. "
+            f"Daily range {_daily_range_used_pct:.0f}% of ATR consumed{_atr_ctx} — late-stage entry. "
             f"Reward shrinks as range nears exhaustion. Require tighter confirmation."
         )
     else:
