@@ -2965,8 +2965,13 @@ def _swing_active_state(final_action: str) -> int:
 
 
 # Weak-breakout detection: fire if IN-PLAY for this long without extending past ORH/ORL
-_WEAK_BREAKOUT_WAIT_MS  = 1_800_000  # 30 min = 2 scan cycles
-_WEAK_BREAKOUT_EXTEND_PCT = 0.003    # price must move ≥0.3% past ORH (long) or ORL (short)
+_WEAK_BREAKOUT_WAIT_MS    = 1_800_000  # 30 min = 2 scan cycles
+_WEAK_BREAKOUT_EXTEND_PCT = 0.003      # price must move ≥0.3% past ORH (long) or ORL (short)
+
+# Narrow OR filter: warn on ENTRY→IN-PLAY when opening range is compressed
+# OR width % = (ORH - ORL) / ORL × 100
+# TSLA today: $4/$400 = 1.0% → flagged   MU: $40/$660 = 6.1% → clean
+_NARROW_OR_ALERT_PCT      = 1.5        # below this → low follow-through risk, caution on entry
 
 _STATE_LABEL = {1: "SETUP", 2: "ENTRY", 3: "IN-PLAY", 4: "EXIT"}
 _STATE_DIRECTION = {
@@ -3071,30 +3076,46 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
                         )
+
+                        # Gap 3 — narrow OR filter: flag compressed opening ranges on IN-PLAY entry
+                        narrow_or_caution = False
+                        or_width_pct_val  = None
+                        if now_state == 3 and orh_val is not None and orl_val is not None:
+                            try:
+                                _orh = float(orh_val)
+                                _orl = float(orl_val)
+                                if _orl > 0:
+                                    or_width_pct_val  = round((_orh - _orl) / _orl * 100, 2)
+                                    narrow_or_caution = or_width_pct_val < _NARROW_OR_ALERT_PCT
+                            except (TypeError, ValueError):
+                                pass
+
                         day_escalations.append({
-                            "id":           f"dt-state-{ticker}-{now_ms}",
-                            "alertType":    "STATE_CHANGE",
-                            "ticker":       ticker,
-                            "companyName":  getattr(dr, "company_name", None) or ticker,
-                            "engine":       "DAY",
-                            "prevState":    prev_state,
-                            "prevLabel":    _STATE_LABEL.get(prev_state, str(prev_state)),
-                            "nowState":     now_state,
-                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
-                            "direction":    direction,
-                            "action":       now_action,
-                            "egAction":     eg_action,
-                            "bias":         bias_label,
-                            "sessionDate":  sd,
-                            "currentPrice": last_price_val,
-                            "vwap":         eg.get("vwap") or m.get("vwap"),
-                            "orh":          orh_val,
-                            "orl":          orl_val,
-                            "breakoutLevel":eg.get("breakout_level"),
-                            "scalp_target": eg.get("scalp_target"),
-                            "riskBelow":    eg.get("risk_below"),
-                            "summary":      eg.get("summary") or eg.get("action") or "",
-                            "decisionMsg":  str((dr.trader_decision or {}).get("decision_message") or ""),
+                            "id":             f"dt-state-{ticker}-{now_ms}",
+                            "alertType":      "STATE_CHANGE",
+                            "ticker":         ticker,
+                            "companyName":    getattr(dr, "company_name", None) or ticker,
+                            "engine":         "DAY",
+                            "prevState":      prev_state,
+                            "prevLabel":      _STATE_LABEL.get(prev_state, str(prev_state)),
+                            "nowState":       now_state,
+                            "nowLabel":       _STATE_LABEL.get(now_state, str(now_state)),
+                            "direction":      direction,
+                            "action":         now_action,
+                            "egAction":       eg_action,
+                            "bias":           bias_label,
+                            "sessionDate":    sd,
+                            "currentPrice":   last_price_val,
+                            "vwap":           eg.get("vwap") or m.get("vwap"),
+                            "orh":            orh_val,
+                            "orl":            orl_val,
+                            "breakoutLevel":  eg.get("breakout_level"),
+                            "scalp_target":   eg.get("scalp_target"),
+                            "riskBelow":      eg.get("risk_below"),
+                            "summary":        eg.get("summary") or eg.get("action") or "",
+                            "decisionMsg":    str((dr.trader_decision or {}).get("decision_message") or ""),
+                            "narrowOrCaution":narrow_or_caution,
+                            "orWidthPct":     or_width_pct_val,
                         })
 
                     # ── Take-profit alert ─────────────────────────────────
@@ -3338,12 +3359,14 @@ def _build_state_transition_email_html(
 
         else:
             # ── State-change card (existing style) ────────────────────
-            prev_label = html.escape(str(it.get("prevLabel", "")))
-            now_label  = html.escape(str(it.get("nowLabel", "")))
-            direction  = html.escape(str(it.get("direction", "")))
-            eg_action  = html.escape(str(it.get("egAction") or it.get("action", "")))
-            dec_msg2   = html.escape(str(it.get("decisionMsg", "")))
-            brk        = _fmt_price(it.get("breakoutLevel"))
+            prev_label        = html.escape(str(it.get("prevLabel", "")))
+            now_label         = html.escape(str(it.get("nowLabel", "")))
+            direction         = html.escape(str(it.get("direction", "")))
+            eg_action         = html.escape(str(it.get("egAction") or it.get("action", "")))
+            dec_msg2          = html.escape(str(it.get("decisionMsg", "")))
+            brk               = _fmt_price(it.get("breakoutLevel"))
+            narrow_or_caution = bool(it.get("narrowOrCaution", False))
+            or_width_pct      = it.get("orWidthPct")
 
             now_state = it.get("nowState", 1)
             is_inplay = now_state == 3
@@ -3365,8 +3388,26 @@ def _build_state_transition_email_html(
 
             dec_row2 = f'<p style="margin:6px 0 0;font-size:11px;color:#64748b;font-style:italic;">{dec_msg2}</p>' if dec_msg2 else ""
 
+            # Gap 3 — narrow OR caution strip (only on IN-PLAY entry alerts)
+            narrow_or_strip = ""
+            if narrow_or_caution and is_inplay and or_width_pct is not None:
+                narrow_or_strip = (
+                    f'<div style="margin-top:10px;background:#fef3c7;border:1px solid #fde68a;'
+                    f'border-radius:6px;padding:9px 12px;display:flex;align-items:flex-start;gap:8px;">'
+                    f'<span style="font-size:15px;line-height:1;">⚠️</span>'
+                    f'<div>'
+                    f'<span style="font-size:11px;font-weight:800;color:#92400e;">'
+                    f'NARROW OR ({or_width_pct:.2f}%) — Reduced conviction entry</span>'
+                    f'<p style="margin:4px 0 0;font-size:11px;color:#78350f;line-height:1.4;">'
+                    f'Opening range is compressed (&lt;{_NARROW_OR_ALERT_PCT}%). '
+                    f'Low-energy breakouts often stall within 1–2 bars of ORH. '
+                    f'<strong>Half-size or skip.</strong> '
+                    f'Require price to hold &gt;0.5% past ORH for 2+ bars before adding size.</p>'
+                    f'</div></div>'
+                )
+
             cards_html += f"""
-<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:{'2px solid #f59e0b' if narrow_or_caution and is_inplay else '1px solid #e2e8f0'};">
   <div style="background:{hdr_bg};padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
     <div>
       <a href="{ticker_url}" style="color:#ffffff;font-family:monospace;font-size:16px;font-weight:800;text-decoration:none;">{ticker}</a>
@@ -3376,6 +3417,7 @@ def _build_state_transition_email_html(
       <span style="background:rgba(255,255,255,0.15);color:#ffffff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DAY TRADE</span>
       <span style="color:rgba(255,255,255,0.7);font-size:11px;">{prev_label} →</span>
       <span style="background:{badge_bg};color:{badge_fg};padding:3px 10px;border-radius:4px;font-size:11px;font-weight:800;">{now_label}</span>
+      {'<span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:800;">NARROW OR</span>' if narrow_or_caution and is_inplay else ''}
     </div>
   </div>
   <div style="background:#ffffff;padding:12px 14px;">
@@ -3391,6 +3433,7 @@ def _build_state_transition_email_html(
     <div style="background:#f8fafc;border-radius:6px;padding:8px 10px;flex-wrap:wrap;">
       {levels_html}
     </div>
+    {narrow_or_strip}
     {summary_row}
     {dec_row2}
   </div>
