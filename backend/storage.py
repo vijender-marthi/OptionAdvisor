@@ -322,10 +322,15 @@ def init_db() -> None:
                 action     TEXT NOT NULL DEFAULT '',
                 session_date TEXT NOT NULL DEFAULT '',
                 updated_at INTEGER NOT NULL,
+                target_hit INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (email, ticker, engine)
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE ticker_state_last ADD COLUMN target_hit INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # column already exists
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_alerts (
@@ -706,6 +711,8 @@ def upsert_ticker_state_last(
     state_num: int,
     action: str,
     session_date: str,
+    *,
+    target_hit: int = 0,
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -717,15 +724,16 @@ def upsert_ticker_state_last(
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO ticker_state_last (email, ticker, engine, state_num, action, session_date, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ticker_state_last (email, ticker, engine, state_num, action, session_date, updated_at, target_hit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker, engine) DO UPDATE SET
                 state_num    = excluded.state_num,
                 action       = excluded.action,
                 session_date = excluded.session_date,
-                updated_at   = excluded.updated_at
+                updated_at   = excluded.updated_at,
+                target_hit   = excluded.target_hit
             """,
-            (normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms),
+            (normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms, int(target_hit)),
         )
 
 
@@ -740,7 +748,7 @@ def get_ticker_state_last(
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT state_num, action, session_date, updated_at
+            SELECT state_num, action, session_date, updated_at, target_hit
             FROM ticker_state_last
             WHERE email = ? AND ticker = ? AND engine = ?
             """,
@@ -753,6 +761,7 @@ def get_ticker_state_last(
         "action": row["action"] or "",
         "session_date": row["session_date"] or "",
         "updated_at": int(row["updated_at"]),
+        "target_hit": int(row["target_hit"] if row["target_hit"] is not None else 0),
     }
 
 

@@ -3020,47 +3020,92 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
             now_action   = td_action or eg_action or eg_state
 
             sd = str((dr.metrics or {}).get("session_date") or session_date_today)[:10]
+            m  = dr.metrics or {}
+            bias_raw   = str(getattr(dr, "bias", "") or "").lower()
+            bias_label = "BULLISH / LONG" if bias_raw == "long" else "BEARISH / SHORT" if bias_raw == "short" else bias_raw.upper()
 
             prev = get_ticker_state_last(email, ticker, "DAY")
             if prev is None:
-                upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
+                upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=0)
             else:
-                prev_state = int(prev.get("state_num") or 1)
-                prev_sd    = (prev.get("session_date") or "")[:10]
+                prev_state      = int(prev.get("state_num") or 1)
+                prev_sd         = (prev.get("session_date") or "")[:10]
+                prev_target_hit = int(prev.get("target_hit") or 0)
+
                 if prev_sd and sd and prev_sd != sd:
-                    # New session — reset baseline without alerting
-                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
-                elif prev_state != now_state:
-                    direction = _STATE_DIRECTION.get((prev_state, now_state), f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}")
-                    bias_raw  = str(getattr(dr, "bias", "") or "").lower()
-                    bias_label = "BULLISH / LONG" if bias_raw == "long" else "BEARISH / SHORT" if bias_raw == "short" else bias_raw.upper()
-                    m = dr.metrics or {}
-                    day_escalations.append({
-                        "id":           f"dt-state-{ticker}-{int(time.time() * 1000)}",
-                        "ticker":       ticker,
-                        "companyName":  getattr(dr, "company_name", None) or ticker,
-                        "engine":       "DAY",
-                        "prevState":    prev_state,
-                        "prevLabel":    _STATE_LABEL.get(prev_state, str(prev_state)),
-                        "nowState":     now_state,
-                        "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
-                        "direction":    direction,
-                        "action":       now_action,
-                        "egAction":     eg_action,
-                        "bias":         bias_label,
-                        "sessionDate":  sd,
-                        # Trading detail for rich email
-                        "currentPrice": eg.get("current_price") or m.get("last_price"),
-                        "vwap":         eg.get("vwap") or m.get("vwap"),
-                        "orh":          eg.get("opening_range_high") or m.get("or_high"),
-                        "orl":          eg.get("opening_range_low") or m.get("or_low"),
-                        "breakoutLevel":eg.get("breakout_level"),
-                        "scalp_target": eg.get("scalp_target"),
-                        "riskBelow":    eg.get("risk_below"),
-                        "summary":      eg.get("summary") or eg.get("action") or "",
-                        "decisionMsg":  str((dr.trader_decision or {}).get("decision_message") or ""),
-                    })
-                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd)
+                    # New session — reset baseline and target without alerting
+                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=0)
+                else:
+                    # Carry target_hit forward only if state is unchanged; reset on any state transition
+                    carry_target = prev_target_hit if prev_state == now_state else 0
+
+                    # ── State-change alert ────────────────────────────────
+                    if prev_state != now_state:
+                        direction = _STATE_DIRECTION.get(
+                            (prev_state, now_state),
+                            f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
+                        )
+                        day_escalations.append({
+                            "id":           f"dt-state-{ticker}-{int(time.time() * 1000)}",
+                            "alertType":    "STATE_CHANGE",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "prevState":    prev_state,
+                            "prevLabel":    _STATE_LABEL.get(prev_state, str(prev_state)),
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "direction":    direction,
+                            "action":       now_action,
+                            "egAction":     eg_action,
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": eg.get("current_price") or m.get("last_price"),
+                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "orh":          eg.get("opening_range_high") or m.get("or_high"),
+                            "orl":          eg.get("opening_range_low") or m.get("or_low"),
+                            "breakoutLevel":eg.get("breakout_level"),
+                            "scalp_target": eg.get("scalp_target"),
+                            "riskBelow":    eg.get("risk_below"),
+                            "summary":      eg.get("summary") or eg.get("action") or "",
+                            "decisionMsg":  str((dr.trader_decision or {}).get("decision_message") or ""),
+                        })
+
+                    # ── Take-profit alert (fires once per session when target hit while IN-PLAY) ──
+                    target_to_store = carry_target
+                    scalp_target_val = eg.get("scalp_target")
+                    last_price_val   = eg.get("current_price") or m.get("last_price")
+                    if now_state == 3 and not carry_target and scalp_target_val is not None and last_price_val is not None:
+                        try:
+                            lp = float(last_price_val)
+                            st = float(scalp_target_val)
+                            target_reached = (bias_raw == "long" and lp >= st) or (bias_raw == "short" and lp <= st)
+                        except (TypeError, ValueError):
+                            target_reached = False
+                        if target_reached:
+                            target_to_store = 1
+                            direction_word = "above" if bias_raw == "long" else "below"
+                            day_escalations.append({
+                                "id":           f"dt-target-{ticker}-{int(time.time() * 1000)}",
+                                "alertType":    "TARGET_REACHED",
+                                "ticker":       ticker,
+                                "companyName":  getattr(dr, "company_name", None) or ticker,
+                                "engine":       "DAY",
+                                "nowState":     now_state,
+                                "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                                "bias":         bias_label,
+                                "sessionDate":  sd,
+                                "currentPrice": last_price_val,
+                                "scalp_target": scalp_target_val,
+                                "vwap":         eg.get("vwap") or m.get("vwap"),
+                                "orh":          eg.get("opening_range_high") or m.get("or_high"),
+                                "orl":          eg.get("opening_range_low") or m.get("or_low"),
+                                "riskBelow":    eg.get("risk_below"),
+                                "summary":      f"Price ${lp:.2f} reached scalp target ${st:.2f} — consider taking profit or trailing your stop.",
+                                "decisionMsg":  f"Target hit {direction_word} ${st:.2f}. Exit now or move stop to breakeven to protect gains.",
+                            })
+
+                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=target_to_store)
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
 
@@ -3069,12 +3114,19 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
     public_base = _option_advisor_public_base()
     try:
-        count = len(day_escalations)
-        tickers_str = ", ".join(sorted({it["ticker"] for it in day_escalations}))
-        subject = f"⚡ OptionAdvisor: {count} day-trade state change{'s' if count != 1 else ''} — {tickers_str}"
+        tickers_str  = ", ".join(sorted({it["ticker"] for it in day_escalations}))
+        target_items = [it for it in day_escalations if it.get("alertType") == "TARGET_REACHED"]
+        state_items  = [it for it in day_escalations if it.get("alertType") != "TARGET_REACHED"]
+        if target_items and not state_items:
+            subject = f"💰 OptionAdvisor: Take-profit target hit — {tickers_str}"
+        elif target_items:
+            subject = f"⚡💰 OptionAdvisor: State change + target hit — {tickers_str}"
+        else:
+            count = len(state_items)
+            subject = f"⚡ OptionAdvisor: {count} day-trade state change{'s' if count != 1 else ''} — {tickers_str}"
         html_body = _build_state_transition_email_html(email, user_name, day_escalations, public_base=public_base)
         _deliver_html_email(email, user_name, subject, html_body)
-        print(f"[state-scan] sent {count} DAY state alert(s) to {email}", flush=True)
+        print(f"[state-scan] sent {len(day_escalations)} DAY alert(s) to {email}", flush=True)
     except Exception as exc:
         print(f"[state-scan] email failed for {email}: {exc}", flush=True)
 
@@ -3100,54 +3152,94 @@ def _build_state_transition_email_html(
 
     cards_html = ""
     for it in items:
-        ticker     = html.escape(str(it.get("ticker", "")).upper())
-        company    = html.escape(str(it.get("companyName") or ticker))
-        prev_label = html.escape(str(it.get("prevLabel", "")))
-        now_label  = html.escape(str(it.get("nowLabel", "")))
-        direction  = html.escape(str(it.get("direction", "")))
-        bias       = html.escape(str(it.get("bias", "")))
-        eg_action  = html.escape(str(it.get("egAction") or it.get("action", "")))
-        summary    = html.escape(str(it.get("summary", "")))
-        dec_msg    = html.escape(str(it.get("decisionMsg", "")))
-        session    = html.escape(str(it.get("sessionDate", "")))
+        ticker      = html.escape(str(it.get("ticker", "")).upper())
+        company     = html.escape(str(it.get("companyName") or ticker))
+        bias        = html.escape(str(it.get("bias", "")))
+        summary     = html.escape(str(it.get("summary", "")))
+        dec_msg     = html.escape(str(it.get("decisionMsg", "")))
+        session     = html.escape(str(it.get("sessionDate", "")))
+        alert_type  = str(it.get("alertType") or "STATE_CHANGE")
+        ticker_url  = html.escape(f"{day_trade_url}?ticker={it.get('ticker', '').upper()}")
 
-        price  = _fmt_price(it.get("currentPrice"))
-        vwap   = _fmt_price(it.get("vwap"))
-        orh    = _fmt_price(it.get("orh"))
-        orl    = _fmt_price(it.get("orl"))
-        brk    = _fmt_price(it.get("breakoutLevel"))
-        tgt    = _fmt_price(it.get("scalp_target"))
-        risk   = _fmt_price(it.get("riskBelow"))
+        price = _fmt_price(it.get("currentPrice"))
+        vwap  = _fmt_price(it.get("vwap"))
+        orh   = _fmt_price(it.get("orh"))
+        orl   = _fmt_price(it.get("orl"))
+        tgt   = _fmt_price(it.get("scalp_target"))
+        risk  = _fmt_price(it.get("riskBelow"))
 
-        now_state = it.get("nowState", 1)
-        is_inplay = now_state == 3
-        is_exit   = now_state == 4
-        is_entry  = now_state == 2
-
-        # Header accent colour
-        hdr_bg   = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#1e3a5f"
-        badge_bg = "#dcfce7" if is_inplay else "#fee2e2" if is_exit else "#fef3c7" if is_entry else "#e0e7ff"
-        badge_fg = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#3730a3"
-
-        # Bias colour
         bias_color = "#166534" if "BULL" in bias.upper() or "LONG" in bias.upper() else \
                      "#991b1b" if "BEAR" in bias.upper() or "SHORT" in bias.upper() else "#64748b"
-
-        ticker_url = html.escape(f"{day_trade_url}?ticker={it.get('ticker', '').upper()}")
-
-        levels_html = ""
-        level_pairs = [
-            ("Price", price), ("VWAP", vwap), ("ORH", orh), ("ORL", orl),
-            ("Breakout", brk), ("Target", tgt), ("Risk Below", risk),
-        ]
-        for lbl, val in level_pairs:
-            if val and val != "—":
-                levels_html += f'<span style="margin-right:14px;white-space:nowrap;"><span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> <span style="font-family:monospace;font-weight:700;font-size:12px;color:#1e293b;">{val}</span></span>'
 
         summary_row = f'<p style="margin:8px 0 0;font-size:12px;color:#374151;">{summary}</p>' if summary else ""
         dec_row     = f'<p style="margin:6px 0 0;font-size:11px;color:#64748b;font-style:italic;">{dec_msg}</p>' if dec_msg else ""
 
-        cards_html += f"""
+        if alert_type == "TARGET_REACHED":
+            # ── Take-profit card (gold) ───────────────────────────────
+            level_pairs = [("Price", price), ("Target", tgt), ("VWAP", vwap), ("Risk Below", risk)]
+            levels_html = ""
+            for lbl, val in level_pairs:
+                if val and val != "—":
+                    highlight = "color:#92400e;font-weight:900;" if lbl == "Target" else "color:#1e293b;"
+                    levels_html += f'<span style="margin-right:14px;white-space:nowrap;"><span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> <span style="font-family:monospace;font-weight:700;font-size:12px;{highlight}">{val}</span></span>'
+
+            cards_html += f"""
+<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:2px solid #f59e0b;">
+  <div style="background:linear-gradient(90deg,#78350f,#92400e);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>
+      <a href="{ticker_url}" style="color:#ffffff;font-family:monospace;font-size:16px;font-weight:800;text-decoration:none;">{ticker}</a>
+      <span style="color:rgba(255,255,255,0.75);font-size:12px;margin-left:8px;">{company}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="background:rgba(255,255,255,0.15);color:#ffffff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DAY TRADE</span>
+      <span style="background:#fef9c3;color:#78350f;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:900;">💰 TAKE PROFIT</span>
+    </div>
+  </div>
+  <div style="background:#fffbeb;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:700;color:{bias_color};">{bias}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:12px;font-weight:700;color:#92400e;">Target reached</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:10px;color:#94a3b8;">{session}</span>
+    </div>
+    <div style="background:#fef3c7;border-radius:6px;padding:8px 10px;flex-wrap:wrap;border:1px solid #fde68a;">
+      {levels_html}
+    </div>
+    {summary_row}
+    {dec_row}
+  </div>
+</div>"""
+        else:
+            # ── State-change card (existing style) ────────────────────
+            prev_label = html.escape(str(it.get("prevLabel", "")))
+            now_label  = html.escape(str(it.get("nowLabel", "")))
+            direction  = html.escape(str(it.get("direction", "")))
+            eg_action  = html.escape(str(it.get("egAction") or it.get("action", "")))
+            dec_msg2   = html.escape(str(it.get("decisionMsg", "")))
+            brk        = _fmt_price(it.get("breakoutLevel"))
+
+            now_state = it.get("nowState", 1)
+            is_inplay = now_state == 3
+            is_exit   = now_state == 4
+            is_entry  = now_state == 2
+
+            hdr_bg   = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#1e3a5f"
+            badge_bg = "#dcfce7" if is_inplay else "#fee2e2" if is_exit else "#fef3c7" if is_entry else "#e0e7ff"
+            badge_fg = "#166534" if is_inplay else "#991b1b" if is_exit else "#92400e" if is_entry else "#3730a3"
+
+            level_pairs = [
+                ("Price", price), ("VWAP", vwap), ("ORH", orh), ("ORL", orl),
+                ("Breakout", brk), ("Target", tgt), ("Risk Below", risk),
+            ]
+            levels_html = ""
+            for lbl, val in level_pairs:
+                if val and val != "—":
+                    levels_html += f'<span style="margin-right:14px;white-space:nowrap;"><span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> <span style="font-family:monospace;font-weight:700;font-size:12px;color:#1e293b;">{val}</span></span>'
+
+            dec_row2 = f'<p style="margin:6px 0 0;font-size:11px;color:#64748b;font-style:italic;">{dec_msg2}</p>' if dec_msg2 else ""
+
+            cards_html += f"""
 <div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
   <div style="background:{hdr_bg};padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
     <div>
@@ -3174,9 +3266,21 @@ def _build_state_transition_email_html(
       {levels_html}
     </div>
     {summary_row}
-    {dec_row}
+    {dec_row2}
   </div>
 </div>"""
+
+    has_target = any(it.get("alertType") == "TARGET_REACHED" for it in items)
+    has_state  = any(it.get("alertType") != "TARGET_REACHED" for it in items)
+    if has_target and not has_state:
+        email_title = "Take-Profit Target Hit"
+        intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, a scalp target was reached for a ticker in your <strong>My Tickers</strong> list — consider taking profit or trailing your stop:"
+    elif has_target:
+        email_title = "State Change + Target Hit"
+        intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, the following tickers in your <strong>My Tickers</strong> list had day-trade activity:"
+    else:
+        email_title = "State Change Alert"
+        intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, the following tickers in your <strong>My Tickers</strong> list changed day-trade state:"
 
     return f"""<!DOCTYPE html>
 <html>
@@ -3185,11 +3289,11 @@ def _build_state_transition_email_html(
   <div style="max-width:640px;margin:0 auto;padding:20px 12px;">
     <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:18px 22px;border-radius:12px 12px 0 0;">
       <div style="color:#e0e7ff;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;">OptionAdvisor · Day Trade</div>
-      <div style="color:#ffffff;font-size:18px;font-weight:800;">State Change Alert</div>
+      <div style="color:#ffffff;font-size:18px;font-weight:800;">{html.escape(email_title)}</div>
       <div style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:2px;">Scanned every 15 min during market hours</div>
     </div>
     <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;padding:18px 16px;">
-      <p style="color:#374151;font-size:13px;margin:0 0 16px 0;">Hi <strong>{html.escape(display_name)}</strong>, the following tickers in your <strong>My Tickers</strong> list changed day-trade state:</p>
+      <p style="color:#374151;font-size:13px;margin:0 0 16px 0;">{intro_text}</p>
       {cards_html}
       <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
         <a href="{html.escape(day_trade_url)}" style="background:#7c3aed;color:#ffffff;padding:9px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;">Open Day Trade</a>
