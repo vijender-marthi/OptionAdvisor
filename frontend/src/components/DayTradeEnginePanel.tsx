@@ -871,6 +871,7 @@ export default function DayTradeEnginePanel({
         {(() => {
           const rangeUsed  = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
           const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
+          const atr14      = typeof m.atr14 === 'number' ? m.atr14 : null
           const rrRatio    = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
           const warning    = typeof m.range_warning === 'string' ? m.range_warning : null
           if (rangeUsed == null && rrRatio == null) return null
@@ -893,9 +894,15 @@ export default function DayTradeEnginePanel({
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 {rangeUsed != null && rangePhase && (
-                  <div className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${phaseTone}`}>
+                  <div
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${phaseTone}`}
+                    title={atr14 != null ? `${rangeUsed.toFixed(0)}% of 14-day ATR ($${atr14.toFixed(2)}) consumed today` : undefined}
+                  >
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Range Used</span>
                     <span className="font-mono font-bold">{rangeUsed.toFixed(0)}%</span>
+                    {atr14 != null && (
+                      <span className="text-[10px] opacity-50 font-normal">of ATR</span>
+                    )}
                     <span className="opacity-60">·</span>
                     <span className="text-[10px] font-bold uppercase tracking-wide">{rangePhase}</span>
                   </div>
