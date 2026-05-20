@@ -29,7 +29,7 @@ ET = ZoneInfo("America/New_York")
 # ---------------------------------------------------------------------------
 # Per-ticker scan result cache (bar_cache handles bar-level caching)
 # ---------------------------------------------------------------------------
-_SCAN_CACHE_TTL_MARKET = 90   # per-ticker scan result during market hours
+_SCAN_CACHE_TTL_MARKET = 60   # per-ticker scan result during market hours
 _SCAN_CACHE_TTL_OFF    = 600  # per-ticker scan result off hours
 
 _scan_cache: Dict[str, Tuple[float, "DayTradeScan"]] = {}
@@ -1006,6 +1006,14 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             "VWAP, OR, and momentum are based on lagged bars."
         )
 
+    # Yahoo throttle / fetch error — bar_cache served stale data from a prior successful fetch.
+    if bar_cache.was_stale(t) and not _bar_data_stale:
+        _bar_data_stale = True
+        _stale_msg = (
+            f"Yahoo Finance returned no data for {t} — showing last known values. "
+            "This usually means a temporary rate-limit or network error. Data will refresh automatically."
+        )
+
     vwap_ser = _compute_vwap(session)
     raw_vwap = vwap_ser.iloc[-1]
     try:
@@ -1021,12 +1029,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     or_high = float(or_seg["High"].max())
     or_low  = float(or_seg["Low"].min())
 
-    # Track whether price REACHED outside the OR at any point this session
-    # (separate from the current end-of-session position).
+    # Range extremes — used for range-span math later; kept separate from OR break logic.
     session_high = float(session["High"].max())
     session_low  = float(session["Low"].min())
-    or_was_broken_up   = session_high > or_high
-    or_was_broken_down = session_low  < or_low
 
     # VWAP slope — micro (15 bars) used in scoring; macro (60 bars) for trend direction.
     vwap_slope_bars = min(15, len(vwap_ser))
@@ -1113,6 +1118,21 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         avg_vol = float(np.median(or_vol.values))
     else:
         avg_vol = float(vol_ser.iloc[:-1].mean()) if len(vol_ser) > 1 else 0.0
+
+    # OR historical breakout — requires a post-OR bar that CLOSES beyond the OR level
+    # AND prints a volume spike on that same bar.  A wick or low-volume poke does not
+    # qualify: the flag stays False until real participation confirms the move.
+    # Fallback to price-only when avg_vol is unavailable (zero-volume edge case).
+    _post_or = session.iloc[n_or:]
+    if avg_vol > 0 and len(_post_or) > 0:
+        _close     = _post_or["Close"].astype(float)
+        _vol       = _post_or["Volume"].astype(float)
+        _vol_thresh = VOL_SPIKE_RATIO * avg_vol
+        or_was_broken_up   = bool(((_close > or_high) & (_vol >= _vol_thresh)).any())
+        or_was_broken_down = bool(((_close < or_low)  & (_vol >= _vol_thresh)).any())
+    else:
+        or_was_broken_up   = session_high > or_high
+        or_was_broken_down = session_low  < or_low
 
     # RVOL — cumulative session volume vs time-adjusted average daily volume.
     # Primary: info-based (averageVolume from Yahoo quote gives the full historical daily avg).
