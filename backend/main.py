@@ -3780,3 +3780,33 @@ def trading_close_position(req: TradingCloseRequest, auth_email: str = Depends(r
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# ─── Admin endpoints ─────────────────────────────────────────────────────
+
+@app.get("/api/health")
+def health_check():
+    return {"ok": True, "status": "healthy"}
+
+
+@app.get("/api/admin/db-check")
+def admin_db_check(auth_email: str = Depends(require_access_email)):
+    _require_admin(auth_email)
+    try:
+        from storage import _connect
+        with _connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+        return {"ok": True, "message": "Database connection OK"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/admin/flush-cache")
+def admin_flush_cache(auth_email: str = Depends(require_access_email)):
+    _require_admin(auth_email)
+    try:
+        import bar_cache
+        bar_cache.invalidate_all()
+        return {"ok": True, "message": "Cache flushed"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

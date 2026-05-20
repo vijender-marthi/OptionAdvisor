@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Activity, Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Server, RefreshCw } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { getEmailStatus, sendTestEmail } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
@@ -249,6 +249,85 @@ export default function SettingsPage() {
         </SettingsCard>
       )}
       </div>
+
+      {user?.role === 'admin' && (
+        <SettingsCard title="🔧 Monitor / Troubleshooting">
+          <div className="space-y-4">
+            {/* System health row */}
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Activity size={16} className="text-emerald-500" />
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">API Status</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Backend API health check</div>
+                </div>
+              </div>
+              <button type="button" onClick={async () => {
+                try {
+                  const r = await fetch('/api/health')
+                  alert(r.ok ? 'API OK' : `API returned ${r.status}`)
+                } catch { alert('API unreachable') }
+              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                Test
+              </button>
+            </div>
+
+            {/* Version info */}
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Server size={16} className="text-violet-500" />
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">App Version</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Current deployment tag</div>
+                </div>
+              </div>
+              <code className="text-xs font-mono text-slate-600 dark:text-slate-400">
+                v1.34.34
+              </code>
+            </div>
+
+            {/* Database check */}
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Server size={16} className="text-amber-500" />
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Database</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">SQLite connection</div>
+                </div>
+              </div>
+              <button type="button" onClick={async () => {
+                try {
+                  const r = await fetch('/api/admin/db-check')
+                  const d = await r.json()
+                  alert(d.ok ? 'DB OK' : `DB error: ${d.error}`)
+                } catch { alert('DB check failed') }
+              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                Check
+              </button>
+            </div>
+
+            {/* Refresh all caches */}
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <RefreshCw size={16} className="text-sky-500" />
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">Flush Cache</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Clear bar_cache and force refresh on next scan</div>
+                </div>
+              </div>
+              <button type="button" onClick={async () => {
+                try {
+                  const r = await fetch('/api/admin/flush-cache', { method: 'POST' })
+                  const d = await r.json()
+                  alert(d.ok ? 'Cache flushed' : `Error: ${d.error}`)
+                } catch { alert('Flush failed') }
+              }} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                Flush
+              </button>
+            </div>
+          </div>
+        </SettingsCard>
+      )}
     </div>
   )
 }
