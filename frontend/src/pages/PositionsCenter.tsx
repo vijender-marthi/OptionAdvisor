@@ -705,8 +705,22 @@ function TradingPositionCard({
           }
         }
       }
-      const pnlPctVal = pos.realized_pnl_percent ?? pos.pnlPct
-      return { pnl: pos.realized_pnl, pnl_pct: Number.isFinite(pnlPctVal) ? pnlPctVal : 0 }
+      const rawPct = pos.realized_pnl_percent ?? pos.pnlPct
+      if (rawPct != null && Number.isFinite(rawPct)) {
+        // If the stored percent is wildly inconsistent with realized_pnl vs cost
+        // (e.g. computed from stock price instead of option premium), recalculate.
+        if (pos.net_credit < 0) {
+          const costBasis = Math.abs(pos.net_credit) * 100 * pos.contracts
+          if (costBasis > 0) {
+            const expectedPct = (pos.realized_pnl / costBasis) * 100
+            if (Math.abs(rawPct - expectedPct) > 20) {
+              return { pnl: pos.realized_pnl, pnl_pct: expectedPct }
+            }
+          }
+        }
+        return { pnl: pos.realized_pnl, pnl_pct: rawPct }
+      }
+      return { pnl: pos.realized_pnl, pnl_pct: 0 }
     }
     const d = computePnlDollar(pos)
     return d != null ? { pnl: d, pnl_pct: pos.pnlPct ?? 0 } : null
