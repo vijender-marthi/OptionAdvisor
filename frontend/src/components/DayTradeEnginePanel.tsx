@@ -701,6 +701,9 @@ export default function DayTradeEnginePanel({
   const rsN = asFiniteNum(m.rs_vs_qqq_pct)
   const rsLabel = typeof m.rs_vs_qqq_label === 'string' ? m.rs_vs_qqq_label : null
   const chartBars = parseChartBars(m.chart_bars)
+  const barDataStale = Boolean(m.bar_data_stale)
+  const barDataAgeMinutes = typeof m.bar_data_age_minutes === 'number' ? m.bar_data_age_minutes : null
+  const barDataWarning = typeof m.bar_data_warning === 'string' && m.bar_data_warning ? m.bar_data_warning : null
   const orChartHigh = asFiniteNum(m.or_high)
   const orChartLow = asFiniteNum(m.or_low)
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
@@ -815,7 +818,18 @@ export default function DayTradeEnginePanel({
             </div>
             <div className="text-[10px] text-gray-600 mt-1">
               {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
+              {barDataAgeMinutes != null && barDataAgeMinutes > 0 && (
+                <span className={`ml-1.5 font-semibold ${barDataStale ? 'text-amber-500' : 'text-gray-500'}`}>
+                  · bar {barDataAgeMinutes}m ago
+                </span>
+              )}
             </div>
+            {barDataStale && barDataWarning && (
+              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+                <span className="mt-px shrink-0">⚠</span>
+                <span>{barDataWarning}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {showRefresh && onRefresh && (

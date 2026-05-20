@@ -961,6 +961,45 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     last = float(session["Close"].iloc[-1])
     vol_ser = session["Volume"].astype(float)
 
+    # ── Bar freshness check ───────────────────────────────────────────
+    # Yahoo's 1m bar endpoint sometimes lags badly for specific tickers
+    # (bars stop updating while the quote stream continues). Detect this
+    # by comparing the last bar's timestamp to wall-clock time. When bars
+    # are stale during market hours, override `last` with regularMarketPrice
+    # from the info dict (which is a quote snapshot, not a bar) so the price
+    # shown is current even if OHLCV analysis is based on lagged bars.
+    _now_et = pd.Timestamp.now(tz=ET)
+    _last_bar_ts: pd.Timestamp | None = None
+    _bar_age_minutes: int = 0
+    _bar_data_stale: bool = False
+    _stale_msg: str | None = None
+    try:
+        _last_bar_ts = session.index[-1]
+        if _last_bar_ts.tzinfo is None:
+            _last_bar_ts = _last_bar_ts.tz_localize(ET)
+        _bar_age_minutes = max(0, int((_now_et - _last_bar_ts).total_seconds() / 60))
+    except Exception:
+        _bar_age_minutes = 0
+
+    # Stale = last bar > 5 min old AND we are inside regular market hours.
+    _in_rth = (
+        (_now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 30))
+        and _now_et.hour < 16
+        and _now_et.weekday() < 5
+    )
+    if _in_rth and _bar_age_minutes > 5:
+        _bar_data_stale = True
+        # Try to use regularMarketPrice as a fresher last price.
+        _rmp = info.get("regularMarketPrice")
+        if _rmp and float(_rmp) > 0:
+            last = float(_rmp)
+        _stale_msg = (
+            f"1-minute bar data for {t} is {_bar_age_minutes} min old "
+            f"(last bar: {_last_bar_ts.strftime('%H:%M') if _last_bar_ts else 'unknown'} ET). "
+            "Yahoo Finance is delayed for this ticker — price updated from quote feed; "
+            "VWAP, OR, and momentum are based on lagged bars."
+        )
+
     vwap_ser = _compute_vwap(session)
     raw_vwap = vwap_ser.iloc[-1]
     try:
@@ -1757,6 +1796,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "gap_fill_risk": gap_fill_risk,
         "session_phase": session_phase,
         "session_minutes_elapsed": session_minutes_elapsed,
+        "bar_data_age_minutes": _bar_age_minutes,
+        "bar_data_stale": _bar_data_stale,
+        "bar_data_warning": _stale_msg,
         "price_structure": price_structure,
         "secondary_breakout": secondary_breakout_up or secondary_breakout_down,
         "or_retest": _orh_retest_long or _orl_retest_short,
