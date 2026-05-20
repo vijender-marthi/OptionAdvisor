@@ -912,8 +912,8 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR High = max(High) over bars 0..14</span></li>
                       <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR Low = min(Low) over bars 0..14</span></li>
                     </ul>
-                    <p className="text-gray-400 mt-1"><strong className="text-gray-300">or_state:</strong> "above" if last &gt; OR High, "below" if last &lt; OR Low, "inside" otherwise.</p>
-                    <p className="text-gray-400"><strong className="text-gray-300">or_historical:</strong> tracks whether price <em>ever</em> broke the OR during the session (flag: broke out then retraced).</p>
+                    <p className="text-gray-400 mt-1"><strong className="text-gray-300">or_state:</strong> "above" if last &gt; OR High, "below" if last &lt; OR Low, "inside" otherwise. Re-evaluated every bar.</p>
+                    <p className="text-gray-400"><strong className="text-gray-300">or_historical:</strong> permanent flag — set only when a post-OR bar <em>closes</em> beyond the OR level AND prints a volume spike (≥1.55× avg_vol) on that same bar. A wick or low-volume poke does not qualify. Once set, it never resets during the session — this is the one-time volume gate.</p>
                   </div>
 
                   <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
@@ -1071,13 +1071,13 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
 
               <DocCard icon={<Layers size={15} />} title="4-State Trading System & Entry Authorization">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <p>The Day Trade engine now organizes the trade lifecycle into four deterministic states with an entry authorization rule:</p>
+                  <p>The Day Trade engine organizes the trade lifecycle into four deterministic states. State 3 has two sub-states depending on whether price is at the peak or pulling back from it.</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
-                      { state: '🟡 SETUP', desc: 'Watch / Prepare. Bias forming, key levels identified. No entry allowed. Must define trigger before advancing.' },
-                      { state: '🟢 ENTRY', desc: 'Execution Gate. Breakout confirmation required (break & hold above breakout level, sustained above ORH or VWAP). Entry only if trigger is active — no averaging, no anticipation.' },
-                      { state: '🔵 ACTIVE', desc: 'Management Mode. Position held with trail (ORH/VWAP), partial exit at TP, add on strength. Focus is capital protection + trend continuation.' },
-                      { state: '🔴 EXIT', desc: 'Completion / Reset. Stop hit, target hit, or structure broken. No hope holding. Reset to SETUP.' },
+                      { state: '🟡 State 1 — SETUP', desc: 'Watch / Prepare. Price has not yet broken above ORH (or below ORL). No entry allowed. Includes: WAIT_FOR_BREAKOUT, WAIT_FOR_VWAP_HOLD, MONITORING.' },
+                      { state: '🟢 State 2 — ENTRY', desc: 'Execution Gate. Price has crossed the OR but volume is not yet confirmed, or price pulled back inside the OR after a confirmed breakout. Includes: WAIT_FOR_VOLUME, VWAP_TEST.' },
+                      { state: '🔵 State 3 — IN-PLAY', desc: 'Management Mode. ENTRY_ACTIVE: all gates clear, entry open. ENTRY_PULLBACK: price has retreated ≥0.30% from session high/low — hold existing position, no new entries, Entry Gate shows amber HOLD badge.' },
+                      { state: '🔴 State 4 — EXIT', desc: 'Completion / Reset. Stop hit, target reached, structure broken, or EOD_CLOSING (last 10 min — 15:50–16:00 ET). No new entries under any condition.' },
                     ].map(c => (
                       <div key={c.state} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
                         <div className="font-semibold text-gray-200 text-[11px]">{c.state}</div>
@@ -1085,9 +1085,17 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </div>
                     ))}
                   </div>
+                  <div className="rounded-lg border border-sky-800/30 bg-sky-950/10 px-3 py-2 space-y-1.5">
+                    <p className="font-semibold text-sky-300 text-[11px]">Volume One-Time Gate</p>
+                    <p className="text-[10px] text-gray-400">or_historical is set once when a post-OR bar closes beyond ORH/ORL with a volume spike. After that, quiet bars do not revert you from State 3 to State 2 — the gate already fired. Only three things drop you out of State 3: price falls back through ORH/ORL (State 2), price loses VWAP (State 1), or you hit TP/SL.</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2 space-y-1.5">
+                    <p className="font-semibold text-amber-300 text-[11px]">Confirmed Breakout Retrace — State 2, Not State 1</p>
+                    <p className="text-[10px] text-gray-400">If or_historical = "broke_up" (volume confirmed) but price closes back inside the OR, the state is WAIT_FOR_VOLUME (State 2) — not WAIT_FOR_BREAKOUT (State 1). The stock already proved itself once. It needs to reclaim ORH again, not wait for a first breakout.</p>
+                  </div>
                   <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
                     <p className="font-semibold text-emerald-300 text-[11px]">Entry Authorization Rule</p>
-                    <p className="text-gray-400 text-[10px] mt-1">System executes (READY) only when setup quality is STRONG/GOOD, execution readiness is READY, risk is LOW/MEDIUM, and structure is confirmed (or_breakout != "inside"). When all gates pass, pending confirmations are cleared and the system stops saying "wait."</p>
+                    <p className="text-gray-400 text-[10px] mt-1">Entry Gate shows ENTER NOW only when: state = ENTRY_ACTIVE, all confirmations cleared, and session phase is not EOD_CLOSING. ENTRY_PULLBACK shows HOLD — MANAGE POSITION (amber). EOD_CLOSING shows no entry regardless of setup quality.</p>
                   </div>
                 </div>
               </DocCard>
@@ -1146,6 +1154,78 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<AlertTriangle size={15} />} title="ENTRY_PULLBACK — Peak Detection & Pullback Guard">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>When State 3 (IN-PLAY) is active but price has retreated ≥0.30% from the session extreme, the engine shifts to <strong className="text-amber-300">ENTRY_PULLBACK</strong>. Structure is still intact — but entering here means buying the peak, not the breakout.</p>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'Trigger (Long)', desc: '(session_high − last_price) / session_high × 100 ≥ 0.30%. Session high already exceeded ORH with volume.' },
+                      { label: 'Trigger (Short)', desc: '(last_price − session_low) / session_low × 100 ≥ 0.30%. Session low already broke ORL with volume.' },
+                      { label: 'State chip', desc: 'Stays State 3 IN-PLAY (sky/blue) — structure is still above ORH / below ORL. Only the inner card and Entry Gate change.' },
+                      { label: 'Entry Gate', desc: 'Amber "HOLD — MANAGE POSITION" badge. should_now = HOLD (not YES). "No new entries" message shown.' },
+                    ].map(c => (
+                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1 font-mono text-[10px] text-gray-500">
+                    <p className="font-semibold text-gray-200 text-[11px] font-sans">Example — Long, ORH $150, session high $155</p>
+                    <p>$155.00 → ENTRY_ACTIVE &nbsp;&nbsp; Entry Gate: 🟢 ENTER NOW</p>
+                    <p>$154.54 → ENTRY_ACTIVE &nbsp;&nbsp; Entry Gate: 🟢 ENTER NOW  (0.29% retreat)</p>
+                    <p>$154.53 → ENTRY_PULLBACK  Entry Gate: 🟠 HOLD — MANAGE POSITION</p>
+                    <p>$149.99 → WAIT_FOR_VOLUME  (fell back inside OR, still above VWAP → State 2)</p>
+                    <p>$149.10 → WAIT_FOR_VWAP_HOLD  (lost VWAP → State 1)</p>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
+                    <p className="font-semibold text-amber-300 text-[11px]">What resets ENTRY_PULLBACK back to ENTRY_ACTIVE</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Price must recover to within 0.30% of the session high (long) or session low (short). As soon as the retreat shrinks below the threshold, the full ENTRY_ACTIVE state and green ENTER NOW badge return automatically.</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Clock size={15} />} title="Session Phases & EOD Closing Block">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The engine divides the RTH session (9:30–16:00 ET) into five phases. Each phase affects scoring and entry eligibility.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Phase</th>
+                          <th className="px-2 py-1.5 font-semibold">Time (ET)</th>
+                          <th className="px-2 py-1.5 font-semibold">Score effect</th>
+                          <th className="px-2 py-1.5 font-semibold">Entry allowed?</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800/50">
+                        {[
+                          ['Opening', '9:30–10:00', 'None (OR still forming)', 'Yes — after OR establishes'],
+                          ['Mid-Morning', '10:00–11:30', 'None', 'Yes — prime breakout window'],
+                          ['Midday', '11:30–15:00', '−0.25 bull & bear', 'Yes — lower liquidity caution'],
+                          ['Power Hour', '15:00–15:50', '−0.5 bull & bear', 'Yes — must exit by 15:50'],
+                          ['EOD Closing', '15:50–16:00', '−1.0 bull & bear', '🚫 No — hard block, State 4 EXIT forced'],
+                        ].map(([phase, time, score, entry]) => (
+                          <tr key={phase} className={`text-[11px] ${phase === 'EOD Closing' ? 'bg-red-950/10' : ''}`}>
+                            <td className={`px-2 py-1.5 font-semibold ${phase === 'EOD Closing' ? 'text-red-300' : 'text-gray-300'}`}>{phase}</td>
+                            <td className="px-2 py-1.5 font-mono text-gray-500">{time}</td>
+                            <td className="px-2 py-1.5 text-gray-400">{score}</td>
+                            <td className={`px-2 py-1.5 ${phase === 'EOD Closing' ? 'text-red-300 font-semibold' : 'text-gray-400'}`}>{entry}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="rounded-lg border border-red-800/30 bg-red-950/10 px-3 py-2">
+                    <p className="font-semibold text-red-300 text-[11px]">EOD Closing hard block (15:50–16:00)</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Regardless of setup quality, score, or state — no new entries are permitted in the last 10 minutes. State is overridden to EOD_CLOSING, Entry Gate shows red State 4 EXIT chip. Exit rule changes from "close by 15:50" to "close NOW before 16:00." Spreads widen, reversals accelerate, and there is no time to manage a bad fill.</p>
+                  </div>
+                </div>
+              </DocCard>
+
               <DocCard icon={<Activity size={15} />} title="Signal Improvements (13 Additions)">
                 <div className="space-y-2 text-xs text-gray-400">
                   <p>Engine updates added the following signals and scoring improvements:</p>
@@ -1159,7 +1239,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       { label: 'OR Width', desc: '(or_high − or_low) / price × 100. Narrow (&lt;0.4%) = coiling +0.5 breakout bonus. Wide (&gt;1.5%) = −0.25 both sides.' },
                       { label: 'RVOL', desc: 'Cumulative session volume vs time-adjusted avg daily volume. ≥2.5× → +1.0, ≥1.5× → +0.5, below → noted.' },
                       { label: 'Dual VWAP Slope', desc: 'Micro 15-bar + macro 60-bar slopes. Macro aligned with bias → +0.5. Against bias → −0.5 structural caution.' },
-                      { label: 'Time-of-Day', desc: 'Four session phases (Opening, Mid-Morning, Midday, Power Hour). Midday: −0.25. Power Hour: −0.5 + EOD exit note.' },
+                      { label: 'Time-of-Day', desc: 'Five session phases. Opening (9:30–10:00): OR forming. Mid-Morning (10:00–11:30): prime breakout window. Midday (11:30–15:00): −0.25 both sides. Power Hour (15:00–15:50): −0.5 + EOD exit note. EOD Closing (15:50–16:00): hard block — no new entries, State 4 EXIT forced.' },
                       { label: 'Adaptive Momentum', desc: 'Window adapts: 15 bars (&lt;60 in session), 30 bars (60–180), 45 bars (&gt;180). Avoids open-to-now noise early.' },
                       { label: 'Secondary Breakout', desc: 'Counts distinct OR crossings. Second crossing with vol spike → +1.0. Higher conviction than first breakout.' },
                       { label: 'False-Positive NO-GO Veto', desc: 'Compound veto fires when: OR never broken (contained) + RVOL < 0.75× + market bearish (SPY & QQQ both ≤ −0.25%). Prevents bullish CALL signal when the actual breakout trigger has never fired.' },
