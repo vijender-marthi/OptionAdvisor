@@ -471,7 +471,7 @@ export const clearAllCaches = async (): Promise<{
   }
 }> => {
   const { data } = await api.post('/cache/clear')
-  return data
+  return data.data || data
 }
 
 export const sendTestEmail = async (
