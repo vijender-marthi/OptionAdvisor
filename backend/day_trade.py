@@ -530,7 +530,11 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding. High-quality continuation entry."
             action = "Enter on the re-test hold; stop just below ORH."
             avoid = "Do not enter if price closes back inside the opening range."
-        elif not volume_spike:
+        elif not volume_spike and or_historical != "broke_up":
+            # Volume gate: only block entry if the OR has NEVER been broken with volume.
+            # If or_historical == "broke_up", the breakout already occurred and volume
+            # confirmed it at some earlier bar \u2014 do not revert to WAIT_FOR_VOLUME just
+            # because the current bar is quiet (end-of-day volume dry-up is normal).
             state = "WAIT_FOR_VOLUME"
             summary = "Breakout detected but volume confirmation is pending."
             action = "Wait for volume spike to confirm the breakout before entry."
@@ -575,7 +579,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             )
             action = "Wait for a volume spike as price fails the VWAP band before entering PUT."
             avoid = f"Avoid shorting until VWAP rejection is confirmed with volume."
-        elif not volume_spike:
+        elif not volume_spike and or_historical != "broke_down":
+            # Same one-time gate logic as long side — do not revert to WAIT_FOR_VOLUME
+            # once the OR breakdown has already been confirmed at an earlier bar.
             state = "WAIT_FOR_VOLUME"
             summary = "Breakdown detected but volume confirmation is pending."
             action = "Wait for volume spike to confirm the breakdown before entry."
