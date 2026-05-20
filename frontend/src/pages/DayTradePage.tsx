@@ -126,10 +126,10 @@ export default function DayTradePage() {
     return () => clearTimeout(t)
   }, [notice])
 
-  // Auto-refresh every 5 minutes when a result is loaded
+  // Auto-refresh every 60 seconds when a result is loaded
   useEffect(() => {
     if (!result) return
-    const id = setInterval(() => void runScan(), 300_000)
+    const id = setInterval(() => void runScan(), 60_000)
     return () => clearInterval(id)
   }, [result, runScan])
 

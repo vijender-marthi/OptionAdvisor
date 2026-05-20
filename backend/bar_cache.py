@@ -54,13 +54,13 @@ _ET = ZoneInfo("America/New_York")
 # ---------------------------------------------------------------------------
 # TTL constants
 # ---------------------------------------------------------------------------
-BAR_CACHE_TTL_INTRADAY_MARKET    = int(os.getenv("BAR_CACHE_TTL_INTRADAY_MARKET",   "60"))
+BAR_CACHE_TTL_INTRADAY_MARKET    = int(os.getenv("BAR_CACHE_TTL_INTRADAY_MARKET",   "30"))
 BAR_CACHE_TTL_INTRADAY_OFF       = int(os.getenv("BAR_CACHE_TTL_INTRADAY_OFF",      "300"))
 BAR_CACHE_TTL_DAILY_SHORT_MARKET = int(os.getenv("BAR_CACHE_TTL_DAILY_SHORT_MARKET","90"))
 BAR_CACHE_TTL_DAILY_SHORT_OFF    = int(os.getenv("BAR_CACHE_TTL_DAILY_SHORT_OFF",   "600"))
 BAR_CACHE_TTL_DAILY_LONG_MARKET  = int(os.getenv("BAR_CACHE_TTL_DAILY_LONG_MARKET", "300"))
 BAR_CACHE_TTL_DAILY_LONG_OFF     = int(os.getenv("BAR_CACHE_TTL_DAILY_LONG_OFF",    "3600"))
-BAR_CACHE_TTL_INFO_MARKET        = int(os.getenv("BAR_CACHE_TTL_INFO_MARKET",        "120"))
+BAR_CACHE_TTL_INFO_MARKET        = int(os.getenv("BAR_CACHE_TTL_INFO_MARKET",        "60"))
 BAR_CACHE_TTL_INFO_OFF           = int(os.getenv("BAR_CACHE_TTL_INFO_OFF",           "600"))
 BAR_CACHE_TTL_CALENDAR           = int(os.getenv("BAR_CACHE_TTL_CALENDAR",           "3600"))
 
@@ -121,6 +121,35 @@ def _set(key: str, value: object) -> None:
         _store[key] = (time.time(), value)
 
 
+def _get_stale(key: str) -> Optional[object]:
+    """Return the cached value regardless of TTL — used as fallback when Yahoo fails."""
+    with _lock:
+        entry = _store.get(key)
+        return entry[1] if entry else None
+
+
+# Tracks tickers that served stale data on the most recent fetch attempt.
+# Cleared at the start of each get_history / get_info call that succeeds.
+_stale_served: set = set()
+_stale_lock = threading.Lock()
+
+
+def was_stale(ticker: str) -> bool:
+    """Return True if the last fetch for *ticker* fell back to stale cached data."""
+    with _stale_lock:
+        return ticker.upper().strip() in _stale_served
+
+
+def _mark_stale(ticker: str) -> None:
+    with _stale_lock:
+        _stale_served.add(ticker.upper().strip())
+
+
+def _clear_stale(ticker: str) -> None:
+    with _stale_lock:
+        _stale_served.discard(ticker.upper().strip())
+
+
 def invalidate(ticker: str) -> None:
     """Remove all cache entries for *ticker* (e.g. after a watchlist change)."""
     prefix = ticker.upper().strip() + "|"
@@ -179,10 +208,18 @@ def get_history(
     try:
         tkr = yf.Ticker(t)
         df = tkr.history(period=period, interval=interval, auto_adjust=auto_adjust)
+        if df.empty:
+            raise ValueError("Yahoo returned empty DataFrame")
     except Exception as exc:
-        log.warning("bar_cache.get_history failed %s: %s", t, exc)
+        log.warning("bar_cache.get_history failed %s: %s — trying stale fallback", t, exc)
+        stale = _get_stale(key)
+        if stale is not None:
+            log.warning("bar_cache.get_history serving stale data for %s", t)
+            _mark_stale(t)
+            return stale  # type: ignore[return-value]
         return pd.DataFrame()
 
+    _clear_stale(t)
     _set(key, df)
     return df
 
@@ -204,10 +241,18 @@ def get_info(ticker: str, force_refresh: bool = False) -> dict:
     log.debug("bar_cache.get_info MISS %s — fetching Yahoo", t)
     try:
         info = yf.Ticker(t).info or {}
+        if not info:
+            raise ValueError("Yahoo returned empty info")
     except Exception as exc:
-        log.warning("bar_cache.get_info failed %s: %s", t, exc)
-        info = {}
+        log.warning("bar_cache.get_info failed %s: %s — trying stale fallback", t, exc)
+        stale = _get_stale(key)
+        if stale is not None:
+            log.warning("bar_cache.get_info serving stale data for %s", t)
+            _mark_stale(t)
+            return stale  # type: ignore[return-value]
+        return {}
 
+    _clear_stale(t)
     _set(key, info)
     return info
 
