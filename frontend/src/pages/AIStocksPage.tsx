@@ -1,21 +1,26 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid, ScanLine, X, Clock, TrendingDown, AlertTriangle, Minus } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { addMyTicker, removeMyTicker, fetchMyTickers } from '../api/commandCenter'
 import type { MyTickerEntry } from '../api/commandCenter'
+import { analyzeSwingTrade } from '../api/client'
+import type { SwingTradeScanResult } from '../api/client'
+import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 
 // ─────────────────────────────────────────────────────────────
 // STOCK UNIVERSE — curated AI / Data Center names
 // ─────────────────────────────────────────────────────────────
 
 type Category = 'All' | 'AI Chips' | 'AI Software' | 'Data Centers' | 'AI Power' | 'Semicon Equip' | 'AI Pure-Play' | 'Optical Networking' | 'AI Networking' | 'AI Applications'
+type SignalFilter = 'all' | 'buy' | 'bearish' | 'skip'
+type TradeStyle = 'swing' | 'position'
 
 interface StockEntry {
   ticker: string
   name: string
   category: Exclude<Category, 'All'>
   note: string
-  marketCap?: string   // rough size hint
+  marketCap?: string
 }
 
 const STOCKS: StockEntry[] = [
@@ -73,7 +78,7 @@ const STOCKS: StockEntry[] = [
   { ticker: 'KLAC',  name: 'KLA Corporation',            category: 'Semicon Equip', marketCap: '$90B',  note: 'Process control and inspection — ensures chip yield for AI fabs' },
   { ticker: 'AMAT',  name: 'Applied Materials',          category: 'Semicon Equip', marketCap: '$150B', note: 'Materials engineering systems for every major chipmaker globally' },
   { ticker: 'TSM',   name: 'Taiwan Semiconductor (TSMC)', category: 'Semicon Equip', marketCap: '$900B', note: 'Manufactures chips for NVDA, AMD, Apple — AI silicon foundry leader' },
-  { ticker: 'TER',   name: 'Teradyne',                   category: 'Semicon Equip',    marketCap: '$17B',  note: 'Semiconductor test equipment for AI chip validation' },
+  { ticker: 'TER',   name: 'Teradyne',                   category: 'Semicon Equip', marketCap: '$17B',  note: 'Semiconductor test equipment for AI chip validation' },
 
   // ── AI Networking (Ethernet & InfiniBand switching) ──────
   { ticker: 'ANET',  name: 'Arista Networks',            category: 'AI Networking', marketCap: '$95B',  note: 'Ethernet spine switches for 400G/800G AI clusters — top supplier to Meta, Microsoft, Google' },
@@ -141,19 +146,193 @@ const CAT_ACTIVE: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SIGNAL LOGIC
+// ─────────────────────────────────────────────────────────────
+
+interface SignalInfo {
+  label: string
+  sublabel: string
+  icon: React.ReactNode
+  badgeCls: string       // badge background + text
+  borderCls: string      // card border accent
+  group: SignalFilter    // which filter bucket
+}
+
+function getSignalInfo(r: SwingTradeScanResult, style: TradeStyle): SignalInfo {
+  const dl = r.decision_label
+  const fa = r.final_action
+  const bias = r.bias
+  const isPosition = style === 'position'
+
+  if (dl === 'QUALITY_LONG' || (bias === 'long' && fa === 'QUALITY_LONG')) {
+    return {
+      label: 'BUY',
+      sublabel: isPosition ? 'Strong setup — hold 2-4 weeks' : 'Strong long setup',
+      icon: <TrendingUp size={12} />,
+      badgeCls: 'bg-emerald-900/60 text-emerald-300 border-emerald-700',
+      borderCls: 'border-emerald-800',
+      group: 'buy',
+    }
+  }
+  if (dl === 'BULLISH_WAIT_CONFIRMATION') {
+    return {
+      // Position trades have time to absorb a slower confirmation — treat as a BUY
+      label: isPosition ? 'BUY' : 'BUY — Wait',
+      sublabel: isPosition ? 'Bullish — time to confirm over weeks' : 'Bullish, needs confirmation',
+      icon: <TrendingUp size={12} />,
+      badgeCls: 'bg-green-900/50 text-green-300 border-green-700',
+      borderCls: 'border-green-800',
+      group: 'buy',
+    }
+  }
+  if (dl === 'BULLISH_BUT_EXTENDED' || fa === 'AVOID_CHASE') {
+    return {
+      // For 2-4 week holds, a brief pullback resolves extension — still watchable
+      label: isPosition ? 'WAIT PULLBACK' : 'EXTENDED',
+      sublabel: isPosition ? 'Bullish trend — wait for a pullback entry' : 'Already ran — don\'t chase',
+      icon: <AlertTriangle size={12} />,
+      badgeCls: 'bg-orange-900/50 text-orange-300 border-orange-700',
+      borderCls: 'border-orange-800',
+      group: isPosition ? 'buy' : 'skip',
+    }
+  }
+  if (dl === 'BULLISH_BUT_EARNINGS_RISK') {
+    return {
+      label: 'EARNINGS RISK',
+      sublabel: isPosition ? 'Bullish long-term, but earnings in the way' : 'Bullish but earnings near',
+      icon: <AlertTriangle size={12} />,
+      badgeCls: 'bg-purple-900/50 text-purple-300 border-purple-700',
+      borderCls: 'border-purple-800',
+      group: 'skip',
+    }
+  }
+  if (bias === 'short' || dl.includes('BEARISH') || (r.bear_score > r.bull_score + 2)) {
+    return {
+      label: 'BEARISH',
+      sublabel: 'Short bias — avoid longs',
+      icon: <TrendingDown size={12} />,
+      badgeCls: 'bg-red-900/50 text-red-300 border-red-700',
+      borderCls: 'border-red-800',
+      group: 'bearish',
+    }
+  }
+  if (dl === 'WEAK_SETUP') {
+    return {
+      label: 'WEAK',
+      sublabel: 'Low-quality setup',
+      icon: <Minus size={12} />,
+      badgeCls: 'bg-gray-800 text-gray-400 border-gray-700',
+      borderCls: 'border-gray-700',
+      group: 'skip',
+    }
+  }
+  if (dl === 'MARKET_CONFIRMATION_ONLY') {
+    return {
+      label: 'MKT RISK',
+      sublabel: 'Market context unfavorable',
+      icon: <AlertTriangle size={12} />,
+      badgeCls: 'bg-slate-800 text-slate-300 border-slate-700',
+      borderCls: 'border-slate-700',
+      group: 'skip',
+    }
+  }
+  return {
+    label: 'NO SETUP',
+    sublabel: 'No actionable trade now',
+    icon: <Minus size={12} />,
+    badgeCls: 'bg-gray-800 text-gray-500 border-gray-700',
+    borderCls: 'border-gray-700',
+    group: 'skip',
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// POSITION-TRADE LEVELS  (2-4 week hold, wider targets)
+// Swing targets use mom×0.5 (T1) and mom×1.0 (T2).
+// Position targets scale to mom×2.0 (T1) and mom×3.5 (T2) —
+// reflecting the larger expected move over a multi-week hold.
+// ─────────────────────────────────────────────────────────────
+
+interface PositionLevels {
+  stop:    string | null
+  entry:   string | null
+  target1: string | null
+  target2: string | null
+}
+
+function computePositionLevels(r: SwingTradeScanResult): PositionLevels {
+  const m = r.metrics as Record<string, unknown>
+  const lastPrice = typeof m.last_price === 'number' ? m.last_price : null
+  const ma20      = typeof m.ma20 === 'number' ? m.ma20 : null
+  const mom5d     = typeof m.momentum_5d_pct === 'number' ? m.momentum_5d_pct : null
+  const isBull    = r.bias === 'long'
+
+  if (lastPrice == null) return { stop: null, entry: null, target1: null, target2: null }
+
+  const mom = mom5d != null ? Math.max(Math.abs(mom5d) / 100, 0.025) : 0.05
+
+  if (isBull) {
+    const entry = lastPrice * 1.015
+    const stop  = ma20 != null ? ma20 * 0.96 : lastPrice * 0.94
+    return {
+      stop:    `$${stop.toFixed(2)}`,
+      entry:   `$${entry.toFixed(2)}`,
+      target1: `$${(entry * (1 + mom * 2.0)).toFixed(2)}`,
+      target2: `$${(entry * (1 + mom * 3.5)).toFixed(2)}`,
+    }
+  }
+
+  const entry = lastPrice * 0.985
+  const stop  = ma20 != null ? ma20 * 1.04 : lastPrice * 1.06
+  return {
+    stop:    `$${stop.toFixed(2)}`,
+    entry:   `$${entry.toFixed(2)}`,
+    target1: `$${(entry * (1 - mom * 2.0)).toFixed(2)}`,
+    target2: `$${(entry * (1 - mom * 3.5)).toFixed(2)}`,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // STOCK CARD
 // ─────────────────────────────────────────────────────────────
 
-function StockCard({ stock, myTickerSet, onToggleWatch }: { stock: StockEntry; myTickerSet: Set<string>; onToggleWatch: (ticker: string, name: string, currentlyWatched: boolean) => void }) {
+interface StockCardProps {
+  stock: StockEntry
+  myTickerSet: Set<string>
+  onToggleWatch: (ticker: string, name: string, currentlyWatched: boolean) => void
+  signal: SwingTradeScanResult | 'loading' | 'error' | null
+  tradeStyle: TradeStyle
+}
+
+function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle }: StockCardProps) {
   const { requestAnalysis } = useApp()
   const watched = myTickerSet.has(stock.ticker)
 
   const handleAnalyze = () => requestAnalysis(stock.ticker)
   const handleWatch   = () => onToggleWatch(stock.ticker, stock.name, watched)
 
+  const signalInfo = signal && signal !== 'loading' && signal !== 'error'
+    ? getSignalInfo(signal, tradeStyle)
+    : null
+
+  const swingLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'swing'
+    ? computeExecLevels(signal, signal.metrics as Record<string, unknown>)
+    : null
+
+  const positionLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'position'
+    ? computePositionLevels(signal)
+    : null
+
+  const lastPrice = signal && signal !== 'loading' && signal !== 'error'
+    ? (signal.metrics as Record<string, unknown>).last_price
+    : null
+
+  const cardBorder = signalInfo
+    ? `border ${signalInfo.borderCls}`
+    : 'border border-gray-800'
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col gap-3
-                    hover:border-gray-700 transition-colors group">
+    <div className={`bg-gray-900 rounded-2xl p-4 flex flex-col gap-3 hover:brightness-110 transition-all group ${cardBorder}`}>
       {/* Top row */}
       <div className="flex items-start justify-between gap-2">
         <div>
@@ -163,6 +342,9 @@ function StockCard({ stock, myTickerSet, onToggleWatch }: { stock: StockEntry; m
             </span>
             {stock.marketCap && (
               <span className="text-xs text-gray-600 font-mono">{stock.marketCap}</span>
+            )}
+            {typeof lastPrice === 'number' && (
+              <span className="text-xs text-gray-400 font-mono">${(lastPrice as number).toFixed(2)}</span>
             )}
           </div>
           <div className="text-xs text-gray-400 mt-0.5 leading-snug">{stock.name}</div>
@@ -174,6 +356,99 @@ function StockCard({ stock, myTickerSet, onToggleWatch }: { stock: StockEntry; m
 
       {/* Note */}
       <p className="text-xs text-gray-500 leading-relaxed flex-1">{stock.note}</p>
+
+      {/* Signal panel — shown when scan has run */}
+      {signal === 'loading' && (
+        <div className="rounded-xl bg-gray-800/60 border border-gray-700 px-3 py-2 flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full border-2 border-violet-500 border-t-transparent animate-spin shrink-0" />
+          <span className="text-xs text-gray-500">Scanning…</span>
+        </div>
+      )}
+      {signal === 'error' && (
+        <div className="rounded-xl bg-gray-800/40 border border-gray-700 px-3 py-2">
+          <span className="text-xs text-gray-600">Scan failed</span>
+        </div>
+      )}
+      {signalInfo && (swingLevels || positionLevels) && (
+        <div className="rounded-xl bg-gray-800/40 border border-gray-700/60 px-3 py-2.5 space-y-2">
+          {/* Action + hold */}
+          <div className="flex items-center justify-between gap-2">
+            <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border ${signalInfo.badgeCls}`}>
+              {signalInfo.icon}
+              {signalInfo.label}
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-gray-500">
+              <Clock size={10} />
+              {tradeStyle === 'position' ? '2–4 weeks' : (
+                signal && signal !== 'loading' && signal !== 'error' && signal.expected_holding_period
+                  ? signal.expected_holding_period
+                  : '3–5 days'
+              )}
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-500 leading-tight">{signalInfo.sublabel}</p>
+
+          {/* Swing levels */}
+          {swingLevels && (swingLevels.riskBelow || swingLevels.firstTarget) && (
+            <div className="flex gap-3 pt-0.5">
+              {swingLevels.riskBelow && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Stop</span>
+                  <span className="text-[11px] font-mono text-red-400">{swingLevels.riskBelow}</span>
+                </div>
+              )}
+              {swingLevels.breakoutTrigger && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Entry</span>
+                  <span className="text-[11px] font-mono text-gray-300">{swingLevels.breakoutTrigger}</span>
+                </div>
+              )}
+              {swingLevels.firstTarget && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Target 1</span>
+                  <span className="text-[11px] font-mono text-emerald-400">{swingLevels.firstTarget}</span>
+                </div>
+              )}
+              {swingLevels.stretchTarget && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Target 2</span>
+                  <span className="text-[11px] font-mono text-emerald-300">{swingLevels.stretchTarget}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Position levels — wider targets for 2-4 week hold */}
+          {positionLevels && (positionLevels.stop || positionLevels.target1) && (
+            <div className="flex gap-3 pt-0.5">
+              {positionLevels.stop && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Stop</span>
+                  <span className="text-[11px] font-mono text-red-400">{positionLevels.stop}</span>
+                </div>
+              )}
+              {positionLevels.entry && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Entry</span>
+                  <span className="text-[11px] font-mono text-gray-300">{positionLevels.entry}</span>
+                </div>
+              )}
+              {positionLevels.target1 && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Target 1</span>
+                  <span className="text-[11px] font-mono text-emerald-400">{positionLevels.target1}</span>
+                </div>
+              )}
+              {positionLevels.target2 && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Target 2</span>
+                  <span className="text-[11px] font-mono text-emerald-300">{positionLevels.target2}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">
@@ -209,10 +484,21 @@ function StockCard({ stock, myTickerSet, onToggleWatch }: { stock: StockEntry; m
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────
 
+const BATCH_SIZE = 5
+
 export default function AIStocksPage() {
   const [activeCategory, setActiveCategory] = useState<Category>('All')
   const [search, setSearch] = useState('')
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
+  const [signalFilter, setSignalFilter] = useState<SignalFilter>('all')
+  const [tradeStyle, setTradeStyle] = useState<TradeStyle>('swing')
+
+  // scan state
+  const [scanResults, setScanResults] = useState<Map<string, SwingTradeScanResult | 'loading' | 'error'>>(new Map())
+  const [scanning, setScanning] = useState(false)
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null)
+  const scanAbortRef = useRef(false)
+
   const { watchlist } = useApp()
 
   useEffect(() => {
@@ -238,17 +524,90 @@ export default function AIStocksPage() {
     }
   }, [])
 
-  const filtered = STOCKS.filter(s => {
-    const matchCat = activeCategory === 'All' || s.category === activeCategory
-    const q = search.trim().toLowerCase()
-    const matchSearch = !q ||
-      s.ticker.toLowerCase().includes(q) ||
-      s.name.toLowerCase().includes(q) ||
-      s.note.toLowerCase().includes(q)
-    return matchCat && matchSearch
-  })
+  // ── scan all visible stocks in batches ──────────────────────
+  const handleScan = useCallback(async () => {
+    if (scanning) return
+    scanAbortRef.current = false
+
+    const tickers = STOCKS.map(s => s.ticker)
+    const total = tickers.length
+
+    // mark all as loading
+    setScanResults(prev => {
+      const next = new Map(prev)
+      tickers.forEach(t => next.set(t, 'loading'))
+      return next
+    })
+    setScanning(true)
+    setScanProgress({ done: 0, total })
+
+    let done = 0
+    for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+      if (scanAbortRef.current) break
+      const batch = tickers.slice(i, i + BATCH_SIZE)
+      await Promise.allSettled(
+        batch.map(async ticker => {
+          try {
+            const result = await analyzeSwingTrade(ticker)
+            setScanResults(prev => new Map(prev).set(ticker, result))
+          } catch {
+            setScanResults(prev => new Map(prev).set(ticker, 'error'))
+          }
+          done++
+          setScanProgress({ done, total })
+        })
+      )
+    }
+
+    setScanning(false)
+  }, [scanning])
+
+  const handleClearScan = useCallback(() => {
+    scanAbortRef.current = true
+    setScanResults(new Map())
+    setScanning(false)
+    setScanProgress(null)
+    setSignalFilter('all')
+  }, [])
+
+  const hasScanResults = scanResults.size > 0
+  const scanDone = hasScanResults && !scanning
+
+  // ── filter ──────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    return STOCKS.filter(s => {
+      const matchCat = activeCategory === 'All' || s.category === activeCategory
+      const q = search.trim().toLowerCase()
+      const matchSearch = !q ||
+        s.ticker.toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.note.toLowerCase().includes(q)
+
+      if (!matchCat || !matchSearch) return false
+
+      if (signalFilter === 'all' || !scanDone) return true
+
+      const res = scanResults.get(s.ticker)
+      if (!res || res === 'loading' || res === 'error') return false
+      return getSignalInfo(res, tradeStyle).group === signalFilter
+    })
+  }, [activeCategory, search, signalFilter, scanResults, scanDone])
 
   const watchedCount = STOCKS.filter(s => myTickerSet.has(s.ticker)).length
+
+  // counts for signal filter badges — recalculate when tradeStyle changes
+  const signalCounts = useMemo(() => {
+    if (!scanDone) return { buy: 0, bearish: 0, skip: 0 }
+    let buy = 0, bearish = 0, skip = 0
+    for (const [, res] of scanResults) {
+      if (!res || res === 'loading' || res === 'error') continue
+      const g = getSignalInfo(res, tradeStyle).group
+      if (g === 'buy') buy++
+      else if (g === 'bearish') bearish++
+      else skip++
+    }
+    return { buy, bearish, skip }
+  }, [scanResults, scanDone, tradeStyle])
 
   return (
     <div className="ai-radar-page min-h-screen p-4 md:p-6">
@@ -265,21 +624,91 @@ export default function AIStocksPage() {
                 <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">AI & Data Center Radar</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
-                Curated universe of AI infrastructure, semiconductor, software, power and data center stocks.
-                One click to analyze options or add to your watchlist.
+                Curated universe of AI infrastructure stocks. Scan for live buy/sell signals — powered by the Swing Trade engine.
               </p>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
-                <div className="text-xl font-bold text-white font-mono">{STOCKS.length}</div>
-                <div>stocks</div>
+
+            {/* Stats + Scan button */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
+                  <div className="text-xl font-bold text-white font-mono">{STOCKS.length}</div>
+                  <div>stocks</div>
+                </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
+                  <div className="text-xl font-bold text-amber-400 font-mono">{watchedCount}</div>
+                  <div>watching</div>
+                </div>
               </div>
-              <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
-                <div className="text-xl font-bold text-amber-400 font-mono">{watchedCount}</div>
-                <div>watching</div>
+
+              {/* Trade style toggle */}
+              <div className="flex items-center bg-gray-800 border border-gray-700 rounded-xl p-0.5 gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTradeStyle('swing')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    tradeStyle === 'swing'
+                      ? 'bg-violet-600 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  3–5 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTradeStyle('position')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    tradeStyle === 'position'
+                      ? 'bg-violet-600 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  2–4 Weeks
+                </button>
               </div>
+
+              {/* Scan button */}
+              {!hasScanResults ? (
+                <button
+                  type="button"
+                  onClick={handleScan}
+                  disabled={scanning}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500
+                             disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold
+                             border border-violet-500 transition-colors"
+                >
+                  <ScanLine size={16} />
+                  Scan Signals
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleClearScan}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700
+                             text-gray-400 text-xs border border-gray-700 transition-colors"
+                >
+                  <X size={13} />
+                  Clear scan
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Scan progress bar */}
+          {scanning && scanProgress && (
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                <span>Scanning stocks…</span>
+                <span className="font-mono">{scanProgress.done} / {scanProgress.total}</span>
+              </div>
+              <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(scanProgress.done / scanProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Search */}
           <div className="mt-4 relative">
@@ -295,6 +724,30 @@ export default function AIStocksPage() {
             />
           </div>
         </div>
+
+        {/* Signal filter — only shown after scan */}
+        {scanDone && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-600 mr-1">Signal:</span>
+            {([
+              { id: 'all',     label: 'All',      count: STOCKS.length, cls: 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600' },
+              { id: 'buy',     label: 'Buy',      count: signalCounts.buy,     cls: 'bg-emerald-900/30 border-emerald-800 text-emerald-300 hover:border-emerald-600' },
+              { id: 'bearish', label: 'Bearish',  count: signalCounts.bearish, cls: 'bg-red-900/30 border-red-800 text-red-300 hover:border-red-600' },
+              { id: 'skip',    label: 'Skip / Wait', count: signalCounts.skip, cls: 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600' },
+            ] as const).map(f => (
+              <button
+                key={f.id}
+                onClick={() => setSignalFilter(f.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all
+                  ${signalFilter === f.id ? 'ring-1 ring-offset-1 ring-offset-gray-950 ring-white/20 brightness-125' : ''}
+                  ${f.cls}`}
+              >
+                {f.label}
+                <span className="font-mono opacity-70">{f.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Category filter pills */}
         <div className="flex gap-2 flex-wrap">
@@ -333,13 +786,28 @@ export default function AIStocksPage() {
         {filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-500">
             <div className="text-4xl mb-3">🔍</div>
-            <div className="font-semibold">No stocks match "{search}"</div>
-            <div className="text-xs mt-1">Try a ticker like NVDA or keyword like "cloud"</div>
+            <div className="font-semibold">
+              {signalFilter !== 'all' && scanDone
+                ? `No ${signalFilter === 'buy' ? 'buy' : signalFilter === 'bearish' ? 'bearish' : 'skip/wait'} signals in this view`
+                : `No stocks match "${search}"`}
+            </div>
+            <div className="text-xs mt-1">
+              {signalFilter !== 'all' && scanDone
+                ? 'Try a different filter or category'
+                : 'Try a ticker like NVDA or keyword like "cloud"'}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.map(stock => (
-              <StockCard key={stock.ticker} stock={stock} myTickerSet={myTickerSet} onToggleWatch={handleToggleWatch} />
+              <StockCard
+                key={stock.ticker}
+                stock={stock}
+                myTickerSet={myTickerSet}
+                onToggleWatch={handleToggleWatch}
+                signal={scanResults.get(stock.ticker) ?? null}
+                tradeStyle={tradeStyle}
+              />
             ))}
           </div>
         )}
@@ -348,15 +816,15 @@ export default function AIStocksPage() {
         <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-4">
           <div className="text-xs text-gray-600 leading-relaxed">
             <span className="text-gray-500 font-semibold">How to use: </span>
-            Click <span className="text-violet-400">Analyze</span> to run a full options analysis on any stock.
-            Click <span className="text-amber-400">Watch</span> to add to your watchlist for price tracking and periodic refresh.
-            Prices shown in the watchlist refresh automatically every 15 minutes after first analysis.
-            Market caps are approximate and may not reflect current prices.
+            Click <span className="text-violet-400">Scan Signals</span> to run the Swing Trade engine across all stocks and get buy/sell suggestions with hold period and price levels.
+            Click <span className="text-violet-400">Analyze</span> to open a full options analysis.
+            Click <span className="text-amber-400">Watch</span> to add to your watchlist.
+            Signals reflect daily chart structure — swing trade timeframe (3–5 trading days).
           </div>
         </div>
 
         <div className="text-center text-xs text-gray-600 py-1 border-t border-gray-800/50">
-          ⚠️ Curated list for informational purposes only. Not a recommendation to buy or sell. Options trading involves significant risk.
+          ⚠️ Signals are for informational purposes only. Not a recommendation to buy or sell. Trading involves significant risk.
         </div>
       </div>
     </div>
