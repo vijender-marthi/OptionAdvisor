@@ -526,11 +526,29 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "Price is testing VWAP from above \u2014 hold not yet confirmed."
             action = f"Wait for price to push through the VWAP band (\u00b1{VWAP_BAND_PCT}%) with sustained volume before entry."
             avoid = "Avoid entering at VWAP \u2014 a rejection here turns the setup bearish quickly."
-        elif or_breakout == "inside":
+        elif or_breakout == "inside" and or_historical != "broke_up":
+            # Genuinely hasn't broken out yet \u2014 first breakout still pending.
             state = "WAIT_FOR_BREAKOUT"
             summary = "Price is inside the opening range \u2014 waiting for breakout."
             action = "Enter only after price breaks above Opening Range High with volume confirmation."
             avoid = "Do not enter while price is inside the opening range."
+        elif or_breakout == "inside" and or_historical == "broke_up":
+            # Price confirmed the breakout earlier but has since pulled back inside the OR.
+            # This is NOT a fresh setup \u2014 it already broke with volume. Treat as WAIT_FOR_VOLUME
+            # (State 2): needs to reclaim ORH again, not wait for a first breakout.
+            state = "WAIT_FOR_VOLUME"
+            summary = (
+                f"Price pulled back inside the opening range after a confirmed breakout \u2014 "
+                f"waiting for reclaim of ORH (${or_high:.2f}). Structure is weakened but not failed."
+            )
+            action = (
+                f"Wait for a close back above ORH (${or_high:.2f}) with a volume spike to confirm "
+                "the breakout is resuming. Do not enter inside the OR."
+            )
+            avoid = (
+                f"If price breaks below VWAP, the trade has failed \u2014 exit. "
+                f"Do not enter just because ORH is 'nearby'."
+            )
         elif or_retest and not volume_spike:
             state = "ENTRY_RETEST"
             summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding. High-quality continuation entry."
@@ -561,11 +579,28 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "Price is testing VWAP from below \u2014 rejection not yet confirmed."
             action = f"Wait for price to fail the VWAP band (\u00b1{VWAP_BAND_PCT}%) and roll over with volume before entry."
             avoid = "Avoid shorting at VWAP \u2014 a hold here could accelerate a squeeze."
-        elif or_breakout == "inside":
+        elif or_breakout == "inside" and or_historical != "broke_down":
+            # Genuinely hasn't broken down yet \u2014 first breakdown still pending.
             state = "WAIT_FOR_BREAKDOWN"
             summary = "Price is inside the opening range \u2014 waiting for breakdown."
             action = "Enter only after price breaks below Opening Range Low with volume confirmation."
             avoid = "Do not enter while price is inside the opening range."
+        elif or_breakout == "inside" and or_historical == "broke_down":
+            # Price confirmed the breakdown earlier but has bounced back inside the OR.
+            # Treat as WAIT_FOR_VOLUME (State 2): needs to reclaim ORL again.
+            state = "WAIT_FOR_VOLUME"
+            summary = (
+                f"Price bounced back inside the opening range after a confirmed breakdown \u2014 "
+                f"waiting for reclaim of ORL (${or_low:.2f}). Structure is weakened but not failed."
+            )
+            action = (
+                f"Wait for a close back below ORL (${or_low:.2f}) with a volume spike to confirm "
+                "the breakdown is resuming. Do not enter inside the OR."
+            )
+            avoid = (
+                f"If price breaks back above VWAP, the trade has failed \u2014 exit. "
+                f"Do not enter just because ORL is 'nearby'."
+            )
         elif bounce_scenario == "no_mans_land":
             state = "WAIT_BOUNCE_LEVEL"
             summary = (
