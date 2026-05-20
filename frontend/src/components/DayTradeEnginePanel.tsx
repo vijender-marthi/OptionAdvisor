@@ -1197,24 +1197,48 @@ export default function DayTradeEnginePanel({
                 {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
               </div>
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
+                {eg?.state === 'ENTRY_PULLBACK'
+                  ? 'Pullback — Structure Intact'
+                  : hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
               </div>
               <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                  <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                    {hasAiCoach && ac!.states.in_play.target > 0
-                      ? `TP $${ac!.states.in_play.target.toFixed(2)}`
-                      : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {hasAiCoach
-                    ? ac!.states.in_play.add_condition
-                    : result.bias === 'short'
-                      ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
-                      : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
-                </div>
+                {eg?.state === 'ENTRY_PULLBACK' ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-amber-300 text-[11px] uppercase tracking-wide">
+                        ⚠ No New Entries
+                      </span>
+                    </div>
+                    <div className="text-amber-200/80 text-[11px] leading-relaxed font-medium">
+                      {eg?.summary || (result.bias === 'short'
+                        ? 'Price bouncing from session low — hold existing short, do not add.'
+                        : 'Price pulling back from session high — hold existing long, do not add.')}
+                    </div>
+                    <div className="text-gray-400 text-[11px] leading-relaxed">
+                      {eg?.action || (result.bias === 'short'
+                        ? 'Wait for momentum to turn negative before re-entering.'
+                        : 'Wait for momentum to turn positive before re-entering.')}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
+                      <span className="text-emerald-300 font-mono text-[12px] font-semibold">
+                        {hasAiCoach && ac!.states.in_play.target > 0
+                          ? `TP $${ac!.states.in_play.target.toFixed(2)}`
+                          : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                      </span>
+                    </div>
+                    <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
+                      {hasAiCoach
+                        ? ac!.states.in_play.add_condition
+                        : result.bias === 'short'
+                          ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
+                          : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
+                    </div>
+                  </>
+                )}
               </div>
               </div>
             </div>
