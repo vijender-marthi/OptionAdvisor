@@ -72,6 +72,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
+  const [deployedVersion, setDeployedVersion] = useState('—')
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
     provider: 'sendgrid' | 'smtp' | 'none'
@@ -88,6 +89,9 @@ export default function SettingsPage() {
     getEmailStatus()
       .then(setEmailStatus)
       .catch(() => setEmailStatus(null))
+    fetch('/api/health').then(r => r.json()).then(d => {
+      if (d.version) setDeployedVersion(d.version)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -267,6 +271,20 @@ export default function SettingsPage() {
               >
                 Check
               </button>
+            </div>
+
+            {/* Deployed version */}
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center shrink-0 text-sky-400">
+                  <Info size={15} />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-100">Deployed Version</div>
+                  <div className="text-xs text-gray-500">Current git tag on server</div>
+                </div>
+              </div>
+              <code className="text-xs font-mono text-sky-400 bg-gray-800 px-2 py-1 rounded-lg">{deployedVersion}</code>
             </div>
 
             {/* Force Clear Cache row */}

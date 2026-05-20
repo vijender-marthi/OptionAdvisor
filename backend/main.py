@@ -4117,7 +4117,16 @@ def trading_close_position(req: TradingCloseRequest, auth_email: str = Depends(r
 
 @app.get("/api/health")
 def health_check():
-    return {"ok": True, "status": "healthy"}
+    import subprocess, os
+    _ver = None
+    try:
+        _ver = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL, timeout=2
+        ).decode().strip()
+    except Exception:
+        pass
+    return {"ok": True, "status": "healthy", "version": _ver or "unknown"}
 
 
 @app.get("/api/admin/db-check")
