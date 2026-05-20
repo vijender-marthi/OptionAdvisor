@@ -210,17 +210,13 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
     # session_phase (lowercase for prompt clarity)
     session_phase = str(metrics.get("session_phase") or "").lower()
 
-    # daily_range_used_pct — from chart_bars in metrics
-    _chart_bars = metrics.get("chart_bars") or []
-    if _chart_bars:
-        _highs = [b.get("h", 0) for b in _chart_bars if b.get("h")]
-        _lows  = [b.get("l", float("inf")) for b in _chart_bars if b.get("l")]
-        _day_high = max(_highs) if _highs else _price
-        _day_low  = min(_lows)  if _lows  else _price
-        _day_range = _day_high - _day_low
-        daily_range_used_pct = round((_price - _day_low) / _day_range * 100, 1) if _day_range > 0 else 50.0
-    else:
-        daily_range_used_pct = 50.0
+    # daily_range_used_pct — use the ATR-based value already computed in day_trade.py.
+    # The old formula (price - day_low) / (day_high - day_low) measured where price
+    # sat within the session range, NOT how much of the typical daily range was consumed.
+    # On any up-trending day it returned ~95-100% (price near session high) regardless
+    # of actual range exhaustion — causing the AI coach to incorrectly warn "98% used"
+    # while the banner correctly showed 54% of ATR.
+    daily_range_used_pct = float(metrics.get("daily_range_used_pct") or 50.0)
 
     # option_expiry_days — days until next Friday (standard weekly)
     _now = datetime.now(timezone.utc)
