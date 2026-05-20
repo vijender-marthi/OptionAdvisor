@@ -174,19 +174,20 @@ def test_earnings_soon_penalises_score():
 
 # ─── IV risk → debit spread preferred ────────────────────────────────
 
-def test_high_iv_prefers_debit_spread():
-    """iv_rank >= 70 → suggested_strategy is CALL_DEBIT_SPREAD, not LONG_CALL."""
+def test_high_iv_prefers_credit_spread():
+    """iv_rank >= 70 → PUT_CREDIT_SPREAD (bull put), not debit spread or naked long."""
     d = build_swing_trade_decision(
         "NVDA", bull_score=8.0, bear_score=1.5,
         market_context="MARKET_SUPPORTIVE",
         rsi_val=62.0, dist_ma20_pct=2.0, mom_5d_pct=2.0,
         iv_rank=75.0,
     )
-    assert d["suggested_strategy"] == "CALL_DEBIT_SPREAD"
+    assert d["suggested_strategy"] == "PUT_CREDIT_SPREAD", \
+        f"iv_rank=75 bullish should be PUT_CREDIT_SPREAD, got {d['suggested_strategy']}"
     assert "IV_HIGH" in d["risk_flags"]
 
 def test_very_high_iv_risk_upgraded():
-    """iv_rank >= 85 → risk_level at least HIGH."""
+    """iv_rank >= 85 → risk_level at least HIGH and PUT_CREDIT_SPREAD."""
     d = build_swing_trade_decision(
         "NVDA", bull_score=8.0, bear_score=1.5,
         market_context="MARKET_SUPPORTIVE",
@@ -195,7 +196,8 @@ def test_very_high_iv_risk_upgraded():
     )
     assert "IV_VERY_HIGH" in d["risk_flags"]
     assert d["risk_level"] in ("HIGH", "VERY_HIGH")
-    assert d["suggested_strategy"] == "CALL_DEBIT_SPREAD"
+    assert d["suggested_strategy"] == "PUT_CREDIT_SPREAD", \
+        f"iv_rank=88 bullish should be PUT_CREDIT_SPREAD, got {d['suggested_strategy']}"
 
 def test_low_iv_good_entry_allows_long_call():
     """iv_rank is None (Phase 1 default) + strong setup → LONG_CALL allowed."""
@@ -236,6 +238,65 @@ def test_strong_go_iv_60_suggests_spread():
     )
     assert d["suggested_strategy"] == "CALL_DEBIT_SPREAD", \
         f"STRONG_GO + iv_rank=60 should be CALL_DEBIT_SPREAD, got {d['suggested_strategy']}"
+
+
+# ─── Credit spread selection ──────────────────────────────────────────
+
+def test_very_high_iv_bullish_suggests_put_credit_spread():
+    """iv_rank >= 70, non-STRONG_GO bullish setup → PUT_CREDIT_SPREAD (Bull Put)."""
+    d = build_swing_trade_decision(
+        "NVDA", bull_score=7.5, bear_score=2.0,
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=58.0, dist_ma20_pct=2.5, mom_5d_pct=1.5,
+        iv_rank=75.0,
+    )
+    assert d["suggested_strategy"] == "PUT_CREDIT_SPREAD", \
+        f"iv_rank=75, bullish should be PUT_CREDIT_SPREAD, got {d['suggested_strategy']}"
+
+def test_very_high_iv_bearish_suggests_call_credit_spread():
+    """iv_rank >= 70, bearish setup → CALL_CREDIT_SPREAD (Bear Call)."""
+    d = build_swing_trade_decision(
+        "NVDA", bull_score=2.0, bear_score=8.0,
+        market_context="MARKET_WEAK",
+        rsi_val=42.0, dist_ma20_pct=-2.5, mom_5d_pct=-2.0,
+        iv_rank=72.0,
+    )
+    assert d["suggested_strategy"] == "CALL_CREDIT_SPREAD", \
+        f"iv_rank=72, bearish should be CALL_CREDIT_SPREAD, got {d['suggested_strategy']}"
+
+def test_strong_go_iv_75_suggests_put_credit_spread():
+    """STRONG_GO + iv_rank >= 75 → PUT_CREDIT_SPREAD even on best setup."""
+    d = build_swing_trade_decision(
+        "MU", bull_score=9.0, bear_score=1.0,
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=60.0, dist_ma20_pct=1.5, mom_5d_pct=2.0,
+        vol_ratio=1.8, vol_label="bull_expanding",
+        iv_rank=78.0,
+    )
+    assert d["suggested_strategy"] == "PUT_CREDIT_SPREAD", \
+        f"STRONG_GO + iv_rank=78 should be PUT_CREDIT_SPREAD, got {d['suggested_strategy']}"
+
+def test_earnings_very_high_iv_suggests_credit_spread():
+    """Earnings imminent + iv_rank >= 70 → credit spread over debit spread."""
+    d = build_swing_trade_decision(
+        "AAPL", bull_score=8.0, bear_score=1.5,
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=60.0, dist_ma20_pct=1.5, mom_5d_pct=1.5,
+        earnings_within_days=2, iv_rank=74.0,
+    )
+    assert d["suggested_strategy"] == "PUT_CREDIT_SPREAD", \
+        f"Earnings + iv_rank=74 bullish should be PUT_CREDIT_SPREAD, got {d['suggested_strategy']}"
+
+def test_moderate_iv_still_debit_spread():
+    """iv_rank=55 (elevated but < 70) + non-STRONG_GO → CALL_DEBIT_SPREAD, not credit spread."""
+    d = build_swing_trade_decision(
+        "TSLA", bull_score=6.0, bear_score=2.5,  # lower score → not STRONG_GO
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=58.0, dist_ma20_pct=2.0, mom_5d_pct=1.5,
+        iv_rank=55.0,
+    )
+    assert d["suggested_strategy"] == "CALL_DEBIT_SPREAD", \
+        f"iv_rank=55 non-STRONG_GO should be CALL_DEBIT_SPREAD (not credit), got {d['suggested_strategy']}"
 
 
 # ─── Low liquidity → NO_TRADE ────────────────────────────────────────

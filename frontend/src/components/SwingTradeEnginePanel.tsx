@@ -629,6 +629,20 @@ function computeStructureReasoning(result: SwingTradeScanResult, m: Record<strin
       'Bearish outlook with defined risk',
       ivVal != null && ivVal > 35 ? 'IV supports spread structure — defined risk preferred' : 'Defined risk aligns with moderate downside view',
     ],
+    PUT_CREDIT_SPREAD: [
+      'Bull Put Spread — sell OTM put, buy further OTM put for net credit',
+      ivVal != null && ivVal > 35 ? 'IV very elevated — selling premium captures IV crush and theta decay' : 'Credit structure collects premium upfront',
+      'Profit if stock stays above the sold put strike at expiry',
+      'Max loss is the spread width minus credit received — defined risk',
+      'Time decay works in your favor every day you hold',
+    ],
+    CALL_CREDIT_SPREAD: [
+      'Bear Call Spread — sell OTM call, buy higher OTM call for net credit',
+      ivVal != null && ivVal > 35 ? 'IV very elevated — selling premium captures IV crush and theta decay' : 'Credit structure collects premium upfront',
+      'Profit if stock stays below the sold call strike at expiry',
+      'Max loss is the spread width minus credit received — defined risk',
+      'Time decay works in your favor every day you hold',
+    ],
   }
   if (strategy && strats[strategy]) return strats[strategy]
   return ['Standard structure selected for current conditions']
@@ -726,6 +740,16 @@ function computeAlternativeStructureNote(result: SwingTradeScanResult, m: Record
   }
   if (strategy === 'PUT_DEBIT_SPREAD') {
     return 'Spread structure is favored because risk is defined while still keeping bearish participation.'
+  }
+  if (strategy === 'PUT_CREDIT_SPREAD') {
+    return iv != null && iv >= 35
+      ? 'Bull Put Spread is preferred — IV is very high, selling premium via a credit spread captures IV crush and theta. Profit zone: stock stays above sold put strike.'
+      : 'Bull Put Spread collects a net credit and profits from time decay. Switch to a call debit spread if IV compresses significantly before entry.'
+  }
+  if (strategy === 'CALL_CREDIT_SPREAD') {
+    return iv != null && iv >= 35
+      ? 'Bear Call Spread is preferred — IV is very high, selling premium via a credit spread captures IV crush and theta. Profit zone: stock stays below sold call strike.'
+      : 'Bear Call Spread collects a net credit and profits from time decay. Switch to a put debit spread if IV compresses significantly before entry.'
   }
   return 'Use the selected structure only while the current execution conditions remain valid.'
 }

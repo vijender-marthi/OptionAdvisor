@@ -734,24 +734,54 @@ def build_swing_trade_decision(
         confirmation_needed.append("Wait for broad market recovery before taking long calls")
 
     # ── 9. Suggested strategy ──────────────────────────────────────────
-    # Priority order matters — quality check MUST precede the IV gate.
-    # Old bug: iv_rank>=50 sat above the STRONG_GO check, making LONG_CALL
-    # unreachable for any ticker with elevated IV (i.e. almost everything).
+    # Strategy selection matrix (priority order matters):
+    #
+    #  IV rank   | Setup quality      | Direction | Strategy
+    #  ──────────┼────────────────────┼───────────┼──────────────────────
+    #  any       | AVOID_NAKED_CALLS  | bull/bear | credit spread (earnings)
+    #  < 60      | STRONG_GO (≥7.0)   | bull      | LONG_CALL
+    #  < 60      | STRONG_GO (≥7.0)   | bear      | LONG_PUT
+    #  60–74     | STRONG_GO (≥7.0)   | bull/bear | debit spread
+    #  ≥ 75      | STRONG_GO (≥7.0)   | bull      | PUT_CREDIT_SPREAD
+    #  ≥ 75      | STRONG_GO (≥7.0)   | bear      | CALL_CREDIT_SPREAD
+    #  ≥ 70      | any other          | bull      | PUT_CREDIT_SPREAD
+    #  ≥ 70      | any other          | bear      | CALL_CREDIT_SPREAD
+    #  50–69     | any non-STRONG_GO  | bull/bear | debit spread
+    #  < 50      | score ≥ 5.5        | bull/bear | debit spread
+    #
+    # Rationale: credit spreads (sell premium) are preferred when IV is very
+    # high because you capture IV crush + theta decay rather than fighting them.
+    # Bull Put Spread (PUT_CREDIT_SPREAD) = bullish; Bear Call (CALL_CREDIT_SPREAD) = bearish.
+
+    _iv_very_high = iv_rank is not None and iv_rank >= 70   # sell-premium territory
+    _iv_high      = iv_rank is not None and iv_rank >= 60   # spread territory
+    _iv_moderate  = iv_rank is not None and iv_rank >= 50   # still use spreads over longs
+
     if final_action == "AVOID_NAKED_CALLS":
-        # Earnings imminent — spreads only, never naked long premium
-        suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
+        # Earnings imminent — credit spreads preferred (sell expensive pre-earnings IV);
+        # fall back to debit spreads if IV is not elevated
+        if _iv_very_high:
+            suggested_strategy = "PUT_CREDIT_SPREAD" if is_bullish else "CALL_CREDIT_SPREAD"
+        else:
+            suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif final_action == "NO_TRADE":
         suggested_strategy = "NO_TRADE"
     elif trade_quality_score >= 7.0 and final_action == "STRONG_GO":
-        # Best setups → long if IV is reasonable; spread only when IV is truly
-        # elevated (rank ≥ 60). Note: score is already penalised −1.5 at iv≥70
-        # and −2.5 at iv≥85, so STRONG_GO with very high IV is naturally rare.
-        if iv_rank is not None and iv_rank >= 60:
+        # Best setup quality — choose long vs spread vs credit based on IV level
+        if iv_rank is not None and iv_rank >= 75:
+            # Very high IV even on best setup → sell premium via credit spread
+            suggested_strategy = "PUT_CREDIT_SPREAD" if is_bullish else "CALL_CREDIT_SPREAD"
+        elif _iv_high:
+            # Moderately elevated IV — debit spread caps cost
             suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
         else:
+            # IV reasonable for best setup → long directional
             suggested_strategy = "LONG_CALL" if is_bullish else "LONG_PUT"
-    elif iv_rank is not None and iv_rank >= 50:
-        # Elevated IV on a non-STRONG_GO setup → spread to cap premium risk
+    elif _iv_very_high:
+        # High IV on non-STRONG_GO → always credit spread (sell the expensive premium)
+        suggested_strategy = "PUT_CREDIT_SPREAD" if is_bullish else "CALL_CREDIT_SPREAD"
+    elif _iv_moderate:
+        # Elevated IV on moderate setup → debit spread
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif trade_quality_score >= 5.5:
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
@@ -1377,14 +1407,23 @@ def compute_playbook_hint(
         iv_unknown = True
 
     # Rule 1–2 / 4–5: IV split; unknown → long single-leg with disclosure
+    _iv_rank_val   = iv_rank if iv_rank is not None else None
+    _very_high_iv  = _iv_rank_val is not None and _iv_rank_val >= 70
+    _high_iv_hint  = _iv_rank_val is not None and _iv_rank_val >= 50
+
     def _bullish_entry_hint() -> str:
         if iv_unknown:
             return (
                 "Long call — bullish with a clean entry; implied IV missing from feed — "
                 "confirm IV vs HV on your platform."
             )
-        if high_iv:
-            return "Call debit spread — bullish with a clean entry; IV elevated (rank ≥50 vs HV proxy, or IV above HV20)."
+        if _very_high_iv:
+            return (
+                f"Bull put spread (put credit spread) — bullish; IV rank {_iv_rank_val:.0f} is very high — "
+                "sell premium rather than buy it; credit spread profits from IV crush + time decay."
+            )
+        if _high_iv_hint:
+            return f"Call debit spread — bullish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
         return "Long call — bullish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
 
     def _bearish_entry_hint() -> str:
@@ -1393,8 +1432,13 @@ def compute_playbook_hint(
                 "Long put — bearish with a clean entry; implied IV missing from feed — "
                 "confirm IV vs HV on your platform."
             )
-        if high_iv:
-            return "Put debit spread — bearish with a clean entry; IV elevated (rank ≥50 vs HV proxy, or IV above HV20)."
+        if _very_high_iv:
+            return (
+                f"Bear call spread (call credit spread) — bearish; IV rank {_iv_rank_val:.0f} is very high — "
+                "sell premium rather than buy it; credit spread profits from IV crush + time decay."
+            )
+        if _high_iv_hint:
+            return f"Put debit spread — bearish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
         return "Long put — bearish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
 
     hint: str
