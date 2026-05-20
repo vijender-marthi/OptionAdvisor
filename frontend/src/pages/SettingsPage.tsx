@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Bell, Mail, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Database, RefreshCw } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { getEmailStatus, sendTestEmail } from '../api/client'
+import { getEmailStatus, sendTestEmail, clearAllCaches } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
@@ -70,6 +70,8 @@ export default function SettingsPage() {
   const [buyingPowerInput, setBuyingPowerInput] = useState(String(accountSize))
   const [testingEmail, setTestingEmail] = useState(false)
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
     provider: 'sendgrid' | 'smtp' | 'none'
@@ -95,6 +97,20 @@ export default function SettingsPage() {
   const handleBuyingPowerSave = () => {
     const val = parseFloat(buyingPowerInput)
     if (!isNaN(val) && val > 0) setAccountSize(val)
+  }
+
+  const handleClearCache = async () => {
+    if (clearingCache) return
+    setClearingCache(true)
+    setCacheResult(null)
+    try {
+      const res = await clearAllCaches()
+      setCacheResult({ ok: res.ok, total: res.total_entries_cleared })
+    } catch {
+      setCacheResult({ ok: false, total: 0 })
+    } finally {
+      setClearingCache(false)
+    }
   }
 
   const handleTestEmail = async () => {
@@ -175,6 +191,46 @@ export default function SettingsPage() {
             }
           </div>
         )}
+      </SettingsCard>
+
+      {/* Data Cache */}
+      <SettingsCard title="Data Cache">
+        <div className="py-4 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="mt-0.5 w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center shrink-0 text-gray-400">
+              <Database size={17} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-100 tracking-tight">Force Clear Cache</div>
+              <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+                Wipes all in-memory Yahoo Finance data (price bars, quotes, engine scans). Use when ticker prices look
+                stale or show wrong change% — next page load will re-fetch live data.
+              </p>
+              {cacheResult && (
+                <div className={`mt-2 flex items-center gap-1.5 text-xs ${cacheResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {cacheResult.ok
+                    ? <><CheckCircle2 size={13} /><span>Cleared {cacheResult.total} cached entries — next load will fetch fresh data.</span></>
+                    : <><AlertTriangle size={13} /><span>Cache clear failed — try again.</span></>
+                  }
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleClearCache}
+            disabled={clearingCache}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-amber-900/30 border border-gray-700
+                       hover:border-amber-600 text-gray-300 hover:text-amber-300 text-xs font-semibold rounded-xl
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            <RefreshCw size={13} className={clearingCache ? 'animate-spin' : ''} />
+            {clearingCache ? 'Clearing...' : 'Clear Cache'}
+          </button>
+        </div>
+        <div className="py-3 text-xs text-gray-600 border-t border-gray-800 leading-relaxed">
+          Caches cleared: price bars (OHLCV), live quotes, engine analysis, day trade scans, swing trade scans.
+          Off-hours TTL is up to 15 min — clear here to force immediate fresh data without waiting.
+        </div>
       </SettingsCard>
 
       {/* How alerts work */}

@@ -51,9 +51,9 @@ import bar_cache
 from bar_cache import get_history as _bc_hist, get_info as _bc_info
 from bar_cache import get_option_dates as _bc_opt_dates, get_option_chain as _bc_chain
 from analysis import generate_signals
-from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade
+from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade, clear_scan_cache as _clear_day_scan_cache
 from ai_coach import get_ai_coach
-from swing_trade import run_swing_trade_scan
+from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
@@ -2322,6 +2322,60 @@ def refresh_signal_feed(
             },
         }
     )
+
+
+@app.post("/api/cache/clear")
+def clear_all_caches(
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Forcefully wipe all in-memory data caches and re-fetch fresh data from
+    Yahoo Finance on the next request.
+
+    Clears:
+      • bar_cache    — OHLCV bars, .info, option chain, calendar (yfinance)
+      • quote_cache  — live ticker quotes used by Signal Feed
+      • analysis_cache / analyze_user_cache — engine analysis results
+      • day_trade._scan_cache   — day trade scan results
+      • swing_trade._scan_cache — swing trade scan results
+    """
+    import bar_cache as _bc
+    import quote_cache as _qc
+
+    bc_cleared = len(_bc._store)
+    qc_cleared = len(_qc._store)
+    _bc.invalidate_all()
+    _qc.invalidate_all()
+
+    with analysis_cache_lock:
+        ac_cleared = len(analysis_cache)
+        analysis_cache.clear()
+
+    with analyze_user_cache_lock:
+        auc_cleared = len(analyze_user_cache)
+        analyze_user_cache.clear()
+
+    dt_cleared = _clear_day_scan_cache()
+    sw_cleared = _clear_swing_scan_cache()
+
+    total = bc_cleared + qc_cleared + ac_cleared + auc_cleared + dt_cleared + sw_cleared
+    logging.getLogger(__name__).info(
+        "CACHE_CLEAR bar=%d quote=%d analysis=%d analyze_user=%d day_scan=%d swing_scan=%d total=%d",
+        bc_cleared, qc_cleared, ac_cleared, auc_cleared, dt_cleared, sw_cleared, total,
+    )
+
+    return api_envelope({
+        "ok": True,
+        "cleared": {
+            "bar_cache":          bc_cleared,
+            "quote_cache":        qc_cleared,
+            "analysis_cache":     ac_cleared,
+            "analyze_user_cache": auc_cleared,
+            "day_scan_cache":     dt_cleared,
+            "swing_scan_cache":   sw_cleared,
+        },
+        "total_entries_cleared": total,
+    })
 
 
 @app.post("/api/signal-feed/alerts")

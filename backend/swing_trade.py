@@ -88,6 +88,14 @@ _swing_scan_cache: Dict[str, Tuple[float, "SwingTradeScan"]] = {}
 _swing_scan_lock = threading.Lock()
 
 
+def clear_scan_cache() -> int:
+    """Wipe the swing-trade scan result cache. Returns number of entries cleared."""
+    with _swing_scan_lock:
+        n = len(_swing_scan_cache)
+        _swing_scan_cache.clear()
+    return n
+
+
 def _swing_scan_ttl() -> int:
     from zoneinfo import ZoneInfo as _ZI
     dt = datetime.fromtimestamp(time.time(), tz=_ZI("America/New_York"))

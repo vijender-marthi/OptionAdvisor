@@ -36,6 +36,14 @@ _scan_cache: Dict[str, Tuple[float, "DayTradeScan"]] = {}
 _scan_lock  = threading.Lock()
 
 
+def clear_scan_cache() -> int:
+    """Wipe the day-trade scan result cache. Returns number of entries cleared."""
+    with _scan_lock:
+        n = len(_scan_cache)
+        _scan_cache.clear()
+    return n
+
+
 def _scan_cache_ttl() -> int:
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZI
