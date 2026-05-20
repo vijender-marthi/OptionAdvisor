@@ -69,7 +69,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // Directional credit (Bull Put, Bear Call): moderate confidence is fine;
   //   you just need the stock NOT to breach the short strike.
   // Debit/long: need stronger directional conviction to justify the premium.
-  const conf = sig.bias_confidence * 100
+  const conf = sig.bias_confidence  // already 0–100 from backend
   if (isNeutral && isCredit) {
     // Iron Condor — check range-bound conditions instead of directional confidence
     const slopeFlat = Math.abs(sig.ma50_slope) < 0.002
