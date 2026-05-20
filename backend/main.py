@@ -2964,6 +2964,10 @@ def _swing_active_state(final_action: str) -> int:
     return 1
 
 
+# Weak-breakout detection: fire if IN-PLAY for this long without extending past ORH/ORL
+_WEAK_BREAKOUT_WAIT_MS  = 1_800_000  # 30 min = 2 scan cycles
+_WEAK_BREAKOUT_EXTEND_PCT = 0.003    # price must move ≥0.3% past ORH (long) or ORL (short)
+
 _STATE_LABEL = {1: "SETUP", 2: "ENTRY", 3: "IN-PLAY", 4: "EXIT"}
 _STATE_DIRECTION = {
     (1, 2): "advancing",
@@ -3024,29 +3028,51 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
             bias_raw   = str(getattr(dr, "bias", "") or "").lower()
             bias_label = "BULLISH / LONG" if bias_raw == "long" else "BEARISH / SHORT" if bias_raw == "short" else bias_raw.upper()
 
-            prev = get_ticker_state_last(email, ticker, "DAY")
+            now_ms = int(time.time() * 1000)
+            prev   = get_ticker_state_last(email, ticker, "DAY")
+
             if prev is None:
-                upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=0)
+                inplay_since = now_ms if now_state == 3 else 0
+                upsert_ticker_state_last(
+                    email, ticker, "DAY", now_state, now_action, sd,
+                    target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                )
             else:
-                prev_state      = int(prev.get("state_num") or 1)
-                prev_sd         = (prev.get("session_date") or "")[:10]
-                prev_target_hit = int(prev.get("target_hit") or 0)
+                prev_state  = int(prev.get("state_num") or 1)
+                prev_sd     = (prev.get("session_date") or "")[:10]
 
                 if prev_sd and sd and prev_sd != sd:
-                    # New session — reset baseline and target without alerting
-                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=0)
+                    # New session — reset all flags without alerting
+                    inplay_since = now_ms if now_state == 3 else 0
+                    upsert_ticker_state_last(
+                        email, ticker, "DAY", now_state, now_action, sd,
+                        target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                    )
                 else:
-                    # Carry target_hit forward only if state is unchanged; reset on any state transition
-                    carry_target = prev_target_hit if prev_state == now_state else 0
+                    state_changed = prev_state != now_state
+
+                    # Flags reset on any state transition; carry forward only while state holds
+                    if state_changed or now_state != 3:
+                        carry_target   = 0
+                        carry_weak_bo  = 0
+                        inplay_since   = now_ms if now_state == 3 else 0
+                    else:
+                        carry_target   = int(prev.get("target_hit") or 0)
+                        carry_weak_bo  = int(prev.get("weak_breakout_alerted") or 0)
+                        inplay_since   = int(prev.get("inplay_since_ms") or now_ms)
+
+                    last_price_val = eg.get("current_price") or m.get("last_price")
+                    orh_val        = eg.get("opening_range_high") or m.get("or_high")
+                    orl_val        = eg.get("opening_range_low")  or m.get("or_low")
 
                     # ── State-change alert ────────────────────────────────
-                    if prev_state != now_state:
+                    if state_changed:
                         direction = _STATE_DIRECTION.get(
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
                         )
                         day_escalations.append({
-                            "id":           f"dt-state-{ticker}-{int(time.time() * 1000)}",
+                            "id":           f"dt-state-{ticker}-{now_ms}",
                             "alertType":    "STATE_CHANGE",
                             "ticker":       ticker,
                             "companyName":  getattr(dr, "company_name", None) or ticker,
@@ -3060,10 +3086,10 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "egAction":     eg_action,
                             "bias":         bias_label,
                             "sessionDate":  sd,
-                            "currentPrice": eg.get("current_price") or m.get("last_price"),
+                            "currentPrice": last_price_val,
                             "vwap":         eg.get("vwap") or m.get("vwap"),
-                            "orh":          eg.get("opening_range_high") or m.get("or_high"),
-                            "orl":          eg.get("opening_range_low") or m.get("or_low"),
+                            "orh":          orh_val,
+                            "orl":          orl_val,
                             "breakoutLevel":eg.get("breakout_level"),
                             "scalp_target": eg.get("scalp_target"),
                             "riskBelow":    eg.get("risk_below"),
@@ -3071,10 +3097,9 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "decisionMsg":  str((dr.trader_decision or {}).get("decision_message") or ""),
                         })
 
-                    # ── Take-profit alert (fires once per session when target hit while IN-PLAY) ──
-                    target_to_store = carry_target
+                    # ── Take-profit alert ─────────────────────────────────
+                    target_to_store  = carry_target
                     scalp_target_val = eg.get("scalp_target")
-                    last_price_val   = eg.get("current_price") or m.get("last_price")
                     if now_state == 3 and not carry_target and scalp_target_val is not None and last_price_val is not None:
                         try:
                             lp = float(last_price_val)
@@ -3084,9 +3109,9 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             target_reached = False
                         if target_reached:
                             target_to_store = 1
-                            direction_word = "above" if bias_raw == "long" else "below"
+                            direction_word  = "above" if bias_raw == "long" else "below"
                             day_escalations.append({
-                                "id":           f"dt-target-{ticker}-{int(time.time() * 1000)}",
+                                "id":           f"dt-target-{ticker}-{now_ms}",
                                 "alertType":    "TARGET_REACHED",
                                 "ticker":       ticker,
                                 "companyName":  getattr(dr, "company_name", None) or ticker,
@@ -3098,14 +3123,66 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                                 "currentPrice": last_price_val,
                                 "scalp_target": scalp_target_val,
                                 "vwap":         eg.get("vwap") or m.get("vwap"),
-                                "orh":          eg.get("opening_range_high") or m.get("or_high"),
-                                "orl":          eg.get("opening_range_low") or m.get("or_low"),
+                                "orh":          orh_val,
+                                "orl":          orl_val,
                                 "riskBelow":    eg.get("risk_below"),
                                 "summary":      f"Price ${lp:.2f} reached scalp target ${st:.2f} — consider taking profit or trailing your stop.",
                                 "decisionMsg":  f"Target hit {direction_word} ${st:.2f}. Exit now or move stop to breakeven to protect gains.",
                             })
 
-                    upsert_ticker_state_last(email, ticker, "DAY", now_state, now_action, sd, target_hit=target_to_store)
+                    # ── Weak-breakout alert ───────────────────────────────
+                    # Fires once if IN-PLAY for ≥30 min without extending ≥0.3% past ORH (long) / ORL (short)
+                    weak_bo_to_store = carry_weak_bo
+                    if (now_state == 3 and not carry_weak_bo
+                            and inplay_since > 0 and last_price_val is not None):
+                        elapsed_ms = now_ms - inplay_since
+                        if elapsed_ms >= _WEAK_BREAKOUT_WAIT_MS and orh_val is not None:
+                            try:
+                                lp   = float(last_price_val)
+                                orh  = float(orh_val)
+                                orl  = float(orl_val) if orl_val is not None else None
+                                or_width_pct = round((orh - orl) / orl * 100, 2) if orl else None
+                                if bias_raw == "long":
+                                    extended = lp >= orh * (1 + _WEAK_BREAKOUT_EXTEND_PCT)
+                                elif bias_raw == "short" and orl is not None:
+                                    extended = lp <= orl * (1 - _WEAK_BREAKOUT_EXTEND_PCT)
+                                else:
+                                    extended = True
+                            except (TypeError, ValueError):
+                                extended = True
+                            if not extended:
+                                weak_bo_to_store = 1
+                                narrow_or = or_width_pct is not None and or_width_pct < 0.5
+                                narrow_note = f" Narrow OR ({or_width_pct:.2f}%) — low follow-through is common." if narrow_or else ""
+                                stop_level  = f"${orh:.2f}" if bias_raw == "long" else (f"${orl:.2f}" if orl else "entry level")
+                                day_escalations.append({
+                                    "id":           f"dt-weakbo-{ticker}-{now_ms}",
+                                    "alertType":    "WEAK_BREAKOUT",
+                                    "ticker":       ticker,
+                                    "companyName":  getattr(dr, "company_name", None) or ticker,
+                                    "engine":       "DAY",
+                                    "nowState":     now_state,
+                                    "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                                    "bias":         bias_label,
+                                    "sessionDate":  sd,
+                                    "currentPrice": last_price_val,
+                                    "orh":          orh_val,
+                                    "orl":          orl_val,
+                                    "vwap":         eg.get("vwap") or m.get("vwap"),
+                                    "scalp_target": scalp_target_val,
+                                    "riskBelow":    eg.get("risk_below"),
+                                    "orWidthPct":   or_width_pct,
+                                    "elapsedMin":   round(elapsed_ms / 60_000),
+                                    "summary":      f"IN-PLAY for {round(elapsed_ms / 60_000)} min with no extension past {stop_level}.{narrow_note} Exit or set tight stop at {stop_level}.",
+                                    "decisionMsg":  f"Price ${lp:.2f} has not cleared {stop_level} + 0.3% threshold. Momentum is stalling — protect capital now.",
+                                })
+
+                    upsert_ticker_state_last(
+                        email, ticker, "DAY", now_state, now_action, sd,
+                        target_hit=target_to_store,
+                        inplay_since_ms=inplay_since,
+                        weak_breakout_alerted=weak_bo_to_store,
+                    )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
 
@@ -3114,13 +3191,16 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
     public_base = _option_advisor_public_base()
     try:
-        tickers_str  = ", ".join(sorted({it["ticker"] for it in day_escalations}))
-        target_items = [it for it in day_escalations if it.get("alertType") == "TARGET_REACHED"]
-        state_items  = [it for it in day_escalations if it.get("alertType") != "TARGET_REACHED"]
-        if target_items and not state_items:
+        tickers_str    = ", ".join(sorted({it["ticker"] for it in day_escalations}))
+        target_items   = [it for it in day_escalations if it.get("alertType") == "TARGET_REACHED"]
+        weak_bo_items  = [it for it in day_escalations if it.get("alertType") == "WEAK_BREAKOUT"]
+        state_items    = [it for it in day_escalations if it.get("alertType") == "STATE_CHANGE"]
+        if target_items and not state_items and not weak_bo_items:
             subject = f"💰 OptionAdvisor: Take-profit target hit — {tickers_str}"
-        elif target_items:
-            subject = f"⚡💰 OptionAdvisor: State change + target hit — {tickers_str}"
+        elif weak_bo_items and not state_items and not target_items:
+            subject = f"⚠️ OptionAdvisor: Breakout stalling — {tickers_str}"
+        elif target_items or weak_bo_items:
+            subject = f"⚡ OptionAdvisor: Day trade alert — {tickers_str}"
         else:
             count = len(state_items)
             subject = f"⚡ OptionAdvisor: {count} day-trade state change{'s' if count != 1 else ''} — {tickers_str}"
@@ -3210,6 +3290,52 @@ def _build_state_transition_email_html(
     {dec_row}
   </div>
 </div>"""
+        elif alert_type == "WEAK_BREAKOUT":
+            # ── Weak-breakout warning card (orange) ───────────────────
+            orh_fmt    = _fmt_price(it.get("orh"))
+            orl_fmt    = _fmt_price(it.get("orl"))
+            elapsed    = it.get("elapsedMin", 30)
+            or_w       = it.get("orWidthPct")
+            or_w_str   = f"{or_w:.2f}%" if or_w is not None else "—"
+            narrow_badge = '<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;margin-left:6px;">NARROW OR</span>' if (or_w is not None and or_w < 0.5) else ""
+
+            level_pairs = [("Price", price), ("ORH", orh_fmt), ("ORL", orl_fmt), ("VWAP", vwap), ("OR Width", or_w_str)]
+            levels_html = ""
+            for lbl, val in level_pairs:
+                if val and val != "—":
+                    highlight = "color:#c2410c;font-weight:900;" if lbl == "ORH" and bias.upper().find("BULL") >= 0 else \
+                                "color:#c2410c;font-weight:900;" if lbl == "ORL" and bias.upper().find("BEAR") >= 0 else "color:#1e293b;"
+                    levels_html += f'<span style="margin-right:14px;white-space:nowrap;"><span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> <span style="font-family:monospace;font-weight:700;font-size:12px;{highlight}">{val}</span></span>'
+
+            cards_html += f"""
+<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:2px solid #f97316;">
+  <div style="background:linear-gradient(90deg,#7c2d12,#c2410c);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>
+      <a href="{ticker_url}" style="color:#ffffff;font-family:monospace;font-size:16px;font-weight:800;text-decoration:none;">{ticker}</a>
+      <span style="color:rgba(255,255,255,0.75);font-size:12px;margin-left:8px;">{company}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="background:rgba(255,255,255,0.15);color:#ffffff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DAY TRADE</span>
+      <span style="background:#ffedd5;color:#7c2d12;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:900;">⚠ STALLING {elapsed}min</span>
+      {narrow_badge}
+    </div>
+  </div>
+  <div style="background:#fff7ed;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:700;color:{bias_color};">{bias}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:12px;font-weight:700;color:#c2410c;">No follow-through</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:10px;color:#94a3b8;">{session}</span>
+    </div>
+    <div style="background:#ffedd5;border-radius:6px;padding:8px 10px;flex-wrap:wrap;border:1px solid #fed7aa;">
+      {levels_html}
+    </div>
+    {summary_row}
+    {dec_row}
+  </div>
+</div>"""
+
         else:
             # ── State-change card (existing style) ────────────────────
             prev_label = html.escape(str(it.get("prevLabel", "")))
@@ -3270,13 +3396,17 @@ def _build_state_transition_email_html(
   </div>
 </div>"""
 
-    has_target = any(it.get("alertType") == "TARGET_REACHED" for it in items)
-    has_state  = any(it.get("alertType") != "TARGET_REACHED" for it in items)
-    if has_target and not has_state:
+    has_target  = any(it.get("alertType") == "TARGET_REACHED" for it in items)
+    has_weak_bo = any(it.get("alertType") == "WEAK_BREAKOUT"  for it in items)
+    has_state   = any(it.get("alertType") == "STATE_CHANGE"   for it in items)
+    if has_target and not has_state and not has_weak_bo:
         email_title = "Take-Profit Target Hit"
         intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, a scalp target was reached for a ticker in your <strong>My Tickers</strong> list — consider taking profit or trailing your stop:"
-    elif has_target:
-        email_title = "State Change + Target Hit"
+    elif has_weak_bo and not has_state and not has_target:
+        email_title = "Breakout Stalling — Act Now"
+        intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, a breakout in your <strong>My Tickers</strong> list has not extended after 30 min — exit or set a tight stop:"
+    elif has_target or has_weak_bo:
+        email_title = "Day Trade Alert"
         intro_text  = f"Hi <strong>{html.escape(display_name)}</strong>, the following tickers in your <strong>My Tickers</strong> list had day-trade activity:"
     else:
         email_title = "State Change Alert"
