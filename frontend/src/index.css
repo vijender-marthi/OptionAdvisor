@@ -1787,3 +1787,35 @@ html.light .oa-tt-regular {
   background: #fef3c7;
   color: #92400e;
 }
+
+/* ── AI Radar Page - light theme ───────────────────────────────────────── */
+html.light .ai-radar-page .bg-gray-800\/40 { background-color: #e2e8f0 !important; }
+html.light .ai-radar-page .bg-gray-800\/60 { background-color: #cbd5e1 !important; }
+html.light .ai-radar-page .text-white { color: #0f172a !important; }
+html.light .ai-radar-page .bg-orange-900\/50 { background-color: #ffedd5 !important; }
+html.light .ai-radar-page .bg-purple-900\/50 { background-color: #f3e8ff !important; }
+html.light .ai-radar-page .bg-slate-800 { background-color: #e2e8f0 !important; }
+html.light .ai-radar-page .text-slate-300 { color: #475569 !important; }
+html.light .ai-radar-page .border-slate-700 { border-color: #cbd5e1 !important; }
+html.light .ai-radar-page .ring-offset-gray-950 { --tw-ring-offset-color: #ffffff !important; }
+html.light .ai-radar-page .ring-white\/20 { --tw-ring-color: rgba(0,0,0,0.1) !important; }
+html.light .ai-radar-page .brightness-125 { filter: brightness(1) !important; }
+html.light .ai-radar-page .brightness-110 { filter: brightness(1) !important; }
+
+/* CAT_ACTIVE buttons - keep text white on colored backgrounds in light mode */
+html.light .ai-radar-page .bg-blue-700 .text-white,
+html.light .ai-radar-page .bg-sky-700 .text-white,
+html.light .ai-radar-page .bg-emerald-700 .text-white,
+html.light .ai-radar-page .bg-amber-600 .text-white,
+html.light .ai-radar-page .bg-orange-700 .text-white,
+html.light .ai-radar-page .bg-rose-700 .text-white,
+html.light .ai-radar-page .bg-cyan-700 .text-white,
+html.light .ai-radar-page .bg-indigo-700 .text-white,
+html.light .ai-radar-page .bg-teal-700 .text-white { color: #ffffff !important; }
+
+/* CAT_INACTIVE buttons */
+html.light .ai-radar-page .bg-gray-800 { background-color: #f1f5f9 !important; }
+
+/* Hover states */
+html.light .ai-radar-page .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
+html.light .ai-radar-page .hover\:border-amber-600:hover { border-color: #d97706 !important; }
