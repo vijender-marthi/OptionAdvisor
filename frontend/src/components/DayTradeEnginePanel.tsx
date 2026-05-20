@@ -143,7 +143,7 @@ function computeSignals(result: DayTradeScanResult, m: Record<string, unknown>):
 
   const toneForConf = (key: string, val: string): Tone => {
     if (val === 'HIGH' || val === 'STRONG' || val === 'GOOD') return 'green'
-    if (val === 'MEDIUM' || val === 'FAIR') return 'blue'
+    if (val === 'MEDIUM' || val === 'FAIR' || val === 'ELEVATED' || val === 'NORMAL') return 'blue'
     if (val === 'LOW' || val === 'WEAK' || val === 'POOR') return 'orange'
     return 'gray'
   }
@@ -160,9 +160,13 @@ function computeSignals(result: DayTradeScanResult, m: Record<string, unknown>):
     momentum: mom != null
       ? { text: `${mom >= 0 ? '+' : ''}${mom.toFixed(1)}%`, tone: mom > 0 ? 'green' : mom < 0 ? 'red' : 'gray' }
       : null,
-    volume: volSpike
-      ? { text: 'Confirmed', tone: 'green' }
-      : { text: 'Normal', tone: 'blue' },
+    volume: (() => {
+      const rvolN = asFiniteNum(m.rvol)
+      if (volSpike || (rvolN != null && rvolN >= 2.0)) return { text: 'Strong', tone: 'green' as Tone }
+      if (rvolN != null && rvolN >= 1.25) return { text: 'Elevated', tone: 'blue' as Tone }
+      if (rvolN != null && rvolN >= 0.75) return { text: 'Normal', tone: 'blue' as Tone }
+      return { text: 'Weak', tone: 'orange' as Tone }
+    })(),
     relative_strength: rsN != null
       ? { text: rsN >= 0 ? 'Positive' : 'Negative', tone: rsN >= 0 ? 'green' : 'red' }
       : null,
@@ -1436,7 +1440,7 @@ export default function DayTradeEnginePanel({
           <ExecMapRow
             label="RVOL"
             value={rvol != null ? `${rvol.toFixed(1)}×` : '—'}
-            tone={rvol == null ? 'gray' : rvol >= 2.5 ? 'green' : rvol >= 1.5 ? 'blue' : 'gray'}
+            tone={rvol == null ? 'gray' : rvol >= 2.5 ? 'green' : rvol >= 1.25 ? 'blue' : rvol >= 0.75 ? 'gray' : 'orange'}
           />
           <ExecMapRow
             label="Pre-mkt Gap"

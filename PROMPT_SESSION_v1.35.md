@@ -37,7 +37,7 @@ Use this prompt at the start of a new Claude Code session to restore full contex
 
 ---
 
-## Current state — master branch at v1.35.1
+## Current state — master branch at v1.35.2
 
 ### Day Trade Engine (`backend/day_trade.py`)
 
@@ -79,6 +79,8 @@ After ORL breakdown (`or_historical="broke_down"`, `or_state="below"`):
 **Key insight:** VWAP rejection scores higher (+1.2) than ORL retest (+0.8) because sellers stepping in before ORL = heavier selling pressure.
 
 **`build_day_entry_guidance()`:** ENTRY_ACTIVE for shorts now produces bounce-scenario-specific summary/action/avoid/entry_decision. `risk_below` and `scalp_target` adjusted per tier.
+
+**`_confidence_block()` volume label (v1.35.2):** 4-tier using RVOL — `STRONG` (vol_spike or rvol ≥ 2.0), `ELEVATED` (rvol ≥ 1.25), `NORMAL` (rvol ≥ 0.75), `WEAK` (< 0.75). Previously was binary STRONG/WEAK based only on last-bar vol_spike (1.55× median), causing 1.1–1.4× RVOL to falsely show WEAK. Risk label also updated: MEDIUM only when volume_confirmation == "WEAK" (not just vol_spike absent).
 
 **Metrics output includes:** `or_state`, `or_historical`, `bounce_scenario`, `rvol`, `vwap`, `or_high`, `or_low`, `session_phase`, `volume_spike`, `chart_bars`, `session_date`
 

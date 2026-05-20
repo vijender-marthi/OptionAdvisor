@@ -303,6 +303,7 @@ def _confidence_block(
     qqq_chg: Optional[float],
     vix_level: Optional[float],
     verdict: str,
+    rvol: Optional[float] = None,
 ) -> dict[str, str]:
     # Trend strength
     m = abs(momentum_pct)
@@ -319,7 +320,18 @@ def _confidence_block(
     else:
         breakout_quality = "WEAK"
 
-    volume_confirmation = "STRONG" if vol_spike else "WEAK"
+    # 4-tier volume label.
+    # vol_spike (last bar ≥ 1.55× median) is the strongest local signal.
+    # RVOL (cumulative session vs time-adjusted average) fills the middle tiers
+    # so that 1.1–1.4× participation shows ELEVATED rather than WEAK.
+    if vol_spike or (rvol is not None and rvol >= 2.0):
+        volume_confirmation = "STRONG"
+    elif rvol is not None and rvol >= 1.25:
+        volume_confirmation = "ELEVATED"
+    elif rvol is not None and rvol >= 0.75:
+        volume_confirmation = "NORMAL"
+    else:
+        volume_confirmation = "WEAK"
 
     # Market alignment vs directional bias
     # Thresholds: ≥0.3% both indexes = genuinely supportive tape;
@@ -351,7 +363,7 @@ def _confidence_block(
         risk = "HIGH"
     elif verdict == "NO-GO":
         risk = "HIGH"
-    elif verdict == "WATCH" or not vol_spike:
+    elif verdict == "WATCH" or volume_confirmation == "WEAK":
         risk = "MEDIUM"
     elif vix_level is not None and vix_level >= 22:
         risk = "MEDIUM"
@@ -1679,6 +1691,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         qqq_chg=qqq_chg,
         vix_level=vix_level,
         verdict=verdict,
+        rvol=rvol,
     )
 
     reasons = prefix + body

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, Field
@@ -50,11 +50,17 @@ def _jwt_days() -> int:
         return 30
 
 
-def _public_app_url() -> str:
-    """SPA base for activation / password-reset links (same env resolution as `_option_advisor_public_base(None)`)."""
+def _public_app_url(request: Request | None = None) -> str:
+    """SPA base for activation / password-reset links.
+
+    Priority: OPTION_ADVISOR_PUBLIC_URL env var → browser Origin/Referer (when
+    request is available) → OPTION_ADVISOR_EMAIL_LINK_BASE → http://localhost:4200.
+    Always pass ``request`` when one is available so the browser Origin is used as
+    an automatic fallback on deployments where the env var is not set yet.
+    """
     from main import _option_advisor_public_base
 
-    return _option_advisor_public_base(None)
+    return _option_advisor_public_base(request)
 
 
 def _google_client_id() -> str:
@@ -171,7 +177,7 @@ def _login_payload(email: str) -> dict:
 
 
 @auth_router.post("/register")
-def auth_register(req: RegisterRequest):
+def auth_register(req: RegisterRequest, http_request: Request):
     _password_rules(req.password)
     normalized = normalize_email(req.email)
     if not normalized:
@@ -200,7 +206,7 @@ def auth_register(req: RegisterRequest):
     if email_ready:
         return {"ok": True, "needs_activation": False, "message": "Account created. You can sign in now."}
 
-    link = f"{_public_app_url()}/#activate?token={activation_token}"
+    link = f"{_public_app_url(http_request)}/#activate?token={activation_token}"
     html = f"""<!DOCTYPE html><html><body style="font-family:system-ui;line-height:1.5;color:#0f172a;">
       <h2>Activate your OptionAdvisor account</h2>
       <p>Thanks for registering. Confirm your email to start using your account.</p>
@@ -302,7 +308,7 @@ def auth_activate(token: str):
 
 
 @auth_router.post("/forgot-password")
-def auth_forgot_password(req: ForgotPasswordRequest):
+def auth_forgot_password(req: ForgotPasswordRequest, http_request: Request):
     normalized = normalize_email(req.email)
     generic = {"ok": True, "message": "If an account exists for that email, you will receive reset instructions."}
     if not normalized:
@@ -324,7 +330,7 @@ def auth_forgot_password(req: ForgotPasswordRequest):
             "dev_reset_token": tok,
         }
 
-    link = f"{_public_app_url()}/#reset-password?token={tok}"
+    link = f"{_public_app_url(http_request)}/#reset-password?token={tok}"
     disp = str(row.get("display_name") or "").strip() or None
     html = f"""<!DOCTYPE html><html><body style="font-family:system-ui;line-height:1.5;color:#0f172a;">
       <h2>Reset your OptionAdvisor password</h2>
