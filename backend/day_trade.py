@@ -87,8 +87,9 @@ VWAP_MACRO_BARS = 60
 # Session time buckets (minutes from 9:30 open)
 SESSION_OPENING_END   =  30   # 9:30–10:00
 SESSION_MID_AM_END    = 120   # 10:00–11:30
-SESSION_MIDDAY_END    = 240   # 11:30–13:30  (power hour starts at 15:00 = 210 min from open)
-SESSION_POWER_HOUR    = 210   # 15:00 ET onward
+SESSION_MIDDAY_END    = 330   # 11:30–15:00
+SESSION_POWER_HOUR    = 330   # 15:00–15:50 ET
+SESSION_EOD_CLOSING   = 380   # 15:50–16:00 ET (last 10 minutes — exit only)
 
 
 @dataclass
@@ -465,11 +466,16 @@ def _build_day_exit_rules(
                 "note":    "Opening Range violated to the upside — accept the loss",
             })
 
-    # Universal end-of-day rule — tighter in power hour
-    eod_time = "3:50 PM ET" if session_phase == "POWER_HOUR" else "3:55 PM ET"
-    eod_note = ("Power hour entry — exit earlier to avoid close-of-day slippage"
-                if session_phase == "POWER_HOUR"
-                else "Never carry a day-trade position overnight")
+    # Universal end-of-day rule — urgency increases in final phases
+    if session_phase == "EOD_CLOSING":
+        eod_time = "NOW — close before 4:00 PM ET"
+        eod_note = "You are in the last 10 minutes — exit immediately, do not wait for a better price"
+    elif session_phase == "POWER_HOUR":
+        eod_time = "3:50 PM ET"
+        eod_note = "Power hour entry — exit by 3:50 PM to avoid close-of-day slippage"
+    else:
+        eod_time = "3:55 PM ET"
+        eod_note = "Never carry a day-trade position overnight"
     rules.append({
         "trigger": f"Market close ({eod_time})",
         "price":   0.0,
@@ -621,10 +627,17 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     if state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         confirmations = []
 
-    # Power hour: annotate but don't block — scoring already penalised; add EOD note.
     session_phase = str(metrics.get("session_phase") or "")
-    if session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
-        avoid = "Power hour entry — must exit before close. No overnight holds."
+
+    # EOD closing (last 10 min): hard block — no new entries regardless of setup quality.
+    if session_phase == "EOD_CLOSING":
+        state   = "EOD_CLOSING"
+        summary = "Last 10 minutes — exit only. No new entries after 3:50 PM ET."
+        action  = "Close all open positions before 4:00 PM. Do not enter new trades."
+        avoid   = "Spreads widen, reversals accelerate, and there is no time to manage a bad fill."
+    # Power hour: annotate but don't block — scoring already penalised; add EOD note.
+    elif session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
+        avoid = "Power hour entry — must exit by 3:50 PM ET. No overnight holds."
 
     scalp_target = None
     if last_price is not None:
@@ -1078,8 +1091,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         session_phase = "MID_MORNING"
     elif session_minutes_elapsed < SESSION_MIDDAY_END:
         session_phase = "MIDDAY"
-    else:
+    elif session_minutes_elapsed < SESSION_EOD_CLOSING:
         session_phase = "POWER_HOUR"
+    else:
+        session_phase = "EOD_CLOSING"
 
     # OR width — narrow coiling vs wide chaotic open.
     or_width_pct = round((or_high - or_low) / or_low * 100, 3) if or_low > 0 else 0.0
@@ -1457,8 +1472,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         bear = max(0.0, bear - 0.25)
 
     # ── #10 Time-of-day ──────────────────────────────────────────────────────
-    if session_phase == "POWER_HOUR":
-        body.append("Power hour (≥15:00 ET) — entries carry mandatory EOD exit risk; size down.")
+    if session_phase == "EOD_CLOSING":
+        body.append("Last 10 minutes (≥15:50 ET) — no new entries. Exit existing positions only.")
+        bull = max(0.0, bull - 1.0)
+        bear = max(0.0, bear - 1.0)
+    elif session_phase == "POWER_HOUR":
+        body.append("Power hour (15:00–15:50 ET) — entries carry mandatory EOD exit risk; size down.")
         bull = max(0.0, bull - 0.5)
         bear = max(0.0, bear - 0.5)
     elif session_phase == "MIDDAY":
