@@ -1602,11 +1602,12 @@ def search_tickers(q: str = Query(..., min_length=1), auth_email: str = Depends(
         import yfinance as yf
         search = yf.Search(qs)
         for item in (search.quotes or []):
-            if item.get("quoteType") == "EQUITY":
+            qt = item.get("quoteType", "")
+            if qt in ("EQUITY", "ETF"):
                 results.append({
                     "symbol": item.get("symbol", ""),
                     "company": item.get("longname") or item.get("shortname", ""),
-                    "sector": item.get("sector", ""),
+                    "sector": item.get("sector", "") or qt,
                 })
     except Exception as exc:
         log.warning("search_tickers yf.Search(%r) failed: %s", qs, exc)
