@@ -1090,16 +1090,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         # Gap fill: price has retraced back near prior close.
         gap_fill_risk = abs(last / float(prior_close) - 1.0) * 100 < GAP_FILL_PROXIMITY and abs(gap_pct) >= GAP_SIGNIFICANT_PCT
 
-    # RVOL — cumulative session volume vs time-adjusted average daily volume.
-    avg_daily_vol = info.get("averageVolume") or info.get("averageDailyVolume10Day")
-    rvol: Optional[float] = None
-    if avg_daily_vol and float(avg_daily_vol) > 0 and session_minutes_elapsed > 0:
-        expected_vol = float(avg_daily_vol) * (session_minutes_elapsed / 390.0)
-        cumulative_vol = float(vol_ser.sum())
-        if expected_vol > 0:
-            rvol = round(cumulative_vol / expected_vol, 2)
-
     # Volume spike baseline: use median (more robust than mean against mid-session bursts).
+    # Computed BEFORE rvol so the synthetic fallback can use avg_vol.
     or_vol = vol_ser.iloc[:OR_MINUTES]
     steady_vol = vol_ser.iloc[OR_MINUTES:-1]
     tail_mid = (
@@ -1115,6 +1107,26 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         avg_vol = float(np.median(or_vol.values))
     else:
         avg_vol = float(vol_ser.iloc[:-1].mean()) if len(vol_ser) > 1 else 0.0
+
+    # RVOL — cumulative session volume vs time-adjusted average daily volume.
+    # Primary: info-based (averageVolume from Yahoo quote gives the full historical daily avg).
+    # Fallback: bar-based synthetic — compares cumulative session volume to the expected
+    # volume at the current session pace (median mid-session bar × elapsed minutes).
+    # This ensures RVOL is never None just because Yahoo omits averageVolume from info.
+    avg_daily_vol = info.get("averageVolume") or info.get("averageDailyVolume10Day")
+    rvol: Optional[float] = None
+    cumulative_vol = float(vol_ser.sum())
+    if avg_daily_vol and float(avg_daily_vol) > 0 and session_minutes_elapsed > 0:
+        # Info-based: most accurate — calibrated against the stock's own history.
+        expected_vol = float(avg_daily_vol) * (session_minutes_elapsed / 390.0)
+        if expected_vol > 0:
+            rvol = round(cumulative_vol / expected_vol, 2)
+    if rvol is None and avg_vol > 0 and session_minutes_elapsed > 0:
+        # Bar-based synthetic: cumulative vs (median bar × elapsed minutes).
+        # Slightly high-biased because cumulative includes OR burst; calibrated
+        # against the same session so it self-corrects intraday.
+        synthetic_expected = avg_vol * session_minutes_elapsed
+        rvol = round(cumulative_vol / synthetic_expected, 2)
 
     # HH/HL (bull) / LL/LH (bear) structure over recent 5-bar swing points.
     def _swing_structure(closes: np.ndarray, window: int = 5) -> str:

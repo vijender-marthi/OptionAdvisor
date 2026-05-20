@@ -2082,6 +2082,34 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     ma50 = float(ma50_series.iloc[-1])
     last = float(close.iloc[-1])
 
+    # ── Daily bar freshness check ─────────────────────────────────────
+    # Yahoo's daily bar endpoint sometimes returns yesterday's close as the
+    # last bar (no partial bar for today) — showing a stale price for swing
+    # while day-trade and quote feeds show the current price. Detect this and
+    # override `last` with regularMarketPrice from the info snapshot.
+    _sw_price_stale: bool = False
+    _sw_price_warning: Optional[str] = None
+    try:
+        from zoneinfo import ZoneInfo as _SWZI
+        _today_et = pd.Timestamp.now(tz=_SWZI("America/New_York")).date()
+        _last_bar_date = close.index[-1]
+        if hasattr(_last_bar_date, "date"):
+            _last_bar_date = _last_bar_date.date()
+        elif hasattr(_last_bar_date, "to_pydatetime"):
+            _last_bar_date = _last_bar_date.to_pydatetime().date()
+        if _last_bar_date < _today_et:
+            _rmp = info.get("regularMarketPrice")
+            if _rmp and float(_rmp) > 0:
+                _sw_price_stale = True
+                last = float(_rmp)
+                _sw_price_warning = (
+                    f"Daily bar data for {t} ends {_last_bar_date} (yesterday). "
+                    "Price updated from quote feed — indicators (MA, RSI, MACD) "
+                    "reflect yesterday's close and will update after today's bar is available."
+                )
+    except Exception:
+        pass
+
     # Guard: MA values must be finite and positive before any division.
     # Insufficient data or all-NaN close series would produce NaN here.
     if not (math.isfinite(ma20) and ma20 > 0):
@@ -2407,6 +2435,8 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "session_date":    session_date,
         "bars_used":       len(raw),
         "last_price":      round(last, 4),
+        "price_stale":     _sw_price_stale,
+        "price_warning":   _sw_price_warning,
         "ma20":            round(ma20, 4),
         "ma50":            round(ma50, 4),
         "dist_ma20_pct":   dist_ma20_pct,

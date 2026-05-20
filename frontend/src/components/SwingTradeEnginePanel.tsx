@@ -844,6 +844,8 @@ export default function SwingTradeEnginePanel({
   const riskPanel = computeRiskPanel(result, m)
 
   const lastPrice = typeof m.last_price === 'number' ? m.last_price : null
+  const priceStale = Boolean(m.price_stale)
+  const priceWarning = typeof m.price_warning === 'string' && m.price_warning ? m.price_warning : null
   const ma20 = typeof m.ma20 === 'number' ? m.ma20 : null
   const ma50 = typeof m.ma50 === 'number' ? m.ma50 : null
   const sessionDate = typeof m.session_date === 'string' ? m.session_date : null
@@ -944,7 +946,18 @@ export default function SwingTradeEnginePanel({
             <div className="mt-1 text-sm text-gray-300">
               {formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} · {result.bias === 'short' ? 'Bearish' : 'Bullish'} swing setup
             </div>
-            {sessionDate ? <div className="mt-1 text-[10px] text-gray-600">{sessionDate}</div> : null}
+            {sessionDate ? (
+              <div className="mt-1 text-[10px] text-gray-600">
+                {sessionDate}
+                {priceStale && <span className="ml-1.5 font-semibold text-amber-500">· price from quote feed</span>}
+              </div>
+            ) : null}
+            {priceStale && priceWarning && (
+              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+                <span className="mt-px shrink-0">⚠</span>
+                <span>{priceWarning}</span>
+              </div>
+            )}
           </div>
           <button
             type="button"
