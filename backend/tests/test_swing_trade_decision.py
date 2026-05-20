@@ -209,6 +209,34 @@ def test_low_iv_good_entry_allows_long_call():
     assert d["final_action"]      == "STRONG_GO"
     assert d["suggested_strategy"] == "LONG_CALL"
 
+def test_strong_go_moderate_iv_suggests_long_call():
+    """Regression: STRONG_GO + iv_rank=50 must return LONG_CALL, not CALL_DEBIT_SPREAD.
+    The old bug placed iv_rank>=50 check before the STRONG_GO check, making
+    LONG_CALL unreachable for any ticker with moderate IV (most of the market).
+    """
+    d = build_swing_trade_decision(
+        "MU", bull_score=9.0, bear_score=1.0,
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=60.0, dist_ma20_pct=1.5, mom_5d_pct=2.0,
+        vol_ratio=1.8, vol_label="bull_expanding",
+        iv_rank=50.0,
+    )
+    assert d["final_action"]       == "STRONG_GO", f"expected STRONG_GO, got {d['final_action']}"
+    assert d["suggested_strategy"] == "LONG_CALL", \
+        f"STRONG_GO + iv_rank=50 should be LONG_CALL, got {d['suggested_strategy']}"
+
+def test_strong_go_iv_60_suggests_spread():
+    """STRONG_GO + iv_rank=60 → CALL_DEBIT_SPREAD (IV crosses the spread threshold)."""
+    d = build_swing_trade_decision(
+        "MU", bull_score=9.0, bear_score=1.0,
+        market_context="MARKET_SUPPORTIVE",
+        rsi_val=60.0, dist_ma20_pct=1.5, mom_5d_pct=2.0,
+        vol_ratio=1.8, vol_label="bull_expanding",
+        iv_rank=60.0,
+    )
+    assert d["suggested_strategy"] == "CALL_DEBIT_SPREAD", \
+        f"STRONG_GO + iv_rank=60 should be CALL_DEBIT_SPREAD, got {d['suggested_strategy']}"
+
 
 # ─── Low liquidity → NO_TRADE ────────────────────────────────────────
 

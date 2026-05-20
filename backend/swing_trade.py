@@ -734,15 +734,25 @@ def build_swing_trade_decision(
         confirmation_needed.append("Wait for broad market recovery before taking long calls")
 
     # ── 9. Suggested strategy ──────────────────────────────────────────
+    # Priority order matters — quality check MUST precede the IV gate.
+    # Old bug: iv_rank>=50 sat above the STRONG_GO check, making LONG_CALL
+    # unreachable for any ticker with elevated IV (i.e. almost everything).
     if final_action == "AVOID_NAKED_CALLS":
-        # Spreads are safer when earnings imminent — still valid trade, just limited
+        # Earnings imminent — spreads only, never naked long premium
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif final_action == "NO_TRADE":
         suggested_strategy = "NO_TRADE"
-    elif iv_rank is not None and iv_rank >= 50:
-        suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif trade_quality_score >= 7.0 and final_action == "STRONG_GO":
-        suggested_strategy = "LONG_CALL" if is_bullish else "LONG_PUT"
+        # Best setups → long if IV is reasonable; spread only when IV is truly
+        # elevated (rank ≥ 60). Note: score is already penalised −1.5 at iv≥70
+        # and −2.5 at iv≥85, so STRONG_GO with very high IV is naturally rare.
+        if iv_rank is not None and iv_rank >= 60:
+            suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
+        else:
+            suggested_strategy = "LONG_CALL" if is_bullish else "LONG_PUT"
+    elif iv_rank is not None and iv_rank >= 50:
+        # Elevated IV on a non-STRONG_GO setup → spread to cap premium risk
+        suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif trade_quality_score >= 5.5:
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif final_action in ("WAIT_PULLBACK", "WAIT_FOR_BREAKDOWN", "WAIT_BREAKOUT", "WATCH_CALL_OR_DEBIT_SPREAD", "WATCH_PUT"):
