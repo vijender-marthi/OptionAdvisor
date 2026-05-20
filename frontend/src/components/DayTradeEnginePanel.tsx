@@ -1073,6 +1073,7 @@ export default function DayTradeEnginePanel({
             'MONITORING': 1,
             'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
             'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3,
+            'EOD_CLOSING': 4,
           }
           const activeState = activeMap[state] ?? 1
           const stateCls = (n: number) =>
