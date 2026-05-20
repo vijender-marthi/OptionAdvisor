@@ -624,10 +624,55 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 avoid = ""
 
     # State machine confirmed all entry gates — clear aspirational confirmations from trader_decision
-    if state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
+    if state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK"):
         confirmations = []
 
     session_phase = str(metrics.get("session_phase") or "")
+
+    # Pullback detection: price has retreated meaningfully from the session extreme while
+    # structure remains intact (still above ORH / below ORL).  ENTRY_ACTIVE should not
+    # show "entry conditions met" when price is actively pulling back from a peak — the
+    # trader who entered at the high is already underwater and new entries are premature.
+    # Signal: price has fallen ≥ PULLBACK_FROM_EXTREME_PCT % from session_high (long)
+    #         or risen ≥ PULLBACK_FROM_EXTREME_PCT % from session_low (short).
+    _PULLBACK_FROM_EXTREME_PCT = 0.30   # % retreat that flags an active pullback
+    if state == "ENTRY_ACTIVE" and session_phase != "EOD_CLOSING":
+        _s_high = float(metrics.get("session_high") or 0)
+        _s_low  = float(metrics.get("session_low")  or 0)
+        if bidir == "long" and _s_high > 0 and last_price is not None:
+            _retreat = (_s_high - last_price) / _s_high * 100
+            if _retreat >= _PULLBACK_FROM_EXTREME_PCT:
+                state   = "ENTRY_PULLBACK"
+                summary = (
+                    f"Price pulled back {_retreat:.1f}% from session high (${_s_high:.2f}) — "
+                    f"structure intact above ORH (${or_high:.2f}) but momentum has reversed. "
+                    "Hold existing positions. Do not add new entries here."
+                )
+                action  = (
+                    f"Watch ORH (${or_high:.2f}) as support. Re-enter or add only when "
+                    "momentum turns positive and a new volume spike confirms continuation."
+                )
+                avoid   = (
+                    f"Do not buy this pullback blindly. "
+                    f"If price closes below ORH (${or_high:.2f}), the breakout has failed — exit immediately."
+                )
+        elif bidir == "short" and _s_low > 0 and last_price is not None:
+            _retreat = (last_price - _s_low) / _s_low * 100
+            if _retreat >= _PULLBACK_FROM_EXTREME_PCT:
+                state   = "ENTRY_PULLBACK"
+                summary = (
+                    f"Price bounced {_retreat:.1f}% from session low (${_s_low:.2f}) — "
+                    f"structure intact below ORL (${or_low:.2f}) but momentum has reversed. "
+                    "Hold existing positions. Do not add new entries here."
+                )
+                action  = (
+                    f"Watch ORL (${or_low:.2f}) as resistance. Re-enter or add only when "
+                    "momentum turns negative and a new volume spike confirms continuation."
+                )
+                avoid   = (
+                    f"Do not short this bounce blindly. "
+                    f"If price closes above ORL (${or_low:.2f}), the breakdown has failed — exit immediately."
+                )
 
     # EOD closing (last 10 min): hard block — no new entries regardless of setup quality.
     if session_phase == "EOD_CLOSING":
@@ -724,10 +769,10 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     # Should enter now
     if state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         should_now = "YES"
+    elif state == "ENTRY_PULLBACK":
+        should_now = "HOLD"
     elif state in ("WAIT_FOR_VOLUME", "VWAP_TEST"):
         should_now = "CONDITIONAL"
-    elif state == "WAIT_BOUNCE_LEVEL":
-        should_now = "NO"
     else:
         should_now = "NO"
 
@@ -737,6 +782,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     if state == "ENTRY_RETEST":
         exec_suitable = ["pullback traders", "OR re-test specialists"]
         exec_not_ideal = ["breakout chasers", "momentum-only entries"]
+    elif state == "ENTRY_PULLBACK":
+        exec_suitable = ["position holders managing existing trade"]
+        exec_not_ideal = ["new entries", "momentum chasers", "breakout buyers"]
     elif state == "ENTRY_ACTIVE" and volume_spike:
         exec_suitable = ["momentum scalpers", "breakout day traders"]
         exec_not_ideal = ["late-session momentum chasers", "conservative entries"]

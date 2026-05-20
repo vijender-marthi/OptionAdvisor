@@ -1072,7 +1072,7 @@ export default function DayTradeEnginePanel({
             'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
             'MONITORING': 1,
             'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
-            'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3,
+            'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
             'EOD_CLOSING': 4,
           }
           const activeState = activeMap[state] ?? 1
@@ -1488,11 +1488,20 @@ export default function DayTradeEnginePanel({
           <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Entry Gate</div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
-              text={confirmationState === 'CLEAR' ? (eg?.should_enter_now === 'YES' ? 'ENTER NOW' : 'READY') : 'PENDING'}
-              tone={confirmationState === 'CLEAR' ? 'green' : 'orange'}
+              text={
+                eg?.should_enter_now === 'HOLD' ? 'HOLD — MANAGE POSITION' :
+                confirmationState === 'CLEAR' ? (eg?.should_enter_now === 'YES' ? 'ENTER NOW' : 'READY') :
+                'PENDING'
+              }
+              tone={
+                eg?.should_enter_now === 'HOLD' ? 'orange' :
+                confirmationState === 'CLEAR' ? 'green' : 'orange'
+              }
             />
             <span className="text-[10px] text-gray-500">
-              {confirmationState === 'CLEAR' ? 'All entry conditions are satisfied.' : 'Waiting for conditions below.'}
+              {eg?.should_enter_now === 'HOLD'
+                ? 'Price pulling back from peak — hold existing position, no new entries.'
+                : confirmationState === 'CLEAR' ? 'All entry conditions are satisfied.' : 'Waiting for conditions below.'}
             </span>
           </div>
           <div className="text-xs text-gray-300 leading-relaxed">
