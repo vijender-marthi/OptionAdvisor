@@ -12,6 +12,8 @@ export interface DayTradeEnginePageState {
   result: DayTradeScanResult | null
   error: string | null
   loading: boolean
+  /** True while a background refresh is in-flight (result already populated). */
+  refreshing: boolean
   glossaryOpen: boolean
 }
 
@@ -28,6 +30,7 @@ export const INITIAL_DAY_TRADE_ENGINE_PAGE: DayTradeEnginePageState = {
   result: null,
   error: null,
   loading: false,
+  refreshing: false,
   glossaryOpen: false,
 }
 

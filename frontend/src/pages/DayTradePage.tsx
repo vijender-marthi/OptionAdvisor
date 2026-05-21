@@ -30,7 +30,7 @@ export default function DayTradePage() {
   } = useApp()
   const [searchParams] = useSearchParams()
   const routerNavigate = useNavigate()
-  const { ticker, loading, error, result, glossaryOpen } = ui
+  const { ticker, loading, refreshing, error, result, glossaryOpen } = ui
 
   const existingPositions = useMemo(
     () => portfolio.filter(p => p.ticker.toUpperCase() === result?.ticker?.toUpperCase() && p.status === 'open'),
@@ -78,12 +78,18 @@ export default function DayTradePage() {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
     }
-    setUi(cur => ({ ...cur, loading: true, error: null, result: null }))
+    // If a result already exists this is a background refresh — keep the stale
+    // result visible so the panel doesn't collapse and rebuild during the fetch.
+    setUi(cur => cur.result
+      ? { ...cur, refreshing: true, error: null }
+      : { ...cur, loading: true, error: null, result: null }
+    )
     try {
       const data = await analyzeDayTrade(sym)
       setUi(cur => ({
         ...cur,
         loading: false,
+        refreshing: false,
         ticker: data.ticker,
         result: data,
       }))
@@ -92,6 +98,7 @@ export default function DayTradePage() {
       setUi(cur => ({
         ...cur,
         loading: false,
+        refreshing: false,
         error: axiosDetail(e),
       }))
     }
@@ -315,10 +322,10 @@ export default function DayTradePage() {
           <button
             type="button"
             onClick={() => void runScan()}
-            disabled={loading}
+            disabled={loading || refreshing}
             className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
+            <RefreshCw size={16} className={refreshing || loading ? 'animate-spin' : ''} /> {refreshing ? 'Refreshing…' : loading ? 'Scanning…' : 'Refresh'}
           </button>
           {lastRefreshed && (
             <span className="text-[10px] text-gray-500 whitespace-nowrap">
@@ -344,7 +351,7 @@ export default function DayTradePage() {
           <button
             type="button"
             onClick={() => runScan()}
-            disabled={loading}
+            disabled={loading || refreshing}
             className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
@@ -392,7 +399,7 @@ export default function DayTradePage() {
             result={result}
             existingPositions={existingPositions}
             onRefresh={() => void runScan()}
-            refreshing={loading}
+            refreshing={refreshing || loading}
             onAddToPortfolio={openPortfolioModal}
             onViewPositions={() => routerNavigate(ROUTES.positions)}
             onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
