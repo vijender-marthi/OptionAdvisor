@@ -382,6 +382,8 @@ html.light .text-sky-400 { color: #0284c7; }
 html.light .text-cyan-300 { color: #0e7490; }
 html.light .text-cyan-400 { color: #0891b2; }
 html.light .text-teal-300 { color: #0f766e; }
+html.light .text-fuchsia-300 { color: #a21caf; }
+html.light .text-fuchsia-300\/90 { color: rgba(162, 28, 175, 0.9); }
 html.light .text-teal-400 { color: #0d9488; }
 html.light .text-emerald-200 { color: #065f46; }
 html.light .text-emerald-200\/90 { color: #065f46; }
@@ -628,6 +630,8 @@ html.light .border-orange-700\/35 { border-color: color-mix(in srgb, #c2410c, 38
 html.light .border-orange-800 { border-color: #fdba74; }
 
 html.light .bg-teal-900\/40 { background-color: color-mix(in srgb, #ccfbf1, 72% transparent); }
+html.light .bg-fuchsia-900\/40 { background-color: color-mix(in srgb, #fae8ff, 60% transparent); }
+html.light .border-fuchsia-800 { border-color: #f0abfc; }
 html.light .border-teal-800 { border-color: #5eead4; }
 
 html.light .bg-violet-600 { background-color: #7c3aed; }
@@ -1811,7 +1815,8 @@ html.light .ai-radar-page .bg-orange-700 .text-white,
 html.light .ai-radar-page .bg-rose-700 .text-white,
 html.light .ai-radar-page .bg-cyan-700 .text-white,
 html.light .ai-radar-page .bg-indigo-700 .text-white,
-html.light .ai-radar-page .bg-teal-700 .text-white { color: #ffffff !important; }
+html.light .ai-radar-page .bg-teal-700 .text-white,
+html.light .ai-radar-page .bg-fuchsia-700 .text-white { color: #ffffff !important; }
 
 /* CAT_INACTIVE buttons */
 html.light .ai-radar-page .bg-gray-800 { background-color: #f1f5f9 !important; }
