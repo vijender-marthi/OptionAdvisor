@@ -152,6 +152,11 @@ export default function Sidebar() {
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+      ],
+    },
+    {
+      label: 'Support',
+      items: [
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
       ],
     },

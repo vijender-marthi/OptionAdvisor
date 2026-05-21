@@ -6,7 +6,7 @@ import {
   Radar, BarChart2, AlertTriangle, CheckCircle2, XCircle, Clock,
   FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, ArrowRight, Zap, LineChart,
   Menu, X, Search, Copy, LayoutDashboard, GitBranch, RefreshCw, Gauge,
-  Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert, Award, Ban,
+  Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert, Award, Ban, Users,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole } from '../permissions'
@@ -14,6 +14,7 @@ import { normalizeUserRole } from '../permissions'
 // ─── Nav structure ──────────────────────────────────────────────────
 
 const NAV_SECTIONS = [
+  { id: 'access-roles',     label: 'Access Roles',              icon: Users },
   { id: 'overview',         label: 'Platform Overview',         icon: LayoutDashboard },
   { id: 'engine-arch',      label: 'Engine Architecture',       icon: GitBranch },
   { id: 'trade-lifecycle',  label: 'Trade Lifecycle',           icon: Activity },
@@ -472,7 +473,8 @@ function strikeLine(x: number, h: number, color: string) {
 
 export default function HelpPage({ embedded }: { embedded?: boolean }) {
   const { user, canAccessPage } = useApp()
-  const isAdmin = normalizeUserRole(user?.role) === 'admin'
+  const userRole = normalizeUserRole(user?.role)
+  const isAdmin = userRole === 'admin' || userRole === 'super_user'
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const visibleNavSections = NAV_SECTIONS.filter(s =>
@@ -643,6 +645,71 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               <StatCard value="15+" label="Strategies" />
               <StatCard value="Real-time" label="Execution Logic" />
               <StatCard value="Risk-Aware" label="Positioning" />
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 0 — ACCESS ROLES
+             ═══════════════════════════════════════════════════════ */}
+          <section id="access-roles" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Users size={18} className="text-violet-400" />
+              Access Roles
+            </h2>
+            <p className="text-xs text-gray-400 leading-relaxed mb-4">
+              Every account is assigned one role. The role controls which engines and tools are visible in the sidebar. Contact your administrator to change your role.
+            </p>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/60 overflow-hidden mb-4">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-gray-800 bg-gray-800/50">
+                    <th className="text-left px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Role</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Regular Trade</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Day Trade</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Swing Trade</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Advanced Tools</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Alpaca Trade</th>
+                    <th className="text-center px-3 py-2 text-gray-400 font-semibold uppercase tracking-wide">Discovery</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {[
+                    { role: 'Administrator', badge: 'bg-amber-900/50 text-amber-300 border-amber-700', regular: true, day: true, swing: true, advanced: true, alpaca: true, discovery: true },
+                    { role: 'Super User',    badge: 'bg-purple-900/50 text-purple-300 border-purple-700', regular: true, day: true, swing: true, advanced: true, alpaca: true, discovery: true },
+                    { role: 'Day Trader',    badge: 'bg-orange-900/50 text-orange-300 border-orange-700', regular: true, day: true, swing: false, advanced: false, alpaca: false, discovery: true },
+                    { role: 'Swing Trader',  badge: 'bg-blue-900/50 text-blue-300 border-blue-700', regular: true, day: false, swing: true, advanced: false, alpaca: false, discovery: true },
+                    { role: 'Finance',       badge: 'bg-cyan-900/40 text-cyan-300 border-cyan-700', regular: true, day: false, swing: false, advanced: false, alpaca: false, discovery: false },
+                    { role: 'User',          badge: 'bg-gray-800 text-gray-400 border-gray-600', regular: true, day: false, swing: false, advanced: false, alpaca: false, discovery: true },
+                  ].map(r => (
+                    <tr key={r.role} className="hover:bg-gray-800/30 transition-colors">
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${r.badge}`}>{r.role}</span>
+                      </td>
+                      {[r.regular, r.day, r.swing, r.advanced, r.alpaca, r.discovery].map((v, i) => (
+                        <td key={i} className="text-center px-3 py-2">
+                          {v
+                            ? <span className="text-emerald-400 font-bold">✓</span>
+                            : <span className="text-gray-700">—</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DocCard icon={<Users size={15} />} title="Advanced Tools">
+                <p className="text-xs text-gray-400 leading-relaxed">Day Trade Engine, Track Intraday, and Swing Trade Engine. Available to Administrator and Super User roles.</p>
+              </DocCard>
+              <DocCard icon={<Users size={15} />} title="Alpaca Trade (Support section)">
+                <p className="text-xs text-gray-400 leading-relaxed">Automated order execution via Alpaca broker integration. Listed under the Support section in the sidebar. Available to Administrator and Super User roles.</p>
+              </DocCard>
+              <DocCard icon={<Users size={15} />} title="Discovery">
+                <p className="text-xs text-gray-400 leading-relaxed">AI Core and Q-Radar stock discovery tools. Hidden for Finance role accounts; visible to all other roles.</p>
+              </DocCard>
+              <DocCard icon={<Users size={15} />} title="Assigning Roles">
+                <p className="text-xs text-gray-400 leading-relaxed">Roles are stored in the database and assigned by an administrator. Set <code className="text-violet-300 bg-gray-800 px-1 rounded">role = 'super_user'</code> (or any valid role string) in the <code className="text-violet-300 bg-gray-800 px-1 rounded">user_state</code> table.</p>
+              </DocCard>
             </div>
           </section>
 
