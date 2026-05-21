@@ -253,11 +253,11 @@ function getSignalInfo(r: SwingTradeScanResult, style: TradeStyle): SignalInfo {
   const dl = r.decision_label; const fa = r.final_action; const bias = r.bias
   const isPosition = style === 'position'
 
-  if (dl === 'QUALITY_LONG' || (bias === 'long' && fa === 'QUALITY_LONG'))
+  if (bias === 'long' && (dl === 'QUALITY_LONG' || fa === 'QUALITY_LONG'))
     return { label: 'BUY', sublabel: isPosition ? 'Strong setup — hold 2-4 weeks' : 'Strong long setup', icon: <TrendingUp size={12} />, badgeCls: 'bg-emerald-900/60 text-emerald-300 border-emerald-700', borderCls: 'border-emerald-800', group: 'buy' }
-  if (dl === 'BULLISH_WAIT_CONFIRMATION' && bias !== 'short')
+  if (dl === 'BULLISH_WAIT_CONFIRMATION' && bias === 'long')
     return { label: isPosition ? 'BUY' : 'BUY — Wait', sublabel: isPosition ? 'Bullish — time to confirm over weeks' : 'Bullish, needs confirmation', icon: <TrendingUp size={12} />, badgeCls: 'bg-green-900/50 text-green-300 border-green-700', borderCls: 'border-green-800', group: 'buy' }
-  if ((dl === 'BULLISH_BUT_EXTENDED' || fa === 'AVOID_CHASE') && bias !== 'short')
+  if ((dl === 'BULLISH_BUT_EXTENDED' || fa === 'AVOID_CHASE') && bias === 'long')
     return { label: isPosition ? 'WAIT PULLBACK' : 'EXTENDED', sublabel: isPosition ? 'Bullish trend — wait for a pullback entry' : "Already ran — don't chase", icon: <AlertTriangle size={12} />, badgeCls: 'bg-orange-900/50 text-orange-300 border-orange-700', borderCls: 'border-orange-800', group: isPosition ? 'buy' : 'skip' }
   if (dl === 'BULLISH_BUT_EARNINGS_RISK')
     return { label: 'EARNINGS RISK', sublabel: isPosition ? 'Bullish long-term, but earnings in the way' : 'Bullish but earnings near', icon: <AlertTriangle size={12} />, badgeCls: 'bg-purple-900/50 text-purple-300 border-purple-700', borderCls: 'border-purple-800', group: 'skip' }
