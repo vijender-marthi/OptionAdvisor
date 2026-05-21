@@ -13,12 +13,12 @@ import { pageToLocation } from '../routing/paths'
 import ThemeToggle from './ThemeToggle'
 import BetaProductTag from './BetaProductTag'
 
-type ProfileRole = 'user' | 'admin' | 'day' | 'swing' | 'finance'
+type ProfileRole = 'user' | 'admin' | 'super_user' | 'day' | 'swing' | 'finance'
 
 function profileRole(role: UserRole | undefined | null): ProfileRole {
   if (!role) return 'user'
   const r = normalizeUserRole(role)
-  if (r === 'admin' || r === 'day' || r === 'swing' || r === 'finance') return r
+  if (r === 'admin' || r === 'super_user' || r === 'day' || r === 'swing' || r === 'finance') return r
   return 'user'
 }
 
@@ -41,6 +41,16 @@ const PROFILE: Record<
     email: 'sidebar-profile-email text-gray-500',
     logout: 'sidebar-profile-logout text-gray-500 hover:text-red-400',
     roleTagClass: null,
+  },
+  super_user: {
+    card:
+      'sidebar-profile-card sidebar-profile-super_user bg-purple-950/45 border border-purple-600/40 ring-1 ring-inset ring-purple-400/15',
+    avatar: 'bg-purple-600',
+    name: 'sidebar-profile-name text-purple-50',
+    email: 'sidebar-profile-email text-purple-200/65',
+    logout: 'sidebar-profile-logout text-purple-200/80 hover:text-red-400',
+    roleTagClass:
+      'sidebar-profile-role-tag text-[10px] font-semibold uppercase tracking-wide text-purple-300/95',
   },
   admin: {
     card:
