@@ -309,6 +309,60 @@ function formatLabel(value: string | null | undefined): string {
   return value.replace(/_/g, ' ')
 }
 
+// ─── Option-A subtitle: combined bias + execution state ──────────────────────
+// Replaces the old "{Bias} intraday setup · {signal_quality}" which was
+// confusing because "GO" (setup grade) and "WATCH" (execution gate) are two
+// different things shown in different places.
+//
+// Mapping:
+//   STRONG GO                  → "Bearish · Confirmed Short"   / "Bullish · Strong Entry"
+//   GO + final_decision READY  → "Bearish · Confirmed Short"   / "Bullish · Enter Now"
+//   GO + final_decision WATCH  → "Bearish · Awaiting Volume"   / "Bullish · Awaiting Volume"
+//   READY / WATCH verdict      → "Bearish · Watching Setup"    / "Bullish · Watching Setup"
+//   AVOID / NO_EDGE            → "Bearish Bias · No Trade"     / "Bullish Bias · No Trade"
+//   MANAGE                     → "Bearish · Managing Position" / "Bullish · Managing Position"
+//   WAIT / no edge             → "No Clear Edge · Waiting"
+// ─────────────────────────────────────────────────────────────────────────────
+function buildIntradaySubtitle(
+  bias:          string | null | undefined,
+  signalQuality: string | null | undefined,
+  finalDecision: string | null | undefined,
+): string {
+  const sq  = (signalQuality || '').toUpperCase()
+  const fd  = (finalDecision  || '').toUpperCase()
+  const dir = bias === 'short' ? 'Bearish' : 'Bullish'
+
+  // Hard vetoes
+  if (fd === 'AVOID' || fd === 'NO_EDGE' || fd.includes('NO-GO') || fd.includes('NO GO'))
+    return `${dir} Bias · No Trade`
+
+  // In-trade management
+  if (fd === 'MANAGE' || fd.includes('SCALE') || fd.includes('EXIT'))
+    return `${dir} · Managing Position`
+
+  // STRONG GO — volume always confirmed at this grade
+  if (sq === 'STRONG GO')
+    return bias === 'short' ? 'Bearish · Strong Short Signal' : 'Bullish · Strong Entry'
+
+  // GO grade — split on whether execution gate is open
+  if (sq === 'GO') {
+    if (fd === 'READY')
+      return bias === 'short' ? 'Bearish · Confirmed Short' : 'Bullish · Enter Now'
+    return `${dir} · Awaiting Volume`
+  }
+
+  // READY (was WATCH verdict) or explicit WATCH final_decision
+  if (sq === 'READY' || fd === 'WATCH')
+    return `${dir} · Watching Setup`
+
+  // Conflict / wait with a known bias
+  if (bias && (fd === 'WAIT' || fd === 'CONFLICT'))
+    return `${dir} · No Edge Yet`
+
+  // Genuine no-edge / no bias
+  return 'No Clear Edge · Waiting'
+}
+
 function normalizedActionState(value: string | null | undefined): string {
   const v = String(value || '').toUpperCase()
   if (!v) return 'WAIT'
@@ -814,7 +868,7 @@ export default function DayTradeEnginePanel({
               )}
             </div>
             <div className="mt-1 text-sm text-gray-300">
-              {result.bias === 'short' ? 'Bearish' : 'Bullish'} intraday setup · {formatLabel(result.signal_quality || result.setup_quality)}
+              {buildIntradaySubtitle(result.bias, result.signal_quality, result.final_decision)}
             </div>
             <div className="text-[10px] text-gray-600 mt-1">
               {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
