@@ -407,7 +407,7 @@ function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle, onRe
               )}
               {swingLevels.breakoutTrigger && (
                 <div className="flex flex-col">
-                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Entry</span>
+                  <span className="text-[9px] text-gray-600 uppercase tracking-wide">Trigger</span>
                   <span className="text-[11px] font-mono text-gray-300">{swingLevels.breakoutTrigger}</span>
                 </div>
               )}
