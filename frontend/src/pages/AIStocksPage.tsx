@@ -177,7 +177,7 @@ function getSignalInfo(r: SwingTradeScanResult, style: TradeStyle): SignalInfo {
       group: 'buy',
     }
   }
-  if (dl === 'BULLISH_WAIT_CONFIRMATION') {
+  if (dl === 'BULLISH_WAIT_CONFIRMATION' && bias !== 'short') {
     return {
       // Position trades have time to absorb a slower confirmation — treat as a BUY
       label: isPosition ? 'BUY' : 'BUY — Wait',
@@ -188,7 +188,7 @@ function getSignalInfo(r: SwingTradeScanResult, style: TradeStyle): SignalInfo {
       group: 'buy',
     }
   }
-  if (dl === 'BULLISH_BUT_EXTENDED' || fa === 'AVOID_CHASE') {
+  if ((dl === 'BULLISH_BUT_EXTENDED' || fa === 'AVOID_CHASE') && bias !== 'short') {
     return {
       // For 2-4 week holds, a brief pullback resolves extension — still watchable
       label: isPosition ? 'WAIT PULLBACK' : 'EXTENDED',
