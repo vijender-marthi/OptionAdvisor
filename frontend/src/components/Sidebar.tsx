@@ -140,7 +140,7 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Advance Trades',
+      label: 'Advanced Trades',
       items: [
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
