@@ -140,23 +140,11 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Tools',
-      items: [
-    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
-      ],
-    },
-    {
-      label: 'Advanced Tools',
+      label: 'Advance Trades',
       items: [
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-      ],
-    },
-    {
-      label: 'Support',
-      items: [
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
       ],
     },
@@ -165,6 +153,13 @@ export default function Sidebar() {
       items: [
         { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
         { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
+      ],
+    },
+    {
+      label: 'Tools',
+      items: [
+    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
       ],
     },
     {
