@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid, ScanLine, X, Clock, TrendingDown, AlertTriangle, Minus, Plus, Layers } from 'lucide-react'
+import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid, ScanLine, X, Clock, TrendingDown, AlertTriangle, Minus, Plus, Layers, Loader2 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { addMyTicker, removeMyTicker, fetchMyTickers } from '../api/commandCenter'
-import type { MyTickerEntry } from '../api/commandCenter'
+import { addMyTicker, removeMyTicker, fetchMyTickers, searchTickers } from '../api/commandCenter'
+import type { MyTickerEntry, SearchTickerResult } from '../api/commandCenter'
 import { analyzeSwingTrade } from '../api/client'
 import type { SwingTradeScanResult } from '../api/client'
 import { computeExecLevels } from '../components/SwingTradeEnginePanel'
+import { TICKER_UNIVERSE } from '../data/tickerUniverse'
+import type { TickerEntry } from '../data/tickerUniverse'
 
 // ─────────────────────────────────────────────────────────────
 // STOCK UNIVERSE — curated AI / Data Center names
@@ -516,10 +518,15 @@ export default function AIStocksPage() {
     try { return JSON.parse(localStorage.getItem('ai_stocks_misc') ?? '[]') } catch { return [] }
   })
   const [showAddForm, setShowAddForm] = useState(false)
-  const [addTicker, setAddTicker]     = useState('')
+  const [addQuery, setAddQuery]       = useState('')
   const [addName, setAddName]         = useState('')
   const [addNote, setAddNote]         = useState('')
   const [addError, setAddError]       = useState('')
+  const [addSelected, setAddSelected] = useState<{ symbol: string; company: string } | null>(null)
+  const [remoteResults, setRemoteResults] = useState<SearchTickerResult[]>([])
+  const [remoteLoading, setRemoteLoading] = useState(false)
+  const remoteIdRef = useRef(0)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // scan state
   const [scanResults, setScanResults] = useState<Map<string, SwingTradeScanResult | 'loading' | 'error'>>(new Map())
@@ -556,27 +563,64 @@ export default function AIStocksPage() {
   const allStocks: StockEntry[] = useMemo(() => [...STOCKS, ...miscStocks], [miscStocks])
 
   const handleAddMisc = useCallback(() => {
-    const sym = addTicker.trim().toUpperCase()
+    const sym = (addSelected?.symbol || addQuery.trim()).toUpperCase()
     if (!sym) { setAddError('Ticker is required'); return }
     if (allStocks.some(s => s.ticker === sym)) { setAddError(`${sym} is already in the list`); return }
     const entry: StockEntry = {
       ticker: sym,
-      name:   addName.trim() || sym,
+      name:   addName.trim() || addSelected?.company || sym,
       note:   addNote.trim() || 'Custom ticker',
       category: 'Misc',
     }
     const updated = [...miscStocks, entry]
     setMiscStocks(updated)
     localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
-    setAddTicker(''); setAddName(''); setAddNote(''); setAddError(''); setShowAddForm(false)
+    setAddQuery(''); setAddName(''); setAddNote(''); setAddError(''); setAddSelected(null); setShowAddForm(false)
     setActiveCategory('Misc')
-  }, [addTicker, addName, addNote, allStocks, miscStocks])
+  }, [addSelected, addQuery, addName, addNote, allStocks, miscStocks])
 
   const handleRemoveMisc = useCallback((ticker: string) => {
     const updated = miscStocks.filter(s => s.ticker !== ticker)
     setMiscStocks(updated)
     localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
   }, [miscStocks])
+
+  // Misc search — local TICKER_UNIVERSE + remote fallback
+  const localResults = useMemo(() => {
+    if (!addQuery.trim()) return []
+    const q = addQuery.trim().toLowerCase()
+    return TICKER_UNIVERSE.filter(
+      e => e.symbol.toLowerCase().includes(q) || e.company.toLowerCase().includes(q)
+    ).slice(0, 30)
+  }, [addQuery])
+
+  useEffect(() => {
+    if (!addQuery.trim() || localResults.length > 0) {
+      setRemoteResults([])
+      setRemoteLoading(false)
+      return
+    }
+    setRemoteLoading(true)
+    const id = ++remoteIdRef.current
+    const timer = setTimeout(async () => {
+      try {
+        const env = await searchTickers(addQuery.trim())
+        if (id === remoteIdRef.current) setRemoteResults(env.data?.results ?? [])
+      } catch {
+        if (id === remoteIdRef.current) setRemoteResults([])
+      } finally {
+        if (id === remoteIdRef.current) setRemoteLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [addQuery, localResults.length])
+
+  const allSearchResults = useMemo(() => {
+    if (!addQuery.trim()) return []
+    const seen = new Set(localResults.map(r => r.symbol.toUpperCase()))
+    const remote = remoteResults.filter(r => !seen.has(r.symbol.toUpperCase()))
+    return [...localResults, ...remote]
+  }, [localResults, remoteResults, addQuery])
 
   // ── scan all visible stocks in batches ──────────────────────
   const handleScan = useCallback(async () => {
@@ -825,55 +869,87 @@ export default function AIStocksPage() {
 
             {showAddForm && (
               <div className="bg-gray-800/60 border border-fuchsia-900/40 rounded-xl p-4 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Ticker *</label>
+                {!addSelected ? (
+                  <>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Search ticker</label>
                     <input
+                      ref={inputRef}
                       type="text"
-                      placeholder="e.g. TSLA"
-                      value={addTicker}
-                      onChange={e => { setAddTicker(e.target.value.toUpperCase()); setAddError('') }}
-                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
-                                 placeholder-gray-600 focus:outline-none focus:border-fuchsia-500 font-mono uppercase"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Company Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Tesla Inc."
-                      value={addName}
-                      onChange={e => setAddName(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
+                      placeholder="Search by symbol or company name..."
+                      value={addQuery}
+                      onChange={e => { setAddQuery(e.target.value); setAddError('') }}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
                                  placeholder-gray-600 focus:outline-none focus:border-fuchsia-500"
                     />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
-                    <input
-                      type="text"
-                      placeholder="Why you're watching this"
-                      value={addNote}
-                      onChange={e => setAddNote(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
-                                 placeholder-gray-600 focus:outline-none focus:border-fuchsia-500"
-                    />
-                  </div>
-                </div>
-                {addError && <p className="text-xs text-red-400">{addError}</p>}
-                <div className="flex gap-2">
-                  <button type="button" onClick={handleAddMisc}
-                    className="px-4 py-2 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs font-semibold border border-fuchsia-600 transition-colors">
-                    Add to Misc
-                  </button>
-                  <button type="button" onClick={() => { setShowAddForm(false); setAddError('') }}
-                    className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs border border-gray-700 transition-colors">
-                    Cancel
-                  </button>
-                </div>
+                    {addError && <p className="text-xs text-red-400">{addError}</p>}
+                    {allSearchResults.length > 0 && (
+                      <div className="max-h-48 space-y-1 overflow-y-auto">
+                        {allSearchResults.map(entry => (
+                          <button key={entry.symbol} type="button"
+                            onClick={() => {
+                              setAddSelected({ symbol: entry.symbol, company: entry.company })
+                              setAddName(entry.company)
+                              setAddQuery(entry.symbol)
+                              setAddError('')
+                            }}
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-800 transition-colors"
+                          >
+                            <span className="text-sm font-semibold text-white">{entry.symbol}</span>
+                            <span className="text-xs text-gray-500 truncate">{entry.company}</span>
+                            {'sector' in entry && <span className="ml-auto text-[10px] text-gray-600 shrink-0">{(entry as TickerEntry).sector || ''}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {remoteLoading && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <Loader2 size={12} className="animate-spin" />
+                        Searching Yahoo Finance...
+                      </div>
+                    )}
+                    {addQuery.trim() && !remoteLoading && allSearchResults.length === 0 && (
+                      <p className="text-xs text-gray-500">No results for '{addQuery.trim()}'</p>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <button type="button" onClick={() => { setShowAddForm(false); setAddError(''); setAddSelected(null); setAddQuery('') }}
+                        className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs border border-gray-700 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 rounded-lg bg-gray-800/60 px-3 py-2">
+                      <span className="text-sm font-semibold text-white">{addSelected.symbol}</span>
+                      <span className="text-xs text-gray-500 truncate">{addSelected.company}</span>
+                      <button type="button" onClick={() => { setAddSelected(null); setAddQuery('') }}
+                        className="ml-auto text-gray-500 hover:text-gray-300">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
+                        <input type="text" placeholder="Why you're watching this"
+                          value={addNote} onChange={e => setAddNote(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                                     placeholder-gray-600 focus:outline-none focus:border-fuchsia-500" />
+                      </div>
+                    </div>
+                    {addError && <p className="text-xs text-red-400">{addError}</p>}
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleAddMisc}
+                        className="px-4 py-2 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs font-semibold border border-fuchsia-600 transition-colors">
+                        Add to Misc
+                      </button>
+                      <button type="button" onClick={() => { setShowAddForm(false); setAddError(''); setAddSelected(null); setAddQuery('') }}
+                        className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs border border-gray-700 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
