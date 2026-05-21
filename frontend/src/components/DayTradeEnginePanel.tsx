@@ -902,7 +902,10 @@ export default function DayTradeEnginePanel({
 
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Action</span>
+              <span title="READY=enter now, WATCH=setup forming, WAIT=not ready, AVOID=do not trade, NO_EDGE=no opportunity"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1">
               <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
                 {formatLabel(result.final_decision)}
@@ -910,19 +913,28 @@ export default function DayTradeEnginePanel({
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Execution</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Execution</span>
+              <span title="Entry timing: volume confirmation, VWAP hold/break, breakout/breakdown pending"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1">
               <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Risk</span>
+              <span title="LOW=manageable, MEDIUM=caution advised, HIGH=reduce position size, EXTREME=avoid"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1">
               <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Market Support</span>
+              <span title="BULLISH=trend supports direction, BEARISH=trend opposes, MIXED=neutral/conflicting"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1">
               <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>
                 {result.market_bias || 'MIXED'}
@@ -930,11 +942,17 @@ export default function DayTradeEnginePanel({
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Confidence</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{result.display_confidence ?? result.confidence} / 100</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Confidence</span>
+              <span title="Composite score 0-100: signal consistency, MA alignment, MACD confirmation, RSI health, volume &amp; VIX context"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
+            <div className="mt-1 text-sm font-bold text-gray-100">{result.confidence ?? 0}/100</div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Next Step</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Best Next Step</span>
+              <span title="Recommended immediate action based on current session phase and entry gate status"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1 text-sm font-bold text-gray-100">{bestNextStep}</div>
           </div>
         </div>

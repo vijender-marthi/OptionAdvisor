@@ -972,27 +972,45 @@ export default function SwingTradeEnginePanel({
 
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Action</span>
+              <span title="TRADE_NOW=enter, WAIT_FOR_PULLBACK=let price retrace, WATCH=monitor, NO_TRADE=skip, AVOID_CHASE=don't chase"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span></div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Risk</span>
+              <span title="LOW=manageable, MEDIUM=caution, HIGH=size down, EXTREME=avoid — based on VIX &amp; volatility regime"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1"><Badge text={result.risk_level} tone={riskBadge?.tone || toneForFinalAction(result.risk_level)} /></div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Market Support</span>
+              <span title="BULLISH=SPY &amp; QQQ align bullish, BEARISH=both bearish, MIXED=split — market backdrop for swing direction"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1"><Badge text={marketSupportive || marketBadge?.text || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} /></div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Signal Strength</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Signal Strength</span>
+              <span title="Confidence score 0-95: higher = more signal alignment. Above 70 is actionable."><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1 text-sm font-bold text-gray-100">{Math.min(result.confidence, 95)} / 100</div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Structure</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Best Structure</span>
+              <span title="Recommended option strategy: LONG_CALL / LONG_PUT / CALL_DEBIT_SPREAD / PUT_DEBIT_SPREAD / CSP / CC"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1 text-sm font-bold text-gray-100">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Expected Hold</div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+              <span>Expected Hold</span>
+              <span title="Estimated holding period for this swing setup: typically 3–5 trading days, up to 2 weeks"><Info size={10} className="text-gray-500 cursor-help" /></span>
+            </div>
             <div className="mt-1 text-sm font-bold text-gray-100">{result.expected_holding_period || '3–5 trading days'}</div>
           </div>
         </div>
