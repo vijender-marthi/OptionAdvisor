@@ -255,6 +255,16 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     else:
         dt_signal = ""
 
+    # Market bias conflict: long setup in bearish market (or short in bullish) is
+    # structurally valid but carries extra risk — cap signal at READY so the tag
+    # never reads "GO" while Market Support is working against the trade.
+    market_against_bias = (
+        (bias == "long" and market_bias == "BEARISH") or
+        (bias == "short" and market_bias == "BULLISH")
+    )
+    if market_against_bias and dt_signal in {"GO", "STRONG GO"}:
+        dt_signal = "READY"
+
     # ── Execution fields ─────────────────────────────────────────────────
     execution_fields: list[dict] = []
     vwap = metrics.get("vwap")
