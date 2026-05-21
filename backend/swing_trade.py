@@ -1183,6 +1183,12 @@ def _build_swing_execution_guidance(
     else:
         should_now = "NO"
 
+    # WATCH final_action means the resolver hasn't confirmed the setup yet — cap at
+    # CONDITIONAL so should_enter_now never says YES while the state machine says WATCH.
+    _WATCH_ACTIONS = {"WATCH", "WATCH_CALL", "WATCH_PUT", "WATCH_CALL_OR_DEBIT_SPREAD"}
+    if final_action in _WATCH_ACTIONS and should_now == "YES":
+        should_now = "CONDITIONAL"
+
     # Entry decision sections
     direction_word = "bullish" if is_bullish else "bearish"
     can_enter = should_now in ("YES", "CONDITIONAL")
