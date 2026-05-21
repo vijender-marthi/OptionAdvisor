@@ -67,7 +67,7 @@ class UserDataRequest(BaseModel):
 
 class UserDataResponse(BaseModel):
     email: str
-    """Effective role: admin | swing | user | finance (stored in SQLite; finance env list optional)."""
+    """Effective role: admin | super_user | day | swing | user | finance (stored in SQLite; finance env list optional)."""
     role: str = "user"
     watchlist: list[dict[str, Any]]
     portfolio: list[dict[str, Any]]
