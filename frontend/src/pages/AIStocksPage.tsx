@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid, ScanLine, X, Clock, TrendingDown, AlertTriangle, Minus } from 'lucide-react'
+import { Star, Check, TrendingUp, Cpu, Cloud, Database, Zap, Wrench, Bot, Search, Cable, Network, LayoutGrid, ScanLine, X, Clock, TrendingDown, AlertTriangle, Minus, Plus, Layers } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { addMyTicker, removeMyTicker, fetchMyTickers } from '../api/commandCenter'
 import type { MyTickerEntry } from '../api/commandCenter'
@@ -11,7 +11,7 @@ import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 // STOCK UNIVERSE — curated AI / Data Center names
 // ─────────────────────────────────────────────────────────────
 
-type Category = 'All' | 'AI Chips' | 'AI Software' | 'Data Centers' | 'AI Power' | 'Semicon Equip' | 'AI Pure-Play' | 'Optical Networking' | 'AI Networking' | 'AI Applications'
+type Category = 'All' | 'AI Chips' | 'AI Software' | 'Data Centers' | 'AI Power' | 'Semicon Equip' | 'AI Pure-Play' | 'Optical Networking' | 'AI Networking' | 'AI Applications' | 'Misc'
 type SignalFilter = 'all' | 'buy' | 'bearish' | 'skip'
 type TradeStyle = 'swing' | 'position'
 
@@ -117,10 +117,12 @@ const CATEGORIES: { id: Category; label: string; icon: React.ReactNode; color: s
   { id: 'Semicon Equip',     label: 'Semicon Equip',      icon: <Wrench size={14} />,  color: 'rose',  desc: 'Tools to build AI chips' },
   { id: 'Optical Networking', label: 'Optical Networking', icon: <Cable size={14} />,   color: 'cyan',    desc: 'High-speed fiber & transceiver plays for AI datacenter interconnects' },
   { id: 'AI Networking',     label: 'AI Networking',      icon: <Network size={14} />, color: 'indigo',  desc: 'Ethernet & switching infrastructure connecting AI GPU clusters' },
-  { id: 'AI Applications',   label: 'AI Applications',    icon: <LayoutGrid size={14} />, color: 'teal', desc: 'Software platforms and tools powered by or built for AI workloads' },
+  { id: 'AI Applications',   label: 'AI Applications',    icon: <LayoutGrid size={14} />, color: 'teal',    desc: 'Software platforms and tools powered by or built for AI workloads' },
+  { id: 'Misc',              label: 'Misc',               icon: <Layers size={14} />,     color: 'fuchsia', desc: 'Custom tickers you added — any sector' },
 ]
 
 const CAT_BADGE: Record<Exclude<Category,'All'>, string> = {
+  'Misc':               'bg-fuchsia-900/40 text-fuchsia-300 border-fuchsia-800',
   'AI Chips':           'bg-blue-900/40 text-blue-300 border-blue-800',
   'AI Software':        'bg-sky-900/40 text-sky-300 border-sky-800',
   'AI Pure-Play':       'bg-emerald-900/40 text-emerald-300 border-emerald-800',
@@ -143,6 +145,7 @@ const CAT_ACTIVE: Record<string, string> = {
   'cyan':    'bg-cyan-700    border-cyan-600    text-white',
   'indigo':  'bg-indigo-700  border-indigo-600  text-white',
   'teal':    'bg-teal-700    border-teal-600    text-white',
+  'fuchsia': 'bg-fuchsia-700 border-fuchsia-600 text-white',
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -302,9 +305,10 @@ interface StockCardProps {
   onToggleWatch: (ticker: string, name: string, currentlyWatched: boolean) => void
   signal: SwingTradeScanResult | 'loading' | 'error' | null
   tradeStyle: TradeStyle
+  onRemoveMisc?: (ticker: string) => void
 }
 
-function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle }: StockCardProps) {
+function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle, onRemoveMisc }: StockCardProps) {
   const { requestAnalysis } = useApp()
   const watched = myTickerSet.has(stock.ticker)
 
@@ -475,6 +479,18 @@ function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle }: St
         >
           {watched ? <Check size={18} /> : <Star size={18} />}
         </button>
+        {onRemoveMisc && (
+          <button
+            type="button"
+            onClick={() => onRemoveMisc(stock.ticker)}
+            aria-label={`Remove ${stock.ticker} from Misc`}
+            title="Remove from Misc list"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-700
+                       bg-gray-800 text-gray-500 hover:border-red-700 hover:text-red-400 hover:bg-red-900/20 transition-all"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -492,6 +508,16 @@ export default function AIStocksPage() {
   const [myTickers, setMyTickers] = useState<MyTickerEntry[]>([])
   const [signalFilter, setSignalFilter] = useState<SignalFilter>('all')
   const [tradeStyle, setTradeStyle] = useState<TradeStyle>('swing')
+
+  // Misc custom tickers — persisted in localStorage
+  const [miscStocks, setMiscStocks] = useState<StockEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ai_stocks_misc') ?? '[]') } catch { return [] }
+  })
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addTicker, setAddTicker]     = useState('')
+  const [addName, setAddName]         = useState('')
+  const [addNote, setAddNote]         = useState('')
+  const [addError, setAddError]       = useState('')
 
   // scan state
   const [scanResults, setScanResults] = useState<Map<string, SwingTradeScanResult | 'loading' | 'error'>>(new Map())
@@ -524,12 +550,38 @@ export default function AIStocksPage() {
     }
   }, [])
 
+  // ── misc ticker management ───────────────────────────────────
+  const allStocks: StockEntry[] = useMemo(() => [...STOCKS, ...miscStocks], [miscStocks])
+
+  const handleAddMisc = useCallback(() => {
+    const sym = addTicker.trim().toUpperCase()
+    if (!sym) { setAddError('Ticker is required'); return }
+    if (allStocks.some(s => s.ticker === sym)) { setAddError(`${sym} is already in the list`); return }
+    const entry: StockEntry = {
+      ticker: sym,
+      name:   addName.trim() || sym,
+      note:   addNote.trim() || 'Custom ticker',
+      category: 'Misc',
+    }
+    const updated = [...miscStocks, entry]
+    setMiscStocks(updated)
+    localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
+    setAddTicker(''); setAddName(''); setAddNote(''); setAddError(''); setShowAddForm(false)
+    setActiveCategory('Misc')
+  }, [addTicker, addName, addNote, allStocks, miscStocks])
+
+  const handleRemoveMisc = useCallback((ticker: string) => {
+    const updated = miscStocks.filter(s => s.ticker !== ticker)
+    setMiscStocks(updated)
+    localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
+  }, [miscStocks])
+
   // ── scan all visible stocks in batches ──────────────────────
   const handleScan = useCallback(async () => {
     if (scanning) return
     scanAbortRef.current = false
 
-    const tickers = STOCKS.map(s => s.ticker)
+    const tickers = allStocks.map(s => s.ticker)
     const total = tickers.length
 
     // mark all as loading
@@ -575,7 +627,7 @@ export default function AIStocksPage() {
 
   // ── filter ──────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    return STOCKS.filter(s => {
+    return allStocks.filter(s => {
       const matchCat = activeCategory === 'All' || s.category === activeCategory
       const q = search.trim().toLowerCase()
       const matchSearch = !q ||
@@ -593,7 +645,7 @@ export default function AIStocksPage() {
     })
   }, [activeCategory, search, signalFilter, scanResults, scanDone])
 
-  const watchedCount = STOCKS.filter(s => myTickerSet.has(s.ticker)).length
+  const watchedCount = allStocks.filter(s => myTickerSet.has(s.ticker)).length
 
   // counts for signal filter badges — recalculate when tradeStyle changes
   const signalCounts = useMemo(() => {
@@ -632,7 +684,7 @@ export default function AIStocksPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
-                  <div className="text-xl font-bold text-white font-mono">{STOCKS.length}</div>
+                  <div className="text-xl font-bold text-white font-mono">{allStocks.length}</div>
                   <div>stocks</div>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-center">
@@ -730,7 +782,7 @@ export default function AIStocksPage() {
           <div className="flex gap-2 flex-wrap items-center">
             <span className="text-xs text-gray-600 mr-1">Signal:</span>
             {([
-              { id: 'all',     label: 'All',      count: STOCKS.length, cls: 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600' },
+              { id: 'all',     label: 'All',      count: allStocks.length, cls: 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600' },
               { id: 'buy',     label: 'Buy',      count: signalCounts.buy,     cls: 'bg-emerald-900/30 border-emerald-800 text-emerald-300 hover:border-emerald-600' },
               { id: 'bearish', label: 'Bearish',  count: signalCounts.bearish, cls: 'bg-red-900/30 border-red-800 text-red-300 hover:border-red-600' },
               { id: 'skip',    label: 'Skip / Wait', count: signalCounts.skip, cls: 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600' },
@@ -749,10 +801,90 @@ export default function AIStocksPage() {
           </div>
         )}
 
+        {/* Add Ticker panel — shown when Misc is active */}
+        {activeCategory === 'Misc' && (
+          <div className="bg-gray-900 border border-fuchsia-900/50 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers size={14} className="text-fuchsia-400" />
+                <span className="text-sm font-semibold text-white">Misc — Custom Tickers</span>
+                <span className="text-xs text-gray-500">({miscStocks.length} added)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowAddForm(v => !v); setAddError('') }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-fuchsia-700/20 hover:bg-fuchsia-700/30
+                           text-fuchsia-300 text-xs font-semibold border border-fuchsia-800 hover:border-fuchsia-600 transition-colors"
+              >
+                <Plus size={13} />
+                Add Ticker
+              </button>
+            </div>
+
+            {showAddForm && (
+              <div className="bg-gray-800/60 border border-fuchsia-900/40 rounded-xl p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Ticker *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. TSLA"
+                      value={addTicker}
+                      onChange={e => { setAddTicker(e.target.value.toUpperCase()); setAddError('') }}
+                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                                 placeholder-gray-600 focus:outline-none focus:border-fuchsia-500 font-mono uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Company Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Tesla Inc."
+                      value={addName}
+                      onChange={e => setAddName(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                                 placeholder-gray-600 focus:outline-none focus:border-fuchsia-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wide mb-1 block">Note (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="Why you're watching this"
+                      value={addNote}
+                      onChange={e => setAddNote(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddMisc()}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white
+                                 placeholder-gray-600 focus:outline-none focus:border-fuchsia-500"
+                    />
+                  </div>
+                </div>
+                {addError && <p className="text-xs text-red-400">{addError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleAddMisc}
+                    className="px-4 py-2 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-xs font-semibold border border-fuchsia-600 transition-colors">
+                    Add to Misc
+                  </button>
+                  <button type="button" onClick={() => { setShowAddForm(false); setAddError('') }}
+                    className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs border border-gray-700 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {miscStocks.length === 0 && !showAddForm && (
+              <p className="text-xs text-gray-600">No custom tickers yet. Click <span className="text-fuchsia-400">Add Ticker</span> to add any stock you want to track and scan.</p>
+            )}
+          </div>
+        )}
+
         {/* Category filter pills */}
         <div className="flex gap-2 flex-wrap">
           {CATEGORIES.map(cat => {
-            const count = cat.id === 'All' ? STOCKS.length : STOCKS.filter(s => s.category === cat.id).length
+            const count = cat.id === 'All' ? allStocks.length : allStocks.filter(s => s.category === cat.id).length
             const isActive = activeCategory === cat.id
             return (
               <button
@@ -807,6 +939,7 @@ export default function AIStocksPage() {
                 onToggleWatch={handleToggleWatch}
                 signal={scanResults.get(stock.ticker) ?? null}
                 tradeStyle={tradeStyle}
+                onRemoveMisc={stock.category === 'Misc' ? handleRemoveMisc : undefined}
               />
             ))}
           </div>
