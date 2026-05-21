@@ -719,7 +719,7 @@ export default function AIStocksPage() {
                 <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center">
                   <Bot size={18} className="text-violet-400" />
                 </div>
-                <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">AI & Data Center Radar</h1>
+                <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">AI &amp; Core Stocks</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
                 Curated universe of AI infrastructure stocks. Scan for live buy/sell signals — powered by the Swing Trade engine.
