@@ -320,10 +320,12 @@ function StockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle, onRe
     : null
 
   const swingLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'swing'
+    && signalInfo?.group !== 'bearish'
     ? computeExecLevels(signal, signal.metrics as Record<string, unknown>)
     : null
 
   const positionLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'position'
+    && signalInfo?.group !== 'bearish'
     ? computePositionLevels(signal)
     : null
 

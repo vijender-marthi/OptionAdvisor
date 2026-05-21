@@ -304,8 +304,8 @@ function QStockCard({ stock, myTickerSet, onToggleWatch, signal, tradeStyle }: Q
   const watched = myTickerSet.has(stock.ticker)
 
   const signalInfo     = signal && signal !== 'loading' && signal !== 'error' ? getSignalInfo(signal, tradeStyle) : null
-  const swingLevels    = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'swing'    ? computeExecLevels(signal, signal.metrics as Record<string, unknown>) : null
-  const positionLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'position' ? computePositionLevels(signal) : null
+  const swingLevels    = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'swing'    && signalInfo?.group !== 'bearish' ? computeExecLevels(signal, signal.metrics as Record<string, unknown>) : null
+  const positionLevels = signal && signal !== 'loading' && signal !== 'error' && tradeStyle === 'position' && signalInfo?.group !== 'bearish' ? computePositionLevels(signal) : null
   const lastPrice      = signal && signal !== 'loading' && signal !== 'error' ? (signal.metrics as Record<string, unknown>).last_price : null
 
   const borderCls = signalInfo
