@@ -11,7 +11,7 @@ export function normalizeUserRole(raw: string | undefined | null): UserRole {
  * Access tiers by feature:
  *
  *   admin      → Day Trade + Swing Trade + Regular (Strategy Finder) + all admin tools
- *   super_user → Day Trade + Swing Trade + Regular + Advanced Tools (incl. auto-trade) — no admin-mgmt tools
+ *   super_user → Day Trade + Swing Trade + Regular + Advanced Tools — no admin/alpaca tools
  *   day        → Day Trade + Regular — no Swing Trade or admin tools
  *   swing      → Swing Trade + Regular — no Day Trade or admin tools
  *   user       → Regular (Strategy Finder) only — no Day or Swing Trade
@@ -60,7 +60,7 @@ export function canAccessPage(role: UserRole | undefined, page: Page): boolean {
     || page === 'activate'
   ) return true
 
-  if (ADMIN_ONLY.has(page))      return r === 'admin' || r === 'super_user'
+  if (ADMIN_ONLY.has(page))      return r === 'admin'
   if (DAY_AND_ABOVE.has(page))   return r === 'admin' || r === 'super_user' || r === 'day'
   if (SWING_AND_ABOVE.has(page)) return r === 'admin' || r === 'super_user' || r === 'swing'
   if (DAY_OR_SWING.has(page))    return r === 'admin' || r === 'super_user' || r === 'day' || r === 'swing'
