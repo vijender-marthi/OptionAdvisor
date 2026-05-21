@@ -130,18 +130,12 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Discovery',
-      items: [
-        { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
-        { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
-      ],
-    },
-    {
       label: 'Tools',
       items: [
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
     { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
         { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
+        { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
       ],
     },
     {
@@ -154,9 +148,10 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Support',
+      label: 'Discovery',
       items: [
-        { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
+        { id: 'ai-stocks', label: 'AI Core', icon: <BrainCircuit size={18} /> },
+        { id: 'q-radar', label: 'Q - Core', icon: <Radar size={18} /> },
       ],
     },
   ]
