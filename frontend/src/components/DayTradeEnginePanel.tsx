@@ -931,11 +931,17 @@ export default function DayTradeEnginePanel({
                 <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['red']}`}>
                   Exit
                 </span>
-              ) : activeStateNum === 2 ? (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['green']}`}>
-                  Ready
-                </span>
-              ) : (
+              ) : activeStateNum === 2 ? (() => {
+                const execTxt = (result.execution_timing || '').toUpperCase()
+                const enterNow = execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
+                return enterNow
+                  ? <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide animate-pulse ${TONE_BADGE['green']}`}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />ENTER NOW
+                    </span>
+                  : <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['green']}`}>
+                      Ready
+                    </span>
+              })() : (
                 <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
                   {formatLabel(result.final_decision)}
                 </span>
@@ -948,9 +954,15 @@ export default function DayTradeEnginePanel({
               <span title="State 2=entry window open (await volume/breakout), State 3=in trade (manage stop), State 4=scale out"><Info size={10} className="text-gray-500 cursor-help" /></span>
             </div>
             <div className="mt-1">
-              {activeStateNum === 2 ? (
-                <Badge text={result.execution_timing && result.execution_timing !== 'WATCH' ? result.execution_timing : 'AWAIT VOLUME'} tone="orange" />
-              ) : activeStateNum === 3 ? (
+              {activeStateNum === 2 ? (() => {
+                const execTxt = (result.execution_timing || '').toUpperCase()
+                const enterNow = execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
+                return enterNow
+                  ? <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide animate-pulse ${TONE_BADGE['green']}`}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />ENTER NOW
+                    </span>
+                  : <Badge text={execTxt && execTxt !== 'WATCH' ? execTxt : 'AWAIT VOLUME'} tone="orange" />
+              })() : activeStateNum === 3 ? (
                 <Badge text="MANAGE STOP" tone="orange" />
               ) : activeStateNum === 4 ? (
                 <Badge text="SCALE OUT" tone="red" />
