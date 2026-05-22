@@ -9,7 +9,6 @@ import type { PortfolioPosition } from '../types'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
-import { MarketTimeGateBanner } from './MarketTimeGate'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -1352,7 +1351,6 @@ export default function DayTradeEnginePanel({
           </div>
         )}
 
-        <MarketTimeGateBanner tradeType="day" />
 
         <div className="flex flex-wrap items-center gap-2">
           {inPosition ? (

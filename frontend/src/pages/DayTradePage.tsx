@@ -7,6 +7,7 @@ import {
 import { analyzeDayTrade, enterActiveTrade } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
+import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -356,6 +357,8 @@ export default function DayTradePage() {
           )}
         </div>
       </header>
+
+      <MarketTimeGateBanner tradeType="day" />
 
       {/* Scan */}
       <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
