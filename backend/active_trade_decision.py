@@ -17,6 +17,7 @@ State → action (display) mapping
 from __future__ import annotations
 
 import math
+from datetime import date, datetime
 from typing import Any, Literal, Optional
 
 Side = Literal["CALL", "PUT"]
@@ -51,6 +52,17 @@ def _side(x: Any) -> Side:
     return "PUT" if s == "PUT" else "CALL"
 
 
+def _dte(expiry: Any) -> Optional[int]:
+    """Days to expiry from today. Returns None if unparseable."""
+    if expiry is None:
+        return None
+    try:
+        exp = expiry if isinstance(expiry, date) else datetime.strptime(str(expiry)[:10], "%Y-%m-%d").date()
+        return max(0, (exp - date.today()).days)
+    except (ValueError, TypeError):
+        return None
+
+
 def _market_stress(spy: Optional[float], qqq: Optional[float], vix: Optional[float]) -> bool:
     if vix is not None and vix >= 32:
         return True
@@ -70,7 +82,7 @@ def build_active_trade_decision(
     Build a deterministic state + UX payload for one active position.
 
     position_row: ticker, side (CALL|PUT), entry_price (option premium at entry), optional
-      entry_underlying_px, opened_at_ms, id
+      entry_underlying_px, opened_at_ms, id, strike, expiry
     market_context: spy_change_pct, qqq_change_pct, spy_session_change_pct, qqq_session_change_pct, vix
     intraday_data: underlying_last or last_price, session_change_pct, vwap, or_high, or_low,
       or_breakout (above|below|inside), momentum_pct, volume_spike, rs_vs_qqq_pct (optional)
@@ -79,6 +91,8 @@ def build_active_trade_decision(
     trend_direction (str), intraday_snapshot_note (str; short clarification on price basis).
     """
     side = _side(position_row.get("side"))
+    dte = _dte(position_row.get("expiry") or position_row.get("option_expiry"))
+    strike = _f(position_row.get("strike"))
 
     spy_d = _f(market_context.get("spy_change_pct"))
     qqq_d = _f(market_context.get("qqq_change_pct"))
@@ -150,14 +164,46 @@ def build_active_trade_decision(
 
     if side == "CALL":
         # Invalidation: breakdown below opening range (bearish vs long-delta thesis)
+        # With meaningful DTE remaining (>5 days), a shallow breach of OR low is a warning,
+        # not an immediate invalidation — give the trade room to recover to its strike.
         if or_state == "below" or last < or_low:
-            return finish(
-                "EXIT_WEAKNESS",
-                "Consider exit / trim",
-                "Price is below the opening range / range low — bullish thesis is challenged.",
-                "red",
-                ["Review stop / spread: underlying broke the session opening structure to the downside."],
-            )
+            orl_breach_pct = ((or_low - last) / or_low * 100) if or_low and or_low > 0 else 0.0
+            # Moneyness: how far is underlying from strike (negative = OTM for CALL)
+            otm_pct = ((last - strike) / strike * 100) if strike and strike > 0 else None
+            has_time = dte is not None and dte > 5
+            shallow_breach = orl_breach_pct < 1.0  # within 1% of OR low
+            near_strike = otm_pct is not None and otm_pct > -8.0  # not deeply OTM
+
+            if has_time and shallow_breach and near_strike:
+                dte_note = f"{dte}d to expiry" if dte is not None else "time remaining"
+                otm_note = (
+                    f"${strike:.2f} strike is {abs(otm_pct):.1f}% away — manageable with {dte_note}."
+                    if otm_pct is not None and otm_pct < 0
+                    else f"${strike:.2f} strike — underlying is at/near strike with {dte_note}."
+                    if otm_pct is not None
+                    else f"Strike has {dte_note}."
+                )
+                return finish(
+                    "WEAKENING",
+                    "Consider exit / trim",
+                    f"Price slipped below OR low — bullish thesis is under pressure but a shallow breach with time remaining warrants monitoring over an immediate exit. {otm_note}",
+                    "orange",
+                    [
+                        "Trim to a core position rather than full exit if the breach is less than 1% below OR low.",
+                        "A reclaim of OR low restores the setup — watch for a bounce with volume.",
+                        "Exit fully if price loses another 1-2% from here or fails to reclaim OR low by midday.",
+                    ],
+                )
+            else:
+                depth_note = f" ({orl_breach_pct:.1f}% below OR low)" if orl_breach_pct > 0 else ""
+                time_note = f" ({dte}d to expiry)" if dte is not None else ""
+                return finish(
+                    "EXIT_WEAKNESS",
+                    "Consider exit / trim",
+                    f"Price is below the opening range / range low{depth_note}{time_note} — bullish thesis is challenged.",
+                    "red",
+                    ["Review stop / spread: underlying broke the session opening structure to the downside."],
+                )
         # Soft failure: lost VWAP with weak RS and negative momentum
         if below_vwap and mom < -0.1 and (rs is not None and rs < -0.35):
             return finish(
@@ -236,13 +282,42 @@ def build_active_trade_decision(
     # PUT
     if side == "PUT":
         if or_state == "above" or last > or_high:
-            return finish(
-                "EXIT_WEAKNESS",
-                "Consider exit / trim",
-                "Price is above the opening range high — bearish thesis is challenged.",
-                "red",
-                ["Review risk: underlying reclaimed the opening structure to the upside."],
-            )
+            orh_breach_pct = ((last - or_high) / or_high * 100) if or_high and or_high > 0 else 0.0
+            otm_pct = ((strike - last) / strike * 100) if strike and strike > 0 else None  # negative = OTM for PUT
+            has_time = dte is not None and dte > 5
+            shallow_breach = orh_breach_pct < 1.0
+            near_strike = otm_pct is not None and otm_pct > -8.0
+
+            if has_time and shallow_breach and near_strike:
+                dte_note = f"{dte}d to expiry" if dte is not None else "time remaining"
+                otm_note = (
+                    f"${strike:.2f} strike is {abs(otm_pct):.1f}% away — manageable with {dte_note}."
+                    if otm_pct is not None and otm_pct < 0
+                    else f"${strike:.2f} strike — underlying is at/near strike with {dte_note}."
+                    if otm_pct is not None
+                    else f"Strike has {dte_note}."
+                )
+                return finish(
+                    "WEAKENING",
+                    "Consider exit / trim",
+                    f"Price edged above OR high — bearish thesis is under pressure but a shallow breach with time remaining warrants monitoring. {otm_note}",
+                    "orange",
+                    [
+                        "Trim to a core position rather than full exit if the breach is less than 1% above OR high.",
+                        "A rejection back below OR high restores the setup — watch for a reversal with volume.",
+                        "Exit fully if price extends another 1-2% above OR high or fails to roll by midday.",
+                    ],
+                )
+            else:
+                depth_note = f" ({orh_breach_pct:.1f}% above OR high)" if orh_breach_pct > 0 else ""
+                time_note = f" ({dte}d to expiry)" if dte is not None else ""
+                return finish(
+                    "EXIT_WEAKNESS",
+                    "Consider exit / trim",
+                    f"Price is above the opening range high{depth_note}{time_note} — bearish thesis is challenged.",
+                    "red",
+                    ["Review risk: underlying reclaimed the opening structure to the upside."],
+                )
         if above_vwap and mom > 0.08 and (rs is not None and rs > 0.35):
             return finish(
                 "EXIT_WEAKNESS",
