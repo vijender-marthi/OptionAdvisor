@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Activity, Bell, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { getEmailStatus, sendTestEmail, clearAllCaches } from '../api/client'
+import { getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
-  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'purple' } catch { return 'purple' } })
+  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'emerald' } catch { return 'emerald' } })
   const [deployedVersion, setDeployedVersion] = useState('—')
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
@@ -85,6 +85,19 @@ export default function SettingsPage() {
     envFile: string
     envFileExists: boolean
   } | null>(null)
+
+  // Load accent from backend on mount
+  useEffect(() => {
+    getUserAccent().then(a => {
+      if (a) { setAccent(a); try { localStorage.setItem('oa_accent', a) } catch {} }
+    }).catch(() => {})
+  }, [])
+
+  const handleSetAccent = useCallback((a: string) => {
+    setAccent(a)
+    try { localStorage.setItem('oa_accent', a) } catch {}
+    setUserAccent(a).catch(() => {})
+  }, [])
 
   useEffect(() => {
     getEmailStatus()
@@ -217,7 +230,7 @@ export default function SettingsPage() {
             { id: 'rose', label: 'Rose', color: 'bg-rose-500' },
             { id: 'orange', label: 'Orange', color: 'bg-orange-500' },
           ].map(a => (
-            <button key={a.id} onClick={() => setAccent(a.id)}
+            <button key={a.id} onClick={() => handleSetAccent(a.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 accent === a.id
                   ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'

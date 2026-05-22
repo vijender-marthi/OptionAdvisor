@@ -1992,3 +1992,10 @@ html.light .ai-radar-page .bg-gray-800 { background-color: #f1f5f9 !important; }
 /* Hover states */
 html.light .ai-radar-page .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
 html.light .ai-radar-page .hover\:border-amber-600:hover { border-color: #d97706 !important; }
+
+/* Keep text white on colored action buttons in light mode */
+html.light .bg-orange-600.text-white { color: #ffffff !important; }
+html.light .bg-emerald-600.text-white { color: #ffffff !important; }
+html.light .bg-violet-600.text-white { color: #ffffff !important; }
+html.light .bg-orange-600 .text-white { color: #ffffff !important; }
+html.light .bg-emerald-600 .text-white { color: #ffffff !important; }

@@ -4150,3 +4150,23 @@ def admin_flush_cache(auth_email: str = Depends(require_access_email)):
         return {"ok": True, "message": "Cache flushed"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ─── User accent preference ───────────────────────────────────────────────
+
+@app.get("/api/user/accent")
+def get_user_accent(auth_email: str = Depends(require_access_email)):
+    """Get the user's selected accent color."""
+    state = get_user_state(normalize_email(auth_email))
+    return {"accent": state.get("theme_accent", "emerald")}
+
+
+@app.put("/api/user/accent")
+def set_user_accent(auth_email: str = Depends(require_access_email), body: dict = None):
+    """Save the user's selected accent color."""
+    from fastapi import Body
+    body = body or {}
+    email = normalize_email(auth_email)
+    accent = str(body.get("accent", "emerald"))
+    save_user_state(email, theme_accent=accent)
+    return {"ok": True, "accent": accent}

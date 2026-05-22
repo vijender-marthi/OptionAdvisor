@@ -112,6 +112,14 @@ def _migrate_user_state_my_tickers(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_user_state_theme_accent(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "theme_accent" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN theme_accent TEXT NOT NULL DEFAULT 'emerald'"
+        )
+
+
 def _migrate_user_state_backfill_my_tickers(conn: sqlite3.Connection) -> None:
     rows = conn.execute(
         "SELECT email, watchlist_json, day_trade_watchlist_json, swing_trade_watchlist_json, my_tickers_json FROM user_state"
@@ -310,6 +318,7 @@ def init_db() -> None:
         _migrate_user_state_swing_trade_watchlist(conn)
         _migrate_user_state_alert_email_enabled(conn)
         _migrate_user_state_my_tickers(conn)
+        _migrate_user_state_theme_accent(conn)
         _migrate_user_state_backfill_my_tickers(conn)
         _migrate_user_state_clear_old_watchlist(conn)
         conn.execute(

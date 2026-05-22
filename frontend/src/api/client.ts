@@ -474,6 +474,15 @@ export const clearAllCaches = async (): Promise<{
   return data.data || data
 }
 
+export const getUserAccent = async (): Promise<string> => {
+  const { data } = await api.get('/user/accent')
+  return data.accent || 'emerald'
+}
+
+export const setUserAccent = async (accent: string): Promise<void> => {
+  await api.put('/user/accent', { accent })
+}
+
 export const sendTestEmail = async (
   email: string,
   userName?: string,
