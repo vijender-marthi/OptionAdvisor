@@ -1568,21 +1568,23 @@ export default function PositionsCenter() {
       </header>
 
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <button type="button" onClick={() => setPlFilter(plFilter === 'total' ? null : 'total')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'total' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
-          <div className="text-xs uppercase tracking-wide text-gray-400">Total Net P&L</div>
-          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(totalPl))}`}>{fmtUsd(totalPl)}</div>
-          {totalPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(totalPlPct))}`}>{fmtPct(totalPlPct)}</div>}
-        </button>
-        <button type="button" onClick={() => setPlFilter(plFilter === 'week' ? null : 'week')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'week' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
-          <div className="text-xs uppercase tracking-wide text-gray-400">Week P&L</div>
-          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(weekPl))}`}>{fmtUsd(weekPl)}</div>
-          {weekPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(weekPlPct))}`}>{fmtPct(weekPlPct)}</div>}
-        </button>
-        <button type="button" onClick={() => setPlFilter(plFilter === 'day' ? null : 'day')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'day' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
-          <div className="text-xs uppercase tracking-wide text-gray-400">Day P&L</div>
-          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(dayPl))}`}>{fmtUsd(dayPl)}</div>
-          {dayPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(dayPlPct))}`}>{fmtPct(dayPlPct)}</div>}
-        </button>
+        {[
+          { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
+          { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
+          { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
+        ].map(m => (
+          <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
+            className={`rounded-lg border px-3 py-2 text-left transition-all ${
+              plFilter === m.key
+                ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
+                : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
+            }`}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
+            <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
+            {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
+          </button>
+        ))}
         <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
