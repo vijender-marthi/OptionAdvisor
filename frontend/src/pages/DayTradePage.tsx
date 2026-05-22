@@ -46,6 +46,8 @@ export default function DayTradePage() {
   const [portfolioNotes, setPortfolioNotes] = useState('')
   const [portfolioErr, setPortfolioErr] = useState<string | null>(null)
   const [portfolioSubmitting, setPortfolioSubmitting] = useState(false)
+  const [portfolioDfltDte, setPortfolioDfltDte] = useState(7)
+  const [portfolioBias, setPortfolioBias] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
   const [entryPrice, setEntryPrice] = useState('')
@@ -174,11 +176,23 @@ export default function DayTradePage() {
 
   const openPortfolioModal = useCallback(() => {
     if (!result) return
+    const eg = result.entry_guidance as Record<string, unknown> | null | undefined
+    const m = result.metrics as Record<string, unknown>
+    const lastU = typeof m.last_price === 'number' ? m.last_price : 0
+    const bias = result.bias ?? 'neutral'
+    // Next Friday as default expiry
+    const nextFri = new Date()
+    nextFri.setDate(nextFri.getDate() + ((5 + 7 - nextFri.getDay()) % 7 || 7))
+    const dfltExpiry = nextFri.toISOString().slice(0, 10)
+    const dfltDte = Math.ceil((nextFri.getTime() - Date.now()) / 86400000)
     setPortfolioContracts('1')
-    setPortfolioEntryPrice('')
-    setPortfolioExpiry('')
+    setPortfolioEntryPrice(eg?.entry_zone ? String(eg.entry_zone) : lastU > 0 ? String(lastU) : '')
+    setPortfolioExpiry(dfltExpiry)
     setPortfolioNotes('')
     setPortfolioErr(null)
+    // Store defaults for submit
+    setPortfolioDfltDte(dfltDte)
+    setPortfolioBias(bias)
     setPortfolioOpen(true)
   }, [result])
 
@@ -207,17 +221,23 @@ export default function DayTradePage() {
       expiryOut = ex
     }
     const lastU = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price as number : 0
-    const bias = result.bias ?? 'neutral'
-    const direction = bias === 'short' ? 'bearish' : 'bullish'
+    const bias = portfolioBias || result.bias || 'neutral'
+    const direction = bias === 'short' ? 'Bearish' : 'Bullish'
+    const strategy = bias === 'short' ? 'Long Put' : 'Long Call'
+    const dteVal = expiryOut
+      ? Math.max(1, Math.ceil((new Date(expiryOut + 'T00:00:00').getTime() - Date.now()) / 86400000))
+      : portfolioDfltDte || 1
     setPortfolioSubmitting(true)
     addManualPosition({
       ticker: result.ticker,
       companyName: result.company_name ?? result.ticker,
-      strategy: 'Day Trade',
+      strategy,
       bias: direction,
       legs: [],
-      expiry: expiryOut || new Date().toISOString().slice(0, 10),
-      dte: 0,
+      expiry: expiryOut || (() => {
+        const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
+      })(),
+      dte: dteVal,
       net_credit: ep > 0 ? -ep : 0,
       spread_width: 0,
       max_profit: 0,
@@ -229,6 +249,8 @@ export default function DayTradePage() {
       breakeven_lower: 0,
       breakeven_upper: 0,
       entryPrice: lastU,
+      target1: result.entry_guidance?.scalp_target ?? undefined,
+      stopLoss: result.entry_guidance?.risk_below ?? undefined,
       source: 'day',
       notes: portfolioNotes.trim() || undefined,
     })
@@ -236,7 +258,7 @@ export default function DayTradePage() {
     setPortfolioOpen(false)
     setNotice({ tone: 'success', message: `${result.ticker} day trade added to Positions Center.` })
     navigate('positions')
-  }, [result, portfolioContracts, portfolioEntryPrice, portfolioExpiry, portfolioNotes, addManualPosition, navigate])
+  }, [result, portfolioContracts, portfolioEntryPrice, portfolioExpiry, portfolioNotes, portfolioDfltDte, portfolioBias, addManualPosition, navigate])
 
   const submitEnter = useCallback(async () => {
     if (!result) return

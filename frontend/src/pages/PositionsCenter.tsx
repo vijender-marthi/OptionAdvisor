@@ -183,6 +183,11 @@ function fmtUsd(n: unknown): string {
   return `${sign}$${Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function safeDte(v: unknown, fallback: number = 99): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) && n > 0 && n < 9999 ? n : fallback
+}
+
 function fmtPct(n: unknown): string {
   if (n == null || n === '') return '—'
   const x = typeof n === 'number' ? n : Number(n)
@@ -201,7 +206,7 @@ function deriveAiStatus(pos: PortfolioPosition): string {
   if (pos.status === 'closed') return 'EXIT'
   const bias = (pos.bias || '').toLowerCase()
   const strat = (pos.strategy || '').toLowerCase()
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   if (bias.includes('bull') && strat.includes('call')) return 'HOLD'
   if (bias.includes('bear') && strat.includes('put')) return 'HOLD'
   if ((pos.prob_of_profit ?? 50) >= 70) return 'HOLD'
@@ -214,7 +219,7 @@ function deriveAiStatus(pos: PortfolioPosition): string {
 
 function deriveAiGuidance(pos: PortfolioPosition): string {
   const status = deriveAiStatus(pos)
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   const strat = (pos.strategy || '').toLowerCase()
   const bias = (pos.bias || '').toLowerCase()
   if (status === 'EXIT SOON') return `EXIT SOON — ${dte} DTE remaining. Theta is destroying value daily; close or roll to a later expiry now. If rolling, target ≥ 21 DTE on the new leg.`
@@ -243,7 +248,7 @@ function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
     'Short Put', 'Short Call', 'Covered Call', 'Covered Put',
   ])
   const isCredit = SELLING_STRATS.has(pos.strategy)
-  const dte = pos.dte ?? 0
+  const dte = safeDte(pos.dte, 0)
 
   // ── User-entered execution map levels (highest priority) ─────────────
   // If the trader has entered target1/target2/breakout/stopLoss, use them
@@ -620,7 +625,7 @@ function deriveActionAlert(
   pnlData: { pnl: number; pnl_pct: number } | null | undefined,
   aiAnalysis: AiPositionAnalysis | null | undefined,
 ): ActionAlert {
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   const pnlPct = pnlData?.pnl_pct ?? 0
   const pnlDollar = pnlData?.pnl ?? 0
   const strat = (pos.strategy || '').toLowerCase()
@@ -687,8 +692,8 @@ function TradingPositionCard({
   const aiStatus = deriveAiStatus(pos)
   const sourceKind = deriveEngineSource(pos)
   const guidance = deriveAiGuidance(pos)
-  const isExpiringSoon = (pos.dte ?? 99) <= 7
-  const dteForDisplay = pos.dte != null ? String(pos.dte) : '—'
+  const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
+  const dteForDisplay = safeDte(pos.dte, 0) > 0 ? String(safeDte(pos.dte, 99)) : '—'
 
   // For closed positions, always prefer the user-entered realized_pnl over the
   // server-calculated perPositionPnl (which uses the old pnlPct-based formula).
@@ -772,7 +777,7 @@ function TradingPositionCard({
             {pos.bias && <span className="opacity-60">{pos.bias.replace(/_/g, ' ')}</span>}
             <span className="opacity-40">·</span>
             <span>{pos.contracts}× {pos.expiry || '—'}</span>
-            {pos.dte != null && (
+            {safeDte(pos.dte, 0) > 0 && (
               <span className={isExpiringSoon ? 'font-semibold text-amber-400' : ''}>{dteForDisplay} DTE</span>
             )}
             {pos.status === 'open' && creditTotal > 0 && (
@@ -2268,7 +2273,7 @@ function EditPositionModal({
     const entryPrice = parseFloat(form.entryStockPrice) || pos.entryPrice
     const dteVal = form.expiry
       ? Math.ceil((new Date(form.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
-      : pos.dte
+      : safeDte(pos.dte, 0)
 
     const parsedRealizedPnl = closeRealizedPnl !== '' ? parseFloat(closeRealizedPnl) : undefined
     const parsedRealizedPnlPct = closeRealizedPnlPct !== '' ? parseFloat(closeRealizedPnlPct) : undefined

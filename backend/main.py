@@ -1068,20 +1068,55 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
 
         # --- State transition alert (Day Trade) ---
         eg_state = str(getattr(r.entry_guidance, "state", "") or "")
+        now_state_num = _day_trade_active_state(eg_state)
         prev_state_row = get_ticker_state_last(email, t, "DAY")
+        prev_state_num = int((prev_state_row or {}).get("state_num") or 1) if prev_state_row else 0
         prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
-        if eg_state and eg_state != prev_action:
+        if eg_state and now_state_num != prev_state_num and prev_state_row is not None:
+            direction = _STATE_DIRECTION.get(
+                (prev_state_num, now_state_num),
+                f"{_STATE_LABEL.get(prev_state_num, str(prev_state_num))} → {_STATE_LABEL.get(now_state_num, str(now_state_num))}"
+            )
+            now_ms_sc = int(time.time() * 1000)
+            eg_dict = r.entry_guidance if isinstance(r.entry_guidance, dict) else {}
             alert_center_create(
                 email,
                 alert_group="day-trade",
                 severity="INFO",
                 engine="DAY_TRADE",
                 signal="STATE_CHANGE",
-                title=f"⚡ {t} — Day Trade: {eg_state}",
-                body=f"Day Trade state changed from '{prev_action}' to '{eg_state}'.",
-                meta={"ticker": t, "state": eg_state, "prev_state": prev_action},
+                title=f"⚡ {t} — Day Trade: {_STATE_LABEL.get(now_state_num, eg_state)}",
+                body=f"Day Trade state changed: {_STATE_LABEL.get(prev_state_num, prev_action)} → {_STATE_LABEL.get(now_state_num, eg_state)} ({eg_state})",
+                meta={"ticker": t, "state": eg_state, "state_num": now_state_num, "prev_state": prev_action, "prev_state_num": prev_state_num},
             )
-        upsert_ticker_state_last(email, t, "DAY", 0, eg_state, session_date)
+            escalations.append({
+                "id":           f"dt-state-{t}-{now_ms_sc}",
+                "alertType":    "STATE_CHANGE",
+                "ticker":       t,
+                "companyName":  getattr(r, "company_name", None) or t,
+                "engine":       "DAY",
+                "prevState":    prev_state_num,
+                "prevLabel":    _STATE_LABEL.get(prev_state_num, str(prev_state_num)),
+                "nowState":     now_state_num,
+                "nowLabel":     _STATE_LABEL.get(now_state_num, str(now_state_num)),
+                "direction":    direction,
+                "action":       eg_state,
+                "egAction":     str(eg_dict.get("action") or ""),
+                "bias":         str(getattr(r, "bias", "") or "").upper(),
+                "sessionDate":  session_date,
+                "currentPrice": eg_dict.get("current_price") or (r.metrics or {}).get("last_price"),
+                "vwap":         eg_dict.get("vwap") or (r.metrics or {}).get("vwap"),
+                "orh":          eg_dict.get("opening_range_high") or (r.metrics or {}).get("or_high"),
+                "orl":          eg_dict.get("opening_range_low") or (r.metrics or {}).get("or_low"),
+                "breakoutLevel": eg_dict.get("breakout_level"),
+                "scalp_target": eg_dict.get("scalp_target"),
+                "riskBelow":    eg_dict.get("risk_below"),
+                "summary":      eg_dict.get("summary") or eg_dict.get("action") or "",
+                "decisionMsg":  str((getattr(r, "trader_decision", None) or {}).get("decision_message") or ""),
+                "narrowOrCaution": False,
+                "orWidthPct":   None,
+            })
+        upsert_ticker_state_last(email, t, "DAY", now_state_num, eg_state, session_date)
 
         upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
 
@@ -3037,9 +3072,11 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
 
 def _day_trade_active_state(eg_state: str) -> int:
     s = str(eg_state or "").upper().strip()
-    if s in {"ENTRY_ACTIVE", "ENTRY_RETEST"}:
+    if s == "EOD_CLOSING":
+        return 4
+    if s in {"ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK"}:
         return 3
-    if s in {"WAIT_FOR_VOLUME", "VWAP_TEST"}:
+    if s in {"WAIT_FOR_VOLUME", "VWAP_TEST", "WAIT_BOUNCE_LEVEL"}:
         return 2
     return 1
 
