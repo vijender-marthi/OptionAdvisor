@@ -3187,13 +3187,15 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
                     # Flags reset on any state transition; carry forward only while state holds
                     if state_changed or now_state != 3:
-                        carry_target   = 0
-                        carry_weak_bo  = 0
-                        inplay_since   = now_ms if now_state == 3 else 0
+                        carry_target      = 0
+                        carry_weak_bo     = 0
+                        inplay_since      = now_ms if now_state == 3 else 0
                     else:
-                        carry_target   = int(prev.get("target_hit") or 0)
-                        carry_weak_bo  = int(prev.get("weak_breakout_alerted") or 0)
-                        inplay_since   = int(prev.get("inplay_since_ms") or now_ms)
+                        carry_target      = int(prev.get("target_hit") or 0)
+                        carry_weak_bo     = int(prev.get("weak_breakout_alerted") or 0)
+                        inplay_since      = int(prev.get("inplay_since_ms") or now_ms)
+                    # enter_now_alerted resets whenever state changes (new setup = new alert allowed)
+                    carry_enter_now   = 0 if state_changed else int(prev.get("enter_now_alerted") or 0)
 
                     last_price_val = eg.get("current_price") or m.get("last_price")
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
@@ -3245,6 +3247,39 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "decisionMsg":    str((dr.trader_decision or {}).get("decision_message") or ""),
                             "narrowOrCaution":narrow_or_caution,
                             "orWidthPct":     or_width_pct_val,
+                        })
+
+                    # ── ENTER NOW alert (State 2 + volume confirmed) ─────
+                    enter_now_to_store = carry_enter_now
+                    exec_timing = str(dr.execution_timing or "").upper().strip()
+                    enter_now_confirmed = now_state == 2 and ("ENTER" in exec_timing)
+                    if enter_now_confirmed and not carry_enter_now:
+                        enter_now_to_store = 1
+                        direction_lbl = "LONG · CALL" if bias_raw == "long" else "SHORT · PUT"
+                        day_escalations.append({
+                            "id":           f"dt-enternow-{ticker}-{now_ms}",
+                            "alertType":    "ENTER_NOW",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "direction":    direction_lbl,
+                            "action":       now_action,
+                            "egAction":     eg_action,
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": last_price_val,
+                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "orh":          orh_val,
+                            "orl":          orl_val,
+                            "breakoutLevel": eg.get("breakout_level"),
+                            "scalp_target": eg.get("scalp_target"),
+                            "riskBelow":    eg.get("risk_below"),
+                            "summary":      f"Volume confirmed — entry window open. Action: Ready · Execution: Enter Now.",
+                            "decisionMsg":  eg.get("summary") or eg.get("action") or "",
+                            "narrowOrCaution": False,
+                            "orWidthPct":   None,
                         })
 
                     # ── Take-profit alert ─────────────────────────────────
@@ -3332,6 +3367,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                         target_hit=target_to_store,
                         inplay_since_ms=inplay_since,
                         weak_breakout_alerted=weak_bo_to_store,
+                        enter_now_alerted=enter_now_to_store,
                     )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)

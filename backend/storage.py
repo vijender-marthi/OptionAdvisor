@@ -344,6 +344,7 @@ def init_db() -> None:
             ("target_hit",            "INTEGER NOT NULL DEFAULT 0"),
             ("inplay_since_ms",       "INTEGER NOT NULL DEFAULT 0"),
             ("weak_breakout_alerted", "INTEGER NOT NULL DEFAULT 0"),
+            ("enter_now_alerted",     "INTEGER NOT NULL DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE ticker_state_last ADD COLUMN {_col} {_ddl}")
@@ -733,6 +734,7 @@ def upsert_ticker_state_last(
     target_hit: int = 0,
     inplay_since_ms: int = 0,
     weak_breakout_alerted: int = 0,
+    enter_now_alerted: int = 0,
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -746,8 +748,8 @@ def upsert_ticker_state_last(
             """
             INSERT INTO ticker_state_last
                 (email, ticker, engine, state_num, action, session_date, updated_at,
-                 target_hit, inplay_since_ms, weak_breakout_alerted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker, engine) DO UPDATE SET
                 state_num             = excluded.state_num,
                 action                = excluded.action,
@@ -755,11 +757,13 @@ def upsert_ticker_state_last(
                 updated_at            = excluded.updated_at,
                 target_hit            = excluded.target_hit,
                 inplay_since_ms       = excluded.inplay_since_ms,
-                weak_breakout_alerted = excluded.weak_breakout_alerted
+                weak_breakout_alerted = excluded.weak_breakout_alerted,
+                enter_now_alerted     = excluded.enter_now_alerted
             """,
             (
                 normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms,
                 int(target_hit), int(inplay_since_ms), int(weak_breakout_alerted),
+                int(enter_now_alerted),
             ),
         )
 

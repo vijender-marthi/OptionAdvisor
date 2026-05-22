@@ -1167,6 +1167,89 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<Activity size={15} />} title="Action & Execution Badge Reference — What Each State Shows">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The <strong className="text-gray-200">Action</strong> and <strong className="text-gray-200">Execution</strong> badges at the top of the engine panel are driven by the 4-state system, not the raw engine verdict. This table is the authoritative mapping.</p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-700">
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">State</th>
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">Volume?</th>
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">ACTION badge</th>
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">EXECUTION badge</th>
+                          <th className="text-left py-1.5 text-gray-500 font-semibold">What to do</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {[
+                          { state: '1 · SETUP',   vol: '—',          action: 'Watch',           actionCls: 'text-sky-400',     exec: 'Watch / Wait',         execCls: 'text-sky-400',     todo: 'Monitor. No entry allowed.' },
+                          { state: '2 · ENTRY',   vol: 'Pending',    action: 'Ready',           actionCls: 'text-emerald-400', exec: 'AWAIT VOLUME',         execCls: 'text-amber-400',   todo: 'Setup formed — wait for volume spike to confirm.' },
+                          { state: '2 · ENTRY',   vol: '✅ Confirmed', action: '⚡ ENTER NOW',  actionCls: 'text-emerald-400 font-black animate-pulse', exec: '⚡ ENTER NOW', execCls: 'text-emerald-400 font-black animate-pulse', todo: 'Pull the trigger. This is the entry window.' },
+                          { state: '3 · IN-PLAY', vol: '✅ Confirmed', action: 'Hold',           actionCls: 'text-amber-400',   exec: 'MANAGE STOP',          execCls: 'text-amber-400',   todo: 'Trade active. Manage stop. No new entries.' },
+                          { state: '4 · EXIT',    vol: '✅ Confirmed', action: 'Exit',           actionCls: 'text-red-400',     exec: 'SCALE OUT',            execCls: 'text-red-400',     todo: 'Close or scale out. EOD or stop triggered.' },
+                        ].map((r, i) => (
+                          <tr key={i} className={r.state.includes('ENTER NOW') ? 'bg-emerald-950/20' : ''}>
+                            <td className="py-1.5 pr-3 text-gray-300 font-semibold">{r.state}</td>
+                            <td className="py-1.5 pr-3 text-gray-400">{r.vol}</td>
+                            <td className={`py-1.5 pr-3 font-bold ${r.actionCls}`}>{r.action}</td>
+                            <td className={`py-1.5 pr-3 font-bold ${r.execCls}`}>{r.exec}</td>
+                            <td className="py-1.5 text-gray-400">{r.todo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-gray-800/50 bg-gray-900/30 px-3 py-2 space-y-1">
+                      <p className="font-semibold text-gray-200 text-[11px]">All ACTION values</p>
+                      {[
+                        { label: 'Watch', color: 'text-sky-400', when: 'State 1 — setup forming, no entry' },
+                        { label: 'Ready', color: 'text-emerald-400', when: 'State 2 — entry gate open, awaiting volume' },
+                        { label: '⚡ ENTER NOW', color: 'text-emerald-400', when: 'State 2 + volume confirmed — enter immediately' },
+                        { label: 'Hold', color: 'text-amber-400', when: 'State 3 — trade active, no new entries' },
+                        { label: 'Exit', color: 'text-red-400', when: 'State 4 — close position' },
+                        { label: 'Avoid', color: 'text-red-400', when: 'Any state — hard fail or no edge' },
+                      ].map(v => (
+                        <div key={v.label} className="flex items-baseline gap-2">
+                          <span className={`font-bold text-[10px] w-28 shrink-0 ${v.color}`}>{v.label}</span>
+                          <span className="text-[10px] text-gray-500">{v.when}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-lg border border-gray-800/50 bg-gray-900/30 px-3 py-2 space-y-1">
+                      <p className="font-semibold text-gray-200 text-[11px]">All EXECUTION values</p>
+                      {[
+                        { label: 'AWAIT VOLUME', color: 'text-amber-400', when: 'State 2, volume spike not yet confirmed' },
+                        { label: '⚡ ENTER NOW', color: 'text-emerald-400', when: 'State 2, volume confirmed — act now' },
+                        { label: 'WAIT FOR BREAKOUT', color: 'text-amber-400', when: 'State 2, breakout not yet closed above ORH' },
+                        { label: 'WAIT FOR VWAP HOLD', color: 'text-amber-400', when: 'State 2, VWAP hold not confirmed' },
+                        { label: 'WAIT FOR CONFIRMATION', color: 'text-amber-400', when: 'State 2, other confirmation missing' },
+                        { label: 'MANAGE STOP', color: 'text-amber-400', when: 'State 3 — trail stop, no new entries' },
+                        { label: 'SCALE OUT', color: 'text-red-400', when: 'State 4 — exit or reduce at EOD' },
+                        { label: 'STAND ASIDE', color: 'text-red-400', when: 'Avoid / no edge condition' },
+                      ].map(v => (
+                        <div key={v.label} className="flex items-baseline gap-2">
+                          <span className={`font-bold text-[10px] w-44 shrink-0 ${v.color}`}>{v.label}</span>
+                          <span className="text-[10px] text-gray-500">{v.when}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Alert system — when you get notified</p>
+                    <div className="mt-1 space-y-1 text-[10px] text-gray-400">
+                      <p><strong className="text-gray-300">1 → 2 (State change):</strong> Setup advancing — execution gate is now open. Prepare to enter on volume.</p>
+                      <p><strong className="text-gray-300">2 → 3 (State change):</strong> Breakout confirmed — if you're not in, this is your last chance on the move.</p>
+                      <p><strong className="text-emerald-300">⚡ ENTER NOW:</strong> Fired once when State 2 + volume confirmed simultaneously. This is the primary entry alert — act immediately.</p>
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
               <DocCard icon={<FlaskConical size={15} />} title="STATE 3 Walkthrough — AMD Long Breakout Example">
                 <div className="space-y-3 text-xs text-gray-400">
                   <p>When the engine advances to STATE 3 (IN-PLAY) on a long setup, the panel shows three execution instructions. Here is how to read each one using a real AMD setup.</p>
