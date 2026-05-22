@@ -364,12 +364,13 @@ export default function DayTradePage() {
         {myTickers.length > 0 && (
           <div className="flex gap-2 mt-3 flex-wrap">
             <span className="text-xs text-gray-500 self-center">Quick:</span>
-            {myTickers.map(t => (
-              <button key={t} onClick={() => { setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
-                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono"
+            {myTickers.map((t: string) => (
+              <a key={t} href={`/day-trade?ticker=${encodeURIComponent(t)}`}
+                onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
+                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
               >
                 {t}
-              </button>
+              </a>
             ))}
           </div>
         )}
