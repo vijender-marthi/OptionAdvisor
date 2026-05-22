@@ -184,6 +184,8 @@ def _migrate_day_trade_watchlist_last(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(day_trade_watchlist_last)").fetchall()}
     if "level_alert_key" not in cols:
         conn.execute("ALTER TABLE day_trade_watchlist_last ADD COLUMN level_alert_key TEXT DEFAULT ''")
+    if "entry_state" not in cols:
+        conn.execute("ALTER TABLE day_trade_watchlist_last ADD COLUMN entry_state TEXT DEFAULT ''")
 
 
 def _migrate_alert_center_items(conn: sqlite3.Connection) -> None:
@@ -799,6 +801,7 @@ def upsert_day_trade_watchlist_last(
     verdict: str,
     session_date: str,
     level_alert_key: str = "",
+    entry_state: str = "",
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -807,18 +810,21 @@ def upsert_day_trade_watchlist_last(
     now_ms = int(time.time() * 1000)
     sd = (session_date or "").strip()[:10]
     lak = (level_alert_key or "").strip()
+    es = (entry_state or "").strip()
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO day_trade_watchlist_last (email, ticker, verdict, session_date, updated_at, level_alert_key)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO day_trade_watchlist_last (email, ticker, verdict, session_date, updated_at, level_alert_key, entry_state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker) DO UPDATE SET
                 verdict = excluded.verdict,
                 session_date = excluded.session_date,
                 updated_at = excluded.updated_at,
-                level_alert_key = excluded.level_alert_key
+                level_alert_key = excluded.level_alert_key,
+                entry_state = excluded.entry_state
+            WHERE excluded.updated_at > day_trade_watchlist_last.updated_at
             """,
-            (normalized, t, verdict.strip().upper(), sd, now_ms, lak),
+            (normalized, t, verdict, sd, now_ms, lak, es),
         )
 
 

@@ -1035,7 +1035,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
         carry_level_key = new_level_key if new_level_key else prev_level_key
 
         if not prev_row:
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key, eg_state)
             continue
 
         prev_session = (prev_row.get("session_date") or "").strip()[:10]
@@ -1043,7 +1043,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
 
         if prev_session and session_date and prev_session != session_date:
             # New session — reset level key
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "", "")
             continue
 
         if prev_verdict == "WATCH" and now_verdict in {"GO", "STRONG GO"}:
@@ -1064,6 +1064,23 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                     "metrics": r.metrics,
                     "detectedAt": now_ms,
                 }
+            )
+
+        # --- State transition to IN-PLAY (ENTRY_ACTIVE / ENTRY_RETEST) ---
+        eg_state = str(getattr(r.entry_guidance, "state", "") or "")
+        prev_state = (prev_row or {}).get("entry_state", "") if prev_row else ""
+        is_inplay = eg_state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK")
+        was_inplay = prev_state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK")
+        if is_inplay and not was_inplay:
+            alert_center_create(
+                email,
+                alert_group="day-trade",
+                severity="INFO",
+                engine="DAY_TRADE",
+                signal="STATE_CHANGE",
+                title=f"⚡ {t} — Entry Active (In-Play)",
+                body=f"{t} has moved to In-Play (state: {eg_state}). Monitor the position and follow exit rules.",
+                meta={"ticker": t, "state": eg_state, "prev_state": prev_state},
             )
 
         upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
@@ -1093,7 +1110,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
             # New session resets level key
             prev_session = (prev_row.get("session_date") or "").strip()[:10] if prev_row else ""
             if prev_session and session_date and prev_session != session_date:
-                upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
+                upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "", "")
                 continue
 
             if new_level_key and new_level_key != prev_level_key:
@@ -1107,8 +1124,9 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                     body=level_body,
                     meta={"ticker": t, "level_key": new_level_key, "source": "active_trade"},
                 )
-            carry_level_key = new_level_key if new_level_key else prev_level_key
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+        carry_level_key = new_level_key if new_level_key else prev_level_key
+        eg_state = str(getattr(r.entry_guidance, "state", "") or "")
+        upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key, eg_state)
     except Exception as exc:
         print(f"[day-trade-scan/active] {email} active-trades scan failed: {exc}", flush=True)
 
