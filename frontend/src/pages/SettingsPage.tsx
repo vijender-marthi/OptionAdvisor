@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Activity, Bell, Database, Mail, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
+import { Activity, Bell, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { getEmailStatus, sendTestEmail, clearAllCaches } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
@@ -72,6 +72,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
+  const [accent, setAccent] = useState(() => localStorage.getItem('oa_accent') || 'purple')
   const [deployedVersion, setDeployedVersion] = useState('—')
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
@@ -97,6 +98,13 @@ export default function SettingsPage() {
   useEffect(() => {
     setBuyingPowerInput(String(accountSize))
   }, [accountSize])
+
+  useEffect(() => {
+    localStorage.setItem('oa_accent', accent)
+    const html = document.documentElement
+    html.classList.remove('accent-purple', 'accent-aqua', 'accent-emerald', 'accent-amber', 'accent-sky', 'accent-rose', 'accent-orange')
+    html.classList.add(`accent-${accent}`)
+  }, [accent])
 
   const handleBuyingPowerSave = () => {
     const val = parseFloat(buyingPowerInput)
@@ -195,6 +203,32 @@ export default function SettingsPage() {
             }
           </div>
         )}
+      </SettingsCard>
+
+      {/* Accent Color */}
+      <SettingsCard title="Accent Color">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'purple', label: 'Purple', color: 'bg-purple-500' },
+            { id: 'aqua', label: 'Aqua', color: 'bg-teal-500' },
+            { id: 'emerald', label: 'Emerald', color: 'bg-emerald-500' },
+            { id: 'sky', label: 'Sky', color: 'bg-sky-500' },
+            { id: 'amber', label: 'Amber', color: 'bg-amber-500' },
+            { id: 'rose', label: 'Rose', color: 'bg-rose-500' },
+            { id: 'orange', label: 'Orange', color: 'bg-orange-500' },
+          ].map(a => (
+            <button key={a.id} onClick={() => setAccent(a.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                accent === a.id
+                  ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                  : 'border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span className={`w-3 h-3 rounded-full ${a.color}`} />
+              {a.label}
+            </button>
+          ))}
+        </div>
       </SettingsCard>
 
       {/* Monitor / Troubleshooting — Admin only */}

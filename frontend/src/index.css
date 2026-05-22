@@ -1792,63 +1792,172 @@ html.light .oa-tt-regular {
   color: #92400e;
 }
 
-/* ── Violet → Teal theme remap ──────────────────────────────────────────── */
-html.dark .bg-violet-600 { background-color: #0d9488 !important; }
-html.dark .bg-violet-500 { background-color: #14b8a6 !important; }
-html.dark .bg-violet-700 { background-color: #0f766e !important; }
-html.dark .text-violet-300 { color: #5eead4 !important; }
-html.dark .text-violet-400 { color: #2dd4bf !important; }
-html.dark .text-violet-200 { color: #99f6e4 !important; }
-html.dark .border-violet-500 { border-color: #14b8a6 !important; }
-html.dark .border-violet-600 { border-color: #0d9488 !important; }
-html.dark .border-violet-700 { border-color: #0f766e !important; }
-html.dark .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
-html.dark .ring-violet-600 { --tw-ring-color: #0d9488 !important; }
+/* ── Accent color system ────────────────────────────────────────────────── */
+/* Default accent uses the --accent CSS variables defined in :root above.
+   Each .accent-* class overrides those variables and the Tailwind violet utilities. */
 
-html.light .bg-violet-600 { background-color: #0d9488 !important; }
-html.light .bg-violet-500 { background-color: #14b8a6 !important; }
-html.light .bg-violet-700 { background-color: #0f766e !important; }
-html.light .text-violet-300 { color: #0d9488 !important; }
-html.light .text-violet-400 { color: #14b8a6 !important; }
-html.light .text-violet-200 { color: #99f6e4 !important; }
-html.light .border-violet-500 { border-color: #14b8a6 !important; }
-html.light .border-violet-600 { border-color: #0d9488 !important; }
-html.light .border-violet-700 { border-color: #0f766e !important; }
-html.light .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
-html.light .ring-violet-600 { --tw-ring-color: #0d9488 !important; }
+/* Purple (default — maps to Tailwind's native violet) */
+html.accent-purple .bg-violet-600 { background-color: #7c3aed !important; }
+html.accent-purple .bg-violet-500 { background-color: #8b5cf6 !important; }
+html.accent-purple .bg-violet-700 { background-color: #6d28d9 !important; }
+html.accent-purple .text-violet-300 { color: #c4b5fd !important; }
+html.accent-purple .text-violet-400 { color: #a78bfa !important; }
+html.accent-purple .border-violet-500 { border-color: #8b5cf6 !important; }
+html.accent-purple .border-violet-600 { border-color: #7c3aed !important; }
+html.accent-purple .border-violet-700 { border-color: #6d28d9 !important; }
+html.accent-purple .ring-violet-500 { --tw-ring-color: #8b5cf6 !important; }
+html.accent-purple .hover\:bg-violet-500:hover { background-color: #8b5cf6 !important; }
+html.accent-purple .hover\:bg-violet-600:hover { background-color: #7c3aed !important; }
+html.accent-purple .hover\:text-violet-300:hover { color: #c4b5fd !important; }
+html.accent-purple .hover\:text-violet-400:hover { color: #a78bfa !important; }
+html.accent-purple .hover\:border-violet-500:hover { border-color: #8b5cf6 !important; }
+html.accent-purple .hover\:border-violet-600:hover { border-color: #7c3aed !important; }
+html.accent-purple .bg-violet-600\/20 { background-color: rgba(124, 58, 237, 0.2) !important; }
+html.accent-purple .bg-violet-600\/15 { background-color: rgba(124, 58, 237, 0.15) !important; }
+html.accent-purple .bg-violet-900\/30 { background-color: rgba(124, 58, 237, 0.3) !important; }
+html.accent-purple .bg-violet-900\/20 { background-color: rgba(124, 58, 237, 0.2) !important; }
+html.light.accent-purple .text-violet-300 { color: #6d28d9 !important; }
+html.light.accent-purple .text-violet-400 { color: #7c3aed !important; }
+html.light.accent-purple .hover\:text-violet-300:hover { color: #6d28d9 !important; }
+html.light.accent-purple .hover\:text-violet-400:hover { color: #7c3aed !important; }
 
-/* Violet hover states */
-html.dark .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
-html.dark .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
-html.dark .hover\:text-violet-300:hover { color: #5eead4 !important; }
-html.dark .hover\:text-violet-400:hover { color: #2dd4bf !important; }
-html.light .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
-html.light .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
-html.light .hover\:text-violet-300:hover { color: #0d9488 !important; }
-html.light .hover\:text-violet-400:hover { color: #14b8a6 !important; }
+/* Aqua / Teal */
+html.accent-aqua .bg-violet-600 { background-color: #0d9488 !important; }
+html.accent-aqua .bg-violet-500 { background-color: #14b8a6 !important; }
+html.accent-aqua .bg-violet-700 { background-color: #0f766e !important; }
+html.accent-aqua .text-violet-300 { color: #5eead4 !important; }
+html.accent-aqua .text-violet-400 { color: #2dd4bf !important; }
+html.accent-aqua .border-violet-500 { border-color: #14b8a6 !important; }
+html.accent-aqua .border-violet-600 { border-color: #0d9488 !important; }
+html.accent-aqua .border-violet-700 { border-color: #0f766e !important; }
+html.accent-aqua .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
+html.accent-aqua .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
+html.accent-aqua .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
+html.accent-aqua .hover\:text-violet-300:hover { color: #5eead4 !important; }
+html.accent-aqua .hover\:text-violet-400:hover { color: #2dd4bf !important; }
+html.accent-aqua .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
+html.accent-aqua .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
+html.accent-aqua .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.accent-aqua .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
+html.accent-aqua .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
+html.accent-aqua .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.light.accent-aqua .text-violet-300 { color: #0d9488 !important; }
+html.light.accent-aqua .text-violet-400 { color: #14b8a6 !important; }
 
-/* Violet ring-offset */
-html.dark .ring-offset-violet-600 { --tw-ring-offset-color: #0d9488 !important; }
-html.light .ring-offset-violet-600 { --tw-ring-offset-color: #0d9488 !important; }
+/* Emerald */
+html.accent-emerald .bg-violet-600 { background-color: #059669 !important; }
+html.accent-emerald .bg-violet-500 { background-color: #10b981 !important; }
+html.accent-emerald .bg-violet-700 { background-color: #047857 !important; }
+html.accent-emerald .text-violet-300 { color: #6ee7b7 !important; }
+html.accent-emerald .text-violet-400 { color: #34d399 !important; }
+html.accent-emerald .border-violet-500 { border-color: #10b981 !important; }
+html.accent-emerald .border-violet-600 { border-color: #059669 !important; }
+html.accent-emerald .border-violet-700 { border-color: #047857 !important; }
+html.accent-emerald .ring-violet-500 { --tw-ring-color: #10b981 !important; }
+html.accent-emerald .hover\:bg-violet-500:hover { background-color: #10b981 !important; }
+html.accent-emerald .hover\:bg-violet-600:hover { background-color: #059669 !important; }
+html.accent-emerald .hover\:text-violet-300:hover { color: #6ee7b7 !important; }
+html.accent-emerald .hover\:text-violet-400:hover { color: #34d399 !important; }
+html.accent-emerald .hover\:border-violet-500:hover { border-color: #10b981 !important; }
+html.accent-emerald .hover\:border-violet-600:hover { border-color: #059669 !important; }
+html.accent-emerald .bg-violet-600\/20 { background-color: rgba(5, 150, 105, 0.2) !important; }
+html.accent-emerald .bg-violet-600\/15 { background-color: rgba(5, 150, 105, 0.15) !important; }
+html.accent-emerald .bg-violet-900\/30 { background-color: rgba(5, 150, 105, 0.3) !important; }
+html.accent-emerald .bg-violet-900\/20 { background-color: rgba(5, 150, 105, 0.2) !important; }
+html.light.accent-emerald .text-violet-300 { color: #059669 !important; }
+html.light.accent-emerald .text-violet-400 { color: #10b981 !important; }
 
-/* Violet border hover */
-html.dark .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
-html.dark .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
-html.light .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
-html.light .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
+/* Amber */
+html.accent-amber .bg-violet-600 { background-color: #d97706 !important; }
+html.accent-amber .bg-violet-500 { background-color: #f59e0b !important; }
+html.accent-amber .bg-violet-700 { background-color: #b45309 !important; }
+html.accent-amber .text-violet-300 { color: #fcd34d !important; }
+html.accent-amber .text-violet-400 { color: #fbbf24 !important; }
+html.accent-amber .border-violet-500 { border-color: #f59e0b !important; }
+html.accent-amber .border-violet-600 { border-color: #d97706 !important; }
+html.accent-amber .border-violet-700 { border-color: #b45309 !important; }
+html.accent-amber .ring-violet-500 { --tw-ring-color: #f59e0b !important; }
+html.accent-amber .hover\:bg-violet-500:hover { background-color: #f59e0b !important; }
+html.accent-amber .hover\:bg-violet-600:hover { background-color: #d97706 !important; }
+html.accent-amber .hover\:text-violet-300:hover { color: #fcd34d !important; }
+html.accent-amber .hover\:text-violet-400:hover { color: #fbbf24 !important; }
+html.accent-amber .hover\:border-violet-500:hover { border-color: #f59e0b !important; }
+html.accent-amber .hover\:border-violet-600:hover { border-color: #d97706 !important; }
+html.accent-amber .bg-violet-600\/20 { background-color: rgba(217, 119, 6, 0.2) !important; }
+html.accent-amber .bg-violet-600\/15 { background-color: rgba(217, 119, 6, 0.15) !important; }
+html.accent-amber .bg-violet-900\/30 { background-color: rgba(217, 119, 6, 0.3) !important; }
+html.accent-amber .bg-violet-900\/20 { background-color: rgba(217, 119, 6, 0.2) !important; }
+html.light.accent-amber .text-violet-300 { color: #b45309 !important; }
+html.light.accent-amber .text-violet-400 { color: #d97706 !important; }
 
-/* Violet-900 backgrounds (hover states, subtle fills) */
-html.dark .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
-html.dark .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
-html.dark .hover\:bg-violet-900\/30:hover { background-color: rgba(13, 148, 136, 0.3) !important; }
-html.light .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
-html.light .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+/* Sky */
+html.accent-sky .bg-violet-600 { background-color: #0284c7 !important; }
+html.accent-sky .bg-violet-500 { background-color: #0ea5e9 !important; }
+html.accent-sky .bg-violet-700 { background-color: #0369a1 !important; }
+html.accent-sky .text-violet-300 { color: #7dd3fc !important; }
+html.accent-sky .text-violet-400 { color: #38bdf8 !important; }
+html.accent-sky .border-violet-500 { border-color: #0ea5e9 !important; }
+html.accent-sky .border-violet-600 { border-color: #0284c7 !important; }
+html.accent-sky .border-violet-700 { border-color: #0369a1 !important; }
+html.accent-sky .ring-violet-500 { --tw-ring-color: #0ea5e9 !important; }
+html.accent-sky .hover\:bg-violet-500:hover { background-color: #0ea5e9 !important; }
+html.accent-sky .hover\:bg-violet-600:hover { background-color: #0284c7 !important; }
+html.accent-sky .hover\:text-violet-300:hover { color: #7dd3fc !important; }
+html.accent-sky .hover\:text-violet-400:hover { color: #38bdf8 !important; }
+html.accent-sky .hover\:border-violet-500:hover { border-color: #0ea5e9 !important; }
+html.accent-sky .hover\:border-violet-600:hover { border-color: #0284c7 !important; }
+html.accent-sky .bg-violet-600\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.accent-sky .bg-violet-600\/15 { background-color: rgba(2, 132, 199, 0.15) !important; }
+html.accent-sky .bg-violet-900\/30 { background-color: rgba(2, 132, 199, 0.3) !important; }
+html.accent-sky .bg-violet-900\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.light.accent-sky .text-violet-300 { color: #0369a1 !important; }
+html.light.accent-sky .text-violet-400 { color: #0284c7 !important; }
 
-/* Violet-600 with opacity */
-html.dark .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
-html.dark .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
-html.light .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
-html.light .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
+/* Rose */
+html.accent-rose .bg-violet-600 { background-color: #e11d48 !important; }
+html.accent-rose .bg-violet-500 { background-color: #f43f5e !important; }
+html.accent-rose .bg-violet-700 { background-color: #be123c !important; }
+html.accent-rose .text-violet-300 { color: #fda4af !important; }
+html.accent-rose .text-violet-400 { color: #fb7185 !important; }
+html.accent-rose .border-violet-500 { border-color: #f43f5e !important; }
+html.accent-rose .border-violet-600 { border-color: #e11d48 !important; }
+html.accent-rose .border-violet-700 { border-color: #be123c !important; }
+html.accent-rose .ring-violet-500 { --tw-ring-color: #f43f5e !important; }
+html.accent-rose .hover\:bg-violet-500:hover { background-color: #f43f5e !important; }
+html.accent-rose .hover\:bg-violet-600:hover { background-color: #e11d48 !important; }
+html.accent-rose .hover\:text-violet-300:hover { color: #fda4af !important; }
+html.accent-rose .hover\:text-violet-400:hover { color: #fb7185 !important; }
+html.accent-rose .hover\:border-violet-500:hover { border-color: #f43f5e !important; }
+html.accent-rose .hover\:border-violet-600:hover { border-color: #e11d48 !important; }
+html.accent-rose .bg-violet-600\/20 { background-color: rgba(225, 29, 72, 0.2) !important; }
+html.accent-rose .bg-violet-600\/15 { background-color: rgba(225, 29, 72, 0.15) !important; }
+html.accent-rose .bg-violet-900\/30 { background-color: rgba(225, 29, 72, 0.3) !important; }
+html.accent-rose .bg-violet-900\/20 { background-color: rgba(225, 29, 72, 0.2) !important; }
+html.light.accent-rose .text-violet-300 { color: #be123c !important; }
+html.light.accent-rose .text-violet-400 { color: #e11d48 !important; }
+
+/* Orange */
+html.accent-orange .bg-violet-600 { background-color: #ea580c !important; }
+html.accent-orange .bg-violet-500 { background-color: #f97316 !important; }
+html.accent-orange .bg-violet-700 { background-color: #c2410c !important; }
+html.accent-orange .text-violet-300 { color: #fdba74 !important; }
+html.accent-orange .text-violet-400 { color: #fb923c !important; }
+html.accent-orange .border-violet-500 { border-color: #f97316 !important; }
+html.accent-orange .border-violet-600 { border-color: #ea580c !important; }
+html.accent-orange .border-violet-700 { border-color: #c2410c !important; }
+html.accent-orange .ring-violet-500 { --tw-ring-color: #f97316 !important; }
+html.accent-orange .hover\:bg-violet-500:hover { background-color: #f97316 !important; }
+html.accent-orange .hover\:bg-violet-600:hover { background-color: #ea580c !important; }
+html.accent-orange .hover\:text-violet-300:hover { color: #fdba74 !important; }
+html.accent-orange .hover\:text-violet-400:hover { color: #fb923c !important; }
+html.accent-orange .hover\:border-violet-500:hover { border-color: #f97316 !important; }
+html.accent-orange .hover\:border-violet-600:hover { border-color: #ea580c !important; }
+html.accent-orange .bg-violet-600\/20 { background-color: rgba(234, 88, 12, 0.2) !important; }
+html.accent-orange .bg-violet-600\/15 { background-color: rgba(234, 88, 12, 0.15) !important; }
+html.accent-orange .bg-violet-900\/30 { background-color: rgba(234, 88, 12, 0.3) !important; }
+html.accent-orange .bg-violet-900\/20 { background-color: rgba(234, 88, 12, 0.2) !important; }
+html.light.accent-orange .text-violet-300 { color: #c2410c !important; }
+html.light.accent-orange .text-violet-400 { color: #ea580c !important; }
 
 /* ── AI Radar Page - light theme ───────────────────────────────────────── */
 html.light .ai-radar-page .bg-gray-800\/40 { background-color: #e2e8f0 !important; }
