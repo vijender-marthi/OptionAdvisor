@@ -1072,7 +1072,8 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
         prev_state_row = get_ticker_state_last(email, t, "DAY")
         prev_state_num = int((prev_state_row or {}).get("state_num") or 1) if prev_state_row else 0
         prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
-        if eg_state and now_state_num != prev_state_num and prev_state_row is not None:
+        _alertable_day = {(1, 2), (2, 3)}
+        if eg_state and (prev_state_num, now_state_num) in _alertable_day and prev_state_row is not None:
             direction = _STATE_DIRECTION.get(
                 (prev_state_num, now_state_num),
                 f"{_STATE_LABEL.get(prev_state_num, str(prev_state_num))} → {_STATE_LABEL.get(now_state_num, str(now_state_num))}"
@@ -3198,8 +3199,8 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
                     orl_val        = eg.get("opening_range_low")  or m.get("or_low")
 
-                    # ── State-change alert ────────────────────────────────
-                    if state_changed:
+                    # ── State-change alert (only 1→2 and 2→3 to reduce noise) ──
+                    if state_changed and (prev_state, now_state) in {(1, 2), (2, 3)}:
                         direction = _STATE_DIRECTION.get(
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
