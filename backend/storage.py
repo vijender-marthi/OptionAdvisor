@@ -116,7 +116,7 @@ def _migrate_user_state_theme_accent(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
     if "theme_accent" not in cols:
         conn.execute(
-            "ALTER TABLE user_state ADD COLUMN theme_accent TEXT NOT NULL DEFAULT 'emerald'"
+            "ALTER TABLE user_state ADD COLUMN theme_accent TEXT NOT NULL DEFAULT 'blue'"
         )
 
 

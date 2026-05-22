@@ -1814,12 +1814,26 @@ html.accent-purple .hover\:border-violet-500:hover { border-color: #8b5cf6 !impo
 html.accent-purple .hover\:border-violet-600:hover { border-color: #7c3aed !important; }
 html.accent-purple .bg-violet-600\/20 { background-color: rgba(124, 58, 237, 0.2) !important; }
 html.accent-purple .bg-violet-600\/15 { background-color: rgba(124, 58, 237, 0.15) !important; }
-html.accent-purple .bg-violet-900\/30 { background-color: rgba(124, 58, 237, 0.3) !important; }
-html.accent-purple .bg-violet-900\/20 { background-color: rgba(124, 58, 237, 0.2) !important; }
-html.light.accent-purple .text-violet-300 { color: #6d28d9 !important; }
-html.light.accent-purple .text-violet-400 { color: #7c3aed !important; }
-html.light.accent-purple .hover\:text-violet-300:hover { color: #6d28d9 !important; }
-html.light.accent-purple .hover\:text-violet-400:hover { color: #7c3aed !important; }
+
+/* Blue (alias for Sky) */
+html.accent-blue .bg-violet-600 { background-color: #0284c7 !important; }
+html.accent-blue .bg-violet-500 { background-color: #0ea5e9 !important; }
+html.accent-blue .bg-violet-700 { background-color: #0369a1 !important; }
+html.accent-blue .text-violet-300 { color: #7dd3fc !important; }
+html.accent-blue .text-violet-400 { color: #38bdf8 !important; }
+html.accent-blue .border-violet-500 { border-color: #0ea5e9 !important; }
+html.accent-blue .border-violet-600 { border-color: #0284c7 !important; }
+html.accent-blue .border-violet-700 { border-color: #0369a1 !important; }
+html.accent-blue .hover\:bg-violet-500:hover { background-color: #0ea5e9 !important; }
+html.accent-blue .hover\:bg-violet-600:hover { background-color: #0284c7 !important; }
+html.accent-blue .hover\:text-violet-300:hover { color: #7dd3fc !important; }
+html.accent-blue .hover\:text-violet-400:hover { color: #38bdf8 !important; }
+html.accent-blue .bg-violet-600\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.accent-blue .bg-violet-600\/15 { background-color: rgba(2, 132, 199, 0.15) !important; }
+html.accent-blue .bg-violet-900\/30 { background-color: rgba(2, 132, 199, 0.3) !important; }
+html.accent-blue .bg-violet-900\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.light.accent-blue .text-violet-300 { color: #0369a1 !important; }
+html.light.accent-blue .text-violet-400 { color: #0284c7 !important; }
 
 /* Aqua / Teal */
 html.accent-aqua .bg-violet-600 { background-color: #0d9488 !important; }

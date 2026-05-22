@@ -72,7 +72,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
-  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'emerald' } catch { return 'emerald' } })
+  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'blue' } catch { return 'blue' } })
   const [deployedVersion, setDeployedVersion] = useState('—')
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
@@ -115,7 +115,7 @@ export default function SettingsPage() {
   useEffect(() => {
     try { localStorage.setItem('oa_accent', accent) } catch {}
     const html = document.documentElement
-    html.classList.remove('accent-purple', 'accent-aqua', 'accent-emerald', 'accent-amber', 'accent-sky', 'accent-rose', 'accent-orange')
+    html.classList.remove('accent-blue', 'accent-purple', 'accent-aqua', 'accent-emerald', 'accent-amber', 'accent-sky', 'accent-rose', 'accent-orange')
     html.classList.add(`accent-${accent}`)
   }, [accent])
 
@@ -222,6 +222,7 @@ export default function SettingsPage() {
       <SettingsCard title="Accent Color">
         <div className="flex flex-wrap gap-2">
           {[
+            { id: 'blue', label: 'Blue', color: 'bg-sky-500' },
             { id: 'purple', label: 'Purple', color: 'bg-purple-500' },
             { id: 'aqua', label: 'Aqua', color: 'bg-teal-500' },
             { id: 'emerald', label: 'Emerald', color: 'bg-emerald-500' },
