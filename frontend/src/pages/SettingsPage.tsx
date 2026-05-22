@@ -72,7 +72,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
-  const [accent, setAccent] = useState(() => localStorage.getItem('oa_accent') || 'purple')
+  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'purple' } catch { return 'purple' } })
   const [deployedVersion, setDeployedVersion] = useState('—')
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
@@ -100,7 +100,7 @@ export default function SettingsPage() {
   }, [accountSize])
 
   useEffect(() => {
-    localStorage.setItem('oa_accent', accent)
+    try { localStorage.setItem('oa_accent', accent) } catch {}
     const html = document.documentElement
     html.classList.remove('accent-purple', 'accent-aqua', 'accent-emerald', 'accent-amber', 'accent-sky', 'accent-rose', 'accent-orange')
     html.classList.add(`accent-${accent}`)
