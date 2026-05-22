@@ -1066,22 +1066,22 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                 }
             )
 
-        # --- State transition to IN-PLAY (ENTRY_ACTIVE / ENTRY_RETEST) ---
+        # --- State transition alert (Day Trade) ---
         eg_state = str(getattr(r.entry_guidance, "state", "") or "")
-        prev_state = (prev_row or {}).get("entry_state", "") if prev_row else ""
-        is_inplay = eg_state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK")
-        was_inplay = prev_state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK")
-        if is_inplay and not was_inplay:
+        prev_state_row = get_ticker_state_last(email, t, "DAY")
+        prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
+        if eg_state and eg_state != prev_action:
             alert_center_create(
                 email,
                 alert_group="day-trade",
                 severity="INFO",
                 engine="DAY_TRADE",
                 signal="STATE_CHANGE",
-                title=f"⚡ {t} — Entry Active (In-Play)",
-                body=f"{t} has moved to In-Play (state: {eg_state}). Monitor the position and follow exit rules.",
-                meta={"ticker": t, "state": eg_state, "prev_state": prev_state},
+                title=f"⚡ {t} — Day Trade: {eg_state}",
+                body=f"Day Trade state changed from '{prev_action}' to '{eg_state}'.",
+                meta={"ticker": t, "state": eg_state, "prev_state": prev_action},
             )
+        upsert_ticker_state_last(email, t, "DAY", 0, eg_state, session_date)
 
         upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
 
@@ -2049,6 +2049,25 @@ def get_signal_feed(
         regular_payload = _signal_feed_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
         day_payload = _signal_feed_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
         swing_payload = _signal_feed_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
+
+        # ── State change detection for all three engines ──────────────────────
+        today = datetime.today().strftime('%Y-%m-%d')
+        for eng, action in [("DAY", day_raw), ("SWING", swing_raw), ("REGULAR", regular_raw)]:
+            if action:
+                prev = get_ticker_state_last(email, ticker, eng)
+                prev_action = (prev or {}).get("action", "")
+                if action and action != prev_action:
+                    alert_center_create(
+                        email,
+                        alert_group=eng.lower(),
+                        severity="INFO",
+                        engine=eng,
+                        signal="STATE_CHANGE",
+                        title=f"⚡ {ticker} — {eng.title()} state: {action}",
+                        body=f"State changed from '{prev_action}' to '{action}'.",
+                        meta={"ticker": ticker, "state": action, "prev_state": prev_action},
+                    )
+                upsert_ticker_state_last(email, ticker, eng, 0, action, today)
 
         # ── Attach day-trade option risk context ───────────────────────────────
         if day_scan is not None:
