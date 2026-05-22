@@ -1055,6 +1055,11 @@ html.light .alerts-page .border-gray-700 { border-color: #cbd5e1 !important; }
 html.light .alerts-page .border-gray-800 { border-color: #cbd5e1 !important; }
 html.light .alerts-page .border-gray-500\/30 { border-color: #cbd5e1 !important; }
 
+/* Alert severity cards — light theme text */
+html.light .alerts-page .text-red-100 { color: #b91c1c !important; }
+html.light .alerts-page .text-amber-100 { color: #b45309 !important; }
+html.light .alerts-page .text-emerald-100 { color: #065f46 !important; }
+
 /* ── Recommendation caution reason pill (light theme) ────────────────────── */
 html.light .recommendation-caution-reason {
   display: inline-flex;

@@ -721,8 +721,14 @@ def _compute_positions_pnl(
         p for p in open_pos
         if isinstance(p, dict) and isinstance(p.get("legs"), list) and p.get("legs")
     ]
+    open_no_legs = [
+        p for p in open_pos
+        if isinstance(p, dict) and (not isinstance(p.get("legs"), list) or not p.get("legs"))
+    ]
 
-    if not open_with_legs:
+    all_open_for_pnl = open_with_legs + open_no_legs
+
+    if not all_open_for_pnl:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
         return {"total_pl": total_pl, "day_pl": 0.0, "per_position": per_position_pnl}
 
@@ -730,7 +736,7 @@ def _compute_positions_pnl(
     try:
         tickers = list({
             str(p.get("ticker", "")).upper()
-            for p in open_with_legs
+            for p in all_open_for_pnl
             if p.get("ticker")
         })
         price_map: dict[str, tuple[float, float]] = {}
@@ -759,19 +765,22 @@ def _compute_positions_pnl(
             if marks:
                 live_marks[f"{sym}:{exp}"] = marks
 
-        today = datetime.today().date()
         mtm_total = 0.0
         day_total = 0.0
         has_mtm = False
 
-        for p in open_with_legs:
+        for p in all_open_for_pnl:
             sym = str(p.get("ticker", "")).upper()
             if sym not in price_map:
                 continue
             S_now, S_prev = price_map[sym]
+            has_legs = isinstance(p.get("legs"), list) and p.get("legs")
 
-            exp_key = f"{sym}:{str(p.get('expiry', ''))[:10]}"
-            pos_marks = live_marks.get(exp_key)
+            if has_legs:
+                exp_key = f"{sym}:{str(p.get('expiry', ''))[:10]}"
+                pos_marks = live_marks.get(exp_key)
+            else:
+                pos_marks = None
 
             current_result = calculate_position_pnl(
                 p,
