@@ -1041,6 +1041,20 @@ html.light .alerts-page .alert-item-row {
 }
 html.light .alerts-page .alert-item-row:hover { border-color: #94a3b8; }
 
+/* Alerts page light theme — text and background overrides */
+html.light .alerts-page .text-gray-100 { color: #0f172a !important; }
+html.light .alerts-page .text-gray-200 { color: #1e293b !important; }
+html.light .alerts-page .text-gray-300 { color: #334155 !important; }
+html.light .alerts-page .text-gray-400 { color: #475569 !important; }
+html.light .alerts-page .text-gray-500 { color: #64748b !important; }
+html.light .alerts-page .text-gray-600 { color: #94a3b8 !important; }
+html.light .alerts-page .bg-gray-900 { background-color: #ffffff !important; border-color: #cbd5e1 !important; }
+html.light .alerts-page .bg-gray-800 { background-color: #f8fafc !important; }
+html.light .alerts-page .bg-gray-500\/10 { background-color: #f1f5f9 !important; }
+html.light .alerts-page .border-gray-700 { border-color: #cbd5e1 !important; }
+html.light .alerts-page .border-gray-800 { border-color: #cbd5e1 !important; }
+html.light .alerts-page .border-gray-500\/30 { border-color: #cbd5e1 !important; }
+
 /* ── Recommendation caution reason pill (light theme) ────────────────────── */
 html.light .recommendation-caution-reason {
   display: inline-flex;
