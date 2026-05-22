@@ -1202,8 +1202,8 @@ export default function DayTradeEnginePanel({
                       <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
                       <span className="text-emerald-300 font-mono text-[12px] font-semibold">
                         {hasAiCoach && ac!.states.in_play.target > 0
-                          ? `TP $${ac!.states.in_play.target.toFixed(2)}`
-                          : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
+                          ? `T1 $${ac!.states.in_play.target.toFixed(2)}`
+                          : eg?.scalp_target != null ? `T1 $${eg.scalp_target.toFixed(2)}` : '—'}
                       </span>
                     </div>
                     <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
@@ -1507,7 +1507,8 @@ export default function DayTradeEnginePanel({
             <ExecMapRow label="ORL" value={eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : null} tone={orBreakoutTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Breakdown Level' : 'Breakout Level'} value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Bounce Zone' : 'Pullback Zone'} value={eg?.pullback_zone ?? null} />
-            <ExecMapRow label="Scalp Target" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
+            <ExecMapRow label="Target 1 — sell ½" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
+            <ExecMapRow label="Target 2 — full exit" value={(eg as {scalp_target_2?: number})?.scalp_target_2 != null ? `$${((eg as {scalp_target_2?: number}).scalp_target_2 as number).toFixed(2)}` : null} tone={scalpTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Stop Above' : 'Stop Below'} value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
           </div>
           )

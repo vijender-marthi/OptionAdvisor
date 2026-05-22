@@ -388,68 +388,135 @@ def _build_day_exit_rules(
     risk_below: Optional[float],
     state: str,
     session_phase: str = "",
+    scalp_target_2: Optional[float] = None,
+    or_breakout: str = "inside",
 ) -> list[dict]:
     """
     Price-specific intraday exit rules ordered by priority.
     All prices reference levels already shown in the execution map.
+
+    For breakout trades (or_breakout == above/below):
+      T1 = ORH + 50% range (scalp_target), T2 = ORH + 100% range (scalp_target_2)
+      VWAP is a stop guard, not a target — price is already above/below it.
+    For VWAP bounce / inside range:
+      T1 = scalp_target (OR high/low), T2 = scalp_target_2
+      VWAP support/resistance is the trigger for the stop.
     """
     if not bias or bias not in ("long", "short"):
         return []
 
+    is_breakout = or_breakout in ("above", "below")
     rules: list[dict] = []
 
     if bias == "long":
-        # Target 1 = VWAP (first profit milestone, already in position)
-        if vwap is not None:
-            rules.append({
-                "trigger": "Target 1 — VWAP",
-                "price":   round(vwap, 2),
-                "action":  "Sell ½ position",
-                "note":    f"Move stop to breakout level"
-                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
-            })
-        # Target 2 = scalp target (final intraday exit)
-        if scalp_target is not None:
-            rules.append({
-                "trigger": "Target 2 — scalp target",
-                "price":   scalp_target,
-                "action":  "Sell remaining ½",
-                "note":    "Intraday trade complete — flat before close",
-            })
-        # VWAP loss guard
-        if vwap is not None:
-            vwap_stop = round(vwap * 0.998, 2)
-            rules.append({
-                "trigger": "Price loses VWAP",
-                "price":   vwap_stop,
-                "action":  "Exit full position",
-                "note":    "Intraday structure failed — do not hold through VWAP loss",
-            })
-        # Hard stop
+        if is_breakout:
+            # Breakout: VWAP is already below — it's a stop guard, not a target
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — measured move ½",
+                    "price":   scalp_target,
+                    "action":  "Sell ½ position",
+                    "note":    f"ORH + 50% of opening range. Move stop to breakout level"
+                                + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — measured move full",
+                    "price":   scalp_target_2,
+                    "action":  "Sell remaining ½",
+                    "note":    "ORH + 100% of opening range — intraday trade complete, flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 0.998, 2)
+                rules.append({
+                    "trigger": "Price loses VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Breakout failed — price retreated through VWAP, do not hold.",
+                })
+        else:
+            # VWAP bounce / inside range: target is OR high, then extended
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — OR High",
+                    "price":   scalp_target,
+                    "action":  "Sell ½ position",
+                    "note":    f"First resistance — move stop to breakout level"
+                                + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — extended",
+                    "price":   scalp_target_2,
+                    "action":  "Sell remaining ½",
+                    "note":    "Intraday trade complete — flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 0.998, 2)
+                rules.append({
+                    "trigger": "Price loses VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Intraday structure failed — do not hold through VWAP loss.",
+                })
+        # Hard stop always
         if risk_below is not None:
             rules.append({
                 "trigger": "Stop loss — OR Low",
                 "price":   round(risk_below, 2),
                 "action":  "Exit full position",
-                "note":    "Opening Range violated — accept the loss",
+                "note":    "Opening Range violated — accept the loss.",
             })
 
     else:  # short
-        if vwap is not None:
-            rules.append({
-                "trigger": "Target 1 — VWAP",
-                "price":   round(vwap, 2),
-                "action":  "Cover ½ position",
-                "note":    f"Move stop to breakdown level"
-                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
-            })
-        if scalp_target is not None:
-            rules.append({
-                "trigger": "Target 2 — scalp target",
-                "price":   scalp_target,
-                "action":  "Cover remaining ½",
-                "note":    "Intraday trade complete — flat before close",
-            })
+        if is_breakout:
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — measured move ½",
+                    "price":   scalp_target,
+                    "action":  "Cover ½ position",
+                    "note":    f"ORL - 50% of opening range. Move stop to breakdown level"
+                                + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — measured move full",
+                    "price":   scalp_target_2,
+                    "action":  "Cover remaining ½",
+                    "note":    "ORL - 100% of opening range — intraday trade complete, flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 1.002, 2)
+                rules.append({
+                    "trigger": "Price reclaims VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Breakdown failed — exit immediately.",
+                })
+        else:
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — OR Low",
+                    "price":   scalp_target,
+                    "action":  "Cover ½ position",
+                    "note":    f"First support — move stop to breakdown level"
+                                + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — extended",
+                    "price":   scalp_target_2,
+                    "action":  "Cover remaining ½",
+                    "note":    "Intraday trade complete — flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 1.002, 2)
+                rules.append({
+                    "trigger": "Price reclaims VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Bearish structure failed — exit immediately.",
+                })
         if vwap is not None:
             vwap_stop = round(vwap * 1.002, 2)
             rules.append({
@@ -719,20 +786,48 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     elif session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         avoid = "Power hour entry — must exit by 3:50 PM ET. No overnight holds."
 
-    scalp_target = None
+    # OR-structure targets — measured move from the breakout/breakdown level
+    _or_range = (or_high - or_low) if (or_high and or_low and or_high > or_low) else None
+
+    scalp_target = None   # Target 1 (sell/cover half)
+    scalp_target_2 = None # Target 2 (full exit)
     if last_price is not None:
         if bidir == "long":
             if bounce_scenario == "vwap_rejection_long" and vwap is not None:
-                scalp_target = round(or_high, 2) if or_high else round(last_price * 1.015, 2)
+                # VWAP bounce long → T1 = OR high, T2 = ORH + 50% range
+                scalp_target = round(or_high, 2) if or_high else round(last_price * 1.01, 2)
+                scalp_target_2 = round(or_high + _or_range * 0.5, 2) if (or_high and _or_range) else None
+            elif or_breakout == "above" and or_high is not None:
+                # Breakout above ORH → T1 = ORH + 50% range (measured move), T2 = ORH + 100%
+                _t1 = or_high + (_or_range * 0.5 if _or_range else or_high * 0.008)
+                _t2 = or_high + (_or_range * 1.0 if _or_range else or_high * 0.015)
+                scalp_target = round(_t1, 2)
+                scalp_target_2 = round(_t2, 2)
+            elif or_high is not None:
+                # Inside range or approaching ORH → T1 = ORH, T2 = ORH + 25% range
+                scalp_target = round(or_high, 2)
+                scalp_target_2 = round(or_high + _or_range * 0.25, 2) if _or_range else None
             else:
-                scalp_target = round(last_price * 1.015, 2)
+                scalp_target = round(last_price * 1.01, 2)
         elif bidir == "short":
             if bounce_scenario == "vwap_rejection" and or_low is not None:
-                scalp_target = round(or_low, 2)   # target: ORL from VWAP rejection
+                # VWAP rejection short → T1 = OR low, T2 = ORL - 50% range
+                scalp_target = round(or_low, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.5, 2) if _or_range else None
             elif bounce_scenario == "orl_rejection_retest" and or_low is not None:
-                scalp_target = round(or_low * 0.985, 2)  # target: below ORL after ORL rejection
+                scalp_target = round(or_low * 0.985, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.5, 2) if _or_range else None
+            elif or_breakout == "below" and or_low is not None:
+                # Breakdown below ORL → T1 = ORL - 50% range, T2 = ORL - 100%
+                _t1 = or_low - (_or_range * 0.5 if _or_range else or_low * 0.008)
+                _t2 = or_low - (_or_range * 1.0 if _or_range else or_low * 0.015)
+                scalp_target = round(_t1, 2)
+                scalp_target_2 = round(_t2, 2)
+            elif or_low is not None:
+                scalp_target = round(or_low, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.25, 2) if _or_range else None
             else:
-                scalp_target = round(last_price * 0.985, 2)
+                scalp_target = round(last_price * 0.99, 2)
 
     pullback_zone = ""
     if vwap is not None and last_price is not None:
@@ -980,6 +1075,7 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         "pullback_zone": pullback_zone,
         "risk_below": risk_below,
         "scalp_target": scalp_target,
+        "scalp_target_2": scalp_target_2,
         "exit_rules": _build_day_exit_rules(
             bias=bidir,
             vwap=vwap,
@@ -988,6 +1084,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             risk_below=risk_below,
             state=state,
             session_phase=session_phase,
+            scalp_target_2=scalp_target_2,
+            or_breakout=or_breakout,
         ),
         # New execution guidance fields
         "day_market_phase": day_market_phase,
