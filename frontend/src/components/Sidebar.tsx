@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
-  User, FlaskConical, Activity, Bell, Settings,
+  User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
   BrainCircuit, HelpCircle, ListTodo, Eye, Bot,
 } from 'lucide-react'
@@ -126,7 +126,7 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
-        { id: 'watchlist', label: 'Signal Feed', icon: <Activity size={18} /> },
+        { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
         { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
@@ -176,7 +176,7 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
     { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'watchlist', label: 'Signal Feed', icon: <Activity size={23} /> },
+    { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={23} /> },
     { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
     { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
   ]
