@@ -1646,8 +1646,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     #                            actually MORE bearish than an ORL retest.
     #   "orl_rejection_retest" — bounce reached ORL from below, now being rejected.
     #                            Strongest PUT re-entry; entry near ORL, bigger target.
-    #   "no_mans_land"         — price churning between VWAP and ORL, no clean level.
-    #                            Wait — no rejection confirmation yet.
+    #   "no_mans_land"         — price below both VWAP and ORL, no bounce to either level yet.
+    #                            Wait — no rejection confirmation at a key level.
     #   (long-side mirror: orh_rejection and vwap_rejection_long handled symmetrically)
     _bounce_scenario: str = ""
     if or_historical == "broke_down" and or_state == "below" and or_low > 0 and vwap_last > 0:
@@ -1679,12 +1679,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 )
             else:
                 _bounce_scenario = "orl_rejection_retest"  # use same bucket, no extra score
-        # Price between VWAP and ORL with no clean level nearby
+        # Price well below both VWAP and ORL — no bounce to a key level yet
         elif _pct_below_orl > 0.55 and _pct_from_vwap < -0.45:
             _bounce_scenario = "no_mans_land"
             body.append(
-                f"Price between VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no clean rejection level. "
-                "Wait for a test of either level before considering entry."
+                f"Price below both VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no bounce to a key level yet. "
+                "Wait for a test of VWAP or ORL before considering entry."
             )
 
     # Mirror for long-side bounce scenarios after ORH breakout

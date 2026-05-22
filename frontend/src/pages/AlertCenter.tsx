@@ -338,7 +338,13 @@ export default function AlertCenter() {
                               Resolve
                             </button>
                             {row.ticker ? (
-                              <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => requestAnalysis(row.ticker)}>
+                              <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3"
+                                onClick={() => {
+                                  const eng = (row.engine_type || '').toLowerCase()
+                                  if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(row.ticker)}`)
+                                  else if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(row.ticker)}`)
+                                  else requestAnalysis(row.ticker)
+                                }}>
                                 View Ticker
                               </button>
                             ) : null}

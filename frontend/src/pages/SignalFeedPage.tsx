@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -507,10 +507,10 @@ function DecisionPanel({ title, decision, ticker }: { title: string; decision: S
           </div>
         ) : null}
         {engineRoute ? (
-          <button type="button" onClick={() => navigate(engineRoute)} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
+          <Link to={engineRoute} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
             Open {title} Engine
             <ArrowUpRight size={13} />
-          </button>
+          </Link>
         ) : null}
       </div>
     </div>
