@@ -1,4 +1,4 @@
-import { lazy, Suspense, useLayoutEffect } from 'react'
+import { lazy, Suspense, useLayoutEffect, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
@@ -162,9 +162,50 @@ function ShellRoutes() {
   )
 }
 
+const PAGE_ICONS: Record<string, string> = {
+  'trade-command-center': '🏠',
+  'watchlist': '📡',
+  'my-tickers': '📋',
+  'alert-center': '🔔',
+  'positions': '💼',
+  'ticker': '🎯',
+  'trade-signals': '📊',
+  'day-trade': '⚡',
+  'swing-trade': '📈',
+  'day-trade-alerts': '🔔',
+  'active-trades': '⚡',
+  'ai-stocks': '🤖',
+  'q-radar': '🔍',
+  'journal': '📓',
+  'backtest': '🧪',
+  'settings': '⚙️',
+  'help': '❓',
+}
+
+function DynamicFavicon() {
+  const loc = useLocation()
+  const page = locationToPage(loc.pathname)
+  const icon = PAGE_ICONS[page] || '📊'
+  useEffect(() => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">${icon}</text></svg>`
+    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = url
+    return () => URL.revokeObjectURL(url)
+  }, [icon])
+  return null
+}
+
 function AppBody() {
   return (
     <>
+      <DynamicFavicon />
       <LegacyHashRedirect />
       <ShellRoutes />
     </>
