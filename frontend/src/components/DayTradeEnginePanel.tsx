@@ -786,6 +786,17 @@ export default function DayTradeEnginePanel({
   const managementPlan   = computeIntradayManagementPlan(result, m)
   const walkthroughSteps = buildDayWalkthrough(result, m)
   const currentPrice = eg?.current_price ?? lastPrice
+
+  // 4-state numeric — computed once here so ACTION badge and subtitle can be state-aware
+  const _egStateStr = eg?.state || ''
+  const _stateMap: Record<string, number> = {
+    'MONITORING': 1, 'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
+    'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
+    'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2, 'WAIT_BOUNCE_LEVEL': 2,
+    'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
+    'EOD_CLOSING': 4,
+  }
+  const activeStateNum = _stateMap[_egStateStr] ?? 1
   const breakoutLevel = eg?.breakout_level
   const volumeSeries = chartBars?.map(bar => bar.v) ?? []
   // Implied average volume for the current time of day: backend rvol = lastBar.v / avg_vol_for_time
@@ -867,7 +878,13 @@ export default function DayTradeEnginePanel({
               )}
             </div>
             <div className="mt-1 text-sm text-gray-300">
-              {buildIntradaySubtitle(result.bias, result.signal_quality, result.final_decision)}
+              {activeStateNum === 3
+                ? (result.bias === 'short' ? 'Bearish · In-Play — No New Entries' : 'Bullish · In-Play — No New Entries')
+                : activeStateNum === 4
+                ? (result.bias === 'short' ? 'Bearish · Exit Zone' : 'Bullish · Exit Zone')
+                : activeStateNum === 2
+                ? (result.bias === 'short' ? 'Bearish · Entry Window Open' : 'Bullish · Entry Window Open')
+                : buildIntradaySubtitle(result.bias, result.signal_quality, result.final_decision)}
             </div>
             <div className="text-[10px] text-gray-600 mt-1">
               {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
@@ -903,12 +920,26 @@ export default function DayTradeEnginePanel({
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
             <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
               <span>Action</span>
-              <span title="READY=enter now, WATCH=setup forming, WAIT=not ready, AVOID=do not trade, NO_EDGE=no opportunity"><Info size={10} className="text-gray-500 cursor-help" /></span>
+              <span title="State 1=SETUP (watch), State 2=ENTRY (ready to enter), State 3=IN-PLAY (hold, no new entries), State 4=EXIT"><Info size={10} className="text-gray-500 cursor-help" /></span>
             </div>
             <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                {formatLabel(result.final_decision)}
-              </span>
+              {activeStateNum === 3 ? (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['orange']}`}>
+                  Hold
+                </span>
+              ) : activeStateNum === 4 ? (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['red']}`}>
+                  Exit
+                </span>
+              ) : activeStateNum === 2 ? (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['green']}`}>
+                  Ready
+                </span>
+              ) : (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
+                  {formatLabel(result.final_decision)}
+                </span>
+              )}
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
