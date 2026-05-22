@@ -920,38 +920,7 @@ export default function DayTradeEnginePanel({
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
             <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
               <span>Action</span>
-              <span title="State 2 (Ready) = entry window — enter on volume confirmation. State 3 (Hold) = trade active, no new entries. State 4 (Exit) = close position."><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1">
-              {activeStateNum === 3 ? (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['orange']}`}>
-                  Hold
-                </span>
-              ) : activeStateNum === 4 ? (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['red']}`}>
-                  Exit
-                </span>
-              ) : activeStateNum === 2 ? (() => {
-                const execTxt = (result.execution_timing || '').toUpperCase()
-                const enterNow = execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
-                return enterNow
-                  ? <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide animate-pulse ${TONE_BADGE['green']}`}>
-                      <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />ENTER NOW
-                    </span>
-                  : <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE['green']}`}>
-                      Ready
-                    </span>
-              })() : (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                  {formatLabel(result.final_decision)}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Execution</span>
-              <span title="State 2=entry window open (await volume/breakout), State 3=in trade (manage stop), State 4=scale out"><Info size={10} className="text-gray-500 cursor-help" /></span>
+              <span title="State 1=Watch, State 2=Await Volume → Enter Now on confirmation, State 3=Manage Stop (in trade), State 4=Scale Out (exit zone)"><Info size={10} className="text-gray-500 cursor-help" /></span>
             </div>
             <div className="mt-1">
               {activeStateNum === 2 ? (() => {
@@ -961,13 +930,15 @@ export default function DayTradeEnginePanel({
                   ? <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide animate-pulse ${TONE_BADGE['green']}`}>
                       <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />ENTER NOW
                     </span>
-                  : <Badge text={execTxt && execTxt !== 'WATCH' ? execTxt : 'AWAIT VOLUME'} tone="orange" />
+                  : <Badge text="AWAIT VOLUME" tone="orange" />
               })() : activeStateNum === 3 ? (
                 <Badge text="MANAGE STOP" tone="orange" />
               ) : activeStateNum === 4 ? (
                 <Badge text="SCALE OUT" tone="red" />
               ) : (
-                <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
+                  {formatLabel(result.final_decision) || 'Watch'}
+                </span>
               )}
             </div>
           </div>
