@@ -32,11 +32,12 @@ function fmtEtShort(iso: string) {
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ''
+    const tz = (typeof window !== 'undefined' && localStorage?.getItem('oa_timezone')) || 'America/New_York'
     return d.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-      timeZone: 'America/Los_Angeles',
+      timeZone: tz,
     })
   } catch {
     return ''
