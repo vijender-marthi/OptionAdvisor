@@ -55,6 +55,15 @@ function RouteFallback() {
   )
 }
 
+/** Apply saved accent theme on every page load */
+function ThemeInitializer() {
+  useEffect(() => {
+    const saved = (() => { try { return localStorage?.getItem('oa_accent') } catch { return null } })()
+    if (saved) document.documentElement.classList.add(`accent-${saved}`)
+  }, [])
+  return null
+}
+
 /** Migrates legacy `#watchlist`-style URLs to BrowserRouter paths (301-equivalent client redirect). */
 function LegacyHashRedirect() {
   const navigate = useNavigate()
@@ -205,6 +214,7 @@ function DynamicFavicon() {
 function AppBody() {
   return (
     <>
+      <ThemeInitializer />
       <DynamicFavicon />
       <LegacyHashRedirect />
       <ShellRoutes />
