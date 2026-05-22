@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { acknowledgeAlert, fetchAlertCenterPage, resolveAlert } from '../api/commandCenter'
 import type { AlertCenterPayload, UnifiedAlert } from '../types/commandCenter'
 import { useApp } from '../contexts/AppContext'
@@ -337,17 +337,21 @@ export default function AlertCenter() {
                             <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => void onResolve(row.id)}>
                               Resolve
                             </button>
-                            {row.ticker ? (
-                              <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3"
-                                onClick={() => {
-                                  const eng = (row.engine_type || '').toLowerCase()
-                                  if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(row.ticker)}`)
-                                  else if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(row.ticker)}`)
-                                  else requestAnalysis(row.ticker)
-                                }}>
-                                View Ticker
-                              </button>
-                            ) : null}
+                            {row.ticker ? (() => {
+                              const eng = (row.engine_type || '').toLowerCase()
+                              const href = eng === 'day' ? `/day-trade?ticker=${encodeURIComponent(row.ticker)}`
+                                : eng === 'swing' ? `/swing-trade?ticker=${encodeURIComponent(row.ticker)}`
+                                : null
+                              return href ? (
+                                <Link to={href} className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3 inline-flex items-center">
+                                  View Ticker
+                                </Link>
+                              ) : (
+                                <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => requestAnalysis(row.ticker)}>
+                                  View Ticker
+                                </button>
+                              )
+                            })() : null}
                             {row.related_trade_id ? (
                               <button
                                 type="button"
