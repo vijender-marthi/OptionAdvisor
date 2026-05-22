@@ -36,6 +36,7 @@ import {
 import * as XLSX from 'xlsx'
 
 const TABS = [
+  { id: 'all', label: 'All Positions' },
   { id: 'open', label: 'Open Positions' },
   { id: 'closed', label: 'Closed Positions' },
 ] as const
@@ -1290,6 +1291,7 @@ export default function PositionsCenter() {
   const [riskFilter, setRiskFilter] = useState<FilterRisk>('all')
   const [sortKey, setSortKey] = useState<SortKey>('dte')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [plFilter, setPlFilter] = useState<'total' | 'week' | 'day' | null>(null)
 
   useEffect(() => {
     const s = searchParams.get('style')?.trim().toLowerCase()
@@ -1377,7 +1379,7 @@ export default function PositionsCenter() {
     : regime === 'bearish' ? { label: 'Bearish', cls: getDecisionBadgeClass('AVOID') }
     : { label: 'Mixed', cls: getDecisionBadgeClass('WATCH') }
 
-  const positions = tab === 'open' ? openPortfolio : closedPortfolio
+  const positions = tab === 'open' ? openPortfolio : tab === 'closed' ? closedPortfolio : portfolio
 
   const filtered = useMemo(() => {
     let list = [...positions]
@@ -1566,9 +1568,21 @@ export default function PositionsCenter() {
       </header>
 
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiCard label="Total Net P&L" value={fmtUsd(totalPl)} valueClass={getProfitLossTextClass(num(totalPl))} sub={totalPlPct != null && String(totalPlPct) !== '' ? <span className={getProfitLossTextClass(num(totalPlPct))}>{fmtPct(totalPlPct)}</span> : null} />
-        <KpiCard label="Week P&L" value={fmtUsd(weekPl)} valueClass={getProfitLossTextClass(num(weekPl))} sub={weekPlPct != null && String(weekPlPct) !== '' ? <span className={getProfitLossTextClass(num(weekPlPct))}>{fmtPct(weekPlPct)}</span> : null} />
-        <KpiCard label="Day P&L" value={fmtUsd(dayPl)} valueClass={getProfitLossTextClass(num(dayPl))} sub={dayPlPct != null && String(dayPlPct) !== '' ? <span className={getProfitLossTextClass(num(dayPlPct))}>{fmtPct(dayPlPct)}</span> : null} />
+        <button type="button" onClick={() => setPlFilter(plFilter === 'total' ? null : 'total')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'total' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
+          <div className="text-xs uppercase tracking-wide text-gray-400">Total Net P&L</div>
+          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(totalPl))}`}>{fmtUsd(totalPl)}</div>
+          {totalPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(totalPlPct))}`}>{fmtPct(totalPlPct)}</div>}
+        </button>
+        <button type="button" onClick={() => setPlFilter(plFilter === 'week' ? null : 'week')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'week' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
+          <div className="text-xs uppercase tracking-wide text-gray-400">Week P&L</div>
+          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(weekPl))}`}>{fmtUsd(weekPl)}</div>
+          {weekPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(weekPlPct))}`}>{fmtPct(weekPlPct)}</div>}
+        </button>
+        <button type="button" onClick={() => setPlFilter(plFilter === 'day' ? null : 'day')} className={`text-left rounded-2xl border px-4 py-3 transition-colors ${plFilter === 'day' ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
+          <div className="text-xs uppercase tracking-wide text-gray-400">Day P&L</div>
+          <div className={`mt-1 text-2xl font-semibold font-mono ${getProfitLossTextClass(num(dayPl))}`}>{fmtUsd(dayPl)}</div>
+          {dayPlPct != null && <div className={`text-xs font-semibold ${getProfitLossTextClass(num(dayPlPct))}`}>{fmtPct(dayPlPct)}</div>}
+        </button>
         <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
@@ -1591,7 +1605,7 @@ export default function PositionsCenter() {
                   tab === t.id ? 'bg-violet-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
                 }`}
               >
-                {t.label} <span className="text-[11px] opacity-70">({t.id === 'open' ? openPortfolio.length : closedPortfolio.length})</span>
+                {t.label} <span className="text-[11px] opacity-70">({t.id === 'open' ? openPortfolio.length : t.id === 'closed' ? closedPortfolio.length : portfolio.length})</span>
               </button>
             ))}
           </div>
