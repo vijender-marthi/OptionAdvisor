@@ -632,6 +632,29 @@ function deriveActionAlert(
   const strat = (pos.strategy || '').toLowerCase()
   const bias = (pos.bias || '').toLowerCase()
 
+  // Day trade positions must close same day — DTE roll logic does not apply.
+  if (deriveEngineSource(pos) === 'day') {
+    const nowEt = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const h = nowEt.getHours(), m = nowEt.getMinutes()
+    const afterClose = h > 15 || (h === 15 && m >= 45)
+    if (afterClose) {
+      return {
+        type: 'EXIT_NOW',
+        label: 'EXIT TODAY',
+        urgency: 'red',
+        reason: 'Day trade — market is closing. Exit now. Do not hold overnight; swing engine may not support this position.',
+      }
+    }
+    if (pnlPct >= 50)
+      return { type: 'SELL_HALF', label: 'TAKE PROFIT', urgency: 'amber', reason: `${pnlPct.toFixed(0)}% gain intraday — take profit or scale out. Day trades do not carry overnight.` }
+    return {
+      type: 'MANAGE',
+      label: 'MANAGE STOP',
+      urgency: 'amber',
+      reason: `Day trade — close by 3:45 PM ET regardless of P&L. Trail stop to session VWAP. Do not hold overnight.`,
+    }
+  }
+
   if (dte <= 5)
     return { type: 'EXIT_NOW', label: 'EXIT NOW', urgency: 'red', reason: `Only ${dte} DTE left — theta is eroding value. Close or roll immediately.` }
   if (aiAnalysis && aiAnalysis.health_score < 35)
