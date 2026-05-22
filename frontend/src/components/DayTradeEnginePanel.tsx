@@ -920,7 +920,7 @@ export default function DayTradeEnginePanel({
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
             <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
               <span>Action</span>
-              <span title="State 1=SETUP (watch), State 2=ENTRY (ready to enter), State 3=IN-PLAY (hold, no new entries), State 4=EXIT"><Info size={10} className="text-gray-500 cursor-help" /></span>
+              <span title="State 2 (Ready) = entry window — enter on volume confirmation. State 3 (Hold) = trade active, no new entries. State 4 (Exit) = close position."><Info size={10} className="text-gray-500 cursor-help" /></span>
             </div>
             <div className="mt-1">
               {activeStateNum === 3 ? (
@@ -945,10 +945,18 @@ export default function DayTradeEnginePanel({
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
             <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
               <span>Execution</span>
-              <span title="Entry timing: volume confirmation, VWAP hold/break, breakout/breakdown pending"><Info size={10} className="text-gray-500 cursor-help" /></span>
+              <span title="State 2=entry window open (await volume/breakout), State 3=in trade (manage stop), State 4=scale out"><Info size={10} className="text-gray-500 cursor-help" /></span>
             </div>
             <div className="mt-1">
-              <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
+              {activeStateNum === 2 ? (
+                <Badge text={result.execution_timing && result.execution_timing !== 'WATCH' ? result.execution_timing : 'AWAIT VOLUME'} tone="orange" />
+              ) : activeStateNum === 3 ? (
+                <Badge text="MANAGE STOP" tone="orange" />
+              ) : activeStateNum === 4 ? (
+                <Badge text="SCALE OUT" tone="red" />
+              ) : (
+                <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
+              )}
             </div>
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
