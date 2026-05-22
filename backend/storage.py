@@ -177,6 +177,8 @@ def _migrate_active_trades_option_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE active_trades ADD COLUMN strike REAL")
     if "option_expiry" not in cols:
         conn.execute("ALTER TABLE active_trades ADD COLUMN option_expiry TEXT")
+    if "trade_type" not in cols:
+        conn.execute("ALTER TABLE active_trades ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'day'")
 
 
 def _migrate_day_trade_watchlist_last(conn: sqlite3.Connection) -> None:
@@ -2035,6 +2037,7 @@ def insert_active_trade(
     strike: Optional[float] = None,
     option_expiry: Optional[str] = None,
     notes: Optional[str] = None,
+    trade_type: str = "day",
     raw_json_extra: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     normalized = normalize_email(email)
@@ -2054,13 +2057,16 @@ def insert_active_trade(
     raw_store: dict[str, Any] = dict(raw_json_extra or {})
     raw_text = json.dumps(raw_store) if raw_store else None
     with _connect() as conn:
+        tt = trade_type.lower().strip() if trade_type else "day"
+        if tt not in ("day", "swing"):
+            tt = "day"
         conn.execute(
             """
             INSERT INTO active_trades (
                 id, email, ticker, side, entry_price, entry_underlying_px,
-                contracts, strike, option_expiry, notes, opened_at_ms, exited_at_ms, raw_json
+                contracts, strike, option_expiry, notes, opened_at_ms, exited_at_ms, raw_json, trade_type
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
             """,
             (
                 tid,
@@ -2075,6 +2081,7 @@ def insert_active_trade(
                 (notes or "").strip() or None,
                 now_ms,
                 raw_text,
+                tt,
             ),
         )
     return get_active_trade(normalized, tid)  # type: ignore[return-value]

@@ -376,6 +376,7 @@ export interface ActiveTradeRow {
   notes: string
   opened_at_ms: number
   exited_at_ms?: number | null
+  trade_type: 'day' | 'swing'
   decision: ActiveTradeDecision | Record<string, unknown>
   metrics: Record<string, unknown>
   intraday_error?: string | null
@@ -403,6 +404,7 @@ export const enterActiveTrade = async (body: {
   strike?: number | null
   expiry?: string | null
   notes?: string | null
+  trade_type?: 'day' | 'swing'
 }): Promise<{
   id: string
   ticker: string

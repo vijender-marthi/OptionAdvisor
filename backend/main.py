@@ -2673,6 +2673,7 @@ def _active_trade_out_from_row(
         notes=str(row.get("notes") or ""),
         opened_at_ms=int(row["opened_at_ms"]),
         exited_at_ms=row.get("exited_at_ms"),
+        trade_type=str(row.get("trade_type") or "day"),
         decision=decision,
         metrics=metrics,
         intraday_error=intraday_error,
@@ -2698,6 +2699,7 @@ def active_trade_enter(
             strike=req.strike,
             option_expiry=req.expiry,
             notes=req.notes,
+            trade_type=req.trade_type,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

@@ -51,6 +51,7 @@ export default function DayTradePage() {
   const [portfolioBias, setPortfolioBias] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
+  const [tradeMode, setTradeMode] = useState<'day' | 'swing'>('day')
   const [entryPrice, setEntryPrice] = useState('')
   const [contracts, setContracts] = useState('')
   const [strikeInput, setStrikeInput] = useState('')
@@ -308,6 +309,7 @@ export default function DayTradePage() {
         strike: strikeOut,
         expiry: expiryOut,
         notes: notes.trim() || undefined,
+        trade_type: tradeMode,
       })
       setEnterOpen(false)
       navigate('active-trades')
@@ -558,15 +560,45 @@ export default function DayTradePage() {
               </button>
             </div>
             <div className="p-4 space-y-3 text-sm">
-              <p className="text-xs text-gray-500 leading-relaxed">
-                The <span className="text-gray-400">underlying</span> drives the decision engine (VWAP, opening range,
-                volume). <span className="text-gray-400">Strike</span> and <span className="text-gray-400">expiry</span>{' '}
-                are optional — useful for bookkeeping and future Greeks / P&amp;L tooling.
-              </p>
-              <p className="text-xs text-gray-500">
-                Session tape uses <span className="font-mono text-gray-300">{result.ticker}</span> — log the option
-                premium you paid.
-              </p>
+              {/* Day / Swing toggle — most important decision */}
+              <div>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Trade type</label>
+                <div className="flex gap-2 mt-1">
+                  {(['day', 'swing'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setTradeMode(mode)}
+                      className={`flex-1 rounded-xl py-2.5 font-bold text-sm border transition-colors ${
+                        tradeMode === mode
+                          ? mode === 'day'
+                            ? 'bg-orange-600 border-orange-500 text-white'
+                            : 'bg-sky-600 border-sky-500 text-white'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      {mode === 'day' ? '⚡ Day Trade' : '📈 Swing Trade'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
+                  {tradeMode === 'day'
+                    ? 'Intraday only — guidance uses VWAP, OR, and volume. Close by 3:45 PM ET regardless of P&L.'
+                    : 'Multi-day hold — guidance uses DTE and swing thesis. Ignore intraday noise.'}
+                </p>
+                {/* DTE conflict warning */}
+                {tradeMode === 'day' && expiryInput.trim() && (() => {
+                  const d = new Date(expiryInput.trim() + 'T00:00:00')
+                  const dte = Math.ceil((d.getTime() - Date.now()) / 86400000)
+                  return Number.isFinite(dte) && dte > 3
+                    ? (
+                      <div className="mt-1.5 rounded-lg border border-amber-700/50 bg-amber-950/30 px-2.5 py-2 text-[11px] text-amber-300">
+                        ⚠️ This expiry has <strong>{dte} DTE</strong> — that's a multi-day position. Consider switching to <strong>Swing Trade</strong> so the tool holds through intraday dips and uses DTE-aware exit rules.
+                      </div>
+                    )
+                    : null
+                })()}
+              </div>
               <div>
                 <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Side</label>
                 <div className="flex gap-2 mt-1">

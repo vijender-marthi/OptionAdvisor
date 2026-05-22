@@ -363,6 +363,7 @@ class ActiveTradeEnterRequest(BaseModel):
     strike: Optional[float] = None
     expiry: Optional[str] = None  # YYYY-MM-DD; optional bookkeeping / future Greeks
     notes: Optional[str] = None
+    trade_type: str = "day"  # "day" | "swing"
 
 
 class ActiveTradeEnterResponse(BaseModel):
@@ -390,6 +391,7 @@ class ActiveTradeOut(BaseModel):
     notes: str = ""
     opened_at_ms: int
     exited_at_ms: Optional[int] = None
+    trade_type: str = "day"
     decision: dict = Field(default_factory=dict)
     metrics: dict = Field(default_factory=dict)
     intraday_error: Optional[str] = None

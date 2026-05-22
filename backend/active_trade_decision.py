@@ -152,6 +152,60 @@ def build_active_trade_decision(
             "intraday_snapshot_note": "Underlying regular-session last vs session VWAP and opening range.",
         }
 
+    # ── Swing trade path ────────────────────────────────────────────────────────
+    trade_type = str(position_row.get("trade_type") or "day").lower().strip()
+    if trade_type == "swing":
+        if dte is not None and dte <= 2:
+            return finish(
+                "EXIT_WEAKNESS",
+                "Exit — expiry near",
+                f"Only {dte} DTE remaining — theta is destroying value daily. Close or roll immediately.",
+                "red",
+                ["Do not hold through expiry on a debit option. Close now."],
+            )
+        if dte is not None and dte <= 5:
+            if side == "CALL" and last is not None and or_low is not None and last < or_low:
+                return finish(
+                    "EXIT_WEAKNESS",
+                    "Consider exit",
+                    f"{dte} DTE remaining and price broke OR low — swing thesis weakening. Consider closing.",
+                    "orange",
+                    ["Small DTE + broken structure = elevated risk. Trim or close."],
+                )
+            if side == "PUT" and last is not None and or_high is not None and last > or_high:
+                return finish(
+                    "EXIT_WEAKNESS",
+                    "Consider exit",
+                    f"{dte} DTE remaining and price reclaimed OR high — swing thesis weakening. Consider closing.",
+                    "orange",
+                    ["Small DTE + broken structure = elevated risk. Trim or close."],
+                )
+        if stress:
+            return finish(
+                "WEAKENING",
+                "Monitor closely",
+                f"Market stress detected (VIX/SPY). Swing position has {dte}d DTE — monitor thesis closely, tighten stop.",
+                "orange",
+                ["Elevated VIX = wider spreads and faster premium decay. Reassess daily."],
+            )
+        dte_note = f"{dte} DTE remaining" if dte is not None else "unknown DTE"
+        above = last is not None and vwap is not None and last > vwap
+        vwap_note = "Price above VWAP — bullish structure intact." if (side == "CALL" and above) else \
+                    "Price below VWAP — bearish structure intact." if (side == "PUT" and not above) else \
+                    "Price vs VWAP mixed — monitor key levels."
+        return finish(
+            "HOLD_CONFIRMATION",
+            "Hold — swing",
+            f"Swing position — {dte_note}. {vwap_note} Hold through intraday noise; exit only if multi-day thesis breaks.",
+            "green",
+            [
+                "Do NOT exit on a single bad intraday bar — swing trades need room.",
+                "Set a stop below the last swing low, not intraday OR low.",
+                f"Reassess at {max(1, (dte or 7) - 3)} DTE or if underlying closes below key swing support.",
+            ],
+        )
+
+    # ── Day trade path ───────────────────────────────────────────────────────────
     # Missing core tape — surface neutral
     if last is None or vwap is None or or_high is None or or_low is None:
         return finish(
