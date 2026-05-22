@@ -17,7 +17,10 @@ function fmtTime(value?: string | null): string {
   if (!value) return '—'
   const ts = Date.parse(value)
   if (!Number.isFinite(ts)) return '—'
-  return new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET'
+  let tz: string
+  try { tz = localStorage?.getItem('oa_timezone') || 'America/New_York' } catch { tz = 'America/New_York' }
+  const shortTz = tz === 'America/New_York' ? 'ET' : tz === 'America/Chicago' ? 'CT' : tz === 'America/Denver' ? 'MT' : 'PT'
+  return new Date(ts).toLocaleString('en-US', { timeZone: tz }) + ' ' + shortTz
 }
 
 function SeverityBadge({ severity }: { severity: UnifiedAlert['severity'] }) {
