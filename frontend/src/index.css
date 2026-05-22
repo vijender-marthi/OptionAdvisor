@@ -12,9 +12,9 @@
 :root, html.dark {
   color-scheme: dark;
 
-  --surface-canvas: #020617;
-  --surface-page: #020617;
-  --surface-card: #08111f;
+  --surface-canvas: #0a0a0a;
+  --surface-page: #0a0a0a;
+  --surface-card: #121212;
   --surface-elevated: #111c2e;
   --surface-raised: #1e2b3f;
   --surface-muted: #334155;

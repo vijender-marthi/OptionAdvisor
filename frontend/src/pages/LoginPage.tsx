@@ -41,8 +41,12 @@ export default function LoginPage() {
     try {
       if (mode === 'signup') {
         const res = await registerWithPassword(name, cleanEmail, password)
-        setInfo(res.message)
-        if (!res.needs_activation) navigate('trade-command-center')
+        if (!res.needs_activation) {
+          await loginWithPassword(cleanEmail, password)
+          navigate('trade-command-center')
+        } else {
+          setInfo(res.message)
+        }
       } else {
         await loginWithPassword(cleanEmail, password)
         navigate('trade-command-center')
