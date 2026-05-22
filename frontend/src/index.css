@@ -42,9 +42,9 @@
   --warning: #fbbf24;
   --warning-bg: rgba(245, 158, 11, 0.15);
   --warning-border: rgba(245, 158, 11, 0.4);
-  --accent: #a78bfa;
-  --accent-bg: rgba(168, 85, 247, 0.15);
-  --accent-border: rgba(168, 85, 247, 0.4);
+  --accent: #2dd4bf;
+  --accent-bg: rgba(20, 184, 166, 0.15);
+  --accent-border: rgba(20, 184, 166, 0.4);
 
   --info: #38bdf8;
   --info-bg: rgba(56, 189, 248, 0.15);
@@ -121,9 +121,9 @@ html.light {
   --warning: #d97706;
   --warning-bg: #fef3c7;
   --warning-border: #fcd34d;
-  --accent: #6d28d9;
-  --accent-bg: #ede9fe;
-  --accent-border: #a78bfa;
+  --accent: #0d9488;
+  --accent-bg: #ccfbf1;
+  --accent-border: #2dd4bf;
 
   --info: #0369a1;
   --info-bg: #e0f2fe;
@@ -1791,6 +1791,64 @@ html.light .oa-tt-regular {
   background: #fef3c7;
   color: #92400e;
 }
+
+/* ── Violet → Teal theme remap ──────────────────────────────────────────── */
+html.dark .bg-violet-600 { background-color: #0d9488 !important; }
+html.dark .bg-violet-500 { background-color: #14b8a6 !important; }
+html.dark .bg-violet-700 { background-color: #0f766e !important; }
+html.dark .text-violet-300 { color: #5eead4 !important; }
+html.dark .text-violet-400 { color: #2dd4bf !important; }
+html.dark .text-violet-200 { color: #99f6e4 !important; }
+html.dark .border-violet-500 { border-color: #14b8a6 !important; }
+html.dark .border-violet-600 { border-color: #0d9488 !important; }
+html.dark .border-violet-700 { border-color: #0f766e !important; }
+html.dark .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
+html.dark .ring-violet-600 { --tw-ring-color: #0d9488 !important; }
+
+html.light .bg-violet-600 { background-color: #0d9488 !important; }
+html.light .bg-violet-500 { background-color: #14b8a6 !important; }
+html.light .bg-violet-700 { background-color: #0f766e !important; }
+html.light .text-violet-300 { color: #0d9488 !important; }
+html.light .text-violet-400 { color: #14b8a6 !important; }
+html.light .text-violet-200 { color: #99f6e4 !important; }
+html.light .border-violet-500 { border-color: #14b8a6 !important; }
+html.light .border-violet-600 { border-color: #0d9488 !important; }
+html.light .border-violet-700 { border-color: #0f766e !important; }
+html.light .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
+html.light .ring-violet-600 { --tw-ring-color: #0d9488 !important; }
+
+/* Violet hover states */
+html.dark .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
+html.dark .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
+html.dark .hover\:text-violet-300:hover { color: #5eead4 !important; }
+html.dark .hover\:text-violet-400:hover { color: #2dd4bf !important; }
+html.light .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
+html.light .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
+html.light .hover\:text-violet-300:hover { color: #0d9488 !important; }
+html.light .hover\:text-violet-400:hover { color: #14b8a6 !important; }
+
+/* Violet ring-offset */
+html.dark .ring-offset-violet-600 { --tw-ring-offset-color: #0d9488 !important; }
+html.light .ring-offset-violet-600 { --tw-ring-offset-color: #0d9488 !important; }
+
+/* Violet border hover */
+html.dark .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
+html.dark .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
+html.light .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
+html.light .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
+
+/* Violet-900 backgrounds (hover states, subtle fills) */
+html.dark .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
+html.dark .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.dark .hover\:bg-violet-900\/30:hover { background-color: rgba(13, 148, 136, 0.3) !important; }
+html.light .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
+html.light .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+
+/* Violet-600 with opacity */
+html.dark .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.dark .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
+html.light .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.light .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
 
 /* ── AI Radar Page - light theme ───────────────────────────────────────── */
 html.light .ai-radar-page .bg-gray-800\/40 { background-color: #e2e8f0 !important; }
