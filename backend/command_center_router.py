@@ -730,7 +730,7 @@ def _compute_positions_pnl(
 
     if not all_open_for_pnl:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
-        return {"total_pl": total_pl, "day_pl": 0.0, "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": 0.0, "week_pl": 0.0, "per_position": per_position_pnl}
 
     # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
@@ -739,7 +739,7 @@ def _compute_positions_pnl(
             for p in all_open_for_pnl
             if p.get("ticker")
         })
-        price_map: dict[str, tuple[float, float]] = {}
+        price_map: dict[str, tuple[float, float, float]] = {}
         for sym in tickers:
             try:
                 h = bar_cache.get_history(sym, period="5d", interval="1d", auto_adjust=True)
@@ -748,7 +748,14 @@ def _compute_positions_pnl(
                 c = h["Close"].dropna()
                 if len(c) < 2:
                     continue
-                price_map[sym] = (float(c.iloc[-1]), float(c.iloc[-2]))
+                # (current_close, prev_close, monday_close)
+                mon_idx = None
+                for i in range(len(h)):
+                    if h.index[i].weekday() == 0:
+                        mon_idx = i
+                        break
+                mon_close = float(c.iloc[mon_idx]) if mon_idx is not None else float(c.iloc[-1])
+                price_map[sym] = (float(c.iloc[-1]), float(c.iloc[-2]), mon_close)
             except Exception:
                 continue
 
@@ -767,13 +774,14 @@ def _compute_positions_pnl(
 
         mtm_total = 0.0
         day_total = 0.0
+        week_total = 0.0
         has_mtm = False
 
         for p in all_open_for_pnl:
             sym = str(p.get("ticker", "")).upper()
             if sym not in price_map:
                 continue
-            S_now, S_prev = price_map[sym]
+            S_now, S_prev, S_mon = price_map[sym]
             has_legs = isinstance(p.get("legs"), list) and p.get("legs")
 
             if has_legs:
@@ -805,11 +813,17 @@ def _compute_positions_pnl(
                 }
             mtm_total += current_result["pnl"]
             day_total += bs_today["pnl"] - bs_yesterday["pnl"]
+            # Weekly P&L: current BS value minus Monday BS value
+            bs_monday = calculate_position_pnl(
+                p, live_option_marks=None, underlying_price=S_mon,
+            )
+            week_total += bs_today["pnl"] - bs_monday["pnl"]
             has_mtm = True
 
         total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
         day_pl = round(day_total, 2) if has_mtm else None
-        return {"total_pl": total_pl, "day_pl": day_pl, "per_position": per_position_pnl}
+        week_pl = round(week_total, 2) if has_mtm else None
+        return {"total_pl": total_pl, "day_pl": day_pl, "week_pl": week_pl, "per_position": per_position_pnl}
 
     except Exception:  # noqa: BLE001
         total_pl = round(realized_pnl, 2) if realized_count > 0 else None
@@ -1139,6 +1153,7 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "stock_capital":          0.0,
         "total_pl":               pnl_data["total_pl"],
         "day_pl":                 pnl_data["day_pl"],
+        "week_pl":                pnl_data.get("week_pl"),
         "risk_status":            "elevated" if options_cap > 20000 else "normal",
         "alerts_count":           alerts_n,
         "open_risk_notional":     round(options_cap, 2),

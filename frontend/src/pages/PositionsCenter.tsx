@@ -1361,15 +1361,13 @@ export default function PositionsCenter() {
   const totalPlPct = summary.total_pl_pct ?? summary.total_net_pl_pct
   const dayPl = summary.day_pl
   const dayPlPct = summary.day_pl_pct
+  const weekPl = summary.week_pl
+  const weekPlPct = summary.week_pl_pct
   const capitalUsed = num(summary.total_capital_used)
   const buyingPower = num(summary.buying_power, accountSize)
-  const utilPct =
-    capitalUsed > 0 && buyingPower + capitalUsed > 0
-      ? (capitalUsed / (capitalUsed + buyingPower)) * 100
-      : num(summary.capital_utilization_pct)
-
-  const wlCount = num(summary.watchlist_count)
-  const wlAlerts = num(summary.watchlist_alerts, num(summary.alerts_count))
+  const utilPct = capitalUsed > 0 && buyingPower > 0
+    ? (capitalUsed / (capitalUsed + buyingPower)) * 100
+    : num(summary.capital_utilization_pct)
   const alertCenterN = num(summary.alert_center_count, num(summary.alerts_count))
   const criticalN = num(summary.critical_alerts)
 
@@ -1569,11 +1567,11 @@ export default function PositionsCenter() {
 
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <KpiCard label="Total Net P&L" value={fmtUsd(totalPl)} valueClass={getProfitLossTextClass(num(totalPl))} sub={totalPlPct != null && String(totalPlPct) !== '' ? <span className={getProfitLossTextClass(num(totalPlPct))}>{fmtPct(totalPlPct)}</span> : null} />
+        <KpiCard label="Week P&L" value={fmtUsd(weekPl)} valueClass={getProfitLossTextClass(num(weekPl))} sub={weekPlPct != null && String(weekPlPct) !== '' ? <span className={getProfitLossTextClass(num(weekPlPct))}>{fmtPct(weekPlPct)}</span> : null} />
         <KpiCard label="Day P&L" value={fmtUsd(dayPl)} valueClass={getProfitLossTextClass(num(dayPl))} sub={dayPlPct != null && String(dayPlPct) !== '' ? <span className={getProfitLossTextClass(num(dayPlPct))}>{fmtPct(dayPlPct)}</span> : null} />
         <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
-        <KpiCard label="Watchlist" value={String(wlCount)} sub={<span className="text-tertiary">{wlAlerts} Alerts</span>} />
         <KpiCard label="Alert Center" value={String(alertCenterN)} sub={criticalN > 0 ? <span className="inline-flex items-center gap-1 text-semantic-bearish"><AlertTriangle size={12} />{criticalN} Critical</span> : <span className="text-tertiary">—</span>} />
       </section>
 
