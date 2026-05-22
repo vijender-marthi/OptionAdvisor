@@ -1019,123 +1019,6 @@ export default function DayTradeEnginePanel({
           )
         })()}
 
-        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
-              <BarChart2 size={12} />
-              AI Coach Summary
-            </div>
-            {hasAiCoach && ac!._source && (
-              <span className="text-[9px] text-gray-600 font-mono uppercase tracking-widest">
-                {ac!._source === 'anthropic' ? '⚡ Claude' : ac!._source === 'openai' ? '⚡ GPT' : '◎ engine'}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
-
-          {/* Entry condition + invalidation — from ai_coach when available */}
-          {hasAiCoach && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
-                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
-                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
-              </div>
-              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
-                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
-                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Confluence Zone */}
-          {hasAiCoach && ac!.confluence?.detected && (
-            <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${
-                  ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' :
-                  'bg-amber-500/10 text-amber-400/80'
-                }`}>
-                  {ac!.confluence.strength}
-                </span>
-                <span className="text-[10px] font-semibold text-amber-300">
-                  {ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}
-                </span>
-                <span className="ml-auto text-[10px] text-amber-400/60">
-                  {ac!.confluence.levels_converging.join(' + ')}
-                </span>
-              </div>
-              {ac!.confluence_note && (
-                <div className="mt-1 text-[10px] text-gray-400">{ac!.confluence_note}</div>
-              )}
-              {/* Entry gate status */}
-              {ac!.entry_gate && (
-                <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
-                  ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-slate-500 dark:text-gray-500'
-                }`}>
-                  <span>{ac!.entry_gate.valid ? '✓' : '○'}</span>
-                  <span>{ac!.entry_gate.valid ? 'Entry valid' : 'Entry not yet valid'} — {ac!.entry_gate.trigger_condition}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Trade R/R */}
-          {hasAiCoach && ac!.trade && ac!.trade.direction !== 'NONE' && ac!.trade.entry_price > 0 && (
-            <div className="mt-2 grid grid-cols-4 gap-1">
-              {[
-                { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
-                { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
-                { label: 'Stop', value: `$${ac!.trade.stop.toFixed(2)}` },
-                { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`,
-                  highlight: ac!.trade.r_r_valid },
-              ].map(({ label, value, highlight }) => (
-                <div key={label} className={`rounded border px-2 py-1 text-center ${
-                  highlight ? 'border-semantic-bullish/30 bg-semantic-bullish/5' : 'border-gray-800/60 bg-black/20'
-                }`}>
-                  <div className="text-[9px] text-gray-500">{label}</div>
-                  <div className={`text-[11px] font-mono font-semibold ${
-                    highlight ? 'text-semantic-bullish' : 'text-gray-200'
-                  }`}>{value}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* No-trade reason */}
-          {hasAiCoach && ac!.no_trade_reason && (
-            <div className="mt-1.5 rounded border border-slate-300 dark:border-gray-700/40 bg-slate-50 dark:bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-300">
-              ⚠ {ac!.no_trade_reason}
-            </div>
-          )}
-
-          {/* Decision Tree — IF/THEN nodes */}
-          {hasAiCoach && ac!.decision_tree.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
-              {ac!.decision_tree.map((node, i) => {
-                const actionColor =
-                  node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
-                  node.action === 'EXIT'  ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
-                  node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
-                  'text-gray-400 border-gray-700/50 bg-gray-900/30'
-                return (
-                  <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
-                    <span className="font-semibold">IF</span> {node.if} →{' '}
-                    <span className="font-semibold">THEN</span> {node.then}
-                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>
-                      {node.action}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <div className="text-[11px] text-semantic-accent leading-relaxed">
-            Best setup: {bestNextStep}
-          </div>
-        </div>
-
         {/* ═══ 4-State Trading System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
         {(() => {
           const state = eg?.state || ''
@@ -1349,6 +1232,97 @@ export default function DayTradeEnginePanel({
           </div>
           )
         })()}
+
+        {/* AI Coach Summary — moved after 4-state system */}
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+              <BarChart2 size={12} />
+              AI Coach Summary
+            </div>
+            {hasAiCoach && ac!._source && (
+              <span className="text-[9px] text-gray-600 font-mono uppercase tracking-widest">
+                {ac!._source === 'anthropic' ? '⚡ Claude' : ac!._source === 'openai' ? '⚡ GPT' : '◎ engine'}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+
+          {hasAiCoach && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+          )}
+
+          {hasAiCoach && ac!.confluence?.detected && (
+            <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>
+                  {ac!.confluence.strength}
+                </span>
+                <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
+                <span className="ml-auto text-[10px] text-amber-400/60">{ac!.confluence.levels_converging.join(' + ')}</span>
+              </div>
+              {ac!.confluence_note && <div className="mt-1 text-[10px] text-gray-400">{ac!.confluence_note}</div>}
+              {ac!.entry_gate && (
+                <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-slate-500 dark:text-gray-500'}`}>
+                  <span>{ac!.entry_gate.valid ? '✓' : '○'}</span>
+                  <span>{ac!.entry_gate.valid ? 'Entry valid' : 'Entry not yet valid'} — {ac!.entry_gate.trigger_condition}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {hasAiCoach && ac!.trade && ac!.trade.direction !== 'NONE' && ac!.trade.entry_price > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-1">
+              {[
+                { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
+                { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
+                { label: 'Stop', value: `$${ac!.trade.stop.toFixed(2)}` },
+                { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`, highlight: ac!.trade.r_r_valid },
+              ].map(({ label, value, highlight }) => (
+                <div key={label} className={`rounded border px-2 py-1 text-center ${highlight ? 'border-semantic-bullish/30 bg-semantic-bullish/5' : 'border-gray-800/60 bg-black/20'}`}>
+                  <div className="text-[9px] text-gray-500">{label}</div>
+                  <div className={`text-[11px] font-mono font-semibold ${highlight ? 'text-semantic-bullish' : 'text-gray-200'}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {hasAiCoach && ac!.no_trade_reason && (
+            <div className="mt-1.5 rounded border border-slate-300 dark:border-gray-700/40 bg-slate-50 dark:bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-300">
+              ⚠ {ac!.no_trade_reason}
+            </div>
+          )}
+
+          {hasAiCoach && ac!.decision_tree.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+              {ac!.decision_tree.map((node, i) => {
+                const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                  node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                  node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                  'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                return (
+                  <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                    <span className="font-semibold">IF</span> {node.if} →{' '}
+                    <span className="font-semibold">THEN</span> {node.then}
+                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="text-[11px] text-semantic-accent leading-relaxed">Best setup: {bestNextStep}</div>
+        </div>
 
         {inPosition && latestPos && (
           <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">
