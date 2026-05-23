@@ -1161,7 +1161,7 @@ export default function DayTradeEnginePanel({
           )}
 
           {hasAiCoach && ac!.trade && ac!.trade.direction !== 'NONE' && ac!.trade.entry_price > 0 && (
-            <div className="mt-2 grid grid-cols-4 gap-1">
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1">
               {[
                 { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
                 { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
