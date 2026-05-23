@@ -245,6 +245,39 @@ export default function SwingTradePage() {
 
         {/* Left: Search panel */}
         <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
+          {/* Header moved to left side */}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {searchParams.get('from') && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(searchParams.get('from')!)}
+                    className="rounded-full border border-slate-200 dark:border-white/[0.07] px-2 py-1 text-[10px] text-secondary"
+                  >
+                    <ArrowLeft size={12} /> Back
+                  </button>
+                )}
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-600/20 border border-violet-700 text-violet-400">
+                  <TrendingUp size={14} />
+                </div>
+                <h1 className="text-sm font-bold tracking-tight text-heading">Swing Trade</h1>
+                <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-semantic-info">Multi-Day</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-snug text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => void runScan()}
+                disabled={loading}
+                className="rounded-full border border-gray-700 px-2.5 py-1 text-[10px] font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
           <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
             <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
@@ -290,38 +323,7 @@ export default function SwingTradePage() {
         {/* Right: Content */}
         <div className="flex-1 min-w-0 space-y-4">
 
-        {/* Header */}
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {searchParams.get('from') && (
-                <button
-                  type="button"
-                  onClick={() => navigate(searchParams.get('from')!)}
-                  className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
-                >
-                  <ArrowLeft size={16} /> Back
-                </button>
-              )}
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-700 text-violet-400">
-                <TrendingUp size={18} />
-              </div>
-              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Swing Trade Engine</h1>
-              <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Overnight &amp; Multi-Day</span>
-            </div>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void runScan()}
-              disabled={loading}
-              className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
-            >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
-            </button>
-          </div>
-        </header>
+
 
         {/* Error */}
         {error && (
