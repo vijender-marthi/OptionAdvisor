@@ -517,14 +517,6 @@ def _build_day_exit_rules(
                     "action":  "Exit full position",
                     "note":    "Bearish structure failed — exit immediately.",
                 })
-        if vwap is not None:
-            vwap_stop = round(vwap * 1.002, 2)
-            rules.append({
-                "trigger": "Price reclaims VWAP",
-                "price":   vwap_stop,
-                "action":  "Exit full position",
-                "note":    "Bearish structure failed — exit immediately",
-            })
         if risk_below is not None:
             rules.append({
                 "trigger": "Stop loss — OR High",

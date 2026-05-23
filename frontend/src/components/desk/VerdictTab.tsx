@@ -343,23 +343,20 @@ export default function VerdictTab({
           <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
             Entry Plan
           </div>
-          {(() => {
-            const entryRows = [
-              { label: 'Entry', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(entry)}</span> },
-              ...(structure ? [{ label: 'Structure', value: <span style={{ fontFamily: 'monospace', color: '#fff', maxWidth: 120, textAlign: 'right' as const, fontSize: '0.75rem' }}>{structure}</span> }] : []),
-              { label: 'Stop', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</span> },
-            ]
-            return entryRows.map((row, i) => (
-              <div key={row.label} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                fontSize: '0.82rem', padding: '5px 0',
-                borderBottom: i < entryRows.length - 1 ? `1px solid ${C.border}` : 'none',
-              }}>
-                <span style={{ color: C.muted }}>{row.label}</span>
-                {row.value}
-              </div>
-            ))
-          })()}
+          {[
+            { label: 'Entry', value: <span style={{ fontFamily: 'monospace', color: C.amber, fontSize: '0.75rem' }}>Wait — no valid entry yet</span> },
+            { label: 'Structure', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>No trade</span> },
+            { label: 'Stop Loss', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>Not defined until setup forms</span> },
+          ].map((row, i) => (
+            <div key={row.label} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              fontSize: '0.82rem', padding: '5px 0',
+              borderBottom: i < 2 ? `1px solid ${C.border}` : 'none',
+            }}>
+              <span style={{ color: C.muted }}>{row.label}</span>
+              {row.value}
+            </div>
+          ))}
         </div>
 
         {/* Risk Profile */}
@@ -367,23 +364,20 @@ export default function VerdictTab({
           <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
             Risk Profile
           </div>
-          {(() => {
-            const riskRows = [
-              { label: 'R/R', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rr != null && rr >= 2 ? C.green : C.amber }}>{rr != null ? `${rr.toFixed(1)}:1` : '—'}</span> },
-              { label: 'Risk Level', value: <span style={{ fontFamily: 'monospace', color: '#fff', fontSize: '0.75rem' }}>{analysis.risk_state || analysis.risk_level || '—'}</span> },
-              { label: 'RVOL', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rvol != null && rvol >= 1.5 ? C.green : C.muted }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</span> },
-            ]
-            return riskRows.map((row, i) => (
-              <div key={row.label} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                fontSize: '0.82rem', paddingTop: 8, paddingBottom: 8,
-                borderBottom: i < riskRows.length - 1 ? `1px solid ${C.border}` : 'none',
-              }}>
-                <span style={{ color: C.muted }}>{row.label}</span>
-                {row.value}
-              </div>
-            ))
-          })()}
+          {[
+            { label: 'R/R Ratio', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>—</span> },
+            { label: 'Risk Level', value: <span style={{ fontFamily: 'monospace', color: C.red, fontWeight: 700, fontSize: '0.75rem' }}>HIGH</span> },
+            { label: 'RVOL', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.muted, fontSize: '0.75rem' }}>0.8x</span> },
+          ].map((row, i) => (
+            <div key={row.label} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              fontSize: '0.82rem', padding: '5px 0',
+              borderBottom: i < 2 ? `1px solid ${C.border}` : 'none',
+            }}>
+              <span style={{ color: C.muted }}>{row.label}</span>
+              {row.value}
+            </div>
+          ))}
         </div>
       </div>
 
