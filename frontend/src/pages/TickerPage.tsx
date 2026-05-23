@@ -849,6 +849,7 @@ export default function TickerPage() {
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strike</th>
                         <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Expiry</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Cost</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Max Profit</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>R:R</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Score</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>PoP</th>
@@ -890,7 +891,12 @@ export default function TickerPage() {
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#fff' }}>{leg.option_type}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>
+                                    ${(rec.max_profit * 100).toFixed(2)}
+                                  </td>
+                                )}
                                 {li === 0 && (
                                   <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>
                                     {rr > 0 ? `1:${rr.toFixed(1)}` : '—'}
@@ -918,7 +924,7 @@ export default function TickerPage() {
                             ))}
                             {expanded && (
                               <tr key={`${rec.rank}-detail`} style={{ background: 'rgba(124,92,252,0.04)' }}>
-                                <td colSpan={11} style={{ padding: '12px 14px' }}>
+                                <td colSpan={12} style={{ padding: '12px 14px' }}>
                                   <RecommendationCard
                                     rec={rec}
                                     ticker={selectedData.ticker}
