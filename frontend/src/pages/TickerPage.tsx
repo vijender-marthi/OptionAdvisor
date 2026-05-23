@@ -532,10 +532,12 @@ export default function TickerPage() {
     marginTop: 14,
   }
 
-  return (
-    <div style={{ background: C.bgPage, minHeight: '100vh', padding: '20px 24px' }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+  const L = 280
 
+  return (
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: '20px 24px' }}>
+      {/* Left: Search panel */}
+      <div style={{ width: L, flexShrink: 0, position: 'sticky', top: 20 }}>
         <TickerInput
           onAnalyze={handleAnalyzeWithCache}
           loading={loading}
@@ -544,6 +546,10 @@ export default function TickerPage() {
           initialSpreadWidth={lastWidth}
           initialStrategyMode={lastMode}
         />
+      </div>
+
+      {/* Right: Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* Loading */}
         {loading && (
