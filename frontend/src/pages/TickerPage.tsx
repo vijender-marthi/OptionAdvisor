@@ -172,36 +172,32 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
     <div style={{
       background: C.bgPanel,
       border: `1px solid ${C.border}`,
-      borderRadius: 14,
-      padding: '14px 16px',
-      marginTop: 14,
+      borderRadius: 10,
+      padding: '8px 12px',
+      marginTop: 10,
     }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-        {/* Label + GO count */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          fontSize: '0.6rem', fontWeight: 700,
+          textTransform: 'uppercase', letterSpacing: '0.06em', color: C.muted, flexShrink: 0,
+        }}>
+          Week
+        </span>
+        {goCount > 0 && (
           <span style={{
-            fontSize: '0.65rem', fontWeight: 700,
-            textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted,
+            background: 'rgba(0,229,160,0.1)', border: `1px solid rgba(0,229,160,0.2)`,
+            color: C.green, fontSize: '0.55rem', fontWeight: 700,
+            borderRadius: 20, padding: '1px 6px', flexShrink: 0,
           }}>
-            Week Filter
+            {goCount}
           </span>
-          {goCount > 0 && (
-            <span style={{
-              background: 'rgba(0,229,160,0.1)', border: `1px solid rgba(0,229,160,0.2)`,
-              color: C.green, fontSize: '0.6rem', fontWeight: 700,
-              borderRadius: 20, padding: '1px 8px',
-            }}>
-              {goCount} GO
-            </span>
-          )}
-        </div>
+        )}
 
         {/* Slots */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+        <div style={{ display: 'flex', gap: 4, flex: 1, overflowX: 'auto' }}>
           {slots.map(slot => {
             const active = selectedWeeksOut === slot.weeksOut
             const isLoading = loadingWeeks.has(slot.weeksOut)
-            const hovered = hoveredSlot === slot.label
             const dotColor = isLoading
               ? C.violet
               : slot.verdict
@@ -213,63 +209,32 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
                 key={slot.label}
                 type="button"
                 onClick={() => onSelect(slot.weeksOut)}
-                onMouseEnter={() => setHoveredSlot(slot.label)}
-                onMouseLeave={() => setHoveredSlot(null)}
                 disabled={isLoading}
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${active ? C.accent : hovered && !isLoading ? C.accent : C.borderSub}`,
-                  background: active ? 'rgba(74,124,255,0.1)' : isLoading ? 'rgba(124,92,252,0.05)' : C.bgCard,
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  background: active ? 'rgba(74,124,255,0.1)' : isLoading ? 'rgba(124,92,252,0.05)' : 'transparent',
                   cursor: isLoading ? 'wait' : 'pointer',
-                  minWidth: 70,
-                  textAlign: 'center',
                   opacity: !slot.hasData && !isLoading ? 0.4 : 1,
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.15s',
+                  gap: 3,
+                  flexShrink: 0,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: dotColor,
-                    flexShrink: 0,
-                    animation: isLoading ? 'tdPulse 1.5s infinite' : undefined,
-                  }} />
-                  <span style={{
-                    fontSize: '0.78rem', fontWeight: 700, fontFamily: 'monospace',
-                    color: active ? '#fff' : C.muted,
-                  }}>
-                    {slot.label}
-                  </span>
-                  {slot.dte !== null && (
-                    <span style={{ fontSize: '0.6rem', color: C.muted, opacity: 0.5 }}>
-                      · {slot.dte}d
-                    </span>
-                  )}
-                </div>
-                {isLoading ? (
-                  <span style={{ fontSize: '0.6rem', color: C.violet }}>loading…</span>
-                ) : slot.hasData ? (
-                  slot.verdict ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: VERDICT_TEXT_COLOR[slot.verdict] }}>
-                      {VERDICT_ICON[slot.verdict]}
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700 }}>{slot.verdict}</span>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: '0.6rem', color: C.muted, opacity: 0.5 }}>no trades</span>
-                  )
-                ) : (
-                  <span style={{ fontSize: '0.6rem', color: C.muted, opacity: 0.5 }}>tap to load</span>
-                )}
-                {slot.recCount > 0 && (
-                  <span style={{ fontSize: '0.6rem', color: C.muted, opacity: 0.4 }}>
-                    {slot.recCount} trade{slot.recCount !== 1 ? 's' : ''}
-                  </span>
-                )}
+                <div style={{
+                  width: 5, height: 5, borderRadius: '50%',
+                  background: dotColor,
+                  flexShrink: 0,
+                  animation: isLoading ? 'tdPulse 1.5s infinite' : undefined,
+                }} />
+                <span style={{
+                  fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace',
+                  color: active ? '#fff' : C.muted,
+                }}>
+                  {slot.label}
+                </span>
               </button>
             )
           })}
@@ -552,8 +517,8 @@ export default function TickerPage() {
           {searchOpen ? 'Hide search' : 'Show search'}
         </button>
 
-        {/* Left: Search panel */}
-        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+        {/* Left: Search panel + Market Overview */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-3`}>
           <TickerInput
             onAnalyze={handleAnalyzeWithCache}
             loading={loading}
@@ -562,6 +527,15 @@ export default function TickerPage() {
             initialSpreadWidth={lastWidth}
             initialStrategyMode={lastMode}
           />
+          {!loading && data && displayData && (
+            <MarketOverview
+              ticker={displayData.ticker}
+              companyName={displayData.company_name}
+              sector={displayData.sector}
+              marketCap={displayData.market_cap}
+              signals={displayData.signals}
+            />
+          )}
         </div>
 
         {/* Right: Content */}
@@ -754,17 +728,6 @@ export default function TickerPage() {
                   {watched ? <StarOff size={16} /> : <Star size={16} />}
                 </button>
               </div>
-            </div>
-
-            {/* Market Overview */}
-            <div style={cardStyle}>
-              <MarketOverview
-                ticker={displayData.ticker}
-                companyName={displayData.company_name}
-                sector={displayData.sector}
-                marketCap={displayData.market_cap}
-                signals={displayData.signals}
-              />
             </div>
 
             {/* Week selector */}
