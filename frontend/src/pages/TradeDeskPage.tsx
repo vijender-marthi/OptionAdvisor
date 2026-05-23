@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+// ── Responsive breakpoints ─────────────────────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1280)
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return w
+}
+// mobile < 640, tablet 640–1023, desktop ≥ 1024
 import { deskApi } from '../api/client'
 import type {
   DeskWatchlistItem, DeskTradeLog, DeskTradeStats, DeskAlert,
@@ -51,6 +63,17 @@ function etClock(): string {
 
 export default function TradeDeskPage() {
   const navigate = useNavigate()
+  const windowWidth = useWindowWidth()
+  const isMobile = windowWidth < 640
+  const isTablet = windowWidth >= 640 && windowWidth < 1024
+  const isDesktop = windowWidth >= 1024
+
+  // Left panel open/close (mobile: overlay, tablet: collapsible rail)
+  const [panelOpen, setPanelOpen] = useState(false)
+  // On desktop always show panel; on tablet/mobile controlled by panelOpen
+  const showPanel = isDesktop || panelOpen
+  // Drawer left offset = panel width when panel is visible inline
+  const drawerLeft = isDesktop ? 300 : 0
 
   // Core state
   const [selectedTicker, setSelectedTicker] = useState('')
@@ -287,25 +310,40 @@ export default function TradeDeskPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: C.bgPage, color: '#fff', overflow: 'hidden', fontFamily: 'sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: C.bgPage, color: '#fff', overflow: 'hidden', fontFamily: 'sans-serif' }}>
       {/* ── TOPBAR ── */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        height: 44, padding: '0 16px',
+        height: 44, padding: '0 12px',
         background: C.bgPage, borderBottom: `1px solid ${C.border}`,
-        flexShrink: 0, gap: 12,
+        flexShrink: 0, gap: 8,
       }}>
-        {/* Left: logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>Option</span>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: C.green }}>Advisor</span>
+        {/* Left: hamburger (mobile/tablet) + logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {!isDesktop && (
+            <button
+              type="button"
+              onClick={() => setPanelOpen(o => !o)}
+              aria-label="Toggle panel"
+              style={{
+                background: 'transparent', border: `1px solid ${C.borderSub}`,
+                color: C.muted, borderRadius: 6, padding: '4px 8px',
+                fontSize: '1rem', cursor: 'pointer', lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>Option</span>
+            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: C.green }}>Advisor</span>
+          </div>
         </div>
 
-        {/* Center: market strip */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontFamily: 'monospace', fontSize: '0.72rem', overflow: 'hidden', flex: 1, justifyContent: 'center' }}>
-          {/* Pulsing green dot */}
+        {/* Center: market strip — condensed on mobile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 20, fontFamily: 'monospace', fontSize: '0.72rem', overflow: 'hidden', flex: 1, justifyContent: 'center' }}>
           <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}`, flexShrink: 0 }} />
-          {/* SPY */}
+          {/* SPY — always visible */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
             SPY
             {marketData.spy
@@ -313,80 +351,102 @@ export default function TradeDeskPage() {
               : <span style={{ color: C.muted }}>—</span>
             }
           </span>
-          {/* QQQ */}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
-            QQQ
-            {marketData.qqq
-              ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.qqq.toFixed(2)}</span>{marketData.qqqChg !== undefined && <span style={{ color: marketData.qqqChg >= 0 ? C.green : C.red }}>{marketData.qqqChg >= 0 ? '+' : ''}{marketData.qqqChg.toFixed(2)}%</span>}</>
-              : <span style={{ color: C.muted }}>—</span>
-            }
-          </span>
-          {/* VIX */}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
-            VIX
-            {marketData.vix != null
-              ? <>
-                  <span style={{ color: '#fff', fontWeight: 700 }}>{marketData.vix.toFixed(1)}</span>
-                  <span style={{ color: marketData.vix <= 20 ? C.green : marketData.vix <= 25 ? C.amber : C.red }}>
-                    {marketData.vixLabel || (marketData.vix <= 20 ? 'Contained' : marketData.vix <= 25 ? 'Elevated' : 'High')}
-                  </span>
-                </>
-              : <span style={{ color: C.muted }}>—</span>
-            }
-          </span>
+          {/* QQQ — hide on mobile */}
+          {!isMobile && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
+              QQQ
+              {marketData.qqq
+                ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.qqq.toFixed(2)}</span>{marketData.qqqChg !== undefined && <span style={{ color: marketData.qqqChg >= 0 ? C.green : C.red }}>{marketData.qqqChg >= 0 ? '+' : ''}{marketData.qqqChg.toFixed(2)}%</span>}</>
+                : <span style={{ color: C.muted }}>—</span>
+              }
+            </span>
+          )}
+          {/* VIX — hide on mobile */}
+          {!isMobile && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
+              VIX
+              {marketData.vix != null
+                ? <>
+                    <span style={{ color: '#fff', fontWeight: 700 }}>{marketData.vix.toFixed(1)}</span>
+                    <span style={{ color: marketData.vix <= 20 ? C.green : marketData.vix <= 25 ? C.amber : C.red }}>
+                      {marketData.vixLabel || (marketData.vix <= 20 ? 'Contained' : marketData.vix <= 25 ? 'Elevated' : 'High')}
+                    </span>
+                  </>
+                : <span style={{ color: C.muted }}>—</span>
+              }
+            </span>
+          )}
           {/* Regime badge */}
           <span style={{
             border: `1px solid ${regimeBadgeColor}`, color: regimeBadgeColor,
             background: regimeBadgeBg,
-            borderRadius: 20, padding: '3px 12px', fontSize: '0.7rem', fontWeight: 700,
-            letterSpacing: '0.05em', whiteSpace: 'nowrap', textTransform: 'uppercase',
+            borderRadius: 20, padding: '3px 10px', fontSize: isMobile ? '0.62rem' : '0.7rem', fontWeight: 700,
+            letterSpacing: '0.04em', whiteSpace: 'nowrap', textTransform: 'uppercase',
           }}>
             {regimeBadgeLabel}
           </span>
         </div>
 
-        {/* Right: clock */}
-        <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: C.muted, flexShrink: 0 }}>
-          {clock}
+        {/* Right: clock — hide full label on mobile */}
+        <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', color: C.muted, flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {isMobile ? clock.split(' ET')[0] + ' ET' : clock}
         </div>
       </header>
 
       {/* ── BODY ── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Left panel */}
-        <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <LeftPanel
-            watchlist={watchlist}
-            selectedTicker={selectedTicker}
-            tradeType={tradeType}
-            tradeTypeValue={tradeType}
-            onLoadTicker={handleLoadTicker}
-            onRemove={handleRemoveFromWatchlist}
-            onTradeTypeChange={handleTradeTypeChange}
-            openTradeSet={openTradeSet}
-            alertTickerSet={alertTickerSet}
-            verdicts={verdicts}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
+
+        {/* Mobile/tablet overlay backdrop */}
+        {!isDesktop && showPanel && (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40 }}
+            onClick={() => setPanelOpen(false)}
           />
-        </div>
+        )}
+
+        {/* Left panel */}
+        {showPanel && (
+          <div style={{
+            width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
+            // On mobile/tablet: fixed overlay sliding from left
+            ...(isDesktop ? {} : {
+              position: 'fixed', top: 44, bottom: 0, left: 0, zIndex: 50,
+            }),
+          }}>
+            <LeftPanel
+              watchlist={watchlist}
+              selectedTicker={selectedTicker}
+              tradeType={tradeType}
+              tradeTypeValue={tradeType}
+              onLoadTicker={ticker => { handleLoadTicker(ticker); if (!isDesktop) setPanelOpen(false) }}
+              onRemove={handleRemoveFromWatchlist}
+              onTradeTypeChange={handleTradeTypeChange}
+              openTradeSet={openTradeSet}
+              alertTickerSet={alertTickerSet}
+              verdicts={verdicts}
+            />
+          </div>
+        )}
 
         {/* Right panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
           {/* Ticker header */}
           {selectedTicker && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '0 24px', height: 52,
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: isMobile ? '8px 12px' : '0 24px',
+              minHeight: isMobile ? 'auto' : 52,
               borderBottom: `1px solid ${C.border}`,
               background: C.bgPanel, flexShrink: 0, flexWrap: 'wrap',
             }}>
-              <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.5rem', color: '#fff' }}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: isMobile ? '1.2rem' : '1.5rem', color: '#fff' }}>
                 {selectedTicker}
               </span>
-              {analysis?.company_name && (
-                <span style={{ fontSize: '0.85rem', color: C.muted }}>{analysis.company_name}</span>
+              {analysis?.company_name && !isMobile && (
+                <span style={{ fontSize: '0.82rem', color: C.muted }}>{analysis.company_name}</span>
               )}
               {priceNum != null && (
-                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.2rem', color: '#fff' }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: isMobile ? '1rem' : '1.2rem', color: '#fff' }}>
                   ${priceNum.toFixed(2)}
                 </span>
               )}
@@ -394,32 +454,35 @@ export default function TradeDeskPage() {
                 <span style={{
                   background: changePct >= 0 ? 'rgba(0,229,160,0.12)' : 'rgba(255,77,109,0.12)',
                   color: changePct >= 0 ? C.green : C.red,
-                  borderRadius: 6, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'monospace',
+                  borderRadius: 6, padding: '2px 7px', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'monospace',
                 }}>
                   {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
                 </span>
               )}
-              {/* Trade type badge */}
-              <span style={{
-                border: `1px solid ${C.borderSub}`, color: C.muted,
-                background: 'transparent', borderRadius: 6,
-                padding: '4px 12px', fontSize: '0.62rem', fontWeight: 600,
-                letterSpacing: '0.05em', textTransform: 'uppercase',
-                fontFamily: 'monospace', marginLeft: 'auto', whiteSpace: 'nowrap',
-              }}>
-                {tradeTypeBadgeLabel[tradeType] || tradeType.toUpperCase()}
-              </span>
+              {/* Trade type badge — hide on mobile */}
+              {!isMobile && (
+                <span style={{
+                  border: `1px solid ${C.borderSub}`, color: C.muted,
+                  background: 'transparent', borderRadius: 6,
+                  padding: '4px 10px', fontSize: '0.6rem', fontWeight: 600,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  fontFamily: 'monospace', marginLeft: 'auto', whiteSpace: 'nowrap',
+                }}>
+                  {tradeTypeBadgeLabel[tradeType] || tradeType.toUpperCase()}
+                </span>
+              )}
               {/* Watchlist add */}
               <button
                 type="button"
                 onClick={() => void handleAddToWatchlist()}
                 style={{
                   background: 'transparent', border: `1px solid ${C.borderSub}`,
-                  color: C.muted, borderRadius: 6, padding: '3px 10px',
-                  fontSize: '0.72rem', cursor: 'pointer',
+                  color: C.muted, borderRadius: 6, padding: '3px 8px',
+                  fontSize: '0.7rem', cursor: 'pointer',
+                  marginLeft: isMobile ? 'auto' : undefined,
                 }}
               >
-                + Watchlist
+                + Watch
               </button>
               {/* Refresh */}
               <button
@@ -429,7 +492,7 @@ export default function TradeDeskPage() {
                 style={{
                   background: 'transparent', border: 'none',
                   color: analysisLoading || analysisRefreshing ? C.muted : '#fff',
-                  cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px',
+                  cursor: 'pointer', fontSize: '0.9rem', padding: '2px 4px',
                 }}
                 aria-label="Refresh"
               >
@@ -441,12 +504,11 @@ export default function TradeDeskPage() {
           {/* Tab strip */}
           <div style={{
             display: 'flex', borderBottom: `1px solid ${C.border}`,
-            background: C.bgPanel, flexShrink: 0, padding: '0 24px',
+            background: C.bgPanel, flexShrink: 0,
+            padding: isMobile ? '0 8px' : '0 24px',
           }}>
             {(['verdict', 'journal', 'alerts'] as Tab[]).map(tab => {
-              const label = tab === 'alerts'
-                ? `Alerts${alertCount > 0 ? '' : ''}`
-                : tab.charAt(0).toUpperCase() + tab.slice(1)
+              const label = tab.charAt(0).toUpperCase() + tab.slice(1)
               const active = activeTab === tab
               return (
                 <button
@@ -454,17 +516,20 @@ export default function TradeDeskPage() {
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   style={{
-                    background: 'transparent', border: 'none', borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
-                    color: active ? '#fff' : C.muted, padding: '10px 16px 9px',
-                    fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', position: 'relative',
+                    background: 'transparent', border: 'none',
+                    borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
+                    color: active ? '#fff' : C.muted,
+                    padding: isMobile ? '9px 12px 8px' : '10px 16px 9px',
+                    fontSize: isMobile ? '0.78rem' : '0.82rem',
+                    fontWeight: 600, cursor: 'pointer', position: 'relative',
                   }}
                 >
                   {label}
                   {tab === 'alerts' && alertCount > 0 && (
                     <span style={{
                       background: C.red, color: '#fff', borderRadius: 10,
-                      fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px',
-                      marginLeft: 5, verticalAlign: 'middle',
+                      fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px',
+                      marginLeft: 4, verticalAlign: 'middle',
                     }}>
                       {alertCount}
                     </span>
@@ -475,13 +540,14 @@ export default function TradeDeskPage() {
           </div>
 
           {/* Tab content */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px' : '20px 24px' }}>
             {activeTab === 'verdict' && (
               <VerdictTab
                 analysis={analysis}
                 loading={analysisLoading}
                 openTrade={openTradeForCurrent}
                 tradeType={tradeType}
+                compact={isMobile}
                 onLogTrade={() => setDrawer(
                   openTradeForCurrent
                     ? { type: 'log-close', trade: openTradeForCurrent }
@@ -530,6 +596,7 @@ export default function TradeDeskPage() {
           structure={(analysis as unknown as Record<string, unknown>)?.structure as string || ''}
           onClose={() => setDrawer(null)}
           onSubmit={handleLogTrade}
+          drawerLeft={drawerLeft}
         />
       )}
       {drawer?.type === 'log-close' && (
@@ -538,6 +605,7 @@ export default function TradeDeskPage() {
           trade={drawer.trade}
           onClose={() => setDrawer(null)}
           onSubmit={data => handleCloseTrade(drawer.trade, data)}
+          drawerLeft={drawerLeft}
         />
       )}
       {drawer?.type === 'alert' && selectedTicker && (
@@ -546,6 +614,7 @@ export default function TradeDeskPage() {
           tradeType={tradeType}
           onClose={() => setDrawer(null)}
           onSubmit={handleCreateAlert}
+          drawerLeft={drawerLeft}
         />
       )}
     </div>

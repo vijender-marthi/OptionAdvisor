@@ -8,6 +8,7 @@ interface Props {
   loading: boolean
   openTrade: DeskTradeLog | null
   tradeType: string
+  compact?: boolean
   onLogTrade: () => void
   onSetAlert: () => void
   onRefresh: () => void
@@ -89,7 +90,7 @@ function Skeleton({ h = 80 }: { h?: number }) {
 }
 
 export default function VerdictTab({
-  analysis, loading, openTrade, tradeType,
+  analysis, loading, openTrade, tradeType, compact = false,
   onLogTrade, onSetAlert, onRefresh, refreshing,
   onNavigateFullAnalysis, ticker,
 }: Props) {
@@ -251,7 +252,7 @@ export default function VerdictTab({
       </div>
 
       {/* 2. Entry Plan + Risk Profile grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr', gap: 12 }}>
         {/* Entry Plan */}
         <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
           <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>

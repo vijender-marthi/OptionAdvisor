@@ -34,12 +34,12 @@ interface CloseModeProps {
   onSubmit: (data: DeskTradeUpdate) => Promise<void>
 }
 
-type Props = (NewModeProps | CloseModeProps) & { onClose: () => void }
+type Props = (NewModeProps | CloseModeProps) & { onClose: () => void; drawerLeft?: number }
 
 const EXIT_REASONS = ['T1 hit', 'T2 hit', 'Stop hit', 'Manual'] as const
 
 export default function LogTradeDrawer(props: Props) {
-  const { onClose } = props
+  const { onClose, drawerLeft = 300 } = props
 
   const [actualEntry, setActualEntry] = useState('')
   const [contracts, setContracts] = useState('1')
@@ -130,7 +130,7 @@ export default function LogTradeDrawer(props: Props) {
       />
       {/* Drawer */}
       <div style={{
-        position: 'absolute', bottom: 0, left: 300, right: 0,
+        position: 'absolute', bottom: 0, left: drawerLeft, right: 0,
         background: C.bgPanel, borderTop: `1px solid ${C.border}`,
         borderRadius: '16px 16px 0 0',
         maxHeight: '75vh', display: 'flex', flexDirection: 'column',

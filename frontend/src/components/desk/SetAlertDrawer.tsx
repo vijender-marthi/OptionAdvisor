@@ -26,9 +26,10 @@ interface Props {
   tradeType: string
   onClose: () => void
   onSubmit: (data: DeskAlertCreate) => Promise<void>
+  drawerLeft?: number
 }
 
-export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }: Props) {
+export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, drawerLeft = 300 }: Props) {
   const [alertType, setAlertType] = useState<string>('RVOL')
   const [thresholdValue, setThresholdValue] = useState('')
   const [notifyMethod, setNotifyMethod] = useState<'inapp' | 'email' | 'both'>('inapp')
@@ -85,7 +86,7 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }} role="dialog" aria-modal>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', pointerEvents: 'all' }} onClick={onClose} />
       <div style={{
-        position: 'absolute', bottom: 0, left: 300, right: 0,
+        position: 'absolute', bottom: 0, left: drawerLeft, right: 0,
         background: C.bgPanel, borderTop: `1px solid ${C.border}`,
         borderRadius: '16px 16px 0 0',
         maxHeight: '60vh', display: 'flex', flexDirection: 'column',
