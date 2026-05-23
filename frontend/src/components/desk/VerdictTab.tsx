@@ -153,52 +153,49 @@ export default function VerdictTab({
   const eg = analysis.entry_guidance as Record<string, unknown> | undefined
   const raw = analysis as unknown as Record<string, unknown>
   const metricsRaw = analysis.metrics as Record<string, unknown> | undefined
+  const execLevels = metricsRaw?.exec_levels as Record<string, unknown> | undefined
 
-  // Entry — day: entry_guidance.breakout_level / current_price; swing: various top-level / metrics fallbacks
+  // Entry — day: entry_guidance.breakout_level / current_price; swing: metrics.exec_levels.breakout
   const entry: number | undefined =
     (typeof eg?.breakout_level === 'number' ? eg.breakout_level : undefined)
     ?? (typeof eg?.current_price === 'number' ? eg.current_price : undefined)
-    ?? (typeof raw.entry_price === 'number' ? raw.entry_price as number : undefined)
-    ?? (typeof raw.planned_entry === 'number' ? raw.planned_entry as number : undefined)
+    ?? (typeof execLevels?.breakout === 'number' ? execLevels.breakout as number : undefined)
     ?? (typeof raw.swing_entry === 'number' ? raw.swing_entry as number : undefined)
-    ?? (typeof metricsRaw?.entry_price === 'number' ? metricsRaw.entry_price as number : undefined)
-    ?? (typeof metricsRaw?.planned_entry === 'number' ? metricsRaw.planned_entry as number : undefined)
+    ?? (typeof execLevels?.entry === 'number' ? execLevels.entry as number : undefined)
+    ?? (typeof raw.planned_entry === 'number' ? raw.planned_entry as number : undefined)
     ?? undefined
 
-  // T1
+  // T1 — day: entry_guidance.scalp_target; swing: metrics.exec_levels.target1
   const t1: number | undefined =
     (typeof eg?.scalp_target === 'number' ? eg.scalp_target : undefined)
-    ?? (typeof raw.target_1 === 'number' ? raw.target_1 as number : undefined)
-    ?? (typeof raw.t1_price === 'number' ? raw.t1_price as number : undefined)
-    ?? (typeof raw.swing_t1 === 'number' ? raw.swing_t1 as number : undefined)
+    ?? (typeof execLevels?.target1 === 'number' ? execLevels.target1 as number : undefined)
     ?? (typeof raw.take_profit_1 === 'number' ? raw.take_profit_1 as number : undefined)
-    ?? (typeof metricsRaw?.target_1 === 'number' ? metricsRaw.target_1 as number : undefined)
-    ?? (typeof metricsRaw?.scalp_target === 'number' ? metricsRaw.scalp_target as number : undefined)
+    ?? (typeof raw.swing_t1 === 'number' ? raw.swing_t1 as number : undefined)
     ?? undefined
 
-  // T2
+  // T2 — day: entry_guidance.scalp_target_2; swing: metrics.exec_levels.target2
   const t2: number | undefined =
-    (typeof raw.scalp_target_2 === 'number' ? raw.scalp_target_2 as number : undefined)
-    ?? (typeof raw.target_2 === 'number' ? raw.target_2 as number : undefined)
-    ?? (typeof raw.t2_price === 'number' ? raw.t2_price as number : undefined)
-    ?? (typeof raw.swing_t2 === 'number' ? raw.swing_t2 as number : undefined)
+    (typeof eg?.scalp_target_2 === 'number' ? eg.scalp_target_2 : undefined)
+    ?? (typeof execLevels?.target2 === 'number' ? execLevels.target2 as number : undefined)
     ?? (typeof raw.take_profit_2 === 'number' ? raw.take_profit_2 as number : undefined)
-    ?? (typeof metricsRaw?.target_2 === 'number' ? metricsRaw.target_2 as number : undefined)
+    ?? (typeof raw.swing_t2 === 'number' ? raw.swing_t2 as number : undefined)
     ?? undefined
 
-  // Stop
+  // Stop — day: entry_guidance.risk_below; swing: metrics.exec_levels.stop
   const stop: number | undefined =
     (typeof eg?.risk_below === 'number' ? eg.risk_below : undefined)
-    ?? (typeof raw.stop_price === 'number' ? raw.stop_price as number : undefined)
-    ?? (typeof raw.planned_stop === 'number' ? raw.planned_stop as number : undefined)
+    ?? (typeof execLevels?.stop === 'number' ? execLevels.stop as number : undefined)
     ?? (typeof raw.swing_stop === 'number' ? raw.swing_stop as number : undefined)
-    ?? (typeof metricsRaw?.stop_price === 'number' ? metricsRaw.stop_price as number : undefined)
-    ?? (typeof metricsRaw?.planned_stop === 'number' ? metricsRaw.planned_stop as number : undefined)
+    ?? (typeof raw.planned_stop === 'number' ? raw.planned_stop as number : undefined)
     ?? undefined
 
   const structure = raw?.structure as string | undefined
+    ?? raw?.suggested_strategy as string | undefined
+    ?? raw?.final_action as string | undefined
 
-  const rvol = typeof metricsRaw?.rvol === 'number' ? metricsRaw.rvol : undefined
+  const rvol = typeof metricsRaw?.rvol === 'number' ? metricsRaw.rvol
+    : typeof metricsRaw?.volume_ratio === 'number' ? metricsRaw.volume_ratio as number
+    : undefined
   const lastPrice = typeof metricsRaw?.last_price === 'number' ? metricsRaw.last_price : undefined
 
   // AI coach
@@ -263,8 +260,10 @@ export default function VerdictTab({
     return s
   }
 
-  // Exit rules from entry_guidance
-  const exitRules = eg?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined
+  // Exit rules — from entry_guidance (day) or metrics.exit_rules (swing)
+  const exitRules: Array<{ trigger: string; price: number; action: string; note?: string }> | undefined =
+    (eg?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined)
+    ?? (metricsRaw?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 24 }}>

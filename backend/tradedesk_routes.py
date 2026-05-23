@@ -87,6 +87,38 @@ def get_analysis(
                 "entry_quality": r.entry_quality,
                 "risk_level": r.risk_level,
             })
+            _metrics = dict(r.metrics or {})
+            _exec = dict(_metrics.get("exec_levels") or {})
+            _last = _metrics.get("last_price")
+            _exit_rules = list(_metrics.get("exit_rules") or [])
+            _swing_eg = {
+                "state": r.final_action or "",
+                "action": r.decision_message or "",
+                "summary": r.playbook_hint or "",
+                "current_price": _last,
+                "breakout_level": _exec.get("breakout"),
+                "scalp_target": _exec.get("target1"),
+                "scalp_target_2": _exec.get("target2"),
+                "risk_below": _exec.get("stop"),
+                "pullback_zone": _exec.get("pullbackZone"),
+                "exit_rules": _exit_rules,
+                "pending_confirmations": list(r.confirmation_needed or []),
+            }
+            _scan_dict = {
+                "ticker": r.ticker,
+                "bias": r.bias,
+                "verdict": r.verdict,
+                "confidence": resolved.confidence,
+                "display_confidence": int(resolved.display_confidence or 0),
+                "metrics": _metrics,
+                "entry_guidance": _swing_eg,
+            }
+            try:
+                ai_coach_result = get_ai_coach(_scan_dict, risk_state=resolved.risk_state or "MEDIUM")
+            except Exception as exc:
+                log.warning("AI coach error for %s: %s", t, exc)
+                ai_coach_result = {}
+
             result = {
                 "trade_type": "swing",
                 "ticker": r.ticker,
@@ -96,7 +128,7 @@ def get_analysis(
                 "bull_score": r.bull_score,
                 "bear_score": r.bear_score,
                 "reasons": r.reasons,
-                "metrics": dict(r.metrics or {}),
+                "metrics": _metrics,
                 "swing_bias": r.swing_bias,
                 "entry_quality": r.entry_quality,
                 "risk_level": r.risk_level,
@@ -126,9 +158,10 @@ def get_analysis(
                 "risk_reason": resolved.risk_reason or "",
                 "display_confidence": int(resolved.display_confidence or 0),
                 "execution_fields": list(resolved.execution_fields or []),
-                "entry_guidance": dict(getattr(r, "entry_guidance", None) or {}),
+                "entry_guidance": _swing_eg,
                 "expected_holding_period": r.expected_holding_period,
                 "recommended_contract_duration": r.recommended_contract_duration,
+                "ai_coach": ai_coach_result,
             }
         else:
             # day (or regular — use day engine)
