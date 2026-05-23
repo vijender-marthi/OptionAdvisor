@@ -616,11 +616,16 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 f"If price breaks below VWAP, the trade has failed \u2014 exit. "
                 f"Do not enter just because ORH is 'nearby'."
             )
-        elif or_retest and not volume_spike:
+        elif or_retest and or_historical == "broke_up" and volume_spike:
             state = "ENTRY_RETEST"
-            summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding. High-quality continuation entry."
+            summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding with volume. High-quality continuation entry."
             action = "Enter on the re-test hold; stop just below ORH."
             avoid = "Do not enter if price closes back inside the opening range."
+        elif or_retest and or_historical == "broke_up" and not volume_spike:
+            state = "WAIT_FOR_VOLUME"
+            summary = "OR re-test in progress \u2014 waiting for volume to confirm buyers are defending the breakout level."
+            action = "Wait for a volume spike at the ORH re-test before entering."
+            avoid = "Low-volume re-tests often fail. Patience here saves the trade."
         elif not volume_spike and or_historical != "broke_up":
             # Volume gate: only block entry if the OR has NEVER been broken with volume.
             # If or_historical == "broke_up", the breakout already occurred and volume
@@ -807,8 +812,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 # Inside range or approaching ORH → T1 = ORH, T2 = ORH + 25% range
                 scalp_target = round(or_high, 2)
                 scalp_target_2 = round(or_high + _or_range * 0.25, 2) if _or_range else None
-            else:
-                scalp_target = round(last_price * 1.01, 2)
+            elif vwap is not None:
+                # Fallback: no OR data — use VWAP as anchor (0.5% above VWAP)
+                scalp_target = round(vwap * 1.005, 2)
         elif bidir == "short":
             if bounce_scenario == "vwap_rejection" and or_low is not None:
                 # VWAP rejection short → T1 = OR low, T2 = ORL - 50% range
@@ -826,8 +832,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             elif or_low is not None:
                 scalp_target = round(or_low, 2)
                 scalp_target_2 = round(or_low - _or_range * 0.25, 2) if _or_range else None
-            else:
-                scalp_target = round(last_price * 0.99, 2)
+            elif vwap is not None:
+                # Fallback: no OR data — use VWAP as anchor (0.5% below VWAP)
+                scalp_target = round(vwap * 0.995, 2)
 
     pullback_zone = ""
     if vwap is not None and last_price is not None:

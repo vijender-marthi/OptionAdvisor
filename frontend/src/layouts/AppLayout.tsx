@@ -30,7 +30,6 @@ function WatchlistNoticeBanner() {
   )
 }
 
-export default function AppLayout({ children }: { children?: ReactNode }) {
 function CacheTimestamp() {
   const { lastBgRefresh } = useApp()
   const [now, setNow] = useState(Date.now())
@@ -58,6 +57,7 @@ function CacheTimestamp() {
   )
 }
 
+export default function AppLayout({ children }: { children?: ReactNode }) {
   return (
     <div className="app-shell font-sans flex h-[100svh] max-h-[100dvh] overflow-hidden" style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}>
       <Sidebar />

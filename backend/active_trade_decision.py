@@ -122,9 +122,9 @@ def build_active_trade_decision(
     trend_direction = "flat"
     if last is not None and vwap is not None:
         dist = (last / vwap - 1.0) * 100.0 if vwap > 0 else 0.0
-        if dist > 0.12:
+        if dist > 0.15:
             trend_direction = "up"
-        elif dist < -0.12:
+        elif dist < -0.15:
             trend_direction = "down"
 
     stress = _market_stress(spy_d, qqq_d, vix)

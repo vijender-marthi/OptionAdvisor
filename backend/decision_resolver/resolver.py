@@ -285,10 +285,8 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
         execution_fields.append({"label": "Breakdown Level", "value": f"${float(or_low):.2f}"})
         if or_high is not None:
             execution_fields.append({"label": "Risk Above", "value": f"${float(or_high):.2f}"})
-    if last_price is not None and vwap is not None:
-        dist_to_target = float(last_price) * 1.01 if bias == "long" else float(last_price) * 0.99
-        target_label = "Scalp Target" if bias == "long" else "Scalp Target"
-        execution_fields.append({"label": target_label, "value": f"${dist_to_target:.2f}"})
+    # NOTE: Scalp targets come from entry_guidance in day_trade.py / swing_trade.py.
+    # Do NOT compute targets here — price*multiplier is forbidden.
 
     # ── Explanation ──────────────────────────────────────────────────────
     summary_text = ""
@@ -479,9 +477,18 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         missing_confirmations=missing,
         risk_state=risk_state,
         signal_quality=sw_signal,
-        execution_timing=_execution_timing_from_decision(final_decision),
+        execution_timing=_swing_execution_timing(final_decision, missing),
         risk_category=_risk_category_from_state(risk_state),
     )
+
+
+def _swing_execution_timing(final_decision: str, missing: list) -> str:
+    """Swing ENTER NOW only fires when ALL entry conditions are confirmed (missing is empty)."""
+    if str(final_decision).upper() == "READY" and not missing:
+        return "ENTER NOW"
+    elif str(final_decision).upper() == "READY" and missing:
+        return f"WAIT — {missing[0]}"
+    return _execution_timing_from_decision(final_decision)
 
 
 def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecision:

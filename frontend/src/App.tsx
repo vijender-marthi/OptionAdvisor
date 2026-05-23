@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocatio
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
@@ -112,9 +113,11 @@ function RoleGuard() {
 
 function SuspensedOutlet() {
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Outlet />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 
@@ -207,17 +210,19 @@ function DynamicFavicon() {
   const page = locationToPage(loc.pathname)
   const icon = PAGE_ICONS[page] || '📊'
   useEffect(() => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">${icon}</text></svg>`
-    const blob = new Blob([svg], { type: 'image/svg+xml' })
-    const url = URL.createObjectURL(blob)
-    let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      document.head.appendChild(link)
-    }
-    link.href = url
-    return () => URL.revokeObjectURL(url)
+    try {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">${icon}</text></svg>`
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      link.href = url
+      return () => { try { URL.revokeObjectURL(url) } catch { /* ignore */ } }
+    } catch { return }
   }, [icon])
   return null
 }

@@ -424,7 +424,7 @@ export default function TradeDeskPage() {
           plannedEntry={plannedEntry}
           plannedT1={plannedT1}
           plannedStop={plannedStop}
-          structure={analysis?.structure || ''}
+          structure={(analysis as unknown as Record<string, unknown>)?.structure as string || ''}
           onClose={() => setDrawer(null)}
           onSubmit={handleLogTrade}
         />

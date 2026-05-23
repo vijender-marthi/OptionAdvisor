@@ -782,7 +782,7 @@ def get_ticker_state_last(
         row = conn.execute(
             """
             SELECT state_num, action, session_date, updated_at,
-                   target_hit, inplay_since_ms, weak_breakout_alerted
+                   target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted
             FROM ticker_state_last
             WHERE email = ? AND ticker = ? AND engine = ?
             """,
@@ -798,6 +798,7 @@ def get_ticker_state_last(
         "target_hit":            int(row["target_hit"]            if row["target_hit"]            is not None else 0),
         "inplay_since_ms":       int(row["inplay_since_ms"]       if row["inplay_since_ms"]       is not None else 0),
         "weak_breakout_alerted": int(row["weak_breakout_alerted"] if row["weak_breakout_alerted"] is not None else 0),
+        "enter_now_alerted":     int(row["enter_now_alerted"]     if row["enter_now_alerted"]     is not None else 0),
     }
 
 

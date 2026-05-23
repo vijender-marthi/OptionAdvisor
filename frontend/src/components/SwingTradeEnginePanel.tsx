@@ -1015,17 +1015,6 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
-            <BarChart2 size={12} />
-            AI Coach Summary
-          </div>
-          <p className="text-xs text-gray-200 leading-relaxed">{execSummary}</p>
-          <div className="text-[11px] text-semantic-accent leading-relaxed">
-            Best next action: {bestNextAction}
-          </div>
-        </div>
-
         {/* ═══ 4-State Swing System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
         {(execLevels.breakoutTrigger || execLevels.riskBelow) && (
           <div className="space-y-2">
@@ -1189,6 +1178,17 @@ export default function SwingTradeEnginePanel({
             </div>
           </div>
         )}
+
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
+            <BarChart2 size={12} />
+            AI Coach Summary
+          </div>
+          <p className="text-xs text-gray-200 leading-relaxed">{execSummary}</p>
+          <div className="text-[11px] text-semantic-accent leading-relaxed">
+            Best next action: {bestNextAction}
+          </div>
+        </div>
 
         {inPosition && latestPos && (
           <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">

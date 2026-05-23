@@ -689,7 +689,7 @@ export default function AIStocksPage() {
       if (!res || res === 'loading' || res === 'error') return false
       return getSignalInfo(res, tradeStyle).group === signalFilter
     })
-  }, [activeCategory, search, signalFilter, scanResults, scanDone])
+  }, [activeCategory, search, signalFilter, scanResults, scanDone, allStocks])
 
   const watchedCount = allStocks.filter(s => myTickerSet.has(s.ticker)).length
 

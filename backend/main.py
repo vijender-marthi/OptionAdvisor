@@ -451,11 +451,10 @@ def root():
 def _is_market_hours_now() -> bool:
     if not ALERT_SCAN_MARKET_HOURS_ONLY:
         return True
-    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    now = datetime.now(ZoneInfo("America/New_York"))
     if now.weekday() >= 5:
         return False
-    minutes = now.hour * 60 + now.minute
-    return 6 * 60 <= minutes < 16 * 60
+    return (now.hour > 9 or (now.hour == 9 and now.minute >= 30)) and now.hour < 16
 
 
 def _normalize_public_origin(url: str) -> str:
@@ -1069,14 +1068,13 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                 }
             )
 
-        # --- State transition alert (Day Trade) ---
+        # --- State transition alert (Day Trade — only Setup→Entry) ---
         eg_state = str(getattr(r.entry_guidance, "state", "") or "")
         now_state_num = _day_trade_active_state(eg_state)
         prev_state_row = get_ticker_state_last(email, t, "DAY")
-        prev_state_num = int((prev_state_row or {}).get("state_num") or 1) if prev_state_row else 0
+        prev_state_num = int((prev_state_row or {}).get("state_num") or 1)
         prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
-        _alertable_day = {(1, 2), (2, 3)}
-        if eg_state and (prev_state_num, now_state_num) in _alertable_day and prev_state_row is not None:
+        if eg_state and (prev_state_num, now_state_num) == (1, 2) and prev_state_row is not None:
             direction = _STATE_DIRECTION.get(
                 (prev_state_num, now_state_num),
                 f"{_STATE_LABEL.get(prev_state_num, str(prev_state_num))} → {_STATE_LABEL.get(now_state_num, str(now_state_num))}"
@@ -3206,8 +3204,8 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
                     orl_val        = eg.get("opening_range_low")  or m.get("or_low")
 
-                    # ── State-change alert (only 1→2 and 2→3 to reduce noise) ──
-                    if state_changed and (prev_state, now_state) in {(1, 2), (2, 3)}:
+                    # ── State-change alert (only 1→2: Setup→Entry) ──
+                    if state_changed and (prev_state, now_state) == (1, 2):
                         direction = _STATE_DIRECTION.get(
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
