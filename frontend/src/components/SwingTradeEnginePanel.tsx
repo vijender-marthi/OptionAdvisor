@@ -929,6 +929,7 @@ export default function SwingTradeEnginePanel({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+            <div className="text-[9px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
             <div className="mt-1 flex flex-wrap items-center gap-2.5">
               <span className="text-xl font-bold text-white dark:text-heading font-mono tracking-tight">{result.ticker}</span>
               {result.company_name ? <span className="truncate text-xs text-gray-500 max-w-[220px]">{result.company_name}</span> : null}
@@ -981,10 +982,6 @@ export default function SwingTradeEnginePanel({
         </div>
 
 
-
-        {/* Trade Action Summary label */}
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
-        <div className="text-[10px] text-gray-500">Entry plan, risk profile, and pre-committed exit levels</div>
 
         {/* Entry Plan / Risk Profile */}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1072,7 +1069,7 @@ export default function SwingTradeEnginePanel({
           })()}
         </div>
 
-        {/* Trade Action Summary (Entry/Risk/Exit already added above) */}
+
 
         <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
