@@ -574,7 +574,7 @@ export default function AIStocksPage() {
     }
     const updated = [...miscStocks, entry]
     setMiscStocks(updated)
-    localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
+    try { localStorage.setItem('ai_stocks_misc', JSON.stringify(updated)) } catch {}
     setAddQuery(''); setAddName(''); setAddNote(''); setAddError(''); setAddSelected(null); setShowAddForm(false)
     setActiveCategory('Misc')
   }, [addSelected, addQuery, addName, addNote, allStocks, miscStocks])
@@ -582,7 +582,7 @@ export default function AIStocksPage() {
   const handleRemoveMisc = useCallback((ticker: string) => {
     const updated = miscStocks.filter(s => s.ticker !== ticker)
     setMiscStocks(updated)
-    localStorage.setItem('ai_stocks_misc', JSON.stringify(updated))
+    try { localStorage.setItem('ai_stocks_misc', JSON.stringify(updated)) } catch {}
   }, [miscStocks])
 
   // Misc search — local TICKER_UNIVERSE + remote fallback

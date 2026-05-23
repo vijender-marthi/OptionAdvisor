@@ -125,7 +125,7 @@ export default function TradeDeskPage() {
   const [drawer, setDrawer] = useState<DrawerState>(null)
 
   // Timezone preference
-  const [userTz, setUserTz] = useState(() => localStorage.getItem('desk_tz') || 'America/New_York')
+  const [userTz, setUserTz] = useState(() => { try { return localStorage.getItem('desk_tz') || 'America/New_York' } catch { return 'America/New_York' } })
   const userTzRef = useRef(userTz)
   const [showTzPicker, setShowTzPicker] = useState(false)
 
@@ -243,7 +243,7 @@ export default function TradeDeskPage() {
   useEffect(() => {
     userTzRef.current = userTz
     setClock(etClock(userTz))
-    localStorage.setItem('desk_tz', userTz)
+    try { localStorage.setItem('desk_tz', userTz) } catch {}
   }, [userTz])
 
   useEffect(() => {
