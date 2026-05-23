@@ -1194,6 +1194,12 @@ export default function DayTradeEnginePanel({
           </button>
         </div>
 
+      {/* ─── Details ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step trade workflow — market context, execution, and risk management</div>
+      </div>
+
       <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
@@ -1656,12 +1662,13 @@ export default function DayTradeEnginePanel({
         </div>
       </div>
 
+      {/* ─── Advanced Diagnostics ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">Advanced Diagnostics</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">Signal-by-signal breakdown for deep verification</div>
+      </div>
+
       <div ref={signalsSectionRef} className="px-4 py-4 border-b border-gray-800 space-y-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Advanced Diagnostics</div>
-          <h2 className="mt-1 text-sm font-bold text-white">Signal Engine Breakdown</h2>
-          <p className="mt-1 text-xs text-gray-400">Keep the full diagnostic layer, but use it after the trade workflow is clear.</p>
-        </div>
         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
           {signals.trend_strength && <SignalRow label="Trend Strength" value={signals.trend_strength.text} tone={signals.trend_strength.tone} />}
           {signals.breakout_quality && <SignalRow label="Breakout Quality" value={signals.breakout_quality.text} tone={signals.breakout_quality.tone} />}
