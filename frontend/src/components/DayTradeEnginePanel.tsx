@@ -727,6 +727,7 @@ export default function DayTradeEnginePanel({
   const inPosition = existingPositions.length > 0
   const latestPos  = existingPositions[existingPositions.length - 1]
   const [signalsOpen, setSignalsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(true)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
   const signalsSectionRef = useRef<HTMLDivElement | null>(null)
@@ -1194,12 +1195,22 @@ export default function DayTradeEnginePanel({
           </button>
         </div>
 
-      {/* ─── Details ─── */}
+      {/* ─── Details (collapsible) ─── */}
       <div className="px-4 py-3 border-b border-gray-800">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
-        <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step trade workflow — market context, execution, and risk management</div>
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step trade workflow — market context, execution, and risk management</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
+      {detailsOpen && (<div>
       <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
@@ -1661,6 +1672,7 @@ export default function DayTradeEnginePanel({
           ) : null}
         </div>
       </div>
+      </div>)}
 
       {/* ─── Advanced Diagnostics ─── */}
       <div className="px-4 py-3 border-b border-gray-800">
