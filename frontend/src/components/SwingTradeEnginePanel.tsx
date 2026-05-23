@@ -1276,7 +1276,22 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
+      {/* ─── Details (collapsible) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <button
+          type="button"
+          onClick={() => setDetailOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step analysis — market context, execution, and risk</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${detailOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 1 ? focusToneText : 'text-semantic-info'}`}>Step 1</div>
