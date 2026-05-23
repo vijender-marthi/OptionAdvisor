@@ -768,39 +768,6 @@ export default function TickerPage() {
               />
             </div>
 
-            {/* Signal Panel (collapsible) */}
-            <div style={cardStyle}>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setSignalOpen(p => !p)}
-                onKeyDown={e => e.key === 'Enter' && setSignalOpen(p => !p)}
-                onMouseEnter={() => setChevronHover(true)}
-                onMouseLeave={() => setChevronHover(false)}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: chevronHover ? C.text : C.text }}>
-                  📊 Full Signal Breakdown
-                </span>
-                <ChevronDown
-                  size={16}
-                  style={{
-                    color: C.muted,
-                    transform: signalOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s',
-                  }}
-                />
-              </div>
-              {signalOpen && (
-                <div style={{ marginTop: 14 }}>
-                  <SignalPanel signals={displayData.signals} />
-                </div>
-              )}
-            </div>
-
             {/* Week selector */}
             {cacheEntry && (
               <WeekSelector
@@ -1025,6 +992,39 @@ export default function TickerPage() {
             </div>
           </div>
         )}
+
+        {/* Signal Panel (collapsible) — moved to end of page */}
+        <div style={cardStyle}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setSignalOpen(p => !p)}
+            onKeyDown={e => e.key === 'Enter' && setSignalOpen(p => !p)}
+            onMouseEnter={() => setChevronHover(true)}
+            onMouseLeave={() => setChevronHover(false)}
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: chevronHover ? C.text : C.text }}>
+              📊 Full Signal Breakdown
+            </span>
+            <ChevronDown
+              size={16}
+              style={{
+                color: C.muted,
+                transform: signalOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s',
+              }}
+            />
+          </div>
+          {signalOpen && (
+            <div style={{ marginTop: 14 }}>
+              <SignalPanel signals={displayData.signals} />
+            </div>
+          )}
+        </div>
 
         {/* Disclaimer */}
         <div style={{
