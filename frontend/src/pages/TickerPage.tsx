@@ -711,8 +711,8 @@ export default function TickerPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
+                  <table style={{ minWidth: 800, borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                     <thead>
                       <tr style={{ background: C.bgPanel }}>
                         <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>#</th>
