@@ -850,14 +850,21 @@ export default function TickerPage() {
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strike</th>
                         <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Expiry</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Cost</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>R:R</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Score</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>PoP</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedData.recommendations.map(rec => {
                         const expanded = expandedRec === rec.rank
                         const isCredit = (rec.net_credit ?? 0) > 0
+                        const score = rec.scores?.total_score ?? 0
+                        const rr = rec.risk_reward_ratio ?? 0
+                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
+                        const status = score >= 70 && allFilters ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : score >= 40 ? 'WATCH' : 'AVOID'
+                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         return (
                           <React.Fragment key={rec.rank}>
                             {rec.legs.map((leg, li) => (
@@ -886,16 +893,33 @@ export default function TickerPage() {
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
                                 {li === 0 && (
-                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(rec.scores?.total_score ?? 0) }}>{rec.scores?.total_score ?? '—'}</td>
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>
+                                    {rr > 0 ? `1:${rr.toFixed(1)}` : '—'}
+                                  </td>
+                                )}
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score) }}>{score || '—'}</td>
                                 )}
                                 {li === 0 && (
                                   <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>
+                                )}
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
+                                    <span style={{
+                                      display: 'inline-block', borderRadius: 4, padding: '2px 8px',
+                                      fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace',
+                                      color: statusColor, border: `1px solid ${statusColor}`,
+                                      background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)',
+                                    }}>
+                                      {status}
+                                    </span>
+                                  </td>
                                 )}
                               </tr>
                             ))}
                             {expanded && (
                               <tr key={`${rec.rank}-detail`} style={{ background: 'rgba(124,92,252,0.04)' }}>
-                                <td colSpan={9} style={{ padding: '12px 14px' }}>
+                                <td colSpan={11} style={{ padding: '12px 14px' }}>
                                   <RecommendationCard
                                     rec={rec}
                                     ticker={selectedData.ticker}
