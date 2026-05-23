@@ -859,7 +859,7 @@ export default function DayTradeEnginePanel({
       decisionTone === 'orange' ? 'ring-1 ring-semantic-warning-border' :
       decisionTone === 'red' ? 'ring-1 ring-semantic-bearish-border' : 'ring-1 ring-border'
     }`}>
-      <div className="px-4 pt-3 pb-2 border-b border-gray-800 space-y-3">
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800">
         {/* Header row */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -886,116 +886,8 @@ export default function DayTradeEnginePanel({
             )}
           </div>
         </div>
-
-        {/* 4-State stepper */}
-        {(() => {
-          const state = eg?.state || ''
-          const activeMap: Record<string, number> = {
-            'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
-            'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1, 'MONITORING': 1,
-            'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
-            'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
-            'EOD_CLOSING': 4,
-          }
-          const activeState = activeMap[state] ?? 1
-          return (
-          <div className="flex items-center">
-            {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
-              const n = i + 1
-              const isActive = n === activeState
-              const isPast = n < activeState
-              const dotCls = isActive
-                ? color === 'amber' ? 'bg-amber-400 ring-2 ring-amber-400/40' : color === 'emerald' ? 'bg-emerald-400 ring-2 ring-emerald-400/40' : color === 'sky' ? 'bg-sky-400 ring-2 ring-sky-400/40' : 'bg-red-400 ring-2 ring-red-400/40'
-                : isPast ? 'bg-gray-600' : 'bg-gray-800'
-              const lblCls = isActive
-                ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
-                : isPast ? 'text-gray-500' : 'text-gray-700'
-              return (
-                <div key={n} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center gap-0.5 flex-1">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black ${dotCls}`}>{n}</div>
-                    <span className={`text-[8px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
-                  </div>
-                  {i < 3 && <div className={`h-px w-2 shrink-0 mb-3 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
-                </div>
-              )
-            })}
-          </div>
-          )
-        })()}
-
-        {/* Action / Risk / Market / Confidence compact row */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Action</span>
-            {activeStateNum === 2 ? (() => {
-              const execTxt = (result.execution_timing || '').toUpperCase()
-              return execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
-                ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">● ENTER NOW</span>
-                : <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">AWAIT VOLUME</span>
-            })() : activeStateNum === 3 ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">MANAGE STOP</span>
-            ) : activeStateNum === 4 ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/50 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-400">SCALE OUT</span>
-            ) : (
-              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${TONE_BADGE[decisionTone]}`}>{formatLabel(result.final_decision) || 'Watch'}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Risk</span>
-            <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Market</span>
-            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>{result.market_bias || 'MIXED'}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Confidence</span>
-            <span className="font-mono font-bold text-gray-100">{result.confidence ?? 0}/100</span>
-          </div>
-          {(() => {
-            const rrRatio = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
-            if (rrRatio == null) return null
-            return (
-              <div className="flex items-center gap-1.5">
-                <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">R/R</span>
-                <span className={`font-mono font-bold text-[11px] ${rrRatio < 0.5 ? 'text-rose-400' : rrRatio < 1.0 ? 'text-amber-400' : 'text-emerald-400'}`}>{rrRatio.toFixed(1)}:1</span>
-              </div>
-            )
-          })()}
-          {(() => {
-            const rangeUsed = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
-            const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
-            if (rangeUsed == null || !rangePhase) return null
-            const phaseTone = rangePhase === 'EXHAUSTED' ? 'text-rose-400' : rangePhase === 'LATE' ? 'text-amber-400' : rangePhase === 'MID' ? 'text-sky-400' : 'text-emerald-400'
-            return (
-              <div className="flex items-center gap-1.5">
-                <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Range</span>
-                <span className={`font-mono font-bold text-[11px] ${phaseTone}`}>{rangeUsed.toFixed(0)}% · {rangePhase}</span>
-              </div>
-            )
-          })()}
-        </div>
-
-        {/* Best Next Step */}
-        <div className="text-[11px] text-gray-300 leading-relaxed">
-          <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px] mr-2">Best Next Step</span>
-          {bestNextStep}
-        </div>
-
-        {/* Warning */}
-        {(() => {
-          const warning = typeof m.range_warning === 'string' ? m.range_warning : null
-          if (!warning) return null
-          return (
-            <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
-              <span className="shrink-0">⚠️</span>
-              <span>{warning}</span>
-            </div>
-          )
-        })()}
         {barDataStale && barDataWarning && (
-          <div className="flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
             <span className="shrink-0">⚠</span>
             <span>{barDataWarning}</span>
           </div>
@@ -1243,6 +1135,97 @@ export default function DayTradeEnginePanel({
             )}
           </div>
         )}
+      </div>
+
+      {/* ─── Entry Plan / Risk Profile ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {/* Entry Plan */}
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
+            {[
+              { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-[12px]">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-[11px]">Wait — no valid entry yet</span> },
+              { label: 'Structure', value: <span className="font-mono text-gray-400 text-[11px]">No trade</span> },
+              { label: 'Stop Loss', value: eg?.risk_below != null ? <span className="font-mono font-bold text-red-400 text-[12px]">${eg.risk_below.toFixed(2)}</span> : <span className="font-mono text-gray-500 text-[11px]">Not defined until setup forms</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
+                <span className="text-[11px] text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
+          </div>
+          {/* Risk Profile */}
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
+            {[
+              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-[11px]">—</span> },
+              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-[11px]">{result.risk_state || 'HIGH'}</span> },
+              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-[11px]">0.8x</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
+                <span className="text-[11px] text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Exit Plan ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
+        {(() => {
+          type DayExitRule = { trigger: string; price: number; action: string; note: string }
+          const egLocal = result.entry_guidance
+          const exitRules: DayExitRule[] = Array.isArray(egLocal?.exit_rules) ? (egLocal.exit_rules as DayExitRule[]) : []
+          if (exitRules.length > 0) {
+            return (
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-1.5 text-left font-medium">WHEN</th>
+                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-1.5 text-left font-medium">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {exitRules.map((rule, i) => {
+                    const isStop   = rule.trigger.toLowerCase().includes('stop')
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
+                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
+                    const isEOD    = rule.price === 0
+                    const isVwap   = rule.trigger.toLowerCase().includes('vwap')
+                    const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
+                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
+                    return (
+                      <tr key={i}>
+                        <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
+                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                          {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
+                        </td>
+                        <td className={`py-2 align-top ${actionCls}`}>{rule.action}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          }
+          return (
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                  <th className="pb-1.5 text-left font-medium">WHEN</th>
+                  <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
+                  <th className="pb-1.5 text-left font-medium">ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-[11px]">Run analysis for detailed exit levels</td></tr>
+              </tbody>
+            </table>
+          )
+        })()}
       </div>
 
       {/* ─── Details (collapsible) ─── */}
