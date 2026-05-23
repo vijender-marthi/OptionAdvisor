@@ -53,7 +53,6 @@ export default function TickerInput({
   const [spreadWidth,  setSpreadWidth]  = useState<number | null>(5)
   const [strategyMode, setStrategyMode] = useState<StrategyMode>('all')
   const [inputFocused, setInputFocused] = useState(false)
-  const [hoveredMode, setHoveredMode] = useState<string | null>(null)
   const [hoveredWidth, setHoveredWidth] = useState<string | null>(null)
   const [hoveredChip, setHoveredChip] = useState<string | null>(null)
 
@@ -180,51 +179,28 @@ export default function TickerInput({
         </button>
       </div>
 
-      {/* Strategy mode */}
+      {/* Strategy mode - dropdown */}
       <div style={{ marginTop: 14 }}>
         <span style={labelStyle}>Strategy mode:</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {STRATEGY_MODES.map(opt => {
-            const active = strategyMode === opt.value
-            const hovered = hoveredMode === opt.value
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setStrategyMode(opt.value)}
-                onMouseEnter={() => setHoveredMode(opt.value)}
-                onMouseLeave={() => setHoveredMode(null)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${active ? C.violet : hovered ? C.accent : C.borderSub}`,
-                  background: active ? 'rgba(124,92,252,0.12)' : C.bgCard,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  transition: 'all 0.15s',
-                }}
-              >
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: active ? '#fff' : hovered ? C.text : C.muted,
-                }}>
-                  {opt.label}
-                </span>
-                <span style={{
-                  fontSize: '0.65rem',
-                  color: active ? 'rgba(124,92,252,0.8)' : C.muted,
-                  opacity: active ? 1 : 0.6,
-                  marginTop: 2,
-                }}>
-                  {opt.sub}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+        <select
+          value={strategyMode}
+          onChange={e => setStrategyMode(e.target.value as typeof strategyMode)}
+          style={{
+            width: '100%',
+            background: C.bgPage,
+            border: `1px solid ${C.borderSub}`,
+            borderRadius: 8,
+            padding: '10px 12px',
+            color: C.text,
+            fontSize: '0.82rem',
+            outline: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          {STRATEGY_MODES.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label} — {opt.sub}</option>
+          ))}
+        </select>
       </div>
 
       {/* Spread width */}
