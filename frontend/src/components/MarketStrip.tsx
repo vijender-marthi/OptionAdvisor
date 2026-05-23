@@ -140,9 +140,23 @@ export default function MarketStrip() {
         <span style={{ fontWeight: 700, fontSize: '0.92rem', color: C.green }}>Advisor</span>
       </div>
 
+      {/* Market open/closed indicator */}
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap',
+        color: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? C.muted : C.green,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? C.muted : C.green,
+          boxShadow: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? 'none' : `0 0 6px ${C.green}`,
+        }} />
+        {clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? 'Closed' : 'Live'}
+      </span>
+
       <span style={{ color: C.borderSub }}>|</span>
 
-      {/* Green dot + SPY */}
+      {/* SPY */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
         <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
         SPY

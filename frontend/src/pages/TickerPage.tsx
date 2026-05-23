@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Star, StarOff, RefreshCw, Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
@@ -96,6 +96,9 @@ function bestVerdict(vs: Verdict[]): Verdict | null {
   if (vs.includes('NO GO'))   return 'NO GO'
   return null
 }
+
+const scoreColor = (s: number) =>
+  s >= 75 ? '#00E5A0' : s >= 55 ? '#F5A623' : '#FF4D6D'
 
 const VERDICT_DOT_COLOR: Record<Verdict, string> = {
   'GO':      C.green,
@@ -338,6 +341,7 @@ export default function TickerPage() {
   const didRestoreLastAnalysis = useRef(false)
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
+  const [expandedRec, setExpandedRec] = useState<number | null>(null)
 
   const handleAnalyze = async (
     ticker: string,
@@ -868,21 +872,83 @@ export default function TickerPage() {
                   </div>
                 </div>
               ) : (
-                selectedData.recommendations.map(rec => (
-                  <div key={rec.rank} style={{ marginBottom: 10 }}>
-                    <RecommendationCard
-                      rec={rec}
-                      ticker={selectedData.ticker}
-                      companyName={selectedData.company_name}
-                      currentPrice={selectedData.signals.current_price}
-                      signals={selectedData.signals}
-                      onFetchAllWeeks={() => fetchAllWeeks(data.ticker)}
-                      fetchingAllWeeks={fetchingAllWeeks.has(data.ticker)}
-                      scrollFocusRank={scrollFocusRank}
-                      onScrollFocusConsumed={() => setScrollFocusRank(null)}
-                    />
-                  </div>
-                ))
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr style={{ background: C.bgPanel }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>#</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strategy</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Action</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Type</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strike</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Expiry</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Cost</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Score</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>PoP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedData.recommendations.map(rec => {
+                        const expanded = expandedRec === rec.rank
+                        const isCredit = (rec.net_credit ?? 0) > 0
+                        return (
+                          <React.Fragment key={rec.rank}>
+                            {rec.legs.map((leg, li) => (
+                              <tr
+                                key={`${rec.rank}-${li}`}
+                                onClick={() => setExpandedRec(expanded ? null : rec.rank)}
+                                style={{ cursor: 'pointer', borderBottom: li < rec.legs.length - 1 || !expanded ? `1px solid ${C.border}` : 'none', background: expanded ? 'rgba(124,92,252,0.04)' : 'transparent' }}
+                              >
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>
+                                    {rec.rank}
+                                  </td>
+                                )}
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
+                                    <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
+                                    <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>
+                                      {isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}
+                                    </div>
+                                    <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
+                                  </td>
+                                )}
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600, color: leg.action === 'BUY' ? C.green : C.red }}>{leg.action}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#fff' }}>{leg.option_type}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(rec.scores?.total_score ?? 0) }}>{rec.scores?.total_score ?? '—'}</td>
+                                )}
+                                {li === 0 && (
+                                  <td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>
+                                )}
+                              </tr>
+                            ))}
+                            {expanded && (
+                              <tr key={`${rec.rank}-detail`} style={{ background: 'rgba(124,92,252,0.04)' }}>
+                                <td colSpan={9} style={{ padding: '12px 14px' }}>
+                                  <RecommendationCard
+                                    rec={rec}
+                                    ticker={selectedData.ticker}
+                                    companyName={selectedData.company_name}
+                                    currentPrice={selectedData.signals.current_price}
+                                    signals={selectedData.signals}
+                                    onFetchAllWeeks={() => fetchAllWeeks(data.ticker)}
+                                    fetchingAllWeeks={fetchingAllWeeks.has(data.ticker)}
+                                    scrollFocusRank={scrollFocusRank}
+                                    onScrollFocusConsumed={() => setScrollFocusRank(null)}
+                                  />
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
