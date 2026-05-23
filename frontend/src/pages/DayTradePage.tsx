@@ -348,7 +348,6 @@ export default function DayTradePage() {
 
         {/* Left: Search panel */}
         <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
-          <MarketTimeGateBanner tradeType="day" />
           {/* Header moved to left side */}
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -386,6 +385,8 @@ export default function DayTradePage() {
               )}
             </div>
           </div>
+
+          <MarketTimeGateBanner tradeType="day" />
 
           <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
             <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
