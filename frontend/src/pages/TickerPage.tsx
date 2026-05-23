@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Star, StarOff, RefreshCw, Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
+import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
 import { isCacheFresh, cacheAge } from '../types'
@@ -276,7 +276,6 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
 
 export default function TickerPage() {
   const {
-    addToWatchlist, removeFromWatchlist, isWatched,
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
@@ -298,8 +297,6 @@ export default function TickerPage() {
   const [staleBannerOpen, setStaleBannerOpen] = useState(false)
   const [yahooBannerOpen, setYahooBannerOpen] = useState(false)
   const [chevronHover,  setChevronHover]  = useState(false)
-  const [refreshHover,  setRefreshHover]  = useState(false)
-  const [watchHover,    setWatchHover]    = useState(false)
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
@@ -449,26 +446,6 @@ export default function TickerPage() {
     handleAnalyze(last.ticker, last.weeksOut, last.spreadWidth, last.strategyMode, last.chainExpiry ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTicker])
-
-  const watched = data ? isWatched(data.ticker) : false
-
-  const toggleWatchlist = () => {
-    if (!data) return
-    if (watched) {
-      removeFromWatchlist(data.ticker)
-    } else {
-      if (!addToWatchlist({
-        ticker: data.ticker,
-        companyName: data.company_name,
-        sector: data.sector,
-        lastPrice: data.signals.current_price,
-      })) return
-    }
-  }
-
-  const handleRefresh = () => {
-    if (data) handleAnalyze(data.ticker, lastWeeks, lastWidth, lastMode, lastChainExpiry)
-  }
 
   const cacheEntry = data ? tickerCache[data.ticker] : null
   const selectedData =
@@ -652,47 +629,7 @@ export default function TickerPage() {
           <>
 
 
-            {/* Refresh + watchlist buttons */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={loading}
-                aria-label="Refresh analysis"
-                onMouseEnter={() => setRefreshHover(true)}
-                onMouseLeave={() => setRefreshHover(false)}
-                style={{
-                  width: 36, height: 36, borderRadius: 8,
-                  background: C.bgCard,
-                  border: `1px solid ${refreshHover ? C.borderSub : C.border}`,
-                  color: refreshHover ? C.text : C.muted,
-                  cursor: loading ? 'default' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  opacity: loading ? 0.5 : 1,
-                  transition: 'all 0.12s',
-                }}
-              >
-                <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : undefined }} />
-              </button>
-              <button
-                type="button"
-                onClick={toggleWatchlist}
-                aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
-                onMouseEnter={() => setWatchHover(true)}
-                onMouseLeave={() => setWatchHover(false)}
-                style={{
-                  width: 36, height: 36, borderRadius: 8,
-                  background: watched ? 'rgba(245,166,35,0.1)' : C.bgCard,
-                  border: `1px solid ${watched ? C.amber : watchHover ? C.borderSub : C.border}`,
-                  color: watched ? C.amber : watchHover ? C.text : C.muted,
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.12s',
-                }}
-              >
-                {watched ? <StarOff size={16} /> : <Star size={16} />}
-              </button>
-            </div>
+
 
             {/* Market Overview */}
             <div style={cardStyle}>
