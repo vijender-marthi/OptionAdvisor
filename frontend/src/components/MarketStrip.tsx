@@ -60,6 +60,7 @@ export default function MarketStrip() {
   const [marketData, setMarketData] = useState<{
     spy?: number; spyChg?: number
     qqq?: number; qqqChg?: number
+    vix?: number; vixLabel?: string
     signal?: string; tone?: string
   }>({})
   const [userTz, setUserTz] = useState(() => { try { return localStorage.getItem('oa_timezone') || 'America/New_York' } catch { return 'America/New_York' } })
@@ -78,6 +79,8 @@ export default function MarketStrip() {
           spyChg:  d.spy_change_pct ?? undefined,
           qqq:     d.qqq_price ?? undefined,
           qqqChg:  d.qqq_change_pct ?? undefined,
+          vix:     d.vix ?? undefined,
+          vixLabel: d.vix_label ?? undefined,
           signal:  d.signal_label,
           tone:    d.signal_tone,
         })
@@ -170,6 +173,26 @@ export default function MarketStrip() {
                 {fmtChg(marketData.qqqChg)}
               </span>
             )}
+          </>
+        ) : (
+          <span style={{ color: C.muted }}>—</span>
+        )}
+      </div>
+
+      <span style={{ color: C.borderSub }}>|</span>
+
+      {/* VIX */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+        VIX
+        {marketData.vix != null ? (
+          <>
+            <span style={{ color: '#fff', fontWeight: 700 }}>{marketData.vix.toFixed(1)}</span>
+            <span style={{
+              color: marketData.vix < 15 ? C.green : marketData.vix < 20 ? C.green : marketData.vix < 25 ? C.amber : C.red,
+              fontWeight: 600,
+            }}>
+              {marketData.vixLabel || (marketData.vix < 20 ? 'Contained' : marketData.vix < 25 ? 'Elevated' : 'High')}
+            </span>
           </>
         ) : (
           <span style={{ color: C.muted }}>—</span>
