@@ -114,7 +114,7 @@ const MOBILE_BOTTOM_NAV_SHELL_TABLET =
 
 export default function Sidebar() {
   const { page, navigate, user, logout, portfolio, isMarketHours, unreadAlertCount, theme, toggleTheme, journalEntryCount, canAccessPage, setHelpOpen } = useApp()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false)
 
   const openPositions = portfolio.filter(p => p.status === 'open').length
