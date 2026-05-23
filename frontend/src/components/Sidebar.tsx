@@ -125,43 +125,43 @@ export default function Sidebar() {
     {
       label: 'Home',
       items: [
-        { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
-        { id: 'ticker', label: 'Regular', icon: <TrendingUp size={18} /> },
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
-        { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
-        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
-        { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+        { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
+      ],
+    },
+    {
+      label: 'Trades',
+      items: [
+        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
+        { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
+        { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
+      ],
+    },
+    {
+      label: 'Portfolio',
+      items: [
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
+        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
+      ],
+    },
+    {
+      label: 'Messages',
+      items: [
+        { id: 'alert-center', label: 'Alerts', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
       ],
     },
     {
       label: 'Analyze',
       items: [
-        { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
         { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
-      ],
-    },
-    {
-      label: 'Advanced Trades',
-      items: [
-        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
-        { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
-        { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-        { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
-      ],
-    },
-    {
-      label: 'Discovery',
-      items: [
-        { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
-        { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
+        { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
       ],
     },
     {
       label: 'Tools',
       items: [
-    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
+        { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+        { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
       ],
     },
     {
@@ -178,19 +178,16 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
     { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={23} /> },
+    { id: 'day-trade', label: 'Day Trade', icon: <Zap size={23} /> },
     { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
-    { id: 'ticker', label: 'Analyze', icon: <Search size={23} /> },
+    { id: 'ticker', label: 'Trading', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
-    { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
-    { id: 'day-trade', label: 'Day Trade Engine', icon: <Zap size={18} /> },
-    { id: 'active-trades', label: 'Track Intraday', icon: <Activity size={18} /> },
+    { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-    { id: 'auto-trade', label: 'Alpaca Trade', icon: <Bot size={18} /> },
-    { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
-    { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
+    { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
+    { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
+    { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
     { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
     { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
     { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
