@@ -126,6 +126,7 @@ export default function TradeDeskPage() {
 
   // Timezone preference
   const [userTz, setUserTz] = useState(() => localStorage.getItem('desk_tz') || 'America/New_York')
+  const userTzRef = useRef(userTz)
   const [showTzPicker, setShowTzPicker] = useState(false)
 
   // Topbar market
@@ -225,7 +226,7 @@ export default function TradeDeskPage() {
     fetchAlerts()
     loadMarketData()
 
-    const clockId = setInterval(() => setClock(etClock(userTz)), 30_000)
+    const clockId = setInterval(() => setClock(etClock(userTzRef.current)), 30_000)
     const pollId = setInterval(() => {
       fetchWatchlist()
       fetchAlerts()
@@ -238,8 +239,12 @@ export default function TradeDeskPage() {
     }
   }, [fetchWatchlist, fetchAlerts, loadMarketData])
 
-  // Re-tick clock when timezone changes
-  useEffect(() => { setClock(etClock(userTz)) }, [userTz])
+  // Keep ref current, re-tick clock, persist to localStorage whenever tz changes
+  useEffect(() => {
+    userTzRef.current = userTz
+    setClock(etClock(userTz))
+    localStorage.setItem('desk_tz', userTz)
+  }, [userTz])
 
   useEffect(() => {
     if (watchlist.length > 0 && !selectedTicker) {
@@ -314,9 +319,7 @@ export default function TradeDeskPage() {
 
   const handleTzChange = (tz: string) => {
     setUserTz(tz)
-    localStorage.setItem('desk_tz', tz)
     setShowTzPicker(false)
-    setClock(etClock(tz))
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────

@@ -54,28 +54,37 @@ function verdictBorder(v: Verdict): string {
   return v === 'ENTER' ? 'rgba(0,229,160,0.25)' : v === 'WATCH' ? 'rgba(245,166,35,0.25)' : v === 'WAIT' ? 'rgba(107,127,212,0.25)' : 'rgba(255,77,109,0.25)'
 }
 
-// SVG confidence ring
+// SVG confidence ring — matches HTML prototype exactly (64×64, r=26)
 function ConfRing({ pct, color }: { pct: number; color: string }) {
-  const r = 24
+  const r = 26
   const circ = 2 * Math.PI * r
-  const offset = circ * (1 - pct / 100)
+  const offset = circ - (pct / 100) * circ
   return (
-    <svg width={60} height={60} style={{ flexShrink: 0 }}>
-      <circle cx={30} cy={30} r={r} stroke={C.borderSub} strokeWidth={4} fill="none" />
-      <circle
-        cx={30} cy={30} r={r}
-        stroke={color} strokeWidth={4} fill="none"
-        strokeDasharray={circ} strokeDashoffset={offset}
-        strokeLinecap="round"
-        transform="rotate(-90 30 30)"
-      />
-      <text x={30} y={27} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={700} fontFamily="monospace">
-        {pct}
-      </text>
-      <text x={30} y={39} textAnchor="middle" fill={C.muted} fontSize={8} fontFamily="monospace">
-        CONF
-      </text>
-    </svg>
+    <div style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
+      <svg
+        viewBox="0 0 64 64"
+        width={64} height={64}
+        style={{ transform: 'rotate(-90deg)', display: 'block' }}
+      >
+        <circle cx={32} cy={32} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={4} />
+        <circle
+          cx={32} cy={32} r={r} fill="none"
+          stroke={color} strokeWidth={4}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 700,
+        color: '#E8EBF0', textAlign: 'center', lineHeight: 1.2,
+      }}>
+        {pct}<br />
+        <span style={{ fontSize: '0.55rem', color: C.muted }}>CONF</span>
+      </div>
+    </div>
   )
 }
 
@@ -142,15 +151,55 @@ export default function VerdictTab({
     : analysis.reason || ''
 
   const eg = analysis.entry_guidance as Record<string, unknown> | undefined
-  const entry = typeof eg?.breakout_level === 'number' ? eg.breakout_level : typeof eg?.current_price === 'number' ? eg.current_price : undefined
-  const t1 = typeof eg?.scalp_target === 'number' ? eg.scalp_target : undefined
-  const t2 = (analysis as unknown as Record<string, unknown>)?.scalp_target_2 as number | undefined
-  const stop = typeof eg?.risk_below === 'number' ? eg.risk_below : undefined
-  const structure = (analysis as unknown as Record<string, unknown>)?.structure as string | undefined
+  const raw = analysis as unknown as Record<string, unknown>
+  const metricsRaw = analysis.metrics as Record<string, unknown> | undefined
 
-  const metrics = analysis.metrics as Record<string, unknown> | undefined
-  const rvol = typeof metrics?.rvol === 'number' ? metrics.rvol : undefined
-  const lastPrice = typeof metrics?.last_price === 'number' ? metrics.last_price : undefined
+  // Entry — day: entry_guidance.breakout_level / current_price; swing: various top-level / metrics fallbacks
+  const entry: number | undefined =
+    (typeof eg?.breakout_level === 'number' ? eg.breakout_level : undefined)
+    ?? (typeof eg?.current_price === 'number' ? eg.current_price : undefined)
+    ?? (typeof raw.entry_price === 'number' ? raw.entry_price as number : undefined)
+    ?? (typeof raw.planned_entry === 'number' ? raw.planned_entry as number : undefined)
+    ?? (typeof raw.swing_entry === 'number' ? raw.swing_entry as number : undefined)
+    ?? (typeof metricsRaw?.entry_price === 'number' ? metricsRaw.entry_price as number : undefined)
+    ?? (typeof metricsRaw?.planned_entry === 'number' ? metricsRaw.planned_entry as number : undefined)
+    ?? undefined
+
+  // T1
+  const t1: number | undefined =
+    (typeof eg?.scalp_target === 'number' ? eg.scalp_target : undefined)
+    ?? (typeof raw.target_1 === 'number' ? raw.target_1 as number : undefined)
+    ?? (typeof raw.t1_price === 'number' ? raw.t1_price as number : undefined)
+    ?? (typeof raw.swing_t1 === 'number' ? raw.swing_t1 as number : undefined)
+    ?? (typeof raw.take_profit_1 === 'number' ? raw.take_profit_1 as number : undefined)
+    ?? (typeof metricsRaw?.target_1 === 'number' ? metricsRaw.target_1 as number : undefined)
+    ?? (typeof metricsRaw?.scalp_target === 'number' ? metricsRaw.scalp_target as number : undefined)
+    ?? undefined
+
+  // T2
+  const t2: number | undefined =
+    (typeof raw.scalp_target_2 === 'number' ? raw.scalp_target_2 as number : undefined)
+    ?? (typeof raw.target_2 === 'number' ? raw.target_2 as number : undefined)
+    ?? (typeof raw.t2_price === 'number' ? raw.t2_price as number : undefined)
+    ?? (typeof raw.swing_t2 === 'number' ? raw.swing_t2 as number : undefined)
+    ?? (typeof raw.take_profit_2 === 'number' ? raw.take_profit_2 as number : undefined)
+    ?? (typeof metricsRaw?.target_2 === 'number' ? metricsRaw.target_2 as number : undefined)
+    ?? undefined
+
+  // Stop
+  const stop: number | undefined =
+    (typeof eg?.risk_below === 'number' ? eg.risk_below : undefined)
+    ?? (typeof raw.stop_price === 'number' ? raw.stop_price as number : undefined)
+    ?? (typeof raw.planned_stop === 'number' ? raw.planned_stop as number : undefined)
+    ?? (typeof raw.swing_stop === 'number' ? raw.swing_stop as number : undefined)
+    ?? (typeof metricsRaw?.stop_price === 'number' ? metricsRaw.stop_price as number : undefined)
+    ?? (typeof metricsRaw?.planned_stop === 'number' ? metricsRaw.planned_stop as number : undefined)
+    ?? undefined
+
+  const structure = raw?.structure as string | undefined
+
+  const rvol = typeof metricsRaw?.rvol === 'number' ? metricsRaw.rvol : undefined
+  const lastPrice = typeof metricsRaw?.last_price === 'number' ? metricsRaw.last_price : undefined
 
   // AI coach
   const aiCoachRaw = (analysis as unknown as Record<string, unknown>)?.ai_coach
@@ -227,38 +276,45 @@ export default function VerdictTab({
       {/* 1. Verdict hero card */}
       <div style={{
         background: vbg, border: `1px solid ${vborder}`,
-        borderRadius: 10, overflow: 'hidden',
+        borderRadius: 16, overflow: 'hidden', position: 'relative',
         borderTop: `3px solid ${vc}`,
+        boxShadow: verdict === 'ENTER' ? '0 0 40px rgba(0,229,160,0.15)' : undefined,
       }}>
-        <div style={{ padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ padding: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: '3rem', fontWeight: 900, color: vc, lineHeight: 1, letterSpacing: '-0.02em' }}>
+              <div style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: '3rem', fontWeight: 800, color: vc,
+                lineHeight: 1, letterSpacing: '-0.03em',
+              }}>
                 {verdict}
               </div>
-              {/* Waiting-for indicator (WAIT verdict only) */}
-              {verdict === 'WAIT' && waitingFor && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.78rem', color: C.purple }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, flexShrink: 0, animation: 'tdPulse 1.5s infinite' }} />
-                  <span>Waiting for: {waitingFor}</span>
-                </div>
-              )}
-              <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', marginTop: 8, lineHeight: 1.5, maxWidth: 380 }}>
-                {reason}
-              </p>
             </div>
             <ConfRing pct={confidence} color={vc} />
           </div>
 
+          {/* Waiting-for indicator (WAIT verdict only) */}
+          {verdict === 'WAIT' && waitingFor && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.78rem', color: C.purple }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, flexShrink: 0, animation: 'tdPulse 1.5s infinite' }} />
+              <span>Waiting for: {waitingFor}</span>
+            </div>
+          )}
+
+          <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: 16 }}>
+            {reason}
+          </p>
+
           {/* Conditions chips */}
           {(supportingFactors.length > 0 || missingConfirmations.length > 0) && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {supportingFactors.map((f, i) => (
                 <span key={`pass-${i}`} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 20, padding: '4px 10px', fontSize: '0.7rem',
-                  color: 'rgba(232,235,240,0.8)', whiteSpace: 'nowrap',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 500,
+                  color: 'rgba(232,235,240,0.7)', whiteSpace: 'nowrap',
                 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, flexShrink: 0, display: 'inline-block' }} />
                   {shortenLabel(f)}
@@ -267,9 +323,9 @@ export default function VerdictTab({
               {missingConfirmations.map((f, i) => (
                 <span key={`warn-${i}`} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 20, padding: '4px 10px', fontSize: '0.7rem',
-                  color: 'rgba(245,166,35,0.9)', whiteSpace: 'nowrap',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 500,
+                  color: 'rgba(245,166,35,0.8)', whiteSpace: 'nowrap',
                 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.amber, flexShrink: 0, display: 'inline-block' }} />
                   {shortenLabel(f)}
@@ -296,7 +352,7 @@ export default function VerdictTab({
             return entryRows.map((row, i) => (
               <div key={row.label} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                fontSize: '0.82rem', paddingTop: 8, paddingBottom: 8,
+                fontSize: '0.82rem', padding: '5px 0',
                 borderBottom: i < entryRows.length - 1 ? `1px solid ${C.border}` : 'none',
               }}>
                 <span style={{ color: C.muted }}>{row.label}</span>
