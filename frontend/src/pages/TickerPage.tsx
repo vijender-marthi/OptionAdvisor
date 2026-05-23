@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
+import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
 import { isCacheFresh, cacheAge } from '../types'
@@ -293,10 +293,8 @@ export default function TickerPage() {
   const [lastChainExpiry, setLastChainExpiry] = useState<string | null>(null)
   const [inputTicker,   setInputTicker]   = useState('')
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
-  const [signalOpen,    setSignalOpen]    = useState(false)
   const [staleBannerOpen, setStaleBannerOpen] = useState(false)
   const [yahooBannerOpen, setYahooBannerOpen] = useState(false)
-  const [chevronHover,  setChevronHover]  = useState(false)
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
@@ -908,37 +906,9 @@ export default function TickerPage() {
           </div>
         )}
 
-        {/* Signal Panel (collapsible) — moved to end of page */}
+        {/* Full Signal Breakdown (collapsible inside) */}
         <div style={cardStyle}>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => setSignalOpen(p => !p)}
-            onKeyDown={e => e.key === 'Enter' && setSignalOpen(p => !p)}
-            onMouseEnter={() => setChevronHover(true)}
-            onMouseLeave={() => setChevronHover(false)}
-            style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: chevronHover ? C.text : C.text }}>
-              📊 Full Signal Breakdown
-            </span>
-            <ChevronDown
-              size={16}
-              style={{
-                color: C.muted,
-                transform: signalOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s',
-              }}
-            />
-          </div>
-          {signalOpen && (
-            <div style={{ marginTop: 14 }}>
-              <SignalPanel signals={displayData.signals} />
-            </div>
-          )}
+          <SignalPanel signals={displayData.signals} />
         </div>
 
         {/* Disclaimer */}
