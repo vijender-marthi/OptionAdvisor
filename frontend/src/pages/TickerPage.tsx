@@ -338,6 +338,8 @@ export default function TickerPage() {
   const [inputTicker,   setInputTicker]   = useState('')
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
   const [signalOpen,    setSignalOpen]    = useState(false)
+  const [staleBannerOpen, setStaleBannerOpen] = useState(false)
+  const [yahooBannerOpen, setYahooBannerOpen] = useState(false)
   const [chevronHover,  setChevronHover]  = useState(false)
   const [refreshHover,  setRefreshHover]  = useState(false)
   const [watchHover,    setWatchHover]    = useState(false)
@@ -545,11 +547,29 @@ export default function TickerPage() {
   const windowWidth = useWindowWidth()
   const isMobile = windowWidth < 768
   const isDesktop = windowWidth >= 1024
+  const [searchOpen, setSearchOpen] = useState(!isMobile)
   const L = isMobile ? undefined : 280
 
   return (
     <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 20, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: isMobile ? '12px' : '20px 24px' }}>
+      {/* Mobile/tablet search toggle */}
+      {isMobile && (
+        <button
+          type="button"
+          onClick={() => setSearchOpen(p => !p)}
+          style={{
+            background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10,
+            color: C.text, padding: '10px 16px', fontSize: '0.85rem', fontWeight: 600,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          }}
+        >
+          <Search size={16} />
+          {searchOpen ? 'Hide search' : 'Show search'}
+        </button>
+      )}
+
       {/* Left: Search panel */}
+      {(!isMobile || searchOpen) && (
       <div style={{ width: isMobile ? '100%' : L, flexShrink: 0, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 20 : undefined }}>
         <TickerInput
           onAnalyze={handleAnalyzeWithCache}
@@ -560,6 +580,7 @@ export default function TickerPage() {
           initialStrategyMode={lastMode}
         />
       </div>
+      )}
 
       {/* Right: Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -595,48 +616,57 @@ export default function TickerPage() {
         {!loading && data && displayData && (
           <>
             {staleSnapshotInfo && (
-              <div style={{
-                borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`,
-                background: 'rgba(245,166,35,0.06)', padding: '12px 16px',
-                display: 'flex', gap: 12, marginTop: 14,
-              }}>
-                <AlertTriangle size={18} style={{ color: C.amber, flexShrink: 0, marginTop: 2 }} />
-                <div style={{ minWidth: 0, fontSize: '0.875rem' }}>
-                  <div style={{ fontWeight: 600, color: C.amber }}>Latest market data did not load</div>
-                  <p style={{ color: 'rgba(245,166,35,0.8)', marginTop: 6, lineHeight: 1.6 }}>
-                    Showing your last successful analysis snapshot from{' '}
-                    <span style={{ fontFamily: 'monospace', color: C.text }}>
-                      {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                    </span>
-                    . Cached data was kept until a new request succeeds.
-                  </p>
-                  <p style={{ color: 'rgba(245,166,35,0.5)', fontSize: '0.72rem', marginTop: 8, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                    {staleSnapshotInfo.errorDetail}
-                  </p>
-                </div>
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setStaleBannerOpen(p => !p)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: C.amber, fontWeight: 600, fontSize: '0.78rem', padding: 0 }}
+                >
+                  <AlertTriangle size={16} />
+                  {staleBannerOpen ? 'Hide cached data details' : 'Latest market data did not load — click for details'}
+                </button>
+                {staleBannerOpen && (
+                  <div style={{ borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '12px 16px', marginTop: 8 }}>
+                    <p style={{ color: 'rgba(245,166,35,0.8)', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                      Showing your last successful analysis snapshot from{' '}
+                      <span style={{ fontFamily: 'monospace', color: C.text }}>
+                        {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                      . Cached data was kept until a new request succeeds.
+                    </p>
+                    <p style={{ color: 'rgba(245,166,35,0.5)', fontSize: '0.72rem', marginTop: 8, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {staleSnapshotInfo.errorDetail}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
             {displayData.quote_quality_summary?.banner_show &&
               (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
-              <div style={{
-                borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`,
-                background: 'rgba(245,166,35,0.06)', padding: '12px 16px',
-                display: 'flex', gap: 12, marginTop: 14,
-              }}>
-                <AlertTriangle size={18} style={{ color: C.amber, flexShrink: 0, marginTop: 2 }} />
-                <div style={{ minWidth: 0, fontSize: '0.875rem' }}>
-                  <div style={{ fontWeight: 600, color: C.amber }}>Yahoo option data looks incomplete or stale</div>
-                  <ul style={{ marginTop: 8, paddingLeft: 16, color: 'rgba(245,166,35,0.8)', lineHeight: 1.6 }}>
-                    {displayData.quote_quality_summary.banner_lines.map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                  </ul>
-                  <p style={{ fontSize: '0.72rem', color: 'rgba(245,166,35,0.5)', marginTop: 10 }}>
-                    Data comes from Yahoo Finance — when bid/ask are missing or Yahoo serves cached last prices,
-                    mids and signals can drift. Tap refresh after a minute or confirm strikes with your broker.
-                  </p>
-                </div>
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setYahooBannerOpen(p => !p)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: C.amber, fontWeight: 600, fontSize: '0.78rem', padding: 0 }}
+                >
+                  <AlertTriangle size={16} />
+                  {yahooBannerOpen ? 'Hide Yahoo data details' : 'Yahoo option data may be incomplete — click for details'}
+                </button>
+                {yahooBannerOpen && (
+                  <div style={{ borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '12px 16px', marginTop: 8 }}>
+                    <div style={{ fontWeight: 600, color: C.amber, fontSize: '0.875rem', marginBottom: 8 }}>Yahoo option data looks incomplete or stale</div>
+                    <ul style={{ paddingLeft: 16, color: 'rgba(245,166,35,0.8)', lineHeight: 1.6 }}>
+                      {displayData.quote_quality_summary.banner_lines.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                    <p style={{ fontSize: '0.72rem', color: 'rgba(245,166,35,0.5)', marginTop: 10 }}>
+                      Data comes from Yahoo Finance — when bid/ask are missing or Yahoo serves cached last prices,
+                      mids and signals can drift. Tap refresh after a minute or confirm strikes with your broker.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

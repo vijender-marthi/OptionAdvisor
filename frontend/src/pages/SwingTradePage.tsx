@@ -218,85 +218,103 @@ export default function SwingTradePage() {
     setEnterOpen(false)
   }, [result, addManualPosition])
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
   return (
-    <div className="swing-trade-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
-      {/* Header */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            {searchParams.get('from') && (
+    <div className="swing-trade-page min-h-screen p-4 md:p-6 text-primary">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
+        {/* Mobile/tablet search toggle */}
+        <button
+          type="button"
+          onClick={() => setSearchOpen(p => !p)}
+          className="lg:hidden w-full flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-secondary"
+        >
+          <Search size={16} />
+          {searchOpen ? 'Hide search' : 'Show search'}
+        </button>
+
+        {/* Left: Search panel */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
+          <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
+              <input
+                ref={inputRef}
+                className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
+                placeholder="NVDA, AAPL, SPY…"
+                value={ticker}
+                onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
+                onKeyDown={e => e.key === 'Enter' && void runScan()}
+                autoComplete="off"
+                spellCheck={false}
+              />
               <button
                 type="button"
-                onClick={() => navigate(searchParams.get('from')!)}
-                className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+                onClick={() => void runScan()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
               >
-                <ArrowLeft size={16} /> Back
+                {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+                Analyze
               </button>
-            )}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-700 text-violet-400">
-              <TrendingUp size={18} />
             </div>
-            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Swing Trade Engine</h1>
-            <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Overnight &amp; Multi-Day</span>
-          </div>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
+            <p className="text-[11px] text-gray-500 mt-2">
+              Uses daily OHLCV bars from Yahoo Finance. Evaluates MA20/MA50 alignment and slope, RSI, MACD crossover, 5-day momentum, volume trend, and SPY/VIX context for overnight or 2–5 day swing trade setups.
+            </p>
+            {myTickers.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <span className="text-xs text-gray-500 self-center">Quick:</span>
+                {myTickers.map((t: string) => (
+                  <a key={t} href={`/swing-trade?ticker=${encodeURIComponent(t)}`}
+                    onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); void runScan(t) }}
+                    className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                  >
+                    {t}
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void runScan()}
-            disabled={loading}
-            className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
-          </button>
-        </div>
-      </header>
 
-      {/* Ticker input */}
-      <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            ref={inputRef}
-            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
-            placeholder="NVDA, AAPL, SPY…"
-            value={ticker}
-            onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
-            onKeyDown={e => e.key === 'Enter' && void runScan()}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            onClick={() => void runScan()}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
-            Analyze
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-500 mt-2">
-          Uses daily OHLCV bars from Yahoo Finance. Evaluates MA20/MA50 alignment and slope, RSI, MACD crossover, 5-day momentum, volume trend, and SPY/VIX context for overnight or 2–5 day swing trade setups.
-        </p>
-        {myTickers.length > 0 && (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            <span className="text-xs text-gray-500 self-center">Quick:</span>
-            {myTickers.map((t: string) => (
-              <a key={t} href={`/swing-trade?ticker=${encodeURIComponent(t)}`}
-                onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); void runScan(t) }}
-                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
-              >
-                {t}
-              </a>
-            ))}
-          </div>
-        )}
-      </section>
+        {/* Right: Content */}
+        <div className="flex-1 min-w-0 space-y-4">
 
-      {/* Error */}
-      {error && (
+        {/* Header */}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              {searchParams.get('from') && (
+                <button
+                  type="button"
+                  onClick={() => navigate(searchParams.get('from')!)}
+                  className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+                >
+                  <ArrowLeft size={16} /> Back
+                </button>
+              )}
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-700 text-violet-400">
+                <TrendingUp size={18} />
+              </div>
+              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Swing Trade Engine</h1>
+              <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Overnight &amp; Multi-Day</span>
+            </div>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void runScan()}
+              disabled={loading}
+              className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> {loading ? 'Scanning…' : 'Refresh'}
+            </button>
+          </div>
+        </header>
+
+        {/* Error */}
+        {error && (
         <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
           <ShieldAlert className="shrink-0 mt-0.5" size={16} />
           {error}
@@ -497,6 +515,8 @@ export default function SwingTradePage() {
           </div>
         </div>
       )}
-    </div>
+      </div>{/* end right content */}
+    </div>{/* end flex container */}
+  </div>
   )
 }

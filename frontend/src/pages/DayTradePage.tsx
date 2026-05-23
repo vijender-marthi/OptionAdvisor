@@ -320,90 +320,108 @@ export default function DayTradePage() {
     }
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
   return (
-    <div className="day-trade-page mx-auto min-h-screen max-w-6xl space-y-4 p-4 md:p-6 text-primary">
-      {/* Header */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 border border-orange-700 text-orange-400">
-              <Zap size={18} />
+    <div className="day-trade-page min-h-screen p-4 md:p-6 text-primary">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
+        {/* Mobile/tablet search toggle */}
+        <button
+          type="button"
+          onClick={() => setSearchOpen(p => !p)}
+          className="lg:hidden w-full flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-secondary"
+        >
+          <Search size={16} />
+          {searchOpen ? 'Hide search' : 'Show search'}
+        </button>
+
+        {/* Left: Search panel */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
+          <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
+              <input
+                className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
+                placeholder="SPY, NVDA, …"
+                value={ticker}
+                onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
+                onKeyDown={e => e.key === 'Enter' && runScan()}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => runScan()}
+                disabled={loading || refreshing}
+                className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
+              >
+                {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+                Analyze
+              </button>
             </div>
-            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Day Trade Engine</h1>
-            <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Intraday</span>
-          </div>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Intraday scanner — 1m bars, VWAP, opening range, momentum, volume, and SPY/VIX context.</p>
+            <p className="text-[11px] text-gray-500 mt-2">
+              Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
+            </p>
+            {myTickers.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <span className="text-xs text-gray-500 self-center">Quick:</span>
+                {myTickers.map((t: string) => (
+                  <a key={t} href={`/day-trade?ticker=${encodeURIComponent(t)}`}
+                    onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
+                    className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                  >
+                    {t}
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {searchParams.get('from') && (
+
+        {/* Right: Content */}
+        <div className="flex-1 min-w-0 space-y-4">
+
+        {/* Header */}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600/20 border border-orange-700 text-orange-400">
+                <Zap size={18} />
+              </div>
+              <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Day Trade Engine</h1>
+              <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Intraday</span>
+            </div>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-gray-400">Intraday scanner — 1m bars, VWAP, opening range, momentum, volume, and SPY/VIX context.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {searchParams.get('from') && (
+              <button
+                type="button"
+                onClick={() => routerNavigate(searchParams.get('from')!)}
+                className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
+              >
+                <ArrowLeft size={16} /> Back
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => routerNavigate(searchParams.get('from')!)}
+              onClick={() => void runScan()}
+              disabled={loading || refreshing}
               className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
             >
-              <ArrowLeft size={16} /> Back
+              <RefreshCw size={16} className={refreshing || loading ? 'animate-spin' : ''} /> {refreshing ? 'Refreshing…' : loading ? 'Scanning…' : 'Refresh'}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void runScan()}
-            disabled={loading || refreshing}
-            className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}
-          >
-            <RefreshCw size={16} className={refreshing || loading ? 'animate-spin' : ''} /> {refreshing ? 'Refreshing…' : loading ? 'Scanning…' : 'Refresh'}
-          </button>
-          {lastRefreshed && (
-            <span className="text-[10px] text-gray-500 whitespace-nowrap">
-              Updated {lastRefreshed.toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-      </header>
-
-      <MarketTimeGateBanner tradeType="day" />
-
-      {/* Scan */}
-      <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
-            placeholder="SPY, NVDA, …"
-            value={ticker}
-            onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
-            onKeyDown={e => e.key === 'Enter' && runScan()}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            onClick={() => runScan()}
-            disabled={loading || refreshing}
-            className="inline-flex items-center justify-center gap-2 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold px-5 py-3 min-h-[48px] transition-colors"
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
-            Analyze
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-500 mt-2">
-          Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
-        </p>
-        {myTickers.length > 0 && (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            <span className="text-xs text-gray-500 self-center">Quick:</span>
-            {myTickers.map((t: string) => (
-              <a key={t} href={`/day-trade?ticker=${encodeURIComponent(t)}`}
-                onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
-                className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
-              >
-                {t}
-              </a>
-            ))}
+            {lastRefreshed && (
+              <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                Updated {lastRefreshed.toLocaleTimeString()}
+              </span>
+            )}
           </div>
-        )}
-      </section>
+        </header>
 
-      {error && (
+        <MarketTimeGateBanner tradeType="day" />
+
+        {error && (
         <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
           <ShieldAlert className="shrink-0 mt-0.5" size={16} />
           {error}
@@ -740,6 +758,8 @@ export default function DayTradePage() {
           </div>
         </div>
       )}
-    </div>
+      </div>{/* end right content */}
+    </div>{/* end flex container */}
+  </div>
   )
 }
