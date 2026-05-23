@@ -900,6 +900,41 @@ export default function DayTradeEnginePanel({
         <div className="text-[10px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
       </div>
 
+      {/* Verdict section */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[13px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
+                  {formatLabel(result.final_decision)}
+                </span>
+                <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+                  <svg viewBox="0 0 40 40" width={40} height={40} style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx={20} cy={20} r={16} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+                    <circle cx={20} cy={20} r={16} fill="none" stroke={decisionTone === 'green' ? '#10b981' : decisionTone === 'blue' ? '#3b82f6' : decisionTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={100.53} strokeDashoffset={100.53 - (Math.min(result.confidence ?? 0, 100) / 100) * 100.53} />
+                  </svg>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 9, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.1 }}>
+                    {Math.min(result.confidence ?? 0, 100)}<br /><span style={{ fontSize: 7, color: '#5a6478' }}>CONF</span>
+                  </div>
+                </div>
+              </div>
+              {result.final_decision === 'WAIT' && (() => {
+                const missing = Array.isArray(eg?.pending_confirmations) ? (eg.pending_confirmations as string[]) : []
+                if (missing.length === 0) return null
+                return (
+                  <div className="flex items-center gap-1.5 mt-2 text-[11px] text-amber-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    Waiting for: {missing.slice(0, 2).join(' · ')}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+          <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{bestNextStep}</div>
+        </div>
+      </div>
+
       {/* Entry Plan / Risk Profile */}
       <div className="px-4 py-3 border-b border-gray-800">
         <div className="grid gap-3 sm:grid-cols-2">
