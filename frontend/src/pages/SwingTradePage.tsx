@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import { analyzeSwingTrade, saveToJournal } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import type { SwingTradeScanResult } from '../api/client'
@@ -318,6 +318,107 @@ export default function SwingTradePage() {
               </div>
             )}
           </section>
+
+          {/* Already in Position */}
+          {existingPositions.length > 0 && (
+            <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-3 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Check size={14} className="text-amber-400 shrink-0" />
+                <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">Already in Position</span>
+                {(() => {
+                  const lp = existingPositions[existingPositions.length - 1]
+                  return lp?.source && (
+                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                      lp.source === 'day'   ? 'border-orange-600/40 bg-orange-900/30 text-orange-300' :
+                      lp.source === 'swing' ? 'border-blue-600/40 bg-blue-900/30 text-blue-300' :
+                                             'border-gray-600/40 bg-gray-800/50 text-gray-400'
+                    }`}>{lp.source}</span>
+                  )
+                })()}
+              </div>
+              {(() => {
+                const lp = existingPositions[existingPositions.length - 1]
+                if (!lp) return null
+                return (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-amber-200/80">
+                    {lp.strategy && <span><span className="text-amber-400/60">Strategy</span> {lp.strategy}</span>}
+                    {lp.contracts > 0 && <span><span className="text-amber-400/60">Contracts</span> {lp.contracts}</span>}
+                    {lp.entryPrice > 0 && <span><span className="text-amber-400/60">Entry px</span> ${lp.entryPrice.toFixed(2)}</span>}
+                    {lp.addedAt && <span><span className="text-amber-400/60">Added</span> {lp.addedAt.slice(0, 10)}</span>}
+                  </div>
+                )
+              })()}
+              <p className="text-[10px] text-amber-200/70 leading-snug">
+                Follow your exit rules — manage this position rather than adding again without a clear plan.
+              </p>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {result && (
+          <div className="flex flex-wrap items-center gap-2">
+            {existingPositions.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => navigate(ROUTES.positions)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 px-3.5 py-2 text-xs font-bold transition-colors"
+              >
+                <BarChart2 size={14} />
+                View Positions
+              </button>
+            ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (!result) return
+                const m = result.metrics
+                const s = result as Record<string, unknown>
+                const eg = result.entry_guidance as Record<string, unknown> | undefined
+                addManualPosition({
+                  ticker: result.ticker,
+                  bias: result.bias,
+                  strategy: String(s.suggested_strategy ?? 'SWING'),
+                  contracts: 1,
+                  entryPrice: (typeof eg?.breakout_level === 'number' ? eg.breakout_level : (m as Record<string, unknown>)?.last_price ?? result.metrics?.last_price) as number,
+                  expiry: result.suggested_expiry_window || '',
+                  notes: result.decision_message || '',
+                  source: 'swing',
+                  target1: (m as Record<string, unknown>)?.exec_levels ? ((m as Record<string, unknown>).exec_levels as Record<string, unknown>)?.target1 as number : undefined,
+                  stopLoss: (m as Record<string, unknown>)?.exec_levels ? ((m as Record<string, unknown>).exec_levels as Record<string, unknown>)?.stop as number : undefined,
+                })
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-2 text-xs font-bold transition-colors"
+            >
+              <PlusCircle size={14} />
+              Add to Portfolio
+            </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEnterOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              <Activity size={14} />
+              Track Intraday
+            </button>
+            <button
+              type="button"
+              onClick={() => setAlertOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/50 hover:bg-rose-900/30 text-rose-300 px-3.5 py-2 text-xs font-bold transition-colors"
+            >
+              <Bell size={14} />
+              Add Alert
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-700/50 hover:bg-violet-900/30 text-violet-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              <BarChart2 size={13} />
+              Position Trading
+            </button>
+          </div>
+          )}
         </div>
 
         {/* Right: Content */}
