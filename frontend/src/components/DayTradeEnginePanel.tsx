@@ -1026,6 +1026,33 @@ export default function DayTradeEnginePanel({
         })()}
       </div>
 
+      {/* ─── Charts (VWAP + OR) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-400 mb-2">
+          <BarChart2 size={12} />
+          Charts
+        </div>
+        {chartBars && orChartHigh != null && orChartLow != null ? (
+          <div>
+            <DayTradeIntradayChart
+              bars={chartBars}
+              orHigh={orChartHigh}
+              orLow={orChartLow}
+              orMinutes={orMinN}
+              sessionDate={String(m.session_date ?? '')}
+            />
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
+              {eg?.vwap != null && <span>VWAP: <span className="font-mono text-gray-200">${eg.vwap.toFixed(2)}</span></span>}
+              {orChartHigh != null && <span>ORH: <span className="font-mono text-gray-200">${orChartHigh.toFixed(2)}</span></span>}
+              {orChartLow != null && <span>ORL: <span className="font-mono text-gray-200">${orChartLow.toFixed(2)}</span></span>}
+              {lastPrice != null && <span>Last: <span className="font-mono text-gray-200">${lastPrice.toFixed(2)}</span></span>}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 py-2">Chart data not available for this session.</p>
+        )}
+      </div>
+
       {/* ─── Decision Chart (collapsible) ─── */}
       <button
         type="button"
