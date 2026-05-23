@@ -1241,7 +1241,7 @@ export default function SwingTradeEnginePanel({
           {onOpenStrategyFinder ? (
             <button type="button" onClick={onOpenStrategyFinder} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}>
               <BarChart2 size={13} />
-              Strategy Finder
+              Position Trading
             </button>
           ) : null}
           {onOpenCommandCenter ? (

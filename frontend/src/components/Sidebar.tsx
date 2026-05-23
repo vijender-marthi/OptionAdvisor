@@ -137,7 +137,7 @@ export default function Sidebar() {
     {
       label: 'Analyze',
       items: [
-        { id: 'ticker', label: 'Strategy Finder', icon: <Search size={18} /> },
+        { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
         { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
       ],
     },

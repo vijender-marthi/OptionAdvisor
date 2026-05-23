@@ -36,7 +36,7 @@ function VerdictPill({ v, onOpenFinder }: { v: VerdictOrNone; onOpenFinder?: () 
     return (
       <button type="button" onClick={e => { e.stopPropagation(); onOpenFinder() }}
         className={`${cls} cursor-pointer hover:brightness-110 transition-[filter] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/80`}
-        title="Open in Strategy Finder">
+        title="Open in Position Trading">
         {inner}
       </button>
     )
@@ -255,7 +255,7 @@ function RecRow({
             <button type="button" onClick={() => openInFinder(ticker, weeksOut, rec)}
               className="inline-flex items-center gap-0.5 shrink-0 text-[10px] font-semibold text-violet-400 hover:text-violet-300
                          border border-violet-700/60 rounded-lg px-1.5 py-0.5 bg-violet-600/10 hover:bg-violet-600/20 transition-colors"
-              title="Open in Strategy Finder">
+              title="Open in Position Trading">
               <ExternalLink size={11} aria-hidden /> Finder
             </button>
           )}

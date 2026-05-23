@@ -1722,7 +1722,7 @@ export default function PositionsCenter() {
           <div className="text-lg font-semibold text-heading">{positions.length === 0 ? 'No positions yet' : 'No matching positions'}</div>
           <p className="mt-1 text-sm text-tertiary">
             {positions.length === 0
-              ? 'Add positions from the Strategy Finder or ticker analysis pages.'
+              ? 'Add positions from the Position Trading or ticker analysis pages.'
               : 'Try adjusting filters or search query.'}
           </p>
         </div>

@@ -78,7 +78,7 @@ function LegacyHashRedirect() {
     const redirects: Record<string, string> = {
       watchlist: '/signal-feed',
       portfolio: '/positions?tab=open',
-      ticker: '/strategy-finder',
+      ticker: '/position-trading',
       dashboard: '/trade-command-center',
       alerts: '/alerts',
       discovery: '/strategy-finder',
@@ -134,9 +134,10 @@ function ShellRoutes() {
       <Route path="/watchlistx" element={<Navigate to="/signal-feed" replace />} />
       <Route path="/portfolio" element={<Navigate to="/positions?tab=open" replace />} />
       <Route path="/dashboard" element={<Navigate to="/trade-command-center" replace />} />
-      <Route path="/discovery" element={<Navigate to="/strategy-finder" replace />} />
-      <Route path="/scanner" element={<Navigate to="/strategy-finder" replace />} />
-      <Route path="/ticker" element={<Navigate to="/strategy-finder" replace />} />
+      <Route path="/discovery" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/scanner" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/ticker" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/strategy-finder" element={<Navigate to="/position-trading" replace />} />
       <Route path="/trading-glossary" element={<Navigate to="/help" replace />} />
 
       <Route element={<RequireAuth />}>
@@ -147,7 +148,7 @@ function ShellRoutes() {
               <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
               <Route path="/desk" element={<TradeDeskPage />} />
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
-              <Route path="/strategy-finder" element={<TickerPage />} />
+              <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/positions" element={<PositionsRoute />} />
               <Route path="/alerts" element={<AlertCenterPage />} />
               {/* /help is now a modal — redirect to landing */}

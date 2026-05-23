@@ -944,7 +944,7 @@ export default function SignalFeedPage() {
   const payload = env?.data
   const rows = payload?.rows ?? []
   const summary = payload?.summary ?? { total: 0, ready: 0, watch: 0, extended: 0, avoid: 0, conflict: 0, manage: 0, alerts: 0, strong_bullish: 0, strong_bearish: 0 }
-  const aiSummary = payload?.ai_summary ?? { headline: 'No Signal Feed items yet', message: 'Add tickers to start the Signal Feed pipeline.', best_focus: 'Use Strategy Finder, day trade, or swing trade flows to seed tickers.', counts: {} }
+  const aiSummary = payload?.ai_summary ?? { headline: 'No Signal Feed items yet', message: 'Add tickers to start the Signal Feed pipeline.', best_focus: 'Use Position Trading, day trade, or swing trade flows to seed tickers.', counts: {} }
   const pagination = payload?.pagination ?? { page: 1, page_size: pageSize, total: 0, total_pages: 1 }
 
   const sectors = useMemo(() => {

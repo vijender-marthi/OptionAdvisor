@@ -85,7 +85,7 @@ export default function LeftPanel({
       display: 'flex', flexDirection: 'column', height: '100%',
       background: C.bgPanel, borderRight: `1px solid ${C.border}`,
     }}>
-      {/* Section 1 — Ticker input + Trade type + Quick picks (Strategy Finder style) */}
+      {/* Section 1 — Ticker input + Trade type + Quick picks (Position Trading style) */}
       <div style={{ padding: 16, borderBottom: `1px solid ${C.border}` }}>
         <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
           Analyze Ticker

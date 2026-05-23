@@ -90,7 +90,7 @@ export default function TickerInput({
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{ fontWeight: 800, fontSize: '1.1rem', color: C.text, fontFamily: 'monospace' }}>
-          Strategy Finder
+          Position Trading
         </span>
         <span style={{
           fontSize: '0.65rem', color: C.muted,
