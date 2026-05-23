@@ -1026,6 +1026,64 @@ export default function DayTradeEnginePanel({
         })()}
       </div>
 
+      {/* ─── Decision Chart (collapsible) ─── */}
+      <button
+        type="button"
+        onClick={() => setDecisionOpen(p => !p)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-800 bg-transparent border-none cursor-pointer text-left"
+      >
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">
+          <BarChart2 size={12} />
+          Decision Chart
+        </div>
+        <ChevronDown size={14} className={`text-gray-500 transition-transform shrink-0 ${decisionOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {decisionOpen && (
+      <div className="px-4 py-3 border-b border-gray-800">
+        <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+        {hasAiCoach && (
+          <div className="mt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+            {ac!.confluence?.detected && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>{ac!.confluence.strength}</span>
+                  <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            {ac!.decision_tree.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+                {ac!.decision_tree.map((node, i) => {
+                  const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                    node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                    node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                    'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                  return (
+                    <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                      <span className="font-semibold">IF</span> {node.if} →{' '}
+                      <span className="font-semibold">THEN</span> {node.then}
+                      <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      )}
+
         {/* AI Coach Summary (collapsible) */}
         <button
           type="button"
@@ -1120,64 +1178,6 @@ export default function DayTradeEnginePanel({
         </div>
         </div>
         )}
-
-      {/* ─── Decision Chart (collapsible) ─── */}
-      <button
-        type="button"
-        onClick={() => setDecisionOpen(p => !p)}
-        className="w-full flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-800 bg-transparent border-none cursor-pointer text-left"
-      >
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">
-          <BarChart2 size={12} />
-          Decision Chart
-        </div>
-        <ChevronDown size={14} className={`text-gray-500 transition-transform shrink-0 ${decisionOpen ? 'rotate-180' : ''}`} />
-      </button>
-      {decisionOpen && (
-      <div className="px-4 py-3 border-b border-gray-800">
-        <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
-        {hasAiCoach && (
-          <div className="mt-3 space-y-2">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
-                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
-                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
-              </div>
-              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
-                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
-                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
-              </div>
-            </div>
-            {ac!.confluence?.detected && (
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>{ac!.confluence.strength}</span>
-                  <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-            {ac!.decision_tree.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
-                {ac!.decision_tree.map((node, i) => {
-                  const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
-                    node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
-                    node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
-                    'text-gray-400 border-gray-700/50 bg-gray-900/30'
-                  return (
-                    <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
-                      <span className="font-semibold">IF</span> {node.if} →{' '}
-                      <span className="font-semibold">THEN</span> {node.then}
-                      <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      )}
 
       {/* ─── Details (collapsible) ─── */}
       <div className="px-4 py-3 border-b border-gray-800">
