@@ -727,7 +727,8 @@ export default function DayTradeEnginePanel({
   const inPosition = existingPositions.length > 0
   const latestPos  = existingPositions[existingPositions.length - 1]
   const [signalsOpen, setSignalsOpen] = useState(false)
-  const [detailsOpen, setDetailsOpen] = useState(true)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
   const signalsSectionRef = useRef<HTMLDivElement | null>(null)
@@ -1194,6 +1195,55 @@ export default function DayTradeEnginePanel({
             View Signals
           </button>
         </div>
+
+      {/* ─── Decision Chart (always expanded) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">
+          <BarChart2 size={12} />
+          Decision Chart
+        </div>
+        <p className="text-xs text-gray-200 leading-relaxed mt-2">{intradaySummary}</p>
+        {hasAiCoach && (
+          <div className="mt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+            {ac!.confluence?.detected && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>{ac!.confluence.strength}</span>
+                  <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            {ac!.decision_tree.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+                {ac!.decision_tree.map((node, i) => {
+                  const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                    node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                    node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                    'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                  return (
+                    <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                      <span className="font-semibold">IF</span> {node.if} →{' '}
+                      <span className="font-semibold">THEN</span> {node.then}
+                      <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ─── Details (collapsible) ─── */}
       <div className="px-4 py-3 border-b border-gray-800">
@@ -1674,13 +1724,22 @@ export default function DayTradeEnginePanel({
       </div>
       </div>)}
 
-      {/* ─── Advanced Diagnostics ─── */}
+      {/* ─── Advanced Diagnostics (collapsible) ─── */}
       <div className="px-4 py-3 border-b border-gray-800">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">Advanced Diagnostics</div>
-        <div className="text-[10px] text-gray-500 mt-0.5">Signal-by-signal breakdown for deep verification</div>
+        <button
+          type="button"
+          onClick={() => setDiagnosticsOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">Advanced Diagnostics</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Signal-by-signal breakdown for deep verification</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${diagnosticsOpen ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
-      <div ref={signalsSectionRef} className="px-4 py-4 border-b border-gray-800 space-y-3">
+      <div ref={signalsSectionRef} className={`px-4 py-4 border-b border-gray-800 space-y-3${diagnosticsOpen ? '' : ' hidden'}`}>
         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
           {signals.trend_strength && <SignalRow label="Trend Strength" value={signals.trend_strength.text} tone={signals.trend_strength.tone} />}
           {signals.breakout_quality && <SignalRow label="Breakout Quality" value={signals.breakout_quality.text} tone={signals.breakout_quality.tone} />}
