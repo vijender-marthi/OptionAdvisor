@@ -178,6 +178,20 @@ export default function VerdictTab({
 
   const fmtP = (v: number | undefined) => v != null ? `$${v.toFixed(2)}` : '—'
 
+  // Shorten condition chip labels to ≤ 4 words
+  function shortenLabel(raw: string): string {
+    // Remove trailing parenthetical like "(range-bound)" or "(stock short...)"
+    let s = raw.replace(/\s*\(.*?\)\s*$/, '').trim()
+    // Take only the part before " — " or " - " or ":"
+    s = s.split(/\s+[—–-]\s+/)[0].split(':')[0].trim()
+    // Capitalize first letter
+    s = s.charAt(0).toUpperCase() + s.slice(1)
+    // If still > 5 words, take first 4
+    const words = s.split(/\s+/)
+    if (words.length > 4) s = words.slice(0, 4).join(' ')
+    return s
+  }
+
   // Exit rules from entry_guidance
   const exitRules = eg?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined
 
@@ -209,24 +223,26 @@ export default function VerdictTab({
           {/* Conditions chips */}
           {(supportingFactors.length > 0 || missingConfirmations.length > 0) && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
-              {supportingFactors.slice(0, 4).map((f, i) => (
-                <span key={i} style={{
+              {supportingFactors.map((f, i) => (
+                <span key={`pass-${i}`} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)',
-                  borderRadius: 20, padding: '3px 10px', fontSize: '0.72rem', color: C.green,
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 20, padding: '4px 10px', fontSize: '0.7rem',
+                  color: 'rgba(232,235,240,0.8)', whiteSpace: 'nowrap',
                 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block' }} />
-                  {f}
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, flexShrink: 0, display: 'inline-block' }} />
+                  {shortenLabel(f)}
                 </span>
               ))}
-              {missingConfirmations.slice(0, 2).map((f, i) => (
-                <span key={i} style={{
+              {missingConfirmations.map((f, i) => (
+                <span key={`warn-${i}`} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(245,166,35,0.08)', border: '1px solid rgba(245,166,35,0.2)',
-                  borderRadius: 20, padding: '3px 10px', fontSize: '0.72rem', color: C.amber,
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 20, padding: '4px 10px', fontSize: '0.7rem',
+                  color: 'rgba(245,166,35,0.9)', whiteSpace: 'nowrap',
                 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber, display: 'inline-block' }} />
-                  {f}
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.amber, flexShrink: 0, display: 'inline-block' }} />
+                  {shortenLabel(f)}
                 </span>
               ))}
             </div>

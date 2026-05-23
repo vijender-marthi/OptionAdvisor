@@ -77,8 +77,8 @@ export default function TradeDeskPage() {
   const [marketData, setMarketData] = useState<{
     spy?: number; spyChg?: number
     qqq?: number; qqqChg?: number
-    vix?: number
-    regime?: string
+    vix?: number; vixLabel?: string
+    regime?: string; signalTone?: string
   }>({})
 
   // Watchlist signal cache
@@ -141,10 +141,12 @@ export default function TradeDeskPage() {
     try {
       const res = await fetchMarketPosition()
       if (res.data) {
-        setMarketData({
-          spy: res.data.spy_price,
-          regime: res.data.position_signal,
-        })
+        setMarketData(prev => ({
+          ...prev,
+          spy: res.data!.spy_price,
+          regime: res.data!.signal_label || res.data!.position_signal,
+          signalTone: res.data!.signal_tone,
+        }))
       }
     } catch { /* ignore */ }
   }, [])
@@ -262,10 +264,27 @@ export default function TradeDeskPage() {
     ? (analysis.metrics as Record<string, unknown>)?.price_change_pct as number | undefined
     : undefined
 
-  // Market regime label
-  const regimeBadge = marketData.regime
-    ? marketData.regime.replace(/_/g, ' ')
-    : 'NEUTRAL MARKET'
+  // Market regime badge color
+  const regimeBadgeColor = (() => {
+    const tone = marketData.signalTone
+    if (tone === 'green') return C.green
+    if (tone === 'red') return C.red
+    return C.amber
+  })()
+  const regimeBadgeBg = (() => {
+    const tone = marketData.signalTone
+    if (tone === 'green') return 'rgba(0,229,160,0.08)'
+    if (tone === 'red') return 'rgba(255,77,109,0.08)'
+    return 'rgba(245,166,35,0.08)'
+  })()
+  const regimeBadgeLabel = marketData.regime || 'NEUTRAL MARKET'
+
+  // Trade type badge label
+  const tradeTypeBadgeLabel: Record<string, string> = {
+    day:     'DAY TRADE · 1-2 DTE',
+    swing:   'SWING TRADE · 15 DTE',
+    regular: 'REGULAR TRADE · 2-4 WKS',
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: C.bgPage, color: '#fff', overflow: 'hidden', fontFamily: 'sans-serif' }}>
@@ -283,30 +302,46 @@ export default function TradeDeskPage() {
         </div>
 
         {/* Center: market strip */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontFamily: 'monospace', fontSize: '0.72rem', overflow: 'hidden', flex: 1, justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontFamily: 'monospace', fontSize: '0.72rem', overflow: 'hidden', flex: 1, justifyContent: 'center' }}>
           {/* Pulsing green dot */}
           <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}`, flexShrink: 0 }} />
-          {marketData.spy && (
-            <span style={{ color: '#fff', whiteSpace: 'nowrap' }}>
-              SPY <span style={{ fontWeight: 700 }}>${marketData.spy.toFixed(2)}</span>
-              {marketData.spyChg !== undefined && (
-                <span style={{ color: marketData.spyChg >= 0 ? C.green : C.red, marginLeft: 4 }}>
-                  {marketData.spyChg >= 0 ? '+' : ''}{marketData.spyChg.toFixed(2)}%
-                </span>
-              )}
-            </span>
-          )}
-          {!marketData.spy && (
-            <span style={{ color: C.muted }}>SPY — &nbsp; QQQ —</span>
-          )}
+          {/* SPY */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
+            SPY
+            {marketData.spy
+              ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.spy.toFixed(2)}</span>{marketData.spyChg !== undefined && <span style={{ color: marketData.spyChg >= 0 ? C.green : C.red }}>{marketData.spyChg >= 0 ? '+' : ''}{marketData.spyChg.toFixed(2)}%</span>}</>
+              : <span style={{ color: C.muted }}>—</span>
+            }
+          </span>
+          {/* QQQ */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
+            QQQ
+            {marketData.qqq
+              ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.qqq.toFixed(2)}</span>{marketData.qqqChg !== undefined && <span style={{ color: marketData.qqqChg >= 0 ? C.green : C.red }}>{marketData.qqqChg >= 0 ? '+' : ''}{marketData.qqqChg.toFixed(2)}%</span>}</>
+              : <span style={{ color: C.muted }}>—</span>
+            }
+          </span>
+          {/* VIX */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
+            VIX
+            {marketData.vix != null
+              ? <>
+                  <span style={{ color: '#fff', fontWeight: 700 }}>{marketData.vix.toFixed(1)}</span>
+                  <span style={{ color: marketData.vix <= 20 ? C.green : marketData.vix <= 25 ? C.amber : C.red }}>
+                    {marketData.vixLabel || (marketData.vix <= 20 ? 'Contained' : marketData.vix <= 25 ? 'Elevated' : 'High')}
+                  </span>
+                </>
+              : <span style={{ color: C.muted }}>—</span>
+            }
+          </span>
           {/* Regime badge */}
           <span style={{
-            border: `1px solid ${C.amber}`, color: C.amber,
-            background: 'rgba(245,166,35,0.08)',
-            borderRadius: 4, padding: '1px 7px', fontSize: '0.68rem', fontWeight: 700,
-            letterSpacing: '0.04em', whiteSpace: 'nowrap',
+            border: `1px solid ${regimeBadgeColor}`, color: regimeBadgeColor,
+            background: regimeBadgeBg,
+            borderRadius: 20, padding: '3px 12px', fontSize: '0.7rem', fontWeight: 700,
+            letterSpacing: '0.05em', whiteSpace: 'nowrap', textTransform: 'uppercase',
           }}>
-            {regimeBadge}
+            {regimeBadgeLabel}
           </span>
         </div>
 
@@ -366,12 +401,13 @@ export default function TradeDeskPage() {
               )}
               {/* Trade type badge */}
               <span style={{
-                background: 'rgba(74,124,255,0.15)', color: C.accent,
-                border: `1px solid ${C.accent}`, borderRadius: 6,
-                padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700,
-                letterSpacing: '0.04em', textTransform: 'uppercase', marginLeft: 'auto',
+                border: `1px solid ${C.borderSub}`, color: C.muted,
+                background: 'transparent', borderRadius: 6,
+                padding: '4px 12px', fontSize: '0.62rem', fontWeight: 600,
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+                fontFamily: 'monospace', marginLeft: 'auto', whiteSpace: 'nowrap',
               }}>
-                {tradeType}
+                {tradeTypeBadgeLabel[tradeType] || tradeType.toUpperCase()}
               </span>
               {/* Watchlist add */}
               <button
