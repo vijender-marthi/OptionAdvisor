@@ -140,23 +140,12 @@ function ShellRoutes() {
       <Route path="/trading-glossary" element={<Navigate to="/help" replace />} />
 
       <Route element={<RequireAuth />}>
-        {/* TradeDesk — full screen, no AppLayout */}
-        <Route
-          path="/desk"
-          element={
-            <ErrorBoundary>
-              <Suspense fallback={<RouteFallback />}>
-                <TradeDeskPage />
-              </Suspense>
-            </ErrorBoundary>
-          }
-        />
-
         <Route element={<RoleGuard />}>
           <Route element={<AppLayout />}>
             <Route element={<SuspensedOutlet />}>
               <Route path="/" element={<Navigate to="/trade-command-center" replace />} />
               <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
+              <Route path="/desk" element={<TradeDeskPage />} />
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
               <Route path="/strategy-finder" element={<TickerPage />} />
               <Route path="/positions" element={<PositionsRoute />} />

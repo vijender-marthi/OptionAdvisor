@@ -365,7 +365,7 @@ export default function TradeDeskPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: C.bgPage, color: '#fff', overflow: 'hidden', fontFamily: 'sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: C.bgPage, color: '#fff', fontFamily: 'sans-serif' }}>
       {/* ── TOPBAR ── */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
