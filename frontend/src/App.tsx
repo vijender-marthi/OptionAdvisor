@@ -144,9 +144,11 @@ function ShellRoutes() {
         <Route
           path="/desk"
           element={
-            <Suspense fallback={<RouteFallback />}>
-              <TradeDeskPage />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<RouteFallback />}>
+                <TradeDeskPage />
+              </Suspense>
+            </ErrorBoundary>
           }
         />
 
