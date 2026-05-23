@@ -519,6 +519,40 @@ export default function TickerPage() {
 
         {/* Left: Search panel */}
         <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+          {/* Badge strip */}
+          {!loading && data && displayData && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+              {/* Live / cache badge */}
+              {fromCache ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: C.purple, background: 'rgba(107,127,212,0.08)', border: `1px solid rgba(107,127,212,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  <Database size={10} />
+                  {fromCache.fresh ? `Cached · ${fromCache.age === 0 ? 'just now' : `${fromCache.age}m ago`}` : 'Stale cache'}
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: C.green, background: 'rgba(0,229,160,0.08)', border: `1px solid rgba(0,229,160,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, animation: 'tdPulse 2s infinite' }} />
+                  Live
+                </span>
+              )}
+              {/* Strategy mode badge */}
+              {lastMode !== 'all' && (
+                <span style={{ fontSize: '0.65rem', color: C.violet, background: 'rgba(124,92,252,0.08)', border: `1px solid rgba(124,92,252,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  {lastMode === 'long_only'         ? '📈 Long Only'
+                   : lastMode === 'credit_only'      ? '💰 Credit'
+                   : lastMode === 'straddle_only'    ? '⚡ Straddle'
+                   : lastMode === 'short_or_covered' ? '🎯 Short/Covered'
+                   : 'Filter'}
+                </span>
+              )}
+              {/* IV rank warning badge */}
+              {lastMode === 'all' && displayData.signals.iv_rank >= 50 && (
+                <span style={{ fontSize: '0.65rem', color: C.amber, background: 'rgba(245,166,35,0.08)', border: `1px solid rgba(245,166,35,0.2)`, borderRadius: 20, padding: '2px 8px' }}
+                  title="IV Rank ≥ 50% — Long Call/Put suppressed in All Strategies mode">
+                  ⚠️ IV {displayData.signals.iv_rank.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          )}
           <TickerInput
             onAnalyze={handleAnalyzeWithCache}
             loading={loading}
@@ -617,108 +651,46 @@ export default function TickerPage() {
               </div>
             )}
 
-            {/* Header: live/cache badge + mode badge + action buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {/* Live / cache badge */}
-                {fromCache ? (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    fontSize: '0.7rem', color: C.purple,
-                    background: 'rgba(107,127,212,0.08)', border: `1px solid rgba(107,127,212,0.2)`,
-                    borderRadius: 20, padding: '3px 10px',
-                  }}>
-                    <Database size={11} />
-                    {fromCache.fresh
-                      ? `Cached · ${fromCache.age === 0 ? 'just now' : `${fromCache.age}m ago`}`
-                      : 'Stale cache'}
-                  </div>
-                ) : (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: '0.7rem', color: C.green,
-                    background: 'rgba(0,229,160,0.08)', border: `1px solid rgba(0,229,160,0.2)`,
-                    borderRadius: 20, padding: '3px 10px',
-                  }}>
-                    <div style={{
-                      width: 6, height: 6, borderRadius: '50%', background: C.green,
-                      animation: 'tdPulse 2s infinite',
-                    }} />
-                    Live data
-                  </div>
-                )}
-
-                {/* Strategy mode badge */}
-                {lastMode !== 'all' && (
-                  <div style={{
-                    fontSize: '0.7rem', color: C.violet,
-                    background: 'rgba(124,92,252,0.08)', border: `1px solid rgba(124,92,252,0.2)`,
-                    borderRadius: 20, padding: '3px 10px',
-                  }}>
-                    {lastMode === 'long_only'         ? '📈 Long Options Only'
-                     : lastMode === 'credit_only'      ? '💰 Credit Spreads Only'
-                     : lastMode === 'straddle_only'    ? '⚡ Straddles Only'
-                     : lastMode === 'short_or_covered' ? '🎯 Short / Covered Only'
-                     : 'Strategy filter'}
-                  </div>
-                )}
-
-                {lastMode === 'all' &&
-                  displayData.signals.iv_rank >= 50 && (
-                    displayData.signals.directional_bias.toLowerCase().includes('bullish') ||
-                    displayData.signals.directional_bias.toLowerCase().includes('bearish')
-                  ) && (
-                  <div style={{
-                    fontSize: '0.7rem', color: C.amber,
-                    background: 'rgba(245,166,35,0.08)', border: `1px solid rgba(245,166,35,0.2)`,
-                    borderRadius: 20, padding: '3px 10px',
-                  }}
-                    title="In All Strategies mode, naked Long Calls/Puts are suppressed when IV Rank ≥ 50 to prevent buying expensive premium that can be crushed post-catalyst. Switch to Long Options mode to override.">
-                    ⚠️ IV Rank {displayData.signals.iv_rank.toFixed(0)}% — Long Call/Put suppressed
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  aria-label="Refresh analysis"
-                  onMouseEnter={() => setRefreshHover(true)}
-                  onMouseLeave={() => setRefreshHover(false)}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8,
-                    background: C.bgCard,
-                    border: `1px solid ${refreshHover ? C.borderSub : C.border}`,
-                    color: refreshHover ? C.text : C.muted,
-                    cursor: loading ? 'default' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    opacity: loading ? 0.5 : 1,
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : undefined }} />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleWatchlist}
-                  aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
-                  onMouseEnter={() => setWatchHover(true)}
-                  onMouseLeave={() => setWatchHover(false)}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8,
-                    background: watched ? 'rgba(245,166,35,0.1)' : C.bgCard,
-                    border: `1px solid ${watched ? C.amber : watchHover ? C.borderSub : C.border}`,
-                    color: watched ? C.amber : watchHover ? C.text : C.muted,
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  {watched ? <StarOff size={16} /> : <Star size={16} />}
-                </button>
-              </div>
+            {/* Refresh + watchlist buttons */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={loading}
+                aria-label="Refresh analysis"
+                onMouseEnter={() => setRefreshHover(true)}
+                onMouseLeave={() => setRefreshHover(false)}
+                style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: C.bgCard,
+                  border: `1px solid ${refreshHover ? C.borderSub : C.border}`,
+                  color: refreshHover ? C.text : C.muted,
+                  cursor: loading ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'all 0.12s',
+                }}
+              >
+                <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : undefined }} />
+              </button>
+              <button
+                type="button"
+                onClick={toggleWatchlist}
+                aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+                onMouseEnter={() => setWatchHover(true)}
+                onMouseLeave={() => setWatchHover(false)}
+                style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: watched ? 'rgba(245,166,35,0.1)' : C.bgCard,
+                  border: `1px solid ${watched ? C.amber : watchHover ? C.borderSub : C.border}`,
+                  color: watched ? C.amber : watchHover ? C.text : C.muted,
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.12s',
+                }}
+              >
+                {watched ? <StarOff size={16} /> : <Star size={16} />}
+              </button>
             </div>
 
             {/* Market Overview */}
