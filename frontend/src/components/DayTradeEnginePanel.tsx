@@ -857,404 +857,150 @@ export default function DayTradeEnginePanel({
       decisionTone === 'orange' ? 'ring-1 ring-semantic-warning-border' :
       decisionTone === 'red' ? 'ring-1 ring-semantic-bearish-border' : 'ring-1 ring-border'
     }`}>
-      <div className="px-4 pt-4 pb-3 border-b border-gray-800 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
-            <div className="mt-1 flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl font-bold text-white dark:text-heading tracking-tight">{result.ticker}</span>
-              {result.company_name && (
-                <span className="text-xs text-gray-500 truncate max-w-[220px]">{result.company_name}</span>
-              )}
-              {lastPrice != null && (
-                <span className="flex items-center gap-1.5 ml-0.5">
-                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${lastPrice.toFixed(2)}</span>
-                  {sessionChangePct != null && dayDollarChange != null && (
-                    <span className={`text-xs font-semibold font-mono tabular-nums ${dayDollarChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {dayDollarChange >= 0 ? '+' : ''}{dayDollarChange.toFixed(2)} ({sessionChangePct >= 0 ? '+' : ''}{sessionChangePct.toFixed(2)}%)
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-gray-300">
-              {activeStateNum === 3
-                ? (result.bias === 'short' ? 'Bearish · In-Play — No New Entries' : 'Bullish · In-Play — No New Entries')
-                : activeStateNum === 4
-                ? (result.bias === 'short' ? 'Bearish · Exit Zone' : 'Bullish · Exit Zone')
-                : activeStateNum === 2
-                ? (result.bias === 'short' ? 'Bearish · Entry Window Open' : 'Bullish · Entry Window Open')
-                : buildIntradaySubtitle(result.bias, result.signal_quality, result.final_decision)}
-            </div>
-            <div className="text-[10px] text-gray-600 mt-1">
-              {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
-              {barDataAgeMinutes != null && barDataAgeMinutes > 0 && (
-                <span className={`ml-1.5 font-semibold ${barDataStale ? 'text-amber-500' : 'text-gray-500'}`}>
-                  · bar {barDataAgeMinutes}m ago
-                </span>
-              )}
-            </div>
-            {barDataStale && barDataWarning && (
-              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
-                <span className="mt-px shrink-0">⚠</span>
-                <span>{barDataWarning}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {showRefresh && onRefresh && (
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={refreshing}
-                title="Re-scan"
-                className="rounded-lg p-1.5 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-              >
-                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Action</span>
-              <span title="State 1=Watch, State 2=Await Volume → Enter Now on confirmation, State 3=Manage Stop (in trade), State 4=Scale Out (exit zone)"><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1">
-              {activeStateNum === 2 ? (() => {
-                const execTxt = (result.execution_timing || '').toUpperCase()
-                const enterNow = execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
-                return enterNow
-                  ? <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide animate-pulse ${TONE_BADGE['green']}`}>
-                      <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />ENTER NOW
-                    </span>
-                  : <Badge text="AWAIT VOLUME" tone="orange" />
-              })() : activeStateNum === 3 ? (
-                <Badge text="MANAGE STOP" tone="orange" />
-              ) : activeStateNum === 4 ? (
-                <Badge text="SCALE OUT" tone="red" />
-              ) : (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                  {formatLabel(result.final_decision) || 'Watch'}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Risk</span>
-              <span title="LOW=manageable, MEDIUM=caution advised, HIGH=reduce position size, EXTREME=avoid"><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1">
-              <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Market Support</span>
-              <span title="BULLISH=trend supports direction, BEARISH=trend opposes, MIXED=neutral/conflicting"><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>
-                {result.market_bias || 'MIXED'}
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800 space-y-3">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-sm font-bold text-white dark:text-heading">{result.ticker}</span>
+            {result.company_name && <span className="text-[10px] text-gray-500 truncate">{result.company_name}</span>}
+            {lastPrice != null && (
+              <span className="flex items-center gap-1">
+                <span className="text-sm font-bold text-white font-mono tabular-nums">${lastPrice.toFixed(2)}</span>
+                {sessionChangePct != null && dayDollarChange != null && (
+                  <span className={`text-[11px] font-semibold font-mono tabular-nums ${dayDollarChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {dayDollarChange >= 0 ? '+' : ''}{dayDollarChange.toFixed(2)} ({sessionChangePct >= 0 ? '+' : ''}{sessionChangePct.toFixed(2)}%)
+                  </span>
+                )}
               </span>
-            </div>
+            )}
+            <span className={`text-[11px] font-semibold ${result.bias === 'short' ? 'text-rose-400' : 'text-emerald-400'}`}>
+              · {activeStateNum === 3 ? 'In-Play' : activeStateNum === 4 ? 'Exit Zone' : activeStateNum === 2 ? 'Entry Open' : 'Setup'}
+            </span>
           </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Confidence</span>
-              <span title="Composite score 0-100: signal consistency, MA alignment, MACD confirmation, RSI health, volume &amp; VIX context"><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{result.confidence ?? 0}/100</div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
-              <span>Best Next Step</span>
-              <span title="Recommended immediate action based on current session phase and entry gate status"><Info size={10} className="text-gray-500 cursor-help" /></span>
-            </div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{bestNextStep}</div>
+          <div className="flex items-center gap-1 text-[10px] text-gray-600 shrink-0">
+            {typeof m.session_date === 'string' && <span>{m.session_date}</span>}
+            {barDataAgeMinutes != null && barDataAgeMinutes > 0 && (
+              <span className={`ml-1 ${barDataStale ? 'text-amber-500' : ''}`}>· bar {barDataAgeMinutes}m ago</span>
+            )}
           </div>
         </div>
 
-        {/* ── Daily Range & R/R row ── */}
-        {(() => {
-          const rangeUsed  = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
-          const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
-          const atr14      = typeof m.atr14 === 'number' ? m.atr14 : null
-          const rrRatio    = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
-          const warning    = typeof m.range_warning === 'string' ? m.range_warning : null
-          if (rangeUsed == null && rrRatio == null) return null
-
-          const phaseTone =
-            rangePhase === 'EXHAUSTED' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' :
-            rangePhase === 'LATE'      ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' :
-            rangePhase === 'MID'       ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' :
-                                         'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-
-          const rrTone =
-            rrRatio == null              ? 'text-gray-500' :
-            rrRatio < 0.5               ? 'text-rose-400' :
-            rrRatio < 1.0               ? 'text-amber-400' :
-                                           'text-emerald-400'
-
-          const rrIcon = rrRatio != null && rrRatio < 0.5 ? '❌' : rrRatio != null && rrRatio < 1.0 ? '⚠️' : '✅'
-
-          return (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {rangeUsed != null && rangePhase && (
-                  <div
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${phaseTone}`}
-                    title={atr14 != null ? `${rangeUsed.toFixed(0)}% of 14-day ATR ($${atr14.toFixed(2)}) consumed today` : undefined}
-                  >
-                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Range Used</span>
-                    <span className="font-mono font-bold">{rangeUsed.toFixed(0)}%</span>
-                    {atr14 != null && (
-                      <span className="text-[10px] opacity-50 font-normal">of ATR</span>
-                    )}
-                    <span className="opacity-60">·</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide">{rangePhase}</span>
-                  </div>
-                )}
-                {rrRatio != null && (
-                  <div className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-700/50 bg-black/15 px-2.5 py-1.5 text-xs font-semibold`}>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600">R/R</span>
-                    <span className={`font-mono font-bold ${rrTone}`}>{rrRatio.toFixed(1)}:1</span>
-                    <span>{rrIcon}</span>
-                  </div>
-                )}
-              </div>
-              {warning && (
-                <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
-                  rangePhase === 'EXHAUSTED'
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                }`}>
-                  <span className="shrink-0 mt-0.5">⚠️</span>
-                  <span>{warning}</span>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-
-        {/* ═══ 4-State Trading System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
+        {/* 4-State stepper */}
         {(() => {
           const state = eg?.state || ''
           const activeMap: Record<string, number> = {
             'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
-            'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
-            'MONITORING': 1,
+            'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1, 'MONITORING': 1,
             'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
             'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
             'EOD_CLOSING': 4,
           }
           const activeState = activeMap[state] ?? 1
-          const stateCls = (n: number) =>
-            n === activeState
-              ? 'ring-2 ring-offset-1 ring-offset-gray-900'
-              : ''
-
           return (
-          <div className="space-y-1.5">
           <div className="flex items-center">
             {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
               const n = i + 1
               const isActive = n === activeState
               const isPast = n < activeState
-              const nodeCls = isActive
-                ? color === 'amber'   ? 'border-amber-400 bg-amber-500/25 text-amber-200 ring-2 ring-amber-400/40 ring-offset-1 ring-offset-gray-900'
-                  : color === 'emerald' ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40 ring-offset-1 ring-offset-gray-900'
-                  : color === 'sky'     ? 'border-sky-400 bg-sky-500/25 text-sky-200 ring-2 ring-sky-400/40 ring-offset-1 ring-offset-gray-900'
-                  :                      'border-red-400 bg-red-500/25 text-red-200 ring-2 ring-red-400/40 ring-offset-1 ring-offset-gray-900'
-                : isPast ? 'border-gray-600 bg-gray-700/50 text-gray-500'
-                : 'border-gray-700 bg-gray-800 text-gray-600'
+              const dotCls = isActive
+                ? color === 'amber' ? 'bg-amber-400 ring-2 ring-amber-400/40' : color === 'emerald' ? 'bg-emerald-400 ring-2 ring-emerald-400/40' : color === 'sky' ? 'bg-sky-400 ring-2 ring-sky-400/40' : 'bg-red-400 ring-2 ring-red-400/40'
+                : isPast ? 'bg-gray-600' : 'bg-gray-800'
               const lblCls = isActive
                 ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
                 : isPast ? 'text-gray-500' : 'text-gray-700'
               return (
                 <div key={n} className="flex items-center flex-1">
                   <div className="flex flex-col items-center gap-0.5 flex-1">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${nodeCls}`}>{n}</div>
-                    <span className={`text-[9px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black ${dotCls}`}>{n}</div>
+                    <span className={`text-[8px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
                   </div>
-                  {i < 3 && <div className={`h-0.5 w-3 shrink-0 mb-3.5 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
+                  {i < 3 && <div className={`h-px w-2 shrink-0 mb-3 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
                 </div>
               )
             })}
           </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            {/* STATE 1: SETUP */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 1 ? 'border-amber-500/60 bg-amber-950/25 ring-2 ring-amber-500/20' : 'border-amber-700/40 bg-amber-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                STATE 1: SETUP
-                {activeState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-amber-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">
-                    {hasAiCoach ? ac!.states.setup.label : (result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming')}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {hasAiCoach
-                    ? ac!.states.setup.detail
-                    : result.bias === 'short'
-                      ? eg?.vwap != null && eg?.opening_range_low != null
-                        ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
-                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key resistance levels forming'
-                      : eg?.vwap != null && eg?.opening_range_high != null
-                        ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
-                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key levels forming'}
-                </div>
-                <div className="text-[10px] text-amber-400/80 font-semibold">
-                  {hasAiCoach
-                    ? ac!.states.setup.key_levels.map(l => `$${l.toFixed(2)}`).join(' · ')
-                    : result.bias === 'short'
-                      ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
-                      : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
-                </div>
-              </div>
-              </div>
-            </div>
-            {/* STATE 2: ENTRY */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 2 ? 'border-emerald-500/60 bg-emerald-950/25 ring-2 ring-emerald-500/20' : 'border-emerald-700/40 bg-emerald-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                STATE 2: ENTRY
-                {activeState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'PUT / SHORT' : 'CALL / LONG'}</span>
-                  <span className="text-violet-300 font-mono text-[12px] font-semibold">
-                    {result.bias === 'short'
-                      ? eg?.breakout_level != null
-                        ? `close & hold <$${eg.breakout_level.toFixed(2)}`
-                        : eg?.vwap != null
-                          ? `<$${eg.vwap.toFixed(2)} — hold below`
-                          : '—'
-                      : eg?.breakout_level != null
-                        ? `close & hold >$${eg.breakout_level.toFixed(2)}`
-                        : eg?.vwap != null
-                          ? `>$${eg.vwap.toFixed(2)} — hold above`
-                          : '—'}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? eg?.opening_range_low != null
-                      ? `sustained below ORL $${eg.opening_range_low.toFixed(2)} — no reclaim`
-                      : eg?.vwap != null
-                        ? `sustained below VWAP $${eg.vwap.toFixed(2)}`
-                        : 'await rejection confirmation'
-                    : eg?.opening_range_high != null
-                      ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
-                        : 'await breakout confirmation'}
-                </div>
-              </div>
-              </div>
-            </div>
-            {/* STATE 3: ACTIVE */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 3 ? 'border-sky-500/60 bg-sky-950/25 ring-2 ring-sky-500/20' : 'border-sky-700/40 bg-sky-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                STATE 3: IN-PLAY
-                {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {eg?.state === 'ENTRY_PULLBACK'
-                  ? 'Pullback — Structure Intact'
-                  : hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                {eg?.state === 'ENTRY_PULLBACK' ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-amber-300 text-[11px] uppercase tracking-wide">
-                        ⚠ No New Entries
-                      </span>
-                    </div>
-                    <div className="text-amber-200/80 text-[11px] leading-relaxed font-medium">
-                      {eg?.summary || (result.bias === 'short'
-                        ? 'Price bouncing from session low — hold existing short, do not add.'
-                        : 'Price pulling back from session high — hold existing long, do not add.')}
-                    </div>
-                    <div className="text-gray-400 text-[11px] leading-relaxed">
-                      {eg?.action || (result.bias === 'short'
-                        ? 'Wait for momentum to turn negative before re-entering.'
-                        : 'Wait for momentum to turn positive before re-entering.')}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                      <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                        {hasAiCoach && ac!.states.in_play.target > 0
-                          ? `T1 $${ac!.states.in_play.target.toFixed(2)}`
-                          : eg?.scalp_target != null ? `T1 $${eg.scalp_target.toFixed(2)}` : '—'}
-                      </span>
-                    </div>
-                    <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                      {hasAiCoach
-                        ? ac!.states.in_play.add_condition
-                        : result.bias === 'short'
-                          ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
-                          : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
-                    </div>
-                  </>
-                )}
-              </div>
-              </div>
-            </div>
-            {/* STATE 4: EXIT */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 4 ? 'border-red-500/60 bg-red-950/25 ring-2 ring-red-500/20' : 'border-red-700/40 bg-red-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
-                STATE 4: EXIT
-                {activeState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {hasAiCoach ? ac!.states.exit.label : 'Completion / Reset'}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
-                  <span className="text-red-300 font-mono text-[12px] font-semibold">
-                    {hasAiCoach && ac!.states.exit.stop_loss > 0
-                      ? `$${ac!.states.exit.stop_loss.toFixed(2)}`
-                      : eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {hasAiCoach
-                    ? ac!.states.exit.exit_condition
-                    : result.bias === 'short'
-                      ? 'VWAP reclaimed above · or ORL closed back above → cover'
-                      : 'VWAP lost below · or ORH closed back below → exit'}
-                  {eg?.scalp_target != null && ` · scale out at TP`}
-                </div>
-              </div>
-              </div>
-            </div>
-          </div>
-          </div>
           )
         })()}
 
-        {/* AI Coach Summary — moved after 4-state system */}
+        {/* Action / Risk / Market / Confidence compact row */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Action</span>
+            {activeStateNum === 2 ? (() => {
+              const execTxt = (result.execution_timing || '').toUpperCase()
+              return execTxt === 'ENTER NOW' || execTxt.includes('ENTER')
+                ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">● ENTER NOW</span>
+                : <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">AWAIT VOLUME</span>
+            })() : activeStateNum === 3 ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">MANAGE STOP</span>
+            ) : activeStateNum === 4 ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/50 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-400">SCALE OUT</span>
+            ) : (
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${TONE_BADGE[decisionTone]}`}>{formatLabel(result.final_decision) || 'Watch'}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Risk</span>
+            <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Market</span>
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>{result.market_bias || 'MIXED'}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Confidence</span>
+            <span className="font-mono font-bold text-gray-100">{result.confidence ?? 0}/100</span>
+          </div>
+          {(() => {
+            const rrRatio = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
+            if (rrRatio == null) return null
+            return (
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">R/R</span>
+                <span className={`font-mono font-bold text-[11px] ${rrRatio < 0.5 ? 'text-rose-400' : rrRatio < 1.0 ? 'text-amber-400' : 'text-emerald-400'}`}>{rrRatio.toFixed(1)}:1</span>
+              </div>
+            )
+          })()}
+          {(() => {
+            const rangeUsed = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
+            const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
+            if (rangeUsed == null || !rangePhase) return null
+            const phaseTone = rangePhase === 'EXHAUSTED' ? 'text-rose-400' : rangePhase === 'LATE' ? 'text-amber-400' : rangePhase === 'MID' ? 'text-sky-400' : 'text-emerald-400'
+            return (
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px]">Range</span>
+                <span className={`font-mono font-bold text-[11px] ${phaseTone}`}>{rangeUsed.toFixed(0)}% · {rangePhase}</span>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Best Next Step */}
+        <div className="text-[11px] text-gray-300 leading-relaxed">
+          <span className="text-gray-600 font-semibold uppercase tracking-wider text-[9px] mr-2">Best Next Step</span>
+          {bestNextStep}
+        </div>
+
+        {/* Warning */}
+        {(() => {
+          const warning = typeof m.range_warning === 'string' ? m.range_warning : null
+          if (!warning) return null
+          return (
+            <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+              <span className="shrink-0">⚠️</span>
+              <span>{warning}</span>
+            </div>
+          )
+        })()}
+        {barDataStale && barDataWarning && (
+          <div className="flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+            <span className="shrink-0">⚠</span>
+            <span>{barDataWarning}</span>
+          </div>
+        )}
+      </div>
+
+        {/* AI Coach Summary — after trade summary */}
         <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
@@ -1447,7 +1193,6 @@ export default function DayTradeEnginePanel({
             View Signals
           </button>
         </div>
-      </div>
 
       <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
