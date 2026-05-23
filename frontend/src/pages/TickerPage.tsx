@@ -545,15 +545,13 @@ export default function TickerPage() {
   }
 
   const windowWidth = useWindowWidth()
-  const isMobile = windowWidth < 768
   const isDesktop = windowWidth >= 1024
-  const [searchOpen, setSearchOpen] = useState(!isMobile)
-  const L = isMobile ? undefined : 280
+  const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 20, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: isMobile ? '12px' : '20px 24px' }}>
+    <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 12, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: isDesktop ? '20px 24px' : '12px' }}>
       {/* Mobile/tablet search toggle */}
-      {isMobile && (
+      {!isDesktop && (
         <button
           type="button"
           onClick={() => setSearchOpen(p => !p)}
@@ -569,8 +567,8 @@ export default function TickerPage() {
       )}
 
       {/* Left: Search panel */}
-      {(!isMobile || searchOpen) && (
-      <div style={{ width: isMobile ? '100%' : L, flexShrink: 0, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 20 : undefined }}>
+      {(isDesktop || searchOpen) && (
+      <div style={{ width: isDesktop ? 280 : '100%', flexShrink: 0, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 20 : undefined }}>
         <TickerInput
           onAnalyze={handleAnalyzeWithCache}
           loading={loading}
@@ -583,7 +581,7 @@ export default function TickerPage() {
       )}
 
       {/* Right: Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, width: isDesktop ? undefined : '100%' }}>
 
         {/* Loading */}
         {loading && (

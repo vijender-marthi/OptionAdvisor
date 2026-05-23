@@ -131,6 +131,16 @@ export default function DayTradePage() {
     runScan()
   }, [ticker, runScan, searchParams])
 
+  // Default to SPY on first load when no ticker and no result
+  const didDefaultRef = useRef(false)
+  useEffect(() => {
+    if (didDefaultRef.current) return
+    if (ticker.trim() || result) return
+    didDefaultRef.current = true
+    setUi(cur => ({ ...cur, ticker: 'SPY' }))
+    runScan('SPY')
+  }, [ticker, result, runScan, setUi])
+
   useEffect(() => {
     if (!notice) return
     const t = setTimeout(() => setNotice(null), 2800)
