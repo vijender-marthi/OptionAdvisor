@@ -106,7 +106,7 @@ export default function TradeDeskPage() {
 
   // Core state
   const [selectedTicker, setSelectedTicker] = useState('')
-  const [tradeType, setTradeType] = useState<'day' | 'swing' | 'regular'>('day')
+  const [tradeType, setTradeType] = useState<'day' | 'swing'>('day')
   const [analysis, setAnalysis] = useState<Analysis>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisRefreshing, setAnalysisRefreshing] = useState(false)
@@ -245,7 +245,7 @@ export default function TradeDeskPage() {
     if (watchlist.length > 0 && !selectedTicker) {
       const first = watchlist[0]
       setSelectedTicker(first.ticker)
-      setTradeType(first.trade_type as 'day' | 'swing' | 'regular')
+      setTradeType((first.trade_type === 'swing' ? 'swing' : 'day') as 'day' | 'swing')
       void fetchAnalysis(first.ticker, first.trade_type)
     }
   }, [watchlist]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -260,7 +260,7 @@ export default function TradeDeskPage() {
     void fetchAnalysis(t, tradeTypeRef.current)
   }, [fetchAnalysis])
 
-  const handleTradeTypeChange = useCallback((tt: 'day' | 'swing' | 'regular') => {
+  const handleTradeTypeChange = useCallback((tt: 'day' | 'swing') => {
     setTradeType(tt)
     if (tickerRef.current) {
       void fetchAnalysis(tickerRef.current, tt)
@@ -357,9 +357,8 @@ export default function TradeDeskPage() {
 
   // Trade type badge label
   const tradeTypeBadgeLabel: Record<string, string> = {
-    day:     'DAY TRADE · 1-2 DTE',
-    swing:   'SWING TRADE · 15 DTE',
-    regular: 'REGULAR TRADE · 2-4 WKS',
+    day:   'DAY TRADE · 1-2 DTE',
+    swing: 'SWING TRADE · 15 DTE',
   }
 
   return (

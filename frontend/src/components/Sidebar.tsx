@@ -126,6 +126,7 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
+        { id: 'ticker', label: 'Regular', icon: <TrendingUp size={18} /> },
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
         { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },

@@ -17,7 +17,7 @@ const C = {
 
 const QUICK_TICKERS = ['AAPL', 'NVDA', 'MSFT', 'AMZN', 'TSLA', 'SPY', 'QQQ']
 
-type TradeType = 'day' | 'swing' | 'regular'
+type TradeType = 'day' | 'swing'
 
 function signalBadgeStyle(verdict: string): React.CSSProperties {
   const u = verdict.toUpperCase()
@@ -122,7 +122,7 @@ export default function LeftPanel({
 
       {/* Section 2 — Trade type tabs */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-        {(['day', 'swing', 'regular'] as TradeType[]).map(tt => {
+        {(['day', 'swing'] as TradeType[]).map(tt => {
           const active = tradeTypeValue === tt
           return (
             <button
