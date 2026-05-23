@@ -1,25 +1,29 @@
-import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import type { DeskAlert } from '../../api/client'
+
+const C = {
+  bgPanel:   '#111318',
+  bgCard:    '#181C23',
+  border:    '#1E2330',
+  muted:     '#5A6478',
+  amber:     '#F5A623',
+  red:       '#FF4D6D',
+}
 
 function alertDescription(a: DeskAlert): string {
   switch (a.alert_type) {
-    case 'RVOL':
-      return `RVOL > ${a.threshold_value ?? '?'}`
-    case 'PRICE_CROSS':
-      return `Price crosses $${a.threshold_value ?? '?'}`
-    case 'VWAP_RETEST':
-      return 'VWAP retest'
-    case 'SIGNAL_ENTER':
-      return `Signal → ${a.target_signal || 'ENTER'}`
-    default:
-      return a.alert_type
+    case 'RVOL':        return `RVOL > ${a.threshold_value ?? '?'}×`
+    case 'PRICE_CROSS': return `Price crosses $${a.threshold_value ?? '?'}`
+    case 'VWAP_RETEST': return 'VWAP retest'
+    case 'SIGNAL_ENTER': return `Signal → ${a.target_signal || 'ENTER'}`
+    default:            return a.alert_type
   }
 }
 
 function expiryCopy(expires: string): string {
-  if (expires === 'eod') return 'Expires EOD'
+  if (expires === 'eod')      return 'Expires EOD'
   if (expires === 'tomorrow') return 'Expires tomorrow'
-  if (expires === 'week') return 'Expires in 1 week'
+  if (expires === 'week')     return 'Expires this week'
   return `Expires ${expires}`
 }
 
@@ -30,66 +34,102 @@ interface Props {
 }
 
 export default function AlertsTab({ alerts, history, onDelete }: Props) {
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+
   return (
-    <div className="space-y-6 pb-6">
-      {/* Active alerts */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
+      {/* Active Alerts */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Active Alerts</h3>
+        <h3 style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+          Active Alerts
+        </h3>
         {alerts.length === 0 ? (
-          <p className="text-sm text-gray-600 text-center py-6">No active alerts</p>
+          <p style={{ textAlign: 'center', color: C.muted, fontSize: '0.85rem', padding: '24px 0' }}>No active alerts</p>
         ) : (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {alerts.map(a => (
               <div
                 key={a.id}
-                className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-slate-900/40 px-3 py-2.5"
+                style={{
+                  background: C.bgPanel, border: `1px solid ${C.border}`,
+                  borderLeft: `3px solid ${C.amber}`,
+                  borderRadius: 8, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono font-bold text-sm text-white">{a.ticker}</span>
-                    <span className="text-xs text-gray-400">{alertDescription(a)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>{a.ticker}</span>
+                    <span style={{ fontSize: '0.78rem', color: C.muted }}>{alertDescription(a)}</span>
                   </div>
-                  <div className="text-[11px] text-gray-600">{expiryCopy(a.expires)}</div>
+                  <div style={{ fontSize: '0.68rem', color: C.muted }}>{expiryCopy(a.expires)}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onDelete(a.id)}
-                  className="shrink-0 text-gray-600 hover:text-rose-400 transition-colors p-1"
-                  aria-label="Delete alert"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {confirmId === a.id ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => { onDelete(a.id); setConfirmId(null) }}
+                      style={{ background: 'rgba(255,77,109,0.15)', border: `1px solid rgba(255,77,109,0.4)`, color: C.red, borderRadius: 5, padding: '3px 10px', fontSize: '0.72rem', cursor: 'pointer' }}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmId(null)}
+                      style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 5, padding: '3px 10px', fontSize: '0.72rem', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmId(a.id)}
+                    style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 5, padding: '3px 10px', fontSize: '0.72rem', cursor: 'pointer' }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
       </section>
 
-      {/* Alert history */}
+      {/* Alert History */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Alert History</h3>
+        <h3 style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10 }}>
+          Alert History
+        </h3>
         {history.length === 0 ? (
-          <p className="text-sm text-gray-600 text-center py-4">No fired alerts yet</p>
+          <p style={{ textAlign: 'center', color: C.muted, fontSize: '0.85rem', padding: '16px 0' }}>No fired alerts yet</p>
         ) : (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {history.map(a => (
               <div
                 key={a.id}
-                className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-slate-900/20 px-3 py-2.5 opacity-70"
+                style={{
+                  background: C.bgCard, border: `1px solid ${C.border}`,
+                  borderRadius: 8, padding: '8px 14px', opacity: 0.7,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono font-bold text-sm text-gray-300">{a.ticker}</span>
-                    <span className="text-xs text-gray-500">{alertDescription(a)}</span>
-                    {a.fired_value != null && (
-                      <span className="text-[11px] text-gray-600">@ {a.fired_value.toFixed(2)}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] text-gray-600">
-                    {a.fired_at && <span>Fired {a.fired_at.slice(0, 10)}</span>}
-                    {a.action_taken && <span>· {a.action_taken}</span>}
-                  </div>
-                </div>
+                <span style={{ color: '#00E5A0', fontSize: '0.8rem' }}>✓</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: '#ccc' }}>{a.ticker}</span>
+                <span style={{ fontSize: '0.75rem', color: C.muted }}>·</span>
+                <span style={{ fontSize: '0.75rem', color: C.muted }}>{alertDescription(a)}</span>
+                {a.fired_at && (
+                  <>
+                    <span style={{ fontSize: '0.75rem', color: C.muted }}>·</span>
+                    <span style={{ fontSize: '0.72rem', color: C.muted }}>{a.fired_at.slice(0, 10)}</span>
+                  </>
+                )}
+                {a.action_taken && (
+                  <>
+                    <span style={{ fontSize: '0.75rem', color: C.muted }}>·</span>
+                    <span style={{ fontSize: '0.72rem', color: C.muted }}>{a.action_taken}</span>
+                  </>
+                )}
               </div>
             ))}
           </div>

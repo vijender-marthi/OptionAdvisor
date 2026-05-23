@@ -1,23 +1,57 @@
 import { useState } from 'react'
-import { ArrowRight, Bell, BookOpen, X } from 'lucide-react'
 import type { DeskWatchlistItem } from '../../api/client'
 
-const VERDICT_BADGE: Record<string, string> = {
-  'STRONG GO': 'bg-emerald-900/60 text-emerald-300 border-emerald-700/40',
-  'GO':        'bg-emerald-900/40 text-emerald-400 border-emerald-800/40',
-  'WATCH':     'bg-amber-900/50 text-amber-300 border-amber-700/40',
-  'WAIT':      'bg-slate-700/50 text-slate-400 border-slate-600/40',
-  'NO-GO':     'bg-rose-900/50 text-rose-300 border-rose-700/40',
+const C = {
+  bgPage:    '#0A0C10',
+  bgPanel:   '#111318',
+  bgCard:    '#181C23',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  green:     '#00E5A0',
+  red:       '#FF4D6D',
+  amber:     '#F5A623',
+  purple:    '#6B7FD4',
 }
 
-const QUICK_TICKERS = ['AAPL', 'NVDA', 'SPY', 'QQQ', 'TSLA', 'MSFT']
+const QUICK_TICKERS = ['AAPL', 'NVDA', 'MSFT', 'AMZN', 'TSLA', 'SPY', 'QQQ']
+
+type TradeType = 'day' | 'swing' | 'regular'
+
+function signalBadgeStyle(verdict: string): React.CSSProperties {
+  const u = verdict.toUpperCase()
+  if (u.includes('ENTER') || u === 'GO' || u === 'STRONG GO') {
+    return { background: 'rgba(0,229,160,0.1)', color: C.green, border: `1px solid rgba(0,229,160,0.2)` }
+  }
+  if (u.includes('WATCH')) {
+    return { background: 'rgba(245,166,35,0.1)', color: C.amber, border: `1px solid rgba(245,166,35,0.2)` }
+  }
+  if (u.includes('WAIT')) {
+    return { background: 'rgba(107,127,212,0.1)', color: C.purple, border: `1px solid rgba(107,127,212,0.2)` }
+  }
+  return { background: 'rgba(255,77,109,0.1)', color: C.red, border: `1px solid rgba(255,77,109,0.2)` }
+}
+
+function signalLabel(verdict: string): string {
+  const u = verdict.toUpperCase()
+  if (u === 'STRONG GO') return 'ENTER'
+  if (u === 'GO') return 'ENTER'
+  if (u.includes('ENTER') || u.includes('READY')) return 'ENTER'
+  if (u.includes('WATCH')) return 'WATCH'
+  if (u.includes('WAIT')) return 'WAIT'
+  if (u.includes('NO-GO') || u.includes('AVOID') || u.includes('CONFLICT')) return 'AVOID'
+  return u.slice(0, 5)
+}
 
 interface Props {
   watchlist: DeskWatchlistItem[]
   selectedTicker: string
   tradeType: string
+  tradeTypeValue: TradeType
   onLoadTicker: (ticker: string) => void
   onRemove: (ticker: string) => void
+  onTradeTypeChange: (tt: TradeType) => void
   openTradeSet: Set<string>
   alertTickerSet: Set<string>
   verdicts: Record<string, string>
@@ -27,8 +61,10 @@ export default function LeftPanel({
   watchlist,
   selectedTicker,
   tradeType,
+  tradeTypeValue,
   onLoadTicker,
   onRemove,
+  onTradeTypeChange,
   openTradeSet,
   alertTickerSet,
   verdicts,
@@ -45,100 +81,155 @@ export default function LeftPanel({
   }
 
   return (
-    <div className="flex flex-col h-full border-r border-white/[0.07] bg-slate-950">
-      {/* Ticker input */}
-      <div className="p-3 border-b border-white/[0.07]">
-        <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5 block">
-          Ticker
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: C.bgPanel, borderRight: `1px solid ${C.border}`,
+    }}>
+      {/* Section 1 — Ticker input */}
+      <div style={{ padding: 16, borderBottom: `1px solid ${C.border}` }}>
+        <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 700, color: C.muted, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+          Analyze Ticker
         </label>
-        <div className="flex gap-1.5">
+        <div style={{ display: 'flex', gap: 8 }}>
           <input
-            className="flex-1 min-w-0 rounded-lg border border-white/[0.08] bg-slate-800/60 px-3 py-2 font-mono text-sm uppercase text-white outline-none placeholder:text-gray-600 focus:border-violet-500"
-            placeholder="SPY…"
+            style={{
+              flex: 1, minWidth: 0, background: C.bgPage, border: `1px solid ${C.borderSub}`,
+              borderRadius: 7, padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700,
+              fontSize: '0.9rem', color: '#fff', outline: 'none', textTransform: 'uppercase',
+            }}
+            placeholder="AAPL…"
             value={tickerInput}
             onChange={e => setTickerInput(e.target.value.toUpperCase())}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            onFocus={e => (e.target.style.borderColor = C.accent)}
+            onBlur={e => (e.target.style.borderColor = C.borderSub)}
             autoComplete="off"
             spellCheck={false}
           />
           <button
             type="button"
             onClick={handleSubmit}
-            className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-2 transition-colors"
-            aria-label="Load ticker"
+            style={{
+              background: C.accent, border: 'none', borderRadius: 7,
+              padding: '7px 12px', color: '#fff', fontWeight: 700,
+              fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
           >
-            <ArrowRight size={15} />
+            Ana→
           </button>
         </div>
+      </div>
 
-        {/* Quick chips */}
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {QUICK_TICKERS.map(t => (
+      {/* Section 2 — Trade type tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+        {(['day', 'swing', 'regular'] as TradeType[]).map(tt => {
+          const active = tradeTypeValue === tt
+          return (
+            <button
+              key={tt}
+              type="button"
+              onClick={() => onTradeTypeChange(tt)}
+              style={{
+                flex: 1, padding: '8px 0', background: active ? 'rgba(74,124,255,0.15)' : 'transparent',
+                border: 'none', borderBottom: active ? `2px solid ${C.accent}` : `2px solid transparent`,
+                color: active ? C.accent : C.muted,
+                fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+            >
+              {tt}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Section 3 — Quick Add chips */}
+      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {QUICK_TICKERS.map(t => {
+          const active = t === selectedTicker
+          return (
             <button
               key={t}
               type="button"
               onClick={() => onLoadTicker(t)}
-              className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-gray-400 hover:text-gray-200 transition-colors border border-white/[0.05]"
+              style={{
+                background: active ? 'rgba(74,124,255,0.12)' : C.bgCard,
+                border: `1px solid ${active ? C.accent : C.borderSub}`,
+                color: active ? C.accent : C.muted,
+                borderRadius: 5, padding: '3px 8px',
+                fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 600,
+                cursor: 'pointer',
+              }}
             >
               {t}
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
-      {/* Watchlist */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-3 pt-3 pb-1.5 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-            Watchlist
+      {/* Section 4 — Watchlist */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: '12px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: C.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Today's Setups
           </span>
-          <span className="text-[10px] text-gray-600">{watchlist.length}/10</span>
+          <span style={{ fontSize: '0.62rem', color: C.muted }}>{watchlist.length}/10</span>
         </div>
 
         {watchlist.length === 0 ? (
-          <p className="px-3 py-4 text-xs text-gray-600 text-center">Add tickers above</p>
+          <p style={{ textAlign: 'center', color: C.muted, fontSize: '0.78rem', padding: '16px 12px' }}>Add tickers above</p>
         ) : (
-          <ul>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {watchlist.map(item => {
               const key = `${item.ticker}:${item.trade_type}`
               const isSelected = item.ticker === selectedTicker && item.trade_type === tradeType
               const verdict = verdicts[key] || ''
-              const badgeCls = VERDICT_BADGE[verdict] || ''
               const hasOpen = openTradeSet.has(item.ticker)
               const hasAlert = alertTickerSet.has(item.ticker)
 
               return (
                 <li
                   key={key}
-                  className={`relative flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors group ${
-                    isSelected
-                      ? 'bg-violet-900/20 border-l-2 border-violet-500'
-                      : 'hover:bg-white/[0.03] border-l-2 border-transparent'
-                  }`}
-                  onClick={() => onLoadTicker(item.ticker)}
                   onMouseEnter={() => setHovered(key)}
                   onMouseLeave={() => setHovered(null)}
+                  onClick={() => onLoadTicker(item.ticker)}
+                  style={{
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px 10px 13px', cursor: 'pointer',
+                    background: isSelected ? C.bgCard : 'transparent',
+                    borderLeft: `3px solid ${isSelected ? C.accent : 'transparent'}`,
+                    transition: 'background 0.15s',
+                  }}
                 >
-                  <span className="font-mono font-bold text-sm text-white min-w-[48px]">
-                    {item.ticker}
-                  </span>
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    {verdict && (
-                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${badgeCls}`}>
-                        {verdict === 'STRONG GO' ? 'SGO' : verdict.slice(0, 3)}
-                      </span>
-                    )}
-                    {hasOpen && <BookOpen size={11} className="text-amber-400 shrink-0" />}
-                    {hasAlert && <Bell size={11} className="text-sky-400 shrink-0" />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.88rem', color: '#fff' }}>
+                      {item.ticker}
+                      {hasOpen && <span style={{ marginLeft: 5, fontSize: '0.6rem', color: C.amber }}>●</span>}
+                      {hasAlert && <span style={{ marginLeft: 3, fontSize: '0.6rem', color: C.accent }}>🔔</span>}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: C.muted, marginTop: 1 }}>
+                      {item.ticker} · {item.trade_type}
+                    </div>
                   </div>
+                  {verdict && (
+                    <span style={{
+                      ...signalBadgeStyle(verdict),
+                      borderRadius: 5, padding: '2px 7px', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {signalLabel(verdict)}
+                    </span>
+                  )}
                   {hovered === key && (
                     <button
                       type="button"
                       onClick={e => { e.stopPropagation(); onRemove(item.ticker) }}
-                      className="absolute right-2 text-gray-500 hover:text-rose-400 transition-colors"
+                      style={{
+                        position: 'absolute', right: 10, background: 'transparent', border: 'none',
+                        color: C.muted, cursor: 'pointer', fontSize: '0.85rem', padding: '2px 4px',
+                      }}
                       aria-label="Remove"
                     >
-                      <X size={13} />
+                      ×
                     </button>
                   )}
                 </li>

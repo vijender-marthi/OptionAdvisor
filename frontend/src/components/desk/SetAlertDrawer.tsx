@@ -2,11 +2,23 @@ import { useEffect, useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import type { DeskAlertCreate } from '../../api/client'
 
+const C = {
+  bgPage:    '#0A0C10',
+  bgPanel:   '#111318',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  amber:     '#F5A623',
+  green:     '#00E5A0',
+  red:       '#FF4D6D',
+}
+
 const ALERT_TYPES = [
-  { value: 'RVOL', label: 'RVOL > X' },
-  { value: 'PRICE_CROSS', label: 'Price crosses $X' },
-  { value: 'VWAP_RETEST', label: 'VWAP retest' },
-  { value: 'SIGNAL_ENTER', label: 'Signal → ENTER' },
+  { value: 'RVOL',         label: 'RVOL crosses X×',    hint: 'Triggers when relative volume exceeds threshold' },
+  { value: 'PRICE_CROSS',  label: 'Price crosses $X',   hint: 'Triggers when price hits your level' },
+  { value: 'VWAP_RETEST',  label: 'VWAP retest',        hint: 'Triggers on VWAP touch/retest' },
+  { value: 'SIGNAL_ENTER', label: 'Signal → ENTER',     hint: 'Triggers when engine flips to ENTER' },
 ] as const
 
 interface Props {
@@ -36,10 +48,7 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
     setError(null)
     if (needsThreshold) {
       const v = parseFloat(thresholdValue)
-      if (!Number.isFinite(v) || v <= 0) {
-        setError('Enter a valid threshold value.')
-        return
-      }
+      if (!Number.isFinite(v) || v <= 0) { setError('Enter a valid threshold value.'); return }
     }
     try {
       setSubmitting(true)
@@ -62,48 +71,71 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
     }
   }
 
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: '0.68rem', fontWeight: 700, color: C.muted,
+    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8,
+  }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: C.bgPage, border: `1px solid ${C.borderSub}`,
+    borderRadius: 8, padding: '9px 12px', color: '#fff', fontFamily: 'monospace',
+    fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box',
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal>
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-t-2xl border-t border-x border-white/[0.1] bg-slate-900 shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
-          <h2 className="text-sm font-bold text-white">Set Alert — {ticker}</h2>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }} role="dialog" aria-modal>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', pointerEvents: 'all' }} onClick={onClose} />
+      <div style={{
+        position: 'absolute', bottom: 0, left: 300, right: 0,
+        background: C.bgPanel, borderTop: `1px solid ${C.border}`,
+        borderRadius: '16px 16px 0 0',
+        maxHeight: '60vh', display: 'flex', flexDirection: 'column',
+        pointerEvents: 'all',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <h2 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', margin: 0 }}>
+            Set Alert — {ticker}
+          </h2>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="p-4 space-y-4 text-sm max-h-[80vh] overflow-y-auto">
-          {/* Alert type */}
+        <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Alert type radio cards */}
           <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 block">Alert type</label>
-            <div className="grid grid-cols-2 gap-2">
-              {ALERT_TYPES.map(at => (
-                <button
-                  key={at.value}
-                  type="button"
-                  onClick={() => setAlertType(at.value)}
-                  className={`rounded-lg py-2.5 px-3 text-sm border text-left transition-colors ${
-                    alertType === at.value
-                      ? 'bg-violet-700/40 border-violet-500 text-violet-200'
-                      : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                  }`}
-                >
-                  {at.label}
-                </button>
-              ))}
+            <label style={labelStyle}>Alert type</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {ALERT_TYPES.map(at => {
+                const active = alertType === at.value
+                return (
+                  <button
+                    key={at.value}
+                    type="button"
+                    onClick={() => setAlertType(at.value)}
+                    style={{
+                      padding: '10px 12px', borderRadius: 8, textAlign: 'left',
+                      background: active ? 'rgba(74,124,255,0.15)' : 'transparent',
+                      border: `1px solid ${active ? C.accent : C.borderSub}`,
+                      color: active ? '#fff' : C.muted, cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{at.label}</div>
+                    <div style={{ fontSize: '0.68rem', color: C.muted, marginTop: 2 }}>{at.hint}</div>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
           {/* Dynamic input */}
           {needsThreshold && (
             <div>
-              <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
-                {alertType === 'RVOL' ? 'RVOL threshold (e.g. 1.5)' : 'Price ($)'}
+              <label style={labelStyle}>
+                {alertType === 'RVOL' ? 'RVOL threshold (e.g. 1.5×)' : 'Price level ($)'}
               </label>
               <input
-                className="mt-1 w-full bg-slate-800 border border-white/[0.08] rounded-xl px-3 py-2.5 text-white font-mono outline-none focus:border-violet-500"
+                style={inputStyle}
                 inputMode="decimal"
                 placeholder={alertType === 'RVOL' ? '1.5' : '200.00'}
                 value={thresholdValue}
@@ -111,23 +143,31 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
               />
             </div>
           )}
+          {!needsThreshold && (
+            <div style={{ background: C.bgPage, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: C.muted }}>
+              {alertType === 'VWAP_RETEST'
+                ? 'Alert fires when price touches VWAP intraday'
+                : `Alert fires when engine issues ENTER signal for ${ticker}`}
+            </div>
+          )}
 
-          {/* Notify method */}
+          {/* Notify via */}
           <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 block">Notify via</label>
-            <div className="flex gap-2">
+            <label style={labelStyle}>Notify via</label>
+            <div style={{ display: 'flex', gap: 8 }}>
               {(['inapp', 'email', 'both'] as const).map(m => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setNotifyMethod(m)}
-                  className={`flex-1 rounded-lg py-2 text-sm border transition-colors capitalize ${
-                    notifyMethod === m
-                      ? 'bg-sky-700/40 border-sky-500 text-sky-200'
-                      : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                  }`}
+                  style={{
+                    flex: 1, padding: '8px 0', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                    background: notifyMethod === m ? 'rgba(74,124,255,0.15)' : 'transparent',
+                    border: `1px solid ${notifyMethod === m ? C.accent : C.borderSub}`,
+                    color: notifyMethod === m ? '#fff' : C.muted, cursor: 'pointer',
+                  }}
                 >
-                  {m === 'inapp' ? 'In-app' : m.charAt(0).toUpperCase() + m.slice(1)}
+                  {m === 'inapp' ? 'In-App' : m.charAt(0).toUpperCase() + m.slice(1)}
                 </button>
               ))}
             </div>
@@ -135,32 +175,33 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
 
           {/* Expires */}
           <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2 block">Expires</label>
-            <div className="flex gap-2">
-              {(['eod', 'tomorrow', 'week'] as const).map(e => (
+            <label style={labelStyle}>Expires</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([['eod', 'End of Session'], ['tomorrow', 'Tomorrow'], ['week', 'This Week']] as const).map(([v, label]) => (
                 <button
-                  key={e}
+                  key={v}
                   type="button"
-                  onClick={() => setExpires(e)}
-                  className={`flex-1 rounded-lg py-2 text-sm border transition-colors ${
-                    expires === e
-                      ? 'bg-amber-700/40 border-amber-500 text-amber-200'
-                      : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                  }`}
+                  onClick={() => setExpires(v)}
+                  style={{
+                    flex: 1, padding: '8px 0', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600,
+                    background: expires === v ? 'rgba(245,166,35,0.12)' : 'transparent',
+                    border: `1px solid ${expires === v ? C.amber : C.borderSub}`,
+                    color: expires === v ? C.amber : C.muted, cursor: 'pointer',
+                  }}
                 >
-                  {e === 'eod' ? 'EOD' : e.charAt(0).toUpperCase() + e.slice(1)}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
-          {error && <p className="text-rose-300 text-xs">{error}</p>}
+          {error && <p style={{ color: C.red, fontSize: '0.78rem' }}>{error}</p>}
 
-          <div className="flex gap-2 pt-1 pb-2">
+          <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-white/[0.1] bg-transparent text-gray-400 hover:bg-white/[0.04] py-2.5 font-semibold text-sm transition-colors"
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: 'transparent', border: `1px solid ${C.borderSub}`, color: C.muted, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}
             >
               Cancel
             </button>
@@ -168,7 +209,7 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
               type="button"
               onClick={() => void handleSubmit()}
               disabled={submitting}
-              className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold py-2.5 text-sm flex items-center justify-center gap-2 transition-colors"
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: C.amber, border: 'none', color: '#000', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: submitting ? 0.6 : 1 }}
             >
               {submitting && <Loader2 size={14} className="animate-spin" />}
               Set Alert →

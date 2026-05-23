@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import type { DeskTradeCreate, DeskTradeUpdate, DeskTradeLog } from '../../api/client'
 
-type Mode = 'new' | 'close'
+const C = {
+  bgPage:    '#0A0C10',
+  bgPanel:   '#111318',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  green:     '#00E5A0',
+  red:       '#FF4D6D',
+  amber:     '#F5A623',
+}
 
 interface NewModeProps {
   mode: 'new'
@@ -24,29 +34,22 @@ interface CloseModeProps {
   onSubmit: (data: DeskTradeUpdate) => Promise<void>
 }
 
-type Props = (NewModeProps | CloseModeProps) & {
-  onClose: () => void
-}
+type Props = (NewModeProps | CloseModeProps) & { onClose: () => void }
 
 const EXIT_REASONS = ['T1 hit', 'T2 hit', 'Stop hit', 'Manual'] as const
 
 export default function LogTradeDrawer(props: Props) {
   const { onClose } = props
 
-  // New trade fields
   const [actualEntry, setActualEntry] = useState('')
   const [contracts, setContracts] = useState('1')
   const [notes, setNotes] = useState('')
-
-  // Close trade fields
   const [exitReason, setExitReason] = useState<string>('Manual')
   const [exitPrice, setExitPrice] = useState('')
   const [followedPlan, setFollowedPlan] = useState<'yes' | 'partial' | 'no'>('yes')
-
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Pre-fill exit price from radio selection for close mode
   useEffect(() => {
     if (props.mode !== 'close') return
     const t = props.trade
@@ -55,7 +58,6 @@ export default function LogTradeDrawer(props: Props) {
     else if (exitReason === 'Stop hit' && t.planned_stop != null) setExitPrice(String(t.planned_stop))
   }, [exitReason]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close on Esc
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
@@ -68,15 +70,9 @@ export default function LogTradeDrawer(props: Props) {
       setSubmitting(true)
       if (props.mode === 'new') {
         const ep = parseFloat(actualEntry)
-        if (actualEntry.trim() && (!Number.isFinite(ep) || ep <= 0)) {
-          setError('Enter a valid entry price.')
-          return
-        }
+        if (actualEntry.trim() && (!Number.isFinite(ep) || ep <= 0)) { setError('Enter a valid entry price.'); return }
         const c = parseInt(contracts, 10)
-        if (!Number.isFinite(c) || c <= 0) {
-          setError('Contracts must be a positive number.')
-          return
-        }
+        if (!Number.isFinite(c) || c <= 0) { setError('Contracts must be a positive number.'); return }
         const data: DeskTradeCreate = {
           ticker: props.ticker,
           trade_type: props.tradeType,
@@ -94,15 +90,11 @@ export default function LogTradeDrawer(props: Props) {
         await props.onSubmit(data)
       } else {
         const ep = parseFloat(exitPrice)
-        if (!Number.isFinite(ep) || ep <= 0) {
-          setError('Enter a valid exit price.')
-          return
-        }
+        if (!Number.isFinite(ep) || ep <= 0) { setError('Enter a valid exit price.'); return }
         const outcome = exitReason === 'Stop hit' ? 'LOSS' : 'WIN'
-        const now = new Date().toISOString()
         const data: DeskTradeUpdate = {
           exit_price: ep,
-          exit_time: now,
+          exit_time: new Date().toISOString(),
           exit_reason: exitReason,
           followed_plan: followedPlan,
           outcome,
@@ -119,62 +111,80 @@ export default function LogTradeDrawer(props: Props) {
     }
   }
 
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: '0.68rem', fontWeight: 700, color: C.muted,
+    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6,
+  }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: C.bgPage, border: `1px solid ${C.borderSub}`,
+    borderRadius: 8, padding: '9px 12px', color: '#fff', fontFamily: 'monospace',
+    fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box',
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal>
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-t-2xl border-t border-x border-white/[0.1] bg-slate-900 shadow-2xl">
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }} role="dialog" aria-modal>
+      {/* Backdrop */}
+      <div
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', pointerEvents: 'all' }}
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 300, right: 0,
+        background: C.bgPanel, borderTop: `1px solid ${C.border}`,
+        borderRadius: '16px 16px 0 0',
+        maxHeight: '75vh', display: 'flex', flexDirection: 'column',
+        pointerEvents: 'all',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+      }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
-          <h2 className="text-sm font-bold text-white">
-            {props.mode === 'new' ? 'Log Trade' : 'Close Trade'}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <h2 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', margin: 0 }}>
+            {props.mode === 'new'
+              ? `Log Trade — ${props.ticker}`
+              : `Close Trade — ${props.trade.ticker}`}
           </h2>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+          <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="p-4 space-y-3 text-sm max-h-[80vh] overflow-y-auto">
+        <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {props.mode === 'new' ? (
             <>
-              {/* Read-only plan info */}
-              {(props.plannedEntry || props.plannedT1 || props.plannedStop) && (
-                <div className="rounded-lg bg-slate-800/50 border border-white/[0.06] px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  {props.signalGiven && <span className="text-gray-500">Signal: <span className="text-gray-200 font-mono">{props.signalGiven}</span></span>}
-                  {props.plannedEntry != null && <span className="text-gray-500">Entry: <span className="text-gray-200 font-mono">${props.plannedEntry?.toFixed(2)}</span></span>}
-                  {props.plannedT1 != null && <span className="text-gray-500">T1: <span className="text-gray-200 font-mono">${props.plannedT1?.toFixed(2)}</span></span>}
-                  {props.plannedT2 != null && <span className="text-gray-500">T2: <span className="text-gray-200 font-mono">${props.plannedT2?.toFixed(2)}</span></span>}
-                  {props.plannedStop != null && <span className="text-gray-500">Stop: <span className="text-gray-200 font-mono">${props.plannedStop?.toFixed(2)}</span></span>}
+              {/* Read-only plan section */}
+              {(props.plannedEntry || props.plannedT1 || props.plannedStop || props.signalGiven) && (
+                <div style={{ background: C.bgPage, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '0.78rem' }}>
+                  {props.signalGiven && <span style={{ color: C.muted }}>Signal: <span style={{ color: '#fff', fontFamily: 'monospace' }}>{props.signalGiven}</span></span>}
+                  {props.structure && <span style={{ color: C.muted }}>Structure: <span style={{ color: '#fff', fontFamily: 'monospace' }}>{props.structure}</span></span>}
+                  {props.plannedEntry != null && <span style={{ color: C.muted }}>Entry: <span style={{ color: C.green, fontFamily: 'monospace' }}>${props.plannedEntry.toFixed(2)}</span></span>}
+                  {props.plannedT1 != null && <span style={{ color: C.muted }}>T1: <span style={{ color: C.green, fontFamily: 'monospace' }}>${props.plannedT1.toFixed(2)}</span></span>}
+                  {props.plannedT2 != null && <span style={{ color: C.muted }}>T2: <span style={{ color: C.green, fontFamily: 'monospace' }}>${props.plannedT2.toFixed(2)}</span></span>}
+                  {props.plannedStop != null && <span style={{ color: C.muted }}>Stop: <span style={{ color: C.red, fontFamily: 'monospace' }}>${props.plannedStop.toFixed(2)}</span></span>}
                 </div>
               )}
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Actual Entry ($)</label>
-                <input
-                  className="mt-1 w-full bg-slate-800 border border-white/[0.08] rounded-xl px-3 py-2.5 text-white font-mono outline-none focus:border-violet-500"
-                  inputMode="decimal"
-                  placeholder="e.g. 2.45"
-                  value={actualEntry}
-                  onChange={e => setActualEntry(e.target.value)}
-                />
+                <label style={labelStyle}>Actual Entry ($)</label>
+                <input style={inputStyle} inputMode="decimal" placeholder="e.g. 2.45" value={actualEntry} onChange={e => setActualEntry(e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Contracts</label>
-                <div className="flex gap-2 mt-1">
+                <label style={labelStyle}>Contracts</label>
+                <div style={{ display: 'flex', gap: 8 }}>
                   {['1', '2', '5', '10'].map(n => (
                     <button
                       key={n}
                       type="button"
                       onClick={() => setContracts(n)}
-                      className={`flex-1 rounded-lg py-2 font-mono font-bold text-sm border transition-colors ${
-                        contracts === n
-                          ? 'bg-violet-600 border-violet-500 text-white'
-                          : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                      }`}
-                    >
-                      {n}
-                    </button>
+                      style={{
+                        flex: 1, padding: '8px 0', borderRadius: 8, fontFamily: 'monospace', fontWeight: 700, fontSize: '0.9rem',
+                        background: contracts === n ? 'rgba(74,124,255,0.18)' : 'transparent',
+                        border: `1px solid ${contracts === n ? C.accent : C.borderSub}`,
+                        color: contracts === n ? C.accent : C.muted, cursor: 'pointer',
+                      }}
+                    >{n}</button>
                   ))}
                   <input
-                    className="w-16 bg-slate-800 border border-white/[0.08] rounded-lg px-2 py-2 text-white font-mono text-sm text-center outline-none focus:border-violet-500"
+                    style={{ ...inputStyle, width: 64, flex: 'none', textAlign: 'center', padding: '8px 6px' }}
                     inputMode="numeric"
                     placeholder="…"
                     value={['1','2','5','10'].includes(contracts) ? '' : contracts}
@@ -185,79 +195,80 @@ export default function LogTradeDrawer(props: Props) {
             </>
           ) : (
             <>
-              <div className="rounded-lg bg-slate-800/50 border border-white/[0.06] px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <span className="text-gray-500">Entered at: <span className="text-gray-200 font-mono">{props.trade.actual_entry != null ? `$${props.trade.actual_entry}` : '—'}</span></span>
-                <span className="text-gray-500">Contracts: <span className="text-gray-200 font-mono">{props.trade.contracts}</span></span>
+              <div style={{ background: C.bgPage, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem' }}>
+                Entered <span style={{ color: '#fff', fontFamily: 'monospace' }}>{props.trade.actual_entry != null ? `$${props.trade.actual_entry}` : '—'}</span>
+                {' · '}
+                <span style={{ color: '#fff', fontFamily: 'monospace' }}>{props.trade.contracts} contracts</span>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1.5 block">Exit reason</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {EXIT_REASONS.map(r => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setExitReason(r)}
-                      className={`rounded-lg py-2 text-sm border transition-colors ${
-                        exitReason === r
-                          ? 'bg-violet-600 border-violet-500 text-white'
-                          : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
+                <label style={labelStyle}>Exit reason</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {EXIT_REASONS.map(r => {
+                    const t = props.trade
+                    const price = r === 'T1 hit' ? t.planned_t1 : r === 'T2 hit' ? t.planned_t2 : r === 'Stop hit' ? t.planned_stop : null
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setExitReason(r)}
+                        style={{
+                          padding: '10px 12px', borderRadius: 8, textAlign: 'left',
+                          background: exitReason === r ? 'rgba(74,124,255,0.15)' : 'transparent',
+                          border: `1px solid ${exitReason === r ? C.accent : C.borderSub}`,
+                          color: exitReason === r ? '#fff' : C.muted, cursor: 'pointer',
+                          fontSize: '0.82rem',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{r}</div>
+                        {price != null && <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: r === 'Stop hit' ? C.red : C.green, marginTop: 2 }}>${price.toFixed(2)}</div>}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Exit Price ($)</label>
-                <input
-                  className="mt-1 w-full bg-slate-800 border border-white/[0.08] rounded-xl px-3 py-2.5 text-white font-mono outline-none focus:border-violet-500"
-                  inputMode="decimal"
-                  placeholder="e.g. 3.20"
-                  value={exitPrice}
-                  onChange={e => setExitPrice(e.target.value)}
-                />
+                <label style={labelStyle}>Exit Price ($)</label>
+                <input style={inputStyle} inputMode="decimal" placeholder="e.g. 3.20" value={exitPrice} onChange={e => setExitPrice(e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1.5 block">Followed plan</label>
-                <div className="flex gap-2">
+                <label style={labelStyle}>Did you follow the plan?</label>
+                <div style={{ display: 'flex', gap: 8 }}>
                   {(['yes', 'partial', 'no'] as const).map(v => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => setFollowedPlan(v)}
-                      className={`flex-1 rounded-lg py-2 text-sm border transition-colors capitalize ${
-                        followedPlan === v
-                          ? 'bg-emerald-700 border-emerald-600 text-white'
-                          : 'bg-slate-800 border-white/[0.08] text-gray-400 hover:border-white/[0.15]'
-                      }`}
-                    >
-                      {v}
-                    </button>
+                      style={{
+                        flex: 1, padding: '8px 0', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                        background: followedPlan === v ? (v === 'yes' ? 'rgba(0,229,160,0.15)' : v === 'partial' ? 'rgba(245,166,35,0.15)' : 'rgba(255,77,109,0.15)') : 'transparent',
+                        border: `1px solid ${followedPlan === v ? (v === 'yes' ? C.green : v === 'partial' ? C.amber : C.red) : C.borderSub}`,
+                        color: followedPlan === v ? '#fff' : C.muted, cursor: 'pointer', textTransform: 'capitalize',
+                      }}
+                    >{v}</button>
                   ))}
                 </div>
               </div>
             </>
           )}
 
-          {/* Notes (both modes) */}
+          {/* Notes */}
           <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Notes (optional)</label>
+            <label style={labelStyle}>Notes (optional)</label>
             <textarea
-              className="mt-1 w-full bg-slate-800 border border-white/[0.08] rounded-xl px-3 py-2.5 text-white text-sm min-h-[60px] outline-none focus:border-violet-500"
+              style={{ ...inputStyle, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.85rem', lineHeight: 1.5 }}
               placeholder="What you saw, what you did…"
               value={notes}
               onChange={e => setNotes(e.target.value)}
             />
           </div>
 
-          {error && <p className="text-rose-300 text-xs">{error}</p>}
+          {error && <p style={{ color: C.red, fontSize: '0.78rem' }}>{error}</p>}
 
-          <div className="flex gap-2 pt-1 pb-2">
+          <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-white/[0.1] bg-transparent text-gray-400 hover:bg-white/[0.04] py-2.5 font-semibold text-sm transition-colors"
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: 'transparent', border: `1px solid ${C.borderSub}`, color: C.muted, fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}
             >
               Cancel
             </button>
@@ -265,7 +276,7 @@ export default function LogTradeDrawer(props: Props) {
               type="button"
               onClick={() => void handleSubmit()}
               disabled={submitting}
-              className="flex-1 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold py-2.5 text-sm flex items-center justify-center gap-2 transition-colors"
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, background: C.accent, border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: submitting ? 0.6 : 1 }}
             >
               {submitting && <Loader2 size={14} className="animate-spin" />}
               {props.mode === 'new' ? 'Log Trade →' : 'Close Trade →'}
