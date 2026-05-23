@@ -517,8 +517,8 @@ export default function TickerPage() {
           {searchOpen ? 'Hide search' : 'Show search'}
         </button>
 
-        {/* Left: Search panel + Market Overview */}
-        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-3`}>
+        {/* Left: Search panel */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
           <TickerInput
             onAnalyze={handleAnalyzeWithCache}
             loading={loading}
@@ -527,15 +527,6 @@ export default function TickerPage() {
             initialSpreadWidth={lastWidth}
             initialStrategyMode={lastMode}
           />
-          {!loading && data && displayData && (
-            <MarketOverview
-              ticker={displayData.ticker}
-              companyName={displayData.company_name}
-              sector={displayData.sector}
-              marketCap={displayData.market_cap}
-              signals={displayData.signals}
-            />
-          )}
         </div>
 
         {/* Right: Content */}
@@ -728,6 +719,17 @@ export default function TickerPage() {
                   {watched ? <StarOff size={16} /> : <Star size={16} />}
                 </button>
               </div>
+            </div>
+
+            {/* Market Overview */}
+            <div style={cardStyle}>
+              <MarketOverview
+                ticker={displayData.ticker}
+                companyName={displayData.company_name}
+                sector={displayData.sector}
+                marketCap={displayData.market_cap}
+                signals={displayData.signals}
+              />
             </div>
 
             {/* Week selector */}
