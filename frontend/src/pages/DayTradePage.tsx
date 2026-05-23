@@ -424,12 +424,12 @@ export default function DayTradePage() {
               </div>
             )}
           </section>
+
+          <MarketTimeGateBanner tradeType="day" />
         </div>
 
         {/* Right: Content */}
         <div className="flex-1 min-w-0 space-y-4">
-
-        <MarketTimeGateBanner tradeType="day" />
 
         {error && (
         <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
