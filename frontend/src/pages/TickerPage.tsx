@@ -320,7 +320,7 @@ export default function TickerPage() {
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator'>('chart')
+  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
@@ -948,43 +948,61 @@ export default function TickerPage() {
               )}
             </div>
 
-            {/* Chart / Calculator / Chain tabs */}
+            {/* Chart / Calculator (collapsed by default) */}
             <div style={{
               background: C.bgPanel, border: `1px solid ${C.border}`,
               borderRadius: 14, overflow: 'hidden', marginTop: 14,
             }}>
-              <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-                {(['chart', 'calculator'] as const).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setActiveTab(t)}
-                    style={{
-                      flex: 1,
-                      padding: '10px 16px',
-                      background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
-                      border: 'none',
-                      borderBottom: activeTab === t ? `2px solid ${C.accent}` : '2px solid transparent',
-                      color: activeTab === t ? '#fff' : C.muted,
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
-                  </button>
-                ))}
-              </div>
-              <div style={{ padding: '16px 20px' }}>
-                {activeTab === 'chart' ? (
-                  <PriceChart history={displayData.price_history} />
-                ) : (
-                  <OptionProfitCalculator
-                    recommendations={selectedData?.recommendations ?? []}
-                    currentPrice={displayData.signals.current_price}
-                  />
-                )}
-              </div>
+              {activeTab ? (
+                <>
+                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+                  {(['chart', 'calculator'] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setActiveTab(t)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
+                        border: 'none',
+                        borderBottom: activeTab === t ? `2px solid ${C.accent}` : '2px solid transparent',
+                        color: activeTab === t ? '#fff' : C.muted,
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ padding: '16px 20px' }}>
+                  {activeTab === 'chart' ? (
+                    <PriceChart history={displayData.price_history} />
+                  ) : (
+                    <OptionProfitCalculator
+                      recommendations={selectedData?.recommendations ?? []}
+                      currentPrice={displayData.signals.current_price}
+                    />
+                  )}
+                </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('chart')}
+                  style={{
+                    width: '100%', padding: '10px 16px',
+                    background: 'transparent', border: 'none',
+                    color: C.muted, fontSize: '0.78rem', fontWeight: 600,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  📊 Show Chart &amp; P&L Analysis
+                </button>
+              )}
             </div>
           </>
         )}
