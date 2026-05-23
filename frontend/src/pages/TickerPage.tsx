@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Star, StarOff, RefreshCw, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Star, StarOff, RefreshCw, Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
 import { isCacheFresh, cacheAge } from '../types'
@@ -15,16 +15,6 @@ import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
-
-function useWindowWidth() {
-  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1280)
-  useEffect(() => {
-    const fn = () => setW(window.innerWidth)
-    window.addEventListener('resize', fn)
-    return () => window.removeEventListener('resize', fn)
-  }, [])
-  return w
-}
 
 const C = {
   bgPage:    '#0A0C10',
@@ -544,44 +534,35 @@ export default function TickerPage() {
     marginTop: 14,
   }
 
-  const windowWidth = useWindowWidth()
-  const isDesktop = windowWidth >= 1024
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 20 : 12, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: isDesktop ? '20px 24px' : '12px' }}>
-      {/* Mobile/tablet search toggle */}
-      {!isDesktop && (
+    <div className="ticker-page min-h-screen p-4 md:p-6" style={{ background: C.bgPage }}>
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
+        {/* Mobile/tablet search toggle */}
         <button
           type="button"
           onClick={() => setSearchOpen(p => !p)}
-          style={{
-            background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10,
-            color: C.text, padding: '10px 16px', fontSize: '0.85rem', fontWeight: 600,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-          }}
+          className="lg:hidden w-full flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-secondary"
         >
           <Search size={16} />
           {searchOpen ? 'Hide search' : 'Show search'}
         </button>
-      )}
 
-      {/* Left: Search panel */}
-      {(isDesktop || searchOpen) && (
-      <div style={{ width: isDesktop ? 280 : '100%', flexShrink: 0, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 20 : undefined }}>
-        <TickerInput
-          onAnalyze={handleAnalyzeWithCache}
-          loading={loading}
-          initialTicker={inputTicker}
-          initialWeeks={lastWeeks}
-          initialSpreadWidth={lastWidth}
-          initialStrategyMode={lastMode}
-        />
-      </div>
-      )}
+        {/* Left: Search panel */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+          <TickerInput
+            onAnalyze={handleAnalyzeWithCache}
+            loading={loading}
+            initialTicker={inputTicker}
+            initialWeeks={lastWeeks}
+            initialSpreadWidth={lastWidth}
+            initialStrategyMode={lastMode}
+          />
+        </div>
 
-      {/* Right: Content */}
-      <div style={{ flex: 1, minWidth: 0, width: isDesktop ? undefined : '100%' }}>
+        {/* Right: Content */}
+        <div className="flex-1 min-w-0 w-full">
 
         {/* Loading */}
         {loading && (
@@ -992,6 +973,7 @@ export default function TickerPage() {
           @keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
         `}</style>
       </div>
+    </div>
     </div>
   )
 }
