@@ -216,6 +216,51 @@ def get_market_position(auth_email: str = Depends(require_access_email)):
         high_52w = float(closes.tail(n52w).max())
         drawdown_pct = (high_52w - last_price) / high_52w * 100.0
 
+        # SPY change %
+        spy_chg_pct = None
+        try:
+            spy_hist = bar_cache.get_history("SPY", period="5d", interval="1d")
+            if spy_hist is not None and not spy_hist.empty:
+                spy_closes = spy_hist["Close"].dropna()
+                if len(spy_closes) >= 2:
+                    spy_chg_pct = round((float(spy_closes.iloc[-1]) / float(spy_closes.iloc[-2]) - 1) * 100, 2)
+        except Exception:
+            pass
+
+        # QQQ price + change
+        qqq_price = None
+        qqq_chg_pct = None
+        try:
+            qqq_hist = bar_cache.get_history("QQQ", period="5d", interval="1d")
+            if qqq_hist is not None and not qqq_hist.empty:
+                qqq_closes = qqq_hist["Close"].dropna()
+                if len(qqq_closes) >= 1:
+                    qqq_price = round(float(qqq_closes.iloc[-1]), 2)
+                if len(qqq_closes) >= 2:
+                    qqq_chg_pct = round((float(qqq_closes.iloc[-1]) / float(qqq_closes.iloc[-2]) - 1) * 100, 2)
+        except Exception:
+            pass
+
+        # VIX level
+        vix_level = None
+        try:
+            vh = bar_cache.get_history("^VIX", period="5d", interval="1d")
+            if vh is not None and not vh.empty:
+                vix_level = round(float(vh["Close"].dropna().iloc[-1]), 2)
+        except Exception:
+            pass
+
+        vix_label = None
+        if vix_level is not None:
+            if vix_level < 15:
+                vix_label = "Low"
+            elif vix_level < 20:
+                vix_label = "Contained"
+            elif vix_level < 25:
+                vix_label = "Elevated"
+            else:
+                vix_label = "High"
+
         # Strategy signal — 25% reserve rule
         if dist_200ma_pct >= 10.0:
             position_signal = "HIGH_TERRITORY"
@@ -240,6 +285,11 @@ def get_market_position(auth_email: str = Depends(require_access_email)):
 
         return api_envelope({
             "spy_price":       round(last_price, 2),
+            "spy_change_pct":  spy_chg_pct,
+            "qqq_price":       qqq_price,
+            "qqq_change_pct":  qqq_chg_pct,
+            "vix":             vix_level,
+            "vix_label":       vix_label,
             "ma200":           round(ma200, 2),
             "dist_200ma_pct":  round(dist_200ma_pct, 1),
             "high_52w":        round(high_52w, 2),

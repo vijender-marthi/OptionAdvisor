@@ -5,6 +5,7 @@ import CopyrightFooter from '../components/CopyrightFooter'
 import AdvisoryDisclaimerModal from '../components/AdvisoryDisclaimerModal'
 import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
 import HelpModal from '../components/HelpModal'
+import MarketStrip from '../components/MarketStrip'
 
 import { useApp } from '../contexts/AppContext'
 import { X, Database } from 'lucide-react'
@@ -62,6 +63,7 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
     <div className="app-shell font-sans flex h-[100svh] max-h-[100dvh] overflow-hidden" style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}>
       <Sidebar />
       <main className="app-main-scroll h-full min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[7rem] xl:pb-0 [-webkit-overflow-scrolling:touch]">
+        <MarketStrip />
         <CacheTimestamp />
         <WatchlistNoticeBanner />
         {children ?? <Outlet />}

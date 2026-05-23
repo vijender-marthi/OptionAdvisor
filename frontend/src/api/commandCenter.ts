@@ -122,6 +122,11 @@ export async function noteAlert(id: string, text: string): Promise<ApiEnvelope<{
 
 export interface MarketPositionData {
   spy_price: number
+  spy_change_pct?: number | null
+  qqq_price?: number | null
+  qqq_change_pct?: number | null
+  vix?: number | null
+  vix_label?: string | null
   ma200: number
   dist_200ma_pct: number
   high_52w: number
