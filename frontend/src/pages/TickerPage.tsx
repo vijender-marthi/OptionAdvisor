@@ -7,7 +7,6 @@ import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
 import SignalPanel from '../components/SignalPanel'
 import RecommendationCard from '../components/RecommendationCard'
-import OptionsChainTable from '../components/OptionsChainTable'
 import PriceChart from '../components/PriceChart'
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
 import { useApp } from '../contexts/AppContext'
@@ -321,7 +320,7 @@ export default function TickerPage() {
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | 'chain'>('chart')
+  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator'>('chart')
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
@@ -949,7 +948,7 @@ export default function TickerPage() {
               borderRadius: 14, overflow: 'hidden', marginTop: 14,
             }}>
               <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-                {(['chart', 'calculator', 'chain'] as const).map(t => (
+                {(['chart', 'calculator'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => setActiveTab(t)}
@@ -966,24 +965,17 @@ export default function TickerPage() {
                       transition: 'all 0.15s',
                     }}
                   >
-                    {t === 'chart' ? '📉 Candlestick' : t === 'calculator' ? '📈 P&L Calculator' : '📋 Options Chain'}
+                    {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
                   </button>
                 ))}
               </div>
               <div style={{ padding: '16px 20px' }}>
                 {activeTab === 'chart' ? (
                   <PriceChart history={displayData.price_history} />
-                ) : activeTab === 'calculator' ? (
+                ) : (
                   <OptionProfitCalculator
                     recommendations={selectedData?.recommendations ?? []}
                     currentPrice={displayData.signals.current_price}
-                  />
-                ) : (
-                  <OptionsChainTable
-                    calls={displayData.calls_chain}
-                    puts={displayData.puts_chain}
-                    currentPrice={displayData.signals.current_price}
-                    expiry={displayData.filters_applied?.chain_expiry as string | undefined}
                   />
                 )}
               </div>
