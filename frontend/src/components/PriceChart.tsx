@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   Scatter,
+  ReferenceLine,
   XAxis,
   YAxis,
   Tooltip,
@@ -30,12 +31,10 @@ function yExtent(rows: PricePoint[]): [number, number] {
     hi = Math.max(hi, r.high, r.ma20, r.ma50, r.ma200)
   }
   if (!Number.isFinite(lo)) return [0, 1]
-  const pad = Math.max((hi - lo) * 0.03, hi * 0.008, 0.05)
+  const pad = Math.max((hi - lo) * 0.05, hi * 0.01, 0.05)
   return [lo - pad, hi + pad]
 }
 
-/** Recharts Scatter shape — OHLC candles using numeric Y scale + band X scale. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CandlestickShape(raw: any) {
   const cx = Number(raw.cx)
   const yAxis = raw.yAxis as { scale: (v: number) => number } | undefined
@@ -106,6 +105,11 @@ function PriceTooltip({ active, payload, label }: TooltipProps<number, string>) 
 export default function PriceChart({ history }: Props) {
   const sampled = useMemo(() => history.filter((_, i) => i % 3 === 0), [history])
   const domain = useMemo(() => yExtent(sampled), [sampled])
+  const lastRow = history[history.length - 1]
+  const prevRow = history.length > 1 ? history[history.length - 2] : null
+  const dailyChg = lastRow && prevRow ? lastRow.close - prevRow.close : 0
+  const dailyChgPct = lastRow && prevRow && prevRow.close > 0 ? (dailyChg / prevRow.close) * 100 : 0
+  const up = dailyChg >= 0
 
   if (sampled.length === 0) {
     return (
@@ -117,9 +121,20 @@ export default function PriceChart({ history }: Props) {
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-      <div className="text-sm font-semibold text-gray-300 mb-1">Underlying · daily candles (1 year)</div>
-      <div className="text-[11px] text-gray-500 mb-3">
-        Spot OHLC with moving averages (options on this page are built from the same underlying)
+      {/* Header with current price */}
+      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div className="text-sm font-semibold text-gray-300">Underlying · Daily (1 Year)</div>
+          <div className="text-[11px] text-gray-500">OHLC with moving averages</div>
+        </div>
+        {lastRow && (
+          <div className="flex items-baseline gap-3 font-mono">
+            <span className="text-xl font-bold text-white">${lastRow.close.toFixed(2)}</span>
+            <span className={`text-sm font-semibold ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+              {up ? '▲' : '▼'} {Math.abs(dailyChg).toFixed(2)} ({dailyChgPct >= 0 ? '+' : ''}{dailyChgPct.toFixed(2)}%)
+            </span>
+          </div>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={sampled} margin={{ top: 8, right: 10, left: 0, bottom: 4 }}>
@@ -142,6 +157,16 @@ export default function PriceChart({ history }: Props) {
           />
           <Tooltip content={<PriceTooltip />} />
           <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+          {/* Current price reference line */}
+          {lastRow && (
+            <ReferenceLine
+              y={lastRow.close}
+              stroke="#a78bfa"
+              strokeWidth={1.5}
+              strokeDasharray="6 3"
+              label={{ value: `$${lastRow.close.toFixed(2)}`, position: 'right', fill: '#c4b5fd', fontSize: 11 }}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="ma20"

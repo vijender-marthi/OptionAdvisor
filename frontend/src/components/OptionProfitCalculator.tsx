@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip,
-  ReferenceLine, ResponsiveContainer, CartesianGrid, Legend
+  ReferenceLine, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
 import type { Recommendation } from '../types'
 
@@ -10,40 +10,35 @@ interface Props {
   currentPrice: number
 }
 
-// Compute P&L at expiration for a single leg
 function legPnl(
   action: 'BUY' | 'SELL',
   optionType: 'CALL' | 'PUT',
   strike: number,
   premium: number,
-  stockPrice: number
+  stockPrice: number,
 ): number {
   const intrinsic =
     optionType === 'CALL'
       ? Math.max(stockPrice - strike, 0)
       : Math.max(strike - stockPrice, 0)
-
   return action === 'BUY' ? intrinsic - premium : premium - intrinsic
 }
 
-// Build a P&L curve dataset for a recommendation
 function buildCurve(rec: Recommendation, currentPrice: number) {
   const lo = currentPrice * 0.65
   const hi = currentPrice * 1.35
   const steps = 120
   const step = (hi - lo) / steps
-
   return Array.from({ length: steps + 1 }, (_, i) => {
     const price = lo + i * step
     const pnl = rec.legs.reduce(
       (sum, leg) => sum + legPnl(leg.action, leg.option_type, leg.strike, leg.mid_price, price),
-      0
+      0,
     )
     return { price: parseFloat(price.toFixed(2)), pnl: parseFloat(pnl.toFixed(2)) }
   })
 }
 
-// Tooltip
 const CustomTooltip = ({
   active, payload, label,
 }: {
@@ -66,20 +61,23 @@ const CustomTooltip = ({
 
 export default function OptionProfitCalculator({ recommendations, currentPrice }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0)
-
   const rec = recommendations[selectedIdx]
+  const curve = useMemo(() => (rec ? buildCurve(rec, currentPrice) : []), [rec, currentPrice])
 
-  const curve = useMemo(
-    () => (rec ? buildCurve(rec, currentPrice) : []),
-    [rec, currentPrice]
-  )
-
-  // Determine y-axis domain with padding
   const pnlValues = curve.map(d => d.pnl)
   const minPnl = Math.min(...pnlValues)
   const maxPnl = Math.max(...pnlValues)
   const pad = (maxPnl - minPnl) * 0.15 || 10
   const yDomain = [Math.floor(minPnl - pad), Math.ceil(maxPnl + pad)]
+
+  // Current P&L at current price
+  const currentPnl = useMemo(() => {
+    if (!rec || curve.length === 0) return 0
+    const closest = curve.reduce((prev, curr) =>
+      Math.abs(curr.price - currentPrice) < Math.abs(prev.price - currentPrice) ? curr : prev,
+    )
+    return closest.pnl
+  }, [rec, curve, currentPrice])
 
   if (!rec) {
     return (
@@ -130,6 +128,20 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
 
       {/* Chart */}
       <div className="relative">
+        {/* Current P&L badge */}
+        <div style={{
+          position: 'absolute', top: 8, right: 8, zIndex: 10,
+          background: currentPnl >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+          border: `1px solid ${currentPnl >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          borderRadius: 8, padding: '6px 12px',
+          fontSize: 12, fontFamily: 'monospace',
+        }}>
+          <div style={{ color: '#9ca3af', fontSize: 10 }}>At ${currentPrice.toFixed(2)}</div>
+          <div style={{ fontWeight: 700, color: currentPnl >= 0 ? '#34d399' : '#f87171' }}>
+            {currentPnl >= 0 ? '+' : ''}${(currentPnl * 100).toFixed(2)}
+          </div>
+        </div>
+
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={curve} margin={{ top: 10, right: 16, left: 0, bottom: 5 }}>
             <defs>
@@ -165,20 +177,18 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
             />
 
             <Tooltip content={<CustomTooltip />} />
-            <Legend
-              wrapperStyle={{ fontSize: 11, color: '#9ca3af', paddingTop: 6 }}
-            />
+            <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af', paddingTop: 6 }} />
 
             {/* Zero line */}
             <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1.5} />
 
-            {/* Current price */}
+            {/* Current price — more prominent */}
             <ReferenceLine
               x={currentPrice}
               stroke="#7c3aed"
-              strokeWidth={1.5}
+              strokeWidth={2}
               strokeDasharray="5 3"
-              label={{ value: `Now $${currentPrice.toFixed(0)}`, position: 'top', fill: '#a78bfa', fontSize: 10 }}
+              label={{ value: `Now $${currentPrice.toFixed(0)}`, position: 'top', fill: '#a78bfa', fontSize: 11, fontWeight: 700 }}
             />
 
             {/* Breakevens */}
@@ -193,7 +203,7 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
               />
             ))}
 
-            {/* Profit area (pnl >= 0) */}
+            {/* Profit area */}
             <Area
               type="monotone"
               dataKey="pnl"
@@ -206,7 +216,7 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
               connectNulls
             />
 
-            {/* Loss shading: overlay with red where pnl < 0 */}
+            {/* Loss shading */}
             <Line
               type="monotone"
               dataKey={(d: { pnl: number }) => (d.pnl < 0 ? d.pnl : null)}
@@ -231,16 +241,13 @@ export default function OptionProfitCalculator({ recommendations, currentPrice }
               className={`flex items-center justify-between rounded-xl px-3 py-2 border text-xs
                 ${leg.action === 'SELL'
                   ? 'bg-red-900/10 border-red-900/30'
-                  : 'bg-emerald-900/10 border-emerald-900/30'
-                }`}
+                  : 'bg-emerald-900/10 border-emerald-900/30'}`}
             >
               <div className="flex items-center gap-2">
                 <span className={`font-bold ${leg.action === 'SELL' ? 'text-red-400' : 'text-emerald-400'}`}>
                   {leg.action}
                 </span>
-                <span className="text-gray-300 font-mono">
-                  ${leg.strike} {leg.option_type}
-                </span>
+                <span className="text-gray-300 font-mono">${leg.strike} {leg.option_type}</span>
                 <span className="text-gray-500">{leg.expiry}</span>
               </div>
               <div className="text-right">
