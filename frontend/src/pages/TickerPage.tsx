@@ -561,6 +561,60 @@ export default function TickerPage() {
             initialSpreadWidth={lastWidth}
             initialStrategyMode={lastMode}
           />
+          {/* Data quality banners */}
+          {!loading && data && displayData && (
+            <div style={{ marginTop: 8 }}>
+              {staleSnapshotInfo && (
+                <div style={{ marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setStaleBannerOpen(p => !p)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: C.amber, fontWeight: 600, fontSize: '0.72rem', padding: 0 }}
+                  >
+                    <AlertTriangle size={14} />
+                    {staleBannerOpen ? 'Hide' : 'Market data stale — click for details'}
+                  </button>
+                  {staleBannerOpen && (
+                    <div style={{ borderRadius: 8, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '8px 10px', marginTop: 4, fontSize: '0.72rem' }}>
+                      <p style={{ color: 'rgba(245,166,35,0.8)', lineHeight: 1.5 }}>
+                        Snapshot from{' '}
+                        <span style={{ fontFamily: 'monospace', color: C.text }}>
+                          {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                        . {staleSnapshotInfo.errorDetail}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {displayData.quote_quality_summary?.banner_show &&
+                (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setYahooBannerOpen(p => !p)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: C.amber, fontWeight: 600, fontSize: '0.72rem', padding: 0 }}
+                  >
+                    <AlertTriangle size={14} />
+                    {yahooBannerOpen ? 'Hide' : 'Yahoo data may be incomplete — click'}
+                  </button>
+                  {yahooBannerOpen && (
+                    <div style={{ borderRadius: 8, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '8px 10px', marginTop: 4, fontSize: '0.72rem' }}>
+                      <div style={{ fontWeight: 600, color: C.amber, marginBottom: 4 }}>Yahoo option data looks incomplete or stale</div>
+                      <ul style={{ paddingLeft: 14, color: 'rgba(245,166,35,0.8)', lineHeight: 1.5, margin: 0 }}>
+                        {displayData.quote_quality_summary.banner_lines.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                      <p style={{ fontSize: '0.68rem', color: 'rgba(245,166,35,0.5)', marginTop: 6 }}>
+                        Tap refresh after a minute or confirm strikes with your broker.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right: Content */}
@@ -596,60 +650,7 @@ export default function TickerPage() {
         {/* Results */}
         {!loading && data && displayData && (
           <>
-            {staleSnapshotInfo && (
-              <div style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => setStaleBannerOpen(p => !p)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: C.amber, fontWeight: 600, fontSize: '0.78rem', padding: 0 }}
-                >
-                  <AlertTriangle size={16} />
-                  {staleBannerOpen ? 'Hide cached data details' : 'Latest market data did not load — click for details'}
-                </button>
-                {staleBannerOpen && (
-                  <div style={{ borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '12px 16px', marginTop: 8 }}>
-                    <p style={{ color: 'rgba(245,166,35,0.8)', fontSize: '0.875rem', lineHeight: 1.6 }}>
-                      Showing your last successful analysis snapshot from{' '}
-                      <span style={{ fontFamily: 'monospace', color: C.text }}>
-                        {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                      </span>
-                      . Cached data was kept until a new request succeeds.
-                    </p>
-                    <p style={{ color: 'rgba(245,166,35,0.5)', fontSize: '0.72rem', marginTop: 8, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      {staleSnapshotInfo.errorDetail}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
-            {displayData.quote_quality_summary?.banner_show &&
-              (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
-              <div style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => setYahooBannerOpen(p => !p)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: C.amber, fontWeight: 600, fontSize: '0.78rem', padding: 0 }}
-                >
-                  <AlertTriangle size={16} />
-                  {yahooBannerOpen ? 'Hide Yahoo data details' : 'Yahoo option data may be incomplete — click for details'}
-                </button>
-                {yahooBannerOpen && (
-                  <div style={{ borderRadius: 12, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '12px 16px', marginTop: 8 }}>
-                    <div style={{ fontWeight: 600, color: C.amber, fontSize: '0.875rem', marginBottom: 8 }}>Yahoo option data looks incomplete or stale</div>
-                    <ul style={{ paddingLeft: 16, color: 'rgba(245,166,35,0.8)', lineHeight: 1.6 }}>
-                      {displayData.quote_quality_summary.banner_lines.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
-                    <p style={{ fontSize: '0.72rem', color: 'rgba(245,166,35,0.5)', marginTop: 10 }}>
-                      Data comes from Yahoo Finance — when bid/ask are missing or Yahoo serves cached last prices,
-                      mids and signals can drift. Tap refresh after a minute or confirm strikes with your broker.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Refresh + watchlist buttons */}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
