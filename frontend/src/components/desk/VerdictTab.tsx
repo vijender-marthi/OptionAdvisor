@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { DayTradeScanResult, SwingTradeScanResult, AiCoachResult } from '../../api/client'
 import type { DeskTradeLog } from '../../api/client'
 
@@ -169,6 +170,26 @@ export default function VerdictTab({
     rr = (t1 - entry) / (entry - stop)
   }
 
+  // Waiting-for reason when verdict is WAIT
+  const waitingFor = useMemo(() => {
+    if (!analysis) return null
+    if (verdict !== 'WAIT') return null
+    const raw = analysis as unknown as Record<string, unknown>
+    const conditions = (raw.conditions as Array<Record<string, unknown>> | undefined) || []
+    const missing = (analysis.missing_confirmations || []) as string[]
+    // Prefer missing_confirmations, fall back to warn/fail conditions
+    const items: string[] = missing.length > 0
+      ? missing
+      : conditions
+          .filter(c => c.type === 'warn' || c.type === 'fail')
+          .map(c => String(c.label || ''))
+    const shortened = items
+      .map(s => s.split('—')[0].split(':')[0].split('(')[0].trim())
+      .filter(Boolean)
+      .slice(0, 2)
+    return shortened.length > 0 ? shortened.join(' · ') : null
+  }, [analysis, verdict])
+
   const vc = verdictColor(verdict)
   const vbg = verdictBg(verdict)
   const vborder = verdictBorder(verdict)
@@ -198,6 +219,7 @@ export default function VerdictTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 24 }}>
+      <style>{`@keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }`}</style>
       {refreshing && (
         <div style={{ textAlign: 'center', fontSize: '0.75rem', color: C.muted }}>Refreshing…</div>
       )}
@@ -214,6 +236,13 @@ export default function VerdictTab({
               <div style={{ fontSize: '3rem', fontWeight: 900, color: vc, lineHeight: 1, letterSpacing: '-0.02em' }}>
                 {verdict}
               </div>
+              {/* Waiting-for indicator (WAIT verdict only) */}
+              {verdict === 'WAIT' && waitingFor && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.78rem', color: C.purple }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, flexShrink: 0, animation: 'tdPulse 1.5s infinite' }} />
+                  <span>Waiting for: {waitingFor}</span>
+                </div>
+              )}
               <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', marginTop: 8, lineHeight: 1.5, maxWidth: 380 }}>
                 {reason}
               </p>

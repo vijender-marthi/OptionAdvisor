@@ -48,17 +48,46 @@ const C = {
   purple:    '#6B7FD4',
 }
 
-function etClock(): string {
+// ── Timezone options ───────────────────────────────────────────────────────
+const TIMEZONE_OPTIONS = [
+  { label: 'ET', tz: 'America/New_York' },
+  { label: 'CT', tz: 'America/Chicago' },
+  { label: 'MT', tz: 'America/Denver' },
+  { label: 'PT', tz: 'America/Los_Angeles' },
+]
+
+function getSessionColor(session: string): string {
+  switch (session) {
+    case 'Opening':     return '#00E5A0'
+    case 'Power Hour':  return '#00E5A0'
+    case 'Morning':     return '#F5A623'
+    case 'Closing':     return '#F5A623'
+    case 'Midday':      return '#5A6478'
+    case 'Pre-Market':  return '#6B7FD4'
+    case 'After-Hours': return '#6B7FD4'
+    case 'Closed':      return '#3A4255'
+    default:            return '#5A6478'
+  }
+}
+
+function etClock(tz: string): { time: string; session: string } {
   const t = new Date().toLocaleTimeString('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
   })
-  const h = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
+  const h = new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false })
   const hNum = parseInt(h)
-  const session = hNum < 9 ? 'Pre-Market' : hNum < 12 ? 'Morning' : hNum < 14 ? 'Midday' : hNum < 16 ? 'Afternoon' : 'After-Hours'
-  return `${t} ET · ${session}`
+  const session =
+    hNum < 4  ? 'Closed' :
+    hNum < 9  ? 'Pre-Market' :
+    hNum < 10 ? 'Opening' :
+    hNum < 12 ? 'Morning' :
+    hNum < 14 ? 'Midday' :
+    hNum < 15 ? 'Power Hour' :
+    hNum < 16 ? 'Closing' :
+    hNum < 20 ? 'After-Hours' :
+                'Closed'
+  const tzLabel = TIMEZONE_OPTIONS.find(o => o.tz === tz)?.label || 'ET'
+  return { time: `${t} ${tzLabel}`, session }
 }
 
 export default function TradeDeskPage() {
@@ -95,8 +124,12 @@ export default function TradeDeskPage() {
   const [alertCount, setAlertCount] = useState(0)
   const [drawer, setDrawer] = useState<DrawerState>(null)
 
+  // Timezone preference
+  const [userTz, setUserTz] = useState(() => localStorage.getItem('desk_tz') || 'America/New_York')
+  const [showTzPicker, setShowTzPicker] = useState(false)
+
   // Topbar market
-  const [clock, setClock] = useState(etClock)
+  const [clock, setClock] = useState<{ time: string; session: string }>(() => etClock(userTz))
   const [marketData, setMarketData] = useState<{
     spy?: number; spyChg?: number
     qqq?: number; qqqChg?: number
@@ -163,12 +196,22 @@ export default function TradeDeskPage() {
   const loadMarketData = useCallback(async () => {
     try {
       const res = await fetchMarketPosition()
-      if (res.data) {
+      const d = res.data as Record<string, unknown> | null
+      if (d) {
+        const vixNum = (d.vix ?? d.vix_price) as number | undefined
         setMarketData(prev => ({
           ...prev,
-          spy: res.data!.spy_price,
-          regime: res.data!.signal_label || res.data!.position_signal,
-          signalTone: res.data!.signal_tone,
+          spy:      (d.spy_price ?? d.spy) as number | undefined,
+          spyChg:   (d.spy_change_pct ?? d.spy_chg ?? d.spyChg) as number | undefined,
+          qqq:      (d.qqq_price ?? d.qqq) as number | undefined,
+          qqqChg:   (d.qqq_change_pct ?? d.qqq_chg ?? d.qqqChg) as number | undefined,
+          vix:      vixNum,
+          vixLabel: (d.vix_label as string | undefined) ?? (
+            vixNum == null ? undefined :
+            vixNum < 15 ? 'Low' : vixNum < 20 ? 'Contained' : vixNum < 25 ? 'Elevated' : 'High'
+          ),
+          regime:     (d.signal_label ?? d.position_signal ?? d.regime) as string | undefined,
+          signalTone: d.signal_tone as string | undefined,
         }))
       }
     } catch { /* ignore */ }
@@ -182,7 +225,7 @@ export default function TradeDeskPage() {
     fetchAlerts()
     loadMarketData()
 
-    const clockId = setInterval(() => setClock(etClock()), 30_000)
+    const clockId = setInterval(() => setClock(etClock(userTz)), 30_000)
     const pollId = setInterval(() => {
       fetchWatchlist()
       fetchAlerts()
@@ -194,6 +237,9 @@ export default function TradeDeskPage() {
       clearInterval(pollId)
     }
   }, [fetchWatchlist, fetchAlerts, loadMarketData])
+
+  // Re-tick clock when timezone changes
+  useEffect(() => { setClock(etClock(userTz)) }, [userTz])
 
   useEffect(() => {
     if (watchlist.length > 0 && !selectedTicker) {
@@ -265,6 +311,13 @@ export default function TradeDeskPage() {
     await deskApi.deleteAlert(id)
     await fetchAlerts()
   }, [fetchAlerts])
+
+  const handleTzChange = (tz: string) => {
+    setUserTz(tz)
+    localStorage.setItem('desk_tz', tz)
+    setShowTzPicker(false)
+    setClock(etClock(tz))
+  }
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -387,9 +440,66 @@ export default function TradeDeskPage() {
           </span>
         </div>
 
-        {/* Right: clock — hide full label on mobile */}
-        <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', color: C.muted, flexShrink: 0, whiteSpace: 'nowrap' }}>
-          {isMobile ? clock.split(' ET')[0] + ' ET' : clock}
+        {/* Right: clock with timezone picker */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setShowTzPicker(p => !p)}
+            title="Click to change timezone"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: 'monospace', fontSize: '0.68rem', padding: '2px 4px', borderRadius: 4,
+              display: 'flex', alignItems: 'center', gap: 0, whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ color: C.muted }}>{clock.time}</span>
+            {!isMobile && (
+              <span style={{ color: getSessionColor(clock.session), marginLeft: 4, fontWeight: 600 }}>
+                · {clock.session}
+              </span>
+            )}
+          </button>
+
+          {showTzPicker && (
+            <>
+              <div onClick={() => setShowTzPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, zIndex: 91,
+                background: '#111318', border: `1px solid #252C3A`,
+                borderRadius: 10, padding: '10px 0', minWidth: 160,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)', marginTop: 6,
+              }}>
+                <div style={{ padding: '4px 14px 8px', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5A6478' }}>
+                  Timezone
+                </div>
+                {TIMEZONE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.tz}
+                    type="button"
+                    onClick={() => handleTzChange(opt.tz)}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#181C23' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                      padding: '8px 14px', background: 'transparent', border: 'none',
+                      color: userTz === opt.tz ? '#fff' : '#5A6478',
+                      fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      background: userTz === opt.tz ? '#4A7CFF' : 'transparent',
+                      border: `1px solid ${userTz === opt.tz ? '#4A7CFF' : '#252C3A'}`,
+                    }} />
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, marginRight: 4 }}>{opt.label}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#3A4255' }}>
+                      {opt.tz.split('/').pop()?.replace(/_/g, ' ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
