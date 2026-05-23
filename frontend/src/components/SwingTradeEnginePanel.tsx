@@ -959,15 +959,25 @@ export default function SwingTradeEnginePanel({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            title="Re-scan"
-            className="rounded-lg p-1.5 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+        </div>
+
+        {/* Verdict section */}
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[13px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>
+              {formatSwingEngineLabel(result.final_action)}
+            </span>
+            <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+              <svg viewBox="0 0 40 40" width={40} height={40} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={20} cy={20} r={16} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+                <circle cx={20} cy={20} r={16} fill="none" stroke={execTone === 'green' ? '#10b981' : execTone === 'blue' ? '#3b82f6' : execTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={100.53} strokeDashoffset={100.53 - (Math.min(result.confidence ?? 0, 95) / 95) * 100.53} />
+              </svg>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 9, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.1 }}>
+                {Math.min(result.confidence, 95)}<br /><span style={{ fontSize: 7, color: '#5a6478' }}>CONF</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{execSummary || formatSwingEngineLabel(result.final_action)}</div>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
@@ -1013,6 +1023,96 @@ export default function SwingTradeEnginePanel({
             </div>
             <div className="mt-1 text-sm font-bold text-gray-100">{result.expected_holding_period || '3–5 trading days'}</div>
           </div>
+        </div>
+
+        {/* Trade Action Summary label */}
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+        <div className="text-[10px] text-gray-500">Entry plan, risk profile, and pre-committed exit levels</div>
+
+        {/* Entry Plan / Risk Profile */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
+            {[
+              { label: 'Entry', value: execLevels.breakoutTrigger ? <span className="font-mono font-bold text-emerald-400 text-[12px]">{execLevels.breakoutTrigger}</span> : <span className="font-mono text-amber-400 text-[11px]">Wait — no valid entry yet</span> },
+              { label: 'Structure', value: <span className="font-mono text-gray-400 text-[11px]">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</span> },
+              { label: 'Stop Loss', value: execLevels.riskBelow ? <span className="font-mono font-bold text-red-400 text-[12px]">{execLevels.riskBelow}</span> : <span className="font-mono text-gray-500 text-[11px]">Not defined until setup forms</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
+                <span className="text-[11px] text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
+            {[
+              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-[11px]">—</span> },
+              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-[11px]">{result.risk_level}</span> },
+              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-[11px]">0.8x</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
+                <span className="text-[11px] text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Exit Plan */}
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
+          {(() => {
+            const eg = result.entry_guidance as Record<string, unknown> | undefined
+            const exitRules = (eg?.exit_rules || result.metrics?.exit_rules) as Array<{ trigger: string; price: number; action: string; note: string }> | undefined
+            if (exitRules && exitRules.length > 0) {
+              return (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                      <th className="pb-1.5 text-left font-medium">WHEN</th>
+                      <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
+                      <th className="pb-1.5 text-left font-medium">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                    {exitRules.map((rule, i) => {
+                      const isStop = rule.trigger.toLowerCase().includes('stop')
+                      const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
+                      const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
+                      const isEOD = rule.price === 0
+                      const isVwap = rule.trigger.toLowerCase().includes('vwap')
+                      const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
+                      const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
+                          <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                            {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
+                          </td>
+                          <td className={`py-2 align-top ${actionCls}`}>{rule.action}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )
+            }
+            return (
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-1.5 text-left font-medium">WHEN</th>
+                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-1.5 text-left font-medium">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-[11px]">Run analysis for detailed exit levels</td></tr>
+                </tbody>
+              </table>
+            )
+          })()}
         </div>
 
         {/* ═══ 4-State Swing System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
