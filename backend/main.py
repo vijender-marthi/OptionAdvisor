@@ -288,6 +288,9 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(command_center_router, prefix="/api")
 
+from tradedesk_routes import desk_router
+app.include_router(desk_router, prefix="/api")
+
 
 def safe_float(val, default=0.0) -> float:
     try:
@@ -3771,6 +3774,9 @@ from pydantic import BaseModel as _BM
 
 init_journal_db()
 init_trade_ideas_db()
+
+from storage import init_tradedesk_db as _init_tradedesk_db
+_init_tradedesk_db()
 
 
 class JournalSaveRequest(_BM):

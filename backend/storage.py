@@ -2159,3 +2159,369 @@ def _row_to_entry(row) -> dict[str, Any]:
     d = dict(row)
     d["legs"] = json.loads(d.pop("legs_json", "[]"))
     return d
+
+
+# ─────────────────────────────────────────────────────────────
+# TRADE DESK — watchlist, trade_log, trade_alerts
+# ─────────────────────────────────────────────────────────────
+
+def init_tradedesk_db() -> None:
+    """Create TradeDesk tables (idempotent)."""
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS desk_watchlist (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                ticker      TEXT NOT NULL,
+                trade_type  TEXT NOT NULL DEFAULT 'day',
+                sort_order  INTEGER NOT NULL DEFAULT 0,
+                added_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, ticker, trade_type)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS desk_trade_log (
+                id              TEXT PRIMARY KEY,
+                user_id         TEXT NOT NULL,
+                ticker          TEXT NOT NULL,
+                trade_type      TEXT NOT NULL DEFAULT 'day',
+                signal_given    TEXT NOT NULL DEFAULT '',
+                confidence_score REAL NOT NULL DEFAULT 0,
+                planned_entry   REAL,
+                planned_t1      REAL,
+                planned_t2      REAL,
+                planned_stop    REAL,
+                structure       TEXT NOT NULL DEFAULT '',
+                actual_entry    REAL,
+                contracts       INTEGER NOT NULL DEFAULT 1,
+                entry_time      TEXT,
+                exit_price      REAL,
+                exit_time       TEXT,
+                exit_reason     TEXT NOT NULL DEFAULT '',
+                followed_plan   TEXT NOT NULL DEFAULT 'yes',
+                outcome         TEXT NOT NULL DEFAULT '',
+                pnl_estimate    REAL,
+                notes           TEXT NOT NULL DEFAULT '',
+                logged_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS desk_trade_alerts (
+                id              TEXT PRIMARY KEY,
+                user_id         TEXT NOT NULL,
+                ticker          TEXT NOT NULL,
+                trade_type      TEXT NOT NULL DEFAULT 'day',
+                alert_type      TEXT NOT NULL,
+                threshold_value REAL,
+                target_signal   TEXT NOT NULL DEFAULT '',
+                notify_method   TEXT NOT NULL DEFAULT 'inapp',
+                expires         TEXT NOT NULL DEFAULT 'eod',
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                fired_at        TEXT,
+                fired_value     REAL,
+                action_taken    TEXT NOT NULL DEFAULT '',
+                created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_desk_watchlist_user ON desk_watchlist(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_desk_trade_log_user ON desk_trade_log(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_desk_alerts_user ON desk_trade_alerts(user_id)")
+
+
+# — Watchlist ——————————————————————————————————————————————
+
+def desk_get_watchlist(user_id: str) -> list[dict[str, Any]]:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, ticker, trade_type, sort_order, added_at FROM desk_watchlist WHERE user_id = ? ORDER BY sort_order, added_at",
+            (em,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desk_add_to_watchlist(user_id: str, ticker: str, trade_type: str = "day") -> dict[str, Any]:
+    em = normalize_email(user_id)
+    t = ticker.upper().strip()
+    tt = trade_type.lower().strip() if trade_type else "day"
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO desk_watchlist (user_id, ticker, trade_type)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, ticker, trade_type) DO NOTHING
+            """,
+            (em, t, tt),
+        )
+        row = conn.execute(
+            "SELECT id, ticker, trade_type, sort_order, added_at FROM desk_watchlist WHERE user_id = ? AND ticker = ? AND trade_type = ?",
+            (em, t, tt),
+        ).fetchone()
+    return dict(row) if row else {}
+
+
+def desk_remove_from_watchlist(user_id: str, ticker: str, trade_type: str = "day") -> bool:
+    em = normalize_email(user_id)
+    t = ticker.upper().strip()
+    tt = trade_type.lower().strip() if trade_type else "day"
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM desk_watchlist WHERE user_id = ? AND ticker = ? AND trade_type = ?",
+            (em, t, tt),
+        )
+    return cur.rowcount > 0
+
+
+# — Trade Log ——————————————————————————————————————————————
+
+def desk_create_trade(user_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    em = normalize_email(user_id)
+    trade_id = str(uuid.uuid4())[:12]
+    now = datetime.now(ZoneInfo("America/New_York")).isoformat(timespec="seconds")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO desk_trade_log (
+                id, user_id, ticker, trade_type, signal_given, confidence_score,
+                planned_entry, planned_t1, planned_t2, planned_stop, structure,
+                actual_entry, contracts, entry_time, exit_price, exit_time,
+                exit_reason, followed_plan, outcome, pnl_estimate, notes,
+                logged_at, updated_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?
+            )
+            """,
+            (
+                trade_id, em,
+                data.get("ticker", "").upper().strip(),
+                data.get("trade_type", "day"),
+                data.get("signal_given", ""),
+                float(data.get("confidence_score") or 0),
+                data.get("planned_entry"), data.get("planned_t1"),
+                data.get("planned_t2"), data.get("planned_stop"),
+                data.get("structure", ""),
+                data.get("actual_entry"), int(data.get("contracts") or 1),
+                data.get("entry_time"), data.get("exit_price"), data.get("exit_time"),
+                data.get("exit_reason", ""),
+                data.get("followed_plan", "yes"),
+                data.get("outcome", ""),
+                data.get("pnl_estimate"),
+                data.get("notes", ""),
+                now, now,
+            ),
+        )
+    return desk_get_trade(em, trade_id) or {}
+
+
+def desk_get_trade(user_id: str, trade_id: str) -> Optional[dict[str, Any]]:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM desk_trade_log WHERE id = ? AND user_id = ?",
+            (trade_id, em),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def desk_update_trade(user_id: str, trade_id: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    em = normalize_email(user_id)
+    allowed = {
+        "actual_entry", "contracts", "entry_time", "exit_price", "exit_time",
+        "exit_reason", "followed_plan", "outcome", "pnl_estimate", "notes",
+        "planned_entry", "planned_t1", "planned_t2", "planned_stop", "structure",
+        "signal_given", "confidence_score", "trade_type",
+    }
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return desk_get_trade(em, trade_id)
+    now = datetime.now(ZoneInfo("America/New_York")).isoformat(timespec="seconds")
+    updates["updated_at"] = now
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE desk_trade_log SET {set_clause} WHERE id = ? AND user_id = ?",
+            (*updates.values(), trade_id, em),
+        )
+    return desk_get_trade(em, trade_id)
+
+
+def desk_get_trades(user_id: str, filters: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+    em = normalize_email(user_id)
+    clauses = ["user_id = ?"]
+    params: list[Any] = [em]
+    f = filters or {}
+    if f.get("trade_type"):
+        clauses.append("trade_type = ?")
+        params.append(f["trade_type"])
+    if f.get("outcome"):
+        clauses.append("outcome = ?")
+        params.append(f["outcome"])
+    if f.get("ticker"):
+        clauses.append("ticker = ?")
+        params.append(f["ticker"].upper().strip())
+    where = " AND ".join(clauses)
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM desk_trade_log WHERE {where} ORDER BY logged_at DESC LIMIT 200",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desk_get_open_trades(user_id: str) -> list[dict[str, Any]]:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM desk_trade_log WHERE user_id = ? AND (exit_time IS NULL OR exit_time = '') ORDER BY logged_at DESC",
+            (em,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desk_delete_trade(user_id: str, trade_id: str) -> bool:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM desk_trade_log WHERE id = ? AND user_id = ?",
+            (trade_id, em),
+        )
+    return cur.rowcount > 0
+
+
+def desk_get_trade_stats(user_id: str, days: int = 30) -> dict[str, Any]:
+    em = normalize_email(user_id)
+    from datetime import timedelta
+    cutoff = (datetime.now(ZoneInfo("America/New_York")) - timedelta(days=days)).isoformat(timespec="seconds")
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT outcome, followed_plan, pnl_estimate FROM desk_trade_log WHERE user_id = ? AND logged_at >= ?",
+            (em, cutoff),
+        ).fetchall()
+        open_count_row = conn.execute(
+            "SELECT COUNT(*) AS c FROM desk_trade_log WHERE user_id = ? AND (exit_time IS NULL OR exit_time = '')",
+            (em,),
+        ).fetchone()
+    total = len(rows)
+    wins = sum(1 for r in rows if str(r["outcome"] or "").upper() == "WIN")
+    losses = sum(1 for r in rows if str(r["outcome"] or "").upper() == "LOSS")
+    followed = sum(1 for r in rows if str(r["followed_plan"] or "").lower() in ("yes", "y", "true"))
+    pnl_vals = [float(r["pnl_estimate"]) for r in rows if r["pnl_estimate"] is not None]
+    avg_rr = (sum(pnl_vals) / len(pnl_vals)) if pnl_vals else 0.0
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "open_count": int(open_count_row["c"]) if open_count_row else 0,
+        "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
+        "avg_rr": round(avg_rr, 2),
+        "followed_plan_pct": round(followed / total * 100, 1) if total > 0 else 0.0,
+    }
+
+
+# — Alerts ——————————————————————————————————————————————
+
+def desk_create_alert(user_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    em = normalize_email(user_id)
+    alert_id = str(uuid.uuid4())[:12]
+    now = datetime.now(ZoneInfo("America/New_York")).isoformat(timespec="seconds")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO desk_trade_alerts (
+                id, user_id, ticker, trade_type, alert_type, threshold_value,
+                target_signal, notify_method, expires, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                alert_id, em,
+                data.get("ticker", "").upper().strip(),
+                data.get("trade_type", "day"),
+                data.get("alert_type", ""),
+                data.get("threshold_value"),
+                data.get("target_signal", ""),
+                data.get("notify_method", "inapp"),
+                data.get("expires", "eod"),
+                now,
+            ),
+        )
+    return desk_get_alert(em, alert_id) or {}
+
+
+def desk_get_alert(user_id: str, alert_id: str) -> Optional[dict[str, Any]]:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM desk_trade_alerts WHERE id = ? AND user_id = ?",
+            (alert_id, em),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def desk_get_alerts(user_id: str, active_only: bool = True) -> list[dict[str, Any]]:
+    em = normalize_email(user_id)
+    clause = "user_id = ?"
+    params: list[Any] = [em]
+    if active_only:
+        clause += " AND is_active = 1"
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM desk_trade_alerts WHERE {clause} ORDER BY created_at DESC LIMIT 100",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desk_get_alert_history(user_id: str) -> list[dict[str, Any]]:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM desk_trade_alerts WHERE user_id = ? AND is_active = 0 ORDER BY fired_at DESC LIMIT 50",
+            (em,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desk_delete_alert(user_id: str, alert_id: str) -> bool:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM desk_trade_alerts WHERE id = ? AND user_id = ?",
+            (alert_id, em),
+        )
+    return cur.rowcount > 0
+
+
+def desk_fire_alert(user_id: str, alert_id: str, fired_value: Optional[float], action_taken: str) -> bool:
+    em = normalize_email(user_id)
+    now = datetime.now(ZoneInfo("America/New_York")).isoformat(timespec="seconds")
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE desk_trade_alerts
+            SET is_active = 0, fired_at = ?, fired_value = ?, action_taken = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (now, fired_value, action_taken, alert_id, em),
+        )
+    return cur.rowcount > 0
+
+
+def desk_get_alert_count(user_id: str) -> int:
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM desk_trade_alerts WHERE user_id = ? AND is_active = 1",
+            (em,),
+        ).fetchone()
+    return int(row["c"]) if row else 0

@@ -11,6 +11,7 @@ import { locationToPage } from './routing/paths'
 
 const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
+const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
@@ -136,6 +137,16 @@ function ShellRoutes() {
       <Route path="/trading-glossary" element={<Navigate to="/help" replace />} />
 
       <Route element={<RequireAuth />}>
+        {/* TradeDesk — full screen, no AppLayout */}
+        <Route
+          path="/desk"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <TradeDeskPage />
+            </Suspense>
+          }
+        />
+
         <Route element={<RoleGuard />}>
           <Route element={<AppLayout />}>
             <Route element={<SuspensedOutlet />}>

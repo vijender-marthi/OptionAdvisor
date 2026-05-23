@@ -718,3 +718,182 @@ export const cancelTradingOrder = async (email: string, order_id: string): Promi
 export const closeTradingPosition = async (email: string, symbol: string): Promise<void> => {
   await api.post('/trading/close', { email, symbol })
 }
+
+// ─── TradeDesk API ────────────────────────────────────────────────────────────
+
+export interface DeskWatchlistItem {
+  id?: number
+  ticker: string
+  trade_type: string
+  sort_order?: number
+  added_at?: string
+}
+
+export interface DeskTradeLog {
+  id: string
+  user_id: string
+  ticker: string
+  trade_type: string
+  signal_given: string
+  confidence_score: number
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure: string
+  actual_entry?: number | null
+  contracts: number
+  entry_time?: string | null
+  exit_price?: number | null
+  exit_time?: string | null
+  exit_reason: string
+  followed_plan: string
+  outcome: string
+  pnl_estimate?: number | null
+  notes: string
+  logged_at: string
+  updated_at: string
+}
+
+export interface DeskTradeStats {
+  total: number
+  wins: number
+  losses: number
+  open_count: number
+  win_rate: number
+  avg_rr: number
+  followed_plan_pct: number
+}
+
+export interface DeskAlert {
+  id: string
+  user_id: string
+  ticker: string
+  trade_type: string
+  alert_type: string
+  threshold_value?: number | null
+  target_signal: string
+  notify_method: string
+  expires: string
+  is_active: number
+  fired_at?: string | null
+  fired_value?: number | null
+  action_taken: string
+  created_at: string
+}
+
+export interface DeskTradeCreate {
+  ticker: string
+  trade_type?: string
+  signal_given?: string
+  confidence_score?: number
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure?: string
+  actual_entry?: number | null
+  contracts?: number
+  entry_time?: string | null
+  notes?: string
+}
+
+export interface DeskTradeUpdate {
+  actual_entry?: number | null
+  contracts?: number
+  entry_time?: string | null
+  exit_price?: number | null
+  exit_time?: string | null
+  exit_reason?: string
+  followed_plan?: string
+  outcome?: string
+  pnl_estimate?: number | null
+  notes?: string
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure?: string
+}
+
+export interface DeskAlertCreate {
+  ticker: string
+  trade_type?: string
+  alert_type: string
+  threshold_value?: number | null
+  target_signal?: string
+  notify_method?: string
+  expires?: string
+}
+
+export const deskApi = {
+  // Watchlist
+  getWatchlist: async (): Promise<DeskWatchlistItem[]> => {
+    const { data } = await api.get<DeskWatchlistItem[]>('/desk/watchlist')
+    return data
+  },
+  addToWatchlist: async (ticker: string, trade_type = 'day'): Promise<DeskWatchlistItem> => {
+    const { data } = await api.post<DeskWatchlistItem>('/desk/watchlist', { ticker, trade_type })
+    return data
+  },
+  removeFromWatchlist: async (ticker: string, trade_type = 'day'): Promise<void> => {
+    await api.delete(`/desk/watchlist/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+  },
+
+  // Analysis
+  getAnalysis: async (ticker: string, trade_type = 'day'): Promise<DayTradeScanResult & SwingTradeScanResult & { trade_type: string }> => {
+    const { data } = await api.get(`/desk/analysis/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+    return data
+  },
+
+  // Trade Log
+  getTrades: async (filters?: { trade_type?: string; outcome?: string; ticker?: string }): Promise<DeskTradeLog[]> => {
+    const { data } = await api.get<DeskTradeLog[]>('/desk/trades', { params: filters })
+    return data
+  },
+  getOpenTrades: async (): Promise<DeskTradeLog[]> => {
+    const { data } = await api.get<DeskTradeLog[]>('/desk/trades/open')
+    return data
+  },
+  getTradeStats: async (days = 30): Promise<DeskTradeStats> => {
+    const { data } = await api.get<DeskTradeStats>('/desk/trades/stats', { params: { days } })
+    return data
+  },
+  createTrade: async (body: DeskTradeCreate): Promise<DeskTradeLog> => {
+    const { data } = await api.post<DeskTradeLog>('/desk/trades', body)
+    return data
+  },
+  updateTrade: async (id: string, body: DeskTradeUpdate): Promise<DeskTradeLog> => {
+    const { data } = await api.patch<DeskTradeLog>(`/desk/trades/${encodeURIComponent(id)}`, body)
+    return data
+  },
+  deleteTrade: async (id: string): Promise<void> => {
+    await api.delete(`/desk/trades/${encodeURIComponent(id)}`)
+  },
+
+  // Alerts
+  getAlerts: async (active_only = true): Promise<DeskAlert[]> => {
+    const { data } = await api.get<DeskAlert[]>('/desk/alerts', { params: { active_only } })
+    return data
+  },
+  getAlertHistory: async (): Promise<DeskAlert[]> => {
+    const { data } = await api.get<DeskAlert[]>('/desk/alerts/history')
+    return data
+  },
+  getAlertCount: async (): Promise<number> => {
+    const { data } = await api.get<{ count: number }>('/desk/alerts/count')
+    return data.count
+  },
+  createAlert: async (body: DeskAlertCreate): Promise<DeskAlert> => {
+    const { data } = await api.post<DeskAlert>('/desk/alerts', body)
+    return data
+  },
+  deleteAlert: async (id: string): Promise<void> => {
+    await api.delete(`/desk/alerts/${encodeURIComponent(id)}`)
+  },
+  fireAlert: async (id: string, fired_value?: number, action_taken = ''): Promise<void> => {
+    await api.patch(`/desk/alerts/${encodeURIComponent(id)}/fire`, null, {
+      params: { fired_value, action_taken },
+    })
+  },
+}
