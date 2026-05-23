@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Star, StarOff, RefreshCw, Database, Layers, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
@@ -15,6 +15,16 @@ import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+
+function useWindowWidth() {
+  const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1280)
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return w
+}
 
 const C = {
   bgPage:    '#0A0C10',
@@ -532,12 +542,15 @@ export default function TickerPage() {
     marginTop: 14,
   }
 
-  const L = 280
+  const windowWidth = useWindowWidth()
+  const isMobile = windowWidth < 768
+  const isDesktop = windowWidth >= 1024
+  const L = isMobile ? undefined : 280
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: '20px 24px' }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 20, alignItems: 'flex-start', background: C.bgPage, minHeight: '100vh', padding: isMobile ? '12px' : '20px 24px' }}>
       {/* Left: Search panel */}
-      <div style={{ width: L, flexShrink: 0, position: 'sticky', top: 20 }}>
+      <div style={{ width: isMobile ? '100%' : L, flexShrink: 0, position: isDesktop ? 'sticky' : undefined, top: isDesktop ? 20 : undefined }}>
         <TickerInput
           onAnalyze={handleAnalyzeWithCache}
           loading={loading}
