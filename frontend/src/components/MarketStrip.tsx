@@ -26,8 +26,8 @@ function etClock(tz: string): { time: string; session: string } {
   const t = new Date().toLocaleTimeString('en-US', {
     timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
   })
-  const h = new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false })
-  const hNum = parseInt(h)
+  const et = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
+  const hNum = parseInt(et)
   const session =
     hNum < 4  ? 'Closed' :
     hNum < 9  ? 'Pre-Market' :

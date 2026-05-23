@@ -18,7 +18,7 @@ import type {
   DeskTradeCreate, DeskTradeUpdate, DeskAlertCreate,
   DayTradeScanResult, SwingTradeScanResult,
 } from '../api/client'
-import { fetchMarketPosition } from '../api/commandCenter'
+
 import LeftPanel from '../components/desk/LeftPanel'
 import VerdictTab from '../components/desk/VerdictTab'
 import JournalTab from '../components/desk/JournalTab'
@@ -48,34 +48,12 @@ const C = {
   purple:    '#6B7FD4',
 }
 
-// ── Timezone options ───────────────────────────────────────────────────────
-const TIMEZONE_OPTIONS = [
-  { label: 'ET', tz: 'America/New_York' },
-  { label: 'CT', tz: 'America/Chicago' },
-  { label: 'MT', tz: 'America/Denver' },
-  { label: 'PT', tz: 'America/Los_Angeles' },
-]
-
-function getSessionColor(session: string): string {
-  switch (session) {
-    case 'Opening':     return '#00E5A0'
-    case 'Power Hour':  return '#00E5A0'
-    case 'Morning':     return '#F5A623'
-    case 'Closing':     return '#F5A623'
-    case 'Midday':      return '#5A6478'
-    case 'Pre-Market':  return '#6B7FD4'
-    case 'After-Hours': return '#6B7FD4'
-    case 'Closed':      return '#3A4255'
-    default:            return '#5A6478'
-  }
-}
-
 function etClock(tz: string): { time: string; session: string } {
   const t = new Date().toLocaleTimeString('en-US', {
     timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
   })
-  const h = new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false })
-  const hNum = parseInt(h)
+  const et = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
+  const hNum = parseInt(et)
   const session =
     hNum < 4  ? 'Closed' :
     hNum < 9  ? 'Pre-Market' :
@@ -86,7 +64,7 @@ function etClock(tz: string): { time: string; session: string } {
     hNum < 16 ? 'Closing' :
     hNum < 20 ? 'After-Hours' :
                 'Closed'
-  const tzLabel = TIMEZONE_OPTIONS.find(o => o.tz === tz)?.label || 'ET'
+  const tzLabel = tz === 'America/New_York' ? 'ET' : tz === 'America/Chicago' ? 'CT' : tz === 'America/Denver' ? 'MT' : 'PT'
   return { time: `${t} ${tzLabel}`, session }
 }
 
@@ -124,13 +102,6 @@ export default function TradeDeskPage() {
   const [alertCount, setAlertCount] = useState(0)
   const [drawer, setDrawer] = useState<DrawerState>(null)
 
-  // Timezone preference
-  const [userTz, setUserTz] = useState(() => { try { return localStorage.getItem('oa_timezone') || localStorage.getItem('desk_tz') || 'America/New_York' } catch { return 'America/New_York' } })
-  const userTzRef = useRef(userTz)
-  const [showTzPicker, setShowTzPicker] = useState(false)
-
-  // Topbar market
-  const [clock, setClock] = useState<{ time: string; session: string }>(() => etClock(userTz))
   const [marketData, setMarketData] = useState<{
     spy?: number; spyChg?: number
     qqq?: number; qqqChg?: number
@@ -194,57 +165,22 @@ export default function TradeDeskPage() {
     }
   }, [])
 
-  const loadMarketData = useCallback(async () => {
-    try {
-      const res = await fetchMarketPosition()
-      const d = res.data as Record<string, unknown> | null
-      if (d) {
-        const vixNum = (d.vix ?? d.vix_price) as number | undefined
-        setMarketData(prev => ({
-          ...prev,
-          spy:      (d.spy_price ?? d.spy) as number | undefined,
-          spyChg:   (d.spy_change_pct ?? d.spy_chg ?? d.spyChg) as number | undefined,
-          qqq:      (d.qqq_price ?? d.qqq) as number | undefined,
-          qqqChg:   (d.qqq_change_pct ?? d.qqq_chg ?? d.qqqChg) as number | undefined,
-          vix:      vixNum,
-          vixLabel: (d.vix_label as string | undefined) ?? (
-            vixNum == null ? undefined :
-            vixNum < 15 ? 'Low' : vixNum < 20 ? 'Contained' : vixNum < 25 ? 'Elevated' : 'High'
-          ),
-          regime:     (d.signal_label ?? d.position_signal ?? d.regime) as string | undefined,
-          signalTone: d.signal_tone as string | undefined,
-        }))
-      }
-    } catch { /* ignore */ }
-  }, [])
-
   // ── Mount effects ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetchWatchlist()
     fetchTrades()
     fetchAlerts()
-    loadMarketData()
 
-    const clockId = setInterval(() => setClock(etClock(userTzRef.current)), 30_000)
     const pollId = setInterval(() => {
       fetchWatchlist()
       fetchAlerts()
-      loadMarketData()
     }, 60_000)
 
     return () => {
-      clearInterval(clockId)
       clearInterval(pollId)
     }
-  }, [fetchWatchlist, fetchAlerts, loadMarketData])
-
-  // Keep ref current, re-tick clock, persist to localStorage whenever tz changes
-  useEffect(() => {
-    userTzRef.current = userTz
-    setClock(etClock(userTz))
-    try { localStorage.setItem('oa_timezone', userTz); localStorage.removeItem('desk_tz') } catch {}
-  }, [userTz])
+  }, [fetchWatchlist, fetchAlerts])
 
   useEffect(() => {
     if (watchlist.length > 0 && !selectedTicker) {
@@ -317,11 +253,6 @@ export default function TradeDeskPage() {
     await fetchAlerts()
   }, [fetchAlerts])
 
-  const handleTzChange = (tz: string) => {
-    setUserTz(tz)
-    setShowTzPicker(false)
-  }
-
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const openTradeForCurrent = trades.find(
@@ -343,21 +274,6 @@ export default function TradeDeskPage() {
     ? (analysis.metrics as Record<string, unknown>)?.price_change_pct as number | undefined
     : undefined
 
-  // Market regime badge color
-  const regimeBadgeColor = (() => {
-    const tone = marketData.signalTone
-    if (tone === 'green') return C.green
-    if (tone === 'red') return C.red
-    return C.amber
-  })()
-  const regimeBadgeBg = (() => {
-    const tone = marketData.signalTone
-    if (tone === 'green') return 'rgba(0,229,160,0.08)'
-    if (tone === 'red') return 'rgba(255,77,109,0.08)'
-    return 'rgba(245,166,35,0.08)'
-  })()
-  const regimeBadgeLabel = marketData.regime || 'NEUTRAL MARKET'
-
   // Trade type badge label
   const tradeTypeBadgeLabel: Record<string, string> = {
     day:   'DAY TRADE · 1-2 DTE',
@@ -366,144 +282,27 @@ export default function TradeDeskPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: C.bgPage, color: '#fff', fontFamily: 'sans-serif' }}>
-      {/* ── TOPBAR ── */}
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        height: 44, padding: '0 12px',
-        background: C.bgPage, borderBottom: `1px solid ${C.border}`,
-        flexShrink: 0, gap: 8,
-      }}>
-        {/* Left: hamburger (mobile/tablet) + logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {!isDesktop && (
-            <button
-              type="button"
-              onClick={() => setPanelOpen(o => !o)}
-              aria-label="Toggle panel"
-              style={{
-                background: 'transparent', border: `1px solid ${C.borderSub}`,
-                color: C.muted, borderRadius: 6, padding: '4px 8px',
-                fontSize: '1rem', cursor: 'pointer', lineHeight: 1,
-              }}
-            >
-              ☰
-            </button>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>Option</span>
-            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: C.green }}>Advisor</span>
-          </div>
-        </div>
-
-        {/* Center: market strip — condensed on mobile */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 20, fontFamily: 'monospace', fontSize: '0.72rem', overflow: 'hidden', flex: 1, justifyContent: 'center' }}>
-          <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}`, flexShrink: 0 }} />
-          {/* SPY — always visible */}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
-            SPY
-            {marketData.spy
-              ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.spy.toFixed(2)}</span>{marketData.spyChg !== undefined && <span style={{ color: marketData.spyChg >= 0 ? C.green : C.red }}>{marketData.spyChg >= 0 ? '+' : ''}{marketData.spyChg.toFixed(2)}%</span>}</>
-              : <span style={{ color: C.muted }}>—</span>
-            }
-          </span>
-          {/* QQQ — hide on mobile */}
-          {!isMobile && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
-              QQQ
-              {marketData.qqq
-                ? <><span style={{ color: '#fff', fontWeight: 700 }}>${marketData.qqq.toFixed(2)}</span>{marketData.qqqChg !== undefined && <span style={{ color: marketData.qqqChg >= 0 ? C.green : C.red }}>{marketData.qqqChg >= 0 ? '+' : ''}{marketData.qqqChg.toFixed(2)}%</span>}</>
-                : <span style={{ color: C.muted }}>—</span>
-              }
-            </span>
-          )}
-          {/* VIX — hide on mobile */}
-          {!isMobile && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: C.muted }}>
-              VIX
-              {marketData.vix != null
-                ? <>
-                    <span style={{ color: '#fff', fontWeight: 700 }}>{marketData.vix.toFixed(1)}</span>
-                    <span style={{ color: marketData.vix <= 20 ? C.green : marketData.vix <= 25 ? C.amber : C.red }}>
-                      {marketData.vixLabel || (marketData.vix <= 20 ? 'Contained' : marketData.vix <= 25 ? 'Elevated' : 'High')}
-                    </span>
-                  </>
-                : <span style={{ color: C.muted }}>—</span>
-              }
-            </span>
-          )}
-          {/* Regime badge */}
-          <span style={{
-            border: `1px solid ${regimeBadgeColor}`, color: regimeBadgeColor,
-            background: regimeBadgeBg,
-            borderRadius: 20, padding: '3px 10px', fontSize: isMobile ? '0.62rem' : '0.7rem', fontWeight: 700,
-            letterSpacing: '0.04em', whiteSpace: 'nowrap', textTransform: 'uppercase',
-          }}>
-            {regimeBadgeLabel}
-          </span>
-        </div>
-
-        {/* Right: clock with timezone picker */}
-        <div style={{ position: 'relative', flexShrink: 0 }}>
+      {/* ── TOPBAR (hamburger only — logo + market data in global MarketStrip) ── */}
+      {!isDesktop && (
+        <header style={{
+          display: 'flex', alignItems: 'center', height: 44, padding: '0 12px',
+          background: C.bgPage, borderBottom: `1px solid ${C.border}`,
+          flexShrink: 0,
+        }}>
           <button
             type="button"
-            onClick={() => setShowTzPicker(p => !p)}
-            title="Click to change timezone"
+            onClick={() => setPanelOpen(o => !o)}
+            aria-label="Toggle panel"
             style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              fontFamily: 'monospace', fontSize: '0.68rem', padding: '2px 4px', borderRadius: 4,
-              display: 'flex', alignItems: 'center', gap: 0, whiteSpace: 'nowrap',
+              background: 'transparent', border: `1px solid ${C.borderSub}`,
+              color: C.muted, borderRadius: 6, padding: '4px 8px',
+              fontSize: '1rem', cursor: 'pointer', lineHeight: 1,
             }}
           >
-            <span style={{ color: C.muted }}>{clock.time}</span>
-            {!isMobile && (
-              <span style={{ color: getSessionColor(clock.session), marginLeft: 4, fontWeight: 600 }}>
-                · {clock.session}
-              </span>
-            )}
+            ☰
           </button>
-
-          {showTzPicker && (
-            <>
-              <div onClick={() => setShowTzPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, zIndex: 91,
-                background: '#111318', border: `1px solid #252C3A`,
-                borderRadius: 10, padding: '10px 0', minWidth: 160,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)', marginTop: 6,
-              }}>
-                <div style={{ padding: '4px 14px 8px', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5A6478' }}>
-                  Timezone
-                </div>
-                {TIMEZONE_OPTIONS.map(opt => (
-                  <button
-                    key={opt.tz}
-                    type="button"
-                    onClick={() => handleTzChange(opt.tz)}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#181C23' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                      padding: '8px 14px', background: 'transparent', border: 'none',
-                      color: userTz === opt.tz ? '#fff' : '#5A6478',
-                      fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                      background: userTz === opt.tz ? '#4A7CFF' : 'transparent',
-                      border: `1px solid ${userTz === opt.tz ? '#4A7CFF' : '#252C3A'}`,
-                    }} />
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, marginRight: 4 }}>{opt.label}</span>
-                    <span style={{ fontSize: '0.7rem', color: '#3A4255' }}>
-                      {opt.tz.split('/').pop()?.replace(/_/g, ' ')}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* ── BODY ── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
