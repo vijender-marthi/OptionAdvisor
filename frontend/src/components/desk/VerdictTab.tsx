@@ -287,22 +287,23 @@ export default function VerdictTab({
           <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
             Entry Plan
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-              <span style={{ color: C.muted }}>Entry</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(entry)}</span>
-            </div>
-            {structure && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                <span style={{ color: C.muted }}>Structure</span>
-                <span style={{ fontFamily: 'monospace', color: '#fff', maxWidth: 120, textAlign: 'right', fontSize: '0.75rem' }}>{structure}</span>
+          {(() => {
+            const entryRows = [
+              { label: 'Entry', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(entry)}</span> },
+              ...(structure ? [{ label: 'Structure', value: <span style={{ fontFamily: 'monospace', color: '#fff', maxWidth: 120, textAlign: 'right' as const, fontSize: '0.75rem' }}>{structure}</span> }] : []),
+              { label: 'Stop', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</span> },
+            ]
+            return entryRows.map((row, i) => (
+              <div key={row.label} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: '0.82rem', paddingTop: 8, paddingBottom: 8,
+                borderBottom: i < entryRows.length - 1 ? `1px solid ${C.border}` : 'none',
+              }}>
+                <span style={{ color: C.muted }}>{row.label}</span>
+                {row.value}
               </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-              <span style={{ color: C.muted }}>Stop</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</span>
-            </div>
-          </div>
+            ))
+          })()}
         </div>
 
         {/* Risk Profile */}
@@ -310,31 +311,32 @@ export default function VerdictTab({
           <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
             Risk Profile
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-              <span style={{ color: C.muted }}>R/R</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rr != null && rr >= 2 ? C.green : C.amber }}>
-                {rr != null ? `${rr.toFixed(1)}:1` : '—'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-              <span style={{ color: C.muted }}>Risk Level</span>
-              <span style={{ fontFamily: 'monospace', color: '#fff', fontSize: '0.75rem' }}>
-                {analysis.risk_state || analysis.risk_level || '—'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-              <span style={{ color: C.muted }}>RVOL</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rvol != null && rvol >= 1.5 ? C.green : C.muted }}>
-                {rvol != null ? `${rvol.toFixed(2)}×` : '—'}
-              </span>
-            </div>
-          </div>
+          {(() => {
+            const riskRows = [
+              { label: 'R/R', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rr != null && rr >= 2 ? C.green : C.amber }}>{rr != null ? `${rr.toFixed(1)}:1` : '—'}</span> },
+              { label: 'Risk Level', value: <span style={{ fontFamily: 'monospace', color: '#fff', fontSize: '0.75rem' }}>{analysis.risk_state || analysis.risk_level || '—'}</span> },
+              { label: 'RVOL', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: rvol != null && rvol >= 1.5 ? C.green : C.muted }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</span> },
+            ]
+            return riskRows.map((row, i) => (
+              <div key={row.label} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: '0.82rem', paddingTop: 8, paddingBottom: 8,
+                borderBottom: i < riskRows.length - 1 ? `1px solid ${C.border}` : 'none',
+              }}>
+                <span style={{ color: C.muted }}>{row.label}</span>
+                {row.value}
+              </div>
+            ))
+          })()}
         </div>
       </div>
 
       {/* 3. Exit Plan card */}
       <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
+        <style>{`
+          .desk-exit-row { border-bottom: 1px solid #1E2330; }
+          .desk-exit-row:last-child { border-bottom: none; }
+        `}</style>
         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
           Exit Plan — Pre-Committed
         </div>
@@ -343,16 +345,16 @@ export default function VerdictTab({
             <thead>
               <tr>
                 {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 6, fontSize: '0.68rem', letterSpacing: '0.06em' }}>{h}</th>
+                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {exitRules.map((rule, i) => (
-                <tr key={i}>
-                  <td style={{ paddingBottom: 4, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>{rule.trigger}</td>
-                  <td style={{ paddingBottom: 4, fontFamily: 'monospace', fontWeight: 700, color: rule.trigger.toLowerCase().includes('stop') ? C.red : C.green }}>{fmtP(rule.price)}</td>
-                  <td style={{ paddingBottom: 4, color: C.muted, fontSize: '0.75rem' }}>{rule.action}</td>
+                <tr key={i} className="desk-exit-row">
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>{rule.trigger}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: rule.trigger.toLowerCase().includes('stop') ? C.red : C.green }}>{fmtP(rule.price)}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>{rule.action}</td>
                 </tr>
               ))}
             </tbody>
@@ -362,37 +364,37 @@ export default function VerdictTab({
             <thead>
               <tr>
                 {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 6, fontSize: '0.68rem', letterSpacing: '0.06em' }}>{h}</th>
+                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {t1 != null && (
-                <tr>
-                  <td style={{ paddingBottom: 4, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T1 Hit</td>
-                  <td style={{ paddingBottom: 4, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t1)}</td>
-                  <td style={{ paddingBottom: 4, color: C.muted, fontSize: '0.75rem' }}>Sell 50%, trail rest</td>
+                <tr className="desk-exit-row">
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T1 Hit</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t1)}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Sell 50%, trail rest</td>
                 </tr>
               )}
               {t2 != null && (
-                <tr>
-                  <td style={{ paddingBottom: 4, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T2 Hit</td>
-                  <td style={{ paddingBottom: 4, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t2)}</td>
-                  <td style={{ paddingBottom: 4, color: C.muted, fontSize: '0.75rem' }}>Full exit</td>
+                <tr className="desk-exit-row">
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T2 Hit</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t2)}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Full exit</td>
                 </tr>
               )}
               {stop != null && (
-                <tr>
-                  <td style={{ paddingBottom: 4, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>Stop</td>
-                  <td style={{ paddingBottom: 4, fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</td>
-                  <td style={{ paddingBottom: 4, color: C.muted, fontSize: '0.75rem' }}>Full exit, no averaging</td>
+                <tr className="desk-exit-row">
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>Stop</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Full exit, no averaging</td>
                 </tr>
               )}
               {tradeType === 'day' && (
-                <tr>
-                  <td style={{ paddingBottom: 0, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>EOD</td>
-                  <td style={{ paddingBottom: 0, fontFamily: 'monospace', fontWeight: 700, color: C.muted }}>{lastPrice != null ? fmtP(lastPrice) : 'Close'}</td>
-                  <td style={{ paddingBottom: 0, color: C.muted, fontSize: '0.75rem' }}>Close all before 4 PM</td>
+                <tr className="desk-exit-row">
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>EOD</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.muted }}>{lastPrice != null ? fmtP(lastPrice) : 'Close'}</td>
+                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Close all before 4 PM</td>
                 </tr>
               )}
               {(t1 == null && t2 == null && stop == null) && (
