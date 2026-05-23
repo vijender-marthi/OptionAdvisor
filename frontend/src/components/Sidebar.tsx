@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Bot,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -125,6 +125,7 @@ export default function Sidebar() {
     {
       label: 'Home',
       items: [
+        { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
         { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },

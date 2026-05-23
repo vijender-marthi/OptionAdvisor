@@ -208,6 +208,7 @@ export type Page =
   | 'activate'
   | 'my-tickers'
   | 'my-watchlist'
+  | 'desk'
 
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
