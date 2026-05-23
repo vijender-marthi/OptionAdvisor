@@ -75,10 +75,8 @@ export default function TradeDeskPage() {
   const isTablet = windowWidth >= 640 && windowWidth < 1024
   const isDesktop = windowWidth >= 1024
 
-  // Left panel open/close (mobile: overlay, tablet: collapsible rail)
+  // Left panel open/close (mobile/tablet toggle)
   const [panelOpen, setPanelOpen] = useState(false)
-  // On desktop always show panel; on tablet/mobile controlled by panelOpen
-  const showPanel = isDesktop || panelOpen
   // Drawer left offset = panel width when panel is visible inline
   const drawerLeft = isDesktop ? 300 : 0
 
@@ -305,31 +303,64 @@ export default function TradeDeskPage() {
       )}
 
       {/* ── BODY ── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
+      <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', flex: 1, minHeight: 0 }}>
+
+        {/* Mobile/tablet search toggle */}
+        {!isDesktop && (
+          <div style={{ padding: '4px 12px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setPanelOpen(p => !p)}
+            style={{
+              background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10,
+              color: C.muted, padding: '10px 16px', fontSize: '0.82rem', fontWeight: 600,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            }}
+          >
+            <span style={{ fontSize: '1rem' }}>☰</span>
+            {panelOpen ? 'Hide search' : 'Show search'}
+          </button>
+          </div>
+        )}
 
         {/* Mobile/tablet overlay backdrop */}
-        {!isDesktop && showPanel && (
+        {!isDesktop && panelOpen && (
           <div
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40 }}
             onClick={() => setPanelOpen(false)}
           />
         )}
 
-        {/* Left panel */}
-        {showPanel && (
+        {/* Left panel — always visible on desktop */}
+        {isDesktop && (
+        <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <LeftPanel
+            watchlist={watchlist}
+            selectedTicker={selectedTicker}
+            tradeType={tradeType}
+            tradeTypeValue={tradeType}
+            onLoadTicker={handleLoadTicker}
+            onRemove={handleRemoveFromWatchlist}
+            onTradeTypeChange={handleTradeTypeChange}
+            openTradeSet={openTradeSet}
+            alertTickerSet={alertTickerSet}
+            verdicts={verdicts}
+          />
+        </div>
+        )}
+
+        {/* Mobile/tablet left panel overlay */}
+        {!isDesktop && panelOpen && (
           <div style={{
-            width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
-            // On mobile/tablet: fixed overlay sliding from left
-            ...(isDesktop ? {} : {
-              position: 'fixed', top: 44, bottom: 0, left: 0, zIndex: 50,
-            }),
+            position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 50, width: 300,
+            display: 'flex', flexDirection: 'column',
           }}>
             <LeftPanel
               watchlist={watchlist}
               selectedTicker={selectedTicker}
               tradeType={tradeType}
               tradeTypeValue={tradeType}
-              onLoadTicker={ticker => { handleLoadTicker(ticker); if (!isDesktop) setPanelOpen(false) }}
+              onLoadTicker={ticker => { handleLoadTicker(ticker); setPanelOpen(false) }}
               onRemove={handleRemoveFromWatchlist}
               onTradeTypeChange={handleTradeTypeChange}
               openTradeSet={openTradeSet}
