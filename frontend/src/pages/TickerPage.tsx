@@ -906,10 +906,11 @@ export default function TickerPage() {
           </div>
         )}
 
-        {/* Full Signal Breakdown (collapsible inside) */}
+        {!loading && data && displayData && (
         <div style={cardStyle}>
           <SignalPanel signals={displayData.signals} />
         </div>
+        )}
 
         {/* Disclaimer */}
         <div style={{
