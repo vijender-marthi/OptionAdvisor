@@ -85,16 +85,16 @@ export default function LeftPanel({
       display: 'flex', flexDirection: 'column', height: '100%',
       background: C.bgPanel, borderRight: `1px solid ${C.border}`,
     }}>
-      {/* Section 1 — Ticker input */}
+      {/* Section 1 — Ticker input + Trade type + Quick picks (Strategy Finder style) */}
       <div style={{ padding: 16, borderBottom: `1px solid ${C.border}` }}>
-        <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 700, color: C.muted, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
           Analyze Ticker
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             style={{
               flex: 1, minWidth: 0, background: C.bgPage, border: `1px solid ${C.borderSub}`,
-              borderRadius: 7, padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700,
+              borderRadius: 8, padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700,
               fontSize: '0.9rem', color: '#fff', outline: 'none', textTransform: 'uppercase',
             }}
             placeholder="AAPL…"
@@ -109,62 +109,67 @@ export default function LeftPanel({
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={!tickerInput.trim()}
             style={{
-              background: C.accent, border: 'none', borderRadius: 7,
-              padding: '7px 12px', color: '#fff', fontWeight: 700,
-              fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap',
+              background: tickerInput.trim() ? C.accent : C.bgCard,
+              border: 'none', borderRadius: 8,
+              padding: '10px 20px', color: tickerInput.trim() ? '#fff' : C.muted,
+              fontWeight: 600, fontSize: '0.85rem', cursor: tickerInput.trim() ? 'pointer' : 'default',
+              whiteSpace: 'nowrap', transition: 'background 0.15s',
             }}
           >
-            Ana→
+            Analyze
           </button>
         </div>
-      </div>
 
-      {/* Section 2 — Trade type tabs */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-        {(['day', 'swing'] as TradeType[]).map(tt => {
-          const active = tradeTypeValue === tt
-          return (
-            <button
-              key={tt}
-              type="button"
-              onClick={() => onTradeTypeChange(tt)}
-              style={{
-                flex: 1, padding: '8px 0', background: active ? 'rgba(74,124,255,0.15)' : 'transparent',
-                border: 'none', borderBottom: active ? `2px solid ${C.accent}` : `2px solid transparent`,
-                color: active ? C.accent : C.muted,
-                fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                cursor: 'pointer',
-              }}
-            >
-              {tt}
-            </button>
-          )
-        })}
-      </div>
+        {/* Trade type tabs */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {(['day', 'swing'] as TradeType[]).map(tt => {
+            const active = tradeTypeValue === tt
+            return (
+              <button
+                key={tt}
+                type="button"
+                onClick={() => onTradeTypeChange(tt)}
+                style={{
+                  flex: 1, padding: '7px 0', borderRadius: 6,
+                  background: active ? 'rgba(74,124,255,0.12)' : C.bgCard,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  color: active ? C.accent : C.muted,
+                  cursor: 'pointer', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {tt === 'day' ? 'Day Trade' : 'Swing Trade'}
+              </button>
+            )
+          })}
+        </div>
 
-      {/* Section 3 — Quick Add chips */}
-      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {QUICK_TICKERS.map(t => {
-          const active = t === selectedTicker
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onLoadTicker(t)}
-              style={{
-                background: active ? 'rgba(74,124,255,0.12)' : C.bgCard,
-                border: `1px solid ${active ? C.accent : C.borderSub}`,
-                color: active ? C.accent : C.muted,
-                borderRadius: 5, padding: '3px 8px',
-                fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {t}
-            </button>
-          )
-        })}
+        {/* Quick tickers */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+          <span style={{ fontSize: '0.65rem', color: C.muted }}>Quick:</span>
+          {QUICK_TICKERS.map(t => {
+            const active = t === selectedTicker
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onLoadTicker(t)}
+                style={{
+                  padding: '3px 8px', borderRadius: 4,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  background: C.bgCard, fontFamily: 'monospace',
+                  fontSize: '0.7rem', fontWeight: 600,
+                  color: active ? C.accent : C.muted,
+                  cursor: 'pointer', transition: 'all 0.12s',
+                }}
+              >
+                {t}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Section 4 — Watchlist */}
