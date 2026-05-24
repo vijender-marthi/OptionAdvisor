@@ -3649,35 +3649,6 @@ def _build_state_transition_email_html(
 </html>"""
 
 
-def _alert_scan_loop() -> None:
-    time.sleep(ALERT_SCAN_START_DELAY_SECONDS)
-    cycle = 0
-    while True:
-        try:
-            if _is_market_hours_now():
-                users = list_user_states()
-                for idx, user_state in enumerate(users):
-                    if idx:
-                        time.sleep(2)
-                    _scan_user_watchlist_for_alerts(user_state)
-                    time.sleep(2)
-                    _scan_user_day_trade_watchlist(user_state)
-                    time.sleep(2)
-                    # My Tickers state alerts: day every cycle (15 min),
-                    # swing every 2nd cycle (~30 min) to avoid over-scanning.
-                    _scan_my_tickers_for_state_alerts(user_state)
-        except Exception as exc:
-            print(f"[alert-scan] sweep failed: {exc}", flush=True)
-        cycle += 1
-        time.sleep(ALERT_SCAN_INTERVAL_SECONDS)
-
-
-@app.on_event("startup")
-def start_alert_scanner() -> None:
-    thread = threading.Thread(target=_alert_scan_loop, name="alert-scan-loop", daemon=True)
-    thread.start()
-
-
 @app.get("/api/day-trade-alerts/{email}")
 def list_day_trade_alerts_api(email: str, auth_email: str = Depends(require_access_email)):
     ensure_same_user(auth_email, email)

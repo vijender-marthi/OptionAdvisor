@@ -13,6 +13,7 @@ import { locationToPage } from './routing/paths'
 const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
 const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
+const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
@@ -149,7 +150,7 @@ function ShellRoutes() {
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
               <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/positions" element={<PositionsRoute />} />
-              <Route path="/alerts" element={<Navigate to="/desk" replace />} />
+              <Route path="/alerts" element={<AlertCenterPage />} />
               {/* /help is now a modal — redirect to landing */}
               <Route path="/help" element={<Navigate to="/trade-command-center" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
