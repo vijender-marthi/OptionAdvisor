@@ -637,15 +637,20 @@ export default function TickerPage() {
             </div>
           )}
 
-          {/* Fetch all weeks button */}
-          {data && !loading && (
-            <div style={{ padding: '4px 12px 8px' }}>
-              <button type="button" onClick={() => fetchAllWeeks(data.ticker)} disabled={fetchingAllWeeks.has(data.ticker)}
-                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: C.bgCard, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '7px 12px', color: fetchingAllWeeks.has(data.ticker) ? C.muted : C.text, fontSize: '0.75rem', fontWeight: 600, cursor: fetchingAllWeeks.has(data.ticker) ? 'wait' : 'pointer' }}>
-                <Layers size={13} />
-                {fetchingAllWeeks.has(data.ticker) ? 'Fetching…' : 'Fetch All Weeks'}
-              </button>
-            </div>
+          {/* Week selector + fetch */}
+          {data && !loading && cacheEntry && (
+            <WeekSelector
+              entry={cacheEntry}
+              selectedWeeksOut={selectedWeeksOut}
+              onSelect={(w) => {
+                setSelectedWeeksOut(w)
+                const hasData = !!cacheEntry.multiWeekData?.[w] || cacheEntry.weeksOut === w
+                if (!hasData) fetchSingleWeek(data.ticker, w)
+              }}
+              onFetch={() => fetchAllWeeks(data.ticker)}
+              fetching={fetchingAllWeeks.has(data.ticker)}
+              loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
+            />
           )}
         </div>
 
@@ -700,22 +705,6 @@ export default function TickerPage() {
             {/* Verdict card (unified analysis) */}
             {unifiedAnalysis && (
               <RegularVerdictCard analysis={unifiedAnalysis} />
-            )}
-
-            {/* Week selector */}
-            {cacheEntry && (
-              <WeekSelector
-                entry={cacheEntry}
-                selectedWeeksOut={selectedWeeksOut}
-                onSelect={(w) => {
-                  setSelectedWeeksOut(w)
-                  const hasData = !!cacheEntry.multiWeekData?.[w] || cacheEntry.weeksOut === w
-                  if (!hasData) fetchSingleWeek(data.ticker, w)
-                }}
-                onFetch={() => fetchAllWeeks(data.ticker)}
-                fetching={fetchingAllWeeks.has(data.ticker)}
-                loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
-              />
             )}
 
             {/* Recommendations */}
