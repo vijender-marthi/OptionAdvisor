@@ -5,6 +5,33 @@ import { useApp } from '../contexts/AppContext'
 import PreTradeChecklist, { buildChecklist, deriveVerdict, type Verdict } from './PreTradeChecklist'
 import { saveToJournal, executeTrade } from '../api/client'
 
+const C = {
+  bg:        '#0A0C10',
+  panel:     '#111318',
+  card:      '#181C23',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  text:      '#E8EBF0',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  accentDim: 'rgba(74,124,255,0.12)',
+  green:     '#00E5A0',
+  greenDim:  'rgba(0,229,160,0.1)',
+  amber:     '#F5A623',
+  amberDim:  'rgba(245,166,35,0.1)',
+  red:       '#FF4D6D',
+  redDim:    'rgba(255,77,109,0.1)',
+  purple:    '#6B7FD4',
+  purpleDim: 'rgba(107,127,212,0.1)',
+}
+
+const LABEL_DISPLAY: Record<string, string> = {
+  'ENTRY': 'Entry',
+  'SETUP': 'Setup',
+  'WATCH': 'Watch',
+  'AVOID': 'Avoid',
+}
+
 interface Props {
   rec: Recommendation
   ticker: string
@@ -111,8 +138,7 @@ export function deriveRegularTradeState(
 
 function FilterBadge({ label, pass }: { label: string; pass: boolean }) {
   return (
-    <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium
-      ${pass ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-red-900/30 text-red-400 border-red-800'}`}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, fontWeight: 600, border: '1px solid', color: pass ? C.green : C.red, background: pass ? C.greenDim : C.redDim, borderColor: pass ? 'rgba(0,229,160,0.3)' : 'rgba(255,77,109,0.3)' }}>
       {pass ? <CheckCircle size={11} /> : <XCircle size={11} />} {label}
     </span>
   )
@@ -120,12 +146,12 @@ function FilterBadge({ label, pass }: { label: string; pass: boolean }) {
 
 function ScoreBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-400 w-20 shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${(value / max) * 100}%`, backgroundColor: color }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: '0.72rem', color: C.muted, width: 80, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 6, background: C.card, borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ height: '100%', borderRadius: 4, width: `${(value / max) * 100}%`, backgroundColor: color }} />
       </div>
-      <span className="text-xs font-mono text-gray-300 w-10 text-right">{value}/{max}</span>
+      <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: C.text, width: 40, textAlign: 'right' }}>{value}/{max}</span>
     </div>
   )
 }
@@ -231,21 +257,28 @@ export default function RecommendationCard({
   const softFailReasons = checkItems.filter(i => i.status === 'fail' && !i.hard).map(i => i.label)
   const blockingReasons = [...hardFailReasons, ...softFailReasons].slice(0, 3)
 
-  const verdictBadge = verdict === 'GO'
-    ? 'bg-emerald-900/50 text-emerald-400 border-emerald-700'
-    : verdict === 'CAUTION'
-    ? 'bg-amber-900/50 text-amber-400 border-amber-700'
-    : 'bg-red-900/50 text-red-400 border-red-700'
-  const verdictLabel = verdict === 'GO' ? '✅ GO' : verdict === 'CAUTION' ? '⚠️ CAUTION' : '🚫 NO GO'
-
   const isCredit = rec.net_credit > 0
   let tradeState = FALLBACK_TRADE_STATE
   try { tradeState = deriveRegularTradeState(rec, signals, verdict) } catch { /* never crash the card */ }
-  const c = (val: number) => (val * 100)                        // per contract value
+  const c = (val: number) => (val * 100)
   const fmt = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   const rrRatio = rec.risk_reward_ratio
-  const rrColor = rrRatio <= 2.5 ? 'text-green-400' : rrRatio <= 4 ? 'text-amber-400' : 'text-red-400'
-  const evColor = rec.expected_value > 0 ? 'text-green-400' : 'text-red-400'
+
+  const statusStyle = (() => {
+    if (tradeState.color === 'emerald') return { bg: C.greenDim, color: C.green, border: 'rgba(0,229,160,0.3)' }
+    if (tradeState.color === 'amber')   return { bg: C.purpleDim, color: C.purple, border: 'rgba(107,127,212,0.3)' }
+    if (tradeState.color === 'sky')     return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
+    return { bg: C.redDim, color: C.red, border: 'rgba(255,77,109,0.3)' }
+  })()
+
+  const biasIsBull = rec.bias.includes('Bullish')
+  const biasIsBear = rec.bias.includes('Bearish')
+  const biasColor = biasIsBull ? C.green : biasIsBear ? C.red : C.amber
+  const biasBg = biasIsBull ? C.greenDim : biasIsBear ? C.redDim : C.amberDim
+
+  const expOrCredit = isCredit
+    ? { label: 'Credit', value: `$${c(rec.net_credit).toFixed(2)}`, color: C.green }
+    : { label: 'Expiry', value: rec.expiry.slice(5), color: C.text }
 
   useEffect(() => {
     if (scrollFocusRank !== rec.rank) return
@@ -258,92 +291,66 @@ export default function RecommendationCard({
   }, [scrollFocusRank, rec.rank, onScrollFocusConsumed])
 
   return (
-    <div id={`oa-rec-${rec.rank}`} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden scroll-mt-4">
+    <div id={`oa-rec-${rec.rank}`} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 10 }}>
 
-      {/* ── Collapsed summary row (always visible) ── */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 text-left hover:bg-gray-800/40 transition-colors flex-wrap sm:flex-nowrap"
-      >
-        {/* Rank badge */}
-        <span className="bg-violet-900/60 text-violet-300 text-xs font-bold px-2 py-0.5 rounded-full border border-violet-700 shrink-0">
-          #{rec.rank}
-        </span>
-
-        {/* Strategy + bias */}
-        <span className="font-bold text-white text-sm min-w-0 break-words">{rec.strategy}</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold shrink-0 ${biasBadgeClass(rec.bias)}`}>
-          {rec.bias.includes('Bullish') ? '↑' : rec.bias.includes('Bearish') ? '↓' : '↔'} {rec.bias}
-        </span>
-        <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full border border-gray-700 shrink-0">
-          {rec.dte} DTE
-        </span>
-
-        {/* State badge */}
-        {(() => {
-          const cls =
-            tradeState.color === 'emerald' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-2 ring-emerald-500/40' :
-            tradeState.color === 'amber'   ? 'bg-amber-900/50 text-amber-300 border-amber-700 ring-2 ring-amber-500/20' :
-            tradeState.color === 'sky'     ? 'bg-sky-900/40 text-sky-300 border-sky-700 ring-2 ring-sky-500/20' :
-                                             'bg-red-900/40 text-red-300 border-red-800 ring-2 ring-red-500/20'
-          const text = tradeState.num === tradeState.label
-            ? tradeState.num
-            : `${tradeState.num}: ${tradeState.label}`
-          return (
-            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full border ${cls}`}>
-              {text}
-            </span>
-          )
-        })()}
-
-        {/* Quick stats — visible when collapsed */}
-        {!open && (
-          <span className="hidden sm:flex items-center gap-3 ml-2 text-xs text-gray-500 flex-1 flex-wrap">
-            <span className="text-emerald-400 font-mono">+${fmt(c(rec.max_profit))}</span>
-            <span className="text-red-400 font-mono">-${fmt(c(rec.max_loss))}</span>
-            <span className="flex items-center gap-1"><TrendingUp size={10} />{(rec.prob_of_profit * 100).toFixed(0)}% PoP</span>
-            {isCredit && <span className="text-violet-400 font-mono">${fmt(c(rec.net_credit))} credit</span>}
-          </span>
-        )}
-
-        {/* Spacer + score + chevron */}
-        <span className="hidden sm:block flex-1" />
-        <span className={`font-bold text-xs font-mono shrink-0 ${scoreColor(rec.scores.total_score)}`}>
-          {rec.scores.total_score}/100
-        </span>
-        <span className="text-gray-500 shrink-0 ml-1">
-          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-        </span>
+      {/* ── Collapsed header row ── */}
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none', cursor: 'pointer', background: 'transparent', borderLeft: 'none', borderRight: 'none', borderTop: 'none', textAlign: 'left' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: '11px', color: C.muted, marginRight: 4 }}>#{rec.rank}</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{rec.strategy}</span>
+          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, color: biasColor, background: biasBg, marginLeft: 6 }}>{biasIsBull ? '↑' : biasIsBear ? '↓' : '↔'} {rec.bias}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 500, color: rec.scores.total_score >= 75 ? C.green : rec.scores.total_score >= 55 ? C.amber : C.red }}>{rec.scores.total_score}</span>
+          <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 4, fontWeight: 500, border: `1px solid ${statusStyle.border}`, color: statusStyle.color, background: statusStyle.bg }}>{LABEL_DISPLAY[tradeState.label] || tradeState.label}</span>
+          {open ? <ChevronUp size={14} style={{ color: C.muted }} /> : <ChevronDown size={14} style={{ color: C.muted }} />}
+        </div>
       </button>
 
-      {!open && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 sm:px-4 pb-3 -mt-1">
-          <div className="text-xs min-w-0">
-            {verdict === 'NO GO' && blockingReasons.length > 0
-              ? <span className="text-red-400/80">🚫 Blocked: {blockingReasons.join(' · ')}</span>
-              : verdict === 'CAUTION' && blockingReasons.length > 0
-              ? <span className="recommendation-caution-reason text-amber-400/80">⚠️ Caution: {blockingReasons.join(' · ')}</span>
-              : <span className="text-gray-500">Add this trade idea to your portfolio tracker with contract sizing.</span>
-            }
+      {/* ── Stats row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: '10px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
+        {[
+          { label: 'Max profit', value: `+$${fmt(c(rec.max_profit))}`, color: C.green },
+          { label: 'Max loss', value: `-$${fmt(c(rec.max_loss))}`, color: C.red },
+          { label: 'PoP', value: `${(rec.prob_of_profit * 100).toFixed(0)}%`, color: C.text },
+          { label: expOrCredit.label, value: expOrCredit.value, color: expOrCredit.color },
+        ].map(s => (
+          <div key={s.label}>
+            <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{s.label}</div>
+            <div style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 500, color: s.color }}>{s.value}</div>
           </div>
-          {!inPortfolio ? (
-            <button
-              type="button"
-              onClick={openPortfolioPicker}
-              aria-label="Add to portfolio"
-              title="Add to portfolio"
-              className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-xl text-xs font-semibold border transition-all
-                         bg-violet-600/15 border-violet-700/60 text-violet-300 hover:bg-violet-600/25 hover:border-violet-500"
-            >
-              <Briefcase size={18} />
-            </button>
-          ) : (
-            <span className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
-                             bg-violet-900/30 border-violet-700 text-violet-300">
-              <Check size={11} /> Added to Portfolio
-            </span>
-          )}
-        </div>
+        ))}
+      </div>
+
+      {/* ── Legs row ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
+        {rec.legs.map((leg, i) => (
+          <span key={i} style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 500, padding: '2px 8px', borderRadius: 4, color: leg.action === 'BUY' ? C.green : C.red, background: leg.action === 'BUY' ? C.greenDim : C.redDim }}>
+            {leg.action} {leg.option_type} ${leg.strike.toFixed(0)}
+          </span>
+        ))}
+        <span style={{ fontSize: 10, color: C.muted }}>{rec.dte} DTE</span>
+      </div>
+
+      {/* ── Rationale (truncated when closed) ── */}
+      <div style={{ padding: '8px 16px', fontSize: 11, color: C.muted, lineHeight: 1.5, borderBottom: open ? `1px solid ${C.border}` : 'none', ...(open ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }) }}>
+        {rec.rationale}
+      </div>
+
+      {/* ── Hidden collapsed extras ── */}
+      {!open && (
+        <>
+        {verdict === 'NO GO' && blockingReasons.length > 0 && (
+          <div style={{ padding: '8px 16px 10px', fontSize: 11 }}>
+            <span style={{ color: C.red }}>🚫 Blocked: {blockingReasons.join(' · ')}</span>
+          </div>
+        )}
+        {verdict === 'CAUTION' && blockingReasons.length > 0 && (
+          <div style={{ padding: '8px 16px 10px', fontSize: 11 }}>
+            <span style={{ color: C.amber }}>⚠️ Caution: {blockingReasons.join(' · ')}</span>
+          </div>
+        )}
+        </>
       )}
 
       {/* ── Expanded detail ── */}
