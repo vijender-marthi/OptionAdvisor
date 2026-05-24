@@ -378,15 +378,16 @@ export default function DayTradePage() {
               >
                 <RefreshCw size={12} className={refreshing || loading ? 'animate-spin' : ''} />
               </button>
-              {lastRefreshed && (
-                <span className="text-[9px] text-gray-500 whitespace-nowrap">
-                  {lastRefreshed.toLocaleTimeString()}
-                </span>
-              )}
             </div>
           </div>
 
           <MarketTimeGateBanner tradeType="day" />
+
+          {lastRefreshed && (
+            <div className="text-[10px] text-gray-500 font-mono">
+              Updated {lastRefreshed.toLocaleTimeString()}
+            </div>
+          )}
 
           <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
             <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
