@@ -942,7 +942,14 @@ export default function DayTradeEnginePanel({
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
             {[
               { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-sm">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
-              { label: 'Structure', value: <span className="font-mono text-gray-400 text-xs">No trade</span> },
+              { label: 'Structure', value: (() => {
+                const fd = String(result.final_decision || '').toUpperCase()
+                if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Ready'}</span>
+                if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Waiting'}</span>
+                if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Watching'}</span>
+                if (fd === 'AVOID' || fd === 'CONFLICT' || fd === 'NO-GO') return <span className="font-mono text-red-400 text-xs">No trade</span>
+                return <span className="font-mono text-gray-400 text-xs">No trade</span>
+              })()},
               { label: 'Stop Loss', value: eg?.risk_below != null ? <span className="font-mono font-bold text-red-400 text-sm">${eg.risk_below.toFixed(2)}</span> : <span className="font-mono text-gray-500 text-xs">Not defined until setup forms</span> },
             ].map((row, i) => (
               <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
