@@ -658,11 +658,12 @@ export default function TickerPage() {
             <WeekSelector
               entry={cacheEntry}
               selectedWeeksOut={selectedWeeksOut}
-              onSelect={(w) => {
-                setSelectedWeeksOut(w)
-                const hasData = !!cacheEntry.multiWeekData?.[w] || cacheEntry.weeksOut === w
-                if (!hasData) fetchSingleWeek(data.ticker, w)
-              }}
+               onSelect={(w) => {
+                 setSelectedWeeksOut(w)
+                 const hasData = !!cacheEntry.multiWeekData?.[w] || cacheEntry.weeksOut === w
+                 if (!hasData) fetchSingleWeek(data.ticker, w)
+                 try { analyzeV2(data.ticker, 'regular', { weeksOut: w }).then(r => setUnifiedAnalysis(r.data)) } catch { /* non-fatal */ }
+               }}
               onFetch={() => fetchAllWeeks(data.ticker)}
               fetching={fetchingAllWeeks.has(data.ticker)}
               loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
