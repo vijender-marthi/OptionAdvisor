@@ -145,20 +145,13 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Messages',
+      label: 'Notifications',
       items: [
-        { id: 'alert-center', label: 'Alerts', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
-      ],
-    },
-    {
-      label: 'Discovery',
-      items: [
-        { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
-        { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
-      ],
-    },
-    {
-      label: 'Analyze',
+        { id: 'alert-center', label: 'Messages', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+    ]
+  },
+  {
+    label: 'Analyze',
       items: [
         { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
