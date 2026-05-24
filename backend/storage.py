@@ -452,6 +452,12 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_alert_center_email_created ON alert_center_items(email, created_at_ms DESC)"
         )
 
+        # ── Cleanup unused legacy tables ──────────────────────────────
+        # user_alerts: replaced by alert_center_items
+        conn.execute("DROP TABLE IF EXISTS user_alerts")
+        # trade_ideas: replaced by trade_journal with trade_type column
+        conn.execute("DROP TABLE IF EXISTS trade_ideas")
+
 
 def upsert_iv_atm_snapshot(ticker: str, session_date: str, iv_pct: float) -> None:
     """Store one ATM-implied-vol snapshot per ticker per US session date (for IV Rank)."""
