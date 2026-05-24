@@ -23,23 +23,45 @@ const TIMEZONE_OPTIONS = [
 ]
 
 function etClock(tz: string): { time: string; session: string } {
-  const t = new Date().toLocaleTimeString('en-US', {
-    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
-  })
-  const et = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
+  const now = new Date()
+  const et = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
   const hNum = parseInt(et)
-  const session =
-    hNum < 4  ? 'Closed' :
-    hNum < 9  ? 'Pre-Market' :
-    hNum < 10 ? 'Opening' :
-    hNum < 12 ? 'Morning' :
-    hNum < 14 ? 'Midday' :
-    hNum < 15 ? 'Power Hour' :
-    hNum < 16 ? 'Closing' :
-    hNum < 20 ? 'After-Hours' :
-                'Closed'
+  const dow = now.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short' }).toUpperCase()
+  const dateStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit' })
+
+  // US market holidays (MM/DD format)
+  const holidays = new Set([
+    '01/01', '01/20', '02/17', '04/18', '05/26', '06/19', '07/04', '09/01', '11/27', '12/25',
+  ])
+
+  const isHoliday = holidays.has(dateStr)
+  const isWeekend = dow === 'SAT' || dow === 'SUN'
+
+  let session: string
+  if (isWeekend || isHoliday) {
+    session = 'Closed'
+  } else if (hNum < 4) {
+    session = 'Closed'
+  } else if (hNum < 9) {
+    session = 'Pre-Market'
+  } else if (hNum < 10) {
+    session = 'Opening'
+  } else if (hNum < 12) {
+    session = 'Morning'
+  } else if (hNum < 14) {
+    session = 'Midday'
+  } else if (hNum < 15) {
+    session = 'Power Hour'
+  } else if (hNum < 16) {
+    session = 'Closing'
+  } else if (hNum < 20) {
+    session = 'After-Hours'
+  } else {
+    session = 'Closed'
+  }
+
   const tzLabel = TIMEZONE_OPTIONS.find(o => o.tz === tz)?.label || 'ET'
-  return { time: `${t} ${tzLabel}`, session }
+  return { time: `${now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} ${tzLabel}`, session }
 }
 
 function sessionColor(session: string): string {
