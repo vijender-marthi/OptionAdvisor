@@ -498,6 +498,14 @@ export default function TradeDeskPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Links to full engine pages */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button type="button" onClick={() => navigate(`/${tradeType === 'day' ? 'day-trade' : 'swing-trade'}?ticker=${encodeURIComponent(analysis.ticker)}`)}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', background: 'transparent', border: `1px solid ${C.borderSub}`, color: C.muted, textAlign: 'center' }}>
+                    Open in {tradeType === 'day' ? 'Day Trade' : 'Swing Trade'} →
+                  </button>
+                </div>
               </div>
             )}
             {activeTab === 'journal' && (
