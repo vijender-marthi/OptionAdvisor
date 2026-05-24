@@ -5,12 +5,11 @@ import {
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check,
 } from 'lucide-react'
-import { analyzeDayTrade, deriveUnifiedFromDayResult, enterActiveTrade, deskApi } from '../api/client'
+import { analyzeDayTrade, analyzeV2, deskApi } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -102,8 +101,11 @@ export default function DayTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      try {
+        const v2res = await analyzeV2(sym, 'day')
+        setUnified(v2res.data)
+      } catch { /* non-fatal */ }
       setLastRefreshed(new Date())
-      setUnified(deriveUnifiedFromDayResult(data))
       } catch (e) {
       setUi(cur => ({
         ...cur,
@@ -548,22 +550,92 @@ export default function DayTradePage() {
         </div>
       )}
 
-      {result && (
+      {unified && (
         <>
-          {unified && <UnifiedVerdictCard analysis={unified} />}
-          <DayTradeEnginePanel
-            result={result}
-            existingPositions={existingPositions}
-            onRefresh={() => void runScan()}
-            refreshing={refreshing || loading}
-            onAddToPortfolio={openPortfolioModal}
-            onViewPositions={() => routerNavigate(ROUTES.positions)}
-            onRequestEnterActiveTrade={canAccessPage('active-trades') ? openEnterModal : undefined}
-            onOpenStrategyFinder={() => routerNavigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
-            onOpenCommandCenter={() => routerNavigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
-            onCreateAlert={() => setAlertOpen(true)}
-            onAddToWatchlist={handleAddToWatchlist}
-          />
+          <UnifiedVerdictCard analysis={unified} />
+
+          {/* Entry Plan / Risk Profile */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Entry Plan */}
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Entry</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? '#00E5A0' : '#F5A623', fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Structure</span>
+                  <span style={{ fontFamily: 'monospace', color: '#E8EBF0', fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Stop Loss</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? '#FF4D6D' : '#5A6478', fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
+                </div>
+              </div>
+              {/* Risk Profile */}
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>R/R Ratio</span>
+                  <span style={{ fontFamily: 'monospace', color: '#5A6478', fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Risk Level</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? '#00E5A0' : unified.risk_level === 'MEDIUM' ? '#F5A623' : '#FF4D6D', fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>RVOL</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#5A6478', fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Exit Plan */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
+            {unified.exit_rows.length > 0 ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>
+                    {['WHEN', 'PRICE', 'ACTION'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', color: '#5A6478', fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: '1px solid #1E2330' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unified.exit_rows.map((row, i) => {
+                    const isStop = row.type === 'stop'
+                    const isT1 = row.type === 't1'
+                    const isT2 = row.type === 't2'
+                    const isTime = row.type === 'time'
+                    const priceCls = isStop ? '#FF4D6D' : isT2 ? '#F5A623' : isT1 ? '#00E5A0' : '#5A6478'
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#E8EBF0', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.75rem' }}>{row.action}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ color: '#5A6478', textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+            )}
+          </div>
+
+          {/* AI Coach */}
+          {unified.coach && (
+            <div style={{ background: '#181C23', border: '1px solid #1E2330', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4A7CFF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
+                <div style={{ color: '#5A6478', fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
