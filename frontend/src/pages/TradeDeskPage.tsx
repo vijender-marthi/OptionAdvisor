@@ -19,8 +19,8 @@ import type {
   UnifiedAnalysis,
 } from '../api/client'
 
+import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import LeftPanel from '../components/desk/LeftPanel'
-import VerdictTab from '../components/desk/VerdictTab'
 import JournalTab from '../components/desk/JournalTab'
 import AlertsTab from '../components/desk/AlertsTab'
 import LogTradeDrawer from '../components/desk/LogTradeDrawer'
@@ -46,26 +46,6 @@ const C = {
   red:       '#FF4D6D',
   amber:     '#F5A623',
   purple:    '#6B7FD4',
-}
-
-function etClock(tz: string): { time: string; session: string } {
-  const t = new Date().toLocaleTimeString('en-US', {
-    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
-  })
-  const et = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
-  const hNum = parseInt(et)
-  const session =
-    hNum < 4  ? 'Closed' :
-    hNum < 9  ? 'Pre-Market' :
-    hNum < 10 ? 'Opening' :
-    hNum < 12 ? 'Morning' :
-    hNum < 14 ? 'Midday' :
-    hNum < 15 ? 'Power Hour' :
-    hNum < 16 ? 'Closing' :
-    hNum < 20 ? 'After-Hours' :
-                'Closed'
-  const tzLabel = tz === 'America/New_York' ? 'ET' : tz === 'America/Chicago' ? 'CT' : tz === 'America/Denver' ? 'MT' : 'PT'
-  return { time: `${t} ${tzLabel}`, session }
 }
 
 export default function TradeDeskPage() {
@@ -375,74 +355,33 @@ export default function TradeDeskPage() {
 
         {/* Right panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-          {/* Ticker header */}
-          {selectedTicker && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: isMobile ? '8px 12px' : '0 24px',
-              minHeight: isMobile ? 'auto' : 52,
-              borderBottom: `1px solid ${C.border}`,
-              background: C.bgPanel, flexShrink: 0, flexWrap: 'wrap',
-            }}>
-              <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: isMobile ? '1.2rem' : '1.5rem', color: '#fff' }}>
-                {selectedTicker}
-              </span>
-              {analysis?.company && !isMobile && (
-                <span style={{ fontSize: '0.82rem', color: C.muted }}>{analysis.company}</span>
-              )}
-              {priceNum != null && (
-                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: isMobile ? '1rem' : '1.2rem', color: '#fff' }}>
-                  ${priceNum.toFixed(2)}
-                </span>
-              )}
-              {changePct != null && (
-                <span style={{
-                  background: changePct >= 0 ? 'rgba(0,229,160,0.12)' : 'rgba(255,77,109,0.12)',
-                  color: changePct >= 0 ? C.green : C.red,
-                  borderRadius: 6, padding: '2px 7px', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'monospace',
-                }}>
-                  {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
-                </span>
-              )}
-              {/* Trade type badge — hide on mobile */}
-              {!isMobile && (
-                <span style={{
-                  border: `1px solid ${C.borderSub}`, color: C.muted,
-                  background: 'transparent', borderRadius: 6,
-                  padding: '4px 10px', fontSize: '0.6rem', fontWeight: 600,
-                  letterSpacing: '0.05em', textTransform: 'uppercase',
-                  fontFamily: 'monospace', marginLeft: 'auto', whiteSpace: 'nowrap',
-                }}>
-                  {tradeTypeBadgeLabel[tradeType] || tradeType.toUpperCase()}
-                </span>
-              )}
-              {/* Watchlist add */}
-              <button
-                type="button"
-                onClick={() => void handleAddToWatchlist()}
-                style={{
-                  background: 'transparent', border: `1px solid ${C.borderSub}`,
-                  color: C.muted, borderRadius: 6, padding: '3px 8px',
-                  fontSize: '0.7rem', cursor: 'pointer',
-                  marginLeft: isMobile ? 'auto' : undefined,
-                }}
-              >
-                + Watch
-              </button>
-              {/* Refresh */}
-              <button
-                type="button"
-                onClick={() => void fetchAnalysis(selectedTicker, tradeType)}
-                disabled={analysisLoading || analysisRefreshing}
-                style={{
-                  background: 'transparent', border: 'none',
-                  color: analysisLoading || analysisRefreshing ? C.muted : '#fff',
-                  cursor: 'pointer', fontSize: '0.9rem', padding: '2px 4px',
-                }}
-                aria-label="Refresh"
-              >
-                {analysisLoading || analysisRefreshing ? '⟳' : '↺'}
-              </button>
+          {/* Ticker header (Day Trade style) */}
+          {analysis && (
+            <div style={{ background: C.bgPanel, borderBottom: `1px solid ${C.border}`, padding: '14px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>{analysis.ticker}</span>
+                  {analysis.company && <span style={{ fontSize: '0.78rem', color: C.muted }}>{analysis.company}</span>}
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${analysis.price.toFixed(2)}</span>
+                  {analysis.change_pct != null && (
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: analysis.change_pct >= 0 ? C.green : C.red }}>
+                      {analysis.change_pct >= 0 ? '▲' : '▼'} {Math.abs(analysis.change_pct).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {analysis.session && (
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: `1px solid ${C.purple}40`, color: C.purple, background: 'rgba(107,127,212,0.08)' }}>
+                      {analysis.session}
+                    </span>
+                  )}
+                  <button type="button" onClick={() => void fetchAnalysis(selectedTicker, tradeType)} disabled={analysisLoading || analysisRefreshing}
+                    style={{ background: 'transparent', border: 'none', color: analysisLoading || analysisRefreshing ? C.muted : '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '2px 4px' }}
+                    aria-label="Refresh">
+                    {analysisLoading || analysisRefreshing ? '⟳' : '↺'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -486,27 +425,80 @@ export default function TradeDeskPage() {
 
           {/* Tab content */}
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px' : '20px 24px' }}>
-            {activeTab === 'verdict' && (
-              <VerdictTab
-                analysis={analysis}
-                loading={analysisLoading}
-                openTrade={openTradeForCurrent}
-                tradeType={tradeType}
-                compact={isMobile}
-                onLogTrade={() => setDrawer(
-                  openTradeForCurrent
-                    ? { type: 'log-close', trade: openTradeForCurrent }
-                    : { type: 'log-new' }
+            {activeTab === 'verdict' && analysis && (
+              <div>
+                <UnifiedVerdictCard analysis={analysis} />
+                {/* Entry Plan / Risk Profile */}
+                <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>Entry</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: analysis.entry_price ? C.green : C.amber, fontSize: '0.82rem' }}>{analysis.entry_price ? `$${analysis.entry_price.toFixed(2)}` : '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>Structure</span>
+                        <span style={{ fontFamily: 'monospace', color: '#E8EBF0', fontSize: '0.82rem' }}>{analysis.structure || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>Stop Loss</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: analysis.stop_price ? C.red : C.muted, fontSize: '0.82rem' }}>{analysis.stop_price ? `$${analysis.stop_price.toFixed(2)}` : '—'}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>R/R Ratio</span>
+                        <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.82rem' }}>{analysis.rr_ratio || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>Risk Level</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: analysis.risk_level === 'LOW' ? C.green : analysis.risk_level === 'MEDIUM' ? C.amber : C.red, fontSize: '0.82rem' }}>{analysis.risk_level || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                        <span style={{ color: C.muted, fontSize: '0.82rem' }}>RVOL</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.muted, fontSize: '0.82rem' }}>{analysis.rvol || '—'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Exit Plan */}
+                <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
+                  {analysis.exit_rows.length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                      <thead>
+                        <tr>{['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {analysis.exit_rows.map((row, i) => {
+                          const priceCls = row.type === 'stop' ? C.red : row.type === 't2' ? C.amber : row.type === 't1' ? C.green : C.muted
+                          return (
+                            <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, color: '#E8EBF0', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>{row.action}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ color: C.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+                  )}
+                </div>
+                {/* AI Coach */}
+                {analysis.coach && (
+                  <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
+                      <div style={{ color: C.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>{analysis.coach}</div>
+                    </div>
+                  </div>
                 )}
-                onSetAlert={() => setDrawer({ type: 'alert' })}
-                onRefresh={() => void fetchAnalysis(selectedTicker, tradeType)}
-                refreshing={analysisRefreshing}
-                onNavigateFullAnalysis={() => {
-                  if (tradeType === 'swing') navigate('/swing-trade')
-                  else navigate('/day-trade')
-                }}
-                ticker={selectedTicker}
-              />
+              </div>
             )}
             {activeTab === 'journal' && (
               <JournalTab
