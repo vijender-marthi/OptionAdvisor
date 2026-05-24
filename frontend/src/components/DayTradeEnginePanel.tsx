@@ -939,27 +939,27 @@ export default function DayTradeEnginePanel({
       <div className="px-4 py-3 border-b border-gray-800">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
             {[
-              { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-[12px]">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-[11px]">Wait — no valid entry yet</span> },
-              { label: 'Structure', value: <span className="font-mono text-gray-400 text-[11px]">No trade</span> },
-              { label: 'Stop Loss', value: eg?.risk_below != null ? <span className="font-mono font-bold text-red-400 text-[12px]">${eg.risk_below.toFixed(2)}</span> : <span className="font-mono text-gray-500 text-[11px]">Not defined until setup forms</span> },
+              { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-sm">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
+              { label: 'Structure', value: <span className="font-mono text-gray-400 text-xs">No trade</span> },
+              { label: 'Stop Loss', value: eg?.risk_below != null ? <span className="font-mono font-bold text-red-400 text-sm">${eg.risk_below.toFixed(2)}</span> : <span className="font-mono text-gray-500 text-xs">Not defined until setup forms</span> },
             ].map((row, i) => (
-              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
-                <span className="text-[11px] text-gray-500">{row.label}</span>
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
                 <span>{row.value}</span>
               </div>
             ))}
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
             {[
-              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-[11px]">—</span> },
-              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-[11px]">{result.risk_state || 'HIGH'}</span> },
-              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-[11px]">0.8x</span> },
+              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-xs">—</span> },
+              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-xs">{result.risk_state || 'HIGH'}</span> },
+              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-xs">0.8x</span> },
             ].map((row, i) => (
-              <div key={row.label} className="flex justify-between items-center py-1 border-b border-gray-800/60 last:border-0">
-                <span className="text-[11px] text-gray-500">{row.label}</span>
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
                 <span>{row.value}</span>
               </div>
             ))}
@@ -969,19 +969,19 @@ export default function DayTradeEnginePanel({
 
       {/* Exit Plan */}
       <div className="px-4 py-3 border-b border-gray-800">
-        <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
         {(() => {
           type DayExitRule = { trigger: string; price: number; action: string; note: string }
           const egLocal = result.entry_guidance
           const exitRules: DayExitRule[] = Array.isArray(egLocal?.exit_rules) ? (egLocal.exit_rules as DayExitRule[]) : []
           if (exitRules.length > 0) {
             return (
-              <table className="w-full text-xs border-collapse">
+              <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
-                    <th className="pb-1.5 text-left font-medium">WHEN</th>
-                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
-                    <th className="pb-1.5 text-left font-medium">ACTION</th>
+                  <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-2 text-left font-medium">WHEN</th>
+                    <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-2 text-left font-medium">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
@@ -995,11 +995,11 @@ export default function DayTradeEnginePanel({
                     const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
                     return (
                       <tr key={i}>
-                        <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[32%]">{rule.trigger}</td>
-                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                        <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top w-[32%] text-sm">{rule.trigger}</td>
+                        <td className={`py-2.5 pr-3 text-right font-mono font-bold tabular-nums align-top text-sm ${priceCls}`}>
                           {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
                         </td>
-                        <td className={`py-2 align-top ${actionCls}`}>{rule.action}</td>
+                        <td className={`py-2.5 align-top text-sm ${actionCls}`}>{rule.action}</td>
                       </tr>
                     )
                   })}
@@ -1008,16 +1008,16 @@ export default function DayTradeEnginePanel({
             )
           }
           return (
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
-                  <th className="pb-1.5 text-left font-medium">WHEN</th>
-                  <th className="pb-1.5 text-right font-medium tabular-nums pr-3">PRICE</th>
-                  <th className="pb-1.5 text-left font-medium">ACTION</th>
+                <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                  <th className="pb-2 text-left font-medium">WHEN</th>
+                  <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                  <th className="pb-2 text-left font-medium">ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-[11px]">Run analysis for detailed exit levels</td></tr>
+                <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-xs">Run analysis for detailed exit levels</td></tr>
               </tbody>
             </table>
           )
