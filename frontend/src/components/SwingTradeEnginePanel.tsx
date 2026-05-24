@@ -967,17 +967,17 @@ export default function SwingTradeEnginePanel({
 
         {/* Verdict section */}
         <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[13px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>
+          <div className="flex items-start justify-between gap-3">
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>
               {formatSwingEngineLabel(result.final_action)}
             </span>
-            <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
-              <svg viewBox="0 0 40 40" width={40} height={40} style={{ transform: 'rotate(-90deg)' }}>
-                <circle cx={20} cy={20} r={16} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
-                <circle cx={20} cy={20} r={16} fill="none" stroke={execTone === 'green' ? '#10b981' : execTone === 'blue' ? '#3b82f6' : execTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={100.53} strokeDashoffset={100.53 - (Math.min(result.confidence ?? 0, 95) / 95) * 100.53} />
+            <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+              <svg viewBox="0 0 52 52" width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={26} cy={26} r={22} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+                <circle cx={26} cy={26} r={22} fill="none" stroke={execTone === 'green' ? '#10b981' : execTone === 'blue' ? '#3b82f6' : execTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={138.23} strokeDashoffset={138.23 - (Math.min(result.confidence ?? 0, 95) / 95) * 138.23} />
               </svg>
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 9, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.1 }}>
-                {Math.min(result.confidence, 95)}<br /><span style={{ fontSize: 7, color: '#5a6478' }}>CONF</span>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.2 }}>
+                {Math.min(result.confidence, 95)}<br /><span style={{ fontSize: 9, color: '#5a6478' }}>CONF</span>
               </div>
             </div>
           </div>
