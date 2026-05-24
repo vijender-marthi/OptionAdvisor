@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { analyzeOptions } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
+import { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
@@ -735,8 +736,9 @@ export default function TickerPage() {
                         const isCredit = (rec.net_credit ?? 0) > 0
                         const score = rec.scores?.total_score ?? 0
                         const rr = rec.risk_reward_ratio ?? 0
-                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
-                        const status = score >= 70 && allFilters ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : score >= 40 ? 'WATCH' : 'AVOID'
+                        const verdict = deriveVerdict(buildChecklist(rec, displayData.signals))
+                        const tradeState = deriveRegularTradeState(rec, displayData.signals, verdict)
+                        const status = tradeState.label
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         return (
                           <React.Fragment key={rec.rank}>
