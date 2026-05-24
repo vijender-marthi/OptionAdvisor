@@ -956,19 +956,22 @@ def get_user_alerts(email: str, retention_ms: int, now_ms: int) -> list[dict[str
     normalized = normalize_email(email)
     cutoff = now_ms - retention_ms
     with _connect() as conn:
-        conn.execute(
-            "DELETE FROM user_alerts WHERE email = ? AND detected_at < ?",
-            (normalized, cutoff),
-        )
-        rows = conn.execute(
-            """
-            SELECT alert_json, dismissed, email_sent, email_message
-            FROM user_alerts
-            WHERE email = ?
-            ORDER BY detected_at DESC
-            """,
-            (normalized,),
-        ).fetchall()
+        try:
+            conn.execute(
+                "DELETE FROM user_alerts WHERE email = ? AND detected_at < ?",
+                (normalized, cutoff),
+            )
+            rows = conn.execute(
+                """
+                SELECT alert_json, dismissed, email_sent, email_message
+                FROM user_alerts
+                WHERE email = ?
+                ORDER BY detected_at DESC
+                """,
+                (normalized,),
+            ).fetchall()
+        except conn.OperationalError:
+            rows = []
 
     alerts: list[dict[str, Any]] = []
     for row in rows:
