@@ -546,7 +546,7 @@ def get_user_state(email: str) -> dict[str, Any]:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT email, watchlist_json, portfolio_json, role,
+            SELECT email, watchlist_json, portfolio_json, role, theme_accent,
                    advisory_terms_version, advisory_accepted_at,
                    day_trade_watchlist_json, swing_trade_watchlist_json, alert_email_enabled,
                    my_tickers_json
@@ -607,6 +607,7 @@ def get_user_state(email: str) -> dict[str, Any]:
             "advisory_accepted_at": row["advisory_accepted_at"],
             "alert_email_enabled": alert_email_enabled,
             "my_tickers": mt_list,
+            "theme_accent": row["theme_accent"] if "theme_accent" in row.keys() else "blue",
         }
     )
 
