@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
-import { analyzeOptions } from '../api/client'
-import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
+import { analyzeOptions, analyzeV2 } from '../api/client'
+import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis } from '../api/client'
 import { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
@@ -99,6 +99,45 @@ function bestVerdict(vs: Verdict[]): Verdict | null {
 
 const scoreColor = (s: number) =>
   s >= 75 ? '#00E5A0' : s >= 55 ? '#F5A623' : '#FF4D6D'
+
+const C_VERDICT = {
+  enter: { label: 'ENTER NOW', color: '#00E5A0', bg: 'rgba(0,229,160,0.06)' },
+  watch: { label: 'WATCH',     color: '#F5A623', bg: 'rgba(245,166,35,0.06)' },
+  wait:  { label: 'WAIT',      color: '#6B7FD4', bg: 'rgba(107,127,212,0.06)' },
+  avoid: { label: 'AVOID',     color: '#FF4D6D', bg: 'rgba(255,77,109,0.06)' },
+}
+
+function RegularVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
+  const v = C_VERDICT[analysis.verdict] ?? C_VERDICT.wait
+  return (
+    <div style={{ background: v.bg, border: `1px solid ${v.color}40`, borderRadius: 14, borderTop: `3px solid ${v.color}`, padding: '20px 24px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: '2.5rem', fontWeight: 800, color: v.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{v.label}</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: 'monospace', fontSize: '1.5rem', fontWeight: 700, color: v.color }}>{analysis.confidence}</div>
+          <div style={{ fontSize: '0.6rem', color: '#5A6478', textTransform: 'uppercase', letterSpacing: '0.08em' }}>CONF</div>
+        </div>
+      </div>
+      <div style={{ fontSize: '0.88rem', color: '#E8EBF0', opacity: 0.85, lineHeight: 1.6, marginBottom: 12 }}>{analysis.reason}</div>
+      {analysis.conditions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {analysis.conditions.map((c, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: c.type === 'pass' ? 'rgba(232,235,240,0.8)' : c.type === 'warn' ? '#F5A623' : '#FF4D6D' }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.type === 'pass' ? '#00E5A0' : c.type === 'warn' ? '#F5A623' : '#FF4D6D', flexShrink: 0 }} />
+              {c.label}
+            </span>
+          ))}
+        </div>
+      )}
+      {analysis.structure && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: '#5A6478' }}>Best structure: <span style={{ color: '#E8EBF0', fontWeight: 600 }}>{analysis.structure}</span></span>
+          {analysis.rr_ratio && <span style={{ fontSize: '0.75rem', color: '#5A6478' }}>R/R: <span style={{ color: '#00E5A0', fontWeight: 600, fontFamily: 'monospace' }}>{analysis.rr_ratio}</span></span>}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const VERDICT_DOT_COLOR: Record<Verdict, string> = {
   'GO':      C.green,
@@ -283,6 +322,7 @@ export default function TickerPage() {
   } = useApp()
 
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
+  const [unifiedAnalysis, setUnifiedAnalysis] = useState<UnifiedAnalysis | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
@@ -333,6 +373,14 @@ export default function TickerPage() {
       setData(result)
       setActiveTab('chart')
       setCached(ticker, result, weeksOut, spreadWidth, strategyMode, ceKey)
+      try {
+        const v2res = await analyzeV2(ticker, 'regular', {
+          weeksOut,
+          spreadWidth: spreadWidth ?? 5,
+          strategyMode,
+        })
+        setUnifiedAnalysis(v2res.data)
+      } catch { /* non-fatal: verdict card will not show */ }
     } catch (e: unknown) {
       const msg = analyzeErrorDetail(e)
       const cached = getCached(tickerUpper)
@@ -629,6 +677,11 @@ export default function TickerPage() {
 
 
 
+
+            {/* Verdict card (unified analysis) */}
+            {unifiedAnalysis && (
+              <RegularVerdictCard analysis={unifiedAnalysis} />
+            )}
 
             {/* Market Overview */}
             <div style={cardStyle}>
