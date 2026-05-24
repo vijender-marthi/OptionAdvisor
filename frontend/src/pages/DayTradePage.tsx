@@ -552,6 +552,43 @@ export default function DayTradePage() {
 
       {unified && (
         <>
+          {/* Ticker header bar */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>{unified.ticker}</span>
+                {unified.company && <span style={{ fontSize: '0.78rem', color: '#5A6478' }}>{unified.company}</span>}
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${unified.price.toFixed(2)}</span>
+                {unified.change_pct != null && (
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                    {unified.change_pct >= 0 ? '▲' : '▼'} {Math.abs(unified.change_pct).toFixed(2)}%
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {unified.session && (
+                  <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: '1px solid rgba(107,127,212,0.5)', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>
+                    {unified.session}
+                  </span>
+                )}
+                {(() => {
+                  const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
+                  const vwap = eg?.vwap
+                  const orh = eg?.opening_range_high
+                  const orl = eg?.opening_range_low
+                  if (!vwap && !orh) return null
+                  return (
+                    <span style={{ fontSize: '0.65rem', color: '#5A6478', fontFamily: 'monospace' }}>
+                      {vwap != null && <span>VWAP <span style={{ color: '#E8EBF0' }}>${(vwap as number).toFixed(2)}</span></span>}
+                      {orh != null && <span style={{ marginLeft: 8 }}>ORH <span style={{ color: '#E8EBF0' }}>${(orh as number).toFixed(2)}</span></span>}
+                      {orl != null && <span style={{ marginLeft: 8 }}>ORL <span style={{ color: '#E8EBF0' }}>${(orl as number).toFixed(2)}</span></span>}
+                    </span>
+                  )
+                })()}
+              </div>
+            </div>
+          </div>
+
           <UnifiedVerdictCard analysis={unified} />
 
           {/* Entry Plan / Risk Profile */}
