@@ -174,13 +174,6 @@ export default function LeftPanel({
 
       {/* Section 4 — Watchlist */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <div style={{ padding: '12px 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: C.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Today's Setups
-          </span>
-          <span style={{ fontSize: '0.62rem', color: C.muted }}>{watchlist.length}/10</span>
-        </div>
-
         {watchlist.length === 0 ? (
           <p style={{ textAlign: 'center', color: C.muted, fontSize: '0.78rem', padding: '16px 12px' }}>Add tickers above</p>
         ) : (
