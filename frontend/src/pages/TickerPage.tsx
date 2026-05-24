@@ -127,6 +127,22 @@ function RegularVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
           ))}
         </div>
       )}
+
+      {/* Context line: rec breakdown */}
+      {(() => {
+        const recs = analysis.regular_recommendations
+        if (!recs || recs.length === 0) return null
+        const entryCount = recs.filter(r => r.score >= 70).length
+        const setupCount = recs.filter(r => r.score >= 55 && r.score < 70).length
+        return (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '11px', color: '#5A6478', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {entryCount > 0 && <span style={{ background: 'rgba(0,229,160,0.1)', color: '#00E5A0', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{entryCount} ready to enter</span>}
+            {setupCount > 0 && <span style={{ background: 'rgba(245,166,35,0.1)', color: '#F5A623', border: '1px solid rgba(245,166,35,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{setupCount} setting up</span>}
+            {entryCount === 0 && setupCount === 0 && <span style={{ color: '#5A6478' }}>No structures ready yet — conditions still forming</span>}
+          </div>
+        )
+      })()}
+
       {analysis.structure && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.75rem', color: '#5A6478' }}>Best structure: <span style={{ color: '#E8EBF0', fontWeight: 600 }}>{analysis.structure}</span></span>

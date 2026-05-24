@@ -266,8 +266,8 @@ export default function RecommendationCard({
 
   const statusStyle = (() => {
     if (tradeState.color === 'emerald') return { bg: C.greenDim, color: C.green, border: 'rgba(0,229,160,0.3)' }
-    if (tradeState.color === 'amber')   return { bg: C.purpleDim, color: C.purple, border: 'rgba(107,127,212,0.3)' }
-    if (tradeState.color === 'sky')     return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
+    if (tradeState.color === 'amber')   return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
+    if (tradeState.color === 'sky')     return { bg: C.purpleDim, color: C.purple, border: 'rgba(107,127,212,0.3)' }
     return { bg: C.redDim, color: C.red, border: 'rgba(255,77,109,0.3)' }
   })()
 
