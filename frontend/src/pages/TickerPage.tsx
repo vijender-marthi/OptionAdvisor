@@ -677,11 +677,6 @@ export default function TickerPage() {
 
 
 
-            {/* Verdict card (unified analysis) */}
-            {unifiedAnalysis && (
-              <RegularVerdictCard analysis={unifiedAnalysis} />
-            )}
-
             {/* Market Overview */}
             <div style={cardStyle}>
               <MarketOverview
@@ -692,6 +687,11 @@ export default function TickerPage() {
                 signals={displayData.signals}
               />
             </div>
+
+            {/* Verdict card (unified analysis) */}
+            {unifiedAnalysis && (
+              <RegularVerdictCard analysis={unifiedAnalysis} />
+            )}
 
             {/* Week selector */}
             {cacheEntry && (
