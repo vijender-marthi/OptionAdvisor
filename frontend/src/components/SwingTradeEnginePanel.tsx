@@ -981,7 +981,7 @@ export default function SwingTradeEnginePanel({
               </div>
             </div>
           </div>
-          <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{execSummary || formatSwingEngineLabel(result.final_action)}</div>
+          <div className="mt-2 text-xs text-gray-300 leading-relaxed">{execSummary || formatSwingEngineLabel(result.final_action)}</div>
         </div>
 
 
