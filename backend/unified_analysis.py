@@ -140,9 +140,9 @@ def _shorten_reasons(reasons: list, verdict: str, max_conditions: int = 6) -> li
         if len(words) > 5:
             short = " ".join(words[:5])
         lower = str(reason).lower()
-        if any(w in lower for w in ["avoid", "no-go", "fail", "weak", "below", "negative", "conflict"]):
+        if any(w in lower for w in ['avoid', 'no-go', 'fail', 'weak', 'below', 'negative', 'conflict', 'not ', 'no ']):
             chip_type = "fail"
-        elif any(w in lower for w in ["wait", "watch", "caution", "extended", "slow", "check", "elevated"]):
+        elif any(w in lower for w in ['wait', 'watch', 'caution', 'extended', 'slow', 'check', 'elevated', 'short-bias', 'short bias', 'bearish', 'momentum -', 'inside opening']):
             chip_type = "warn"
         else:
             chip_type = "pass"
@@ -295,6 +295,14 @@ def serialize_day_trade(scan) -> dict:
         spy_chg = m.get("spy_change_pct")
         qqq_chg = m.get("qqq_change_pct")
 
+        # Clear entry plan for non-actionable verdicts
+        normalized = _day_verdict(scan)
+        if normalized in ('avoid', 'wait'):
+            entry_price = None
+            stop_price = None
+            structure = ""
+            exit_rows = []
+
         return {
             "ticker": scan.ticker,
             "company": getattr(scan, "company_name", scan.ticker),
@@ -385,6 +393,14 @@ def serialize_swing_trade(scan) -> dict:
         conditions = _shorten_reasons(scan.reasons or [], scan.verdict or "", max_conditions=6)
 
         coach = getattr(scan, "playbook_hint", "") or getattr(scan, "decision_message", "") or ""
+
+        # Clear entry plan for non-actionable verdicts
+        sw_verdict = normalize_verdict(scan.verdict or "")
+        if sw_verdict in ('avoid', 'wait'):
+            entry_price = None
+            stop_price = None
+            structure = ""
+            exit_rows = []
 
         return {
             "ticker": scan.ticker,
