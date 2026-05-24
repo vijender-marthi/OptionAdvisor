@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
-import { analyzeSwingTrade, deriveUnifiedFromSwingResult, saveToJournal, deskApi } from '../api/client'
-import type { DeskAlertCreate, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
+import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
+import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
+import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -66,7 +66,7 @@ export default function SwingTradePage() {
         ticker: data.ticker,
         result: data,
       }))
-      setUnified(deriveUnifiedFromSwingResult(data))
+      try { const v2 = await analyzeV2(sym, 'swing'); setUnified(v2.data) } catch { /* non-fatal */ }
     } catch (e) {
       setUi(cur => ({ ...cur, loading: false, error: axiosDetail(e) }))
     }
@@ -455,22 +455,109 @@ export default function SwingTradePage() {
       )}
 
       {/* Result panel */}
-      {result && (
+      {unified && (
         <>
-          {unified && <UnifiedVerdictCard analysis={unified} />}
-          <SwingTradeEnginePanel
-            result={result}
-            existingPositions={existingPositions}
-            onRefresh={() => void runScan()}
-            refreshing={loading}
-            onRequestEnterActiveTrade={() => setEnterOpen(true)}
-            onViewPositions={() => navigate(ROUTES.positions)}
-            onOpenStrategyFinder={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
-            onOpenCommandCenter={() => navigate(`${ROUTES.tradeCommandCenter}?ticker=${encodeURIComponent(result.ticker)}`)}
-            onCreateAlert={() => setAlertOpen(true)}
-            onSaveToJournal={() => void handleSaveToJournal()}
-            savedToJournal={savedToJournal}
-          />
+          {/* Ticker header bar */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>{unified.ticker}</span>
+                {unified.company && <span style={{ fontSize: '0.78rem', color: '#5A6478' }}>{unified.company}</span>}
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${unified.price.toFixed(2)}</span>
+                {unified.change_pct != null && (
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                    {unified.change_pct >= 0 ? '▲' : '▼'} {Math.abs(unified.change_pct).toFixed(2)}%
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {unified.session && <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: '1px solid rgba(107,127,212,0.5)', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>{unified.session}</span>}
+              </div>
+            </div>
+          </div>
+
+          <UnifiedVerdictCard analysis={unified} />
+
+          {/* Entry Plan / Risk Profile */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Entry</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? '#00E5A0' : '#F5A623', fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Structure</span>
+                  <span style={{ fontFamily: 'monospace', color: '#E8EBF0', fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Stop Loss</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? '#FF4D6D' : '#5A6478', fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>R/R Ratio</span>
+                  <span style={{ fontFamily: 'monospace', color: '#5A6478', fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Risk Level</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? '#00E5A0' : unified.risk_level === 'MEDIUM' ? '#F5A623' : '#FF4D6D', fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>RVOL</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#5A6478', fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Exit Plan */}
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
+            {unified.exit_rows.length > 0 ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>{['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} style={{ textAlign: 'left', color: '#5A6478', fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: '1px solid #1E2330' }}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {unified.exit_rows.map((row, i) => {
+                    const priceCls = row.type === 'stop' ? '#FF4D6D' : row.type === 't2' ? '#F5A623' : row.type === 't1' ? '#00E5A0' : '#5A6478'
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#E8EBF0', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.75rem' }}>{row.action}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ color: '#5A6478', textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+            )}
+          </div>
+
+          {/* AI Coach */}
+          {unified.coach && (
+            <div style={{ background: '#181C23', border: '1px solid #1E2330', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4A7CFF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
+                <div style={{ color: '#5A6478', fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Save to Journal */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button type="button" onClick={() => void handleSaveToJournal()}
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: savedToJournal ? 'rgba(0,229,160,0.1)' : '#4A7CFF', border: savedToJournal ? '1px solid rgba(0,229,160,0.3)' : '1px solid #4A7CFF', color: savedToJournal ? '#00E5A0' : '#fff' }}>
+              {savedToJournal ? '✓ Saved to Journal' : '📋 Save to Journal'}
+            </button>
+          </div>
         </>
       )}
 
