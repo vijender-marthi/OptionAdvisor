@@ -16,7 +16,6 @@ const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
-const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
 const QRadarPage = lazy(() => import('./pages/QRadarPage'))
@@ -150,7 +149,7 @@ function ShellRoutes() {
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
               <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/positions" element={<PositionsRoute />} />
-              <Route path="/alerts" element={<AlertCenterPage />} />
+              <Route path="/alerts" element={<Navigate to="/desk" replace />} />
               {/* /help is now a modal — redirect to landing */}
               <Route path="/help" element={<Navigate to="/trade-command-center" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
