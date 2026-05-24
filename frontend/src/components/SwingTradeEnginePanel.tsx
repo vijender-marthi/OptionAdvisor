@@ -927,20 +927,27 @@ export default function SwingTradeEnginePanel({
     <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
       {/* Ticker header */}
       <div className="px-4 pt-3 pb-2 border-b border-gray-800">
-        <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-          <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
-          {result.company_name && <span className="truncate text-xs text-gray-500 max-w-[200px]">{result.company_name}</span>}
-          {swingLastPrice != null && (
-            <span className="flex items-center gap-1">
-              <span className="text-sm font-bold text-white font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
-              {swingDailyPct != null && swingDailyDollar != null && (
-                <span className={`text-xs font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
-                </span>
-              )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-sm font-bold text-white">{result.ticker}</span>
+            {result.company_name && <span className="text-[10px] text-gray-500 truncate">{result.company_name}</span>}
+            {swingLastPrice != null && (
+              <span className="flex items-center gap-1">
+                <span className="text-sm font-bold text-white font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
+                {swingDailyPct != null && swingDailyDollar != null && (
+                  <span className={`text-[11px] font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
+                  </span>
+                )}
+              </span>
+            )}
+            <span className={`text-[11px] font-semibold ${result.bias === 'short' ? 'text-rose-400' : 'text-emerald-400'}`}>
+              · {swingActiveState === 4 ? 'Exit Zone' : swingActiveState === 3 ? 'In-Play' : swingActiveState === 2 ? 'Entry Open' : 'Setup'}
             </span>
-          )}
-          {sessionDate && <span className="text-[10px] text-gray-600">{sessionDate}</span>}
+          </div>
+          <div className="text-[10px] text-gray-600 shrink-0">
+            {sessionDate && <span>{sessionDate}</span>}
+          </div>
         </div>
         {priceStale && priceWarning && (
           <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
