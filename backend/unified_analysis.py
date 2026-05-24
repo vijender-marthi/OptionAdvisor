@@ -8,6 +8,45 @@ import logging
 
 log = logging.getLogger(__name__)
 
+def _day_verdict(scan) -> str:
+    """
+    Use trader_decision.suggested_action
+    as primary — it's the Decision Quality
+    Layer output, more nuanced than verdict.
+
+    suggested_action values from trader_decision.py:
+      WATCH_LONG_ONLY       → watch
+      WATCH_PUT_BREAKDOWN   → watch
+      WAIT_FOR_CONFIRMATION → wait
+      NO_TRADE              → wait
+      AVOID_CALLS           → avoid
+      AVOID_CHASING_PUTS    → avoid
+
+    Only use scan.verdict for STRONG GO
+    which overrides everything.
+    """
+    td = scan.trader_decision or {}
+    suggested = td.get('suggested_action', '')
+    raw_verdict = scan.verdict.upper()
+
+    # STRONG GO overrides everything
+    if raw_verdict == 'STRONG GO':
+        return 'enter'
+
+    # Map suggested_action to verdict
+    action_map = {
+        'WATCH_LONG_ONLY':       'watch',
+        'WATCH_PUT_BREAKDOWN':   'watch',
+        'WAIT_FOR_CONFIRMATION': 'wait',
+        'NO_TRADE':              'wait',
+        'AVOID_CALLS':           'avoid',
+        'AVOID_CHASING_PUTS':    'avoid',
+    }
+    if suggested in action_map:
+        return action_map[suggested]
+
+    # Fall back to scan.verdict mapping
+    return normalize_verdict(raw_verdict)
 
 def normalize_verdict(raw: str) -> str:
     v = (raw or "").upper().strip()
@@ -259,8 +298,8 @@ def serialize_day_trade(scan) -> dict:
             "trade_type": "day",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("session_change_pct"),
-            "verdict": normalize_verdict(scan.verdict or ""),
-            "verdict_raw": scan.verdict or "",
+            "verdict": _day_verdict(scan),
+            "verdict_raw": _day_verdict(scan),
             "confidence": _extract_confidence(m.get("confidence")),
             "reason": td.get("decision_message") or (scan.reasons[0] if scan.reasons else ""),
             "conditions": conditions,

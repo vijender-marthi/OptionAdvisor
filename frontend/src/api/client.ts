@@ -971,3 +971,195 @@ export const deskApi = {
     })
   },
 }
+
+export function deriveUnifiedFromDayResult(
+  result: any
+): UnifiedAnalysis {
+  const td = result.trader_decision || {}
+  const eg = result.entry_guidance || {}
+  const m = result.metrics || {}
+
+  // Use suggested_action for verdict
+  const actionMap: Record<string, string> = {
+    'WATCH_LONG_ONLY':       'watch',
+    'WATCH_PUT_BREAKDOWN':   'watch',
+    'WAIT_FOR_CONFIRMATION': 'wait',
+    'NO_TRADE':              'wait',
+    'AVOID_CALLS':           'avoid',
+    'AVOID_CHASING_PUTS':    'avoid',
+  }
+
+  const rawVerdict =
+    result.verdict?.toUpperCase() ?? ''
+  const verdict =
+    rawVerdict === 'STRONG GO'
+      ? 'enter'
+    : actionMap[td.suggested_action]
+      ?? (rawVerdict === 'GO'
+          ? 'watch' : 'wait')
+
+  // Extract confidence from dict
+  const conf = m.confidence
+  const confidence = typeof conf === 'number'
+    ? conf
+    : conf && typeof conf === 'object'
+      ? (() => {
+          const labelMap: Record<string,number> = {
+            HIGH: 3, STRONG: 3, GOOD: 2,
+            MODERATE: 2, NEUTRAL: 2,
+            MIXED: 1, MEDIUM: 2, LOW: 1,
+            WEAK: 0, POOR: 0,
+          }
+          const riskMap: Record<string,number> = {
+            LOW: 3, MEDIUM: 2, HIGH: 0
+          }
+          let total = 0
+          let max = 0
+          for (const [k, v] of
+            Object.entries(conf as Record<string,string>)) {
+            max += 3
+            total += k === 'risk'
+              ? (riskMap[String(v).toUpperCase()] ?? 1)
+              : (labelMap[String(v).toUpperCase()] ?? 1)
+          }
+          return max > 0
+            ? Math.round(total / max * 100)
+            : 0
+        })()
+      : 0
+
+  const reasons: string[] =
+    result.reasons || []
+
+  const conditions = reasons
+    .slice(0, 6)
+    .map((r: string) => {
+      const short = r.split('—')[0]
+        .split(':')[0]
+        .split('(')[0]
+        .trim()
+        .split(' ')
+        .slice(0, 5)
+        .join(' ')
+      const lower = r.toLowerCase()
+      const type =
+        lower.includes('avoid') ||
+        lower.includes('weak') ||
+        lower.includes('below') ||
+        lower.includes('fail')
+          ? 'fail'
+        : lower.includes('wait') ||
+          lower.includes('watch') ||
+          lower.includes('caution')
+          ? 'warn'
+          : 'pass'
+      return { label: short, type }
+    })
+    .filter(c => c.label)
+
+  return {
+    ticker: result.ticker,
+    company: result.company_name,
+    trade_type: 'day',
+    price: m.last_price ?? 0,
+    change_pct: m.session_change_pct,
+    verdict: verdict as any,
+    verdict_raw: result.verdict,
+    confidence,
+    reason: td.decision_message
+      || reasons[0] || '',
+    conditions,
+    entry_price: eg.entry_price
+      || eg.current_price || null,
+    entry_description: eg.entry_description
+      || '',
+    stop_price: eg.stop_price
+      || eg.risk_below || null,
+    stop_description: m.or_low
+      ? `OR Low $${m.or_low}` : '',
+    structure: result.option_risk_context
+      ?.structure_hint || 'CALL · 1-2 DTE',
+    exit_rows: [],
+    rr_ratio: m.entry_rr_ratio
+      ? `${m.entry_rr_ratio}:1` : null,
+    risk_level: 'MEDIUM',
+    rvol: m.rvol ? `${m.rvol}x` : null,
+    coach: td.decision_message || '',
+    spy_price: null,
+    spy_change_pct: m.spy_change_pct,
+    qqq_change_pct: m.qqq_change_pct,
+    vix: m.vix,
+    vix_label: m.vix < 15 ? 'Low'
+      : m.vix < 20 ? 'Contained'
+      : m.vix < 25 ? 'Elevated' : 'High',
+    regime: 'NEUTRAL MARKET',
+    session: m.session_phase || '',
+    regular_recommendations: [],
+  }
+}
+
+export function deriveUnifiedFromSwingResult(
+  result: any
+): UnifiedAnalysis {
+  const m = result.metrics || {}
+  const exec = m.exec_levels || {}
+
+  const verdictMap: Record<string,string> = {
+    'STRONG GO': 'enter',
+    'GO':        'enter',
+    'WATCH':     'watch',
+    'WAIT':      'wait',
+    'NO-GO':     'avoid',
+    'AVOID':     'avoid',
+  }
+
+  const verdict =
+    verdictMap[result.verdict?.toUpperCase()]
+    ?? 'wait'
+
+  const conf = m.confidence
+  // same confidence extraction as above
+
+  return {
+    ticker: result.ticker,
+    company: result.company_name,
+    trade_type: 'swing',
+    price: m.last_price ?? 0,
+    change_pct: m.momentum_5d_pct,
+    verdict: verdict as any,
+    verdict_raw: result.verdict,
+    confidence: 0, // compute same way
+    reason: result.decision_message || '',
+    conditions: (result.reasons || [])
+      .slice(0, 6)
+      .map((r: string) => ({
+        label: r.split('—')[0]
+          .split(':')[0].trim()
+          .split(' ').slice(0,5).join(' '),
+        type: 'pass' as const
+      })),
+    entry_price: exec.entry ?? null,
+    entry_description:
+      exec.entry_description || '',
+    stop_price: exec.stop ?? null,
+    stop_description: m.ma20
+      ? `MA20 $${m.ma20}` : '',
+    structure: result.suggested_strategy
+      || 'See analysis',
+    exit_rows: [],
+    rr_ratio: null,
+    risk_level: result.risk_level
+      || 'MEDIUM',
+    rvol: null,
+    coach: result.playbook_hint
+      || result.decision_message || '',
+    spy_price: null,
+    spy_change_pct: null,
+    qqq_change_pct: null,
+    vix: m.vix,
+    vix_label: 'Contained',
+    regime: m.market_context || 'NEUTRAL',
+    session: 'swing',
+    regular_recommendations: [],
+  }
+}
