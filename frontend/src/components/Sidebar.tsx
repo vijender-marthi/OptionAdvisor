@@ -172,6 +172,13 @@ export default function Sidebar() {
       ],
     },
     {
+      label: 'Discovery',
+      items: [
+        { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
+        { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
+      ],
+    },
+    {
       label: 'Support',
       items: [
         { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
