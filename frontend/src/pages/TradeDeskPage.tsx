@@ -100,7 +100,7 @@ export default function TradeDeskPage() {
   const fetchWatchlist = useCallback(async () => {
     try {
       const data = await deskApi.getWatchlist()
-      setWatchlist(data)
+      setWatchlist(data.filter(i => i.trade_type !== 'regular'))
     } catch { /* ignore */ }
   }, [])
 
