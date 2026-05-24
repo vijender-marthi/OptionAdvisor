@@ -148,27 +148,27 @@ export default function Sidebar() {
       label: 'Notifications',
       items: [
         { id: 'alert-center', label: 'Messages', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
-    ]
+      ],
+    },
+  {
+    label: 'Discovery',
+    items: [
+      { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
+      { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
+    ],
   },
   {
     label: 'Analyze',
-      items: [
-        { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
-        { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
-      ],
-    },
-    {
-      label: 'Tools',
+    items: [
+      { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
+      { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
+    ],
+  },
+  {
+    label: 'Tools',
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
-      ],
-    },
-    {
-      label: 'Discovery',
-      items: [
-        { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
-        { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
       ],
     },
     {
