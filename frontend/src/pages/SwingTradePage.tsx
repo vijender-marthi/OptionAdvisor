@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
-import { analyzeSwingTrade, saveToJournal } from '../api/client'
+import { analyzeSwingTrade, saveToJournal, deskApi } from '../api/client'
+import type { DeskAlertCreate, SwingTradeScanResult } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
-import type { SwingTradeScanResult } from '../api/client'
+import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -227,6 +228,11 @@ export default function SwingTradePage() {
     setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
     setEnterOpen(false)
   }, [result, addManualPosition])
+
+  const handleCreateAlert = useCallback(async (data: DeskAlertCreate) => {
+    await deskApi.createAlert(data)
+    setAlertOpen(false)
+  }, [])
 
   const [searchOpen, setSearchOpen] = useState(false)
 
@@ -574,59 +580,13 @@ export default function SwingTradePage() {
       )}
 
       {alertOpen && result && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <div className="text-base font-bold text-white">Create Swing Alert</div>
-              <button
-                type="button"
-                onClick={() => setAlertOpen(false)}
-                className="text-gray-500 hover:text-gray-300 p-1"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3 text-sm">
-              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Ticker</span>
-                  <span className="text-gray-200 font-bold">{result.ticker}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Engine</span>
-                  <span className="text-gray-200 font-bold">Swing Trade</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Alert Focus</span>
-                  <span className="text-amber-300 font-bold">{result.final_action.replace(/_/g, ' ')}</span>
-                </div>
-                <div className="pt-1 text-xs text-gray-300 leading-relaxed">
-                  {result.decision_message || 'Use alerts to catch the next valid pullback, breakout, or risk-management change.'}
-                </div>
-              </div>
-              <p className="text-xs text-gray-500">
-                Open Alert Center to create a ticker alert with this swing setup in mind.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate(`${ROUTES.alerts}?ticker=${encodeURIComponent(result.ticker)}`)}
-                  className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2.5 text-sm transition-colors"
-                >
-                  Open Alert Center
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAlertOpen(false)}
-                  className="flex-1 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 font-semibold py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SetAlertDrawer
+          ticker={result.ticker}
+          tradeType="swing"
+          onClose={() => setAlertOpen(false)}
+          onSubmit={handleCreateAlert}
+          drawerLeft={0}
+        />
       )}
       </div>{/* end right content */}
     </div>{/* end flex container */}

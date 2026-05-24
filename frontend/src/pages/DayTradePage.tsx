@@ -5,8 +5,10 @@ import {
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check,
 } from 'lucide-react'
-import { analyzeDayTrade, enterActiveTrade } from '../api/client'
+import { analyzeDayTrade, enterActiveTrade, deskApi } from '../api/client'
+import type { DeskAlertCreate } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
+import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
@@ -186,6 +188,11 @@ export default function DayTradePage() {
       message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
     })
   }, [addToWatchlist, isWatched, result])
+
+  const handleCreateAlert = useCallback(async (data: DeskAlertCreate) => {
+    await deskApi.createAlert(data)
+    setAlertOpen(false)
+  }, [])
 
   const openPortfolioModal = useCallback(() => {
     if (!result) return
@@ -803,59 +810,13 @@ export default function DayTradePage() {
       )}
 
       {alertOpen && result && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
-          <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <div className="text-base font-bold text-white">Create Day Alert</div>
-              <button
-                type="button"
-                onClick={() => setAlertOpen(false)}
-                className="text-gray-500 hover:text-gray-300 p-1"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3 text-sm">
-              <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Ticker</span>
-                  <span className="text-gray-200 font-bold">{result.ticker}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Engine</span>
-                  <span className="text-gray-200 font-bold">Day Trade</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Alert Focus</span>
-                  <span className="text-amber-300 font-bold">{(result.execution_readiness || result.execution_timing || result.final_decision).replace(/_/g, ' ')}</span>
-                </div>
-                <div className="pt-1 text-xs text-gray-300 leading-relaxed">
-                  {result.entry_guidance?.action || result.reason || 'Use alerts to catch the next valid VWAP hold, breakout, or intraday risk shift.'}
-                </div>
-              </div>
-              <p className="text-xs text-gray-500">
-                Open Alert Center to create a ticker alert with this intraday setup in mind.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => routerNavigate(`${ROUTES.alerts}?ticker=${encodeURIComponent(result.ticker)}`)}
-                  className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2.5 text-sm transition-colors"
-                >
-                  Open Alert Center
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAlertOpen(false)}
-                  className="flex-1 rounded-xl border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 font-semibold py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SetAlertDrawer
+          ticker={result.ticker}
+          tradeType="day"
+          onClose={() => setAlertOpen(false)}
+          onSubmit={handleCreateAlert}
+          drawerLeft={0}
+        />
       )}
       </div>{/* end right content */}
     </div>{/* end flex container */}
