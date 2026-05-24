@@ -5,6 +5,7 @@ import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/cli
 import type { DeskAlertCreate, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
+import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -456,6 +457,7 @@ export default function SwingTradePage() {
       {/* Result panel */}
       {result && (
         <>
+          {unified && <UnifiedVerdictCard analysis={unified} />}
           <SwingTradeEnginePanel
             result={result}
             existingPositions={existingPositions}

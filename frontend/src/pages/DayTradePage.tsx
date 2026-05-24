@@ -9,6 +9,7 @@ import { analyzeDayTrade, analyzeV2, enterActiveTrade, deskApi } from '../api/cl
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
+import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
@@ -549,6 +550,7 @@ export default function DayTradePage() {
 
       {result && (
         <>
+          {unified && <UnifiedVerdictCard analysis={unified} />}
           <DayTradeEnginePanel
             result={result}
             existingPositions={existingPositions}
