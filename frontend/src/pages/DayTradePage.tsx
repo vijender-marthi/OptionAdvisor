@@ -10,6 +10,7 @@ import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
+import DayTradeIntradayChart, { parseChartBars } from '../components/DayTradeIntradayChart'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -675,6 +676,23 @@ export default function DayTradePage() {
           )}
         </>
       )}
+
+      {/* Intraday chart */}
+      {result && result.metrics && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const chartBars = parseChartBars(m.chart_bars)
+        const orHigh = m.or_high as number | undefined
+        const orLow = m.or_low as number | undefined
+        const orMin = m.or_minutes as number | undefined
+        const sessionDate = String(m.session_date ?? '')
+        if (!chartBars || orHigh == null || orLow == null) return null
+        return (
+          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
+            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
+          </div>
+        )
+      })()}
 
       {/* Flow reference */}
       <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">
