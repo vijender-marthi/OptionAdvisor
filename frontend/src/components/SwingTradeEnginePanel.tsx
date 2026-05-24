@@ -1200,7 +1200,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 3 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 3 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 3 ? focusToneText : 'text-semantic-info'}`}>Step 3</div>
@@ -1219,7 +1219,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 4 ? focusToneText : 'text-semantic-info'}`}>Step 4</div>
@@ -1376,7 +1376,7 @@ export default function SwingTradeEnginePanel({
         })()}
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 5 ? focusToneText : 'text-semantic-info'}`}>Step 5</div>
@@ -1450,7 +1450,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 6 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 6 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 6 ? focusToneText : 'text-semantic-info'}`}>Step 6</div>
