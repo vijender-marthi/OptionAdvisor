@@ -4375,3 +4375,39 @@ def set_user_accent(auth_email: str = Depends(require_access_email), body: dict 
     accent = str(body.get("accent", "blue"))
     save_user_state(email, theme_accent=accent)
     return {"ok": True, "accent": accent}
+
+@app.get("/api/v2/analyze/{ticker}")
+async def unified_analyze(
+        ticker: str,
+        trade_type: str = "day",
+        weeks_out: int = 4,
+        spread_width: Optional[int] = 5,
+        strategy_mode: str = "all",
+        auth_email: str = Depends(require_access_email),
+):
+    t = ticker.strip().upper()
+    try:
+        if trade_type == "day":
+            scan = run_day_trade_scan(t)
+            return serialize_day_trade(scan)
+
+        elif trade_type == "swing":
+            scan = run_swing_trade_scan(t)
+            return serialize_swing_trade(scan)
+
+        elif trade_type == "regular":
+            # your regular logic here
+            pass
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid trade_type: {trade_type}")
+
+    except HTTPException:
+        raise  # re-raise HTTP exceptions as-is
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e))
