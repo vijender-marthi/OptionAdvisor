@@ -54,6 +54,7 @@ from analysis import generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade, clear_scan_cache as _clear_day_scan_cache
 from ai_coach import get_ai_coach
 from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
+from unified_analysis import serialize_day_trade, serialize_swing_trade, serialize_regular_trade
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
@@ -1946,6 +1947,124 @@ def analyze(req: AnalyzeRequest):
     with analyze_user_cache_lock:
         analyze_user_cache[key] = (time.time(), data)
     return data
+
+
+@app.get("/api/v2/analyze/{ticker}")
+async def unified_analyze(
+    ticker: str,
+    trade_type: str = "day",
+    weeks_out: int = 4,
+    spread_width: Optional[int] = 5,
+    strategy_mode: str = "all",
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Unified analysis endpoint returning a consistent response shape for day, swing, and regular trades.
+    trade_type: 'day' | 'swing' | 'regular'
+    """
+    ticker = ticker.upper().strip()
+
+    if trade_type == "day":
+        try:
+            scan = run_day_trade_scan(ticker)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from None
+        return serialize_day_trade(scan)
+
+    if trade_type == "swing":
+        try:
+            scan = run_swing_trade_scan(ticker)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from None
+        return serialize_swing_trade(scan)
+
+    # regular — mirror _analyze_ticker logic
+    try:
+        hist = _bc_hist(ticker, period="1y", force_refresh=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch data: {str(e)}")
+
+    if hist is None or hist.empty:
+        raise HTTPException(status_code=404, detail=f"No data found for ticker '{ticker}'")
+
+    if len(hist) < 60:
+        raise HTTPException(status_code=400, detail=f"Insufficient history for '{ticker}' (need at least 60 days)")
+
+    try:
+        opt_dates = _bc_opt_dates(ticker)
+    except Exception:
+        opt_dates = ()
+
+    if not opt_dates:
+        raise HTTPException(status_code=404, detail=f"No options available for '{ticker}'")
+
+    from engine import pick_expiry_by_dte as _pick_expiry
+
+    weeks_for_engine = weeks_out
+    target_dte = weeks_out * 7
+    dte_lo = max(21, target_dte - 10)
+    dte_hi = target_dte + 10
+    target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
+    if target_expiry is None:
+        target_expiry = next(
+            (d for d in opt_dates if (datetime.strptime(d, "%Y-%m-%d") - datetime.today()).days >= dte_lo - 3),
+            opt_dates[min(2, len(opt_dates) - 1)]
+        )
+
+    try:
+        calls_raw, puts_raw = _bc_chain(ticker, target_expiry)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch options chain: {str(e)}")
+
+    try:
+        info = _bc_info(ticker)
+        company_name = info.get("longName", ticker)
+    except Exception:
+        info = {}
+        company_name = ticker
+
+    hist_close = float(hist["Close"].iloc[-1])
+    live_price = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+    price_approx = live_price if live_price > 0 else hist_close
+
+    calls_f = calls_raw[
+        (calls_raw["strike"] >= price_approx * 0.75) &
+        (calls_raw["strike"] <= price_approx * 1.30)
+    ].copy()
+    puts_f = puts_raw[
+        (puts_raw["strike"] >= price_approx * 0.75) &
+        (puts_raw["strike"] <= price_approx * 1.30)
+    ].copy()
+
+    session_et = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    iv_hist_past = fetch_iv_atm_history_strict_before(ticker, session_et, limit=380)
+    try:
+        signals = generate_signals(
+            hist,
+            calls_f,
+            puts_f,
+            reference_price=price_approx,
+            implied_iv_history=iv_hist_past,
+        )
+        upsert_iv_atm_snapshot(ticker, session_et, signals.current_iv)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
+
+    try:
+        trades = run_engine(
+            signals, calls_f, puts_f, list(opt_dates),
+            spread_width_override=spread_width,
+            weeks_out=weeks_for_engine,
+            strategy_mode=strategy_mode,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trade engine failed: {str(e)}")
+
+    return serialize_regular_trade(ticker, company_name, price_approx, trades, signals)
 
 
 @app.get("/api/signal-feed")

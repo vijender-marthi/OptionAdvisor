@@ -12,11 +12,11 @@ function useWindowWidth() {
   return w
 }
 // mobile < 640, tablet 640–1023, desktop ≥ 1024
-import { deskApi } from '../api/client'
+import { deskApi, analyzeV2 } from '../api/client'
 import type {
   DeskWatchlistItem, DeskTradeLog, DeskTradeStats, DeskAlert,
   DeskTradeCreate, DeskTradeUpdate, DeskAlertCreate,
-  DayTradeScanResult, SwingTradeScanResult,
+  UnifiedAnalysis,
 } from '../api/client'
 
 import LeftPanel from '../components/desk/LeftPanel'
@@ -26,7 +26,7 @@ import AlertsTab from '../components/desk/AlertsTab'
 import LogTradeDrawer from '../components/desk/LogTradeDrawer'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 
-type Analysis = (DayTradeScanResult & SwingTradeScanResult & { trade_type: string }) | null
+type Analysis = UnifiedAnalysis | null
 type Tab = 'verdict' | 'journal' | 'alerts'
 type DrawerState =
   | { type: 'log-new' }
@@ -150,13 +150,22 @@ export default function TradeDeskPage() {
 
   const fetchAnalysis = useCallback(async (ticker: string, type?: string) => {
     const t = ticker.trim().toUpperCase()
-    const tt = type || tradeTypeRef.current
+    const tt = (type || tradeTypeRef.current) as 'day' | 'swing'
     if (!t) return
     setAnalysis(prev => prev ? (setAnalysisRefreshing(true), prev) : (setAnalysisLoading(true), null))
     try {
-      const data = await deskApi.getAnalysis(t, tt)
+      const res = await analyzeV2(t, tt)
+      const data: UnifiedAnalysis = res.data
       setAnalysis(data)
       setVerdicts(prev => ({ ...prev, [`${t}:${tt}`]: data.verdict }))
+      // Supplement market strip from analysis response
+      setMarketData(prev => ({
+        ...prev,
+        ...(data.spy_change_pct != null ? { spyChg: data.spy_change_pct } : {}),
+        ...(data.qqq_change_pct != null ? { qqqChg: data.qqq_change_pct } : {}),
+        ...(data.vix != null ? { vix: data.vix, vixLabel: data.vix_label } : {}),
+        ...(data.regime ? { regime: data.regime } : {}),
+      }))
     } catch { /* ignore */ } finally {
       setAnalysisLoading(false)
       setAnalysisRefreshing(false)
@@ -260,17 +269,11 @@ export default function TradeDeskPage() {
   const openTradeSet = new Set<string>(trades.filter(t => !t.exit_time).map(t => t.ticker))
   const alertTickerSet = new Set<string>(alerts.map(a => a.ticker))
 
-  const eg = analysis?.entry_guidance as Record<string, unknown> | undefined
-  const plannedEntry = typeof eg?.breakout_level === 'number' ? eg.breakout_level : undefined
-  const plannedT1 = typeof eg?.scalp_target === 'number' ? eg.scalp_target : undefined
-  const plannedStop = typeof eg?.risk_below === 'number' ? eg.risk_below : undefined
+  const plannedEntry = analysis?.entry_price ?? undefined
+  const plannedStop = analysis?.stop_price ?? undefined
 
-  const priceNum = analysis
-    ? (analysis.metrics as Record<string, unknown>)?.last_price as number | undefined
-    : undefined
-  const changePct = analysis
-    ? (analysis.metrics as Record<string, unknown>)?.price_change_pct as number | undefined
-    : undefined
+  const priceNum = analysis?.price ?? undefined
+  const changePct = analysis?.change_pct ?? undefined
 
   // Trade type badge label
   const tradeTypeBadgeLabel: Record<string, string> = {
@@ -384,8 +387,8 @@ export default function TradeDeskPage() {
               <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: isMobile ? '1.2rem' : '1.5rem', color: '#fff' }}>
                 {selectedTicker}
               </span>
-              {analysis?.company_name && !isMobile && (
-                <span style={{ fontSize: '0.82rem', color: C.muted }}>{analysis.company_name}</span>
+              {analysis?.company && !isMobile && (
+                <span style={{ fontSize: '0.82rem', color: C.muted }}>{analysis.company}</span>
               )}
               {priceNum != null && (
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: isMobile ? '1rem' : '1.2rem', color: '#fff' }}>
@@ -530,12 +533,11 @@ export default function TradeDeskPage() {
           mode="new"
           ticker={selectedTicker}
           tradeType={tradeType}
-          signalGiven={analysis?.final_decision || ''}
+          signalGiven={analysis?.verdict || ''}
           confidence={analysis?.confidence}
           plannedEntry={plannedEntry}
-          plannedT1={plannedT1}
           plannedStop={plannedStop}
-          structure={(analysis as unknown as Record<string, unknown>)?.structure as string || ''}
+          structure={analysis?.structure || ''}
           onClose={() => setDrawer(null)}
           onSubmit={handleLogTrade}
           drawerLeft={drawerLeft}

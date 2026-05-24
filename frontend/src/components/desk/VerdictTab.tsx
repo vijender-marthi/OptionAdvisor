@@ -1,11 +1,9 @@
 import { useMemo } from 'react'
-import type { DayTradeScanResult, SwingTradeScanResult, AiCoachResult } from '../../api/client'
+import type { UnifiedAnalysis } from '../../api/client'
 import type { DeskTradeLog } from '../../api/client'
 
-type Analysis = (DayTradeScanResult & SwingTradeScanResult & { trade_type: string }) | null
-
 interface Props {
-  analysis: Analysis
+  analysis: UnifiedAnalysis | null
   loading: boolean
   openTrade: DeskTradeLog | null
   tradeType: string
@@ -34,12 +32,15 @@ const C = {
 
 type Verdict = 'ENTER' | 'WATCH' | 'WAIT' | 'AVOID'
 
-function normalizeVerdict(raw: string): Verdict {
-  const u = (raw || '').toUpperCase()
-  if (u.includes('ENTER') || u.includes('READY') || u === 'GO' || u === 'STRONG GO') return 'ENTER'
-  if (u.includes('WATCH')) return 'WATCH'
-  if (u.includes('WAIT')) return 'WAIT'
+function mapVerdict(raw: string): Verdict {
+  if (raw === 'enter') return 'ENTER'
+  if (raw === 'watch') return 'WATCH'
+  if (raw === 'wait') return 'WAIT'
   return 'AVOID'
+}
+
+function verdictLabel(v: Verdict): string {
+  return v === 'ENTER' ? 'ENTER NOW' : v
 }
 
 function verdictColor(v: Verdict): string {
@@ -99,6 +100,17 @@ function Skeleton({ h = 80 }: { h?: number }) {
   )
 }
 
+function fmtP(v: number | null | undefined): string {
+  return v != null ? `$${v.toFixed(2)}` : '—'
+}
+
+function exitRowColor(type: string): string {
+  if (type === 't1') return C.green
+  if (type === 't2') return 'rgba(0,229,160,0.6)'
+  if (type === 'stop') return C.red
+  return C.muted
+}
+
 export default function VerdictTab({
   analysis, loading, openTrade, tradeType, compact = false,
   onLogTrade, onSetAlert, onRefresh, refreshing,
@@ -143,127 +155,26 @@ export default function VerdictTab({
     )
   }
 
-  // Parse data
-  const verdict = normalizeVerdict(analysis.final_decision || analysis.verdict || '')
-  const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence) : 0
-  const reason = (analysis as unknown as Record<string, unknown>)?.trader_decision && typeof ((analysis as unknown as Record<string, unknown>).trader_decision as Record<string, unknown>)?.decision_message === 'string'
-    ? ((analysis as unknown as Record<string, unknown>).trader_decision as Record<string, unknown>).decision_message as string
-    : analysis.reason || ''
-
-  const eg = analysis.entry_guidance as Record<string, unknown> | undefined
-  const raw = analysis as unknown as Record<string, unknown>
-  const metricsRaw = analysis.metrics as Record<string, unknown> | undefined
-  const execLevels = metricsRaw?.exec_levels as Record<string, unknown> | undefined
-
-  // Entry — day: entry_guidance.breakout_level / current_price; swing: metrics.exec_levels.breakout
-  const entry: number | undefined =
-    (typeof eg?.breakout_level === 'number' ? eg.breakout_level : undefined)
-    ?? (typeof eg?.current_price === 'number' ? eg.current_price : undefined)
-    ?? (typeof execLevels?.breakout === 'number' ? execLevels.breakout as number : undefined)
-    ?? (typeof raw.swing_entry === 'number' ? raw.swing_entry as number : undefined)
-    ?? (typeof execLevels?.entry === 'number' ? execLevels.entry as number : undefined)
-    ?? (typeof raw.planned_entry === 'number' ? raw.planned_entry as number : undefined)
-    ?? undefined
-
-  // T1 — day: entry_guidance.scalp_target; swing: metrics.exec_levels.target1
-  const t1: number | undefined =
-    (typeof eg?.scalp_target === 'number' ? eg.scalp_target : undefined)
-    ?? (typeof execLevels?.target1 === 'number' ? execLevels.target1 as number : undefined)
-    ?? (typeof raw.take_profit_1 === 'number' ? raw.take_profit_1 as number : undefined)
-    ?? (typeof raw.swing_t1 === 'number' ? raw.swing_t1 as number : undefined)
-    ?? undefined
-
-  // T2 — day: entry_guidance.scalp_target_2; swing: metrics.exec_levels.target2
-  const t2: number | undefined =
-    (typeof eg?.scalp_target_2 === 'number' ? eg.scalp_target_2 : undefined)
-    ?? (typeof execLevels?.target2 === 'number' ? execLevels.target2 as number : undefined)
-    ?? (typeof raw.take_profit_2 === 'number' ? raw.take_profit_2 as number : undefined)
-    ?? (typeof raw.swing_t2 === 'number' ? raw.swing_t2 as number : undefined)
-    ?? undefined
-
-  // Stop — day: entry_guidance.risk_below; swing: metrics.exec_levels.stop
-  const stop: number | undefined =
-    (typeof eg?.risk_below === 'number' ? eg.risk_below : undefined)
-    ?? (typeof execLevels?.stop === 'number' ? execLevels.stop as number : undefined)
-    ?? (typeof raw.swing_stop === 'number' ? raw.swing_stop as number : undefined)
-    ?? (typeof raw.planned_stop === 'number' ? raw.planned_stop as number : undefined)
-    ?? undefined
-
-  const structure = raw?.structure as string | undefined
-    ?? raw?.suggested_strategy as string | undefined
-    ?? raw?.final_action as string | undefined
-
-  const rvol = typeof metricsRaw?.rvol === 'number' ? metricsRaw.rvol
-    : typeof metricsRaw?.volume_ratio === 'number' ? metricsRaw.volume_ratio as number
-    : undefined
-  const lastPrice = typeof metricsRaw?.last_price === 'number' ? metricsRaw.last_price : undefined
-
-  // AI coach
-  const aiCoachRaw = (analysis as unknown as Record<string, unknown>)?.ai_coach
-  let coachText = ''
-  if (typeof aiCoachRaw === 'string') coachText = aiCoachRaw
-  else if (aiCoachRaw && typeof (aiCoachRaw as Record<string, unknown>).summary === 'string') {
-    coachText = (aiCoachRaw as AiCoachResult).summary
-  } else if (aiCoachRaw && typeof (aiCoachRaw as Record<string, unknown>).best_next_step === 'string') {
-    coachText = (aiCoachRaw as AiCoachResult).best_next_step
-  } else if (aiCoachRaw && typeof (aiCoachRaw as Record<string, unknown>).message === 'string') {
-    coachText = (aiCoachRaw as Record<string, unknown>).message as string
-  }
-
-  // R/R
-  let rr: number | undefined
-  if (entry != null && t1 != null && stop != null && stop < entry) {
-    rr = (t1 - entry) / (entry - stop)
-  }
+  const verdict = mapVerdict(analysis.verdict)
+  const confidence = Math.round(analysis.confidence)
+  const reason = analysis.reason
+  const conditions = analysis.conditions || []
+  const exitRows = analysis.exit_rows || []
 
   // Waiting-for reason when verdict is WAIT
   const waitingFor = useMemo(() => {
-    if (!analysis) return null
     if (verdict !== 'WAIT') return null
-    const raw = analysis as unknown as Record<string, unknown>
-    const conditions = (raw.conditions as Array<Record<string, unknown>> | undefined) || []
-    const missing = (analysis.missing_confirmations || []) as string[]
-    // Prefer missing_confirmations, fall back to warn/fail conditions
-    const items: string[] = missing.length > 0
-      ? missing
-      : conditions
-          .filter(c => c.type === 'warn' || c.type === 'fail')
-          .map(c => String(c.label || ''))
-    const shortened = items
-      .map(s => s.split('—')[0].split(':')[0].split('(')[0].trim())
+    const items = conditions
+      .filter(c => c.type === 'warn' || c.type === 'fail')
+      .map(c => c.label)
       .filter(Boolean)
       .slice(0, 2)
-    return shortened.length > 0 ? shortened.join(' · ') : null
-  }, [analysis, verdict])
+    return items.length > 0 ? items.join(' · ') : null
+  }, [conditions, verdict])
 
   const vc = verdictColor(verdict)
   const vbg = verdictBg(verdict)
   const vborder = verdictBorder(verdict)
-
-  // Supporting factors / conditions
-  const supportingFactors = analysis.supporting_factors || []
-  const missingConfirmations = analysis.missing_confirmations || []
-
-  const fmtP = (v: number | undefined) => v != null ? `$${v.toFixed(2)}` : '—'
-
-  // Shorten condition chip labels to ≤ 4 words
-  function shortenLabel(raw: string): string {
-    // Remove trailing parenthetical like "(range-bound)" or "(stock short...)"
-    let s = raw.replace(/\s*\(.*?\)\s*$/, '').trim()
-    // Take only the part before " — " or " - " or ":"
-    s = s.split(/\s+[—–-]\s+/)[0].split(':')[0].trim()
-    // Capitalize first letter
-    s = s.charAt(0).toUpperCase() + s.slice(1)
-    // If still > 5 words, take first 4
-    const words = s.split(/\s+/)
-    if (words.length > 4) s = words.slice(0, 4).join(' ')
-    return s
-  }
-
-  // Exit rules — from entry_guidance (day) or metrics.exit_rules (swing)
-  const exitRules: Array<{ trigger: string; price: number; action: string; note?: string }> | undefined =
-    (eg?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined)
-    ?? (metricsRaw?.exit_rules as Array<{ trigger: string; price: number; action: string; note?: string }> | undefined)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 24 }}>
@@ -287,7 +198,7 @@ export default function VerdictTab({
                 fontSize: '3rem', fontWeight: 800, color: vc,
                 lineHeight: 1, letterSpacing: '-0.03em',
               }}>
-                {verdict}
+                {verdictLabel(verdict)}
               </div>
             </div>
             <ConfRing pct={confidence} color={vc} />
@@ -306,30 +217,23 @@ export default function VerdictTab({
           </p>
 
           {/* Conditions chips */}
-          {(supportingFactors.length > 0 || missingConfirmations.length > 0) && (
+          {conditions.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {supportingFactors.map((f, i) => (
-                <span key={`pass-${i}`} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 500,
-                  color: 'rgba(232,235,240,0.7)', whiteSpace: 'nowrap',
-                }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, flexShrink: 0, display: 'inline-block' }} />
-                  {shortenLabel(f)}
-                </span>
-              ))}
-              {missingConfirmations.map((f, i) => (
-                <span key={`warn-${i}`} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 500,
-                  color: 'rgba(245,166,35,0.8)', whiteSpace: 'nowrap',
-                }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.amber, flexShrink: 0, display: 'inline-block' }} />
-                  {shortenLabel(f)}
-                </span>
-              ))}
+              {conditions.map((c, i) => {
+                const dotColor = c.type === 'pass' ? C.green : c.type === 'warn' ? C.amber : C.red
+                const textColor = c.type === 'pass' ? 'rgba(232,235,240,0.7)' : c.type === 'warn' ? 'rgba(245,166,35,0.8)' : 'rgba(255,77,109,0.8)'
+                return (
+                  <span key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 500,
+                    color: textColor, whiteSpace: 'nowrap',
+                  }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0, display: 'inline-block' }} />
+                    {c.label}
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>
@@ -343,17 +247,38 @@ export default function VerdictTab({
             Entry Plan
           </div>
           {[
-            { label: 'Entry', value: <span style={{ fontFamily: 'monospace', color: C.amber, fontSize: '0.75rem' }}>Wait — no valid entry yet</span> },
-            { label: 'Structure', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>No trade</span> },
-            { label: 'Stop Loss', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>Not defined until setup forms</span> },
+            {
+              label: 'Entry',
+              value: analysis.entry_price != null
+                ? <span style={{ fontFamily: 'monospace', color: C.amber, fontSize: '0.75rem' }}>{fmtP(analysis.entry_price)}</span>
+                : <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>—</span>,
+              sub: analysis.entry_price == null ? 'No entry — wait for setup' : analysis.entry_description || undefined,
+            },
+            {
+              label: 'Structure',
+              value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>{analysis.structure || '—'}</span>,
+              sub: undefined,
+            },
+            {
+              label: 'Stop Loss',
+              value: analysis.stop_price != null
+                ? <span style={{ fontFamily: 'monospace', color: C.red, fontSize: '0.75rem' }}>{fmtP(analysis.stop_price)}</span>
+                : <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>—</span>,
+              sub: analysis.stop_price == null ? undefined : analysis.stop_description || undefined,
+            },
           ].map((row, i) => (
             <div key={row.label} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              display: 'flex', flexDirection: 'column',
               fontSize: '0.82rem', padding: '5px 0',
               borderBottom: i < 2 ? `1px solid ${C.border}` : 'none',
             }}>
-              <span style={{ color: C.muted }}>{row.label}</span>
-              {row.value}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: C.muted }}>{row.label}</span>
+                {row.value}
+              </div>
+              {row.sub && (
+                <span style={{ color: C.muted, fontSize: '0.68rem', marginTop: 2 }}>{row.sub}</span>
+              )}
             </div>
           ))}
         </div>
@@ -364,9 +289,25 @@ export default function VerdictTab({
             Risk Profile
           </div>
           {[
-            { label: 'R/R Ratio', value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>—</span> },
-            { label: 'Risk Level', value: <span style={{ fontFamily: 'monospace', color: C.red, fontWeight: 700, fontSize: '0.75rem' }}>HIGH</span> },
-            { label: 'RVOL', value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.muted, fontSize: '0.75rem' }}>0.8x</span> },
+            {
+              label: 'R/R Ratio',
+              value: <span style={{ fontFamily: 'monospace', color: C.muted, fontSize: '0.75rem' }}>{analysis.rr_ratio || '—'}</span>,
+            },
+            {
+              label: 'Risk Level',
+              value: (
+                <span style={{
+                  fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem',
+                  color: analysis.risk_level === 'LOW' ? C.green : analysis.risk_level === 'MEDIUM' ? C.amber : C.red,
+                }}>
+                  {analysis.risk_level || '—'}
+                </span>
+              ),
+            },
+            {
+              label: 'RVOL',
+              value: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.muted, fontSize: '0.75rem' }}>{analysis.rvol || '—'}</span>,
+            },
           ].map((row, i) => (
             <div key={row.label} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -389,77 +330,34 @@ export default function VerdictTab({
         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
           Exit Plan — Pre-Committed
         </div>
-        {exitRules && exitRules.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-            <thead>
-              <tr>
-                {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {exitRules.map((rule, i) => (
-                <tr key={i} className="desk-exit-row">
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>{rule.trigger}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: rule.trigger.toLowerCase().includes('stop') ? C.red : C.green }}>{fmtP(rule.price)}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>{rule.action}</td>
-                </tr>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+          <thead>
+            <tr>
+              {['WHEN', 'PRICE', 'ACTION'].map(h => (
+                <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
               ))}
-            </tbody>
-          </table>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-            <thead>
-              <tr>
-                {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
+            </tr>
+          </thead>
+          <tbody>
+            {exitRows.length > 0 ? exitRows.map((row, i) => (
+              <tr key={i} className="desk-exit-row">
+                <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
+                <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: exitRowColor(row.type) }}>{row.price}</td>
+                <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>{row.action}</td>
               </tr>
-            </thead>
-            <tbody>
-              {t1 != null && (
-                <tr className="desk-exit-row">
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T1 Hit</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t1)}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Sell 50%, trail rest</td>
-                </tr>
-              )}
-              {t2 != null && (
-                <tr className="desk-exit-row">
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>T2 Hit</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{fmtP(t2)}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Full exit</td>
-                </tr>
-              )}
-              {stop != null && (
-                <tr className="desk-exit-row">
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>Stop</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{fmtP(stop)}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Full exit, no averaging</td>
-                </tr>
-              )}
-              {tradeType === 'day' && (
-                <tr className="desk-exit-row">
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>EOD</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: C.muted }}>{lastPrice != null ? fmtP(lastPrice) : 'Close'}</td>
-                  <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>Close all before 4 PM</td>
-                </tr>
-              )}
-              {(t1 == null && t2 == null && stop == null) && (
-                <tr>
-                  <td colSpan={3} style={{ color: C.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>
-                    Run full analysis for detailed exit levels
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
+            )) : (
+              <tr>
+                <td colSpan={3} style={{ color: C.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>
+                  Run analysis for exit levels
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* 4. AI Coach card */}
-      {coachText && (
+      {analysis.coach && (
         <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14 }}>
           <div style={{
             width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
@@ -474,7 +372,7 @@ export default function VerdictTab({
             </div>
             <div
               style={{ color: C.muted, fontSize: '0.82rem', lineHeight: 1.6 }}
-              dangerouslySetInnerHTML={{ __html: coachText.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>') }}
+              dangerouslySetInnerHTML={{ __html: analysis.coach.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>') }}
             />
           </div>
         </div>

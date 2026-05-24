@@ -5,8 +5,8 @@ import {
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check,
 } from 'lucide-react'
-import { analyzeDayTrade, enterActiveTrade, deskApi } from '../api/client'
-import type { DeskAlertCreate } from '../api/client'
+import { analyzeDayTrade, analyzeV2, enterActiveTrade, deskApi } from '../api/client'
+import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import DayTradeEnginePanel from '../components/DayTradeEnginePanel'
@@ -65,6 +65,7 @@ export default function DayTradePage() {
   const autoRunRef = useRef(false)
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -101,6 +102,7 @@ export default function DayTradePage() {
         result: data,
       }))
       setLastRefreshed(new Date())
+      try { const v2 = await analyzeV2(sym, 'day'); setUnified(v2.data) } catch { /* non-fatal */ }
     } catch (e) {
       setUi(cur => ({
         ...cur,

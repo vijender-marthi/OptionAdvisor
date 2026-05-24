@@ -613,6 +613,80 @@ export const deleteJournalEntry = async (email: string, id: string): Promise<voi
   await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
 }
 
+// ─── Unified Analysis v2 ─────────────────────────────────────────────────────
+
+export interface UnifiedAnalysis {
+  ticker: string
+  company: string
+  trade_type: 'day' | 'swing' | 'regular'
+  price: number
+  change_pct: number | null
+  verdict: 'enter' | 'watch' | 'wait' | 'avoid'
+  verdict_raw: string
+  confidence: number
+  reason: string
+  conditions: Array<{ label: string; type: 'pass' | 'warn' | 'fail' }>
+  entry_price: number | null
+  entry_description: string
+  stop_price: number | null
+  stop_description: string
+  structure: string
+  exit_rows: Array<{
+    when: string
+    price: string
+    action: string
+    type: 'none' | 't1' | 't2' | 'stop' | 'time'
+  }>
+  rr_ratio: string | null
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
+  rvol: string | null
+  coach: string
+  spy_price: number | null
+  spy_change_pct: number | null
+  qqq_price: number | null
+  qqq_change_pct: number | null
+  vix: number | null
+  vix_label: string
+  regime: string
+  session: string
+  regular_recommendations: Array<{
+    rank: number
+    strategy: string
+    bias: string
+    score: number
+    max_profit: number
+    max_loss: number
+    prob_of_profit: number
+    expected_value: number
+    expiry: string
+    dte: number
+    legs: any[]
+    exit_plan: any
+    warnings: string[]
+    rationale: string
+  }>
+}
+
+export const analyzeV2 = (
+  ticker: string,
+  tradeType: 'day' | 'swing' | 'regular',
+  options?: {
+    weeksOut?: number
+    spreadWidth?: number
+    strategyMode?: string
+  }
+) => api.get<UnifiedAnalysis>(
+  `/v2/analyze/${encodeURIComponent(ticker)}`,
+  {
+    params: {
+      trade_type: tradeType,
+      weeks_out: options?.weeksOut ?? 4,
+      spread_width: options?.spreadWidth ?? 5,
+      strategy_mode: options?.strategyMode ?? 'all',
+    }
+  }
+)
+
 // ─── Trade Ideas ─────────────────────────────────────────────────────────────
 
 import type { TradeIdea } from '../types'

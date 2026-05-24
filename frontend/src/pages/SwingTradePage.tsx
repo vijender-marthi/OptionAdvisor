@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
-import { analyzeSwingTrade, saveToJournal, deskApi } from '../api/client'
-import type { DeskAlertCreate, SwingTradeScanResult } from '../api/client'
+import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
+import type { DeskAlertCreate, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import SwingTradeEnginePanel, { computeExecLevels } from '../components/SwingTradeEnginePanel'
@@ -32,6 +32,7 @@ export default function SwingTradePage() {
   )
   const [enterOpen, setEnterOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
+  const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [searchParams] = useSearchParams()
@@ -64,6 +65,7 @@ export default function SwingTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      try { const v2 = await analyzeV2(sym, 'swing'); setUnified(v2.data) } catch { /* non-fatal */ }
     } catch (e) {
       setUi(cur => ({ ...cur, loading: false, error: axiosDetail(e) }))
     }
