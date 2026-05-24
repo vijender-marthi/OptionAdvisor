@@ -280,6 +280,8 @@ export default function RecommendationCard({
     ? { label: 'Credit', value: `$${c(rec.net_credit).toFixed(2)}`, color: C.green }
     : { label: 'Expiry', value: rec.expiry.slice(5), color: C.text }
 
+  const statusBorderColor = tradeState.state === 2 ? '#00E5A0' : tradeState.state === 1 ? '#6B7FD4' : tradeState.state === 0 ? '#F5A623' : '#FF4D6D'
+
   useEffect(() => {
     if (scrollFocusRank !== rec.rank) return
     setOpen(true)
@@ -291,7 +293,7 @@ export default function RecommendationCard({
   }, [scrollFocusRank, rec.rank, onScrollFocusConsumed])
 
   return (
-    <div id={`oa-rec-${rec.rank}`} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 10 }}>
+    <div id={`oa-rec-${rec.rank}`} style={{ background: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${statusBorderColor}`, borderRadius: 14, overflow: 'hidden', marginBottom: 10 }}>
 
       {/* ── Collapsed header row ── */}
       <button onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none', cursor: 'pointer', background: 'transparent', borderLeft: 'none', borderRight: 'none', borderTop: 'none', textAlign: 'left' }}>

@@ -112,7 +112,7 @@ function RegularVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
   return (
     <div style={{ background: v.bg, border: `1px solid ${v.color}40`, borderRadius: 14, borderTop: `3px solid ${v.color}`, padding: '20px 24px', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: '2.5rem', fontWeight: 800, color: v.color, letterSpacing: '-0.03em', lineHeight: 1 }}>{v.label}</div>
+        <div style={{ fontFamily: "'Syne', 'Inter', system-ui, sans-serif", fontSize: '2.8rem', fontWeight: 800, color: v.color, letterSpacing: '-0.02em', lineHeight: 1, textTransform: 'uppercase' }}>{v.label}</div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: 'monospace', fontSize: '1.5rem', fontWeight: 700, color: v.color }}>{analysis.confidence}</div>
           <div style={{ fontSize: '0.6rem', color: '#5A6478', textTransform: 'uppercase', letterSpacing: '0.08em' }}>CONF</div>
@@ -120,9 +120,9 @@ function RegularVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
       </div>
       <div style={{ fontSize: '0.88rem', color: '#E8EBF0', opacity: 0.85, lineHeight: 1.6, marginBottom: 12 }}>{analysis.reason}</div>
       {analysis.conditions.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12, marginBottom: 4 }}>
           {analysis.conditions.map((c, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: c.type === 'pass' ? 'rgba(232,235,240,0.8)' : c.type === 'warn' ? '#F5A623' : '#FF4D6D' }}>
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.borderSub}`, color: c.type === 'pass' ? '#E8EBF0' : c.type === 'warn' ? '#F5A623' : '#FF4D6D' }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.type === 'pass' ? '#00E5A0' : c.type === 'warn' ? '#F5A623' : '#FF4D6D', flexShrink: 0 }} />
               {c.label}
             </span>
@@ -711,19 +711,13 @@ export default function TickerPage() {
             )}
 
             {/* Recommendations */}
-            <div style={{ marginTop: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                <h2 style={{ fontSize: '0.9rem', fontWeight: 700, color: C.violet }}>
-                  🎯 Trade Recommendations · {selectedWeeksOut}w
-                </h2>
-                <span style={{
-                  fontSize: '0.65rem', color: C.muted,
-                  background: C.bgCard, border: `1px solid ${C.border}`,
-                  borderRadius: 20, padding: '2px 10px',
-                }}>
-                  {selectedData?.recommendations.length ?? 0} trades passed all filters
-                </span>
-              </div>
+             <div style={{ marginTop: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.accent }}>Trade recommendations · {selectedWeeksOut}w</span>
+                  <span style={{ fontSize: '11px', color: C.muted, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 20, padding: '2px 10px' }}>
+                    {selectedData?.recommendations.length ?? 0} trades passed all filters
+                  </span>
+                </div>
 
               {!selectedData ? (
                 <div style={{

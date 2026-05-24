@@ -71,12 +71,12 @@ export default function TickerInput({
   }
 
   const labelStyle: React.CSSProperties = {
-    fontSize: '0.65rem',
+    fontSize: '11px',
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
-    color: C.muted,
-    marginBottom: 8,
+    color: '#5A6478',
+    marginBottom: '6px',
     display: 'block',
   }
 
