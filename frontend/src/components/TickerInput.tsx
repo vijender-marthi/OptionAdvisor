@@ -126,25 +126,34 @@ export default function TickerInput({
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
         />
-        <select
-          style={{
-            background: C.bgPage,
-            border: `1px solid ${C.borderSub}`,
-            borderRadius: 8,
-            padding: '10px 12px',
-            color: C.text,
-            fontSize: '0.82rem',
-            outline: 'none',
-            cursor: 'pointer',
-            minWidth: 130,
-          }}
-          value={weeks}
-          onChange={e => setWeeks(Number(e.target.value))}
-        >
-          {MULTI_WEEK_TARGETS.map(w => (
-            <option key={w} value={w}>{w} weeks out</option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {MULTI_WEEK_TARGETS.map(w => {
+            const active = weeks === w
+            return (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setWeeks(w)}
+                style={{
+                  flex: 1,
+                  padding: '8px 6px',
+                  borderRadius: 6,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  background: active ? 'rgba(74,124,255,0.12)' : C.bgCard,
+                  color: active ? C.accent : C.muted,
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.12s',
+                }}
+              >
+                {w}w
+              </button>
+            )
+          })}
+        </div>
         <button
           type="button"
           onClick={handle}
