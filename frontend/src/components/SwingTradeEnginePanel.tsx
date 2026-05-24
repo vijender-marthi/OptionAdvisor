@@ -925,42 +925,38 @@ export default function SwingTradeEnginePanel({
 
   return (
     <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
-      <div className="px-4 pt-4 pb-4 border-b border-gray-800 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
-            <div className="text-[9px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2.5">
-              <span className="text-xl font-bold text-white dark:text-heading font-mono tracking-tight">{result.ticker}</span>
-              {result.company_name ? <span className="truncate text-xs text-gray-500 max-w-[220px]">{result.company_name}</span> : null}
-              {swingLastPrice != null && (
-                <span className="flex items-center gap-1.5 ml-0.5">
-                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
-                  {swingDailyPct != null && swingDailyDollar != null && (
-                    <span className={`text-xs font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
-                    </span>
-                  )}
+      {/* Ticker header */}
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-xl font-bold text-white font-mono tracking-tight">{result.ticker}</span>
+          {result.company_name && <span className="truncate text-xs text-gray-500 max-w-[200px]">{result.company_name}</span>}
+          {swingLastPrice != null && (
+            <span className="flex items-center gap-1 ml-0.5">
+              <span className="text-sm font-bold text-white font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
+              {swingDailyPct != null && swingDailyDollar != null && (
+                <span className={`text-xs font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
                 </span>
               )}
-            </div>
-            <div className="mt-1 text-sm text-gray-300">
-              {formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} · {result.bias === 'short' ? 'Bearish' : 'Bullish'} swing setup
-            </div>
-            {sessionDate ? (
-              <div className="mt-1 text-[10px] text-gray-600">
-                {sessionDate}
-                {priceStale && <span className="ml-1.5 font-semibold text-amber-500">· price from quote feed</span>}
-              </div>
-            ) : null}
-            {priceStale && priceWarning && (
-              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
-                <span className="mt-px shrink-0">⚠</span>
-                <span>{priceWarning}</span>
-              </div>
-            )}
-          </div>
+            </span>
+          )}
         </div>
+        {sessionDate && <div className="text-[10px] text-gray-600 mt-0.5">{sessionDate}{priceStale && <span className="ml-1 font-semibold text-amber-500">· price from quote feed</span>}</div>}
+        {priceStale && priceWarning && (
+          <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+            <span className="mt-px shrink-0">⚠</span>
+            <span>{priceWarning}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Trade Action Summary header */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
+      </div>
+
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800 space-y-3">
 
         {/* Verdict section */}
         <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
