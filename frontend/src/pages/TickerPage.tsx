@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { analyzeOptions, analyzeV2 } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis } from '../api/client'
-import { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
 import SignalPanel from '../components/SignalPanel'
-import RecommendationCard from '../components/RecommendationCard'
 import PriceChart from '../components/PriceChart'
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
 import { useApp } from '../contexts/AppContext'
@@ -341,7 +339,6 @@ export default function TickerPage() {
   const didRestoreLastAnalysis = useRef(false)
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
-  const [expandedRec, setExpandedRec] = useState<number | null>(null)
 
   const handleAnalyze = async (
     ticker: string,
@@ -639,6 +636,17 @@ export default function TickerPage() {
               )}
             </div>
           )}
+
+          {/* Fetch all weeks button */}
+          {data && !loading && (
+            <div style={{ padding: '4px 12px 8px' }}>
+              <button type="button" onClick={() => fetchAllWeeks(data.ticker)} disabled={fetchingAllWeeks.has(data.ticker)}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: C.bgCard, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '7px 12px', color: fetchingAllWeeks.has(data.ticker) ? C.muted : C.text, fontSize: '0.75rem', fontWeight: 600, cursor: fetchingAllWeeks.has(data.ticker) ? 'wait' : 'pointer' }}>
+                <Layers size={13} />
+                {fetchingAllWeeks.has(data.ticker) ? 'Fetching…' : 'Fetch All Weeks'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right: Content */}
@@ -779,7 +787,6 @@ export default function TickerPage() {
                     </thead>
                     <tbody>
                       {selectedData.recommendations.map(rec => {
-                        const expanded = expandedRec === rec.rank
                         const isCredit = (rec.net_credit ?? 0) > 0
                         const score = rec.scores?.total_score ?? 0
                         const rr = rec.risk_reward_ratio ?? 0
@@ -789,10 +796,9 @@ export default function TickerPage() {
                         return (
                           <React.Fragment key={rec.rank}>
                             {rec.legs.map((leg, li) => (
-                              <tr key={`${rec.rank}-${li}`} onClick={() => setExpandedRec(expanded ? null : rec.rank)}
-                                style={{ cursor: 'pointer', borderBottom: li < rec.legs.length - 1 || !expanded ? `1px solid ${C.border}` : 'none', background: expanded ? 'rgba(124,92,252,0.04)' : 'transparent' }}>
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
+                              <tr key={`${rec.rank}-${li}`} style={{ borderBottom: `1px solid ${C.border}` }}>
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
                                   <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
                                   <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}</div>
                                   <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
@@ -802,25 +808,15 @@ export default function TickerPage() {
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</td>)}
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score) }}>{score || '—'}</td>)}
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
-                                {li === 0 && (<td rowSpan={expanded ? rec.legs.length + 1 : rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score) }}>{score || '—'}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
                                   <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
                                 </td>)}
                               </tr>
                             ))}
-                            {expanded && (
-                              <tr key={`${rec.rank}-detail`} style={{ background: 'rgba(124,92,252,0.04)' }}>
-                                <td colSpan={12} style={{ padding: '12px 14px' }}>
-                                  <RecommendationCard rec={rec} ticker={selectedData.ticker} companyName={selectedData.company_name}
-                                    currentPrice={selectedData.signals.current_price} signals={selectedData.signals}
-                                    onFetchAllWeeks={() => fetchAllWeeks(data.ticker)} fetchingAllWeeks={fetchingAllWeeks.has(data.ticker)}
-                                    scrollFocusRank={scrollFocusRank} onScrollFocusConsumed={() => setScrollFocusRank(null)} />
-                                </td>
-                              </tr>
-                            )}
                           </React.Fragment>
                         )
                       })}
