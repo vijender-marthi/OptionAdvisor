@@ -130,9 +130,12 @@ def _stop_description(metrics: dict, trade_type: str) -> str:
 def _shorten_reasons(reasons: list, verdict: str, max_conditions: int = 6) -> list:
     if not reasons:
         return []
+    SKIP_LABELS = {'GO', 'STRONG GO', 'NO-GO', 'NO GO', 'WAIT', 'WATCH', 'AVOID', 'STRONG_GO'}
     result = []
     for reason in reasons[:max_conditions]:
         short = str(reason).split("—")[0].split(":")[0].split("(")[0].strip()
+        if short.upper() in SKIP_LABELS:
+            continue
         words = short.split()
         if len(words) > 5:
             short = " ".join(words[:5])
