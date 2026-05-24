@@ -918,8 +918,7 @@ export default function SwingTradeEnginePanel({
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
     if (fd === 'EXIT') return 4
     if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
-    if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].includes(fd)) return 2
-    // WATCH variants and AVOID/NO_EDGE → still in setup/observation phase
+    if (['TRADE_NOW', 'ENTER', 'ENTRY'].includes(fd)) return 2
     return 1
   })()
 
