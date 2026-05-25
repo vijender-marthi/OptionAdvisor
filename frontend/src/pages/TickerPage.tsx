@@ -650,47 +650,6 @@ export default function TickerPage() {
             />
           )}
 
-          {/* Selected recommendation action items */}
-          {selectedRank != null && (() => {
-            const rec = selectedData?.recommendations?.find(r => r.rank === selectedRank)
-            if (!rec) return null
-            return (
-              <div style={{
-                background: C.bgPanel, border: `1px solid ${C.border}`,
-                borderRadius: 12, padding: '12px 14px', marginTop: 10,
-              }}>
-                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.accent, marginBottom: 8 }}>
-                  {rec.rank}. {rec.strategy}
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => navigate('positions')}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.violet}40`, background: `${C.violet}15`, color: C.violet, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <Briefcase size={11} style={{ display: 'inline', marginRight: 4 }} />Positions
-                  </button>
-                  <button type="button" onClick={() => navigate('journal')}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.green}40`, background: `${C.green}15`, color: C.green, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <BookOpen size={11} style={{ display: 'inline', marginRight: 4 }} />Journal
-                  </button>
-                  <button type="button" onClick={() => navigate('auto-trade')}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.accent}40`, background: `${C.accent}15`, color: C.accent, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <Zap size={11} style={{ display: 'inline', marginRight: 4 }} />Alpaca
-                  </button>
-                  <button type="button" onClick={() => setAlertOpen(true)}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.amber}40`, background: `${C.amber}15`, color: C.amber, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <Bell size={11} style={{ display: 'inline', marginRight: 4 }} />Alert
-                  </button>
-                </div>
-              </div>
-            )
-          })()}
-          {alertOpen && data && (
-            <SetAlertDrawer
-              ticker={data.ticker}
-              tradeType="regular"
-              onClose={() => setAlertOpen(false)}
-              onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
-            />
-          )}
         </div>
 
         {/* Right: Content */}
@@ -948,6 +907,15 @@ export default function TickerPage() {
                 </div>
               )}
             </div>
+
+            {alertOpen && data && (
+              <SetAlertDrawer
+                ticker={data.ticker}
+                tradeType="regular"
+                onClose={() => setAlertOpen(false)}
+                onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
+              />
+            )}
 
             {/* Chart / Calculator (collapsed by default) */}
             <div style={{
