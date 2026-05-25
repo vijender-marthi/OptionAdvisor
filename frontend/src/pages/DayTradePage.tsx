@@ -342,7 +342,7 @@ export default function DayTradePage() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div className="day-trade-page min-h-screen p-4 md:p-6 text-primary" style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
+    <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'hidden', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* Mobile/tablet search toggle */}
         <button
@@ -392,16 +392,16 @@ export default function DayTradePage() {
           <MarketTimeGateBanner tradeType="day" />
 
           {lastRefreshed && (
-            <div className="text-[10px] text-gray-500 font-mono">
+            <div className="text-[10px] font-mono" style={{ color: dt.muted }}>
               Updated {lastRefreshed.toLocaleTimeString()}
             </div>
           )}
 
-          <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
+          <section className="rounded-xl p-4 sm:p-5" style={{ background: dt.bg, border: `1px solid ${dt.border}` }}>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
               <input
-                className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
+                className="flex-1 min-w-0 rounded-lg px-4 py-3 font-mono text-lg uppercase outline-none"
+                style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, color: dt.text }}
                 placeholder="SPY, NVDA, …"
                 value={ticker}
                 onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
@@ -419,16 +419,17 @@ export default function DayTradePage() {
                 Analyze
               </button>
             </div>
-            <p className="text-[11px] text-gray-500 mt-2">
+            <p className="text-[11px] mt-2" style={{ color: dt.muted }}>
               Uses Yahoo 1-minute RTH data for the most recent session, session VWAP, first 15m opening range, short-horizon momentum, volume vs average, plus SPY/QQQ daily change and VIX.
             </p>
             {myTickers.length > 0 && (
               <div className="flex gap-2 mt-3 flex-wrap">
-                <span className="text-xs text-gray-500 self-center">Quick:</span>
+                <span className="text-xs self-center" style={{ color: dt.muted }}>Quick:</span>
                 {myTickers.map((t: string) => (
                   <a key={t} href={`/day-trade?ticker=${encodeURIComponent(t)}`}
                     onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); runScan(t) }}
-                    className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                    className="text-xs px-2 py-1 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                    style={{ background: dt.bgDeep, color: dt.text, border: `1px solid ${dt.border}` }}
                   >
                     {t}
                   </a>
