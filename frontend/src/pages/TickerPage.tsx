@@ -521,6 +521,20 @@ export default function TickerPage() {
 
         {/* Left: Search panel */}
         <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+          {/* Page header */}
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `${C.violet}20`, border: `1px solid ${C.violet}60`, color: C.violet }}>
+                  <Layers size={16} />
+                </div>
+                <h1 className="text-sm font-bold tracking-tight" style={{ color: C.text }}>Position Trading</h1>
+                <span className="rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide" style={{ background: `${C.violet}15`, border: `1px solid ${C.violet}40`, color: C.violet }}>Regular</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-snug" style={{ color: C.muted }}>Multi-week options — strikes, spreads, R:R, EV scoring, and pre-trade checklist.</p>
+            </div>
+          </div>
+
           {/* Badge strip */}
           {!loading && data && displayData && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
