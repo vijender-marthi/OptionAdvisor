@@ -26,7 +26,21 @@ export default function SwingTradePage() {
     addManualPosition,
     portfolio,
     user,
+    theme,
   } = useApp()
+  const isDark = theme !== 'light'
+  const st = {
+    bg:     isDark ? '#111318' : '#FFFFFF',
+    bgDeep: isDark ? '#181C23' : '#F8F9FB',
+    border: isDark ? '#1E2330' : '#E5E7EB',
+    text:   isDark ? '#E8EBF0' : '#111827',
+    muted:  isDark ? '#5A6478' : '#6B7280',
+    green:  isDark ? '#00E5A0' : '#00A86B',
+    red:    isDark ? '#FF4D6D' : '#DC2626',
+    amber:  isDark ? '#F5A623' : '#D97706',
+    accent: '#4A7CFF',
+    violet: '#6B7FD4',
+  }
   const { ticker, loading, error, result, glossaryOpen } = ui
 
   const existingPositions = useMemo(
@@ -235,7 +249,7 @@ export default function SwingTradePage() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div className="swing-trade-page min-h-screen p-4 md:p-6 text-primary">
+    <div className="swing-trade-page min-h-screen p-4 md:p-6" style={{ background: isDark ? '#0A0C10' : '#F3F4F6', color: st.text }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* Mobile/tablet search toggle */}
         <button
@@ -268,26 +282,27 @@ export default function SwingTradePage() {
                 <h1 className="text-sm font-bold tracking-tight text-heading">Swing Trade</h1>
                 <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-semantic-info">Multi-Day</span>
               </div>
-              <p className="mt-1 text-[11px] leading-snug text-gray-400">Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
+              <p className="mt-1 text-[11px] leading-snug" style={{ color: st.muted }}>Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => void runScan()}
                 disabled={loading}
-                className="rounded-full border border-gray-700 px-2.5 py-1 text-[10px] font-semibold text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+                className="rounded-full px-2.5 py-1 text-[10px] font-semibold disabled:opacity-50"
+                style={{ border: `1px solid ${st.border}`, color: st.muted, background: 'transparent' }}
               >
                 <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
           </div>
 
-          <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4 sm:p-5">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ticker</label>
+          <section className="rounded-xl p-4 sm:p-5" style={{ background: st.bg, border: `1px solid ${st.border}` }}>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
               <input
                 ref={inputRef}
-                className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50 px-4 py-3 font-mono text-lg uppercase outline-none placeholder:text-muted focus:border-violet-500"
+                className="flex-1 min-w-0 rounded-lg px-4 py-3 font-mono text-lg uppercase outline-none"
+                style={{ background: st.bgDeep, border: `1px solid ${st.border}`, color: st.text }}
                 placeholder="NVDA, AAPL, SPY…"
                 value={ticker}
                 onChange={e => setUi(cur => ({ ...cur, ticker: e.target.value.toUpperCase() }))}
@@ -305,16 +320,17 @@ export default function SwingTradePage() {
                 Analyze
               </button>
             </div>
-            <p className="text-[11px] text-gray-500 mt-2">
+            <p className="text-[11px] mt-2" style={{ color: st.muted }}>
               Uses daily OHLCV bars from Yahoo Finance. Evaluates MA20/MA50 alignment and slope, RSI, MACD crossover, 5-day momentum, volume trend, and SPY/VIX context for overnight or 2–5 day swing trade setups.
             </p>
             {myTickers.length > 0 && (
               <div className="flex gap-2 mt-3 flex-wrap">
-                <span className="text-xs text-gray-500 self-center">Quick:</span>
+                <span className="text-xs self-center" style={{ color: st.muted }}>Quick:</span>
                 {myTickers.map((t: string) => (
                   <a key={t} href={`/swing-trade?ticker=${encodeURIComponent(t)}`}
                     onClick={(e) => { e.preventDefault(); setUi(cur => ({ ...cur, ticker: t })); void runScan(t) }}
-                    className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                    className="text-xs px-2 py-1 rounded-lg transition-colors font-mono inline-block cursor-pointer"
+                    style={{ background: st.bgDeep, color: st.text, border: `1px solid ${st.border}` }}
                   >
                     {t}
                   </a>
