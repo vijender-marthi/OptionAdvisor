@@ -232,7 +232,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
                 }} />
                 <span style={{
                   fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace',
-                  color: active ? '#fff' : C.muted,
+                  color: active ? C.accent : C.muted,
                 }}>
                   {slot.label}
                 </span>
