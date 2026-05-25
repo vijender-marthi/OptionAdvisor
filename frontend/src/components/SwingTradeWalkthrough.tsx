@@ -321,42 +321,71 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
               <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 6 ? focusToneText : 'text-semantic-info'}`}>Step 6</div>
               {focusStep === 6 && <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${TONE_BADGE[tone]}`}><Activity size={8} />{label}</span>}
             </div>
-            <h2 className="mt-1 text-sm font-bold text-heading">Trade Management Plan</h2>
+            <h2 className="mt-1 text-sm font-bold text-heading">Exit Plan — Pre-Committed</h2>
             <p className="mt-1 text-xs" style={{ color: '#9CA3AF' }}>Plan the response before the trade moves, not after.</p>
           </div>
 
-          {/* Risk panel */}
-          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-            {(() => {
-              const items: { label: string; value: string; tone: string }[] = []
-              const riskLvl = unified.risk_level
-              if (riskLvl) items.push({ label: 'Overall Risk', value: riskLvl, tone: riskLvl === 'LOW' ? 'text-emerald-400' : riskLvl === 'MEDIUM' ? 'text-amber-400' : 'text-red-400' })
-              if (rsi != null) items.push({ label: 'RSI Risk', value: rsi >= 70 ? 'Overbought' : rsi <= 30 ? 'Oversold' : 'Normal', tone: rsi >= 70 ? 'text-red-400' : rsi <= 30 ? 'text-emerald-400' : 'text-gray-200' })
-              if (iv != null) items.push({ label: 'IV Crush Risk', value: iv < 25 ? 'Low' : iv < 40 ? 'Moderate' : 'High', tone: iv < 25 ? 'text-emerald-400' : iv < 40 ? 'text-amber-400' : 'text-red-400' })
-              if (distMA20 != null && Math.abs(distMA20) > 5) items.push({ label: 'Extension Risk', value: 'High', tone: 'text-red-400' })
-              if (volRatio != null) items.push({ label: 'Volume Risk', value: volRatio < 0.7 ? 'Weak' : volRatio < 1.5 ? 'Normal' : 'Strong', tone: volRatio < 0.7 ? 'text-red-400' : volRatio >= 1.5 ? 'text-emerald-400' : 'text-gray-200' })
-              const earn = typeof m.earnings_risk === 'string' ? m.earnings_risk : null
-              if (earn) items.push({ label: 'Earnings Risk', value: earn, tone: earn === 'Clear' ? 'text-emerald-400' : earn === 'Caution' ? 'text-amber-400' : 'text-red-400' })
-              return items.map(item => (
-                <div key={item.label} className="flex items-center justify-between gap-2 rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2">
-                  <span className="text-[10px] text-gray-500 font-medium">{item.label}</span>
-                  <span className={`text-xs font-semibold ${item.tone}`}>{item.value}</span>
+          {/* Risk indicators */}
+          {(() => {
+            const riskLvl = unified.risk_level
+            const isOverbought = rsi != null && rsi >= 70
+            const isOversold = rsi != null && rsi <= 30
+            const extRisk = distMA20 != null ? (Math.abs(distMA20) > 7 ? 'High' : Math.abs(distMA20) > 4 ? 'Medium' : 'Low') : riskLvl === 'HIGH' ? 'High' : riskLvl === 'MEDIUM' ? 'Medium' : 'Low'
+            const extTone = extRisk === 'High' ? 'text-red-400' : extRisk === 'Medium' ? 'text-amber-400' : 'text-emerald-400'
+            const volRiskLabel = volRatio != null ? (volRatio < 0.7 ? 'Weak' : volRatio < 1.5 ? 'Normal' : 'Strong') : null
+            const volTone = volRiskLabel === 'Weak' ? 'text-red-400' : volRiskLabel === 'Strong' ? 'text-emerald-400' : 'text-gray-300'
+            const ivRisk = iv != null ? (iv < 25 ? 'Low' : iv < 40 ? 'Moderate' : 'High') : null
+            const ivTone = ivRisk === 'High' ? 'text-red-400' : ivRisk === 'Moderate' ? 'text-amber-400' : 'text-emerald-400'
+            const earn = typeof m.earnings_risk === 'string' ? m.earnings_risk : null
+            return (
+              <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-2.5 space-y-1.5">
+                {(isOverbought || isOversold) && (
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border ${isOverbought ? 'bg-red-950/40 border-red-700/50 text-red-400' : 'bg-emerald-950/40 border-emerald-700/50 text-emerald-400'}`}>
+                      {isOverbought ? 'Overbought' : 'Oversold'}
+                    </span>
+                    {rsi != null && <span className="text-[10px] text-gray-600">RSI {rsi.toFixed(0)}</span>}
+                  </div>
+                )}
+                <div className="grid gap-1 grid-cols-2 sm:grid-cols-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-gray-500">Extension Risk</span>
+                    <span className={`text-[11px] font-semibold ${extTone}`}>{extRisk}</span>
+                  </div>
+                  {volRiskLabel && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-gray-500">Volume Risk</span>
+                      <span className={`text-[11px] font-semibold ${volTone}`}>{volRiskLabel}</span>
+                    </div>
+                  )}
+                  {ivRisk && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-gray-500">IV Crush Risk</span>
+                      <span className={`text-[11px] font-semibold ${ivTone}`}>{ivRisk}</span>
+                    </div>
+                  )}
+                  {earn && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-gray-500">Earnings Risk</span>
+                      <span className={`text-[11px] font-semibold ${earn === 'Clear' ? 'text-emerald-400' : earn === 'Caution' ? 'text-amber-400' : 'text-red-400'}`}>{earn}</span>
+                    </div>
+                  )}
                 </div>
-              ))
-            })()}
-          </div>
+              </div>
+            )
+          })()}
 
           {/* Exit rules table */}
           {exitRules.length > 0 && (
             <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Rules</div>
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2.5">Exit Rules</div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
-                      <th className="pb-1.5 text-left font-medium">When</th>
-                      <th className="pb-1.5 text-right font-medium tabular-nums pr-3">At Price</th>
-                      <th className="pb-1.5 text-left font-medium">Do This</th>
+                    <tr className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 border-b border-gray-700/60">
+                      <th className="pb-2 text-left font-medium">When</th>
+                      <th className="pb-2 text-right font-medium tabular-nums pr-4">At Price</th>
+                      <th className="pb-2 text-left font-medium">Do This</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
@@ -374,15 +403,16 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
                         .replace(/^Target 2 reached$/i, 'Target 2')
                         .replace(/^Stop loss$/i, 'Stop Loss')
                         .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
-                      const displayAction = note ? `${action} · ${note}` : action
+                        .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
                       return (
                         <tr key={i}>
-                          <td className="py-2 pr-2 text-gray-400 leading-snug align-top" style={{ width: '32%' }}>{whenLabel}</td>
-                          <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                          <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top font-medium" style={{ width: '28%' }}>{whenLabel}</td>
+                          <td className={`py-2.5 pr-4 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
                             {price != null ? `$${price.toFixed(2)}` : '—'}
                           </td>
-                          <td className="py-2 align-top">
-                            <div className="font-semibold leading-snug text-gray-200">{displayAction}</div>
+                          <td className="py-2.5 align-top">
+                            <div className="font-semibold leading-snug text-gray-200">{action}</div>
+                            {note && <div className="text-[10px] leading-snug mt-0.5" style={{ color: '#6B7280' }}>{note}</div>}
                           </td>
                         </tr>
                       )

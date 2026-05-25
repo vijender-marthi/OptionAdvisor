@@ -776,18 +776,28 @@ export default function JournalPage() {
     if (!deleteTarget || !email) return
     setDeleting(true)
     setDeleteError(null)
+    const prevEntries = entries
+    // Optimistic: remove immediately so UI feels instant
+    const next = entries.filter(e => e.id !== deleteTarget)
+    setEntries(next)
+    syncJournalEntryCount(next.length)
+    setDeleteTarget(null)
     try {
       await deleteJournalEntry(email, deleteTarget)
-      setDeleteTarget(null)
-      // Re-fetch from backend so UI is guaranteed to match DB state
-      const data = await getJournal(email)
-      const list = (data.entries as JournalEntry[]) ?? []
-      setEntries(list)
-      syncJournalEntryCount(list.length)
+      // Confirm with backend re-fetch
+      try {
+        const data = await getJournal(email)
+        const list = (data.entries as JournalEntry[]) ?? []
+        setEntries(list)
+        syncJournalEntryCount(list.length)
+      } catch { /* re-fetch failed; optimistic state is still correct */ }
     } catch (e: unknown) {
+      // Delete failed — restore previous list and show error in a toast-like banner
+      setEntries(prevEntries)
+      syncJournalEntryCount(prevEntries.length)
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? (e instanceof Error ? e.message : 'Delete failed')
-      setDeleteError(msg)
+      setError(msg)
     } finally {
       setDeleting(false)
     }

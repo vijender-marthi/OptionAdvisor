@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
-import { analyzeOptions, analyzeV2, deskApi } from '../api/client'
+import { analyzeOptions, analyzeV2, deskApi, saveToJournal } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis, DeskAlertCreate } from '../api/client'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { isCacheFresh, cacheAge } from '../types'
@@ -293,7 +293,7 @@ export default function TickerPage() {
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
-    theme, navigate,
+    theme, navigate, user,
   } = useApp()
 
   const C = theme === 'light' ? C_LIGHT : C_DARK
@@ -320,6 +320,7 @@ export default function TickerPage() {
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
   const [selectedRank, setSelectedRank] = useState<number | null>(null)
   const [alertOpen, setAlertOpen]       = useState(false)
+  const [journalSaving, setJournalSaving] = useState(false)
 
   const handleAnalyze = async (
     ticker: string,
@@ -883,9 +884,35 @@ export default function TickerPage() {
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
                                       <Briefcase size={12} /> Add Position
                                     </button>
-                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('journal') }}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.green}50`, background: `${C.green}12`, color: C.green, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                      <BookOpen size={12} /> Save to Journal
+                                    <button type="button" disabled={journalSaving} onClick={async e => {
+                                        e.stopPropagation()
+                                        const email = user?.email
+                                        if (!email || !data) return
+                                        setJournalSaving(true)
+                                        try {
+                                          await saveToJournal(email, {
+                                            ticker: data.ticker,
+                                            company_name: data.company_name ?? data.ticker,
+                                            strategy: rec.strategy,
+                                            bias: (rec.legs[0] as { side?: string })?.side ?? 'neutral',
+                                            legs: rec.legs as object[],
+                                            expiry: rec.expiry,
+                                            entry_date: new Date().toISOString().slice(0, 10),
+                                            dte_at_entry: rec.dte ?? 0,
+                                            net_credit: rec.net_credit ?? 0,
+                                            max_profit: (rec.max_profit ?? 0) * 100,
+                                            max_loss: (rec.max_loss ?? 0) * 100,
+                                            underlying_entry: data.signals?.current_price ?? 0,
+                                            prob_of_profit: rec.prob_of_profit ?? 0,
+                                            expected_value: rec.expected_value ?? 0,
+                                            total_score: rec.scores?.total_score ?? 0,
+                                            trade_type: 'regular',
+                                          })
+                                          navigate('journal')
+                                        } catch { /* silently navigate anyway */ navigate('journal') } finally { setJournalSaving(false) }
+                                      }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.green}50`, background: `${C.green}12`, color: C.green, fontSize: '0.72rem', fontWeight: 600, cursor: journalSaving ? 'wait' : 'pointer', opacity: journalSaving ? 0.6 : 1 }}>
+                                      <BookOpen size={12} /> {journalSaving ? 'Saving…' : 'Save to Journal'}
                                     </button>
                                     <button type="button" onClick={e => { e.stopPropagation(); setAlertOpen(o => !o) }}
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.amber}50`, background: `${C.amber}12`, color: C.amber, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
