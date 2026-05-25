@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
-import { analyzeOptions, analyzeV2 } from '../api/client'
-import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis } from '../api/client'
+import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
+import { analyzeOptions, analyzeV2, deskApi } from '../api/client'
+import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis, DeskAlertCreate } from '../api/client'
+import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
@@ -318,6 +319,7 @@ export default function TickerPage() {
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
   const [selectedRank, setSelectedRank] = useState<number | null>(null)
+  const [alertOpen, setAlertOpen]       = useState(false)
 
   const handleAnalyze = async (
     ticker: string,
@@ -649,20 +651,32 @@ export default function TickerPage() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button type="button" onClick={() => navigate('positions')}
                     style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.violet}40`, background: `${C.violet}15`, color: C.violet, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    📊 Positions
+                    <Briefcase size={11} style={{ display: 'inline', marginRight: 4 }} />Positions
                   </button>
                   <button type="button" onClick={() => navigate('journal')}
                     style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.green}40`, background: `${C.green}15`, color: C.green, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    📋 Journal
+                    <BookOpen size={11} style={{ display: 'inline', marginRight: 4 }} />Journal
                   </button>
                   <button type="button" onClick={() => navigate('auto-trade')}
                     style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.accent}40`, background: `${C.accent}15`, color: C.accent, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    🤖 Alpaca
+                    <Zap size={11} style={{ display: 'inline', marginRight: 4 }} />Alpaca
+                  </button>
+                  <button type="button" onClick={() => setAlertOpen(true)}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.amber}40`, background: `${C.amber}15`, color: C.amber, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <Bell size={11} style={{ display: 'inline', marginRight: 4 }} />Alert
                   </button>
                 </div>
               </div>
             )
           })()}
+          {alertOpen && data && (
+            <SetAlertDrawer
+              ticker={data.ticker}
+              tradeType="regular"
+              onClose={() => setAlertOpen(false)}
+              onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
+            />
+          )}
         </div>
 
         {/* Right: Content */}
@@ -866,7 +880,7 @@ export default function TickerPage() {
                         return (
                           <React.Fragment key={rec.rank}>
                             {rec.legs.map((leg, li) => (
-                              <tr key={`${rec.rank}-${li}`} onClick={() => setSelectedRank(selectedRank === rec.rank ? null : rec.rank)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
+                              <tr key={`${rec.rank}-${li}`} onClick={() => { setSelectedRank(selectedRank === rec.rank ? null : rec.rank); setAlertOpen(false) }} style={{ borderBottom: selectedRank === rec.rank && li === rec.legs.length - 1 ? 'none' : `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
                                   <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
@@ -887,6 +901,31 @@ export default function TickerPage() {
                                 </td>)}
                               </tr>
                             ))}
+                            {selectedRank === rec.rank && (
+                              <tr style={{ background: 'rgba(74,124,255,0.04)', borderBottom: `1px solid ${C.border}` }}>
+                                <td colSpan={12} style={{ padding: '10px 14px' }}>
+                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.68rem', color: C.muted, marginRight: 4 }}>Actions:</span>
+                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('positions') }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Briefcase size={12} /> Add Position
+                                    </button>
+                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('journal') }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.green}50`, background: `${C.green}12`, color: C.green, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <BookOpen size={12} /> Save to Journal
+                                    </button>
+                                    <button type="button" onClick={e => { e.stopPropagation(); setAlertOpen(o => !o) }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.amber}50`, background: `${C.amber}12`, color: C.amber, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Bell size={12} /> Set Alert
+                                    </button>
+                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('auto-trade') }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.accent}50`, background: `${C.accent}12`, color: C.accent, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Zap size={12} /> Paper Trade
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
                           </React.Fragment>
                         )
                       })}
