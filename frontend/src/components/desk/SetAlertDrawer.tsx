@@ -50,10 +50,9 @@ interface Props {
   tradeType: string
   onClose: () => void
   onSubmit: (data: DeskAlertCreate) => Promise<void>
-  drawerLeft?: number
 }
 
-export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, drawerLeft = 300 }: Props) {
+export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }: Props) {
   const normalizedType = (tradeType || 'day').toLowerCase().replace(/[^a-z]/g, '')
   const alertOptions = ALERT_TYPES_BY_TRADE[normalizedType] ?? ALERT_TYPES_BY_TRADE.day
   const defaultExpiry = EXPIRY_BY_TRADE[normalizedType] ?? 'eod'
@@ -112,15 +111,19 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }} role="dialog" aria-modal>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', pointerEvents: 'all' }} onClick={onClose} />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} role="dialog" aria-modal>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
       <div style={{
-        position: 'absolute', bottom: 0, left: drawerLeft, right: 0,
-        background: C.bgPanel, borderTop: `1px solid ${C.border}`,
-        borderRadius: '16px 16px 0 0',
-        maxHeight: '60vh', display: 'flex', flexDirection: 'column',
-        pointerEvents: 'all',
-        boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
+        position: 'relative',
+        width: '100%', maxWidth: 520,
+        maxHeight: '85dvh',
+        display: 'flex', flexDirection: 'column',
+        background: C.bgPanel,
+        borderRadius: '20px 20px 0 0',
+        border: `1px solid ${C.border}`,
+        borderBottom: 'none',
+        boxShadow: '0 -12px 48px rgba(0,0,0,0.6)',
+        margin: '0 auto',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
           <h2 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', margin: 0 }}>
