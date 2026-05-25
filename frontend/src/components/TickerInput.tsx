@@ -87,13 +87,6 @@ export default function TickerInput({
       borderRadius: 16,
       padding: '20px 20px 16px',
     }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <span style={{ fontWeight: 800, fontSize: '1.1rem', color: C.text, fontFamily: 'monospace' }}>
-          Position Trading
-        </span>
-      </div>
-
       {/* Input row */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
