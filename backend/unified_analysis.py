@@ -22,18 +22,15 @@ def _day_verdict(scan) -> str:
       AVOID_CALLS           → avoid
       AVOID_CHASING_PUTS    → avoid
 
-    Only use scan.verdict for STRONG GO
-    which overrides everything.
+    STRONG GO only applies when trader_decision
+    does not explicitly override (e.g. WAIT_FOR_CONFIRMATION
+    wins over STRONG GO — the DQL layer has more context).
     """
     td = scan.trader_decision or {}
     suggested = td.get('suggested_action', '')
     raw_verdict = scan.verdict.upper()
 
-    # STRONG GO overrides everything
-    if raw_verdict == 'STRONG GO':
-        return 'enter'
-
-    # Map suggested_action to verdict
+    # trader_decision takes priority — check it first
     action_map = {
         'WATCH_LONG_ONLY':       'watch',
         'WATCH_PUT_BREAKDOWN':   'watch',
@@ -44,6 +41,10 @@ def _day_verdict(scan) -> str:
     }
     if suggested in action_map:
         return action_map[suggested]
+
+    # STRONG GO only applies when trader_decision has no override
+    if raw_verdict == 'STRONG GO':
+        return 'enter'
 
     # Fall back to scan.verdict mapping
     return normalize_verdict(raw_verdict)
@@ -271,21 +272,97 @@ def serialize_day_trade(scan) -> dict:
         t1_price = eg.get("scalp_target") or eg.get("target_1")
         t2_price = eg.get("target_2")
 
-        structure = orc.get("structure_hint") or orc.get("recommended_structure") or "CALL · 1-2 DTE"
+        # Derive direction from trader_decision.suggested_action — this is
+        # the authoritative source.  The stop/entry relationship is only a
+        # last-resort fallback when suggested_action gives no clear signal,
+        # because day_trade.py builds entry_guidance from scan bias which
+        # can differ from what trader_decision ultimately recommends.
+        _suggested = td.get("suggested_action", "")
+        _PUT_ACTIONS  = {"WATCH_PUT_BREAKDOWN", "AVOID_CHASING_PUTS"}
+        _CALL_ACTIONS = {"WATCH_LONG_ONLY", "AVOID_CALLS"}
+
+        if _suggested in _PUT_ACTIONS:
+            _is_put = True
+        elif _suggested in _CALL_ACTIONS:
+            _is_put = False
+        else:
+            # No explicit direction — infer from stop/entry relationship
+            _is_put = bool(
+                entry_price and stop_price
+                and isinstance(stop_price, (int, float))
+                and isinstance(entry_price, (int, float))
+                and stop_price > entry_price
+            )
+
+        # Validate stop is on the correct side of entry.
+        # day_trade.py sets risk_below = or_low for long, or_high for short.
+        # When direction disagrees with the scan bias the stop will be on
+        # the wrong side — correct it using the metric directly.
+        if entry_price and stop_price:
+            _stop_wrong_side = (
+                (_is_put  and stop_price < entry_price) or
+                (not _is_put and stop_price > entry_price)
+            )
+            if _stop_wrong_side:
+                # Try the opposite OR level from raw metrics
+                if _is_put:
+                    stop_price = m.get("or_high") or None
+                else:
+                    stop_price = m.get("or_low") or None
+                # If still wrong side, clear it — better to show "—" than bad data
+                if stop_price and entry_price:
+                    still_wrong = (
+                        (_is_put  and stop_price < entry_price) or
+                        (not _is_put and stop_price > entry_price)
+                    )
+                    if still_wrong:
+                        stop_price = None
+
+        _direction = "PUT" if _is_put else "CALL"
+
+        structure = (
+            orc.get("structure_hint")
+            or orc.get("recommended_structure")
+            or f"{_direction} · 1-2 DTE"
+        )
+
+        # For PUT trades the scalp_target is computed for the bullish leg —
+        # a T1 above entry is a loss on a put, so skip it.
+        # For CALL trades a T1 below entry is equally wrong.
+        def _t1_valid(t1, entry, is_put):
+            if t1 is None:
+                return False
+            if entry is None:
+                return True  # no entry to compare, include it
+            return t1 < entry if is_put else t1 > entry
+
+        _stop_action = (
+            "OR High violated — accept the loss"
+            if _is_put else
+            "OR Low violated — accept the loss"
+        )
 
         exit_rows = []
-        if t1_price:
+        if _t1_valid(t1_price, entry_price, _is_put):
             exit_rows.append({"when": "Target 1", "price": _fmt_price(t1_price), "action": "Sell ½ · move stop to entry", "type": "t1"})
-        if t2_price:
+        if _t1_valid(t2_price, entry_price, _is_put):
             exit_rows.append({"when": "Target 2", "price": _fmt_price(t2_price), "action": "Sell remaining ½ · flat", "type": "t2"})
         if stop_price:
-            exit_rows.append({"when": "Stop Loss", "price": _fmt_price(stop_price), "action": "OR Low violated — accept the loss", "type": "stop"})
+            exit_rows.append({"when": "Stop Loss", "price": _fmt_price(stop_price), "action": _stop_action, "type": "stop"})
         exit_rows.append({"when": "Time Stop", "price": "EOD", "action": "3:55 PM ET · Never carry overnight", "type": "time"})
 
         conditions = _shorten_reasons(scan.reasons or [], scan.verdict or "", max_conditions=6)
 
-        rr = m.get("entry_rr_ratio")
-        rr_str = f"{rr:.1f}:1" if rr else None
+        # Only show R/R when there is a valid profit target in the exit plan.
+        # The engine's entry_rr_ratio is computed from the scan bias which may
+        # differ from the direction we resolved — recompute from actual levels.
+        _has_target = any(r["type"] in ("t1", "t2") for r in exit_rows)
+        if _has_target and entry_price and stop_price and t1_price:
+            _risk  = abs(entry_price - stop_price)
+            _reward = abs(t1_price - entry_price)
+            rr_str = f"{_reward / _risk:.1f}:1" if _risk > 0 else None
+        else:
+            rr_str = None
 
         coach = td.get("decision_message", "") or td.get("market_guidance", "")
 
@@ -302,6 +379,7 @@ def serialize_day_trade(scan) -> dict:
             stop_price = None
             structure = ""
             exit_rows = []
+            rr_str = None
 
         return {
             "ticker": scan.ticker,
@@ -366,6 +444,7 @@ def serialize_swing_trade(scan) -> dict:
                 "when": rule.get("trigger") or rule.get("when") or "",
                 "price": _fmt_price(rule.get("price")),
                 "action": rule.get("action") or "",
+                "note": rule.get("note") or "",
                 "type": rule.get("type") or "stop",
             })
 
@@ -423,6 +502,7 @@ def serialize_swing_trade(scan) -> dict:
             "risk_level": getattr(scan, "risk_level", None) or "MEDIUM",
             "rvol": None,
             "coach": coach,
+            "spread_entry": spread if isinstance(spread, dict) and spread.get("long_leg") else None,
             "spy_price": None,
             "spy_change_pct": None,
             "qqq_price": None,

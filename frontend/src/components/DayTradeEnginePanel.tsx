@@ -944,9 +944,10 @@ export default function DayTradeEnginePanel({
               { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-sm">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
               { label: 'Structure', value: (() => {
                 const fd = String(result.final_decision || '').toUpperCase()
-                if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Ready'}</span>
-                if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Waiting'}</span>
-                if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{(result.bias === 'short' ? 'SHORT' : 'LONG') + ' · Watching'}</span>
+                const dir = result.bias === 'short' ? 'SHORT' : 'LONG'
+                if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{dir + ' · Ready'}</span>
+                if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{dir + ' · Waiting'}</span>
+                if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{dir + ' · Watching'}</span>
                 if (fd === 'AVOID' || fd === 'CONFLICT' || fd === 'NO-GO') return <span className="font-mono text-red-400 text-xs">No trade</span>
                 return <span className="font-mono text-gray-400 text-xs">No trade</span>
               })()},

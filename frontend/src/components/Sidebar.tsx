@@ -132,7 +132,7 @@ export default function Sidebar() {
     {
       label: 'Trades',
       items: [
-        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
+        { id: 'day-trade', label: 'Intraday', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
       ],
@@ -185,7 +185,7 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
     { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'day-trade', label: 'Day Trade', icon: <Zap size={23} /> },
+    { id: 'day-trade', label: 'Intraday', icon: <Zap size={23} /> },
     { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
     { id: 'ticker', label: 'Trading', icon: <Search size={23} /> },
   ]

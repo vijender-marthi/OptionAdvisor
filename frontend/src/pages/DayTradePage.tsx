@@ -11,6 +11,7 @@ import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeIntradayChart, { parseChartBars } from '../components/DayTradeIntradayChart'
+import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -32,7 +33,22 @@ export default function DayTradePage() {
     isWatched,
     addManualPosition,
     portfolio,
+    theme,
   } = useApp()
+
+  const isDark = theme !== 'light'
+  const dt = {
+    bg:      isDark ? '#111318' : '#FFFFFF',
+    bgDeep:  isDark ? '#181C23' : '#F8F9FB',
+    border:  isDark ? '#1E2330' : '#E5E7EB',
+    text:    isDark ? '#E8EBF0' : '#111827',
+    muted:   isDark ? '#5A6478' : '#6B7280',
+    green:   isDark ? '#00E5A0' : '#00A86B',
+    red:     isDark ? '#FF4D6D' : '#DC2626',
+    amber:   isDark ? '#F5A623' : '#D97706',
+    accent:  '#4A7CFF',
+    violet:  '#6B7FD4',
+  }
   const [searchParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const { ticker, loading, refreshing, error, result, glossaryOpen } = ui
@@ -63,7 +79,6 @@ export default function DayTradePage() {
   const [notes, setNotes] = useState('')
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
-  const autoRunRef = useRef(false)
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
@@ -117,38 +132,18 @@ export default function DayTradePage() {
     }
   }, [setUi]) // stable — no ticker dependency
 
-  // Track last processed URL ticker to avoid reacting to searchParams identity
-  const processedUrlTickerRef = useRef<string | null>(null)
-  const urlTickerRaw = searchParams.get('ticker')
-  const urlTicker = urlTickerRaw?.trim().toUpperCase() ?? null
-
+  // Reload on mount: use URL ticker, or default to SPY if none
+  const didMountRef = useRef(false)
   useEffect(() => {
-    if (!urlTicker || urlTicker.length > 12) return
-    if (urlTicker === processedUrlTickerRef.current) return
-    processedUrlTickerRef.current = urlTicker
-    if (ticker.trim().toUpperCase() !== urlTicker) {
-      setUi(cur => ({ ...cur, ticker: urlTicker }))
-    }
-    autoRunRef.current = true
-  }, [urlTicker, ticker, setUi])
-
-  useEffect(() => {
-    if (!autoRunRef.current || !ticker.trim()) return
+    if (didMountRef.current) return
+    didMountRef.current = true
     const urlT = searchParams.get('ticker')?.trim().toUpperCase()
-    if (urlT && urlT !== ticker.trim().toUpperCase()) return
-    autoRunRef.current = false
-    runScan()
-  }, [ticker, runScan, searchParams])
-
-  // Default to SPY on first load when no ticker and no result
-  const didDefaultRef = useRef(false)
-  useEffect(() => {
-    if (didDefaultRef.current) return
-    if (ticker.trim() || result) return
-    didDefaultRef.current = true
-    setUi(cur => ({ ...cur, ticker: 'SPY' }))
-    runScan('SPY')
-  }, [ticker, result, runScan, setUi])
+    const sym = urlT && urlT.length <= 12 ? urlT : ticker.trim().toUpperCase() || 'SPY'
+    if (sym !== ticker.trim().toUpperCase()) {
+      setUi(cur => ({ ...cur, ticker: sym }))
+    }
+    runScan(sym)
+  }, []) // eslint-disable-line
 
   useEffect(() => {
     if (!notice) return
@@ -347,7 +342,7 @@ export default function DayTradePage() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div className="day-trade-page min-h-screen p-4 md:p-6 text-primary">
+    <div className="day-trade-page min-h-screen p-4 md:p-6 text-primary" style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* Mobile/tablet search toggle */}
         <button
@@ -531,7 +526,7 @@ export default function DayTradePage() {
         </div>
 
         {/* Right: Content */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 space-y-4" style={{ maxWidth: '100%' }}>
 
         {error && (
         <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
@@ -552,40 +547,68 @@ export default function DayTradePage() {
       )}
 
       {unified && (
-        <>
+        <div className="day-trade-unified">
           {/* Ticker header bar */}
-          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>{unified.ticker}</span>
-                {unified.company && <span style={{ fontSize: '0.78rem', color: '#5A6478' }}>{unified.company}</span>}
-                <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${unified.price.toFixed(2)}</span>
+          <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px 16px', minWidth: 0, maxWidth: '100%' }}>
+              {/* Price row */}
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px', flex: '1 1 200px', minWidth: 0 }}>
+                <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>{unified.ticker}</span>
+                {unified.company && <span className="dt-muted" style={{ fontSize: '0.78rem', color: dt.muted }}>{unified.company}</span>}
+                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>${unified.price.toFixed(2)}</span>
                 {unified.change_pct != null && (
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? dt.green : dt.red }}>
                     {unified.change_pct >= 0 ? '▲' : '▼'} {Math.abs(unified.change_pct).toFixed(2)}%
                   </span>
                 )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {unified.session && (
-                  <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: '1px solid rgba(107,127,212,0.5)', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>
-                    {unified.session}
-                  </span>
-                )}
                 {(() => {
-                  const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
-                  const vwap = eg?.vwap
-                  const orh = eg?.opening_range_high
-                  const orl = eg?.opening_range_low
-                  if (!vwap && !orh) return null
+                  const m = result?.metrics as Record<string, unknown> | undefined
+                  const extPrice = m?.ext_market_price as number | undefined
+                  if (!extPrice) return null
+                  const extChg = m?.ext_market_change as number | undefined
+                  const extChgPct = m?.ext_market_change_pct as number | undefined
+                  const extType = m?.ext_market_type as string | undefined
                   return (
-                    <span style={{ fontSize: '0.65rem', color: '#5A6478', fontFamily: 'monospace' }}>
-                      {vwap != null && <span>VWAP <span style={{ color: '#E8EBF0' }}>${(vwap as number).toFixed(2)}</span></span>}
-                      {orh != null && <span style={{ marginLeft: 8 }}>ORH <span style={{ color: '#E8EBF0' }}>${(orh as number).toFixed(2)}</span></span>}
-                      {orl != null && <span style={{ marginLeft: 8 }}>ORL <span style={{ color: '#E8EBF0' }}>${(orl as number).toFixed(2)}</span></span>}
-                    </span>
+                    <>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: `1px solid ${dt.violet}`, color: dt.violet, background: 'rgba(107,127,212,0.08)' }}>{extType === 'pre' ? 'Pre' : 'AH'}</span>
+                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>${extPrice.toFixed(2)}</span>
+                      {extChg != null && (
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: extChg >= 0 ? dt.green : dt.red }}>
+                          {extChg >= 0 ? '▲' : '▼'}{Math.abs(extChg).toFixed(2)} ({(extChgPct ?? 0) >= 0 ? '+' : ''}{(extChgPct ?? 0).toFixed(2)}%)
+                        </span>
+                      )}
+                    </>
                   )
                 })()}
+              </div>
+              {/* Bias + session meta */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: dt.muted }}>Bias</div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: result?.bias === 'long' ? dt.green : result?.bias === 'short' ? dt.red : dt.muted }}>{result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : '—'}</div>
+                  <div style={{ fontSize: '0.6rem', color: dt.muted }}>{result?.market_bias || '—'}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {unified.session && (
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: `1px solid rgba(107,127,212,0.5)`, color: dt.violet, background: 'rgba(107,127,212,0.08)' }}>
+                      {unified.session}
+                    </span>
+                  )}
+                  {(() => {
+                    const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
+                    const vwap = eg?.vwap
+                    const orh = eg?.opening_range_high
+                    const orl = eg?.opening_range_low
+                    if (!vwap && !orh) return null
+                    return (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: '0.65rem', color: dt.muted, fontFamily: 'monospace' }}>
+                        {vwap != null && <span>VWAP <span style={{ color: dt.text }}>${(vwap as number).toFixed(2)}</span></span>}
+                        {orh != null && <span>ORH <span style={{ color: dt.text }}>${(orh as number).toFixed(2)}</span></span>}
+                        {orl != null && <span>ORL <span style={{ color: dt.text }}>${(orl as number).toFixed(2)}</span></span>}
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
             </div>
           </div>
@@ -593,88 +616,113 @@ export default function DayTradePage() {
           <UnifiedVerdictCard analysis={unified} />
 
           {/* Entry Plan / Risk Profile */}
-          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
               {/* Entry Plan */}
               <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Entry</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? '#00E5A0' : '#F5A623', fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : '—'}</span>
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Entry</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? dt.green : dt.amber, fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Structure</span>
-                  <span style={{ fontFamily: 'monospace', color: '#E8EBF0', fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Structure</span>
+                  <span className="dt-primary" style={{ fontFamily: 'monospace', color: dt.text, fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Stop Loss</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? '#FF4D6D' : '#5A6478', fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Stop Loss</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? dt.red : dt.muted, fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
                 </div>
               </div>
               {/* Risk Profile */}
               <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>R/R Ratio</span>
-                  <span style={{ fontFamily: 'monospace', color: '#5A6478', fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>R/R Ratio</span>
+                  <span className="dt-muted" style={{ fontFamily: 'monospace', color: dt.muted, fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>Risk Level</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? '#00E5A0' : unified.risk_level === 'MEDIUM' ? '#F5A623' : '#FF4D6D', fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Risk Level</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? dt.green : unified.risk_level === 'MEDIUM' ? dt.amber : dt.red, fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span style={{ color: '#5A6478', fontSize: '0.82rem' }}>RVOL</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#5A6478', fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
+                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>RVOL</span>
+                  <span className="dt-muted" style={{ fontFamily: 'monospace', fontWeight: 700, color: dt.muted, fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Exit Plan */}
-          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
+          <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
             {unified.exit_rows.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                <thead>
-                  <tr>
-                    {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', color: '#5A6478', fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: '1px solid #1E2330' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop table */}
+                <div className="hidden sm:block" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr>
+                        {['WHEN', 'PRICE', 'ACTION'].map(h => (
+                          <th key={h} style={{ textAlign: 'left', color: dt.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${dt.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unified.exit_rows.map((row, i) => {
+                        const isStop = row.type === 'stop'
+                        const isT2 = row.type === 't2'
+                        const isT1 = row.type === 't1'
+                        const isTime = row.type === 'time'
+                        const rowTone = isStop ? dt.red : isT2 ? dt.amber : isT1 ? dt.green : dt.text
+                        const priceCls = isStop ? dt.red : isT2 ? dt.amber : isT1 ? dt.green : dt.muted
+                        return (
+                          <tr key={i} style={{ borderBottom: `1px solid ${dt.border}` }}>
+                            <td style={{ paddingTop: 8, paddingBottom: 8, color: rowTone, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: isStop || isT1 || isT2 ? 600 : 400 }}>{row.when}</td>
+                            <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
+                            <td style={{ paddingTop: 8, paddingBottom: 8, color: isStop ? dt.red : isT1 || isT2 ? dt.green : dt.muted, fontSize: '0.75rem', fontWeight: isStop ? 500 : 400 }}>{row.action}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile card list */}
+                <div className="sm:hidden space-y-2">
                   {unified.exit_rows.map((row, i) => {
                     const isStop = row.type === 'stop'
-                    const isT1 = row.type === 't1'
                     const isT2 = row.type === 't2'
-                    const isTime = row.type === 'time'
-                    const priceCls = isStop ? '#FF4D6D' : isT2 ? '#F5A623' : isT1 ? '#00E5A0' : '#5A6478'
+                    const isT1 = row.type === 't1'
+                    const rowTone = isStop ? dt.red : isT2 ? dt.amber : isT1 ? dt.green : dt.text
+                    const priceCls = isStop ? dt.red : isT2 ? dt.amber : isT1 ? dt.green : dt.muted
                     return (
-                      <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#E8EBF0', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.75rem' }}>{row.action}</td>
-                      </tr>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bgDeep }}>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: rowTone, fontWeight: 600 }}>{row.when}</div>
+                          <div style={{ fontSize: '0.68rem', color: isStop ? dt.red : isT1 || isT2 ? dt.green : dt.muted, marginTop: 2 }}>{row.action}</div>
+                        </div>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: priceCls, fontSize: '0.88rem' }}>{row.price}</span>
+                      </div>
                     )
                   })}
-                </tbody>
-              </table>
+                </div>
+              </>
             ) : (
-              <div style={{ color: '#5A6478', textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+              <div style={{ color: dt.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
             )}
           </div>
 
           {/* AI Coach */}
           {unified.coach && (
-            <div style={{ background: '#181C23', border: '1px solid #1E2330', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
+            <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
               <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4A7CFF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
-                <div style={{ color: '#5A6478', fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
+                <div className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Intraday chart */}
@@ -687,12 +735,17 @@ export default function DayTradePage() {
         const sessionDate = String(m.session_date ?? '')
         if (!chartBars || orHigh == null || orLow == null) return null
         return (
-          <div style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
+          <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
           </div>
         )
       })()}
+
+      {/* Step-by-step walkthrough */}
+      {result && (
+        <DayTradeWalkthrough result={result} />
+      )}
 
       {/* Flow reference */}
       <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">

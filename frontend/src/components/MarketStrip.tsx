@@ -2,17 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchMarketPosition } from '../api/commandCenter'
 
 const C = {
-  bgPage:    '#0A0C10',
-  bgPanel:   '#111318',
-  bgCard:    '#181C23',
-  border:    '#1E2330',
-  borderSub: '#252C3A',
-  muted:     '#5A6478',
-  accent:    '#4A7CFF',
-  green:     '#00E5A0',
-  red:       '#FF4D6D',
-  amber:     '#F5A623',
-  purple:    '#6B7FD4',
+  bgPage:    '#0A0B0D',
+  bgPanel:   '#111215',
+  bgCard:    '#18191D',
+  border:    '#1E1F24',
+  borderSub: '#25262B',
+  muted:     '#6B7280',
+  accent:    '#3B82F6',
+  green:     '#00A86B',
+  red:       '#D0312D',
+  amber:     '#D4A017',
+  purple:    '#6B7280',
 }
 
 const TIMEZONE_OPTIONS = [
@@ -71,8 +71,8 @@ function sessionColor(session: string): string {
     case 'Morning':     return C.amber
     case 'Closing':     return C.amber
     case 'Midday':      return C.muted
-    case 'Pre-Market':  return C.purple
-    case 'After-Hours': return C.purple
+    case 'Pre-Market':  return C.muted
+    case 'After-Hours': return C.muted
     case 'Closed':      return '#3A4255'
     default:            return C.muted
   }
@@ -149,7 +149,7 @@ export default function MarketStrip() {
   }, [showTzPicker])
 
   return (
-    <div style={{
+    <div className="market-strip" style={{
       display: 'flex', alignItems: 'center', gap: 20, height: 44,
       padding: '0 12px', flexShrink: 0,
       background: C.bgPage, borderBottom: `1px solid ${C.border}`,
@@ -168,19 +168,76 @@ export default function MarketStrip() {
         fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap',
         color: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? C.muted : C.green,
       }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? C.muted : C.green,
-          boxShadow: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? 'none' : `0 0 6px ${C.green}`,
-        }} />
+        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? C.muted : C.green }} />
         {clock.session === 'Closed' || clock.session === 'Pre-Market' || clock.session === 'After-Hours' ? 'Closed' : 'Live'}
       </span>
 
       <span style={{ color: C.borderSub }}>|</span>
 
+      {/* Clock / timezone */}
+      <div style={{ position: 'relative' }}>
+        <button
+          ref={tzBtnRef}
+          type="button"
+          onClick={() => setShowTzPicker(p => !p)}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontFamily: 'monospace', fontSize: '0.72rem', color: C.muted,
+            padding: 0, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+          }}
+        >
+          <span>{clock.time}</span>
+          <span style={{ color: sessionColor(clock.session), fontWeight: 600 }}>· {clock.session}</span>
+        </button>
+
+        {showTzPicker && (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+              onClick={() => setShowTzPicker(false)}
+            />
+            <div style={{
+              ...tzPickerStyle,
+              background: C.bgPanel, border: `1px solid ${C.borderSub}`,
+              borderRadius: 10, padding: '8px 0', minWidth: 150,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            }}>
+              {TIMEZONE_OPTIONS.map(opt => (
+                <button
+                  key={opt.tz}
+                  type="button"
+                  onClick={() => { setUserTz(opt.tz); setShowTzPicker(false) }}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.bgCard }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '8px 14px', background: userTz === opt.tz ? 'rgba(74,124,255,0.1)' : 'transparent',
+                    border: 'none', cursor: 'pointer', textAlign: 'left',
+                    fontFamily: 'monospace', fontSize: '0.78rem',
+                    color: userTz === opt.tz ? '#fff' : C.muted,
+                  }}
+                >
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                    background: userTz === opt.tz ? C.accent : 'transparent',
+                    border: `1px solid ${userTz === opt.tz ? C.accent : C.borderSub}`,
+                  }} />
+                  <span style={{ fontWeight: 700, marginRight: 4 }}>{opt.label}</span>
+                  <span style={{ fontSize: '0.72rem', color: C.muted }}>
+                    {opt.tz.split('/').pop()?.replace(/_/g, ' ')}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <span style={{ color: C.borderSub }}>|</span>
+
       {/* SPY */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
+        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: C.green }} />
         SPY
         {marketData.spy != null ? (
           <>
@@ -246,70 +303,6 @@ export default function MarketStrip() {
       }}>
         {signalLabel}
       </span>
-
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      <span style={{ color: C.borderSub }}>|</span>
-
-      {/* Clock / timezone */}
-      <div style={{ position: 'relative' }}>
-        <button
-          ref={tzBtnRef}
-          type="button"
-          onClick={() => setShowTzPicker(p => !p)}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontFamily: 'monospace', fontSize: '0.72rem', color: C.muted,
-            padding: 0, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-          }}
-        >
-          <span>{clock.time}</span>
-          <span style={{ color: sessionColor(clock.session), fontWeight: 600 }}>· {clock.session}</span>
-        </button>
-
-        {showTzPicker && (
-          <>
-            <div
-              style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-              onClick={() => setShowTzPicker(false)}
-            />
-            <div style={{
-              ...tzPickerStyle,
-              background: C.bgPanel, border: `1px solid ${C.borderSub}`,
-              borderRadius: 10, padding: '8px 0', minWidth: 150,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              {TIMEZONE_OPTIONS.map(opt => (
-                <button
-                  key={opt.tz}
-                  type="button"
-                  onClick={() => { setUserTz(opt.tz); setShowTzPicker(false) }}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.bgCard }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                    padding: '8px 14px', background: userTz === opt.tz ? 'rgba(74,124,255,0.1)' : 'transparent',
-                    border: 'none', cursor: 'pointer', textAlign: 'left',
-                    fontFamily: 'monospace', fontSize: '0.78rem',
-                    color: userTz === opt.tz ? '#fff' : C.muted,
-                  }}
-                >
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                    background: userTz === opt.tz ? C.accent : 'transparent',
-                    border: `1px solid ${userTz === opt.tz ? C.accent : C.borderSub}`,
-                  }} />
-                  <span style={{ fontWeight: 700, marginRight: 4 }}>{opt.label}</span>
-                  <span style={{ fontSize: '0.72rem', color: C.muted }}>
-                    {opt.tz.split('/').pop()?.replace(/_/g, ' ')}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
     </div>
   )
 }

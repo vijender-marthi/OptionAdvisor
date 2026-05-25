@@ -665,39 +665,71 @@ html.light .signal-feed-page {
   background-color: var(--surface-canvas);
 }
 
-/* ── Day Trade Engine Panel — light theme text contrast ────────────────── */
+/* ── Day Trade Engine Panel / Swing Trade / Position Trading — light theme ── */
 html.light .day-trade-engine-panel .text-gray-100,
-html.light .day-trade-page .text-gray-100 { color: #0f172a !important; }
+html.light .day-trade-page .text-gray-100,
+html.light .swing-trade-page .text-gray-100,
+html.light .ticker-page .text-gray-100 { color: #0f172a !important; }
 html.light .day-trade-engine-panel .text-gray-200,
-html.light .day-trade-page .text-gray-200 { color: #1e293b !important; }
+html.light .day-trade-page .text-gray-200,
+html.light .swing-trade-page .text-gray-200,
+html.light .ticker-page .text-gray-200 { color: #1e293b !important; }
 html.light .day-trade-engine-panel .text-gray-300,
-html.light .day-trade-page .text-gray-300 { color: #334155 !important; }
+html.light .day-trade-page .text-gray-300,
+html.light .swing-trade-page .text-gray-300,
+html.light .ticker-page .text-gray-300 { color: #334155 !important; }
 html.light .day-trade-engine-panel .text-gray-400,
-html.light .day-trade-page .text-gray-400 { color: #475569 !important; }
+html.light .day-trade-page .text-gray-400,
+html.light .swing-trade-page .text-gray-400,
+html.light .ticker-page .text-gray-400 { color: #475569 !important; }
 html.light .day-trade-engine-panel .text-gray-500,
-html.light .day-trade-page .text-gray-500 { color: #64748b !important; }
+html.light .day-trade-page .text-gray-500,
+html.light .swing-trade-page .text-gray-500,
+html.light .ticker-page .text-gray-500 { color: #64748b !important; }
 html.light .day-trade-engine-panel .text-gray-600,
-html.light .day-trade-page .text-gray-600 { color: #94a3b8 !important; }
+html.light .day-trade-page .text-gray-600,
+html.light .swing-trade-page .text-gray-600,
+html.light .ticker-page .text-gray-600 { color: #94a3b8 !important; }
 html.light .day-trade-engine-panel .bg-gray-900\/70,
-html.light .day-trade-page .bg-gray-900\/70 { background-color: #f8fafc !important; }
+html.light .day-trade-page .bg-gray-900\/70,
+html.light .swing-trade-page .bg-gray-900\/70,
+html.light .ticker-page .bg-gray-900\/70 { background-color: #f8fafc !important; }
 html.light .day-trade-engine-panel .bg-black\/10,
-html.light .day-trade-page .bg-black\/10 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-black\/10,
+html.light .swing-trade-page .bg-black\/10,
+html.light .ticker-page .bg-black\/10 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-black\/15,
-html.light .day-trade-page .bg-black\/15 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-black\/15,
+html.light .swing-trade-page .bg-black\/15,
+html.light .ticker-page .bg-black\/15 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-black\/20,
-html.light .day-trade-page .bg-black\/20 { background-color: #e2e8f0 !important; }
+html.light .day-trade-page .bg-black\/20,
+html.light .swing-trade-page .bg-black\/20,
+html.light .ticker-page .bg-black\/20 { background-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .bg-black\/75,
-html.light .day-trade-page .bg-black\/75 { background-color: #e2e8f0 !important; }
+html.light .day-trade-page .bg-black\/75,
+html.light .swing-trade-page .bg-black\/75,
+html.light .ticker-page .bg-black\/75 { background-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-700\/40,
-html.light .day-trade-page .border-gray-700\/40 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-700\/40,
+html.light .swing-trade-page .border-gray-700\/40,
+html.light .ticker-page .border-gray-700\/40 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-700\/50,
-html.light .day-trade-page .border-gray-700\/50 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-700\/50,
+html.light .swing-trade-page .border-gray-700\/50,
+html.light .ticker-page .border-gray-700\/50 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-800\/80,
-html.light .day-trade-page .border-gray-800\/80 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-800\/80,
+html.light .swing-trade-page .border-gray-800\/80,
+html.light .ticker-page .border-gray-800\/80 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-800\/90,
-html.light .day-trade-page .border-gray-800\/90 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-800\/90,
+html.light .swing-trade-page .border-gray-800\/90,
+html.light .ticker-page .border-gray-800\/90 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .bg-gray-700\/50,
-html.light .day-trade-page .bg-gray-700\/50 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-gray-700\/50,
+html.light .swing-trade-page .bg-gray-700\/50,
+html.light .ticker-page .bg-gray-700\/50 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-gray-800\/60,
 html.light .day-trade-page .bg-gray-800\/60 { background-color: #f1f5f9 !important; }
 
@@ -739,6 +771,72 @@ html.light .day-trade-page .text-red-400,
 html.light .swing-trade-page .text-red-400 { color: #dc2626 !important; }
 html.light .day-trade-page .text-amber-400,
 html.light .swing-trade-page .text-amber-400 { color: #d97706 !important; }
+
+/* ── MarketStrip — always dark ────────────────────────────────────────────── */
+html.light .market-strip { background: #0A0B0D !important; border-bottom-color: #1E1F24 !important; color: #6B7280 !important; }
+html.light .market-strip .tz-dropdown { background: #111215 !important; border-color: #25262B !important; box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important; }
+html.light .market-strip .tz-dropdown button { color: #6B7280 !important; }
+html.light .market-strip .tz-dropdown button.tz-active { background: rgba(74,124,255,0.1) !important; color: #fff !important; }
+html.light .market-strip .tz-dropdown button.tz-active .tz-dot { background: #3B82F6 !important; border-color: #3B82F6 !important; }
+
+/* ── DayTradeWalkthrough — light theme ────────────────────────────────────── */
+html.light .day-trade-walkthrough { background: #ffffff !important; }
+html.light .day-trade-walkthrough .border-gray-800 { border-color: #e2e8f0 !important; }
+
+/* ── Day Trade Unified Cards — light theme ───────────────────────────────── */
+html.light .day-trade-unified .dt-card,
+html.light .day-trade-page .dt-card,
+html.light .ticker-page .dt-card { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .day-trade-unified .dt-muted,
+html.light .ticker-page .dt-muted { color: #64748b !important; }
+html.light .day-trade-unified .dt-primary,
+html.light .ticker-page .dt-primary { color: #0f172a !important; }
+
+/* ── TickerPage left panel elements — light theme ────────────────────────── */
+html.light .ticker-page table thead tr { background: #f8fafc !important; }
+html.light .ticker-page table tbody tr { border-bottom-color: #e2e8f0 !important; }
+html.light .ticker-page div[style*="rgb(24, 28, 35)"] { background: #ffffff !important; }
+html.light .ticker-page div[style*="rgb(17, 19, 24)"] { background: #ffffff !important; }
+html.light .ticker-page span[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+html.light .ticker-page div[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+
+/* ── TickerInput — light theme ──────────────────────────────────────────── */
+html.light .ticker-input { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .ticker-input input { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+html.light .ticker-input select { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+html.light .ticker-input button { border-color: #cbd5e1 !important; }
+html.light .ticker-input button[style*="rgb(24, 28, 35)"] { background: #f1f5f9 !important; }
+html.light .ticker-input span[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+html.light .ticker-input button { border-color: #cbd5e1 !important; }
+html.light .ticker-input button[style*="rgb(232, 235, 240)"] { color: #0f172a !important; }
+html.light .ticker-input button:hover { color: #0f172a !important; border-color: #4A7CFF !important; }
+
+/* ── SwingTradeWalkthrough — light theme ────────────────────────────────── */
+html.light .swing-trade-walkthrough { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .swing-trade-walkthrough .border-gray-800 { border-color: #e2e8f0 !important; }
+html.light .swing-trade-walkthrough .bg-black\/15 { background: #f1f5f9 !important; }
+html.light .swing-trade-walkthrough .bg-black\/10 { background: #f1f5f9 !important; }
+html.light .swing-trade-walkthrough .text-gray-600 { color: #94a3b8 !important; }
+html.light .swing-trade-walkthrough .text-gray-500 { color: #64748b !important; }
+html.light .swing-trade-walkthrough .text-gray-300 { color: #334155 !important; }
+html.light .swing-trade-walkthrough .text-gray-200 { color: #1e293b !important; }
+
+/* ── UnifiedVerdictCard — light theme ────────────────────────────────────── */
+html.light .uv-card .uv-reason { color: #475569 !important; }
+html.light .uv-card .uv-chip { background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+html.light .uv-card .uv-chip--pass { color: #0f172a !important; }
+html.light .uv-card .uv-chip--warn { color: #b45309 !important; }
+html.light .uv-card .uv-chip--fail { color: #dc2626 !important; }
+html.light .uv-card .uv-meta { border-top-color: #e2e8f0 !important; }
+html.light .uv-card .uv-muted { color: #64748b !important; }
+html.light .uv-card .uv-primary { color: #0f172a !important; }
+html.light .uv-card .uv-mkt { color: #64748b !important; }
+html.light .uv-card .uv-mkt .uv-primary { color: #0f172a !important; }
+
+/* ── UnifiedVerdictCard tooltip hover ──────────────────────────────────────── */
+.uv-card .uv-tooltip { opacity: 0; pointer-events: none; }
+.uv-card .uv-info-wrap:hover .uv-tooltip { opacity: 1; }
+html.light .uv-card .uv-tooltip { background: #ffffff !important; color: #0f172a !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; }
 
 /* ── Mobile navigation ───────────────────────────────────────────────────── */
 html.dark .mobile-bottom-nav-shell,

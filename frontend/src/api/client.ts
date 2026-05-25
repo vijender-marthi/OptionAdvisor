@@ -635,12 +635,26 @@ export interface UnifiedAnalysis {
     when: string
     price: string
     action: string
+    note?: string
     type: 'none' | 't1' | 't2' | 'stop' | 'time'
   }>
   rr_ratio: string | null
   risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
   rvol: string | null
   coach: string
+  spread_entry?: {
+    strategy: string
+    long_leg: string
+    short_leg: string
+    long_strike: number
+    short_strike: number
+    expiry: string
+    est_debit: number
+    max_gain: number
+    max_loss: number
+    breakeven: number
+    entry_note?: string
+  } | null
   spy_price: number | null
   spy_change_pct: number | null
   qqq_price: number | null
@@ -1155,6 +1169,7 @@ export function deriveUnifiedFromSwingResult(
       || result.decision_message || '',
     spy_price: null,
     spy_change_pct: null,
+    qqq_price: null,
     qqq_change_pct: null,
     vix: m.vix,
     vix_label: 'Contained',

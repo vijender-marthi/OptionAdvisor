@@ -14,12 +14,36 @@ const C = {
   red:       '#FF4D6D',
 }
 
-const ALERT_TYPES = [
-  { value: 'RVOL',         label: 'RVOL crosses X×',    hint: 'Triggers when relative volume exceeds threshold' },
-  { value: 'PRICE_CROSS',  label: 'Price crosses $X',   hint: 'Triggers when price hits your level' },
-  { value: 'VWAP_RETEST',  label: 'VWAP retest',        hint: 'Triggers on VWAP touch/retest' },
-  { value: 'SIGNAL_ENTER', label: 'Signal → ENTER',     hint: 'Triggers when engine flips to ENTER' },
-] as const
+type AlertTypeOption = { value: string; label: string; hint: string; needsThreshold?: boolean }
+
+const ALERT_TYPES_BY_TRADE: Record<string, AlertTypeOption[]> = {
+  day: [
+    { value: 'VERDICT_CHANGE', label: 'Verdict transition',   hint: 'Fires when engine moves WAIT→WATCH or WATCH→ENTER' },
+    { value: 'RVOL',           label: 'RVOL crosses X×',      hint: 'Fires once when relative volume crosses threshold', needsThreshold: true },
+    { value: 'OR_BREAK',       label: 'OR High/Low break',    hint: 'Fires once when price breaks the opening range' },
+    { value: 'VWAP_RETEST',    label: 'VWAP retest',          hint: 'Fires when price touches VWAP intraday' },
+    { value: 'PRICE_CROSS',    label: 'Price crosses $X',     hint: 'Fires once when price crosses your level', needsThreshold: true },
+  ],
+  swing: [
+    { value: 'VERDICT_CHANGE', label: 'Verdict transition',   hint: 'Fires when verdict changes (WAIT→WATCH→GO)' },
+    { value: 'SCORE_CROSS',    label: 'Score crosses X',      hint: 'Fires when swing score crosses threshold', needsThreshold: true },
+    { value: 'MA_PROXIMITY',   label: 'MA20 proximity',       hint: 'Fires when price comes within 1% of MA20' },
+    { value: 'PRICE_CROSS',    label: 'Position target $X',   hint: 'Fires when price reaches your target level', needsThreshold: true },
+  ],
+  regular: [
+    { value: 'SCORE_CROSS',      label: 'Score crosses X',      hint: 'Fires when score crosses 70 (entry) or drops below 50', needsThreshold: true },
+    { value: 'VERDICT_CHANGE',   label: 'Verdict change',        hint: 'Fires when trade moves from SETUP→ENTRY' },
+    { value: 'EARNINGS_WARNING', label: 'Earnings warning',      hint: 'Fires 10 days before earnings within your DTE' },
+    { value: 'DTE_STOP',         label: 'DTE time stop',         hint: 'Fires when position reaches 21 DTE' },
+    { value: 'PROFIT_TARGET',    label: '50% profit target',     hint: 'Fires when position reaches 50% of max profit' },
+  ],
+}
+
+const EXPIRY_BY_TRADE: Record<string, 'eod' | 'tomorrow' | 'week'> = {
+  day:     'eod',
+  swing:   'tomorrow',
+  regular: 'week',
+}
 
 interface Props {
   ticker: string
@@ -30,10 +54,14 @@ interface Props {
 }
 
 export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, drawerLeft = 300 }: Props) {
-  const [alertType, setAlertType] = useState<string>('RVOL')
+  const normalizedType = (tradeType || 'day').toLowerCase().replace(/[^a-z]/g, '')
+  const alertOptions = ALERT_TYPES_BY_TRADE[normalizedType] ?? ALERT_TYPES_BY_TRADE.day
+  const defaultExpiry = EXPIRY_BY_TRADE[normalizedType] ?? 'eod'
+
+  const [alertType, setAlertType] = useState<string>(alertOptions[0].value)
   const [thresholdValue, setThresholdValue] = useState('')
   const [notifyMethod, setNotifyMethod] = useState<'inapp' | 'email' | 'both'>('inapp')
-  const [expires, setExpires] = useState<'eod' | 'tomorrow' | 'week'>('eod')
+  const [expires, setExpires] = useState<'eod' | 'tomorrow' | 'week'>(defaultExpiry)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,7 +71,8 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const needsThreshold = alertType === 'RVOL' || alertType === 'PRICE_CROSS'
+  const selectedOption = alertOptions.find(o => o.value === alertType) ?? alertOptions[0]
+  const needsThreshold = !!selectedOption.needsThreshold
 
   const handleSubmit = async () => {
     setError(null)
@@ -58,7 +87,7 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
         trade_type: tradeType,
         alert_type: alertType,
         threshold_value: needsThreshold ? parseFloat(thresholdValue) : undefined,
-        target_signal: alertType === 'SIGNAL_ENTER' ? 'ENTER' : '',
+        target_signal: '',
         notify_method: notifyMethod,
         expires,
       }
@@ -107,13 +136,13 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
           <div>
             <label style={labelStyle}>Alert type</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {ALERT_TYPES.map(at => {
+              {alertOptions.map(at => {
                 const active = alertType === at.value
                 return (
                   <button
                     key={at.value}
                     type="button"
-                    onClick={() => setAlertType(at.value)}
+                    onClick={() => { setAlertType(at.value); setThresholdValue('') }}
                     style={{
                       padding: '10px 12px', borderRadius: 8, textAlign: 'left',
                       background: active ? 'rgba(74,124,255,0.15)' : 'transparent',
@@ -129,16 +158,16 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
             </div>
           </div>
 
-          {/* Dynamic input */}
+          {/* Dynamic threshold input */}
           {needsThreshold && (
             <div>
               <label style={labelStyle}>
-                {alertType === 'RVOL' ? 'RVOL threshold (e.g. 1.5×)' : 'Price level ($)'}
+                {alertType === 'RVOL' ? 'RVOL threshold (e.g. 2×)' : alertType === 'SCORE_CROSS' ? 'Score threshold (e.g. 70)' : 'Price level ($)'}
               </label>
               <input
                 style={inputStyle}
                 inputMode="decimal"
-                placeholder={alertType === 'RVOL' ? '1.5' : '200.00'}
+                placeholder={alertType === 'RVOL' ? '2.0' : alertType === 'SCORE_CROSS' ? '70' : '200.00'}
                 value={thresholdValue}
                 onChange={e => setThresholdValue(e.target.value)}
               />
@@ -146,9 +175,7 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit, d
           )}
           {!needsThreshold && (
             <div style={{ background: C.bgPage, border: `1px solid ${C.borderSub}`, borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: C.muted }}>
-              {alertType === 'VWAP_RETEST'
-                ? 'Alert fires when price touches VWAP intraday'
-                : `Alert fires when engine issues ENTER signal for ${ticker}`}
+              {selectedOption.hint}
             </div>
           )}
 

@@ -190,6 +190,16 @@ def _migrate_day_trade_watchlist_last(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE day_trade_watchlist_last ADD COLUMN entry_state TEXT DEFAULT ''")
 
 
+def _migrate_desk_trade_alerts(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(desk_trade_alerts)").fetchall()}
+    if "last_check_value" not in cols:
+        conn.execute("ALTER TABLE desk_trade_alerts ADD COLUMN last_check_value TEXT")
+    if "daily_fire_count" not in cols:
+        conn.execute("ALTER TABLE desk_trade_alerts ADD COLUMN daily_fire_count INTEGER NOT NULL DEFAULT 0")
+    if "daily_fire_date" not in cols:
+        conn.execute("ALTER TABLE desk_trade_alerts ADD COLUMN daily_fire_date TEXT")
+
+
 def _migrate_alert_center_items(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(alert_center_items)").fetchall()}
     if "updated_at_ms" not in cols:
@@ -451,6 +461,7 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_alert_center_email_created ON alert_center_items(email, created_at_ms DESC)"
         )
+        _migrate_desk_trade_alerts(conn)
 
         # ── Cleanup unused legacy tables ──────────────────────────────
         # user_alerts: replaced by alert_center_items
@@ -971,7 +982,7 @@ def get_user_alerts(email: str, retention_ms: int, now_ms: int) -> list[dict[str
                 """,
                 (normalized,),
             ).fetchall()
-        except conn.OperationalError:
+        except sqlite3.OperationalError:
             rows = []
 
     alerts: list[dict[str, Any]] = []
@@ -2526,6 +2537,60 @@ def desk_fire_alert(user_id: str, alert_id: str, fired_value: Optional[float], a
             (now, fired_value, action_taken, alert_id, em),
         )
     return cur.rowcount > 0
+
+
+def desk_record_check(user_id: str, alert_id: str, check_value: str) -> None:
+    """Update last_check_value without marking the alert as fired."""
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE desk_trade_alerts SET last_check_value = ? WHERE id = ? AND user_id = ?",
+            (check_value, alert_id, em),
+        )
+
+
+def desk_fire_alert_transition(
+    user_id: str, alert_id: str, fired_value: Optional[float], check_value: str, action_taken: str
+) -> bool:
+    """Fire alert and update transition-tracking fields."""
+    em = normalize_email(user_id)
+    now = datetime.now(ZoneInfo("America/New_York"))
+    today = now.date().isoformat()
+    now_str = now.isoformat(timespec="seconds")
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT daily_fire_date, daily_fire_count FROM desk_trade_alerts WHERE id = ? AND user_id = ?",
+            (alert_id, em),
+        ).fetchone()
+        if not row:
+            return False
+        same_day = row["daily_fire_date"] == today
+        new_count = (row["daily_fire_count"] if same_day else 0) + 1
+        conn.execute(
+            """
+            UPDATE desk_trade_alerts
+            SET is_active = 0, fired_at = ?, fired_value = ?, action_taken = ?,
+                last_check_value = ?, daily_fire_count = ?, daily_fire_date = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (now_str, fired_value, action_taken, check_value, new_count, today, alert_id, em),
+        )
+    return True
+
+
+def desk_count_daily_fires(user_id: str, ticker: str, trade_type: str, today: str) -> int:
+    """Count how many alerts already fired today for this user+ticker+trade_type."""
+    em = normalize_email(user_id)
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c FROM desk_trade_alerts
+            WHERE user_id = ? AND ticker = ? AND trade_type = ?
+              AND daily_fire_date = ?
+            """,
+            (em, ticker.upper(), trade_type.lower(), today),
+        ).fetchone()
+    return int(row["c"]) if row else 0
 
 
 def desk_get_alert_count(user_id: str) -> int:

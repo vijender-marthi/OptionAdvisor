@@ -8,13 +8,22 @@ import MarketOverview from '../components/MarketOverview'
 import SignalPanel from '../components/SignalPanel'
 import PriceChart from '../components/PriceChart'
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
+import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
 
-const C = {
+type Palette = {
+  bgPage: string; bgPanel: string; bgCard: string
+  border: string; borderSub: string
+  muted: string; accent: string; violet: string
+  green: string; red: string; amber: string; purple: string
+  text: string; textInv: string; glassHover: string
+}
+
+const C_DARK: Palette = {
   bgPage:    '#0A0C10',
   bgPanel:   '#111318',
   bgCard:    '#181C23',
@@ -28,6 +37,26 @@ const C = {
   amber:     '#F5A623',
   purple:    '#6B7FD4',
   text:      '#E8EBF0',
+  textInv:   '#111827',
+  glassHover:'rgba(255,255,255,0.04)',
+}
+
+const C_LIGHT: Palette = {
+  bgPage:    '#F0F2F5',
+  bgPanel:   '#FFFFFF',
+  bgCard:    '#F8F9FB',
+  border:    '#E5E7EB',
+  borderSub: '#D1D5DB',
+  muted:     '#6B7280',
+  accent:    '#4A7CFF',
+  violet:    '#7C5CFC',
+  green:     '#00A86B',
+  red:       '#DC2626',
+  amber:     '#D97706',
+  purple:    '#6B7FD4',
+  text:      '#111827',
+  textInv:   '#FFFFFF',
+  glassHover:'rgba(0,0,0,0.03)',
 }
 
 const VALID_SAVED_WEEKS = new Set<number>(MULTI_WEEK_TARGETS as readonly number[])
@@ -95,64 +124,8 @@ function bestVerdict(vs: Verdict[]): Verdict | null {
   return null
 }
 
-const scoreColor = (s: number) =>
-  s >= 75 ? '#00E5A0' : s >= 55 ? '#F5A623' : '#FF4D6D'
-
-const C_VERDICT = {
-  enter: { label: 'ENTER NOW', color: '#00E5A0', bg: 'rgba(0,229,160,0.06)' },
-  watch: { label: 'WATCH',     color: '#F5A623', bg: 'rgba(245,166,35,0.06)' },
-  wait:  { label: 'WAIT',      color: '#6B7FD4', bg: 'rgba(107,127,212,0.06)' },
-  avoid: { label: 'AVOID',     color: '#FF4D6D', bg: 'rgba(255,77,109,0.06)' },
-}
-
-function RegularVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
-  const v = C_VERDICT[analysis.verdict] ?? C_VERDICT.wait
-  return (
-    <div style={{ background: v.bg, border: `1px solid ${v.color}40`, borderRadius: 14, borderTop: `3px solid ${v.color}`, padding: '20px 24px', marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <div style={{ fontFamily: "'Syne', 'Inter', system-ui, sans-serif", fontSize: '2.8rem', fontWeight: 800, color: v.color, letterSpacing: '-0.02em', lineHeight: 1, textTransform: 'uppercase' }}>{v.label}</div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'monospace', fontSize: '1.5rem', fontWeight: 700, color: v.color }}>{analysis.confidence}</div>
-          <div style={{ fontSize: '0.6rem', color: '#5A6478', textTransform: 'uppercase', letterSpacing: '0.08em' }}>CONF</div>
-        </div>
-      </div>
-      <div style={{ fontSize: '0.88rem', color: '#E8EBF0', opacity: 0.85, lineHeight: 1.6, marginBottom: 12 }}>{analysis.reason}</div>
-      {analysis.conditions.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12, marginBottom: 4 }}>
-          {analysis.conditions.map((c, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', fontWeight: 500, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.borderSub}`, color: c.type === 'pass' ? '#E8EBF0' : c.type === 'warn' ? '#F5A623' : '#FF4D6D' }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.type === 'pass' ? '#00E5A0' : c.type === 'warn' ? '#F5A623' : '#FF4D6D', flexShrink: 0 }} />
-              {c.label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {analysis.structure && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.75rem', color: '#5A6478' }}>Best structure: <span style={{ color: '#E8EBF0', fontWeight: 600 }}>{analysis.structure}</span></span>
-          {analysis.rr_ratio && <span style={{ fontSize: '0.75rem', color: '#5A6478' }}>R/R: <span style={{ color: '#00E5A0', fontWeight: 600, fontFamily: 'monospace' }}>{analysis.rr_ratio}</span></span>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const VERDICT_DOT_COLOR: Record<Verdict, string> = {
-  'GO':      C.green,
-  'CAUTION': C.amber,
-  'NO GO':   C.red,
-}
-const VERDICT_ICON: Record<Verdict, React.ReactNode> = {
-  'GO':      <CheckCircle2 size={11} style={{ color: C.green }} />,
-  'CAUTION': <AlertTriangle size={11} style={{ color: C.amber }} />,
-  'NO GO':   <XCircle size={11} style={{ color: C.red }} />,
-}
-const VERDICT_TEXT_COLOR: Record<Verdict, string> = {
-  'GO':      C.green,
-  'CAUTION': C.amber,
-  'NO GO':   C.red,
-}
+const scoreColor = (s: number, C: Palette) =>
+  s >= 75 ? C.green : s >= 55 ? C.amber : C.red
 
 interface WeekSlot {
   weeksOut: number
@@ -194,18 +167,20 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
   })
 }
 
-function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, loadingWeeks }: {
+function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, loadingWeeks, C }: {
   entry: TickerCacheEntry
   selectedWeeksOut: number
   onSelect: (weeksOut: number) => void
   onFetch: () => void
   fetching: boolean
   loadingWeeks: Set<number>
+  C: Palette
 }) {
   const slots = buildWeekSlots(entry)
   const hasFetched = !!entry.multiWeekData
   const goCount = slots.filter(s => s.verdict === 'GO').length
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
+  const VERDICT_DOT_COLOR: Record<Verdict, string> = { 'GO': C.green, 'CAUTION': C.amber, 'NO GO': C.red }
 
   return (
     <div style={{
@@ -270,7 +245,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
                 }} />
                 <span style={{
                   fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace',
-                  color: active ? '#fff' : C.muted,
+                  color: active ? C.textInv : C.muted,
                 }}>
                   {slot.label}
                 </span>
@@ -288,7 +263,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
           title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–6w)'}
           style={{
             background: C.violet,
-            color: '#fff',
+            color: C.textInv,
             border: 'none',
             borderRadius: 8,
             padding: '6px 14px',
@@ -302,11 +277,10 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
             flexShrink: 0,
           }}
         >
-          <Layers size={14} style={{ animation: fetching ? 'tdPulse 1.5s infinite' : undefined }} />
-          {hasFetched ? 'Refresh' : 'All Weeks'}
+          <Layers size={14} />
         </button>
       </div>
-      <style>{`@keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
@@ -318,7 +292,10 @@ export default function TickerPage() {
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
+    theme, navigate,
   } = useApp()
+
+  const C = theme === 'light' ? C_LIGHT : C_DARK
 
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
   const [unifiedAnalysis, setUnifiedAnalysis] = useState<UnifiedAnalysis | null>(null)
@@ -340,6 +317,7 @@ export default function TickerPage() {
   const didRestoreLastAnalysis = useRef(false)
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
+  const [selectedRank, setSelectedRank] = useState<number | null>(null)
 
   const handleAnalyze = async (
     ticker: string,
@@ -552,7 +530,7 @@ export default function TickerPage() {
                 </span>
               ) : (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: C.green, background: 'rgba(0,229,160,0.08)', border: `1px solid rgba(0,229,160,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, animation: 'tdPulse 2s infinite' }} />
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green }} />
                   Live
                 </span>
               )}
@@ -652,8 +630,39 @@ export default function TickerPage() {
               onFetch={() => fetchAllWeeks(data.ticker)}
               fetching={fetchingAllWeeks.has(data.ticker)}
               loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
+              C={C}
             />
           )}
+
+          {/* Selected recommendation action items */}
+          {selectedRank != null && (() => {
+            const rec = selectedData?.recommendations?.find(r => r.rank === selectedRank)
+            if (!rec) return null
+            return (
+              <div style={{
+                background: C.bgPanel, border: `1px solid ${C.border}`,
+                borderRadius: 12, padding: '12px 14px', marginTop: 10,
+              }}>
+                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.accent, marginBottom: 8 }}>
+                  {rec.rank}. {rec.strategy}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => navigate('positions')}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.violet}40`, background: `${C.violet}15`, color: C.violet, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    📊 Positions
+                  </button>
+                  <button type="button" onClick={() => navigate('journal')}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.green}40`, background: `${C.green}15`, color: C.green, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    📋 Journal
+                  </button>
+                  <button type="button" onClick={() => navigate('auto-trade')}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.accent}40`, background: `${C.accent}15`, color: C.accent, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    🤖 Alpaca
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Right: Content */}
@@ -668,7 +677,8 @@ export default function TickerPage() {
             </svg>
             <span style={{ color: C.text, fontSize: '1.05rem' }}>Running systematic analysis…</span>
             <span style={{ color: C.muted, fontSize: '0.85rem' }}>Fetching options chain · Computing signals · Scoring trades</span>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }`}</style>
           </div>
         )}
 
@@ -693,21 +703,75 @@ export default function TickerPage() {
 
 
 
-            {/* Market Overview */}
-            <div style={cardStyle}>
-              <MarketOverview
-                ticker={displayData.ticker}
-                companyName={displayData.company_name}
-                sector={displayData.sector}
-                marketCap={displayData.market_cap}
-                signals={displayData.signals}
-              />
+            {/* Ticker header bar */}
+            <div className="dt-card" style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>{displayData.ticker}</span>
+                  {displayData.company_name && <span className="dt-muted" style={{ fontSize: '0.78rem', color: C.muted }}>{displayData.company_name}</span>}
+                  <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${displayData.signals.current_price.toFixed(2)}</span>
+                  {displayData.signals.price_change != null && (
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: displayData.signals.price_change >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                      {displayData.signals.price_change >= 0 ? '▲' : '▼'} {Math.abs(displayData.signals.price_change).toFixed(2)} ({displayData.signals.price_change_pct > 0 ? '+' : ''}{displayData.signals.price_change_pct.toFixed(2)}%)
+                    </span>
+                  )}
+                  {!!displayData.signals.ext_market_price && (
+                    <>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: '1px solid #6B7FD4', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>
+                        {displayData.signals.ext_market_type === 'pre' ? 'Pre' : 'AH'}
+                      </span>
+                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${displayData.signals.ext_market_price.toFixed(2)}</span>
+                      {!!displayData.signals.ext_market_change && (
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: (displayData.signals.ext_market_change ?? 0) >= 0 ? '#00A86B' : '#D0312D' }}>
+                          {(displayData.signals.ext_market_change ?? 0) >= 0 ? '▲' : '▼'}{Math.abs(displayData.signals.ext_market_change ?? 0).toFixed(2)} ({(displayData.signals.ext_market_change_pct ?? 0) >= 0 ? '+' : ''}{(displayData.signals.ext_market_change_pct ?? 0).toFixed(2)}%)
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: '0.6rem', color: C.muted }}>Bias</div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: displayData.signals.directional_bias?.includes('Bullish') ? '#00A86B' : displayData.signals.directional_bias?.includes('Bearish') ? '#D0312D' : '#6B7280' }}>{displayData.signals.directional_bias || '—'}</div>
+                  <div style={{ fontSize: '0.6rem', color: C.muted }}>{displayData.signals.bias_confidence ?? 0}%</div>
+                </div>
+              </div>
             </div>
 
-            {/* Verdict card (unified analysis) */}
+            {/* Verdict card + signals */}
             {unifiedAnalysis && (
-              <RegularVerdictCard analysis={unifiedAnalysis} />
+              <UnifiedVerdictCard analysis={unifiedAnalysis} />
             )}
+            {(() => {
+              const s = displayData.signals
+              const rsiColor = s.rsi >= 70 ? '#D0312D' : s.rsi <= 30 ? '#00A86B' : C.text
+              const ivColor = s.iv_rank >= 65 ? '#D0312D' : s.iv_rank < 35 ? '#00A86B' : '#D4A017'
+              const pill: React.CSSProperties = { fontSize: '0.68rem', padding: '2px 8px', borderRadius: 4, fontWeight: 600, fontFamily: 'monospace', border: '1px solid rgba(148,163,184,0.2)' }
+              return (
+              <div className="dt-card" style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ ...pill, color: s.trend?.includes('Bullish') ? '#00A86B' : s.trend?.includes('Bearish') ? '#D0312D' : '#6B7280' }}>Trend: {s.trend}</span>
+                  <span style={{ ...pill, color: rsiColor }}>RSI: {s.rsi.toFixed(1)} {s.rsi_signal}</span>
+                  <span style={{ ...pill, color: ivColor }}>IV Rank: {s.iv_rank.toFixed(0)}% {s.iv_environment}</span>
+                  <span style={{ ...pill, color: s.iv_vs_hv > 0 ? '#D0312D' : '#00A86B' }}>IV/HV: {s.iv_vs_hv > 0 ? '+' : ''}{s.iv_vs_hv.toFixed(1)}% ({s.iv_vs_hv > 0 ? 'rich' : 'cheap'})</span>
+                  <span style={{ ...pill, color: s.pcr_signal === 'Bearish' ? '#D0312D' : s.pcr_signal === 'Bullish' ? '#00A86B' : '#6B7280' }}>P/C: {s.put_call_ratio.toFixed(2)} {s.pcr_signal}</span>
+                  <span style={{ ...pill, color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : s.volatility_regime === 'Buy Premium' ? '#00A86B' : C.text }}>Vol: {s.volatility_regime}</span>
+                </div>
+                {s.volatility_regime && (
+                  <div style={{ marginTop: 6, fontSize: '0.72rem', color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : '#00A86B' }}>
+                    {s.volatility_regime === 'Sell Premium' ? '⚡' : '💰'} IV Rank {s.iv_rank.toFixed(0)}% · {s.volatility_regime === 'Sell Premium' ? `IV ${s.iv_vs_hv.toFixed(1)}% above HV · Credit strategies favored` : 'Options relatively cheap · Debit strategies favored'}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span style={{ fontSize: '0.68rem', color: C.muted, alignSelf: 'center' }}>MAs:</span>
+                  <span style={{ ...pill, color: s.above_ma20 ? '#00A86B' : '#D0312D' }}>{s.above_ma20 ? '▲' : '▼'} MA20 ${s.ma20.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma50 ? '#00A86B' : '#D0312D' }}>{s.above_ma50 ? '▲' : '▼'} MA50 ${s.ma50.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma200 ? '#00A86B' : '#D0312D' }}>{s.above_ma200 ? '▲' : '▼'} MA200 ${s.ma200.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.ma50_slope > 0 ? '#00A86B' : '#D0312D' }}>MA50 slope: {s.ma50_slope > 0 ? '↑' : '↓'} {Math.abs(s.ma50_slope).toFixed(2)}%</span>
+                  <span style={{ ...pill, color: s.macd_crossover === 'Bullish' ? '#00A86B' : s.macd_crossover === 'Bearish' ? '#D0312D' : '#6B7280' }}>MACD: {s.macd_crossover === 'None' ? 'No crossover' : s.macd_crossover + ' crossover'}</span>
+                </div>
+              </div>
+              )
+            })()}
 
             {/* Context line: rec breakdown — uses selectedData for accurate counts */}
             {selectedData?.recommendations && selectedData.recommendations.length > 0 && (
@@ -715,10 +779,10 @@ export default function TickerPage() {
               const entryCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 70).length
               const setupCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 55 && (r.scores?.total_score ?? 0) < 70).length
               return (
-                <div style={{ marginTop: 6, marginBottom: 10, fontSize: '11px', color: '#5A6478', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ marginTop: 6, marginBottom: 10, fontSize: '11px', color: C.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {entryCount > 0 && <span style={{ background: 'rgba(0,229,160,0.1)', color: '#00E5A0', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{entryCount} ready to enter</span>}
                   {setupCount > 0 && <span style={{ background: 'rgba(245,166,35,0.1)', color: '#F5A623', border: '1px solid rgba(245,166,35,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{setupCount} setting up</span>}
-                  {entryCount === 0 && setupCount === 0 && <span style={{ color: '#5A6478' }}>No structures ready yet — conditions still forming</span>}
+                  {entryCount === 0 && setupCount === 0 && <span style={{ color: C.muted }}>No structures ready yet — conditions still forming</span>}
                 </div>
               )
             })()
@@ -749,7 +813,7 @@ export default function TickerPage() {
                     disabled={fetchingAllWeeks.has(data.ticker)}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
-                      background: C.violet, color: '#fff', border: 'none',
+                      background: C.violet, color: C.textInv, border: 'none',
                       borderRadius: 8, padding: '8px 16px',
                       fontSize: '0.82rem', fontWeight: 600,
                       cursor: fetchingAllWeeks.has(data.ticker) ? 'wait' : 'pointer',
@@ -802,21 +866,21 @@ export default function TickerPage() {
                         return (
                           <React.Fragment key={rec.rank}>
                             {rec.legs.map((leg, li) => (
-                              <tr key={`${rec.rank}-${li}`} style={{ borderBottom: `1px solid ${C.border}` }}>
+                              <tr key={`${rec.rank}-${li}`} onClick={() => setSelectedRank(selectedRank === rec.rank ? null : rec.rank)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
-                                  <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
+                                  <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
                                   <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}</div>
                                   <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
                                 </td>)}
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600, color: leg.action === 'BUY' ? C.green : C.red }}>{leg.action}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#fff' }}>{leg.option_type}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#fff', textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.text }}>{leg.option_type}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: C.text, textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score) }}>{score || '—'}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
                                   <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
@@ -850,7 +914,7 @@ export default function TickerPage() {
                         background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
                         border: 'none',
                         borderBottom: activeTab === t ? `2px solid ${C.accent}` : '2px solid transparent',
-                        color: activeTab === t ? '#fff' : C.muted,
+                        color: activeTab === t ? C.text : C.muted,
                         fontSize: '0.78rem',
                         fontWeight: 600,
                         cursor: 'pointer',

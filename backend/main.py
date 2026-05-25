@@ -42,7 +42,7 @@ from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
-    AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
+    TestEmailRequest, BacktestRequest,
     DayTradeRequest, DayTradeResponse,
     SwingTradeRequest, SwingTradeResponse,
     ActiveTradeEnterRequest, ActiveTradeEnterResponse, ActiveTradeOut, ActiveTradeListResponse,
@@ -66,11 +66,8 @@ from storage import (
     alert_center_create,
     add_user_alert,
     add_day_trade_alert_event,
-    clear_user_alerts,
-    dismiss_user_alert,
     DAY_TRADE_ALERT_RETENTION_MS,
     get_day_trade_watchlist_last,
-    get_user_alerts,
     get_user_state,
     init_db,
     list_day_trade_alert_events,
@@ -227,7 +224,6 @@ def _deliver_html_email(to_email: str, to_name: str | None, subject: str, html: 
     return "smtp"
 
 
-ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 USER_ALERT_EMAIL_DISABLED_MESSAGE = "Email alerts are turned off in your account settings."
 
 
@@ -3781,39 +3777,6 @@ def list_day_trade_alerts_api(email: str, auth_email: str = Depends(require_acce
     return {
         "email": email.strip().lower(),
         "alerts": list_day_trade_alert_events(email, DAY_TRADE_ALERT_RETENTION_MS, now_ms),
-    }
-
-
-@app.get("/api/alerts/{email}")
-def list_alerts(email: str, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, email)
-    return {
-        "email": email.strip().lower(),
-        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
-    }
-
-
-@app.post("/api/alerts/dismiss")
-def dismiss_alert(req: AlertDismissRequest, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, req.email)
-    dismiss_user_alert(req.email, req.alert_id)
-    return {"ok": True}
-
-
-@app.post("/api/alerts/clear")
-def clear_alerts(req: AlertClearRequest, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, req.email)
-    clear_user_alerts(req.email)
-    return {"ok": True}
-
-
-@app.post("/api/alerts/scan/{email}")
-def scan_alerts_now(email: str, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, email)
-    _scan_user_watchlist_for_alerts(get_user_state(email))
-    return {
-        "email": email.strip().lower(),
-        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
     }
 
 

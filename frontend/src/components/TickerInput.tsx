@@ -81,7 +81,7 @@ export default function TickerInput({
   }
 
   return (
-    <div style={{
+    <div className="ticker-input" style={{
       background: C.bgPanel,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
@@ -91,13 +91,6 @@ export default function TickerInput({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{ fontWeight: 800, fontSize: '1.1rem', color: C.text, fontFamily: 'monospace' }}>
           Position Trading
-        </span>
-        <span style={{
-          fontSize: '0.65rem', color: C.muted,
-          background: C.bgCard, border: `1px solid ${C.border}`,
-          borderRadius: 20, padding: '2px 10px', marginLeft: 'auto',
-        }}>
-          Systematic Engine v2
         </span>
       </div>
 
@@ -232,7 +225,7 @@ export default function TickerInput({
                   background: active ? 'rgba(124,92,252,0.15)' : C.bgCard,
                   fontSize: '0.75rem',
                   fontWeight: 600,
-                  color: active ? '#fff' : C.muted,
+                  color: active ? C.violet : C.muted,
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                 }}
