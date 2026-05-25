@@ -4081,7 +4081,9 @@ def journal_delete(email: str, entry_id: str, auth_email: str = Depends(require_
     """Delete a journal entry."""
     ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
-    delete_journal_entry(normalized, entry_id)
+    deleted = delete_journal_entry(normalized, entry_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
     return {"ok": True}
 
 

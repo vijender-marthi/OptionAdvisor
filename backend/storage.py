@@ -1886,13 +1886,16 @@ def update_journal_entry(email: str, entry_id: str, **fields) -> None:
         )
 
 
-def delete_journal_entry(email: str, entry_id: str) -> None:
+def delete_journal_entry(email: str, entry_id: str) -> bool:
+    """Delete a journal entry. Returns True if a row was deleted."""
     normalized = normalize_email(email)
     with _connect() as conn:
-        conn.execute(
+        cur = conn.execute(
             "DELETE FROM trade_journal WHERE email = ? AND id = ?",
             (normalized, entry_id),
         )
+        conn.commit()
+    return cur.rowcount > 0
 
 
 def init_trade_ideas_db() -> None:
