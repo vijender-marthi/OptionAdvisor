@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen, Zap } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Briefcase, Star, Check, TrendingUp, Layers, BookOpen, Zap, Bell } from 'lucide-react'
 import type { Recommendation, Signals } from '../types'
 import { useApp } from '../contexts/AppContext'
 import PreTradeChecklist, { buildChecklist, deriveVerdict, type Verdict } from './PreTradeChecklist'
-import { saveToJournal, executeTrade } from '../api/client'
+import { saveToJournal, executeTrade, deskApi, type DeskAlertCreate } from '../api/client'
+import SetAlertDrawer from './desk/SetAlertDrawer'
 
 const C = {
   bg:        '#0A0B0D',
@@ -174,6 +175,7 @@ export default function RecommendationCard({
   const [tradeError, setTradeError]           = useState<string | null>(null)
   const [contractPickerOpen, setContractPickerOpen] = useState(false)
   const [selectedContracts, setSelectedContracts]   = useState(1)
+  const [alertOpen, setAlertOpen]                   = useState(false)
 
   const inPortfolio = isInPortfolio(ticker, rec.strategy, rec.expiry) || addedPort
   const watched     = isWatched(ticker) || addedWatch
@@ -496,8 +498,29 @@ export default function RecommendationCard({
                   </button>
                 )
               )}
+              {/* Set Alert */}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setAlertOpen(o => !o) }}
+                aria-label="Set alert"
+                title="Set alert for this trade"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold border transition-all
+                           bg-gray-800 border-gray-700 text-gray-400 hover:border-blue-600 hover:text-blue-400"
+              >
+                <Bell size={16} />
+              </button>
             </div>
           </div>
+
+          {/* Alert drawer */}
+          {alertOpen && (
+            <SetAlertDrawer
+              ticker={ticker}
+              tradeType="regular"
+              onClose={() => setAlertOpen(false)}
+              onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
+            />
+          )}
 
           {/* Contract picker — shown when Portfolio button clicked */}
           {contractPickerOpen && !inPortfolio && (() => {
