@@ -391,21 +391,36 @@ export default function SwingTradePage() {
               type="button"
               onClick={() => {
                 if (!result) return
-                const m = result.metrics
-                const s = result as Record<string, unknown>
-                const eg = result.entry_guidance as Record<string, unknown> | undefined
+                const m = result.metrics as Record<string, unknown>
+                const eg = result.entry_guidance
+                const execLevels = m?.exec_levels as Record<string, unknown> | undefined
+                const lastPrice = typeof m?.last_price === 'number' ? m.last_price : 0
+                const entryPrice = typeof eg?.breakout_level === 'number' ? eg.breakout_level : lastPrice
                 addManualPosition({
                   ticker: result.ticker,
-                  bias: result.bias,
-                  strategy: String(s.suggested_strategy ?? 'SWING'),
+                  companyName: result.company_name,
+                  strategy: result.suggested_strategy ?? 'SWING',
+                  bias: result.bias === 'short' ? 'short' : 'long',
+                  legs: [],
+                  expiry: result.suggested_expiry_window ?? '',
+                  dte: 0,
+                  net_credit: 0,
+                  spread_width: 0,
+                  max_profit: 0,
+                  max_loss: 0,
+                  prob_of_profit: 0,
+                  expected_value: 0,
+                  scores_total: result.trade_quality_score || 0,
                   contracts: 1,
-                  entryPrice: (typeof eg?.breakout_level === 'number' ? eg.breakout_level : (m as Record<string, unknown>)?.last_price ?? result.metrics?.last_price) as number,
-                  expiry: result.suggested_expiry_window || '',
-                  notes: result.decision_message || '',
+                  breakeven_lower: 0,
+                  breakeven_upper: 0,
+                  entryPrice,
                   source: 'swing',
-                  target1: (m as Record<string, unknown>)?.exec_levels ? ((m as Record<string, unknown>).exec_levels as Record<string, unknown>)?.target1 as number : undefined,
-                  stopLoss: (m as Record<string, unknown>)?.exec_levels ? ((m as Record<string, unknown>).exec_levels as Record<string, unknown>)?.stop as number : undefined,
+                  notes: result.decision_message || '',
+                  target1: execLevels?.target1 as number | undefined,
+                  stopLoss: execLevels?.stop as number | undefined,
                 })
+                setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
               }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-2 text-xs font-bold transition-colors"
             >

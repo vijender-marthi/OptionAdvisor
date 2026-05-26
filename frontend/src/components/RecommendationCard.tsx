@@ -302,6 +302,9 @@ export default function RecommendationCard({
 
   const statusBorderColor = tradeState.state === 2 ? '#00E5A0' : tradeState.state === 1 ? '#6B7FD4' : tradeState.state === 0 ? '#F5A623' : '#FF4D6D'
 
+  const rrColor = rrRatio >= 2 ? 'text-emerald-400' : rrRatio >= 1.5 ? 'text-lime-400' : rrRatio >= 1 ? 'text-yellow-400' : 'text-red-400'
+  const evColor = rec.expected_value > 0 ? 'text-emerald-400' : rec.expected_value < 0 ? 'text-red-400' : 'text-gray-300'
+
   useEffect(() => {
     if (scrollFocusRank !== rec.rank) return
     setOpen(true)

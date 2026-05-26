@@ -345,6 +345,22 @@ export interface SwingTradeScanResult {
   risk_state:             string
   expected_holding_period:      string
   recommended_contract_duration: string
+  /** Execution-level fields for swing trades */
+  entry_guidance?: {
+    state: string
+    summary: string
+    action: string
+    avoid: string
+    pending_confirmations: string[]
+    current_price?: number
+    vwap?: number
+    price_vs_vwap_pct?: number
+    breakout_level?: number
+    pullback_zone?: string
+    risk_below?: number
+    scalp_target?: number
+    exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
+  }
 }
 
 export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
@@ -1056,7 +1072,7 @@ export function deriveUnifiedFromDayResult(
         .slice(0, 5)
         .join(' ')
       const lower = r.toLowerCase()
-      const type =
+      const type: 'fail' | 'warn' | 'pass' =
         lower.includes('avoid') ||
         lower.includes('weak') ||
         lower.includes('below') ||
@@ -1101,6 +1117,7 @@ export function deriveUnifiedFromDayResult(
     coach: td.decision_message || '',
     spy_price: null,
     spy_change_pct: m.spy_change_pct,
+    qqq_price: null,
     qqq_change_pct: m.qqq_change_pct,
     vix: m.vix,
     vix_label: m.vix < 15 ? 'Low'

@@ -5,7 +5,7 @@ import {
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check,
 } from 'lucide-react'
-import { analyzeDayTrade, analyzeV2, deskApi } from '../api/client'
+import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
@@ -596,7 +596,7 @@ export default function DayTradePage() {
                     </span>
                   )}
                   {(() => {
-                    const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
+                    const eg = result?.entry_guidance
                     const vwap = eg?.vwap
                     const orh = eg?.opening_range_high
                     const orl = eg?.opening_range_low

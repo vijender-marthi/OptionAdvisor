@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
 import { analyzeOptions, analyzeV2, deskApi, saveToJournal } from '../api/client'
-import type { AnalyzeResponse, StrategyMode, TickerCacheEntry, UnifiedAnalysis, DeskAlertCreate } from '../api/client'
+import type { UnifiedAnalysis, DeskAlertCreate } from '../api/client'
+import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
@@ -143,7 +144,7 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
   if (entry.data.recommendations.length > 0) {
     const dte = entry.data.recommendations[0].dte
     const label = `${entry.weeksOut}w`
-    const verdicts = entry.data.recommendations.map(r =>
+    const verdicts = entry.data.recommendations.map((r: typeof entry.data.recommendations[0]) =>
       deriveVerdict(buildChecklist(r, entry.data.signals))
     )
     slots.set(label, { weeksOut: entry.weeksOut, label, dte, verdict: bestVerdict(verdicts), recCount: verdicts.length, hasData: true })
@@ -157,12 +158,12 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
       const dte = d.recommendations[0]?.dte ?? null
       const label = `${weeksOut}w`
       if (slots.has(label)) continue
-      const verdicts = d.recommendations.map(r => deriveVerdict(buildChecklist(r, d.signals)))
+      const verdicts = d.recommendations.map((r: typeof d.recommendations[0]) => deriveVerdict(buildChecklist(r, d.signals)))
       slots.set(label, { weeksOut: Number(weeksOut), label, dte, verdict: bestVerdict(verdicts), recCount: verdicts.length, hasData: true })
     }
   }
 
-  return MULTI_WEEK_TARGETS.map(w => {
+  return MULTI_WEEK_TARGETS.map((w: number) => {
     const label = `${w}w`
     return slots.get(label) ?? { weeksOut: w, label, dte: null, verdict: null, recCount: 0, hasData: false }
   })
@@ -179,7 +180,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
 }) {
   const slots = buildWeekSlots(entry)
   const hasFetched = !!entry.multiWeekData
-  const goCount = slots.filter(s => s.verdict === 'GO').length
+  const goCount = slots.filter((s: WeekSlot) => s.verdict === 'GO').length
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
   const VERDICT_DOT_COLOR: Record<Verdict, string> = { 'GO': C.green, 'CAUTION': C.amber, 'NO GO': C.red }
 
@@ -210,7 +211,7 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
 
         {/* Slots */}
         <div style={{ display: 'flex', gap: 4, flex: 1, overflowX: 'auto' }}>
-          {slots.map(slot => {
+          {slots.map((slot: WeekSlot) => {
             const active = selectedWeeksOut === slot.weeksOut
             const isLoading = loadingWeeks.has(slot.weeksOut)
             const dotColor = isLoading
