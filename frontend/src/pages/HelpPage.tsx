@@ -36,6 +36,7 @@ const NAV_SECTIONS = [
   { id: 'market-summary',   label: 'Market Command Summary',    icon: BarChart2 },
   { id: 'portfolio',        label: 'Portfolio Philosophy',      icon: ShieldCheck },
   { id: 'ui-ux-rules',      label: 'UI/UX Design Rules',        icon: Eye },
+  { id: 'verdict-card',      label: 'Verdict Card Scoring',       icon: Award },
   { id: 'faq',              label: 'FAQ',                        icon: HelpCircle },
 ]
 
@@ -3744,7 +3745,94 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
           </section>
 
           {/* ═══════════════════════════════════════════════════════
-             SECTION 18 — FAQ
+             SECTION 18 — VERDICT CARD SCORING
+             ═══════════════════════════════════════════════════════ */}
+          <section id="verdict-card" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Award size={18} className="text-violet-400" />
+              Verdict Card Scoring
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">The UnifiedVerdictCard appears on the Swing Trade and Day Trade pages. It determines the trade readiness status using a two-score threshold system displayed as a green, amber, or gray status bar.</p>
+
+            <DocCard icon={<Activity size={15} />} title="Two-Score System">
+              <div className="space-y-2 text-xs text-gray-400">
+                <p>The card evaluates two independent scores. Both must cross their respective thresholds to advance to the next status level.</p>
+                <div className="grid gap-2 sm:grid-cols-2 mt-2">
+                  {[
+                    { name: 'Setup Score', range: '0–100', source: 'Composite of all engine signals, confidence, and market context. Higher = more conditions aligned.' },
+                    { name: 'Signal Quality', range: '0–10', source: 'Weighted ratio of passing vs warning conditions. 7+ = Strong, 4–6.9 = Moderate, below 4 = Weak.' },
+                  ].map(s => (
+                    <div key={s.name} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-semibold text-gray-200">{s.name}</span>
+                        <span className="text-[10px] font-mono text-violet-300">{s.range}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500">{s.source}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Gauge size={15} />} title="Status Thresholds">
+              <p className="text-xs text-gray-500 mb-3">The card shows one of three statuses. Both scores must meet the condition — never just one:</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-2 py-1.5 font-semibold">Status</th>
+                      <th className="px-2 py-1.5 font-semibold">Setup Score</th>
+                      <th className="px-2 py-1.5 font-semibold">Signal Quality</th>
+                      <th className="px-2 py-1.5 font-semibold">Color</th>
+                      <th className="px-2 py-1.5 font-semibold">Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { status: 'Entry conditions met', ss: '≥ 75', sq: '≥ 8.5', color: 'Green', meaning: 'Both scores are strong. The setup is fully aligned. Proceed with position sizing and entry.' },
+                      { status: 'Setup building', ss: '≥ 65', sq: '≥ 7.0', color: 'Amber', meaning: 'Scores are decent but not yet actionable. One or both need to improve. Monitor for confirmation triggers.' },
+                      { status: 'Watching', ss: '< 65', sq: '< 7.0', color: 'Amber', meaning: 'Scores are below both thresholds. Conditions are not forming. Do not enter.' },
+                    ].map(r => (
+                      <tr key={r.status} className="border-b border-gray-800/40 text-[11px]">
+                        <td className={`px-2 py-1.5 font-semibold ${r.color === 'Green' ? 'text-emerald-400' : 'text-amber-400'}`}>{r.status}</td>
+                        <td className="px-2 py-1.5 font-mono text-gray-300">{r.ss}</td>
+                        <td className="px-2 py-1.5 font-mono text-gray-300">{r.sq}</td>
+                        <td className="px-2 py-1.5">
+                          <span className={`inline-block w-2 h-2 rounded-full ${r.color === 'Green' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                          <span className="ml-1.5 text-gray-400">{r.color}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-gray-400">{r.meaning}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="rounded-lg bg-amber-950/20 border border-amber-800/30 px-3 py-2 mt-3">
+                <p className="text-[10px] text-amber-200/80"><strong>Rule:</strong> Both numbers must cross the threshold. If one is below, the status stays at the lower tier. A 74 Setup Score with 9.0 Signal Quality still shows "Setup building" because Setup Score &lt; 75.</p>
+              </div>
+            </DocCard>
+
+            <DocCard icon={<Layers size={15} />} title="Additional Card Content">
+              <div className="space-y-2 text-xs text-gray-400">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { label: 'Risk Profile Chips', desc: 'Inline severity-coded badges showing specific risk factors (extension, volatility, liquidity). Hover for detail. Max 4 shown.' },
+                    { label: 'Psychology Message', desc: 'Italic insight about the trader\u2019s emotional state \u2014 addressing FOMO, chase risk, patience required. Only shown when the engine produces a psychology signal.' },
+                    { label: 'Condition Chips', desc: 'Up to 8 pass/warn/fail condition chips. Pass = green, Warn = amber, Fail = red. Same data as the analysis condition list.' },
+                    { label: 'Meta Footer', desc: 'Structure label, risk level (LOW/MEDIUM/HIGH), RVOL. Consistent across all trade types.' },
+                  ].map(c => (
+                    <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                      <div className="text-[11px] font-semibold text-gray-200 mb-0.5">{c.label}</div>
+                      <p className="text-[10px] text-gray-500">{c.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DocCard>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 19 — FAQ
              ═══════════════════════════════════════════════════════ */}
           <section id="faq" className="scroll-mt-24">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">

@@ -683,6 +683,8 @@ export interface UnifiedAnalysis {
   vix_label: string
   regime: string
   session: string
+  psychology: { message: string } | null
+  risk_profile: Array<{ type: string; severity: string; message: string }>
   regular_recommendations: Array<{
     rank: number
     strategy: string
@@ -1129,6 +1131,8 @@ export function deriveUnifiedFromDayResult(
       : m.vix < 25 ? 'Elevated' : 'High',
     regime: 'NEUTRAL MARKET',
     session: m.session_phase || '',
+    psychology: m.psychology || null,
+    risk_profile: m.risk_profile || [],
     regular_recommendations: [],
   }
 }
@@ -1196,6 +1200,8 @@ export function deriveUnifiedFromSwingResult(
     vix_label: 'Contained',
     regime: m.market_context || 'NEUTRAL',
     session: 'swing',
+    psychology: m.psychology || null,
+    risk_profile: m.risk_profile || [],
     regular_recommendations: [],
   }
 }

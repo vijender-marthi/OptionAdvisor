@@ -491,14 +491,14 @@ export default function SwingTradePage() {
       {unified && (
         <div className="day-trade-unified">
           {/* Ticker header bar */}
-          <div className="dt-card" style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>{unified.ticker}</span>
-                {unified.company && <span className="dt-muted" style={{ fontSize: '0.78rem', color: '#5A6478' }}>{unified.company}</span>}
-                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${unified.price.toFixed(2)}</span>
+                <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>{unified.ticker}</span>
+                {unified.company && <span className="dt-muted" style={{ fontSize: '0.78rem', color: st.muted }}>{unified.company}</span>}
+                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${unified.price.toFixed(2)}</span>
                 {unified.change_pct != null && (
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? st.green : st.red }}>
                     {unified.change_pct >= 0 ? '▲' : '▼'} {Math.abs(unified.change_pct).toFixed(2)}%
                   </span>
                 )}
@@ -511,10 +511,10 @@ export default function SwingTradePage() {
                   const extType = m?.ext_market_type as string | undefined
                   return (
                     <>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: '1px solid #6B7FD4', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>{extType === 'pre' ? 'Pre' : 'AH'}</span>
-                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: '#E8EBF0' }}>${extPrice.toFixed(2)}</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{extType === 'pre' ? 'Pre' : 'AH'}</span>
+                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${extPrice.toFixed(2)}</span>
                       {extChg != null && (
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: extChg >= 0 ? '#00A86B' : '#D0312D' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: extChg >= 0 ? st.green : st.red }}>
                           {extChg >= 0 ? '▲' : '▼'}{Math.abs(extChg).toFixed(2)} ({(extChgPct ?? 0) >= 0 ? '+' : ''}{(extChgPct ?? 0).toFixed(2)}%)
                         </span>
                       )}
@@ -522,63 +522,111 @@ export default function SwingTradePage() {
                   )
                 })()}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {unified.session && <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: '1px solid rgba(107,127,212,0.5)', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>{unified.session}</span>}
-                <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                  <div style={{ fontSize: '0.6rem', color: '#5A6478' }}>Bias</div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: result?.bias === 'long' ? '#00A86B' : result?.bias === 'short' ? '#D0312D' : '#6B7280' }}>{result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : '—'}</div>
-                  <div style={{ fontSize: '0.6rem', color: '#5A6478' }}>{result?.market_bias || '—'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {unified.session && <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{unified.session}</span>}
+                {/* Bias conflict display */}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.6rem', color: st.muted, letterSpacing: '0.04em' }}>Bias</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: result?.bias === 'long' ? st.green : result?.bias === 'short' ? st.red : st.muted }}>
+                    {result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : '—'}
+                    {result?.bias && result?.market_bias && (
+                      <span style={{ fontWeight: 400, color: st.muted, fontSize: '0.65rem' }}>
+                        {' · '}{result.market_bias.charAt(0).toUpperCase() + result.market_bias.slice(1).toLowerCase()}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* IV data missing warning banner */}
+          {(() => {
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const hasIV = m?.implied_iv_pct != null
+            const isOptionsStruct = unified.structure && /call|put|option/i.test(unified.structure)
+            if (hasIV || !isOptionsStruct) return null
+            return (
+              <div style={{ background: `${st.amber}12`, border: `1px solid ${st.amber}40`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: st.amber, marginBottom: 2 }}>Implied Volatility Data Unavailable</div>
+                  <div style={{ fontSize: '0.65rem', color: st.muted, lineHeight: 1.4 }}>IV is missing from the data feed. Options pricing and structure quality cannot be fully assessed without IV data. Verify contract pricing separately before entering.</div>
+                </div>
+              </div>
+            )
+          })()}
 
           <UnifiedVerdictCard analysis={unified} />
 
-          {/* Entry Plan / Risk Profile */}
-          <div className="dt-card" style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+          {/* Entry Plan / Risk Profile — hidden when not ready, always shown but marked pending */}
+          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>Entry</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? '#00E5A0' : '#F5A623', fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : (unified.entry_description || '—')}</span>
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Entry status</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? st.green : st.amber, fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : 'Wait for trigger'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>Structure</span>
-                  <span className="dt-primary" style={{ fontFamily: 'monospace', color: '#E8EBF0', fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Structure</span>
+                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Contract</span>
+                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{result?.recommended_contract_duration ? `${result.recommended_contract_duration} DTE` : '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Strike</span>
+                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>{unified.entry_price ? `~$${unified.entry_price.toFixed(0)}` : 'Confirm on entry'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>Stop Loss</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? '#FF4D6D' : '#5A6478', fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Stop loss</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? st.red : st.muted, fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
                 </div>
               </div>
               <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>R/R Ratio</span>
-                  <span className="dt-muted" style={{ fontFamily: 'monospace', color: '#5A6478', fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>R/R ratio</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: unified.rr_ratio ? st.green : st.muted, fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1E2330' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>Risk Level</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? '#00E5A0' : unified.risk_level === 'MEDIUM' ? '#F5A623' : '#FF4D6D', fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Risk level</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? st.green : unified.risk_level === 'MEDIUM' ? st.amber : st.red, fontSize: '0.82rem' }}>{unified.rr_ratio ? (unified.risk_level || '—') : '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>RVOL</span>
+                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>IV vs HV</span>
+                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>Check platform</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem' }}>RVOL</span>
-                  <span className="dt-muted" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#5A6478', fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
+                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Holding period</span>
+                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{result?.expected_holding_period || '3–5 days'}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Exit Plan */}
-          <div className="dt-card" style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
+          {/* Exit Plan — Pre-Staged (dimmed when not in trade) */}
+          {(() => {
+          const exitOpacity = unified.entry_price ? 1 : 0.45
+          return (
+          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12, opacity: exitOpacity }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Exit Plan</span>
+              <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, border: `1px solid ${st.amber}40`, color: st.amber, background: `${st.amber}12`, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pre-staged · Activates on entry</span>
+            </div>
             {unified.exit_rows.length > 0 ? (
               <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
-                  <tr>{['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} className="dt-muted" style={{ textAlign: 'left', color: '#5A6478', fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: '1px solid #1E2330' }}>{h}</th>)}</tr>
+                  <tr style={{ borderBottom: `1px solid ${st.border}` }}>
+                    {['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} style={{ textAlign: 'left', color: st.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em' }}>{h}</th>)}
+                  </tr>
                 </thead>
                 <tbody>
                   {unified.exit_rows.map((row, i) => {
@@ -587,19 +635,34 @@ export default function SwingTradePage() {
                     const isT1 = row.type === 't1'
                     const isTime = row.type === 'time'
                     const isStall = /stalls/i.test(row.when)
-                    const clr = isT1 ? '#00E5A0' : isT2 ? '#F5A623' : (isStop || isStall) ? '#FF4D6D' : isTime ? '#6B7FD4' : '#5A6478'
+                    const priceCls = isStop ? st.red : isT2 ? st.amber : isT1 ? st.green : st.muted
                     const whenLabel = row.when
                       .replace(/^Target 1 reached$/i, 'Target 1')
                       .replace(/^Target 2 reached$/i, 'Target 2')
                       .replace(/^Stop loss$/i, 'Stop Loss')
                       .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
-                      .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
+                    const priceDisplay = !unified.entry_price && (isT1 || isT2) ? 'TBD on entry' : row.price
+                    const tag = isStop ? { label: 'Hard stop', cls: 'red' } : isT2 ? { label: 'Trade complete', cls: 'green' } : isT1 ? { label: 'Partial profit', cls: 'green' } : isStall ? { label: 'Structure fail', cls: 'amber' } : null
                     const displayAction = row.note ? `${row.action} · ${row.note}` : row.action
                     return (
-                      <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
-                        <td className="dt-muted" style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontFamily: 'monospace', fontSize: '0.82rem' }}>{whenLabel}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: clr, fontSize: '0.82rem' }}>{row.price}</td>
-                        <td className="dt-muted" style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.82rem' }}>{displayAction}</td>
+                      <tr key={i} style={{ borderBottom: `1px solid ${st.border}` }}>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontFamily: 'monospace', fontSize: '0.78rem' }}>{whenLabel}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: (isT1 || isT2) && !unified.entry_price ? st.muted : priceCls, fontSize: '0.78rem' }}>{priceDisplay}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontSize: '0.78rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{displayAction}</span>
+                            {tag && (
+                              <span style={{
+                                fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
+                                color: tag.cls === 'green' ? st.green : tag.cls === 'amber' ? st.amber : st.red,
+                                border: `1px solid ${tag.cls === 'green' ? st.green + '40' : tag.cls === 'amber' ? st.amber + '40' : st.red + '40'}`,
+                                background: tag.cls === 'green' ? `${st.green}10` : tag.cls === 'amber' ? `${st.amber}10` : `${st.red}10`,
+                              }}>
+                                {tag.label}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     )
                   })}
@@ -607,9 +670,11 @@ export default function SwingTradePage() {
               </table>
               </div>
             ) : (
-              <div className="dt-muted" style={{ color: '#5A6478', textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+              <div style={{ color: st.muted, textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
             )}
           </div>
+          )})()}
+
 
           {/* AI Coach */}
           {unified.coach && (

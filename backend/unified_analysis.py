@@ -409,6 +409,8 @@ def serialize_day_trade(scan) -> dict:
             "vix": m.get("vix"),
             "vix_label": _vix_label(m.get("vix")),
             "regime": _regime_label(spy_chg, qqq_chg),
+            "psychology": m.get("psychology") or None,
+            "risk_profile": m.get("risk_profile") or [],
             "session": m.get("session_phase") or "",
             "regular_recommendations": [],
         }
@@ -510,6 +512,8 @@ def serialize_swing_trade(scan) -> dict:
             "vix": m.get("vix"),
             "vix_label": _vix_label(m.get("vix")),
             "regime": m.get("market_context") or "MIXED",
+            "psychology": m.get("psychology") or None,
+            "risk_profile": m.get("risk_profile") or [],
             "session": "swing",
             "regular_recommendations": [],
         }
@@ -551,6 +555,8 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
                 "regime": "NEUTRAL MARKET",
                 "session": "regular",
                 "regular_recommendations": [],
+                "psychology": None,
+                "risk_profile": [],
             }
 
         top = candidates[0]
@@ -660,6 +666,8 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
             "regime": "NEUTRAL MARKET",
             "session": "regular",
             "regular_recommendations": recs,
+            "psychology": None,
+            "risk_profile": [],
         }
     except Exception as e:
         log.error("serialize_regular_trade error for %s: %s", ticker, e, exc_info=True)
@@ -697,4 +705,6 @@ def _error_response(ticker: str, trade_type: str, error: str) -> dict:
         "regime": "NEUTRAL MARKET",
         "session": trade_type,
         "regular_recommendations": [],
+        "psychology": None,
+        "risk_profile": [],
     }
