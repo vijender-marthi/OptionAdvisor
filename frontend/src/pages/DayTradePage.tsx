@@ -634,11 +634,12 @@ export default function DayTradePage() {
                     </span>
                   )}
                   {(() => {
-                    const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
+                    const raw = result as unknown as Record<string, unknown> | undefined
+                    const eg = raw?.entry_guidance as Record<string, unknown> | undefined
                     const vwap = eg?.vwap
                     const orh = eg?.opening_range_high
                     const orl = eg?.opening_range_low
-                    const m = result?.metrics as Record<string, unknown> | undefined
+                    const m = raw?.metrics as Record<string, unknown> | undefined
                     const vu1 = m?.vwap_upper1 as number | undefined
                     const vl1 = m?.vwap_lower1 as number | undefined
                     const vu2 = m?.vwap_upper2 as number | undefined
@@ -673,7 +674,8 @@ export default function DayTradePage() {
 
           {/* Analysis Layer — Edge, Execution, Risks */}
           {(() => {
-            const m = result?.metrics as Record<string, unknown> | undefined
+            const raw = result as unknown as Record<string, unknown> | undefined
+            const m = raw?.metrics as Record<string, unknown> | undefined
             const edgeState = m?.edge_remaining as string | undefined
             const execQual = m?.execution_quality as string | undefined
             const mktBias = m?.market_bias as string | undefined
