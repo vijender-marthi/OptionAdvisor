@@ -737,48 +737,27 @@ export default function TradeCommandCenter() {
 
       {!(loading && !env && !fetchError) && payload ? (
         <>
-          {/* ═══ HERO — Market Command Summary ═══ */}
-          <section className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-5 md:p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <TrendingUp size={16} className="text-violet-400" />
-                <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Market Command Summary</h2>
-              </div>
-              {env?.fetched_at ? <span className="text-[10px] text-gray-600">Updated {new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
+          {/* ═══ MARKET CONTEXT STRIP ═══ */}
+          <section className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
+              <span className="text-slate-500 text-xs">SPY</span>
+              <span className={`font-semibold text-xs ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>{String(market.spy_trend ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-500 text-xs">QQQ</span>
+              <span className={`font-semibold text-xs ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>{String(market.qqq_trend ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-500 text-xs">VIX</span>
+              <span className={`font-semibold text-xs ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-400' : String(market.vix_risk ?? '').toLowerCase().includes('low') ? 'text-emerald-400' : 'text-amber-400'}`}>{String(market.vix_risk ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600 hidden sm:inline">·</span>
+              <span className="text-slate-500 text-xs hidden sm:inline">Regime</span>
+              <span className="font-semibold text-xs text-violet-300 hidden sm:inline">{String(market.market_mode ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600 hidden sm:inline">·</span>
+              <span className="text-slate-500 text-xs hidden sm:inline">Best Style</span>
+              <span className="font-semibold text-xs text-slate-200 hidden sm:inline">{String(market.best_style_today ?? '—')}</span>
+              {env?.fetched_at ? <span className="ml-auto text-[10px] text-gray-600 shrink-0">Updated {new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
             </div>
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
-                <GaugeMeter value={marketModeToValue(String(market.market_mode ?? ''))} label="Market Regime" states={['Bearish','Defensive','Neutral','Bullish','Euphoric']} />
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
-                <SparklineCard label="SPY Trend" value={String(market.spy_trend ?? '—')} trend={String(market.spy_trend ?? '').toLowerCase()} />
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
-                <SparklineCard label="QQQ Trend" value={String(market.qqq_trend ?? '—')} trend={String(market.qqq_trend ?? '').toLowerCase()} />
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
-                <RiskGauge value={riskToValue(String(market.vix_risk ?? ''))} label="VIX Risk" currentLabel={String(market.vix_risk ?? '—')} subtitle={String(market.best_style_today ?? '')} />
-              </div>
-            </div>
-            <div className="mt-4">
+            <div className="mt-3">
               <MarketIntelligenceStrip market={market} />
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.5fr] items-start">
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-3">
-                <HeatmapWidget />
-              </div>
-              <div className="grid gap-4">
-                <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-5">
-                  <CoachSummaryCard
-                    message={String(market.ai_coach_summary ?? 'No coach message yet.')}
-                    confidence={confidenceScore}
-                    mode={String(market.market_mode ?? 'neutral')}
-                  />
-                </div>
-                <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-5 space-y-4">
-                  <ReserveSignalCard />
-                </div>
-              </div>
             </div>
           </section>
 
@@ -787,13 +766,93 @@ export default function TradeCommandCenter() {
             <OverallDecisionBanner od={payload.overall_decision} />
           ) : null}
 
-           {/* ═══ ENGINES — Engine Health ═══ */}
-          <section className="space-y-4">
+          {/* ═══ ELIGIBLE TICKERS ═══ */}
+          <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <BarChart3 size={18} className="text-teal-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Engine Trust &amp; Directional Bias</h2>
+              <LayoutGrid size={18} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Eligible Setups</h2>
+              <span className="text-xs text-slate-500">— READY &amp; WATCH signals by engine</span>
             </div>
-            <div className="border-t border-slate-100 dark:border-white/[0.05]" />
+            <div className="grid gap-4 lg:grid-cols-2">
+              {/* Day Trade Table */}
+              {canDay && (
+                <div className="rounded-xl border border-orange-500/20 bg-white dark:bg-slate-900">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
+                    <Zap size={14} className="text-orange-400" />
+                    <span className="text-sm font-bold text-orange-400">Day Trade</span>
+                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length} tickers</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+                    {recommendations
+                      .filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase()))
+                      .slice(0, 8)
+                      .map(rec => (
+                        <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          <span className="font-mono text-sm font-bold text-slate-900 dark:text-white w-14 shrink-0">{rec.ticker}</span>
+                          <SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} />
+                          <span className="text-xs text-slate-500 truncate flex-1">{rec.strategy || rec.direction || '—'}</span>
+                          <div className="text-right shrink-0">
+                            {rec.entry_zone ? <div className="text-[10px] font-mono text-slate-400">E {rec.entry_zone}</div> : null}
+                            {rec.target ? <div className="text-[10px] font-mono text-emerald-400">T {rec.target}</div> : null}
+                            {rec.stop_loss ? <div className="text-[10px] font-mono text-red-400">S {rec.stop_loss}</div> : null}
+                          </div>
+                          <ArrowRight size={12} className="text-slate-400 shrink-0" />
+                        </button>
+                      ))}
+                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length === 0 && (
+                      <div className="px-4 py-6 text-center text-xs text-slate-500">No day trade setups right now</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* Swing Trade Table */}
+              {canSwing && (
+                <div className="rounded-xl border border-violet-500/20 bg-white dark:bg-slate-900">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
+                    <TrendingUp size={14} className="text-violet-400" />
+                    <span className="text-sm font-bold text-violet-400">Swing Trade</span>
+                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length} tickers</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+                    {recommendations
+                      .filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase()))
+                      .slice(0, 8)
+                      .map(rec => (
+                        <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          <span className="font-mono text-sm font-bold text-slate-900 dark:text-white w-14 shrink-0">{rec.ticker}</span>
+                          <SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} />
+                          <span className="text-xs text-slate-500 truncate flex-1">{rec.strategy || rec.direction || '—'}</span>
+                          <div className="text-right shrink-0">
+                            {rec.entry_zone ? <div className="text-[10px] font-mono text-slate-400">E {rec.entry_zone}</div> : null}
+                            {rec.target ? <div className="text-[10px] font-mono text-emerald-400">T {rec.target}</div> : null}
+                            {rec.stop_loss ? <div className="text-[10px] font-mono text-red-400">S {rec.stop_loss}</div> : null}
+                          </div>
+                          <ArrowRight size={12} className="text-slate-400 shrink-0" />
+                        </button>
+                      ))}
+                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length === 0 && (
+                      <div className="px-4 py-6 text-center text-xs text-slate-500">No swing trade setups right now</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!canDay && !canSwing && (
+                <div className="col-span-2 rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
+                  No engine access — contact your administrator to enable Day Trade or Swing Trade engines.
+                </div>
+              )}
+            </div>
+          </section>
+
+           {/* ═══ ENGINES — Engine Health (collapsed) ═══ */}
+          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
+              <BarChart3 size={16} className="text-teal-400" />
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Engine Details &amp; Trust Scores</span>
+              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="px-5 pb-5 space-y-4">
+            <div className="border-t border-slate-100 dark:border-white/[0.05] mb-4" />
             <div className="flex flex-col gap-2">
               {/* Locked-engine notices for engines this role can't access */}
               {!canDay && (
@@ -909,14 +968,15 @@ export default function TradeCommandCenter() {
                  })
               )}
             </div>
-          </section>
+            </div>
+          </details>
 
-          {/* ═══ OPPORTUNITIES ═══ */}
+          {/* ═══ ALL SETUPS ═══ */}
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <BriefcaseBusiness size={18} className="text-emerald-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Actionable Setups</h2>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">All Setups</h2>
               </div>
               <button
                 type="button"
@@ -928,7 +988,12 @@ export default function TradeCommandCenter() {
             </div>
             <div className="border-t border-slate-100 dark:border-white/[0.05]" />
 
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 py-2.5 text-xs text-slate-500 select-none">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Filter Setups</span>
+                <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+              </summary>
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 pb-4 pt-3">
               <label className="text-xs text-slate-500">
                 Engine Type
                 <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
@@ -968,7 +1033,8 @@ export default function TradeCommandCenter() {
                   <option value="high">High</option>
                 </select>
               </label>
-            </div>
+              </div>
+            </details>
 
             <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr] items-start">
                 <div className="grid gap-2">
@@ -1214,11 +1280,13 @@ export default function TradeCommandCenter() {
             </div>
           </section>}
 
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <LineChart size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</h2>
-            </div>
+          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
+              <LineChart size={16} className="text-violet-400" />
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</span>
+              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="px-5 pb-5 space-y-4">
             <div className="grid gap-4 xl:grid-cols-2">
               <ChartShell title="SPY vs QQQ Trend Strength" subtitle="Trend conviction and direction for the two major indices.">
                 <div className="space-y-4">
@@ -1381,9 +1449,17 @@ export default function TradeCommandCenter() {
                 </div>
               </ChartShell>
             </div>
-          </section>
+            </div>
+          </details>
 
-          <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
+              <BellRing size={16} className="text-violet-400" />
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">Activity &amp; Alerts</span>
+              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="px-5 pb-5">
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr] pt-4">
             <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
               <div className="mb-4 flex items-center gap-2">
                 <BellRing size={18} className="text-violet-400" />
@@ -1503,7 +1579,9 @@ export default function TradeCommandCenter() {
                 )}
               </div>
             </div>
-          </section>
+            </div>
+            </div>
+          </details>
         </>
       ) : null}
     </div>

@@ -157,6 +157,24 @@ function ScoreBar({ label, value, max, color }: { label: string; value: number; 
   )
 }
 
+const RATIONALE_PREVIEW_LEN = 120
+
+function RationaleBlock({ rationale }: { rationale: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsTrunc = rationale.length > RATIONALE_PREVIEW_LEN
+  const preview = needsTrunc ? rationale.slice(0, RATIONALE_PREVIEW_LEN).trimEnd() + '…' : rationale
+  return (
+    <div>
+      <p className="text-sm text-gray-300 leading-relaxed">{expanded ? rationale : preview}</p>
+      {needsTrunc && (
+        <button type="button" onClick={() => setExpanded(e => !e)} className="mt-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
+          {expanded ? '▲ Show less' : '▼ Details'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 const BASE_CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 
 export default function RecommendationCard({
@@ -821,12 +839,14 @@ export default function RecommendationCard({
       </div>
 
       {/* Rationale */}
-      <div className="px-4 pb-3">
-        <div className="bg-gray-800/40 rounded-xl p-3">
-          <div className="text-xs text-violet-400 font-semibold mb-1.5">💡 Why this trade</div>
-          <p className="text-sm text-gray-300 leading-relaxed">{rec.rationale}</p>
+      {rec.rationale ? (
+        <div className="px-4 pb-3">
+          <div className="bg-gray-800/40 rounded-xl p-3">
+            <div className="text-xs text-violet-400 font-semibold mb-1.5">💡 Why this trade</div>
+            <RationaleBlock rationale={rec.rationale} />
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Pre-Trade Checklist */}
       <PreTradeChecklist rec={rec} signals={signals} />

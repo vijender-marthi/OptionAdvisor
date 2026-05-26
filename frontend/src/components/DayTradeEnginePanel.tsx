@@ -989,25 +989,32 @@ export default function DayTradeEnginePanel({
                   <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
                     <th className="pb-2 text-left font-medium">WHEN</th>
                     <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-2 text-center font-medium pr-3">SIZE</th>
                     <th className="pb-2 text-left font-medium">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
                   {exitRules.map((rule, i) => {
-                    const isStop   = rule.trigger.toLowerCase().includes('stop')
-                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
+                    const isStop    = rule.trigger.toLowerCase().includes('stop')
                     const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
-                    const isEOD    = rule.price === 0
-                    const isVwap   = rule.trigger.toLowerCase().includes('vwap')
-                    const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1') && !isTarget2
+                    const isEOD     = rule.price === 0
+                    const isVwap    = rule.trigger.toLowerCase().includes('vwap')
+                    const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
                     const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
+                    const size      = isTarget1 ? '½' : (isTarget2 || isStop || isEOD) ? 'Full' : '—'
+                    const sizeCls   = isTarget1 ? 'text-emerald-400' : (isTarget2 || isStop) ? 'text-orange-300' : 'text-gray-500'
                     return (
                       <tr key={i}>
-                        <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top w-[32%] text-sm">{rule.trigger}</td>
+                        <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top w-[30%] text-sm">{rule.trigger}</td>
                         <td className={`py-2.5 pr-3 text-right font-mono font-bold tabular-nums align-top text-sm ${priceCls}`}>
                           {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
                         </td>
-                        <td className={`py-2.5 align-top text-sm ${actionCls}`}>{rule.action}</td>
+                        <td className={`py-2.5 pr-3 text-center font-bold align-top text-sm ${sizeCls}`}>{size}</td>
+                        <td className="py-2.5 align-top">
+                          <div className={`text-sm font-semibold ${actionCls}`}>{rule.action}</div>
+                          {rule.note ? <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{rule.note}</div> : null}
+                        </td>
                       </tr>
                     )
                   })}
