@@ -32,7 +32,7 @@ import {
   setAccessToken,
   type AuthLoginResponse,
 } from '../api/client'
-import { addPortfolioPosition, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
+import { addPortfolioPosition, closePortfolioPosition, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import {
@@ -409,6 +409,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const finderDeepLinkHandledRef = useRef(false)
   /** Previous signed-in email; used to detect account switch vs first login (day-trade UI resets on switch/sign-out). */
   const dayTradeSessionEmailRef = useRef<string | null>(null)
+  /** Generation counter for saveUserData — prevents stale async saves from overwriting newer state. */
+  const saveGenRef = useRef(0)
 
   useEffect(() => {
     const curr = user?.email?.trim().toLowerCase() ?? null
@@ -565,18 +567,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Save per-email watchlist and portfolio changes to SQLite.
   useEffect(() => {
     if (!user?.email || !userDataLoaded) return
+    saveGenRef.current += 1
+    const gen = saveGenRef.current
     const advisory =
       advisoryAcceptedAt && advisoryTermsVersion
         ? { advisoryTermsVersion, advisoryAcceptedAt }
         : undefined
     saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
       .then(() => {
+        if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
         setPortfolioRefreshKey(k => k + 1)
       })
       .catch(e => {
         const msg = extractAxiosDetail(e)
         if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
-        console.warn('[user-data] save failed:', e)
+        if (gen === saveGenRef.current) console.warn('[user-data] save failed:', e)
       })
   }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
@@ -986,6 +991,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const closePosition = useCallback((id: string, payload: ClosePositionPayload) => {
     const now = payload.close_date || new Date().toISOString()
+
+    // Fire-and-forget API persist — updates local state first, then syncs to server.
+    // The saveGenRef in the effect prevents stale effect-based saves from overwriting.
+    closePortfolioPosition({ id, ...payload }).catch(e => {
+      console.warn('[portfolio] close API persist failed:', e)
+    })
+
     setPortfolio(prev => {
       const idx = prev.findIndex(p => p.id === id && p.status === 'open')
       if (idx < 0) return prev

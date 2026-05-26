@@ -167,6 +167,22 @@ export async function addPortfolioPosition(payload: {
   return data
 }
 
+export async function closePortfolioPosition(payload: {
+  id: string
+  realized_pnl?: number
+  realized_pnl_percent?: number
+  exit_price?: number
+  exit_debit_credit?: number
+  close_date?: string
+  exit_reason?: string
+  close_notes?: string
+  pnl_overridden?: boolean
+  pnl_override_reason?: string
+}): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/close', payload)
+  return data
+}
+
 export async function fetchPositionsCenter(): Promise<ApiEnvelope<Record<string, unknown>>> {
   if (USE_MOCK) {
     return normalizeCommandCenterEnvelope({})
