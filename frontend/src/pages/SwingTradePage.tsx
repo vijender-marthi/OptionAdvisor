@@ -10,6 +10,7 @@ import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import { useApp } from '../contexts/AppContext'
+import type { OptionLeg } from '../types'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
 
@@ -211,12 +212,39 @@ export default function SwingTradePage() {
       return Number.isFinite(n) ? n : undefined
     }
     const lastPrice = typeof m.last_price === 'number' ? m.last_price : undefined
+    const isPut = result.bias === 'short'
+
+    // Build legs from spread_entry if available, otherwise synthetic
+    const spread = m?.spread_entry as Record<string, unknown> | undefined
+    let legs: OptionLeg[] = []
+    if (spread?.long_strike) {
+      const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
+      legs.push({
+        action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
+        expiry: String(spread.expiry || expiry), mid_price: Number(spread.est_debit || 0) / 2,
+        delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+      })
+      if (spread.short_strike) {
+        legs.push({
+          action: 'SELL', option_type: optType, strike: Number(spread.short_strike),
+          expiry: String(spread.expiry || expiry), mid_price: Number(spread.est_debit || 0) / 2,
+          delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+        })
+      }
+    } else {
+      legs = [{
+        action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
+        expiry, mid_price: lastPrice ?? 0,
+        delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+      }]
+    }
+
     addManualPosition({
       ticker: result.ticker,
       companyName: result.company_name,
       strategy: result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE' ? result.suggested_strategy : 'Long Call',
       bias: result.bias === 'short' ? 'Bearish' : 'Bullish',
-      legs: [],
+      legs,
       expiry,
       dte,
       net_credit: 0,
@@ -396,12 +424,36 @@ export default function SwingTradePage() {
                 const execLevels = m?.exec_levels as Record<string, unknown> | undefined
                 const lastPrice = typeof m?.last_price === 'number' ? m.last_price : 0
                 const entryPrice = typeof eg?.breakout_level === 'number' ? eg.breakout_level : lastPrice
+                const isPut = result.bias === 'short'
+                const spread = m?.spread_entry as Record<string, unknown> | undefined
+                let legs: OptionLeg[] = []
+                if (spread?.long_strike) {
+                  const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
+                  legs.push({
+                    action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
+                    expiry: String(spread.expiry || ''), mid_price: Number(spread.est_debit || 0) / 2,
+                    delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+                  })
+                  if (spread.short_strike) {
+                    legs.push({
+                      action: 'SELL', option_type: optType, strike: Number(spread.short_strike),
+                      expiry: String(spread.expiry || ''), mid_price: Number(spread.est_debit || 0) / 2,
+                      delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+                    })
+                  }
+                } else {
+                  legs = [{
+                    action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
+                    expiry: result.suggested_expiry_window ?? '', mid_price: entryPrice,
+                    delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+                  }]
+                }
                 addManualPosition({
                   ticker: result.ticker,
                   companyName: result.company_name,
                   strategy: result.suggested_strategy ?? 'SWING',
                   bias: result.bias === 'short' ? 'short' : 'long',
-                  legs: [],
+                  legs,
                   expiry: result.suggested_expiry_window ?? '',
                   dte: 0,
                   net_credit: 0,
