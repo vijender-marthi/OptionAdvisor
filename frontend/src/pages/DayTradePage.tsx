@@ -201,6 +201,7 @@ export default function DayTradePage() {
         ticker:           result.ticker,
         company_name:     result.company_name || '',
         strategy:         result.bias === 'short' ? 'Long Put' : 'Long Call',
+        trade_type:       'day',
         bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
         legs:             [],
         expiry:           new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
