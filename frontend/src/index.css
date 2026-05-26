@@ -834,7 +834,7 @@ html.light .uv-card .uv-mkt { color: #64748b !important; }
 html.light .uv-card .uv-mkt .uv-primary { color: #0f172a !important; }
 
 /* ── UnifiedVerdictCard tooltip hover ──────────────────────────────────────── */
-.uv-card .uv-tooltip { opacity: 0; pointer-events: none; }
+.uv-card .uv-tooltip { opacity: 0; pointer-events: none; background: #1e1f24; color: #e5e7eb; border: 1px solid #2a2b32; }
 .uv-card .uv-info-wrap:hover .uv-tooltip { opacity: 1; }
 html.light .uv-card .uv-tooltip { background: #ffffff !important; color: #0f172a !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; }
 

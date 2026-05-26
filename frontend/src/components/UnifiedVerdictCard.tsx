@@ -9,11 +9,11 @@ const VERDICT_BG: Record<string, string> = {
 }
 
 const C = {
-  text:  '#E5E7EB',
-  textSec: '#9CA3AF',
-  textTer: '#6B7280',
-  panel: '#111215',
-  border: '#1E1F24',
+  text:  'var(--text-primary)',
+  textSec: 'var(--text-secondary)',
+  textTer: 'var(--text-tertiary)',
+  panel: 'var(--surface-elevated)',
+  border: 'var(--border-subtle)',
 }
 
 function fmtChg(pct: number | null): string | null {
@@ -198,7 +198,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
             {(analysis.coach || analysis.entry_description) && (
               <span style={{ position: 'relative', display: 'inline-flex' }} className="uv-info-wrap">
                 <Info size={12} style={{ cursor: 'pointer', color: C.textTer }} />
-                <span style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', background: '#1E1F24', color: '#E5E7EB', fontSize: 11, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, whiteSpace: 'normal', width: 280, zIndex: 20, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.15s', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} className="uv-tooltip">{analysis.coach || analysis.entry_description}</span>
+                <span style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', fontSize: 11, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, whiteSpace: 'normal', width: 280, zIndex: 20, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.15s', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} className="uv-tooltip">{analysis.coach || analysis.entry_description}</span>
               </span>
             )}
           </span>
