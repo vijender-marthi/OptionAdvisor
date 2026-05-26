@@ -736,11 +736,16 @@ def _compute_positions_pnl(
     # ── 1. Realized P&L from closed positions ─────────────────────────────
     realized_pnl = 0.0
     realized_count = 0
+    today_closed_pnl = 0.0
+    today_str = datetime.now(timezone.utc).date().isoformat()
     for p in closed_pos:
         rp = p.get("realized_pnl")
         if rp is not None:
             realized_pnl += _float_or(rp, 0.0)
             realized_count += 1
+            exit_date = str(p.get("exitDate") or "")[:10]
+            if exit_date == today_str:
+                today_closed_pnl += _float_or(rp, 0.0)
         else:
             pnl_pct = p.get("pnlPct")
             if pnl_pct is None:
@@ -749,8 +754,12 @@ def _compute_positions_pnl(
             contracts = max(1.0, _float_or(p.get("contracts"), 1.0))
             if cost_ref <= 0:
                 continue
-            realized_pnl += (_float_or(pnl_pct, 0.0) / 100.0) * cost_ref * SHARES * contracts
+            pnl_dollar = (_float_or(pnl_pct, 0.0) / 100.0) * cost_ref * SHARES * contracts
+            realized_pnl += pnl_dollar
             realized_count += 1
+            exit_date = str(p.get("exitDate") or "")[:10]
+            if exit_date == today_str:
+                today_closed_pnl += pnl_dollar
 
     per_position_pnl: dict[str, dict[str, float]] = {}
     for p in closed_pos:
@@ -785,7 +794,7 @@ def _compute_positions_pnl(
 
     if not all_open_for_pnl:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
-        return {"total_pl": total_pl, "day_pl": 0.0, "week_pl": 0.0, "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "week_pl": 0.0, "per_position": per_position_pnl}
 
     # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
@@ -876,7 +885,7 @@ def _compute_positions_pnl(
             has_mtm = True
 
         total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
-        day_pl = round(day_total, 2) if has_mtm else None
+        day_pl = round(day_total + today_closed_pnl, 2) if (has_mtm or today_closed_pnl != 0) else None
         week_pl = round(week_total, 2) if has_mtm else None
         return {"total_pl": total_pl, "day_pl": day_pl, "week_pl": week_pl, "per_position": per_position_pnl}
 
