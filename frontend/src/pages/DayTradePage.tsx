@@ -600,10 +600,27 @@ export default function DayTradePage() {
                     const vwap = eg?.vwap
                     const orh = eg?.opening_range_high
                     const orl = eg?.opening_range_low
-                    if (!vwap && !orh) return null
+                    const m = result?.metrics as Record<string, unknown> | undefined
+                    const vu1 = m?.vwap_upper1 as number | undefined
+                    const vl1 = m?.vwap_lower1 as number | undefined
+                    const vu2 = m?.vwap_upper2 as number | undefined
+                    const vl2 = m?.vwap_lower2 as number | undefined
+                    const vctx = m?.vwap_volatility_context as string | undefined
+                    const vstd = m?.vwap_std_dev as number | undefined
+                    if (!vwap && !orh && !vu1) return null
                     return (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: '0.65rem', color: dt.muted, fontFamily: 'monospace' }}>
                         {vwap != null && <span>VWAP <span style={{ color: dt.text }}>${(vwap as number).toFixed(2)}</span></span>}
+                        {vu1 != null && <span style={{ color: 'rgba(56,189,248,0.7)' }}>+1σ <span style={{ color: dt.text }}>${vu1.toFixed(2)}</span></span>}
+                        {vl1 != null && <span style={{ color: 'rgba(56,189,248,0.7)' }}>-1σ <span style={{ color: dt.text }}>${vl1.toFixed(2)}</span></span>}
+                        {vu2 != null && <span style={{ color: 'rgba(56,189,248,0.35)' }}>+2σ <span style={{ color: dt.text }}>${vu2.toFixed(2)}</span></span>}
+                        {vl2 != null && <span style={{ color: 'rgba(56,189,248,0.35)' }}>-2σ <span style={{ color: dt.text }}>${vl2.toFixed(2)}</span></span>}
+                        {vctx != null && vstd != null && (
+                          <span style={{
+                            color: vctx === 'NARROW' ? '#D4A017' : vctx === 'WIDE' ? '#D0312D' : '#6B7280',
+                            fontSize: '0.6rem', fontStyle: 'italic',
+                          }}>σ ${vstd.toFixed(2)} ({vctx})</span>
+                        )}
                         {orh != null && <span>ORH <span style={{ color: dt.text }}>${(orh as number).toFixed(2)}</span></span>}
                         {orl != null && <span>ORL <span style={{ color: dt.text }}>${(orl as number).toFixed(2)}</span></span>}
                       </div>

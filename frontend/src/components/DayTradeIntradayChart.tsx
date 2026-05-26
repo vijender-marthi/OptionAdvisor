@@ -87,8 +87,15 @@ export default function DayTradeIntradayChart({
     const tMax = times[n - 1]!
     const span = Math.max(1, tMax - tMin)
 
-    let yMin = Math.min(...bars.map(b => b.l), orLow, ...bars.map(b => b.vwap))
-    let yMax = Math.max(...bars.map(b => b.h), orHigh, ...bars.map(b => b.vwap))
+    const bandKeys = ['vwap_upper1','vwap_lower1','vwap_upper2','vwap_lower2'] as const
+    let yMin = Math.min(
+      ...bars.map(b => b.l), orLow, ...bars.map(b => b.vwap),
+      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null))
+    )
+    let yMax = Math.max(
+      ...bars.map(b => b.h), orHigh, ...bars.map(b => b.vwap),
+      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null))
+    )
     const padY = (yMax - yMin) * 0.06 || yMin * 0.002 || 0.01
     yMin -= padY
     yMax += padY
@@ -181,6 +188,9 @@ export default function DayTradeIntradayChart({
           <span className="text-semantic-warning">OR high / low</span>
           {' · '}
           <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
+          {bars.some(b => b.vwap_upper1 != null) && (
+            <><span className="text-gray-500"> · </span><span className="text-info">±1σ</span><span className="text-gray-500"> · </span><span className="text-info" style={{ opacity: 0.5 }}>±2σ</span></>
+          )}
         </div>
       </div>
 
@@ -320,6 +330,30 @@ export default function DayTradeIntradayChart({
             points={vwapPts}
             clipPath="url(#daytrade-plot-clip)"
           />
+
+          {/* VWAP ±1σ bands */}
+          {bars.some(b => b.vwap_upper1 != null) && (() => {
+            const u1 = bars.map((b,i) => b.vwap_upper1 != null ? `${xAt(times[i]!)},${yAt(b.vwap_upper1)}` : '').filter(Boolean).join(' ')
+            const l1 = bars.map((b,i) => b.vwap_lower1 != null ? `${xAt(times[i]!)},${yAt(b.vwap_lower1)}` : '').filter(Boolean).join(' ')
+            return (
+              <>
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={u1} clipPath="url(#daytrade-plot-clip)" />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={l1} clipPath="url(#daytrade-plot-clip)" />
+              </>
+            )
+          })()}
+
+          {/* VWAP ±2σ bands */}
+          {bars.some(b => b.vwap_upper2 != null) && (() => {
+            const u2 = bars.map((b,i) => b.vwap_upper2 != null ? `${xAt(times[i]!)},${yAt(b.vwap_upper2)}` : '').filter(Boolean).join(' ')
+            const l2 = bars.map((b,i) => b.vwap_lower2 != null ? `${xAt(times[i]!)},${yAt(b.vwap_lower2)}` : '').filter(Boolean).join(' ')
+            return (
+              <>
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={u2} clipPath="url(#daytrade-plot-clip)" />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={l2} clipPath="url(#daytrade-plot-clip)" />
+              </>
+            )
+          })()}
 
           <rect
             x={PAD.l}

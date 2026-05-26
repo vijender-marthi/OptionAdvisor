@@ -118,6 +118,10 @@ export interface DayTradeChartBar {
   c: number
   v: number
   vwap: number
+  vwap_upper1?: number
+  vwap_lower1?: number
+  vwap_upper2?: number
+  vwap_lower2?: number
 }
 
 export interface DayTraderDecision {
@@ -509,13 +513,13 @@ export const getEmailStatus = async (): Promise<{
 }
 
 export const getAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.get<{ email: string; alerts: AlertEntry[] }>(`/alerts/${encodeURIComponent(email)}`)
-  return data.alerts
+  const { data } = await api.get<{ data: { alerts: AlertEntry[] } }>('/alerts')
+  return data.data?.alerts ?? []
 }
 
 export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.post<{ email: string; alerts: AlertEntry[] }>(`/alerts/scan/${encodeURIComponent(email)}`)
-  return data.alerts
+  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/alerts/scan')
+  return data.data?.alerts ?? []
 }
 
 export const dismissBackendAlert = async (email: string, alertId: string): Promise<void> => {
