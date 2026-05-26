@@ -538,15 +538,6 @@ export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> =>
   return data.data?.alerts ?? []
 }
 
-export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
-<<<<<<< HEAD
-  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/api/alerts/scan')
-=======
-  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/alerts/scan')
->>>>>>> vwap_12std
-  return data.data?.alerts ?? []
-}
-
 export const dismissBackendAlert = async (email: string, alertId: string): Promise<void> => {
   await api.post('/alerts/dismiss', { email, alert_id: alertId })
 }
