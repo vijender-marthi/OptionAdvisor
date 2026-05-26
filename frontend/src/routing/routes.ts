@@ -1,7 +1,7 @@
 export const ROUTES = {
   home: '/trade-command-center',
   tradeCommandCenter: '/trade-command-center',
-  strategyFinder: '/strategy-finder',
+  strategyFinder: '/position-trading',
   dayTrade: '/day-trade',
   swingTrade: '/swing-trade',
   swingWatchlist: '/signal-feed?source=swing',

@@ -118,6 +118,10 @@ export interface DayTradeChartBar {
   c: number
   v: number
   vwap: number
+  vwap_upper1?: number
+  vwap_lower1?: number
+  vwap_upper2?: number
+  vwap_lower2?: number
 }
 
 export interface DayTraderDecision {
@@ -345,6 +349,22 @@ export interface SwingTradeScanResult {
   risk_state:             string
   expected_holding_period:      string
   recommended_contract_duration: string
+  /** Execution-level fields for swing trades */
+  entry_guidance?: {
+    state: string
+    summary: string
+    action: string
+    avoid: string
+    pending_confirmations: string[]
+    current_price?: number
+    vwap?: number
+    price_vs_vwap_pct?: number
+    breakout_level?: number
+    pullback_zone?: string
+    risk_below?: number
+    scalp_target?: number
+    exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
+  }
 }
 
 export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanResult> => {
@@ -376,6 +396,7 @@ export interface ActiveTradeRow {
   notes: string
   opened_at_ms: number
   exited_at_ms?: number | null
+  trade_type: 'day' | 'swing'
   decision: ActiveTradeDecision | Record<string, unknown>
   metrics: Record<string, unknown>
   intraday_error?: string | null
@@ -403,6 +424,7 @@ export const enterActiveTrade = async (body: {
   strike?: number | null
   expiry?: string | null
   notes?: string | null
+  trade_type?: 'day' | 'swing'
 }): Promise<{
   id: string
   ticker: string
@@ -474,6 +496,15 @@ export const clearAllCaches = async (): Promise<{
   return data.data || data
 }
 
+export const getUserAccent = async (): Promise<string> => {
+  const { data } = await api.get('/user/accent')
+  return data.accent || 'emerald'
+}
+
+export const setUserAccent = async (accent: string): Promise<void> => {
+  await api.put('/user/accent', { accent })
+}
+
 export const sendTestEmail = async (
   email: string,
   userName?: string,
@@ -498,13 +529,22 @@ export const getEmailStatus = async (): Promise<{
 }
 
 export const getAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.get<{ email: string; alerts: AlertEntry[] }>(`/alerts/${encodeURIComponent(email)}`)
-  return data.alerts
+  const { data } = await api.get<{ data: { alerts: AlertEntry[] } }>('/alerts')
+  return data.data?.alerts ?? []
 }
 
 export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
-  const { data } = await api.post<{ email: string; alerts: AlertEntry[] }>(`/alerts/scan/${encodeURIComponent(email)}`)
-  return data.alerts
+  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/alerts/scan')
+  return data.data?.alerts ?? []
+}
+
+export const scanBackendAlerts = async (email: string): Promise<AlertEntry[]> => {
+<<<<<<< HEAD
+  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/api/alerts/scan')
+=======
+  const { data } = await api.post<{ data: { alerts: AlertEntry[] } }>('/alerts/scan')
+>>>>>>> vwap_12std
+  return data.data?.alerts ?? []
 }
 
 export const dismissBackendAlert = async (email: string, alertId: string): Promise<void> => {
@@ -601,6 +641,94 @@ export const updateJournalEntry = async (
 export const deleteJournalEntry = async (email: string, id: string): Promise<void> => {
   await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
 }
+
+// ─── Unified Analysis v2 ─────────────────────────────────────────────────────
+
+export interface UnifiedAnalysis {
+  ticker: string
+  company: string
+  trade_type: 'day' | 'swing' | 'regular'
+  price: number
+  change_pct: number | null
+  verdict: 'enter' | 'watch' | 'wait' | 'avoid'
+  verdict_raw: string
+  confidence: number
+  reason: string
+  conditions: Array<{ label: string; type: 'pass' | 'warn' | 'fail' }>
+  entry_price: number | null
+  entry_description: string
+  stop_price: number | null
+  stop_description: string
+  structure: string
+  exit_rows: Array<{
+    when: string
+    price: string
+    action: string
+    note?: string
+    type: 'none' | 't1' | 't2' | 'stop' | 'time'
+  }>
+  rr_ratio: string | null
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
+  rvol: string | null
+  coach: string
+  spread_entry?: {
+    strategy: string
+    long_leg: string
+    short_leg: string
+    long_strike: number
+    short_strike: number
+    expiry: string
+    est_debit: number
+    max_gain: number
+    max_loss: number
+    breakeven: number
+    entry_note?: string
+  } | null
+  spy_price: number | null
+  spy_change_pct: number | null
+  qqq_price: number | null
+  qqq_change_pct: number | null
+  vix: number | null
+  vix_label: string
+  regime: string
+  session: string
+  regular_recommendations: Array<{
+    rank: number
+    strategy: string
+    bias: string
+    score: number
+    max_profit: number
+    max_loss: number
+    prob_of_profit: number
+    expected_value: number
+    expiry: string
+    dte: number
+    legs: any[]
+    exit_plan: any
+    warnings: string[]
+    rationale: string
+  }>
+}
+
+export const analyzeV2 = (
+  ticker: string,
+  tradeType: 'day' | 'swing' | 'regular',
+  options?: {
+    weeksOut?: number
+    spreadWidth?: number
+    strategyMode?: string
+  }
+) => api.get<UnifiedAnalysis>(
+  `/v2/analyze/${encodeURIComponent(ticker)}`,
+  {
+    params: {
+      trade_type: tradeType,
+      weeks_out: options?.weeksOut ?? 4,
+      spread_width: options?.spreadWidth ?? 5,
+      strategy_mode: options?.strategyMode ?? 'all',
+    }
+  }
+)
 
 // ─── Trade Ideas ─────────────────────────────────────────────────────────────
 
@@ -706,4 +834,377 @@ export const cancelTradingOrder = async (email: string, order_id: string): Promi
 
 export const closeTradingPosition = async (email: string, symbol: string): Promise<void> => {
   await api.post('/trading/close', { email, symbol })
+}
+
+// ─── TradeDesk API ────────────────────────────────────────────────────────────
+
+export interface DeskWatchlistItem {
+  id?: number
+  ticker: string
+  trade_type: string
+  sort_order?: number
+  added_at?: string
+}
+
+export interface DeskTradeLog {
+  id: string
+  user_id: string
+  ticker: string
+  trade_type: string
+  signal_given: string
+  confidence_score: number
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure: string
+  actual_entry?: number | null
+  contracts: number
+  entry_time?: string | null
+  exit_price?: number | null
+  exit_time?: string | null
+  exit_reason: string
+  followed_plan: string
+  outcome: string
+  pnl_estimate?: number | null
+  notes: string
+  logged_at: string
+  updated_at: string
+}
+
+export interface DeskTradeStats {
+  total: number
+  wins: number
+  losses: number
+  open_count: number
+  win_rate: number
+  avg_rr: number
+  followed_plan_pct: number
+}
+
+export interface DeskAlert {
+  id: string
+  user_id: string
+  ticker: string
+  trade_type: string
+  alert_type: string
+  threshold_value?: number | null
+  target_signal: string
+  notify_method: string
+  expires: string
+  is_active: number
+  fired_at?: string | null
+  fired_value?: number | null
+  action_taken: string
+  created_at: string
+}
+
+export interface DeskTradeCreate {
+  ticker: string
+  trade_type?: string
+  signal_given?: string
+  confidence_score?: number
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure?: string
+  actual_entry?: number | null
+  contracts?: number
+  entry_time?: string | null
+  notes?: string
+}
+
+export interface DeskTradeUpdate {
+  actual_entry?: number | null
+  contracts?: number
+  entry_time?: string | null
+  exit_price?: number | null
+  exit_time?: string | null
+  exit_reason?: string
+  followed_plan?: string
+  outcome?: string
+  pnl_estimate?: number | null
+  notes?: string
+  planned_entry?: number | null
+  planned_t1?: number | null
+  planned_t2?: number | null
+  planned_stop?: number | null
+  structure?: string
+}
+
+export interface DeskAlertCreate {
+  ticker: string
+  trade_type?: string
+  alert_type: string
+  threshold_value?: number | null
+  target_signal?: string
+  notify_method?: string
+  expires?: string
+}
+
+export const deskApi = {
+  // Watchlist
+  getWatchlist: async (): Promise<DeskWatchlistItem[]> => {
+    const { data } = await api.get<DeskWatchlistItem[]>('/desk/watchlist')
+    return data
+  },
+  addToWatchlist: async (ticker: string, trade_type = 'day'): Promise<DeskWatchlistItem> => {
+    const { data } = await api.post<DeskWatchlistItem>('/desk/watchlist', { ticker, trade_type })
+    return data
+  },
+  removeFromWatchlist: async (ticker: string, trade_type = 'day'): Promise<void> => {
+    await api.delete(`/desk/watchlist/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+  },
+
+  // Analysis
+  getAnalysis: async (ticker: string, trade_type = 'day'): Promise<DayTradeScanResult & SwingTradeScanResult & { trade_type: string }> => {
+    const { data } = await api.get(`/desk/analysis/${encodeURIComponent(ticker)}`, { params: { trade_type } })
+    return data
+  },
+
+  // Trade Log
+  getTrades: async (filters?: { trade_type?: string; outcome?: string; ticker?: string }): Promise<DeskTradeLog[]> => {
+    const { data } = await api.get<DeskTradeLog[]>('/desk/trades', { params: filters })
+    return data
+  },
+  getOpenTrades: async (): Promise<DeskTradeLog[]> => {
+    const { data } = await api.get<DeskTradeLog[]>('/desk/trades/open')
+    return data
+  },
+  getTradeStats: async (days = 30): Promise<DeskTradeStats> => {
+    const { data } = await api.get<DeskTradeStats>('/desk/trades/stats', { params: { days } })
+    return data
+  },
+  createTrade: async (body: DeskTradeCreate): Promise<DeskTradeLog> => {
+    const { data } = await api.post<DeskTradeLog>('/desk/trades', body)
+    return data
+  },
+  updateTrade: async (id: string, body: DeskTradeUpdate): Promise<DeskTradeLog> => {
+    const { data } = await api.patch<DeskTradeLog>(`/desk/trades/${encodeURIComponent(id)}`, body)
+    return data
+  },
+  deleteTrade: async (id: string): Promise<void> => {
+    await api.delete(`/desk/trades/${encodeURIComponent(id)}`)
+  },
+
+  // Alerts
+  getAlerts: async (active_only = true): Promise<DeskAlert[]> => {
+    const { data } = await api.get<DeskAlert[]>('/desk/alerts', { params: { active_only } })
+    return data
+  },
+  getAlertHistory: async (): Promise<DeskAlert[]> => {
+    const { data } = await api.get<DeskAlert[]>('/desk/alerts/history')
+    return data
+  },
+  getAlertCount: async (): Promise<number> => {
+    const { data } = await api.get<{ count: number }>('/desk/alerts/count')
+    return data.count
+  },
+  createAlert: async (body: DeskAlertCreate): Promise<DeskAlert> => {
+    const { data } = await api.post<DeskAlert>('/desk/alerts', body)
+    return data
+  },
+  deleteAlert: async (id: string): Promise<void> => {
+    await api.delete(`/desk/alerts/${encodeURIComponent(id)}`)
+  },
+  fireAlert: async (id: string, fired_value?: number, action_taken = ''): Promise<void> => {
+    await api.patch(`/desk/alerts/${encodeURIComponent(id)}/fire`, null, {
+      params: { fired_value, action_taken },
+    })
+  },
+}
+
+export function deriveUnifiedFromDayResult(
+  result: any
+): UnifiedAnalysis {
+  const td = result.trader_decision || {}
+  const eg = result.entry_guidance || {}
+  const m = result.metrics || {}
+
+  // Use suggested_action for verdict
+  const actionMap: Record<string, string> = {
+    'WATCH_LONG_ONLY':       'watch',
+    'WATCH_PUT_BREAKDOWN':   'watch',
+    'WAIT_FOR_CONFIRMATION': 'wait',
+    'NO_TRADE':              'wait',
+    'AVOID_CALLS':           'avoid',
+    'AVOID_CHASING_PUTS':    'avoid',
+  }
+
+  const rawVerdict =
+    result.verdict?.toUpperCase() ?? ''
+  const verdict =
+    rawVerdict === 'STRONG GO'
+      ? 'enter'
+    : actionMap[td.suggested_action]
+      ?? (rawVerdict === 'GO'
+          ? 'watch' : 'wait')
+
+  // Extract confidence from dict
+  const conf = m.confidence
+  const confidence = typeof conf === 'number'
+    ? conf
+    : conf && typeof conf === 'object'
+      ? (() => {
+          const labelMap: Record<string,number> = {
+            HIGH: 3, STRONG: 3, GOOD: 2,
+            MODERATE: 2, NEUTRAL: 2,
+            MIXED: 1, MEDIUM: 2, LOW: 1,
+            WEAK: 0, POOR: 0,
+          }
+          const riskMap: Record<string,number> = {
+            LOW: 3, MEDIUM: 2, HIGH: 0
+          }
+          let total = 0
+          let max = 0
+          for (const [k, v] of
+            Object.entries(conf as Record<string,string>)) {
+            max += 3
+            total += k === 'risk'
+              ? (riskMap[String(v).toUpperCase()] ?? 1)
+              : (labelMap[String(v).toUpperCase()] ?? 1)
+          }
+          return max > 0
+            ? Math.round(total / max * 100)
+            : 0
+        })()
+      : 0
+
+  const reasons: string[] =
+    result.reasons || []
+
+  const conditions = reasons
+    .slice(0, 6)
+    .map((r: string) => {
+      const short = r.split('—')[0]
+        .split(':')[0]
+        .split('(')[0]
+        .trim()
+        .split(' ')
+        .slice(0, 5)
+        .join(' ')
+      const lower = r.toLowerCase()
+      const type: 'fail' | 'warn' | 'pass' =
+        lower.includes('avoid') ||
+        lower.includes('weak') ||
+        lower.includes('below') ||
+        lower.includes('fail')
+          ? 'fail'
+        : lower.includes('wait') ||
+          lower.includes('watch') ||
+          lower.includes('caution')
+          ? 'warn'
+          : 'pass'
+      return { label: short, type }
+    })
+    .filter(c => c.label)
+
+  return {
+    ticker: result.ticker,
+    company: result.company_name,
+    trade_type: 'day',
+    price: m.last_price ?? 0,
+    change_pct: m.session_change_pct,
+    verdict: verdict as any,
+    verdict_raw: result.verdict,
+    confidence,
+    reason: td.decision_message
+      || reasons[0] || '',
+    conditions,
+    entry_price: eg.entry_price
+      || eg.current_price || null,
+    entry_description: eg.entry_description
+      || '',
+    stop_price: eg.stop_price
+      || eg.risk_below || null,
+    stop_description: m.or_low
+      ? `OR Low $${m.or_low}` : '',
+    structure: result.option_risk_context
+      ?.structure_hint || 'CALL · 1-2 DTE',
+    exit_rows: [],
+    rr_ratio: m.entry_rr_ratio
+      ? `${m.entry_rr_ratio}:1` : null,
+    risk_level: 'MEDIUM',
+    rvol: m.rvol ? `${m.rvol}x` : null,
+    coach: td.decision_message || '',
+    spy_price: null,
+    spy_change_pct: m.spy_change_pct,
+    qqq_price: null,
+    qqq_change_pct: m.qqq_change_pct,
+    vix: m.vix,
+    vix_label: m.vix < 15 ? 'Low'
+      : m.vix < 20 ? 'Contained'
+      : m.vix < 25 ? 'Elevated' : 'High',
+    regime: 'NEUTRAL MARKET',
+    session: m.session_phase || '',
+    regular_recommendations: [],
+  }
+}
+
+export function deriveUnifiedFromSwingResult(
+  result: any
+): UnifiedAnalysis {
+  const m = result.metrics || {}
+  const exec = m.exec_levels || {}
+
+  const verdictMap: Record<string,string> = {
+    'STRONG GO': 'enter',
+    'GO':        'enter',
+    'WATCH':     'watch',
+    'WAIT':      'wait',
+    'NO-GO':     'avoid',
+    'AVOID':     'avoid',
+  }
+
+  const verdict =
+    verdictMap[result.verdict?.toUpperCase()]
+    ?? 'wait'
+
+  const conf = m.confidence
+  // same confidence extraction as above
+
+  return {
+    ticker: result.ticker,
+    company: result.company_name,
+    trade_type: 'swing',
+    price: m.last_price ?? 0,
+    change_pct: m.momentum_5d_pct,
+    verdict: verdict as any,
+    verdict_raw: result.verdict,
+    confidence: 0, // compute same way
+    reason: result.decision_message || '',
+    conditions: (result.reasons || [])
+      .slice(0, 6)
+      .map((r: string) => ({
+        label: r.split('—')[0]
+          .split(':')[0].trim()
+          .split(' ').slice(0,5).join(' '),
+        type: 'pass' as const
+      })),
+    entry_price: exec.entry ?? null,
+    entry_description:
+      exec.entry_description || '',
+    stop_price: exec.stop ?? null,
+    stop_description: m.ma20
+      ? `MA20 $${m.ma20}` : '',
+    structure: result.suggested_strategy
+      || 'See analysis',
+    exit_rows: [],
+    rr_ratio: null,
+    risk_level: result.risk_level
+      || 'MEDIUM',
+    rvol: null,
+    coach: result.playbook_hint
+      || result.decision_message || '',
+    spy_price: null,
+    spy_change_pct: null,
+    qqq_price: null,
+    qqq_change_pct: null,
+    vix: m.vix,
+    vix_label: 'Contained',
+    regime: m.market_context || 'NEUTRAL',
+    session: 'swing',
+    regular_recommendations: [],
+  }
 }

@@ -160,21 +160,70 @@ def _intraday_session_return_pct(session: pd.DataFrame) -> Optional[float]:
 
 def _compute_vwap(session: pd.DataFrame) -> pd.Series:
     """Session VWAP — zero-volume bars contribute 0 to cumulative sums."""
+    vwap, _, _, _, _ = _compute_vwap_bands(session)
+    return vwap
+
+
+def _compute_vwap_bands(
+        session: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """
+    Returns (vwap, upper1, lower1, upper2, lower2) as pd.Series.
+
+    Standard deviation bands use the volume-weighted variance of typical price
+    around VWAP — the canonical intraday VWAP-band formula.
+
+    Band math:
+        variance_i = Σ(v * (tp - vwap)²) / Σv    (cumulative, session-anchored)
+        std_i      = sqrt(variance_i)
+        upper_n    = vwap + n * std_i
+        lower_n    = vwap - n * std_i
+    """
     h, l, c = session["High"], session["Low"], session["Close"]
     v = session["Volume"].astype(float).clip(lower=0)
     tp = (h + l + c) / 3.0
+
     cum_tp_v = (tp * v).cumsum()
-    cum_v = v.cumsum()
+    cum_v    = v.cumsum()
+
     with np.errstate(divide="ignore", invalid="ignore"):
         numer = cum_tp_v.to_numpy(dtype=float)
         denom = cum_v.to_numpy(dtype=float)
-        raw = np.where(denom > 0, numer / denom, np.nan)
-    out = pd.Series(raw, index=session.index, dtype=float)
-    out = out.replace([np.inf, -np.inf], np.nan)
-    out = out.bfill().ffill()
-    if out.isna().all() or len(out) == 0:
-        return tp.astype(float)
-    return out
+        vwap_raw = np.where(denom > 0, numer / denom, np.nan)
+
+    tp_arr = tp.to_numpy(dtype=float)
+    v_arr  = v.to_numpy(dtype=float)
+
+    # Forward-fill NaN in vwap_raw so variance calculation doesn't break
+    vwap_filled_arr = pd.Series(vwap_raw).bfill().ffill().to_numpy(dtype=float)
+    # Where still NaN (entirely zero-volume), use typical price as VWAP proxy
+    vwap_filled_arr = np.where(np.isnan(vwap_filled_arr), tp_arr, vwap_filled_arr)
+
+    # Volume-weighted variance: Σ(v*(tp-vwap)²) / Σv
+    cum_sq_v = np.cumsum(v_arr * (tp_arr - vwap_filled_arr) ** 2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        variance = np.where(denom > 0, cum_sq_v / denom, np.nan)
+    std_raw = np.sqrt(np.abs(variance))
+
+    def _clean(arr: np.ndarray) -> pd.Series:
+        s = pd.Series(arr, index=session.index, dtype=float)
+        s = s.replace([np.inf, -np.inf], np.nan).bfill().ffill()
+        return s
+
+    vwap_ser = _clean(vwap_raw)
+    std_ser  = _clean(std_raw)
+
+    # Fallback: if VWAP is all-NaN (zero-volume session), use typical price
+    if vwap_ser.isna().all() or len(vwap_ser) == 0:
+        vwap_ser = tp.astype(float)
+        std_ser  = pd.Series(np.zeros(len(session)), index=session.index, dtype=float)
+
+    upper1 = vwap_ser + 1.0 * std_ser
+    lower1 = vwap_ser - 1.0 * std_ser
+    upper2 = vwap_ser + 2.0 * std_ser
+    lower2 = vwap_ser - 2.0 * std_ser
+
+    return vwap_ser, upper1, lower1, upper2, lower2
 
 
 def _finite_price(x: float, fallback: float) -> float:
@@ -295,16 +344,16 @@ def _rs_label(sym: str, rs: float) -> str:
 
 
 def _confidence_block(
-    *,
-    momentum_pct: float,
-    or_state: str,
-    vol_spike: bool,
-    bias: Bias,
-    spy_chg: Optional[float],
-    qqq_chg: Optional[float],
-    vix_level: Optional[float],
-    verdict: str,
-    rvol: Optional[float] = None,
+        *,
+        momentum_pct: float,
+        or_state: str,
+        vol_spike: bool,
+        bias: Bias,
+        spy_chg: Optional[float],
+        qqq_chg: Optional[float],
+        vix_level: Optional[float],
+        verdict: str,
+        rvol: Optional[float] = None,
 ) -> dict[str, str]:
     # Trend strength
     m = abs(momentum_pct)
@@ -381,83 +430,142 @@ def _confidence_block(
 
 
 def _build_day_exit_rules(
-    bias: str,
-    vwap: Optional[float],
-    breakout_level: Optional[float],
-    scalp_target: Optional[float],
-    risk_below: Optional[float],
-    state: str,
-    session_phase: str = "",
+        bias: str,
+        vwap: Optional[float],
+        breakout_level: Optional[float],
+        scalp_target: Optional[float],
+        risk_below: Optional[float],
+        state: str,
+        session_phase: str = "",
+        scalp_target_2: Optional[float] = None,
+        or_breakout: str = "inside",
 ) -> list[dict]:
     """
     Price-specific intraday exit rules ordered by priority.
     All prices reference levels already shown in the execution map.
+
+    For breakout trades (or_breakout == above/below):
+      T1 = ORH + 50% range (scalp_target), T2 = ORH + 100% range (scalp_target_2)
+      VWAP is a stop guard, not a target — price is already above/below it.
+    For VWAP bounce / inside range:
+      T1 = scalp_target (OR high/low), T2 = scalp_target_2
+      VWAP support/resistance is the trigger for the stop.
     """
     if not bias or bias not in ("long", "short"):
         return []
 
+    is_breakout = or_breakout in ("above", "below")
     rules: list[dict] = []
 
     if bias == "long":
-        # Target 1 = VWAP (first profit milestone, already in position)
-        if vwap is not None:
-            rules.append({
-                "trigger": "Target 1 — VWAP",
-                "price":   round(vwap, 2),
-                "action":  "Sell ½ position",
-                "note":    f"Move stop to breakout level"
-                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
-            })
-        # Target 2 = scalp target (final intraday exit)
-        if scalp_target is not None:
-            rules.append({
-                "trigger": "Target 2 — scalp target",
-                "price":   scalp_target,
-                "action":  "Sell remaining ½",
-                "note":    "Intraday trade complete — flat before close",
-            })
-        # VWAP loss guard
-        if vwap is not None:
-            vwap_stop = round(vwap * 0.998, 2)
-            rules.append({
-                "trigger": "Price loses VWAP",
-                "price":   vwap_stop,
-                "action":  "Exit full position",
-                "note":    "Intraday structure failed — do not hold through VWAP loss",
-            })
-        # Hard stop
+        if is_breakout:
+            # Breakout: VWAP is already below — it's a stop guard, not a target
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — measured move ½",
+                    "price":   scalp_target,
+                    "action":  "Sell ½ position",
+                    "note":    f"ORH + 50% of opening range. Move stop to breakout level"
+                               + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — measured move full",
+                    "price":   scalp_target_2,
+                    "action":  "Sell remaining ½",
+                    "note":    "ORH + 100% of opening range — intraday trade complete, flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 0.998, 2)
+                rules.append({
+                    "trigger": "Price loses VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Breakout failed — price retreated through VWAP, do not hold.",
+                })
+        else:
+            # VWAP bounce / inside range: target is OR high, then extended
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — OR High",
+                    "price":   scalp_target,
+                    "action":  "Sell ½ position",
+                    "note":    f"First resistance — move stop to breakout level"
+                               + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — extended",
+                    "price":   scalp_target_2,
+                    "action":  "Sell remaining ½",
+                    "note":    "Intraday trade complete — flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 0.998, 2)
+                rules.append({
+                    "trigger": "Price loses VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Intraday structure failed — do not hold through VWAP loss.",
+                })
+        # Hard stop always
         if risk_below is not None:
             rules.append({
                 "trigger": "Stop loss — OR Low",
                 "price":   round(risk_below, 2),
                 "action":  "Exit full position",
-                "note":    "Opening Range violated — accept the loss",
+                "note":    "Opening Range violated — accept the loss.",
             })
 
     else:  # short
-        if vwap is not None:
-            rules.append({
-                "trigger": "Target 1 — VWAP",
-                "price":   round(vwap, 2),
-                "action":  "Cover ½ position",
-                "note":    f"Move stop to breakdown level"
-                            + (f" (${breakout_level:.2f})" if breakout_level else ""),
-            })
-        if scalp_target is not None:
-            rules.append({
-                "trigger": "Target 2 — scalp target",
-                "price":   scalp_target,
-                "action":  "Cover remaining ½",
-                "note":    "Intraday trade complete — flat before close",
-            })
-        if vwap is not None:
-            vwap_stop = round(vwap * 1.002, 2)
-            rules.append({
-                "trigger": "Price reclaims VWAP",
-                "price":   vwap_stop,
-                "action":  "Exit full position",
-                "note":    "Bearish structure failed — exit immediately",
-            })
+        if is_breakout:
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — measured move ½",
+                    "price":   scalp_target,
+                    "action":  "Cover ½ position",
+                    "note":    f"ORL - 50% of opening range. Move stop to breakdown level"
+                               + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — measured move full",
+                    "price":   scalp_target_2,
+                    "action":  "Cover remaining ½",
+                    "note":    "ORL - 100% of opening range — intraday trade complete, flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 1.002, 2)
+                rules.append({
+                    "trigger": "Price reclaims VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Breakdown failed — exit immediately.",
+                })
+        else:
+            if scalp_target is not None:
+                rules.append({
+                    "trigger": "Target 1 — OR Low",
+                    "price":   scalp_target,
+                    "action":  "Cover ½ position",
+                    "note":    f"First support — move stop to breakdown level"
+                               + (f" (${breakout_level:.2f})" if breakout_level else "") + ".",
+                })
+            if scalp_target_2 is not None:
+                rules.append({
+                    "trigger": "Target 2 — extended",
+                    "price":   scalp_target_2,
+                    "action":  "Cover remaining ½",
+                    "note":    "Intraday trade complete — flat before close.",
+                })
+            if vwap is not None:
+                vwap_stop = round(vwap * 1.002, 2)
+                rules.append({
+                    "trigger": "Price reclaims VWAP",
+                    "price":   vwap_stop,
+                    "action":  "Exit full position",
+                    "note":    "Bearish structure failed — exit immediately.",
+                })
         if risk_below is not None:
             rules.append({
                 "trigger": "Stop loss — OR High",
@@ -489,6 +597,10 @@ def _build_day_exit_rules(
 def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str]) -> dict:
     last_price = metrics.get("last_price")
     vwap = metrics.get("vwap")
+    vwap_upper1 = metrics.get("vwap_upper1")
+    vwap_lower1 = metrics.get("vwap_lower1")
+    vwap_upper2 = metrics.get("vwap_upper2")
+    vwap_lower2 = metrics.get("vwap_lower2")
     or_high = metrics.get("or_high")
     or_low = metrics.get("or_low")
     or_breakout  = metrics.get("or_breakout", "inside")
@@ -549,11 +661,16 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 f"If price breaks below VWAP, the trade has failed \u2014 exit. "
                 f"Do not enter just because ORH is 'nearby'."
             )
-        elif or_retest and not volume_spike:
+        elif or_retest and or_historical == "broke_up" and volume_spike:
             state = "ENTRY_RETEST"
-            summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding. High-quality continuation entry."
+            summary = "OR re-test hold \u2014 price pulled back to the breakout level and is holding with volume. High-quality continuation entry."
             action = "Enter on the re-test hold; stop just below ORH."
             avoid = "Do not enter if price closes back inside the opening range."
+        elif or_retest and or_historical == "broke_up" and not volume_spike:
+            state = "WAIT_FOR_VOLUME"
+            summary = "OR re-test in progress \u2014 waiting for volume to confirm buyers are defending the breakout level."
+            action = "Wait for a volume spike at the ORH re-test before entering."
+            avoid = "Low-volume re-tests often fail. Patience here saves the trade."
         elif not volume_spike and or_historical != "broke_up":
             # Volume gate: only block entry if the OR has NEVER been broken with volume.
             # If or_historical == "broke_up", the breakout already occurred and volume
@@ -566,7 +683,23 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         else:
             state = "ENTRY_ACTIVE"
             summary = "Entry window is active. Price is above VWAP, breakout is confirmed, and momentum is supported."
-            action = "Entry conditions met. Consider scaling in with defined stop."
+            # Band-aware target selection: only show targets price hasn't reached yet
+            target_msg = ""
+            if vwap_upper1 and last_price and last_price < vwap_upper1 * 1.001:
+                target_msg = (
+                    f"T1 target: VWAP +1σ (${vwap_upper1:.2f}); "
+                    f"T2 extension: VWAP +2σ (${vwap_upper2:.2f})."
+                    if vwap_upper2 else f"T1 target: VWAP +1σ (${vwap_upper1:.2f})."
+                )
+            elif vwap_upper2 and last_price and last_price < vwap_upper2 * 1.001:
+                # Already at/past +1σ, only show +2σ
+                target_msg = f"Next target: VWAP +2σ (${vwap_upper2:.2f}). Take profits if reached."
+            elif last_price and vwap_upper2 and last_price >= vwap_upper2 * 0.999:
+                target_msg = "Price already at +2σ — take profits here, do not add."
+            action = (
+                    "Entry conditions met. Consider scaling in with defined stop. "
+                    + target_msg
+            )
             avoid = ""
     elif bidir == "short":
         if vwap_pos == "above":
@@ -655,7 +788,23 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 )
             else:
                 summary = "Entry window is active. Price is below VWAP, breakdown is confirmed, and momentum is supported."
-                action = "Entry conditions met. Consider scaling in with defined stop."
+                # Band-aware target selection: only show targets price hasn't reached yet
+                target_msg = ""
+                if vwap_lower1 and last_price and last_price > vwap_lower1 * 0.999:
+                    target_msg = (
+                        f"T1 target: VWAP -1σ (${vwap_lower1:.2f}); "
+                        f"T2 extension: VWAP -2σ (${vwap_lower2:.2f})."
+                        if vwap_lower2 else f"T1 target: VWAP -1σ (${vwap_lower1:.2f})."
+                    )
+                elif vwap_lower2 and last_price and last_price > vwap_lower2 * 0.999:
+                    # Already at/past -1σ, only show -2σ
+                    target_msg = f"Next target: VWAP -2σ (${vwap_lower2:.2f}). Take profits if reached."
+                elif last_price and vwap_lower2 and last_price <= vwap_lower2 * 1.001:
+                    target_msg = "Price already at -2σ — take profits here, do not add."
+                action = (
+                        "Entry conditions met. Consider scaling in with defined stop. "
+                        + target_msg
+                )
                 avoid = ""
 
     # State machine confirmed all entry gates — clear aspirational confirmations from trader_decision
@@ -719,20 +868,50 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     elif session_phase == "POWER_HOUR" and state in ("ENTRY_ACTIVE", "ENTRY_RETEST"):
         avoid = "Power hour entry — must exit by 3:50 PM ET. No overnight holds."
 
-    scalp_target = None
+    # OR-structure targets — measured move from the breakout/breakdown level
+    _or_range = (or_high - or_low) if (or_high and or_low and or_high > or_low) else None
+
+    scalp_target = None   # Target 1 (sell/cover half)
+    scalp_target_2 = None # Target 2 (full exit)
     if last_price is not None:
         if bidir == "long":
             if bounce_scenario == "vwap_rejection_long" and vwap is not None:
-                scalp_target = round(or_high, 2) if or_high else round(last_price * 1.015, 2)
-            else:
-                scalp_target = round(last_price * 1.015, 2)
+                # VWAP bounce long → T1 = OR high, T2 = ORH + 50% range
+                scalp_target = round(or_high, 2) if or_high else round(last_price * 1.01, 2)
+                scalp_target_2 = round(or_high + _or_range * 0.5, 2) if (or_high and _or_range) else None
+            elif or_breakout == "above" and or_high is not None:
+                # Breakout above ORH → T1 = ORH + 50% range (measured move), T2 = ORH + 100%
+                _t1 = or_high + (_or_range * 0.5 if _or_range else or_high * 0.008)
+                _t2 = or_high + (_or_range * 1.0 if _or_range else or_high * 0.015)
+                scalp_target = round(_t1, 2)
+                scalp_target_2 = round(_t2, 2)
+            elif or_high is not None:
+                # Inside range or approaching ORH → T1 = ORH, T2 = ORH + 25% range
+                scalp_target = round(or_high, 2)
+                scalp_target_2 = round(or_high + _or_range * 0.25, 2) if _or_range else None
+            elif vwap is not None:
+                # Fallback: no OR data — use VWAP as anchor (0.5% above VWAP)
+                scalp_target = round(vwap * 1.005, 2)
         elif bidir == "short":
             if bounce_scenario == "vwap_rejection" and or_low is not None:
-                scalp_target = round(or_low, 2)   # target: ORL from VWAP rejection
+                # VWAP rejection short → T1 = OR low, T2 = ORL - 50% range
+                scalp_target = round(or_low, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.5, 2) if _or_range else None
             elif bounce_scenario == "orl_rejection_retest" and or_low is not None:
-                scalp_target = round(or_low * 0.985, 2)  # target: below ORL after ORL rejection
-            else:
-                scalp_target = round(last_price * 0.985, 2)
+                scalp_target = round(or_low * 0.985, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.5, 2) if _or_range else None
+            elif or_breakout == "below" and or_low is not None:
+                # Breakdown below ORL → T1 = ORL - 50% range, T2 = ORL - 100%
+                _t1 = or_low - (_or_range * 0.5 if _or_range else or_low * 0.008)
+                _t2 = or_low - (_or_range * 1.0 if _or_range else or_low * 0.015)
+                scalp_target = round(_t1, 2)
+                scalp_target_2 = round(_t2, 2)
+            elif or_low is not None:
+                scalp_target = round(or_low, 2)
+                scalp_target_2 = round(or_low - _or_range * 0.25, 2) if _or_range else None
+            elif vwap is not None:
+                # Fallback: no OR data — use VWAP as anchor (0.5% below VWAP)
+                scalp_target = round(vwap * 0.995, 2)
 
     pullback_zone = ""
     if vwap is not None and last_price is not None:
@@ -956,8 +1135,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
 
     # When price historically broke out but has since retraced inside OR, flag it.
     failed_breakout = (
-        or_historical == "broke_up"   and or_breakout == "inside" and bidir == "long"  or
-        or_historical == "broke_down" and or_breakout == "inside" and bidir == "short"
+            or_historical == "broke_up"   and or_breakout == "inside" and bidir == "long"  or
+            or_historical == "broke_down" and or_breakout == "inside" and bidir == "short"
     )
 
     return {
@@ -980,6 +1159,7 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         "pullback_zone": pullback_zone,
         "risk_below": risk_below,
         "scalp_target": scalp_target,
+        "scalp_target_2": scalp_target_2,
         "exit_rules": _build_day_exit_rules(
             bias=bidir,
             vwap=vwap,
@@ -988,6 +1168,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             risk_below=risk_below,
             state=state,
             session_phase=session_phase,
+            scalp_target_2=scalp_target_2,
+            or_breakout=or_breakout,
         ),
         # New execution guidance fields
         "day_market_phase": day_market_phase,
@@ -1085,9 +1267,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     # Stale = last bar > 5 min old AND we are inside regular market hours.
     _in_rth = (
-        (_now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 30))
-        and _now_et.hour < 16
-        and _now_et.weekday() < 5
+            (_now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 30))
+            and _now_et.hour < 16
+            and _now_et.weekday() < 5
     )
     if _in_rth and _bar_age_minutes > 5:
         _bar_data_stale = True
@@ -1110,7 +1292,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             "This usually means a temporary rate-limit or network error. Data will refresh automatically."
         )
 
-    vwap_ser = _compute_vwap(session)
+    vwap_ser, vwap_upper1_ser, vwap_lower1_ser, vwap_upper2_ser, vwap_lower2_ser = _compute_vwap_bands(session)
     raw_vwap = vwap_ser.iloc[-1]
     try:
         vwap_candidate = float(raw_vwap)
@@ -1119,6 +1301,25 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     vwap_last = _finite_price(vwap_candidate, last)
     # Track whether VWAP fell back to last (meaning real VWAP was not computable).
     _vwap_is_real = math.isfinite(vwap_candidate) and vwap_candidate > 0
+
+    # VWAP band levels at current bar
+    vwap_upper1 = _finite_price(float(vwap_upper1_ser.iloc[-1]), last)
+    vwap_lower1 = _finite_price(float(vwap_lower1_ser.iloc[-1]), last)
+    vwap_upper2 = _finite_price(float(vwap_upper2_ser.iloc[-1]), last)
+    vwap_lower2 = _finite_price(float(vwap_lower2_ser.iloc[-1]), last)
+    # Distance from last price to each band (%)
+    _vb = lambda p: round((last / p - 1.0) * 100, 3) if p > 0 else 0.0
+    vwap_upper1_dist_pct = _vb(vwap_upper1)
+    vwap_lower1_dist_pct = _vb(vwap_lower1)
+    vwap_upper2_dist_pct = _vb(vwap_upper2)
+    vwap_lower2_dist_pct = _vb(vwap_lower2)
+    # VWAP band width context
+    vwap_std_dev = round(vwap_upper1 - vwap_last, 4) if _vwap_is_real and math.isfinite(vwap_upper1) else None
+    vwap_volatility_context = (
+        "NARROW" if vwap_std_dev is not None and vwap_std_dev < last * 0.003
+        else "WIDE" if vwap_std_dev is not None and vwap_std_dev > last * 0.010
+        else "NORMAL"
+    ) if vwap_std_dev is not None else None
 
     n_or = min(OR_MINUTES, len(session))
     or_seg = session.iloc[:n_or]
@@ -1381,6 +1582,65 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%).")
         bear += base_vwap
 
+    # ── VWAP std-band extension scoring ──────────────────────────────────────
+    if _vwap_is_real:
+        _at_upper2 = last >= vwap_upper2 * 0.999
+        _at_lower2 = last <= vwap_lower2 * 1.001
+        _at_upper1 = (not _at_upper2) and last >= vwap_upper1 * 0.999
+        _at_lower1 = (not _at_lower2) and last <= vwap_lower1 * 1.001
+
+        if _at_upper2:
+            if vol_spike:
+                bull += 0.3
+                body.append(
+                    f"Price at VWAP +2σ (${vwap_upper2:.2f}) with volume — strong momentum. "
+                    "Take partial profits; do not add new longs here."
+                )
+            else:
+                bear += 1.0
+                body.append(
+                    f"Price at VWAP +2σ (${vwap_upper2:.2f}) — extended above the band. "
+                    "Mean-reversion risk elevated; avoid chasing longs here."
+                )
+        elif _at_upper1:
+            if vol_spike:
+                bull += 0.5
+                body.append(
+                    f"Price at VWAP +1σ (${vwap_upper1:.2f}) with volume — momentum extension. "
+                    "Valid scalp target for existing longs; new entries need pullback."
+                )
+            else:
+                body.append(
+                    f"Price at VWAP +1σ (${vwap_upper1:.2f}) — near band resistance. "
+                    "Scalp target for longs; low-volume push raises fade risk."
+                )
+
+        if _at_lower2:
+            if vol_spike:
+                bear += 0.3
+                body.append(
+                    f"Price at VWAP -2σ (${vwap_lower2:.2f}) with volume — strong breakdown. "
+                    "Take partial profits; do not add new shorts here."
+                )
+            else:
+                bull += 1.0
+                body.append(
+                    f"Price at VWAP -2σ (${vwap_lower2:.2f}) — extended below the band. "
+                    "Mean-reversion risk elevated; avoid chasing shorts here."
+                )
+        elif _at_lower1:
+            if vol_spike:
+                bear += 0.5
+                body.append(
+                    f"Price at VWAP -1σ (${vwap_lower1:.2f}) with volume — momentum breakdown. "
+                    "Valid scalp target for existing shorts; new entries need bounce rejection."
+                )
+            else:
+                body.append(
+                    f"Price at VWAP -1σ (${vwap_lower1:.2f}) — near band support. "
+                    "Scalp target for shorts; low-volume push raises bounce risk."
+                )
+
     or_weight = 3.0 if vol_spike else 1.0
     if or_state == "above":
         bull += or_weight
@@ -1613,16 +1873,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # ── #3 OR re-test quality ────────────────────────────────────────────────
     # Price cleared ORH/ORL earlier, pulled back near that level, holding without a reversal.
     _orh_retest_long  = (
-        or_historical == "broke_up"
-        and or_state == "above"
-        and 0 < (last - or_high) / or_high * 100 <= 0.3
-        and not vol_spike
+            or_historical == "broke_up"
+            and or_state == "above"
+            and 0 < (last - or_high) / or_high * 100 <= 0.3
+            and not vol_spike
     )
     _orl_retest_short = (
-        or_historical == "broke_down"
-        and or_state == "below"
-        and 0 < (or_low - last) / or_low * 100 <= 0.3
-        and not vol_spike
+            or_historical == "broke_down"
+            and or_state == "below"
+            and 0 < (or_low - last) / or_low * 100 <= 0.3
+            and not vol_spike
     )
     if _orh_retest_long:
         bull += 1.0
@@ -1646,8 +1906,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     #                            actually MORE bearish than an ORL retest.
     #   "orl_rejection_retest" — bounce reached ORL from below, now being rejected.
     #                            Strongest PUT re-entry; entry near ORL, bigger target.
-    #   "no_mans_land"         — price churning between VWAP and ORL, no clean level.
-    #                            Wait — no rejection confirmation yet.
+    #   "no_mans_land"         — price below both VWAP and ORL, no bounce to either level yet.
+    #                            Wait — no rejection confirmation at a key level.
     #   (long-side mirror: orh_rejection and vwap_rejection_long handled symmetrically)
     _bounce_scenario: str = ""
     if or_historical == "broke_down" and or_state == "below" and or_low > 0 and vwap_last > 0:
@@ -1679,12 +1939,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 )
             else:
                 _bounce_scenario = "orl_rejection_retest"  # use same bucket, no extra score
-        # Price between VWAP and ORL with no clean level nearby
+        # Price well below both VWAP and ORL — no bounce to a key level yet
         elif _pct_below_orl > 0.55 and _pct_from_vwap < -0.45:
             _bounce_scenario = "no_mans_land"
             body.append(
-                f"Price between VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no clean rejection level. "
-                "Wait for a test of either level before considering entry."
+                f"Price below both VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no bounce to a key level yet. "
+                "Wait for a test of VWAP or ORL before considering entry."
             )
 
     # Mirror for long-side bounce scenarios after ORH breakout
@@ -1764,16 +2024,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         verdict = "NO-GO"
         prefix = [f"Strong positive broad market ({chg_str}) vs bearish stock tilt."]
     elif (
-        # Compound NO-GO: long bias signalled but entry trigger never fired.
-        # CALL entry requires an ORH break — if OR is still intact all session,
-        # RVOL is weak (no institutional participation), and the market is leaning
-        # against the bias, the setup is a false positive. Flag it rather than
-        # letting it show as "Bullish GO/WATCH" with an unreachable entry condition.
-        diff > 0
-        and or_historical == "contained"          # ORH never broken today
-        and (rvol is not None and rvol < 0.75)    # < 75 % of expected volume
-        and spy_chg is not None and spy_chg <= -0.25
-        and qqq_chg is not None and qqq_chg <= -0.25
+            # Compound NO-GO: long bias signalled but entry trigger never fired.
+            # CALL entry requires an ORH break — if OR is still intact all session,
+            # RVOL is weak (no institutional participation), and the market is leaning
+            # against the bias, the setup is a false positive. Flag it rather than
+            # letting it show as "Bullish GO/WATCH" with an unreachable entry condition.
+            diff > 0
+            and or_historical == "contained"          # ORH never broken today
+            and (rvol is not None and rvol < 0.75)    # < 75 % of expected volume
+            and spy_chg is not None and spy_chg <= -0.25
+            and qqq_chg is not None and qqq_chg <= -0.25
     ):
         _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
         _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
@@ -1786,12 +2046,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             "do not anticipate the breakout.",
         ]
     elif (
-        # Mirror: short bias but ORL never broken + weak RVOL + bullish market.
-        diff < 0
-        and or_historical == "contained"
-        and (rvol is not None and rvol < 0.75)
-        and spy_chg is not None and spy_chg >= 0.25
-        and qqq_chg is not None and qqq_chg >= 0.25
+            # Mirror: short bias but ORL never broken + weak RVOL + bullish market.
+            diff < 0
+            and or_historical == "contained"
+            and (rvol is not None and rvol < 0.75)
+            and spy_chg is not None and spy_chg >= 0.25
+            and qqq_chg is not None and qqq_chg >= 0.25
     ):
         _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
         _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
@@ -1889,7 +2149,11 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 "l": round(float(row["Low"]), 6),
                 "c": round(float(row["Close"]), 6),
                 "v": round(float(row["Volume"]), 2),
-                "vwap": round(vw_i, 6),
+                "vwap":        round(vw_i, 6),
+                "vwap_upper1": round(float(vwap_upper1_ser.iloc[i]), 6),
+                "vwap_lower1": round(float(vwap_lower1_ser.iloc[i]), 6),
+                "vwap_upper2": round(float(vwap_upper2_ser.iloc[i]), 6),
+                "vwap_lower2": round(float(vwap_lower2_ser.iloc[i]), 6),
             }
         )
 
@@ -1916,6 +2180,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "regular_market_change_pct": reg_m_chg,
         "market_state": market_state,
         "vwap": round(vwap_last, 4),
+        "vwap_upper1": round(vwap_upper1, 4),
+        "vwap_lower1": round(vwap_lower1, 4),
+        "vwap_upper2": round(vwap_upper2, 4),
+        "vwap_lower2": round(vwap_lower2, 4),
+        "vwap_upper1_dist_pct": vwap_upper1_dist_pct,
+        "vwap_lower1_dist_pct": vwap_lower1_dist_pct,
+        "vwap_upper2_dist_pct": vwap_upper2_dist_pct,
+        "vwap_lower2_dist_pct": vwap_lower2_dist_pct,
+        "vwap_std_dev": vwap_std_dev,
+        "vwap_volatility_context": vwap_volatility_context,
         "vwap_dist_pct": vwap_dist_pct,
         "vwap_position": vwap_position,
         "vwap_slope_pct": vwap_slope_pct,

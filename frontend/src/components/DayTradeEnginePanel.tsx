@@ -9,7 +9,6 @@ import type { PortfolioPosition } from '../types'
 import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
-import { MarketTimeGateBanner } from './MarketTimeGate'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -307,6 +306,60 @@ function computeRiskPanel(result: DayTradeScanResult, m: Record<string, unknown>
 function formatLabel(value: string | null | undefined): string {
   if (!value) return '—'
   return value.replace(/_/g, ' ')
+}
+
+// ─── Option-A subtitle: combined bias + execution state ──────────────────────
+// Replaces the old "{Bias} intraday setup · {signal_quality}" which was
+// confusing because "GO" (setup grade) and "WATCH" (execution gate) are two
+// different things shown in different places.
+//
+// Mapping:
+//   STRONG GO                  → "Bearish · Confirmed Short"   / "Bullish · Strong Entry"
+//   GO + final_decision READY  → "Bearish · Confirmed Short"   / "Bullish · Enter Now"
+//   GO + final_decision WATCH  → "Bearish · Awaiting Volume"   / "Bullish · Awaiting Volume"
+//   READY / WATCH verdict      → "Bearish · Watching Setup"    / "Bullish · Watching Setup"
+//   AVOID / NO_EDGE            → "Bearish Bias · No Trade"     / "Bullish Bias · No Trade"
+//   MANAGE                     → "Bearish · Managing Position" / "Bullish · Managing Position"
+//   WAIT / no edge             → "No Clear Edge · Waiting"
+// ─────────────────────────────────────────────────────────────────────────────
+function buildIntradaySubtitle(
+  bias:          string | null | undefined,
+  signalQuality: string | null | undefined,
+  finalDecision: string | null | undefined,
+): string {
+  const sq  = (signalQuality || '').toUpperCase()
+  const fd  = (finalDecision  || '').toUpperCase()
+  const dir = bias === 'short' ? 'Bearish' : 'Bullish'
+
+  // Hard vetoes
+  if (fd === 'AVOID' || fd === 'NO_EDGE' || fd.includes('NO-GO') || fd.includes('NO GO'))
+    return `${dir} Bias · No Trade`
+
+  // In-trade management
+  if (fd === 'MANAGE' || fd.includes('SCALE') || fd.includes('EXIT'))
+    return `${dir} · Managing Position`
+
+  // STRONG GO — volume always confirmed at this grade
+  if (sq === 'STRONG GO')
+    return bias === 'short' ? 'Bearish · Strong Short Signal' : 'Bullish · Strong Entry'
+
+  // GO grade — split on whether execution gate is open
+  if (sq === 'GO') {
+    if (fd === 'READY')
+      return bias === 'short' ? 'Bearish · Confirmed Short' : 'Bullish · Enter Now'
+    return `${dir} · Awaiting Volume`
+  }
+
+  // READY (was WATCH verdict) or explicit WATCH final_decision
+  if (sq === 'READY' || fd === 'WATCH')
+    return `${dir} · Watching Setup`
+
+  // Conflict / wait with a known bias
+  if (bias && (fd === 'WAIT' || fd === 'CONFLICT'))
+    return `${dir} · No Edge Yet`
+
+  // Genuine no-edge / no bias
+  return 'No Clear Edge · Waiting'
 }
 
 function normalizedActionState(value: string | null | undefined): string {
@@ -674,6 +727,10 @@ export default function DayTradeEnginePanel({
   const inPosition = existingPositions.length > 0
   const latestPos  = existingPositions[existingPositions.length - 1]
   const [signalsOpen, setSignalsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [aiCoachOpen, setAiCoachOpen] = useState(false)
+  const [decisionOpen, setDecisionOpen] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
   const signalsSectionRef = useRef<HTMLDivElement | null>(null)
@@ -733,6 +790,17 @@ export default function DayTradeEnginePanel({
   const managementPlan   = computeIntradayManagementPlan(result, m)
   const walkthroughSteps = buildDayWalkthrough(result, m)
   const currentPrice = eg?.current_price ?? lastPrice
+
+  // 4-state numeric — computed once here so ACTION badge and subtitle can be state-aware
+  const _egStateStr = eg?.state || ''
+  const _stateMap: Record<string, number> = {
+    'MONITORING': 1, 'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
+    'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
+    'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2, 'WAIT_BOUNCE_LEVEL': 2,
+    'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
+    'EOD_CLOSING': 4,
+  }
+  const activeStateNum = _stateMap[_egStateStr] ?? 1
   const breakoutLevel = eg?.breakout_level
   const volumeSeries = chartBars?.map(bar => bar.v) ?? []
   // Implied average volume for the current time of day: backend rvol = lastBar.v / avg_vol_for_time
@@ -793,175 +861,286 @@ export default function DayTradeEnginePanel({
       decisionTone === 'orange' ? 'ring-1 ring-semantic-warning-border' :
       decisionTone === 'red' ? 'ring-1 ring-semantic-bearish-border' : 'ring-1 ring-border'
     }`}>
-      <div className="px-4 pt-4 pb-3 border-b border-gray-800 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
-            <div className="mt-1 flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl font-bold text-white dark:text-heading tracking-tight">{result.ticker}</span>
-              {result.company_name && (
-                <span className="text-xs text-gray-500 truncate max-w-[220px]">{result.company_name}</span>
-              )}
-              {lastPrice != null && (
-                <span className="flex items-center gap-1.5 ml-0.5">
-                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${lastPrice.toFixed(2)}</span>
-                  {sessionChangePct != null && dayDollarChange != null && (
-                    <span className={`text-xs font-semibold font-mono tabular-nums ${dayDollarChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {dayDollarChange >= 0 ? '+' : ''}{dayDollarChange.toFixed(2)} ({sessionChangePct >= 0 ? '+' : ''}{sessionChangePct.toFixed(2)}%)
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-gray-300">
-              {result.bias === 'short' ? 'Bearish' : 'Bullish'} intraday setup · {formatLabel(result.signal_quality || result.setup_quality)}
-            </div>
-            <div className="text-[10px] text-gray-600 mt-1">
-              {typeof m.session_date === 'string' ? m.session_date : ''} · Intraday
-              {barDataAgeMinutes != null && barDataAgeMinutes > 0 && (
-                <span className={`ml-1.5 font-semibold ${barDataStale ? 'text-amber-500' : 'text-gray-500'}`}>
-                  · bar {barDataAgeMinutes}m ago
-                </span>
-              )}
-            </div>
-            {barDataStale && barDataWarning && (
-              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
-                <span className="mt-px shrink-0">⚠</span>
-                <span>{barDataWarning}</span>
-              </div>
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-sm font-bold text-white dark:text-heading">{result.ticker}</span>
+            {result.company_name && <span className="text-[10px] text-gray-500 truncate">{result.company_name}</span>}
+            {lastPrice != null && (
+              <span className="flex items-center gap-1">
+                <span className="text-sm font-bold text-white font-mono tabular-nums">${lastPrice.toFixed(2)}</span>
+                {sessionChangePct != null && dayDollarChange != null && (
+                  <span className={`text-[11px] font-semibold font-mono tabular-nums ${dayDollarChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {dayDollarChange >= 0 ? '+' : ''}{dayDollarChange.toFixed(2)} ({sessionChangePct >= 0 ? '+' : ''}{sessionChangePct.toFixed(2)}%)
+                  </span>
+                )}
+              </span>
             )}
+            <span className={`text-[11px] font-semibold ${result.bias === 'short' ? 'text-rose-400' : 'text-emerald-400'}`}>
+              · {activeStateNum === 3 ? 'In-Play' : activeStateNum === 4 ? 'Exit Zone' : activeStateNum === 2 ? 'Entry Open' : 'Setup'}
+            </span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {showRefresh && onRefresh && (
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={refreshing}
-                title="Re-scan"
-                className="rounded-lg p-1.5 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-              >
-                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              </button>
+          <div className="flex items-center gap-1 text-[10px] text-gray-600 shrink-0">
+            {typeof m.session_date === 'string' && <span>{m.session_date}</span>}
+            {barDataAgeMinutes != null && barDataAgeMinutes > 0 && (
+              <span className={`ml-1 ${barDataStale ? 'text-amber-500' : ''}`}>· bar {barDataAgeMinutes}m ago</span>
             )}
           </div>
         </div>
+        {barDataStale && barDataWarning && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+            <span className="shrink-0">⚠</span>
+            <span>{barDataWarning}</span>
+          </div>
+        )}
+      </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
-            <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
+      {/* ─── Trade Action Summary ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
+      </div>
+
+      {/* Verdict section */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
                 {formatLabel(result.final_decision)}
               </span>
+              {result.final_decision === 'WAIT' && (() => {
+                const missing = Array.isArray(eg?.pending_confirmations) ? (eg.pending_confirmations as string[]) : []
+                if (missing.length === 0) return null
+                return (
+                  <span className="flex items-center gap-1.5 text-[12px] text-amber-400">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    Waiting for: {missing.slice(0, 2).join(' · ')}
+                  </span>
+                )
+              })()}
+            </div>
+            <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+              <svg viewBox="0 0 52 52" width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={26} cy={26} r={22} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+                <circle cx={26} cy={26} r={22} fill="none" stroke={decisionTone === 'green' ? '#10b981' : decisionTone === 'blue' ? '#3b82f6' : decisionTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={138.23} strokeDashoffset={138.23 - (Math.min(result.confidence ?? 0, 100) / 100) * 138.23} />
+              </svg>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.2 }}>
+                {Math.min(result.confidence ?? 0, 100)}<br /><span style={{ fontSize: 9, color: '#5a6478' }}>CONF</span>
+              </div>
             </div>
           </div>
+          <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{bestNextStep}</div>
+        </div>
+      </div>
+
+      {/* Entry Plan / Risk Profile */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Execution</div>
-            <div className="mt-1">
-              <Badge text={result.execution_readiness || result.execution_timing || 'WAIT'} tone={execTone} />
-            </div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
+            {[
+              { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-sm">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
+              { label: 'Structure', value: (() => {
+                const fd = String(result.final_decision || '').toUpperCase()
+                const dir = result.bias === 'short' ? 'SHORT' : 'LONG'
+                if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{dir + ' · Ready'}</span>
+                if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{dir + ' · Waiting'}</span>
+                if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{dir + ' · Watching'}</span>
+                if (fd === 'AVOID' || fd === 'CONFLICT' || fd === 'NO-GO') return <span className="font-mono text-red-400 text-xs">No trade</span>
+                return <span className="font-mono text-gray-400 text-xs">No trade</span>
+              })()},
+              { label: 'Stop Loss', value: eg?.risk_below != null ? <span className="font-mono font-bold text-red-400 text-sm">${eg.risk_below.toFixed(2)}</span> : <span className="font-mono text-gray-500 text-xs">Not defined until setup forms</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
-            <div className="mt-1">
-              <Badge text={result.risk_state || 'MEDIUM'} tone={toneForRisk(result.risk_state || 'MEDIUM')} />
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
-            <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-none ${getMarketContextBadgeClass(result.market_bias || 'MIXED')}`}>
-                {result.market_bias || 'MIXED'}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Confidence</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{result.display_confidence ?? result.confidence} / 100</div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Next Step</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{bestNextStep}</div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
+            {[
+              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-xs">—</span> },
+              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-xs">{result.risk_state || 'HIGH'}</span> },
+              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-xs">0.8x</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
           </div>
         </div>
+      </div>
 
-        {/* ── Daily Range & R/R row ── */}
+      {/* Exit Plan */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
         {(() => {
-          const rangeUsed  = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct : null
-          const rangePhase = typeof m.daily_range_phase === 'string' ? m.daily_range_phase : null
-          const atr14      = typeof m.atr14 === 'number' ? m.atr14 : null
-          const rrRatio    = typeof m.entry_rr_ratio === 'number' ? m.entry_rr_ratio : null
-          const warning    = typeof m.range_warning === 'string' ? m.range_warning : null
-          if (rangeUsed == null && rrRatio == null) return null
-
-          const phaseTone =
-            rangePhase === 'EXHAUSTED' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' :
-            rangePhase === 'LATE'      ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' :
-            rangePhase === 'MID'       ? 'border-sky-500/40 bg-sky-500/10 text-sky-300' :
-                                         'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-
-          const rrTone =
-            rrRatio == null              ? 'text-gray-500' :
-            rrRatio < 0.5               ? 'text-rose-400' :
-            rrRatio < 1.0               ? 'text-amber-400' :
-                                           'text-emerald-400'
-
-          const rrIcon = rrRatio != null && rrRatio < 0.5 ? '❌' : rrRatio != null && rrRatio < 1.0 ? '⚠️' : '✅'
-
+          type DayExitRule = { trigger: string; price: number; action: string; note: string }
+          const egLocal = result.entry_guidance
+          const exitRules: DayExitRule[] = Array.isArray(egLocal?.exit_rules) ? (egLocal.exit_rules as DayExitRule[]) : []
+          if (exitRules.length > 0) {
+            return (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-2 text-left font-medium">WHEN</th>
+                    <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-2 text-center font-medium pr-3">SIZE</th>
+                    <th className="pb-2 text-left font-medium">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {exitRules.map((rule, i) => {
+                    const isStop    = rule.trigger.toLowerCase().includes('stop')
+                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1') && !isTarget2
+                    const isEOD     = rule.price === 0
+                    const isVwap    = rule.trigger.toLowerCase().includes('vwap')
+                    const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isVwap ? 'text-amber-400' : 'text-slate-400'
+                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isVwap ? 'text-amber-300' : 'text-gray-200'
+                    const size      = isTarget1 ? '½' : (isTarget2 || isStop || isEOD) ? 'Full' : '—'
+                    const sizeCls   = isTarget1 ? 'text-emerald-400' : (isTarget2 || isStop) ? 'text-orange-300' : 'text-gray-500'
+                    return (
+                      <tr key={i}>
+                        <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top w-[30%] text-sm">{rule.trigger}</td>
+                        <td className={`py-2.5 pr-3 text-right font-mono font-bold tabular-nums align-top text-sm ${priceCls}`}>
+                          {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
+                        </td>
+                        <td className={`py-2.5 pr-3 text-center font-bold align-top text-sm ${sizeCls}`}>{size}</td>
+                        <td className="py-2.5 align-top">
+                          <div className={`text-sm font-semibold ${actionCls}`}>{rule.action}</div>
+                          {rule.note ? <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{rule.note}</div> : null}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          }
           return (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {rangeUsed != null && rangePhase && (
-                  <div
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${phaseTone}`}
-                    title={atr14 != null ? `${rangeUsed.toFixed(0)}% of 14-day ATR ($${atr14.toFixed(2)}) consumed today` : undefined}
-                  >
-                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Range Used</span>
-                    <span className="font-mono font-bold">{rangeUsed.toFixed(0)}%</span>
-                    {atr14 != null && (
-                      <span className="text-[10px] opacity-50 font-normal">of ATR</span>
-                    )}
-                    <span className="opacity-60">·</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide">{rangePhase}</span>
-                  </div>
-                )}
-                {rrRatio != null && (
-                  <div className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-700/50 bg-black/15 px-2.5 py-1.5 text-xs font-semibold`}>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-600">R/R</span>
-                    <span className={`font-mono font-bold ${rrTone}`}>{rrRatio.toFixed(1)}:1</span>
-                    <span>{rrIcon}</span>
-                  </div>
-                )}
-              </div>
-              {warning && (
-                <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
-                  rangePhase === 'EXHAUSTED'
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                }`}>
-                  <span className="shrink-0 mt-0.5">⚠️</span>
-                  <span>{warning}</span>
-                </div>
-              )}
-            </div>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                  <th className="pb-2 text-left font-medium">WHEN</th>
+                  <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                  <th className="pb-2 text-left font-medium">ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-xs">Run analysis for detailed exit levels</td></tr>
+              </tbody>
+            </table>
           )
         })()}
+      </div>
 
-        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
-              <BarChart2 size={12} />
-              AI Coach Summary
+      {/* ─── Charts (VWAP + OR) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-400 mb-2">
+          <BarChart2 size={12} />
+          Charts
+        </div>
+        {chartBars && orChartHigh != null && orChartLow != null ? (
+          <div>
+            <DayTradeIntradayChart
+              bars={chartBars}
+              orHigh={orChartHigh}
+              orLow={orChartLow}
+              orMinutes={orMinN}
+              sessionDate={String(m.session_date ?? '')}
+            />
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
+              {eg?.vwap != null && <span>VWAP: <span className="font-mono text-gray-200">${eg.vwap.toFixed(2)}</span></span>}
+              {orChartHigh != null && <span>ORH: <span className="font-mono text-gray-200">${orChartHigh.toFixed(2)}</span></span>}
+              {orChartLow != null && <span>ORL: <span className="font-mono text-gray-200">${orChartLow.toFixed(2)}</span></span>}
+              {lastPrice != null && <span>Last: <span className="font-mono text-gray-200">${lastPrice.toFixed(2)}</span></span>}
             </div>
-            {hasAiCoach && ac!._source && (
-              <span className="text-[9px] text-gray-600 font-mono uppercase tracking-widest">
-                {ac!._source === 'anthropic' ? '⚡ Claude' : ac!._source === 'openai' ? '⚡ GPT' : '◎ engine'}
-              </span>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 py-2">Chart data not available for this session.</p>
+        )}
+      </div>
+
+      {/* ─── Decision Chart (collapsible) ─── */}
+      <button
+        type="button"
+        onClick={() => setDecisionOpen(p => !p)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-800 bg-transparent border-none cursor-pointer text-left"
+      >
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">
+          <BarChart2 size={12} />
+          Decision Chart
+        </div>
+        <ChevronDown size={14} className={`text-gray-500 transition-transform shrink-0 ${decisionOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {decisionOpen && (
+      <div className="px-4 py-3 border-b border-gray-800">
+        <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
+        {hasAiCoach && (
+          <div className="mt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-emerald-500 mb-1">Entry Condition</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.entry_condition}</div>
+              </div>
+              <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-rose-500 mb-1">Invalidation</div>
+                <div className="text-[11px] text-gray-200 leading-snug">{ac!.invalidation}</div>
+              </div>
+            </div>
+            {ac!.confluence?.detected && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>{ac!.confluence.strength}</span>
+                  <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            {ac!.decision_tree.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
+                {ac!.decision_tree.map((node, i) => {
+                  const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                    node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                    node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
+                    'text-gray-400 border-gray-700/50 bg-gray-900/30'
+                  return (
+                    <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
+                      <span className="font-semibold">IF</span> {node.if} →{' '}
+                      <span className="font-semibold">THEN</span> {node.then}
+                      <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
+        )}
+      </div>
+      )}
+
+        {/* AI Coach Summary (collapsible) */}
+        <button
+          type="button"
+          onClick={() => setAiCoachOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-800 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">
+            <BarChart2 size={12} />
+            AI Coach Summary
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform shrink-0 ${aiCoachOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {aiCoachOpen && (
+        <div className="px-4 py-3 border-b border-gray-800">
+        <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-3">
           <p className="text-xs text-gray-200 leading-relaxed">{intradaySummary}</p>
 
-          {/* Entry condition + invalidation — from ai_coach when available */}
           {hasAiCoach && (
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-800/80 bg-black/20 px-2.5 py-2">
@@ -975,31 +1154,18 @@ export default function DayTradeEnginePanel({
             </div>
           )}
 
-          {/* Confluence Zone */}
           {hasAiCoach && ac!.confluence?.detected && (
             <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${
-                  ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' :
-                  'bg-amber-500/10 text-amber-400/80'
-                }`}>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${ac!.confluence.strength === 'EXTREME' ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-500/10 text-amber-400/80'}`}>
                   {ac!.confluence.strength}
                 </span>
-                <span className="text-[10px] font-semibold text-amber-300">
-                  {ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}
-                </span>
-                <span className="ml-auto text-[10px] text-amber-400/60">
-                  {ac!.confluence.levels_converging.join(' + ')}
-                </span>
+                <span className="text-[10px] font-semibold text-amber-300">{ac!.confluence.zone_role} ZONE ${ac!.confluence.zone_price.toFixed(2)}</span>
+                <span className="ml-auto text-[10px] text-amber-400/60">{ac!.confluence.levels_converging.join(' + ')}</span>
               </div>
-              {ac!.confluence_note && (
-                <div className="mt-1 text-[10px] text-gray-400">{ac!.confluence_note}</div>
-              )}
-              {/* Entry gate status */}
+              {ac!.confluence_note && <div className="mt-1 text-[10px] text-gray-400">{ac!.confluence_note}</div>}
               {ac!.entry_gate && (
-                <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
-                  ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-slate-500 dark:text-gray-500'
-                }`}>
+                <div className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${ac!.entry_gate.valid ? 'text-semantic-bullish' : 'text-slate-500 dark:text-gray-500'}`}>
                   <span>{ac!.entry_gate.valid ? '✓' : '○'}</span>
                   <span>{ac!.entry_gate.valid ? 'Entry valid' : 'Entry not yet valid'} — {ac!.entry_gate.trigger_condition}</span>
                 </div>
@@ -1007,382 +1173,68 @@ export default function DayTradeEnginePanel({
             </div>
           )}
 
-          {/* Trade R/R */}
           {hasAiCoach && ac!.trade && ac!.trade.direction !== 'NONE' && ac!.trade.entry_price > 0 && (
-            <div className="mt-2 grid grid-cols-4 gap-1">
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1">
               {[
                 { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
                 { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
                 { label: 'Stop', value: `$${ac!.trade.stop.toFixed(2)}` },
-                { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`,
-                  highlight: ac!.trade.r_r_valid },
+                { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`, highlight: ac!.trade.r_r_valid },
               ].map(({ label, value, highlight }) => (
-                <div key={label} className={`rounded border px-2 py-1 text-center ${
-                  highlight ? 'border-semantic-bullish/30 bg-semantic-bullish/5' : 'border-gray-800/60 bg-black/20'
-                }`}>
+                <div key={label} className={`rounded border px-2 py-1 text-center ${highlight ? 'border-semantic-bullish/30 bg-semantic-bullish/5' : 'border-gray-800/60 bg-black/20'}`}>
                   <div className="text-[9px] text-gray-500">{label}</div>
-                  <div className={`text-[11px] font-mono font-semibold ${
-                    highlight ? 'text-semantic-bullish' : 'text-gray-200'
-                  }`}>{value}</div>
+                  <div className={`text-[11px] font-mono font-semibold ${highlight ? 'text-semantic-bullish' : 'text-gray-200'}`}>{value}</div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* No-trade reason */}
           {hasAiCoach && ac!.no_trade_reason && (
             <div className="mt-1.5 rounded border border-slate-300 dark:border-gray-700/40 bg-slate-50 dark:bg-black/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-300">
               ⚠ {ac!.no_trade_reason}
             </div>
           )}
 
-          {/* Decision Tree — IF/THEN nodes */}
           {hasAiCoach && ac!.decision_tree.length > 0 && (
             <div className="space-y-1.5">
               <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Decision Tree</div>
               {ac!.decision_tree.map((node, i) => {
-                const actionColor =
-                  node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
-                  node.action === 'EXIT'  ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
+                const actionColor = node.action === 'ENTER' ? 'text-emerald-400 border-emerald-700/50 bg-emerald-950/30' :
+                  node.action === 'EXIT' ? 'text-rose-400 border-rose-700/50 bg-rose-950/30' :
                   node.action === 'AVOID' ? 'text-amber-400 border-amber-700/50 bg-amber-950/30' :
                   'text-gray-400 border-gray-700/50 bg-gray-900/30'
                 return (
                   <div key={i} className={`rounded-lg border px-2.5 py-2 text-[11px] ${actionColor}`}>
                     <span className="font-semibold">IF</span> {node.if} →{' '}
                     <span className="font-semibold">THEN</span> {node.then}
-                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>
-                      {node.action}
-                    </span>
+                    <span className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${actionColor}`}>{node.action}</span>
                   </div>
                 )
               })}
             </div>
           )}
 
-          <div className="text-[11px] text-semantic-accent leading-relaxed">
-            Best setup: {bestNextStep}
-          </div>
+          <div className="text-[11px] text-semantic-accent leading-relaxed">Best setup: {bestNextStep}</div>
         </div>
-
-        {/* ═══ 4-State Trading System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
-        {(() => {
-          const state = eg?.state || ''
-          const activeMap: Record<string, number> = {
-            'WAIT_FOR_VWAP_HOLD': 1, 'WAIT_FOR_VWAP_BREAK': 1,
-            'WAIT_FOR_BREAKOUT': 1, 'WAIT_FOR_BREAKDOWN': 1,
-            'MONITORING': 1,
-            'WAIT_FOR_VOLUME': 2, 'VWAP_TEST': 2,
-            'ENTRY_ACTIVE': 3, 'ENTRY_RETEST': 3, 'ENTRY_PULLBACK': 3,
-            'EOD_CLOSING': 4,
-          }
-          const activeState = activeMap[state] ?? 1
-          const stateCls = (n: number) =>
-            n === activeState
-              ? 'ring-2 ring-offset-1 ring-offset-gray-900'
-              : ''
-
-          return (
-          <div className="space-y-1.5">
-          <div className="flex items-center">
-            {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
-              const n = i + 1
-              const isActive = n === activeState
-              const isPast = n < activeState
-              const nodeCls = isActive
-                ? color === 'amber'   ? 'border-amber-400 bg-amber-500/25 text-amber-200 ring-2 ring-amber-400/40 ring-offset-1 ring-offset-gray-900'
-                  : color === 'emerald' ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40 ring-offset-1 ring-offset-gray-900'
-                  : color === 'sky'     ? 'border-sky-400 bg-sky-500/25 text-sky-200 ring-2 ring-sky-400/40 ring-offset-1 ring-offset-gray-900'
-                  :                      'border-red-400 bg-red-500/25 text-red-200 ring-2 ring-red-400/40 ring-offset-1 ring-offset-gray-900'
-                : isPast ? 'border-gray-600 bg-gray-700/50 text-gray-500'
-                : 'border-gray-700 bg-gray-800 text-gray-600'
-              const lblCls = isActive
-                ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
-                : isPast ? 'text-gray-500' : 'text-gray-700'
-              return (
-                <div key={n} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center gap-0.5 flex-1">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${nodeCls}`}>{n}</div>
-                    <span className={`text-[9px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
-                  </div>
-                  {i < 3 && <div className={`h-0.5 w-3 shrink-0 mb-3.5 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
-                </div>
-              )
-            })}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            {/* STATE 1: SETUP */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 1 ? 'border-amber-500/60 bg-amber-950/25 ring-2 ring-amber-500/20' : 'border-amber-700/40 bg-amber-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                STATE 1: SETUP
-                {activeState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-amber-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Watch / Prepare</div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">
-                    {hasAiCoach ? ac!.states.setup.label : (result.bias === 'short' ? 'SHORT bias forming' : 'LONG bias forming')}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {hasAiCoach
-                    ? ac!.states.setup.detail
-                    : result.bias === 'short'
-                      ? eg?.vwap != null && eg?.opening_range_low != null
-                        ? `VWAP $${eg.vwap.toFixed(2)} + ORL $${eg.opening_range_low.toFixed(2)}`
-                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key resistance levels forming'
-                      : eg?.vwap != null && eg?.opening_range_high != null
-                        ? `VWAP $${eg.vwap.toFixed(2)} + ORH $${eg.opening_range_high.toFixed(2)}`
-                        : eg?.vwap != null ? `VWAP $${eg.vwap.toFixed(2)}` : 'Key levels forming'}
-                </div>
-                <div className="text-[10px] text-amber-400/80 font-semibold">
-                  {hasAiCoach
-                    ? ac!.states.setup.key_levels.map(l => `$${l.toFixed(2)}`).join(' · ')
-                    : result.bias === 'short'
-                      ? `watch $${eg?.opening_range_low != null ? eg.opening_range_low.toFixed(2) : 'ORL'}–$${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'} zone`
-                      : `watch $${eg?.vwap != null ? eg.vwap.toFixed(2) : 'VWAP'}–$${eg?.opening_range_high != null ? eg.opening_range_high.toFixed(2) : 'ORH'} zone`}
-                </div>
-              </div>
-              </div>
-            </div>
-            {/* STATE 2: ENTRY */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 2 ? 'border-emerald-500/60 bg-emerald-950/25 ring-2 ring-emerald-500/20' : 'border-emerald-700/40 bg-emerald-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                STATE 2: ENTRY
-                {activeState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Execution Gate</div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 uppercase text-[11px] tracking-wide">{result.bias === 'short' ? 'PUT / SHORT' : 'CALL / LONG'}</span>
-                  <span className="text-violet-300 font-mono text-[12px] font-semibold">
-                    {result.bias === 'short'
-                      ? eg?.breakout_level != null
-                        ? `close & hold <$${eg.breakout_level.toFixed(2)}`
-                        : eg?.vwap != null
-                          ? `<$${eg.vwap.toFixed(2)} — hold below`
-                          : '—'
-                      : eg?.breakout_level != null
-                        ? `close & hold >$${eg.breakout_level.toFixed(2)}`
-                        : eg?.vwap != null
-                          ? `>$${eg.vwap.toFixed(2)} — hold above`
-                          : '—'}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? eg?.opening_range_low != null
-                      ? `sustained below ORL $${eg.opening_range_low.toFixed(2)} — no reclaim`
-                      : eg?.vwap != null
-                        ? `sustained below VWAP $${eg.vwap.toFixed(2)}`
-                        : 'await rejection confirmation'
-                    : eg?.opening_range_high != null
-                      ? `sustained above ORH $${eg.opening_range_high.toFixed(2)}`
-                      : eg?.vwap != null
-                        ? `sustained above VWAP $${eg.vwap.toFixed(2)}`
-                        : 'await breakout confirmation'}
-                </div>
-              </div>
-              </div>
-            </div>
-            {/* STATE 3: ACTIVE */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 3 ? 'border-sky-500/60 bg-sky-950/25 ring-2 ring-sky-500/20' : 'border-sky-700/40 bg-sky-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                STATE 3: IN-PLAY
-                {activeState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-sky-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {eg?.state === 'ENTRY_PULLBACK'
-                  ? 'Pullback — Structure Intact'
-                  : hasAiCoach ? ac!.states.in_play.label : (result.bias === 'short' ? 'Breakdown Active' : 'Breakout Active')}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                {eg?.state === 'ENTRY_PULLBACK' ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-amber-300 text-[11px] uppercase tracking-wide">
-                        ⚠ No New Entries
-                      </span>
-                    </div>
-                    <div className="text-amber-200/80 text-[11px] leading-relaxed font-medium">
-                      {eg?.summary || (result.bias === 'short'
-                        ? 'Price bouncing from session low — hold existing short, do not add.'
-                        : 'Price pulling back from session high — hold existing long, do not add.')}
-                    </div>
-                    <div className="text-gray-400 text-[11px] leading-relaxed">
-                      {eg?.action || (result.bias === 'short'
-                        ? 'Wait for momentum to turn negative before re-entering.'
-                        : 'Wait for momentum to turn positive before re-entering.')}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                      <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                        {hasAiCoach && ac!.states.in_play.target > 0
-                          ? `TP $${ac!.states.in_play.target.toFixed(2)}`
-                          : eg?.scalp_target != null ? `TP $${eg.scalp_target.toFixed(2)}` : '—'}
-                      </span>
-                    </div>
-                    <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                      {hasAiCoach
-                        ? ac!.states.in_play.add_condition
-                        : result.bias === 'short'
-                          ? `trail ORL ${eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : 'level'}, add on weakness below ${eg?.breakout_level != null ? `$${eg.breakout_level.toFixed(2)}` : 'trigger'}`
-                          : `trail ORH ${eg?.opening_range_high != null ? `$${eg.opening_range_high.toFixed(2)}` : 'level'}, add on strength above ${eg?.vwap != null ? `$${eg.vwap.toFixed(2)}` : 'trigger'}`}
-                    </div>
-                  </>
-                )}
-              </div>
-              </div>
-            </div>
-            {/* STATE 4: EXIT */}
-            <div className={`rounded-xl border transition-all duration-200 ${activeState === 4 ? 'border-red-500/60 bg-red-950/25 ring-2 ring-red-500/20' : 'border-red-700/40 bg-red-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
-                STATE 4: EXIT
-                {activeState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 dark:bg-red-500 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-red-700 dark:bg-white animate-pulse shrink-0" />NOW</span>}
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {hasAiCoach ? ac!.states.exit.label : 'Completion / Reset'}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
-                  <span className="text-red-300 font-mono text-[12px] font-semibold">
-                    {hasAiCoach && ac!.states.exit.stop_loss > 0
-                      ? `$${ac!.states.exit.stop_loss.toFixed(2)}`
-                      : eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : '—'}
-                  </span>
-                </div>
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {hasAiCoach
-                    ? ac!.states.exit.exit_condition
-                    : result.bias === 'short'
-                      ? 'VWAP reclaimed above · or ORL closed back above → cover'
-                      : 'VWAP lost below · or ORH closed back below → exit'}
-                  {eg?.scalp_target != null && ` · scale out at TP`}
-                </div>
-              </div>
-              </div>
-            </div>
-          </div>
-          </div>
-          )
-        })()}
-
-        {inPosition && latestPos && (
-          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Check size={14} className="text-amber-400 shrink-0" />
-              <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">Already in Position</span>
-              {latestPos.source && (
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  latestPos.source === 'day'   ? 'border-orange-600/40 bg-orange-900/30 text-orange-300' :
-                  latestPos.source === 'swing' ? 'border-blue-600/40 bg-blue-900/30 text-blue-300' :
-                                                 'border-gray-600/40 bg-gray-800/50 text-gray-400'
-                }`}>{latestPos.source}</span>
-              )}
-              {existingPositions.length > 1 && (
-                <span className="text-[10px] text-amber-400/70">{existingPositions.length} open positions</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-200/80">
-              {latestPos.strategy && <span><span className="text-amber-400/60">Strategy</span> {latestPos.strategy}</span>}
-              {latestPos.contracts > 0 && <span><span className="text-amber-400/60">Contracts</span> {latestPos.contracts}</span>}
-              {latestPos.entryPrice > 0 && <span><span className="text-amber-400/60">Entry px</span> ${latestPos.entryPrice.toFixed(2)}</span>}
-              {latestPos.addedAt && <span><span className="text-amber-400/60">Added</span> {latestPos.addedAt.slice(0, 10)}</span>}
-            </div>
-            <p className="text-[11px] text-amber-200/70 leading-snug">
-              Follow your exit rules — manage this position rather than adding again without a clear plan.
-            </p>
-          </div>
+        </div>
         )}
 
-        <MarketTimeGateBanner tradeType="day" />
-
-        <div className="flex flex-wrap items-center gap-2">
-          {inPosition ? (
-            <button
-              type="button"
-              onClick={onViewPositions}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50`}
-            >
-              <BriefcaseBusiness size={14} />
-              View Positions
-            </button>
-          ) : (
-          <button
-            type="button"
-            onClick={onAddToPortfolio}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${actionButtonClass(decisionTone)}`}
-          >
-            <PlusCircle size={14} />
-            Add to Portfolio
-          </button>
-          )}
-          {onRequestEnterActiveTrade && (
-            <button
-              type="button"
-              onClick={onRequestEnterActiveTrade}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-            >
-              <Activity size={14} />
-              Track Intraday
-            </button>
-          )}
-          {onCreateAlert && (
-            <button
-              type="button"
-              onClick={onCreateAlert}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${getActionButtonClass('alert')}`}
-            >
-              <Bell size={14} />
-              Add Alert
-            </button>
-          )}
-          {onOpenStrategyFinder && (
-            <button
-              type="button"
-              onClick={onOpenStrategyFinder}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}
-            >
-              <BarChart2 size={13} />
-              Strategy Finder
-            </button>
-          )}
-          {onOpenCommandCenter && (
-            <button
-              type="button"
-              onClick={onOpenCommandCenter}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-            >
-              <Layers size={13} />
-              Command Center
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setSignalsOpen(true)
-              signalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              onViewSignals?.()
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-          >
-            <Search size={13} />
-            View Signals
-          </button>
-        </div>
+      {/* ─── Details (collapsible) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step trade workflow — market context, execution, and risk management</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
+      {detailsOpen && (<div>
       <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
@@ -1441,7 +1293,8 @@ export default function DayTradeEnginePanel({
             <ExecMapRow label="ORL" value={eg?.opening_range_low != null ? `$${eg.opening_range_low.toFixed(2)}` : null} tone={orBreakoutTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Breakdown Level' : 'Breakout Level'} value={breakoutLevel != null ? `$${breakoutLevel.toFixed(2)}` : null} tone={breakTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Bounce Zone' : 'Pullback Zone'} value={eg?.pullback_zone ?? null} />
-            <ExecMapRow label="Scalp Target" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
+            <ExecMapRow label="Target 1 — sell ½" value={eg?.scalp_target != null ? `$${eg.scalp_target.toFixed(2)}` : null} tone={scalpTone} />
+            <ExecMapRow label="Target 2 — full exit" value={(eg as {scalp_target_2?: number})?.scalp_target_2 != null ? `$${((eg as {scalp_target_2?: number}).scalp_target_2 as number).toFixed(2)}` : null} tone={scalpTone} />
             <ExecMapRow label={result.bias === 'short' ? 'Stop Above' : 'Stop Below'} value={eg?.risk_below != null ? `$${eg.risk_below.toFixed(2)}` : null} tone={riskTone} />
           </div>
           )
@@ -1843,13 +1696,24 @@ export default function DayTradeEnginePanel({
           ) : null}
         </div>
       </div>
+      </div>)}
 
-      <div ref={signalsSectionRef} className="px-4 py-4 border-b border-gray-800 space-y-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Advanced Diagnostics</div>
-          <h2 className="mt-1 text-sm font-bold text-white">Signal Engine Breakdown</h2>
-          <p className="mt-1 text-xs text-gray-400">Keep the full diagnostic layer, but use it after the trade workflow is clear.</p>
-        </div>
+      {/* ─── Advanced Diagnostics (collapsible) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <button
+          type="button"
+          onClick={() => setDiagnosticsOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">Advanced Diagnostics</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Signal-by-signal breakdown for deep verification</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${diagnosticsOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      <div ref={signalsSectionRef} className={`px-4 py-4 border-b border-gray-800 space-y-3${diagnosticsOpen ? '' : ' hidden'}`}>
         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
           {signals.trend_strength && <SignalRow label="Trend Strength" value={signals.trend_strength.text} tone={signals.trend_strength.tone} />}
           {signals.breakout_quality && <SignalRow label="Breakout Quality" value={signals.breakout_quality.text} tone={signals.breakout_quality.tone} />}

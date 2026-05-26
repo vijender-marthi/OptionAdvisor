@@ -308,7 +308,7 @@ export default function AlertsPage() {
                   {alerts.filter(a => a.emailSent).length} emails sent
                 </span>
               </div>
-              <span className="text-gray-700">Click a ticker to open Strategy Finder on the same expiry as the alert</span>
+              <span className="text-gray-700">Click a ticker to open Position Trading on the same expiry as the alert</span>
             </div>
           </div>
         )}

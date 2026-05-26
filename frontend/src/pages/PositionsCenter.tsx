@@ -36,6 +36,7 @@ import {
 import * as XLSX from 'xlsx'
 
 const TABS = [
+  { id: 'all', label: 'All Positions' },
   { id: 'open', label: 'Open Positions' },
   { id: 'closed', label: 'Closed Positions' },
 ] as const
@@ -183,6 +184,11 @@ function fmtUsd(n: unknown): string {
   return `${sign}$${Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function safeDte(v: unknown, fallback: number = 99): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) && n > 0 && n < 9999 ? n : fallback
+}
+
 function fmtPct(n: unknown): string {
   if (n == null || n === '') return '—'
   const x = typeof n === 'number' ? n : Number(n)
@@ -201,7 +207,7 @@ function deriveAiStatus(pos: PortfolioPosition): string {
   if (pos.status === 'closed') return 'EXIT'
   const bias = (pos.bias || '').toLowerCase()
   const strat = (pos.strategy || '').toLowerCase()
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   if (bias.includes('bull') && strat.includes('call')) return 'HOLD'
   if (bias.includes('bear') && strat.includes('put')) return 'HOLD'
   if ((pos.prob_of_profit ?? 50) >= 70) return 'HOLD'
@@ -214,7 +220,7 @@ function deriveAiStatus(pos: PortfolioPosition): string {
 
 function deriveAiGuidance(pos: PortfolioPosition): string {
   const status = deriveAiStatus(pos)
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   const strat = (pos.strategy || '').toLowerCase()
   const bias = (pos.bias || '').toLowerCase()
   if (status === 'EXIT SOON') return `EXIT SOON — ${dte} DTE remaining. Theta is destroying value daily; close or roll to a later expiry now. If rolling, target ≥ 21 DTE on the new leg.`
@@ -243,7 +249,7 @@ function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
     'Short Put', 'Short Call', 'Covered Call', 'Covered Put',
   ])
   const isCredit = SELLING_STRATS.has(pos.strategy)
-  const dte = pos.dte ?? 0
+  const dte = safeDte(pos.dte, 0)
 
   // ── User-entered execution map levels (highest priority) ─────────────
   // If the trader has entered target1/target2/breakout/stopLoss, use them
@@ -620,11 +626,34 @@ function deriveActionAlert(
   pnlData: { pnl: number; pnl_pct: number } | null | undefined,
   aiAnalysis: AiPositionAnalysis | null | undefined,
 ): ActionAlert {
-  const dte = pos.dte ?? 99
+  const dte = safeDte(pos.dte, 99)
   const pnlPct = pnlData?.pnl_pct ?? 0
   const pnlDollar = pnlData?.pnl ?? 0
   const strat = (pos.strategy || '').toLowerCase()
   const bias = (pos.bias || '').toLowerCase()
+
+  // Day trade positions must close same day — DTE roll logic does not apply.
+  if (deriveEngineSource(pos) === 'day') {
+    const nowEt = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const h = nowEt.getHours(), m = nowEt.getMinutes()
+    const afterClose = h > 15 || (h === 15 && m >= 45)
+    if (afterClose) {
+      return {
+        type: 'EXIT_NOW',
+        label: 'EXIT TODAY',
+        urgency: 'red',
+        reason: 'Day trade — market is closing. Exit now. Do not hold overnight; swing engine may not support this position.',
+      }
+    }
+    if (pnlPct >= 50)
+      return { type: 'SELL_HALF', label: 'TAKE PROFIT', urgency: 'amber', reason: `${pnlPct.toFixed(0)}% gain intraday — take profit or scale out. Day trades do not carry overnight.` }
+    return {
+      type: 'MANAGE',
+      label: 'MANAGE STOP',
+      urgency: 'amber',
+      reason: `Day trade — close by 3:45 PM ET regardless of P&L. Trail stop to session VWAP. Do not hold overnight.`,
+    }
+  }
 
   if (dte <= 5)
     return { type: 'EXIT_NOW', label: 'EXIT NOW', urgency: 'red', reason: `Only ${dte} DTE left — theta is eroding value. Close or roll immediately.` }
@@ -687,8 +716,8 @@ function TradingPositionCard({
   const aiStatus = deriveAiStatus(pos)
   const sourceKind = deriveEngineSource(pos)
   const guidance = deriveAiGuidance(pos)
-  const isExpiringSoon = (pos.dte ?? 99) <= 7
-  const dteForDisplay = pos.dte != null ? String(pos.dte) : '—'
+  const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
+  const dteForDisplay = safeDte(pos.dte, 0) > 0 ? String(safeDte(pos.dte, 99)) : '—'
 
   // For closed positions, always prefer the user-entered realized_pnl over the
   // server-calculated perPositionPnl (which uses the old pnlPct-based formula).
@@ -772,7 +801,7 @@ function TradingPositionCard({
             {pos.bias && <span className="opacity-60">{pos.bias.replace(/_/g, ' ')}</span>}
             <span className="opacity-40">·</span>
             <span>{pos.contracts}× {pos.expiry || '—'}</span>
-            {pos.dte != null && (
+            {safeDte(pos.dte, 0) > 0 && (
               <span className={isExpiringSoon ? 'font-semibold text-amber-400' : ''}>{dteForDisplay} DTE</span>
             )}
             {pos.status === 'open' && creditTotal > 0 && (
@@ -1285,6 +1314,7 @@ export default function PositionsCenter() {
   const [riskFilter, setRiskFilter] = useState<FilterRisk>('all')
   const [sortKey, setSortKey] = useState<SortKey>('dte')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [plFilter, setPlFilter] = useState<'total' | 'week' | 'day' | null>(null)
 
   useEffect(() => {
     const s = searchParams.get('style')?.trim().toLowerCase()
@@ -1356,15 +1386,13 @@ export default function PositionsCenter() {
   const totalPlPct = summary.total_pl_pct ?? summary.total_net_pl_pct
   const dayPl = summary.day_pl
   const dayPlPct = summary.day_pl_pct
+  const weekPl = summary.week_pl
+  const weekPlPct = summary.week_pl_pct
   const capitalUsed = num(summary.total_capital_used)
   const buyingPower = num(summary.buying_power, accountSize)
-  const utilPct =
-    capitalUsed > 0 && buyingPower + capitalUsed > 0
-      ? (capitalUsed / (capitalUsed + buyingPower)) * 100
-      : num(summary.capital_utilization_pct)
-
-  const wlCount = num(summary.watchlist_count)
-  const wlAlerts = num(summary.watchlist_alerts, num(summary.alerts_count))
+  const utilPct = capitalUsed > 0 && buyingPower > 0
+    ? (capitalUsed / (capitalUsed + buyingPower)) * 100
+    : num(summary.capital_utilization_pct)
   const alertCenterN = num(summary.alert_center_count, num(summary.alerts_count))
   const criticalN = num(summary.critical_alerts)
 
@@ -1374,7 +1402,7 @@ export default function PositionsCenter() {
     : regime === 'bearish' ? { label: 'Bearish', cls: getDecisionBadgeClass('AVOID') }
     : { label: 'Mixed', cls: getDecisionBadgeClass('WATCH') }
 
-  const positions = tab === 'open' ? openPortfolio : closedPortfolio
+  const positions = tab === 'open' ? openPortfolio : tab === 'closed' ? closedPortfolio : portfolio
 
   const filtered = useMemo(() => {
     let list = [...positions]
@@ -1563,12 +1591,26 @@ export default function PositionsCenter() {
       </header>
 
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiCard label="Total Net P&L" value={fmtUsd(totalPl)} valueClass={getProfitLossTextClass(num(totalPl))} sub={totalPlPct != null && String(totalPlPct) !== '' ? <span className={getProfitLossTextClass(num(totalPlPct))}>{fmtPct(totalPlPct)}</span> : null} />
-        <KpiCard label="Day P&L" value={fmtUsd(dayPl)} valueClass={getProfitLossTextClass(num(dayPl))} sub={dayPlPct != null && String(dayPlPct) !== '' ? <span className={getProfitLossTextClass(num(dayPlPct))}>{fmtPct(dayPlPct)}</span> : null} />
+        {[
+          { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
+          { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
+          { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
+        ].map(m => (
+          <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
+            className={`rounded-lg border px-3 py-2 text-left transition-all ${
+              plFilter === m.key
+                ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
+                : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
+            }`}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
+            <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
+            {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
+          </button>
+        ))}
         <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
-        <KpiCard label="Watchlist" value={String(wlCount)} sub={<span className="text-tertiary">{wlAlerts} Alerts</span>} />
         <KpiCard label="Alert Center" value={String(alertCenterN)} sub={criticalN > 0 ? <span className="inline-flex items-center gap-1 text-semantic-bearish"><AlertTriangle size={12} />{criticalN} Critical</span> : <span className="text-tertiary">—</span>} />
       </section>
 
@@ -1588,7 +1630,7 @@ export default function PositionsCenter() {
                   tab === t.id ? 'bg-violet-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
                 }`}
               >
-                {t.label} <span className="text-[11px] opacity-70">({t.id === 'open' ? openPortfolio.length : closedPortfolio.length})</span>
+                {t.label} <span className="text-[11px] opacity-70">({t.id === 'open' ? openPortfolio.length : t.id === 'closed' ? closedPortfolio.length : portfolio.length})</span>
               </button>
             ))}
           </div>
@@ -1680,7 +1722,7 @@ export default function PositionsCenter() {
           <div className="text-lg font-semibold text-heading">{positions.length === 0 ? 'No positions yet' : 'No matching positions'}</div>
           <p className="mt-1 text-sm text-tertiary">
             {positions.length === 0
-              ? 'Add positions from the Strategy Finder or ticker analysis pages.'
+              ? 'Add positions from the Position Trading or ticker analysis pages.'
               : 'Try adjusting filters or search query.'}
           </p>
         </div>
@@ -2268,7 +2310,7 @@ function EditPositionModal({
     const entryPrice = parseFloat(form.entryStockPrice) || pos.entryPrice
     const dteVal = form.expiry
       ? Math.ceil((new Date(form.expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
-      : pos.dte
+      : safeDte(pos.dte, 0)
 
     const parsedRealizedPnl = closeRealizedPnl !== '' ? parseFloat(closeRealizedPnl) : undefined
     const parsedRealizedPnlPct = closeRealizedPnlPct !== '' ? parseFloat(closeRealizedPnlPct) : undefined

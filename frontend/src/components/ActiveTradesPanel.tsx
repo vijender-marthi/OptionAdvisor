@@ -103,9 +103,16 @@ export default function ActiveTradesPanel({
       const strikeBit = row.strike != null && row.strike > 0 ? ` $${Number(row.strike).toFixed(0)}` : ''
       const strategy = `${row.side}${strikeBit}`
       const tone = typeof d.badge_tone === 'string' ? d.badge_tone : 'gray'
+      const tradeType = row.trade_type ?? 'day'
+      const isSwing = tradeType === 'swing'
       const badge = (
         <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${dayTradeToneBadgeClass(tone)}`}>
           {d.state ?? '—'}
+        </span>
+      )
+      const typeBadge = (
+        <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${isSwing ? 'border-sky-700/60 bg-sky-900/30 text-sky-400' : 'border-orange-700/60 bg-orange-900/30 text-orange-400'}`}>
+          {isSwing ? 'SWING' : 'DAY'}
         </span>
       )
       const secParts = [d.message, row.intraday_error ? `Tape: ${row.intraday_error}` : '', d.risk_warning].filter(Boolean) as string[]
@@ -119,6 +126,7 @@ export default function ActiveTradesPanel({
         entryRef: `$${row.entry_price.toFixed(2)}`,
         guidancePrimary: (
           <div className="flex flex-wrap items-center gap-2">
+            {typeBadge}
             {badge}
             {d.action ? <span className="text-xs font-semibold text-violet-300">{d.action}</span> : null}
           </div>

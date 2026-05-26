@@ -1,20 +1,65 @@
-import { useState, useEffect, useRef } from 'react'
-import { Star, StarOff, RefreshCw, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react'
-import { analyzeOptions } from '../api/client'
+import React, { useState, useEffect, useRef } from 'react'
+import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
+import { analyzeOptions, analyzeV2, deskApi, saveToJournal } from '../api/client'
+import type { UnifiedAnalysis, DeskAlertCreate } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
+import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
 import SignalPanel from '../components/SignalPanel'
-import RecommendationCard from '../components/RecommendationCard'
-import OptionsChainTable from '../components/OptionsChainTable'
 import PriceChart from '../components/PriceChart'
 import OptionProfitCalculator from '../components/OptionProfitCalculator'
+import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import { useApp } from '../contexts/AppContext'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+
+type Palette = {
+  bgPage: string; bgPanel: string; bgCard: string
+  border: string; borderSub: string
+  muted: string; accent: string; violet: string
+  green: string; red: string; amber: string; purple: string
+  text: string; textInv: string; glassHover: string
+}
+
+const C_DARK: Palette = {
+  bgPage:    '#0A0C10',
+  bgPanel:   '#111318',
+  bgCard:    '#181C23',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  violet:    '#7C5CFC',
+  green:     '#00E5A0',
+  red:       '#FF4D6D',
+  amber:     '#F5A623',
+  purple:    '#6B7FD4',
+  text:      '#E8EBF0',
+  textInv:   '#111827',
+  glassHover:'rgba(255,255,255,0.04)',
+}
+
+const C_LIGHT: Palette = {
+  bgPage:    '#F0F2F5',
+  bgPanel:   '#FFFFFF',
+  bgCard:    '#F8F9FB',
+  border:    '#E5E7EB',
+  borderSub: '#D1D5DB',
+  muted:     '#6B7280',
+  accent:    '#4A7CFF',
+  violet:    '#7C5CFC',
+  green:     '#00A86B',
+  red:       '#DC2626',
+  amber:     '#D97706',
+  purple:    '#6B7FD4',
+  text:      '#111827',
+  textInv:   '#FFFFFF',
+  glassHover:'rgba(0,0,0,0.03)',
+}
 
 const VALID_SAVED_WEEKS = new Set<number>(MULTI_WEEK_TARGETS as readonly number[])
 
@@ -23,7 +68,6 @@ interface LastAnalysisRequest {
   weeksOut: number
   spreadWidth: number | null
   strategyMode: StrategyMode
-  /** Exact chain expiry used for last analyze (optional). */
   chainExpiry?: string | null
 }
 
@@ -70,12 +114,10 @@ function loadLastAnalysisRequest(): LastAnalysisRequest | null {
 function saveLastAnalysisRequest(request: LastAnalysisRequest) {
   try {
     localStorage.setItem(OA_LAST_OPTION_ANALYSIS_KEY, JSON.stringify(request))
-  } catch {
-    /* ignore storage failures */
-  }
+  } catch { /* ignore storage failures */ }
 }
 
-// ─── Global week selector ─────────────────────────────────────────────────────
+// ─── Week selector helpers ─────────────────────────────────────────────────
 
 function bestVerdict(vs: Verdict[]): Verdict | null {
   if (vs.includes('GO'))      return 'GO'
@@ -84,21 +126,8 @@ function bestVerdict(vs: Verdict[]): Verdict | null {
   return null
 }
 
-const VERDICT_DOT: Record<Verdict, string> = {
-  'GO':      'bg-emerald-500',
-  'CAUTION': 'bg-amber-500',
-  'NO GO':   'bg-red-500',
-}
-const VERDICT_ICON: Record<Verdict, React.ReactNode> = {
-  'GO':      <CheckCircle2 size={11} className="text-emerald-400" />,
-  'CAUTION': <AlertTriangle size={11} className="text-amber-400" />,
-  'NO GO':   <XCircle size={11} className="text-red-400" />,
-}
-const VERDICT_TEXT: Record<Verdict, string> = {
-  'GO':      'text-emerald-400',
-  'CAUTION': 'text-amber-400',
-  'NO GO':   'text-red-400',
-}
+const scoreColor = (s: number, C: Palette) =>
+  s >= 75 ? C.green : s >= 55 ? C.amber : C.red
 
 interface WeekSlot {
   weeksOut: number
@@ -112,11 +141,10 @@ interface WeekSlot {
 function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
   const slots = new Map<string, WeekSlot>()
 
-  // Primary entry
   if (entry.data.recommendations.length > 0) {
     const dte = entry.data.recommendations[0].dte
     const label = `${entry.weeksOut}w`
-    const verdicts = entry.data.recommendations.map(r =>
+    const verdicts = entry.data.recommendations.map((r: typeof entry.data.recommendations[0]) =>
       deriveVerdict(buildChecklist(r, entry.data.signals))
     )
     slots.set(label, { weeksOut: entry.weeksOut, label, dte, verdict: bestVerdict(verdicts), recCount: verdicts.length, hasData: true })
@@ -124,154 +152,177 @@ function buildWeekSlots(entry: TickerCacheEntry): WeekSlot[] {
     slots.set(`${entry.weeksOut}w`, { weeksOut: entry.weeksOut, label: `${entry.weeksOut}w`, dte: null, verdict: null, recCount: 0, hasData: true })
   }
 
-  // Multi-week entries
   if (entry.multiWeekData) {
     for (const [weeksOut, mdata] of Object.entries(entry.multiWeekData)) {
       const d = mdata as AnalyzeResponse
       const dte = d.recommendations[0]?.dte ?? null
       const label = `${weeksOut}w`
-      if (slots.has(label)) continue  // don't overwrite primary for the same requested window
-      const verdicts = d.recommendations.map(r => deriveVerdict(buildChecklist(r, d.signals)))
+      if (slots.has(label)) continue
+      const verdicts = d.recommendations.map((r: typeof d.recommendations[0]) => deriveVerdict(buildChecklist(r, d.signals)))
       slots.set(label, { weeksOut: Number(weeksOut), label, dte, verdict: bestVerdict(verdicts), recCount: verdicts.length, hasData: true })
     }
   }
 
-  // Build ordered list for all MULTI_WEEK_TARGETS slots
-  return MULTI_WEEK_TARGETS.map(w => {
+  return MULTI_WEEK_TARGETS.map((w: number) => {
     const label = `${w}w`
     return slots.get(label) ?? { weeksOut: w, label, dte: null, verdict: null, recCount: 0, hasData: false }
   })
 }
 
-function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, loadingWeeks }: {
+function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, loadingWeeks, C }: {
   entry: TickerCacheEntry
   selectedWeeksOut: number
   onSelect: (weeksOut: number) => void
   onFetch: () => void
   fetching: boolean
-  loadingWeeks: Set<number>   // weeks currently being fetched individually
+  loadingWeeks: Set<number>
+  C: Palette
 }) {
   const slots = buildWeekSlots(entry)
   const hasFetched = !!entry.multiWeekData
-  const goCount = slots.filter(s => s.verdict === 'GO').length
+  const goCount = slots.filter((s: WeekSlot) => s.verdict === 'GO').length
+  const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
+  const VERDICT_DOT_COLOR: Record<Verdict, string> = { 'GO': C.green, 'CAUTION': C.amber, 'NO GO': C.red }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl px-3 sm:px-4 py-3">
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 sm:gap-4">
-      <div className="flex items-center gap-1.5 shrink-0">
-        <Layers size={14} className="text-violet-400" />
-        <span className="text-xs font-semibold text-gray-300">Week Filter</span>
+    <div style={{
+      background: C.bgPanel,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: '8px 12px',
+      marginTop: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          fontSize: '0.6rem', fontWeight: 700,
+          textTransform: 'uppercase', letterSpacing: '0.06em', color: C.muted, flexShrink: 0,
+        }}>
+          Week
+        </span>
         {goCount > 0 && (
-          <span className="text-[10px] font-bold bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full ml-1">
-            {goCount} GO
+          <span style={{
+            background: 'rgba(0,229,160,0.1)', border: `1px solid rgba(0,229,160,0.2)`,
+            color: C.green, fontSize: '0.55rem', fontWeight: 700,
+            borderRadius: 20, padding: '1px 6px', flexShrink: 0,
+          }}>
+            {goCount}
           </span>
         )}
-      </div>
 
-      <div className="flex lg:items-center gap-2 flex-1 overflow-x-auto lg:overflow-visible lg:flex-wrap mobile-week-scroll -mx-1 px-1">
-        {slots.map(slot => {
-          const active = selectedWeeksOut === slot.weeksOut
-          const isLoading = loadingWeeks.has(slot.weeksOut)
-          const dotColor = isLoading
-            ? 'bg-violet-400 animate-pulse'
-            : slot.verdict
-            ? VERDICT_DOT[slot.verdict]
-            : slot.hasData ? 'bg-gray-500' : 'bg-gray-600'
-          return (
-            <button
-              key={slot.label}
-              type="button"
-              onClick={() => onSelect(slot.weeksOut)}
-              disabled={isLoading}
-              title={isLoading ? 'Loading…' : !slot.hasData ? 'Click to load this expiry window' : undefined}
-              className={`min-w-[5.25rem] lg:min-w-0 flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[10px] font-bold transition-all ${
-                active
-                  ? 'bg-violet-600/20 border-violet-500 text-violet-300'
-                  : isLoading
-                  ? 'bg-violet-900/10 border-violet-800 opacity-70 cursor-wait'
-                  : slot.hasData
-                  ? 'bg-gray-800/60 border-gray-700 hover:border-gray-500 hover:bg-gray-800 cursor-pointer'
-                  : 'bg-gray-800/40 border-gray-700 hover:border-violet-700 hover:bg-gray-800 cursor-pointer'
-              }`}
-            >
-              {/* dot + week label + actual DTE */}
-              <div className="flex items-center gap-1">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                <span className={active ? 'text-violet-300' : 'text-gray-300'}>{slot.label}</span>
-                {slot.dte !== null && (
-                  <span className="text-gray-600 font-normal">· {slot.dte}d</span>
-                )}
-              </div>
-              {/* verdict / status */}
-              {isLoading ? (
-                <span className="text-violet-400 mt-0.5">loading…</span>
-              ) : slot.hasData ? (
-                slot.verdict ? (
-                  <div className={`flex items-center gap-0.5 mt-0.5 ${VERDICT_TEXT[slot.verdict]}`}>
-                    {VERDICT_ICON[slot.verdict]}
-                    {slot.verdict}
-                  </div>
-                ) : (
-                  <span className="text-gray-600 mt-0.5">no trades</span>
-                )
-              ) : (
-                <span className="text-gray-500 mt-0.5">tap to load</span>
-              )}
-              {/* trade count */}
-              {slot.recCount > 0 && (
-                <span className="text-gray-600 font-normal">{slot.recCount} trade{slot.recCount !== 1 ? 's' : ''}</span>
-              )}
-            </button>
-          )
-        })}
-      </div>
+        {/* Slots */}
+        <div style={{ display: 'flex', gap: 4, flex: 1, overflowX: 'auto' }}>
+          {slots.map((slot: WeekSlot) => {
+            const active = selectedWeeksOut === slot.weeksOut
+            const isLoading = loadingWeeks.has(slot.weeksOut)
+            const dotColor = isLoading
+              ? C.violet
+              : slot.verdict
+              ? VERDICT_DOT_COLOR[slot.verdict]
+              : slot.hasData ? C.muted : C.borderSub
 
-      <button
-        type="button"
-        onClick={onFetch}
-        disabled={fetching}
-        aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
-        title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–6w)'}
-        className="inline-flex h-10 w-full lg:w-10 items-center justify-center bg-gray-800 hover:bg-violet-600/20 border border-gray-700
-                   hover:border-violet-600 text-gray-400 hover:text-violet-300 rounded-xl
-                   transition-colors disabled:opacity-50 shrink-0"
-      >
-        <Layers size={18} className={fetching ? 'animate-pulse text-violet-400' : ''} />
-      </button>
+            return (
+              <button
+                key={slot.label}
+                type="button"
+                onClick={() => onSelect(slot.weeksOut)}
+                disabled={isLoading}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  border: `1px solid ${active ? C.accent : C.borderSub}`,
+                  background: active ? 'rgba(74,124,255,0.1)' : isLoading ? 'rgba(124,92,252,0.05)' : 'transparent',
+                  cursor: isLoading ? 'wait' : 'pointer',
+                  opacity: !slot.hasData && !isLoading ? 0.4 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  width: 5, height: 5, borderRadius: '50%',
+                  background: dotColor,
+                  flexShrink: 0,
+                  animation: isLoading ? 'tdPulse 1.5s infinite' : undefined,
+                }} />
+                <span style={{
+                  fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace',
+                  color: active ? C.accent : C.muted,
+                }}>
+                  {slot.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Fetch all weeks button */}
+        <button
+          type="button"
+          onClick={onFetch}
+          disabled={fetching}
+          aria-label={fetching ? 'Fetching all weeks' : hasFetched ? 'Re-fetch all expiry weeks' : 'Load all expiry weeks'}
+          title={fetching ? 'Fetching…' : hasFetched ? 'Re-fetch all weeks' : 'Load all weeks (2w–6w)'}
+          style={{
+            background: C.violet,
+            color: C.textInv,
+            border: 'none',
+            borderRadius: 8,
+            padding: '6px 14px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            cursor: fetching ? 'wait' : 'pointer',
+            opacity: fetching ? 0.6 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            flexShrink: 0,
+          }}
+        >
+          <Layers size={14} />
+        </button>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
 
+// ─── Main page ─────────────────────────────────────────────────────────────
+
 export default function TickerPage() {
   const {
-    addToWatchlist, removeFromWatchlist, isWatched,
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
+    theme, navigate, user,
   } = useApp()
 
+  const C = theme === 'light' ? C_LIGHT : C_DARK
+
   const [data,          setData]          = useState<AnalyzeResponse | null>(null)
+  const [unifiedAnalysis, setUnifiedAnalysis] = useState<UnifiedAnalysis | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | 'chain'>('chart')
+  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
-  /** Set when live Yahoo/API fetch failed but we kept showing last cached analysis. */
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
   const [lastWidth,     setLastWidth]     = useState<number | null>(5)
   const [lastMode,      setLastMode]      = useState<StrategyMode>('all')
-  /** YYYY-MM-DD when analysis is pinned to an exact expiry (e.g. opened from Alerts). */
   const [lastChainExpiry, setLastChainExpiry] = useState<string | null>(null)
   const [inputTicker,   setInputTicker]   = useState('')
   const [selectedWeeksOut, setSelectedWeeksOut] = useState(4)
+  const [staleBannerOpen, setStaleBannerOpen] = useState(false)
+  const [yahooBannerOpen, setYahooBannerOpen] = useState(false)
 
   const didRun = useRef(false)
   const didRestoreLastAnalysis = useRef(false)
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
+  const [selectedRank, setSelectedRank] = useState<number | null>(null)
+  const [alertOpen, setAlertOpen]       = useState(false)
+  const [journalSaving, setJournalSaving] = useState(false)
 
-  // ── Core analysis function (always hits API) ──────────────────────────────
   const handleAnalyze = async (
     ticker: string,
     weeksOut = 4,
@@ -293,10 +344,7 @@ export default function TickerPage() {
     const ceKey = ceRaw && /^\d{4}-\d{2}-\d{2}$/.test(ceRaw) ? ceRaw : null
     setLastChainExpiry(ceKey)
     const saveReq = {
-      ticker: tickerUpper,
-      weeksOut,
-      spreadWidth,
-      strategyMode,
+      ticker: tickerUpper, weeksOut, spreadWidth, strategyMode,
       ...(ceKey ? { chainExpiry: ceKey } : {}),
     }
     saveLastAnalysisRequest(saveReq)
@@ -305,6 +353,14 @@ export default function TickerPage() {
       setData(result)
       setActiveTab('chart')
       setCached(ticker, result, weeksOut, spreadWidth, strategyMode, ceKey)
+      try {
+        const v2res = await analyzeV2(ticker, 'regular', {
+          weeksOut,
+          spreadWidth: spreadWidth ?? 5,
+          strategyMode,
+        })
+        setUnifiedAnalysis(v2res.data)
+      } catch { /* non-fatal: verdict card will not show */ }
     } catch (e: unknown) {
       const msg = analyzeErrorDetail(e)
       const cached = getCached(tickerUpper)
@@ -335,7 +391,6 @@ export default function TickerPage() {
     }
   }
 
-  // ── Serve from cache if fresh, otherwise fetch ───────────────────────────
   const handleAnalyzeWithCache = (
     ticker: string,
     weeksOut = 4,
@@ -364,9 +419,7 @@ export default function TickerPage() {
       setLastChainExpiry(ceKey)
       saveLastAnalysisRequest({
         ticker: ticker.trim().toUpperCase(),
-        weeksOut,
-        spreadWidth,
-        strategyMode,
+        weeksOut, spreadWidth, strategyMode,
         ...(ceKey ? { chainExpiry: ceKey } : {}),
       })
     } else {
@@ -374,7 +427,6 @@ export default function TickerPage() {
     }
   }
 
-  // ── Auto-run when arriving from Watchlist ─────────────────────────────────
   useEffect(() => {
     if (pendingTicker && !didRun.current) {
       didRun.current = true
@@ -384,9 +436,7 @@ export default function TickerPage() {
       const strategyMode = pendingAnalysisOptions?.strategyMode ?? 'all'
       const force = pendingAnalysisOptions?.force ?? false
       const rawCe = pendingAnalysisOptions?.chainExpiry
-      const chainExpiry = typeof rawCe === 'string' && rawCe.trim()
-        ? rawCe.trim().slice(0, 10)
-        : null
+      const chainExpiry = typeof rawCe === 'string' && rawCe.trim() ? rawCe.trim().slice(0, 10) : null
       const chainExpiryNorm = chainExpiry && /^\d{4}-\d{2}-\d{2}$/.test(chainExpiry) ? chainExpiry : null
       const fsRaw = pendingAnalysisOptions?.focusStrategy
       const feRaw = pendingAnalysisOptions?.focusExpiry
@@ -409,12 +459,10 @@ export default function TickerPage() {
     if (!pendingTicker) didRun.current = false
   }, [pendingTicker])
 
-  // ── Browser refresh restore: keep the ticker/form and fetch fresh data ─────
   useEffect(() => {
     if (pendingTicker || didRestoreLastAnalysis.current) return
     const last = loadLastAnalysisRequest()
     if (!last) return
-
     didRestoreLastAnalysis.current = true
     setInputTicker(last.ticker)
     setLastWeeks(last.weeksOut)
@@ -425,31 +473,6 @@ export default function TickerPage() {
     handleAnalyze(last.ticker, last.weeksOut, last.spreadWidth, last.strategyMode, last.chainExpiry ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTicker])
-
-  // ── Watchlist toggle ──────────────────────────────────────────────────────
-  const watched = data ? isWatched(data.ticker) : false
-
-  const toggleWatchlist = () => {
-    if (!data) return
-    if (watched) {
-      removeFromWatchlist(data.ticker)
-    } else {
-      if (
-        !addToWatchlist({
-          ticker: data.ticker,
-          companyName: data.company_name,
-          sector: data.sector,
-          lastPrice: data.signals.current_price,
-        })
-      )
-        return
-    }
-  }
-
-  // ── Manual refresh (bypass cache) ────────────────────────────────────────
-  const handleRefresh = () => {
-    if (data) handleAnalyze(data.ticker, lastWeeks, lastWidth, lastMode, lastChainExpiry)
-  }
 
   const cacheEntry = data ? tickerCache[data.ticker] : null
   const selectedData =
@@ -475,37 +498,188 @@ export default function TickerPage() {
     if (match) setScrollFocusRank(match.rank)
   }, [loading, selectedData, data])
 
-  return (
-    <div className="ticker-page min-h-screen p-3 sm:p-4 md:p-6">
-      <div className="max-w-6xl mx-auto space-y-4">
+  const cardStyle: React.CSSProperties = {
+    background: C.bgPanel,
+    border: `1px solid ${C.border}`,
+    borderRadius: 14,
+    padding: '16px 20px',
+    marginTop: 14,
+  }
 
-        <TickerInput
-          onAnalyze={handleAnalyzeWithCache}
-          loading={loading}
-          initialTicker={inputTicker}
-          initialWeeks={lastWeeks}
-          initialSpreadWidth={lastWidth}
-          initialStrategyMode={lastMode}
-        />
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  return (
+    <div className="ticker-page min-h-screen p-4 md:p-6" style={{ background: C.bgPage }}>
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
+        {/* Mobile/tablet search toggle */}
+        <button
+          type="button"
+          onClick={() => setSearchOpen(p => !p)}
+          className="lg:hidden w-full flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-secondary"
+        >
+          <Search size={16} />
+          {searchOpen ? 'Hide search' : 'Show search'}
+        </button>
+
+        {/* Left: Search panel */}
+        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6`}>
+          {/* Page header */}
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `${C.violet}20`, border: `1px solid ${C.violet}60`, color: C.violet }}>
+                  <Layers size={16} />
+                </div>
+                <h1 className="text-sm font-bold tracking-tight" style={{ color: C.text }}>Position Trading</h1>
+                <span className="rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide" style={{ background: `${C.violet}15`, border: `1px solid ${C.violet}40`, color: C.violet }}>Regular</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-snug" style={{ color: C.muted }}>Multi-week options — strikes, spreads, R:R, EV scoring, and pre-trade checklist.</p>
+            </div>
+          </div>
+
+          {/* Badge strip */}
+          {!loading && data && displayData && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+              {/* Live / cache badge */}
+              {fromCache ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: C.purple, background: 'rgba(107,127,212,0.08)', border: `1px solid rgba(107,127,212,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  <Database size={10} />
+                  {fromCache.fresh ? `Cached · ${fromCache.age === 0 ? 'just now' : `${fromCache.age}m ago`}` : 'Stale cache'}
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: C.green, background: 'rgba(0,229,160,0.08)', border: `1px solid rgba(0,229,160,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green }} />
+                  Live
+                </span>
+              )}
+              {/* Strategy mode badge */}
+              {lastMode !== 'all' && (
+                <span style={{ fontSize: '0.65rem', color: C.violet, background: 'rgba(124,92,252,0.08)', border: `1px solid rgba(124,92,252,0.2)`, borderRadius: 20, padding: '2px 8px' }}>
+                  {lastMode === 'long_only'         ? '📈 Long Only'
+                   : lastMode === 'credit_only'      ? '💰 Credit'
+                   : lastMode === 'straddle_only'    ? '⚡ Straddle'
+                   : lastMode === 'short_or_covered' ? '🎯 Short/Covered'
+                   : 'Filter'}
+                </span>
+              )}
+              {/* IV rank warning badge */}
+              {lastMode === 'all' && displayData.signals.iv_rank >= 50 && (
+                <span style={{ fontSize: '0.65rem', color: C.amber, background: 'rgba(245,166,35,0.08)', border: `1px solid rgba(245,166,35,0.2)`, borderRadius: 20, padding: '2px 8px' }}
+                  title="IV Rank ≥ 50% — Long Call/Put suppressed in All Strategies mode">
+                  ⚠️ IV {displayData.signals.iv_rank.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          )}
+          <TickerInput
+            onAnalyze={handleAnalyzeWithCache}
+            loading={loading}
+            initialTicker={inputTicker}
+            initialWeeks={lastWeeks}
+            initialSpreadWidth={lastWidth}
+            initialStrategyMode={lastMode}
+          />
+          {/* Data quality banners */}
+          {!loading && data && displayData && (
+            <div style={{ marginTop: 8 }}>
+              {staleSnapshotInfo && (
+                <div style={{ marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setStaleBannerOpen(p => !p)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: C.amber, fontWeight: 600, fontSize: '0.72rem', padding: 0 }}
+                  >
+                    <AlertTriangle size={14} />
+                    {staleBannerOpen ? 'Hide' : 'Market data stale — click for details'}
+                  </button>
+                  {staleBannerOpen && (
+                    <div style={{ borderRadius: 8, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '8px 10px', marginTop: 4, fontSize: '0.72rem' }}>
+                      <p style={{ color: 'rgba(245,166,35,0.8)', lineHeight: 1.5 }}>
+                        Snapshot from{' '}
+                        <span style={{ fontFamily: 'monospace', color: C.text }}>
+                          {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                        . {staleSnapshotInfo.errorDetail}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {displayData.quote_quality_summary?.banner_show &&
+                (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setYahooBannerOpen(p => !p)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: C.amber, fontWeight: 600, fontSize: '0.72rem', padding: 0 }}
+                  >
+                    <AlertTriangle size={14} />
+                    {yahooBannerOpen ? 'Hide' : 'Yahoo data may be incomplete — click'}
+                  </button>
+                  {yahooBannerOpen && (
+                    <div style={{ borderRadius: 8, border: `1px solid rgba(245,166,35,0.3)`, background: 'rgba(245,166,35,0.06)', padding: '8px 10px', marginTop: 4, fontSize: '0.72rem' }}>
+                      <div style={{ fontWeight: 600, color: C.amber, marginBottom: 4 }}>Yahoo option data looks incomplete or stale</div>
+                      <ul style={{ paddingLeft: 14, color: 'rgba(245,166,35,0.8)', lineHeight: 1.5, margin: 0 }}>
+                        {displayData.quote_quality_summary.banner_lines.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                      <p style={{ fontSize: '0.68rem', color: 'rgba(245,166,35,0.5)', marginTop: 6 }}>
+                        Tap refresh after a minute or confirm strikes with your broker.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Week selector + fetch */}
+          {data && !loading && cacheEntry && (
+            <WeekSelector
+              entry={cacheEntry}
+              selectedWeeksOut={selectedWeeksOut}
+               onSelect={(w) => {
+                 setSelectedWeeksOut(w)
+                 const hasData = !!cacheEntry.multiWeekData?.[w] || cacheEntry.weeksOut === w
+                 if (!hasData) fetchSingleWeek(data.ticker, w)
+                 try { analyzeV2(data.ticker, 'regular', { weeksOut: w }).then(r => setUnifiedAnalysis(r.data)) } catch { /* non-fatal */ }
+               }}
+              onFetch={() => fetchAllWeeks(data.ticker)}
+              fetching={fetchingAllWeeks.has(data.ticker)}
+              loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
+              C={C}
+            />
+          )}
+
+        </div>
+
+        {/* Right: Content */}
+        <div className="flex-1 min-w-0 w-full">
 
         {/* Loading */}
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <svg className="animate-spin h-10 w-10 text-violet-500" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', gap: 16 }}>
+            <svg style={{ animation: 'spin 1s linear infinite', width: 40, height: 40, color: C.violet }} fill="none" viewBox="0 0 24 24">
+              <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span className="text-gray-400 text-lg">Running systematic analysis…</span>
-            <span className="text-gray-500 text-sm">Fetching options chain · Computing signals · Scoring trades</span>
+            <span style={{ color: C.text, fontSize: '1.05rem' }}>Running systematic analysis…</span>
+            <span style={{ color: C.muted, fontSize: '0.85rem' }}>Fetching options chain · Computing signals · Scoring trades</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }`}</style>
           </div>
         )}
 
         {/* Error */}
         {!loading && error && (
-          <div className="bg-red-900/20 border border-red-800 rounded-2xl p-5">
-            <div className="text-red-400 font-semibold mb-1">⚠️ Analysis Failed</div>
-            <div className="text-red-300 text-sm">{error}</div>
-            <div className="text-gray-500 text-xs mt-2">
+          <div style={{
+            background: 'rgba(255,77,109,0.08)', border: `1px solid rgba(255,77,109,0.25)`,
+            borderRadius: 12, padding: '16px 20px', marginTop: 14,
+          }}>
+            <div style={{ color: C.red, fontWeight: 600, marginBottom: 6 }}>⚠️ Analysis Failed</div>
+            <div style={{ color: 'rgba(255,77,109,0.8)', fontSize: '0.875rem' }}>{error}</div>
+            <div style={{ color: C.muted, fontSize: '0.75rem', marginTop: 8 }}>
               Common issues: Invalid ticker · No options available · Market closed
             </div>
           </div>
@@ -514,258 +688,368 @@ export default function TickerPage() {
         {/* Results */}
         {!loading && data && displayData && (
           <>
-            {staleSnapshotInfo && (
-              <div className="rounded-2xl border border-amber-700/55 bg-amber-950/35 px-4 py-3 flex gap-3">
-                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" aria-hidden />
-                <div className="min-w-0 text-sm">
-                  <div className="font-semibold text-amber-200">Latest market data did not load</div>
-                  <p className="text-amber-100/90 mt-1 leading-relaxed">
-                    Showing your last successful analysis snapshot from{' '}
-                    <span className="font-mono text-white whitespace-nowrap">
-                      {new Date(staleSnapshotInfo.cachedAt).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
+
+
+
+
+            {/* Ticker header bar */}
+            <div className="dt-card" style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>{displayData.ticker}</span>
+                  {displayData.company_name && <span className="dt-muted" style={{ fontSize: '0.78rem', color: C.muted }}>{displayData.company_name}</span>}
+                  <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${displayData.signals.current_price.toFixed(2)}</span>
+                  {displayData.signals.price_change != null && (
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: displayData.signals.price_change >= 0 ? '#00E5A0' : '#FF4D6D' }}>
+                      {displayData.signals.price_change >= 0 ? '▲' : '▼'} {Math.abs(displayData.signals.price_change).toFixed(2)} ({displayData.signals.price_change_pct > 0 ? '+' : ''}{displayData.signals.price_change_pct.toFixed(2)}%)
                     </span>
-                    . Cached data was kept until a new request succeeds.
-                  </p>
-                  <p className="text-amber-200/75 text-xs mt-2 font-mono break-words">{staleSnapshotInfo.errorDetail}</p>
+                  )}
+                  {!!displayData.signals.ext_market_price && (
+                    <>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: '1px solid #6B7FD4', color: '#6B7FD4', background: 'rgba(107,127,212,0.08)' }}>
+                        {displayData.signals.ext_market_type === 'pre' ? 'Pre' : 'AH'}
+                      </span>
+                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${displayData.signals.ext_market_price.toFixed(2)}</span>
+                      {!!displayData.signals.ext_market_change && (
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: (displayData.signals.ext_market_change ?? 0) >= 0 ? '#00A86B' : '#D0312D' }}>
+                          {(displayData.signals.ext_market_change ?? 0) >= 0 ? '▲' : '▼'}{Math.abs(displayData.signals.ext_market_change ?? 0).toFixed(2)} ({(displayData.signals.ext_market_change_pct ?? 0) >= 0 ? '+' : ''}{(displayData.signals.ext_market_change_pct ?? 0).toFixed(2)}%)
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
-            {displayData.quote_quality_summary?.banner_show &&
-              (displayData.quote_quality_summary.banner_lines?.length ?? 0) > 0 && (
-              <div className="rounded-2xl border border-amber-700/55 bg-amber-950/35 px-4 py-3 flex gap-3">
-                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" aria-hidden />
-                <div className="min-w-0 text-sm">
-                  <div className="font-semibold text-amber-200">Yahoo option data looks incomplete or stale</div>
-                  <ul className="mt-2 space-y-1.5 text-amber-100/90 leading-relaxed list-disc pl-4">
-                    {displayData.quote_quality_summary.banner_lines.map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-amber-200/75 mt-3">
-                    Data comes from Yahoo Finance — when bid/ask are missing or Yahoo serves cached last prices,
-                    mids and signals can drift. Tap refresh after a minute or confirm strikes with your broker.
-                  </p>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: '0.6rem', color: C.muted }}>Bias</div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: displayData.signals.directional_bias?.includes('Bullish') ? '#00A86B' : displayData.signals.directional_bias?.includes('Bearish') ? '#D0312D' : '#6B7280' }}>{displayData.signals.directional_bias || '—'}</div>
+                  <div style={{ fontSize: '0.6rem', color: C.muted }}>{displayData.signals.bias_confidence ?? 0}%</div>
                 </div>
-              </div>
-            )}
-            {/* Header bar: cache badge + watchlist + refresh */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              {fromCache ? (
-                <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                                bg-blue-900/20 border-blue-800 text-blue-400">
-                  <Database size={12} />
-                  {fromCache.fresh
-                    ? `Cached · ${fromCache.age === 0 ? 'just now' : `${fromCache.age}m ago`}`
-                    : 'Stale cache'}
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                                bg-emerald-900/20 border-emerald-800 text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-                  Live data
-                </div>
-              )}
-
-              {/* Strategy mode badge */}
-              {lastMode !== 'all' ? (
-                <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                                bg-violet-900/20 border-violet-800 text-violet-400">
-                  {lastMode === 'long_only'         ? '📈 Long Options Only'
-                   : lastMode === 'credit_only'      ? '💰 Credit Spreads Only'
-                   : lastMode === 'straddle_only'    ? '⚡ Straddles Only'
-                   : lastMode === 'short_or_covered' ? '🎯 Short / Covered Only'
-                   : 'Strategy filter'}
-                </div>
-              ) : (
-                /* In "All" mode + HIGH IV: show why Long Calls/Puts are suppressed */
-                displayData.signals.iv_rank >= 50 && (
-                  displayData.signals.directional_bias.toLowerCase().includes('bullish') ||
-                  displayData.signals.directional_bias.toLowerCase().includes('bearish')
-                ) && (
-                  <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border
-                                  bg-amber-900/20 border-amber-800/60 text-amber-400/90"
-                    title="In All Strategies mode, naked Long Calls/Puts are suppressed when IV Rank ≥ 50 to prevent buying expensive premium that can be crushed post-catalyst. Switch to Long Options mode to override.">
-                    ⚠️ IV Rank {displayData.signals.iv_rank.toFixed(0)}% — Long Call/Put suppressed
-                    <span className="text-amber-600 ml-1">· use Long Options mode to unlock</span>
-                  </div>
-                )
-              )}
-
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  aria-label="Refresh analysis"
-                  title="Refresh"
-                  className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 border border-gray-700
-                             text-gray-400 hover:text-gray-200 hover:border-gray-600 rounded-xl transition-colors justify-self-center sm:justify-self-auto disabled:opacity-50"
-                >
-                  <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleWatchlist}
-                  aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
-                  title={watched ? 'Remove from watchlist' : 'Add to watchlist'}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-all justify-self-center sm:justify-self-auto ${
-                    watched
-                      ? 'bg-amber-900/30 border-amber-700 text-amber-400 hover:bg-red-900/20 hover:border-red-700 hover:text-red-400'
-                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-amber-600 hover:text-amber-400'
-                  }`}
-                >
-                  {watched ? <StarOff size={18} /> : <Star size={18} />}
-                </button>
               </div>
             </div>
 
-            <MarketOverview
-              ticker={displayData.ticker}
-              companyName={displayData.company_name}
-              sector={displayData.sector}
-              marketCap={displayData.market_cap}
-              signals={displayData.signals}
-            />
+            {/* Verdict card + signals */}
+            {unifiedAnalysis && (
+              <UnifiedVerdictCard analysis={unifiedAnalysis} />
+            )}
+            {(() => {
+              const s = displayData.signals
+              const rsiColor = s.rsi >= 70 ? '#D0312D' : s.rsi <= 30 ? '#00A86B' : C.text
+              const ivColor = s.iv_rank >= 65 ? '#D0312D' : s.iv_rank < 35 ? '#00A86B' : '#D4A017'
+              const pill: React.CSSProperties = { fontSize: '0.68rem', padding: '2px 8px', borderRadius: 4, fontWeight: 600, fontFamily: 'monospace', border: '1px solid rgba(148,163,184,0.2)' }
+              return (
+              <div className="dt-card" style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ ...pill, color: s.trend?.includes('Bullish') ? '#00A86B' : s.trend?.includes('Bearish') ? '#D0312D' : '#6B7280' }}>Trend: {s.trend}</span>
+                  <span style={{ ...pill, color: rsiColor }}>RSI: {s.rsi.toFixed(1)} {s.rsi_signal}</span>
+                  <span style={{ ...pill, color: ivColor }}>IV Rank: {s.iv_rank.toFixed(0)}% {s.iv_environment}</span>
+                  <span style={{ ...pill, color: s.iv_vs_hv > 0 ? '#D0312D' : '#00A86B' }}>IV/HV: {s.iv_vs_hv > 0 ? '+' : ''}{s.iv_vs_hv.toFixed(1)}% ({s.iv_vs_hv > 0 ? 'rich' : 'cheap'})</span>
+                  <span style={{ ...pill, color: s.pcr_signal === 'Bearish' ? '#D0312D' : s.pcr_signal === 'Bullish' ? '#00A86B' : '#6B7280' }}>P/C: {s.put_call_ratio.toFixed(2)} {s.pcr_signal}</span>
+                  <span style={{ ...pill, color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : s.volatility_regime === 'Buy Premium' ? '#00A86B' : C.text }}>Vol: {s.volatility_regime}</span>
+                </div>
+                {s.volatility_regime && (
+                  <div style={{ marginTop: 6, fontSize: '0.72rem', color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : '#00A86B' }}>
+                    {s.volatility_regime === 'Sell Premium' ? '⚡' : '💰'} IV Rank {s.iv_rank.toFixed(0)}% · {s.volatility_regime === 'Sell Premium' ? `IV ${s.iv_vs_hv.toFixed(1)}% above HV · Credit strategies favored` : 'Options relatively cheap · Debit strategies favored'}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span style={{ fontSize: '0.68rem', color: C.muted, alignSelf: 'center' }}>MAs:</span>
+                  <span style={{ ...pill, color: s.above_ma20 ? '#00A86B' : '#D0312D' }}>{s.above_ma20 ? '▲' : '▼'} MA20 ${s.ma20.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma50 ? '#00A86B' : '#D0312D' }}>{s.above_ma50 ? '▲' : '▼'} MA50 ${s.ma50.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma200 ? '#00A86B' : '#D0312D' }}>{s.above_ma200 ? '▲' : '▼'} MA200 ${s.ma200.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.ma50_slope > 0 ? '#00A86B' : '#D0312D' }}>MA50 slope: {s.ma50_slope > 0 ? '↑' : '↓'} {Math.abs(s.ma50_slope).toFixed(2)}%</span>
+                  <span style={{ ...pill, color: s.macd_crossover === 'Bullish' ? '#00A86B' : s.macd_crossover === 'Bearish' ? '#D0312D' : '#6B7280' }}>MACD: {s.macd_crossover === 'None' ? 'No crossover' : s.macd_crossover + ' crossover'}</span>
+                </div>
+              </div>
+              )
+            })()}
 
-            <SignalPanel signals={displayData.signals} />
-
-            {/* Week selector — clicking any tab auto-fetches that week if not loaded */}
-            {cacheEntry && (
-              <WeekSelector
-                entry={cacheEntry}
-                selectedWeeksOut={selectedWeeksOut}
-                onSelect={(w) => {
-                  setSelectedWeeksOut(w)
-                  // If this week has no data yet, fetch it on demand
-                  const hasData = !!cacheEntry.multiWeekData?.[w] ||
-                    cacheEntry.weeksOut === w
-                  if (!hasData) fetchSingleWeek(data.ticker, w)
-                }}
-                onFetch={() => fetchAllWeeks(data.ticker)}
-                fetching={fetchingAllWeeks.has(data.ticker)}
-                loadingWeeks={fetchingWeeks.get(data.ticker) ?? new Set()}
-              />
+            {/* Context line: rec breakdown — uses selectedData for accurate counts */}
+            {selectedData?.recommendations && selectedData.recommendations.length > 0 && (
+            (() => {
+              const entryCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 70).length
+              const setupCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 55 && (r.scores?.total_score ?? 0) < 70).length
+              return (
+                <div style={{ marginTop: 6, marginBottom: 10, fontSize: '11px', color: C.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {entryCount > 0 && <span style={{ background: 'rgba(0,229,160,0.1)', color: '#00E5A0', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{entryCount} ready to enter</span>}
+                  {setupCount > 0 && <span style={{ background: 'rgba(245,166,35,0.1)', color: '#F5A623', border: '1px solid rgba(245,166,35,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{setupCount} setting up</span>}
+                  {entryCount === 0 && setupCount === 0 && <span style={{ color: C.muted }}>No structures ready yet — conditions still forming</span>}
+                </div>
+              )
+            })()
             )}
 
             {/* Recommendations */}
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-violet-400">🎯 Trade Recommendations · {selectedWeeksOut}w</h2>
-                <span className="w-fit text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
-                  {selectedData?.recommendations.length ?? 0} trades passed all filters
-                </span>
-              </div>
+             <div style={{ marginTop: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.accent }}>Trade recommendations · {selectedWeeksOut}w</span>
+                  <span style={{ fontSize: '11px', color: C.muted, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 20, padding: '2px 10px' }}>
+                    {selectedData?.recommendations.length ?? 0} trades passed all filters
+                  </span>
+                </div>
 
               {!selectedData ? (
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
-                  <div className="text-gray-300 font-semibold mb-1">No {selectedWeeksOut}w scan loaded yet</div>
-                  <div className="text-gray-500 text-sm mb-3">
+                <div style={{
+                  background: C.bgPanel, border: `1px solid ${C.border}`,
+                  borderRadius: 12, padding: 20, textAlign: 'center',
+                }}>
+                  <div style={{ color: C.text, fontWeight: 600, marginBottom: 6 }}>
+                    No {selectedWeeksOut}w scan loaded yet
+                  </div>
+                  <div style={{ color: C.muted, fontSize: '0.85rem', marginBottom: 14 }}>
                     Fetch all weeks to load this expiry window, then use the week tabs to compare trades.
                   </div>
                   <button
                     onClick={() => fetchAllWeeks(data.ticker)}
                     disabled={fetchingAllWeeks.has(data.ticker)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: C.violet, color: C.textInv, border: 'none',
+                      borderRadius: 8, padding: '8px 16px',
+                      fontSize: '0.82rem', fontWeight: 600,
+                      cursor: fetchingAllWeeks.has(data.ticker) ? 'wait' : 'pointer',
+                      opacity: fetchingAllWeeks.has(data.ticker) ? 0.6 : 1,
+                    }}
                   >
-                    <Layers size={14} className={fetchingAllWeeks.has(data.ticker) ? 'animate-pulse' : ''} />
+                    <Layers size={13} />
                     {fetchingAllWeeks.has(data.ticker) ? 'Fetching all weeks…' : 'Fetch All Weeks'}
                   </button>
                 </div>
               ) : selectedData.recommendations.length === 0 ? (
-                <div className="bg-amber-900/20 border border-amber-800 rounded-2xl p-5 text-center">
-                  <div className="text-amber-400 font-semibold mb-1">No trades passed all filters</div>
-                  <div className="text-amber-300/70 text-sm">
+                <div style={{
+                  background: 'rgba(245,166,35,0.06)', border: `1px solid rgba(245,166,35,0.2)`,
+                  borderRadius: 12, padding: 20, textAlign: 'center',
+                }}>
+                  <div style={{ color: C.amber, fontWeight: 600, marginBottom: 6 }}>
+                    No trades passed all filters
+                  </div>
+                  <div style={{ color: 'rgba(245,166,35,0.6)', fontSize: '0.82rem' }}>
                     Try a more liquid ticker (SPY, AAPL, TSLA, QQQ) or adjust the spread width / strategy mode.
                   </div>
                 </div>
               ) : (
-                selectedData.recommendations.map(rec => (
-                  <RecommendationCard
-                    key={rec.rank}
-                    rec={rec}
-                    ticker={selectedData.ticker}
-                    companyName={selectedData.company_name}
-                    currentPrice={selectedData.signals.current_price}
-                    signals={selectedData.signals}
-                    onFetchAllWeeks={() => fetchAllWeeks(data.ticker)}
-                    fetchingAllWeeks={fetchingAllWeeks.has(data.ticker)}
-                    scrollFocusRank={scrollFocusRank}
-                    onScrollFocusConsumed={() => setScrollFocusRank(null)}
-                  />
-                ))
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflowX: 'auto' }}>
+                  <table style={{ minWidth: 800, width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', tableLayout: 'fixed' }}>
+                    <thead>
+                      <tr style={{ background: C.bgPanel }}>
+                        <th style={{ width: '3%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>#</th>
+                        <th style={{ width: '22%', padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strategy</th>
+                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Action</th>
+                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Type</th>
+                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strike</th>
+                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Expiry</th>
+                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Cost</th>
+                        <th style={{ width: '9%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Max Profit</th>
+                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>R:R</th>
+                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Score</th>
+                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>PoP</th>
+                        <th style={{ width: '10%', padding: '8px 6px', textAlign: 'center', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedData.recommendations.map(rec => {
+                        const isCredit = (rec.net_credit ?? 0) > 0
+                        const score = rec.scores?.total_score ?? 0
+                        const rr = rec.risk_reward_ratio ?? 0
+                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
+                        const status = score >= 70 && allFilters ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : score >= 40 ? 'WATCH' : 'AVOID'
+                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
+                        return (
+                          <React.Fragment key={rec.rank}>
+                            {rec.legs.map((leg, li: number) => (
+                              <tr key={`${rec.rank}-${li}`} onClick={() => { setSelectedRank(selectedRank === rec.rank ? null : rec.rank); setAlertOpen(false) }} style={{ borderBottom: selectedRank === rec.rank && li === rec.legs.length - 1 ? 'none' : `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
+                                  <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
+                                  <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}</div>
+                                  <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
+                                </td>)}
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600, color: leg.action === 'BUY' ? C.green : C.red }}>{leg.action}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.text }}>{leg.option_type}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: C.text, textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
+                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
+                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
+                                </td>)}
+                              </tr>
+                            ))}
+                            {selectedRank === rec.rank && (
+                              <tr style={{ background: 'rgba(74,124,255,0.04)', borderBottom: `1px solid ${C.border}` }}>
+                                <td colSpan={12} style={{ padding: '10px 14px' }}>
+                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.68rem', color: C.muted, marginRight: 4 }}>Actions:</span>
+                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('positions') }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Briefcase size={12} /> Add Position
+                                    </button>
+                                    <button type="button" disabled={journalSaving} onClick={async e => {
+                                        e.stopPropagation()
+                                        const email = user?.email
+                                        if (!email || !data) return
+                                        setJournalSaving(true)
+                                        try {
+                                          await saveToJournal(email, {
+                                            ticker: data.ticker,
+                                            company_name: data.company_name ?? data.ticker,
+                                            strategy: rec.strategy,
+                                            bias: (rec.legs[0] as { side?: string })?.side ?? 'neutral',
+                                            legs: rec.legs as object[],
+                                            expiry: rec.expiry,
+                                            entry_date: new Date().toISOString().slice(0, 10),
+                                            dte_at_entry: rec.dte ?? 0,
+                                            net_credit: rec.net_credit ?? 0,
+                                            max_profit: (rec.max_profit ?? 0) * 100,
+                                            max_loss: (rec.max_loss ?? 0) * 100,
+                                            underlying_entry: data.signals?.current_price ?? 0,
+                                            prob_of_profit: rec.prob_of_profit ?? 0,
+                                            expected_value: rec.expected_value ?? 0,
+                                            total_score: rec.scores?.total_score ?? 0,
+                                            trade_type: 'regular',
+                                          })
+                                          navigate('journal')
+                                        } catch { /* silently navigate anyway */ navigate('journal') } finally { setJournalSaving(false) }
+                                      }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.green}50`, background: `${C.green}12`, color: C.green, fontSize: '0.72rem', fontWeight: 600, cursor: journalSaving ? 'wait' : 'pointer', opacity: journalSaving ? 0.6 : 1 }}>
+                                      <BookOpen size={12} /> {journalSaving ? 'Saving…' : 'Save to Journal'}
+                                    </button>
+                                    <button type="button" onClick={e => { e.stopPropagation(); setAlertOpen(o => !o) }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.amber}50`, background: `${C.amber}12`, color: C.amber, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Bell size={12} /> Set Alert
+                                    </button>
+                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('auto-trade') }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.accent}50`, background: `${C.accent}12`, color: C.accent, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                      <Zap size={12} /> Paper Trade
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
-            {/* Chart / Calculator / Chain tabs */}
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="flex border-b border-gray-800 overflow-x-auto mobile-tab-scroll">
-                {(['chart', 'calculator', 'chain'] as const).map(t => (
-                  <button key={t} onClick={() => setActiveTab(t)}
-                    className={`min-w-[8.5rem] sm:min-w-0 sm:flex-1 px-3 py-3 text-xs sm:text-sm font-semibold capitalize transition-colors
-                      ${activeTab === t ? 'text-white border-b-2 border-violet-500 bg-gray-800/40' : 'text-gray-400 hover:text-white'}`}>
-                    {t === 'chart' ? '📉 Candlestick' : t === 'calculator' ? '📈 P&L Calculator' : '📋 Options Chain'}
-                  </button>
-                ))}
-              </div>
-              <div className="p-3 sm:p-4">
-                {activeTab === 'chart' ? (
-                  <PriceChart history={displayData.price_history} />
-                ) : activeTab === 'calculator' ? (
-                  <OptionProfitCalculator
-                    recommendations={selectedData?.recommendations ?? []}
-                    currentPrice={displayData.signals.current_price}
-                  />
-                ) : (
-                  <OptionsChainTable
-                    calls={displayData.calls_chain}
-                    puts={displayData.puts_chain}
-                    currentPrice={displayData.signals.current_price}
-                    expiry={displayData.filters_applied?.chain_expiry as string | undefined}
-                  />
-                )}
-              </div>
-            </div>
+            {alertOpen && data && (
+              <SetAlertDrawer
+                ticker={data.ticker}
+                tradeType="regular"
+                onClose={() => setAlertOpen(false)}
+                onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
+              />
+            )}
 
-            {/* Filters */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <div className="text-xs font-semibold text-gray-400 mb-2">⚙️ Engine Filters Applied</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {Object.entries(displayData.filters_applied).map(([k, v]) => (
-                  <div key={k} className="flex justify-between gap-3 text-xs bg-gray-800 rounded-lg px-3 py-1.5">
-                    <span className="text-gray-500">{k.replace(/_/g, ' ')}</span>
-                    <span className="text-gray-300 font-mono text-right break-words">{Array.isArray(v) ? v.join('–') : String(v)}</span>
-                  </div>
-                ))}
-              </div>
+            {/* Chart / Calculator (collapsed by default) */}
+            <div style={{
+              background: C.bgPanel, border: `1px solid ${C.border}`,
+              borderRadius: 14, overflow: 'hidden', marginTop: 14,
+            }}>
+              {activeTab ? (
+                <>
+                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+                  {(['chart', 'calculator'] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setActiveTab(t)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
+                        border: 'none',
+                        borderBottom: activeTab === t ? `2px solid ${C.accent}` : '2px solid transparent',
+                        color: activeTab === t ? C.text : C.muted,
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ padding: '16px 20px' }}>
+                  {activeTab === 'chart' ? (
+                    <PriceChart history={displayData.price_history} />
+                  ) : (
+                    <OptionProfitCalculator
+                      recommendations={selectedData?.recommendations ?? []}
+                      currentPrice={displayData.signals.current_price}
+                    />
+                  )}
+                </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('chart')}
+                  style={{
+                    width: '100%', padding: '10px 16px',
+                    background: 'transparent', border: 'none',
+                    color: C.muted, fontSize: '0.78rem', fontWeight: 600,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  📊 Show Chart &amp; P&L Analysis
+                </button>
+              )}
             </div>
           </>
         )}
 
         {/* Empty state */}
         {!loading && !error && !data && (
-          <div className="text-center py-16 space-y-3">
-            <div className="text-6xl">📊</div>
-            <div className="text-xl font-semibold text-gray-300">Systematic Options Analysis</div>
-            <div className="text-gray-500 max-w-md mx-auto text-sm leading-relaxed">
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>📊</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: C.text, marginBottom: 8 }}>
+              Systematic Options Analysis
+            </div>
+            <div style={{ fontSize: '0.85rem', color: C.muted, maxWidth: 400, margin: '0 auto', lineHeight: 1.6 }}>
               Enter any US stock ticker above. The engine fetches live options data,
               runs multi-signal analysis, and recommends specific trades with exact strikes,
               delta-based selection, R:R filtering, and expected value scoring.
             </div>
-            <div className="flex justify-center gap-2 sm:gap-4 pt-2 text-xs text-gray-600 flex-wrap">
-              <span>✓ Delta-based strike selection</span>
-              <span>✓ R:R &amp; credit % filters</span>
-              <span>✓ Expected Value scoring</span>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+              {['Delta-based strikes', 'R:R & credit % filters', 'Expected Value scoring'].map(pill => (
+                <span key={pill} style={{
+                  fontSize: '0.7rem', color: C.muted,
+                  background: C.bgCard, border: `1px solid ${C.border}`,
+                  borderRadius: 20, padding: '3px 10px',
+                }}>
+                  ✓ {pill}
+                </span>
+              ))}
             </div>
           </div>
         )}
 
-        <div className="text-center text-xs text-gray-600 py-2 border-t border-gray-800/50">
+        {!loading && data && displayData && (
+        <div style={cardStyle}>
+          <SignalPanel signals={displayData.signals} />
+        </div>
+        )}
+
+        {/* Disclaimer */}
+        <div style={{
+          textAlign: 'center', fontSize: '0.65rem', color: C.muted, opacity: 0.5,
+          padding: '12px 0', borderTop: `1px solid ${C.border}`, marginTop: 16,
+        }}>
           ⚠️ For educational purposes only. Not financial advice. Options trading involves significant risk of loss.
         </div>
+
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
+        `}</style>
       </div>
+    </div>
     </div>
   )
 }

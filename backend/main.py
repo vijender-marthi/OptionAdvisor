@@ -42,7 +42,7 @@ from models import (
     AnalyzeRequest, AnalyzeResponse, RecommendationOut, OptionLegOut,
     OptionRowOut, PricePoint, SignalsOut, ScoreBreakdown, QuoteQualitySummary,
     UserDataRequest, UserDataResponse, AlertEmailRequest, AlertItem,
-    AlertDismissRequest, AlertClearRequest, TestEmailRequest, BacktestRequest,
+    TestEmailRequest, BacktestRequest,
     DayTradeRequest, DayTradeResponse,
     SwingTradeRequest, SwingTradeResponse,
     ActiveTradeEnterRequest, ActiveTradeEnterResponse, ActiveTradeOut, ActiveTradeListResponse,
@@ -54,6 +54,7 @@ from analysis import generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade, clear_scan_cache as _clear_day_scan_cache
 from ai_coach import get_ai_coach
 from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
+from unified_analysis import serialize_day_trade, serialize_swing_trade, serialize_regular_trade
 from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
@@ -65,11 +66,8 @@ from storage import (
     alert_center_create,
     add_user_alert,
     add_day_trade_alert_event,
-    clear_user_alerts,
-    dismiss_user_alert,
     DAY_TRADE_ALERT_RETENTION_MS,
     get_day_trade_watchlist_last,
-    get_user_alerts,
     get_user_state,
     init_db,
     list_day_trade_alert_events,
@@ -226,7 +224,6 @@ def _deliver_html_email(to_email: str, to_name: str | None, subject: str, html: 
     return "smtp"
 
 
-ALERT_RETENTION_MS = 24 * 60 * 60 * 1000
 USER_ALERT_EMAIL_DISABLED_MESSAGE = "Email alerts are turned off in your account settings."
 
 
@@ -287,6 +284,9 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(command_center_router, prefix="/api")
+
+from tradedesk_routes import desk_router
+app.include_router(desk_router, prefix="/api")
 
 
 def safe_float(val, default=0.0) -> float:
@@ -448,11 +448,10 @@ def root():
 def _is_market_hours_now() -> bool:
     if not ALERT_SCAN_MARKET_HOURS_ONLY:
         return True
-    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    now = datetime.now(ZoneInfo("America/New_York"))
     if now.weekday() >= 5:
         return False
-    minutes = now.hour * 60 + now.minute
-    return 6 * 60 <= minutes < 16 * 60
+    return (now.hour > 9 or (now.hour == 9 and now.minute >= 30)) and now.hour < 16
 
 
 def _normalize_public_origin(url: str) -> str:
@@ -1035,7 +1034,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
         carry_level_key = new_level_key if new_level_key else prev_level_key
 
         if not prev_row:
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key, eg_state)
             continue
 
         prev_session = (prev_row.get("session_date") or "").strip()[:10]
@@ -1043,7 +1042,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
 
         if prev_session and session_date and prev_session != session_date:
             # New session — reset level key
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
+            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "", "")
             continue
 
         if prev_verdict == "WATCH" and now_verdict in {"GO", "STRONG GO"}:
@@ -1065,6 +1064,58 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                     "detectedAt": now_ms,
                 }
             )
+
+        # --- State transition alert (Day Trade — only Setup→Entry) ---
+        eg_state = str(getattr(r.entry_guidance, "state", "") or "")
+        now_state_num = _day_trade_active_state(eg_state)
+        prev_state_row = get_ticker_state_last(email, t, "DAY")
+        prev_state_num = int((prev_state_row or {}).get("state_num") or 1)
+        prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
+        if eg_state and (prev_state_num, now_state_num) == (1, 2) and prev_state_row is not None:
+            direction = _STATE_DIRECTION.get(
+                (prev_state_num, now_state_num),
+                f"{_STATE_LABEL.get(prev_state_num, str(prev_state_num))} → {_STATE_LABEL.get(now_state_num, str(now_state_num))}"
+            )
+            now_ms_sc = int(time.time() * 1000)
+            eg_dict = r.entry_guidance if isinstance(r.entry_guidance, dict) else {}
+            alert_center_create(
+                email,
+                alert_group="day-trade",
+                severity="INFO",
+                engine="DAY_TRADE",
+                signal="STATE_CHANGE",
+                title=f"⚡ {t} — Day Trade: {_STATE_LABEL.get(now_state_num, eg_state)}",
+                body=f"Day Trade state changed: {_STATE_LABEL.get(prev_state_num, prev_action)} → {_STATE_LABEL.get(now_state_num, eg_state)} ({eg_state})",
+                meta={"ticker": t, "state": eg_state, "state_num": now_state_num, "prev_state": prev_action, "prev_state_num": prev_state_num},
+            )
+            escalations.append({
+                "id":           f"dt-state-{t}-{now_ms_sc}",
+                "alertType":    "STATE_CHANGE",
+                "ticker":       t,
+                "companyName":  getattr(r, "company_name", None) or t,
+                "engine":       "DAY",
+                "prevState":    prev_state_num,
+                "prevLabel":    _STATE_LABEL.get(prev_state_num, str(prev_state_num)),
+                "nowState":     now_state_num,
+                "nowLabel":     _STATE_LABEL.get(now_state_num, str(now_state_num)),
+                "direction":    direction,
+                "action":       eg_state,
+                "egAction":     str(eg_dict.get("action") or ""),
+                "bias":         str(getattr(r, "bias", "") or "").upper(),
+                "sessionDate":  session_date,
+                "currentPrice": eg_dict.get("current_price") or (r.metrics or {}).get("last_price"),
+                "vwap":         eg_dict.get("vwap") or (r.metrics or {}).get("vwap"),
+                "orh":          eg_dict.get("opening_range_high") or (r.metrics or {}).get("or_high"),
+                "orl":          eg_dict.get("opening_range_low") or (r.metrics or {}).get("or_low"),
+                "breakoutLevel": eg_dict.get("breakout_level"),
+                "scalp_target": eg_dict.get("scalp_target"),
+                "riskBelow":    eg_dict.get("risk_below"),
+                "summary":      eg_dict.get("summary") or eg_dict.get("action") or "",
+                "decisionMsg":  str((getattr(r, "trader_decision", None) or {}).get("decision_message") or ""),
+                "narrowOrCaution": False,
+                "orWidthPct":   None,
+            })
+        upsert_ticker_state_last(email, t, "DAY", now_state_num, eg_state, session_date)
 
         upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
 
@@ -1093,7 +1144,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
             # New session resets level key
             prev_session = (prev_row.get("session_date") or "").strip()[:10] if prev_row else ""
             if prev_session and session_date and prev_session != session_date:
-                upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "")
+                upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "", "")
                 continue
 
             if new_level_key and new_level_key != prev_level_key:
@@ -1107,8 +1158,9 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
                     body=level_body,
                     meta={"ticker": t, "level_key": new_level_key, "source": "active_trade"},
                 )
-            carry_level_key = new_level_key if new_level_key else prev_level_key
-            upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key)
+        carry_level_key = new_level_key if new_level_key else prev_level_key
+        eg_state = str(getattr(r.entry_guidance, "state", "") or "")
+        upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, carry_level_key, eg_state)
     except Exception as exc:
         print(f"[day-trade-scan/active] {email} active-trades scan failed: {exc}", flush=True)
 
@@ -1893,6 +1945,124 @@ def analyze(req: AnalyzeRequest):
     return data
 
 
+@app.get("/api/v2/analyze/{ticker}")
+async def unified_analyze(
+    ticker: str,
+    trade_type: str = "day",
+    weeks_out: int = 4,
+    spread_width: Optional[int] = 5,
+    strategy_mode: str = "all",
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Unified analysis endpoint returning a consistent response shape for day, swing, and regular trades.
+    trade_type: 'day' | 'swing' | 'regular'
+    """
+    ticker = ticker.upper().strip()
+
+    if trade_type == "day":
+        try:
+            scan = run_day_trade_scan(ticker)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from None
+        return serialize_day_trade(scan)
+
+    if trade_type == "swing":
+        try:
+            scan = run_swing_trade_scan(ticker)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from None
+        return serialize_swing_trade(scan)
+
+    # regular — mirror _analyze_ticker logic
+    try:
+        hist = _bc_hist(ticker, period="1y", force_refresh=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch data: {str(e)}")
+
+    if hist is None or hist.empty:
+        raise HTTPException(status_code=404, detail=f"No data found for ticker '{ticker}'")
+
+    if len(hist) < 60:
+        raise HTTPException(status_code=400, detail=f"Insufficient history for '{ticker}' (need at least 60 days)")
+
+    try:
+        opt_dates = _bc_opt_dates(ticker)
+    except Exception:
+        opt_dates = ()
+
+    if not opt_dates:
+        raise HTTPException(status_code=404, detail=f"No options available for '{ticker}'")
+
+    from engine import pick_expiry_by_dte as _pick_expiry
+
+    weeks_for_engine = weeks_out
+    target_dte = weeks_out * 7
+    dte_lo = max(21, target_dte - 10)
+    dte_hi = target_dte + 10
+    target_expiry = _pick_expiry(list(opt_dates), dte_lo, dte_hi)
+    if target_expiry is None:
+        target_expiry = next(
+            (d for d in opt_dates if (datetime.strptime(d, "%Y-%m-%d") - datetime.today()).days >= dte_lo - 3),
+            opt_dates[min(2, len(opt_dates) - 1)]
+        )
+
+    try:
+        calls_raw, puts_raw = _bc_chain(ticker, target_expiry)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch options chain: {str(e)}")
+
+    try:
+        info = _bc_info(ticker)
+        company_name = info.get("longName", ticker)
+    except Exception:
+        info = {}
+        company_name = ticker
+
+    hist_close = float(hist["Close"].iloc[-1])
+    live_price = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+    price_approx = live_price if live_price > 0 else hist_close
+
+    calls_f = calls_raw[
+        (calls_raw["strike"] >= price_approx * 0.75) &
+        (calls_raw["strike"] <= price_approx * 1.30)
+    ].copy()
+    puts_f = puts_raw[
+        (puts_raw["strike"] >= price_approx * 0.75) &
+        (puts_raw["strike"] <= price_approx * 1.30)
+    ].copy()
+
+    session_et = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    iv_hist_past = fetch_iv_atm_history_strict_before(ticker, session_et, limit=380)
+    try:
+        signals = generate_signals(
+            hist,
+            calls_f,
+            puts_f,
+            reference_price=price_approx,
+            implied_iv_history=iv_hist_past,
+        )
+        upsert_iv_atm_snapshot(ticker, session_et, signals.current_iv)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
+
+    try:
+        trades = run_engine(
+            signals, calls_f, puts_f, list(opt_dates),
+            spread_width_override=spread_width,
+            weeks_out=weeks_for_engine,
+            strategy_mode=strategy_mode,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trade engine failed: {str(e)}")
+
+    return serialize_regular_trade(ticker, company_name, price_approx, trades, signals)
+
+
 @app.get("/api/signal-feed")
 def get_signal_feed(
     auth_email: str = Depends(require_access_email),
@@ -2031,6 +2201,25 @@ def get_signal_feed(
         regular_payload = _signal_feed_decision_payload(regular_decision, label="regular", raw_signal=regular_raw, reason=regular_reason)
         day_payload = _signal_feed_decision_payload(day_decision, label="day", raw_signal=day_raw, reason=day_reason)
         swing_payload = _signal_feed_decision_payload(swing_decision, label="swing", raw_signal=swing_raw, reason=swing_reason)
+
+        # ── State change detection for all three engines ──────────────────────
+        today = datetime.today().strftime('%Y-%m-%d')
+        for eng, action in [("DAY", day_raw), ("SWING", swing_raw), ("REGULAR", regular_raw)]:
+            if action:
+                prev = get_ticker_state_last(email, ticker, eng)
+                prev_action = (prev or {}).get("action", "")
+                if action and action != prev_action:
+                    alert_center_create(
+                        email,
+                        alert_group=eng.lower(),
+                        severity="INFO",
+                        engine=eng,
+                        signal="STATE_CHANGE",
+                        title=f"⚡ {ticker} — {eng.title()} state: {action}",
+                        body=f"State changed from '{prev_action}' to '{action}'.",
+                        meta={"ticker": ticker, "state": action, "prev_state": prev_action},
+                    )
+                upsert_ticker_state_last(email, ticker, eng, 0, action, today)
 
         # ── Attach day-trade option risk context ───────────────────────────────
         if day_scan is not None:
@@ -2600,6 +2789,7 @@ def _active_trade_out_from_row(
         notes=str(row.get("notes") or ""),
         opened_at_ms=int(row["opened_at_ms"]),
         exited_at_ms=row.get("exited_at_ms"),
+        trade_type=str(row.get("trade_type") or "day"),
         decision=decision,
         metrics=metrics,
         intraday_error=intraday_error,
@@ -2625,6 +2815,7 @@ def active_trade_enter(
             strike=req.strike,
             option_expiry=req.expiry,
             notes=req.notes,
+            trade_type=req.trade_type,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
@@ -3000,9 +3191,11 @@ def _scan_user_watchlist_for_alerts(user_state: dict) -> None:
 
 def _day_trade_active_state(eg_state: str) -> int:
     s = str(eg_state or "").upper().strip()
-    if s in {"ENTRY_ACTIVE", "ENTRY_RETEST"}:
+    if s == "EOD_CLOSING":
+        return 4
+    if s in {"ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK"}:
         return 3
-    if s in {"WAIT_FOR_VOLUME", "VWAP_TEST"}:
+    if s in {"WAIT_FOR_VOLUME", "VWAP_TEST", "WAIT_BOUNCE_LEVEL"}:
         return 2
     return 1
 
@@ -3112,20 +3305,22 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
                     # Flags reset on any state transition; carry forward only while state holds
                     if state_changed or now_state != 3:
-                        carry_target   = 0
-                        carry_weak_bo  = 0
-                        inplay_since   = now_ms if now_state == 3 else 0
+                        carry_target      = 0
+                        carry_weak_bo     = 0
+                        inplay_since      = now_ms if now_state == 3 else 0
                     else:
-                        carry_target   = int(prev.get("target_hit") or 0)
-                        carry_weak_bo  = int(prev.get("weak_breakout_alerted") or 0)
-                        inplay_since   = int(prev.get("inplay_since_ms") or now_ms)
+                        carry_target      = int(prev.get("target_hit") or 0)
+                        carry_weak_bo     = int(prev.get("weak_breakout_alerted") or 0)
+                        inplay_since      = int(prev.get("inplay_since_ms") or now_ms)
+                    # enter_now_alerted resets whenever state changes (new setup = new alert allowed)
+                    carry_enter_now   = 0 if state_changed else int(prev.get("enter_now_alerted") or 0)
 
                     last_price_val = eg.get("current_price") or m.get("last_price")
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
                     orl_val        = eg.get("opening_range_low")  or m.get("or_low")
 
-                    # ── State-change alert ────────────────────────────────
-                    if state_changed:
+                    # ── State-change alert (only 1→2: Setup→Entry) ──
+                    if state_changed and (prev_state, now_state) == (1, 2):
                         direction = _STATE_DIRECTION.get(
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"
@@ -3170,6 +3365,39 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "decisionMsg":    str((dr.trader_decision or {}).get("decision_message") or ""),
                             "narrowOrCaution":narrow_or_caution,
                             "orWidthPct":     or_width_pct_val,
+                        })
+
+                    # ── ENTER NOW alert (State 2 + volume confirmed) ─────
+                    enter_now_to_store = carry_enter_now
+                    exec_timing = str(dr.execution_timing or "").upper().strip()
+                    enter_now_confirmed = now_state == 2 and ("ENTER" in exec_timing)
+                    if enter_now_confirmed and not carry_enter_now:
+                        enter_now_to_store = 1
+                        direction_lbl = "LONG · CALL" if bias_raw == "long" else "SHORT · PUT"
+                        day_escalations.append({
+                            "id":           f"dt-enternow-{ticker}-{now_ms}",
+                            "alertType":    "ENTER_NOW",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "direction":    direction_lbl,
+                            "action":       now_action,
+                            "egAction":     eg_action,
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": last_price_val,
+                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "orh":          orh_val,
+                            "orl":          orl_val,
+                            "breakoutLevel": eg.get("breakout_level"),
+                            "scalp_target": eg.get("scalp_target"),
+                            "riskBelow":    eg.get("risk_below"),
+                            "summary":      f"Volume confirmed — entry window open. Action: Ready · Execution: Enter Now.",
+                            "decisionMsg":  eg.get("summary") or eg.get("action") or "",
+                            "narrowOrCaution": False,
+                            "orWidthPct":   None,
                         })
 
                     # ── Take-profit alert ─────────────────────────────────
@@ -3257,6 +3485,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                         target_hit=target_to_store,
                         inplay_since_ms=inplay_since,
                         weak_breakout_alerted=weak_bo_to_store,
+                        enter_now_alerted=enter_now_to_store,
                     )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
@@ -3535,35 +3764,6 @@ def _build_state_transition_email_html(
 </html>"""
 
 
-def _alert_scan_loop() -> None:
-    time.sleep(ALERT_SCAN_START_DELAY_SECONDS)
-    cycle = 0
-    while True:
-        try:
-            if _is_market_hours_now():
-                users = list_user_states()
-                for idx, user_state in enumerate(users):
-                    if idx:
-                        time.sleep(2)
-                    _scan_user_watchlist_for_alerts(user_state)
-                    time.sleep(2)
-                    _scan_user_day_trade_watchlist(user_state)
-                    time.sleep(2)
-                    # My Tickers state alerts: day every cycle (15 min),
-                    # swing every 2nd cycle (~30 min) to avoid over-scanning.
-                    _scan_my_tickers_for_state_alerts(user_state)
-        except Exception as exc:
-            print(f"[alert-scan] sweep failed: {exc}", flush=True)
-        cycle += 1
-        time.sleep(ALERT_SCAN_INTERVAL_SECONDS)
-
-
-@app.on_event("startup")
-def start_alert_scanner() -> None:
-    thread = threading.Thread(target=_alert_scan_loop, name="alert-scan-loop", daemon=True)
-    thread.start()
-
-
 @app.get("/api/day-trade-alerts/{email}")
 def list_day_trade_alerts_api(email: str, auth_email: str = Depends(require_access_email)):
     ensure_same_user(auth_email, email)
@@ -3577,39 +3777,6 @@ def list_day_trade_alerts_api(email: str, auth_email: str = Depends(require_acce
     return {
         "email": email.strip().lower(),
         "alerts": list_day_trade_alert_events(email, DAY_TRADE_ALERT_RETENTION_MS, now_ms),
-    }
-
-
-@app.get("/api/alerts/{email}")
-def list_alerts(email: str, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, email)
-    return {
-        "email": email.strip().lower(),
-        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
-    }
-
-
-@app.post("/api/alerts/dismiss")
-def dismiss_alert(req: AlertDismissRequest, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, req.email)
-    dismiss_user_alert(req.email, req.alert_id)
-    return {"ok": True}
-
-
-@app.post("/api/alerts/clear")
-def clear_alerts(req: AlertClearRequest, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, req.email)
-    clear_user_alerts(req.email)
-    return {"ok": True}
-
-
-@app.post("/api/alerts/scan/{email}")
-def scan_alerts_now(email: str, auth_email: str = Depends(require_access_email)):
-    ensure_same_user(auth_email, email)
-    _scan_user_watchlist_for_alerts(get_user_state(email))
-    return {
-        "email": email.strip().lower(),
-        "alerts": get_user_alerts(email, ALERT_RETENTION_MS, int(time.time() * 1000)),
     }
 
 
@@ -3658,6 +3825,9 @@ from pydantic import BaseModel as _BM
 
 init_journal_db()
 init_trade_ideas_db()
+
+from storage import init_tradedesk_db as _init_tradedesk_db
+_init_tradedesk_db()
 
 
 class JournalSaveRequest(_BM):
@@ -3911,7 +4081,9 @@ def journal_delete(email: str, entry_id: str, auth_email: str = Depends(require_
     """Delete a journal entry."""
     ensure_same_user(auth_email, email)
     normalized = email.strip().lower()
-    delete_journal_entry(normalized, entry_id)
+    deleted = delete_journal_entry(normalized, entry_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
     return {"ok": True}
 
 
@@ -4150,3 +4322,26 @@ def admin_flush_cache(auth_email: str = Depends(require_access_email)):
         return {"ok": True, "message": "Cache flushed"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ─── User accent preference ───────────────────────────────────────────────
+
+@app.get("/api/user/accent")
+def get_user_accent(auth_email: str = Depends(require_access_email)):
+    """Get the user's selected accent color."""
+    state = get_user_state(normalize_email(auth_email))
+    return {"accent": state.get("theme_accent", "blue")}
+
+
+@app.put("/api/user/accent")
+def set_user_accent(auth_email: str = Depends(require_access_email), body: dict = None):
+    """Save the user's selected accent color."""
+    email = auth_email.strip().lower()
+    accent = str(body.get("accent", "blue"))
+    from storage import _connect, normalize_email
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE user_state SET theme_accent = ? WHERE email = ?",
+            (accent, normalize_email(email)),
+        )
+    return {"ok": True, "accent": accent}

@@ -8,6 +8,7 @@ export function locationToPage(pathname: string): Page {
   switch (seg) {
     case '':
       return 'trade-command-center'
+    case 'position-trading':
     case 'strategy-finder':
     case 'ticker':
       return 'ticker'
@@ -64,6 +65,8 @@ export function locationToPage(pathname: string): Page {
       return 'activate'
     case 'my-tickers':
       return 'my-tickers'
+    case 'desk':
+      return 'desk'
     default:
       return 'trade-command-center'
   }
@@ -127,6 +130,8 @@ export function pageToLocation(p: Page): string {
       return '/activate'
     case 'my-tickers':
       return '/my-tickers'
+    case 'desk':
+      return '/desk'
     default:
       return '/trade-command-center'
   }

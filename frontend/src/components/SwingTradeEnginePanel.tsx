@@ -918,84 +918,165 @@ export default function SwingTradeEnginePanel({
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
     if (fd === 'EXIT') return 4
     if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
-    if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].includes(fd)) return 2
-    // WATCH variants and AVOID/NO_EDGE → still in setup/observation phase
+    if (['TRADE_NOW', 'ENTER', 'ENTRY'].includes(fd)) return 2
     return 1
   })()
 
   return (
     <div className={`rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden ${TONE_RING[toneForFinalAction(result.final_action)]}`}>
-      <div className="px-4 pt-4 pb-4 border-b border-gray-800 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2.5">
-              <span className="text-xl font-bold text-white dark:text-heading font-mono tracking-tight">{result.ticker}</span>
-              {result.company_name ? <span className="truncate text-xs text-gray-500 max-w-[220px]">{result.company_name}</span> : null}
-              {swingLastPrice != null && (
-                <span className="flex items-center gap-1.5 ml-0.5">
-                  <span className="text-sm font-bold text-white dark:text-heading font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
-                  {swingDailyPct != null && swingDailyDollar != null && (
-                    <span className={`text-xs font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-gray-300">
-              {formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} · {result.bias === 'short' ? 'Bearish' : 'Bullish'} swing setup
-            </div>
-            {sessionDate ? (
-              <div className="mt-1 text-[10px] text-gray-600">
-                {sessionDate}
-                {priceStale && <span className="ml-1.5 font-semibold text-amber-500">· price from quote feed</span>}
-              </div>
-            ) : null}
-            {priceStale && priceWarning && (
-              <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
-                <span className="mt-px shrink-0">⚠</span>
-                <span>{priceWarning}</span>
-              </div>
+      {/* Ticker header */}
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-sm font-bold text-white">{result.ticker}</span>
+            {result.company_name && <span className="text-[10px] text-gray-500 truncate">{result.company_name}</span>}
+            {swingLastPrice != null && (
+              <span className="flex items-center gap-1">
+                <span className="text-sm font-bold text-white font-mono tabular-nums">${swingLastPrice.toFixed(2)}</span>
+                {swingDailyPct != null && swingDailyDollar != null && (
+                  <span className={`text-[11px] font-semibold font-mono tabular-nums ${swingDailyDollar >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {swingDailyDollar >= 0 ? '+' : ''}{swingDailyDollar.toFixed(2)} ({swingDailyPct >= 0 ? '+' : ''}{swingDailyPct.toFixed(2)}%)
+                  </span>
+                )}
+              </span>
             )}
+            <span className={`text-[11px] font-semibold ${result.bias === 'short' ? 'text-rose-400' : 'text-emerald-400'}`}>
+              · {swingActiveState === 4 ? 'Exit Zone' : swingActiveState === 3 ? 'In-Play' : swingActiveState === 2 ? 'Entry Open' : 'Setup'}
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            title="Re-scan"
-            className="rounded-lg p-1.5 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          <div className="text-[10px] text-gray-600 shrink-0">
+            {sessionDate && <span>{sessionDate}</span>}
+          </div>
+        </div>
+        {priceStale && priceWarning && (
+          <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-700/50 bg-amber-900/20 px-2.5 py-1.5 text-[10px] text-amber-300 leading-snug">
+            <span className="mt-px shrink-0">⚠</span>
+            <span>{priceWarning}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Trade Action Summary header */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
+      </div>
+
+      <div className="px-4 pt-3 pb-2 border-b border-gray-800 space-y-3">
+
+        {/* Verdict section */}
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>
+              {formatSwingEngineLabel(result.final_action)}
+            </span>
+            <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0 }}>
+              <svg viewBox="0 0 52 52" width={52} height={52} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={26} cy={26} r={22} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+                <circle cx={26} cy={26} r={22} fill="none" stroke={execTone === 'green' ? '#10b981' : execTone === 'blue' ? '#3b82f6' : execTone === 'orange' ? '#f59e0b' : '#ef4444'} strokeWidth={3} strokeLinecap="round" strokeDasharray={138.23} strokeDashoffset={138.23 - (Math.min(result.confidence ?? 0, 95) / 95) * 138.23} />
+              </svg>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#e8ebf0', textAlign: 'center', lineHeight: 1.2 }}>
+                {Math.min(result.confidence, 95)}<br /><span style={{ fontSize: 9, color: '#5a6478' }}>CONF</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-gray-300 leading-relaxed">{execSummary || formatSwingEngineLabel(result.final_action)}</div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+
+
+        {/* Entry Plan / Risk Profile */}
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Action</div>
-            <div className="mt-1"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TONE_ACTION_BADGE[execTone]}`}>{formatSwingEngineLabel(result.final_action)}</span></div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Entry Plan</div>
+            {[
+              { label: 'Entry', value: execLevels.breakoutTrigger ? <span className="font-mono font-bold text-emerald-400 text-sm">{execLevels.breakoutTrigger}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
+              { label: 'Structure', value: <span className="font-mono text-gray-400 text-xs">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</span> },
+              { label: 'Stop Loss', value: execLevels.riskBelow ? <span className="font-mono font-bold text-red-400 text-sm">{execLevels.riskBelow}</span> : <span className="font-mono text-gray-500 text-xs">Not defined until setup forms</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
           </div>
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Risk</div>
-            <div className="mt-1"><Badge text={result.risk_level} tone={riskBadge?.tone || toneForFinalAction(result.risk_level)} /></div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Market Support</div>
-            <div className="mt-1"><Badge text={marketSupportive || marketBadge?.text || 'MARKET_MIXED'} tone={marketBadge?.tone || 'gray'} /></div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Signal Strength</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{Math.min(result.confidence, 95)} / 100</div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Best Structure</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')}</div>
-          </div>
-          <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">Expected Hold</div>
-            <div className="mt-1 text-sm font-bold text-gray-100">{result.expected_holding_period || '3–5 trading days'}</div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
+            {[
+              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-xs">—</span> },
+              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-xs">{result.risk_level}</span> },
+              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-xs">0.8x</span> },
+            ].map((row, i) => (
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
+                <span className="text-xs text-gray-500">{row.label}</span>
+                <span>{row.value}</span>
+              </div>
+            ))}
           </div>
         </div>
+
+        {/* Exit Plan */}
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Exit Plan — Pre-Committed</div>
+          {(() => {
+            const eg = result.entry_guidance as Record<string, unknown> | undefined
+            const exitRules = (eg?.exit_rules || result.metrics?.exit_rules) as Array<{ trigger: string; price: number; action: string; note: string }> | undefined
+            if (exitRules && exitRules.length > 0) {
+              return (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                      <th className="pb-2 text-left font-medium">WHEN</th>
+                      <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                      <th className="pb-2 text-left font-medium">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                    {exitRules.map((rule, i) => {
+                      const t = rule.trigger.toLowerCase()
+                      const isStall   = t.includes('stalls')
+                      const isStop    = t.includes('stop')
+                      const isTarget2 = t.includes('target 2')
+                      const isTarget1 = t.includes('target 1') && !isTarget2 && !isStall
+                      const isBreak   = t.includes('ma20') || t.includes('breakdown') || t.includes('closes')
+                      const isEOD     = rule.price === 0
+                      const clr = isStop || isStall ? 'text-red-400'
+                        : isTarget1 ? 'text-emerald-400'
+                        : isTarget2 ? 'text-amber-400'
+                        : isBreak ? 'text-slate-400'
+                        : 'text-slate-500'
+                      return (
+                        <tr key={i}>
+                          <td className={`py-2.5 pr-2 leading-snug align-top w-[32%] text-sm font-semibold font-mono ${clr}`}>{rule.trigger}</td>
+                          <td className={`py-2.5 pr-3 text-right font-mono font-bold tabular-nums align-top text-sm ${clr}`}>
+                            {isEOD ? 'NOW' : `$${rule.price.toFixed(2)}`}
+                          </td>
+                          <td className={`py-2.5 align-top text-sm ${clr}`}>{rule.action}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )
+            }
+            return (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-xs font-semibold uppercase tracking-widest text-gray-500 border-b border-gray-700/60">
+                    <th className="pb-2 text-left font-medium">WHEN</th>
+                    <th className="pb-2 text-right font-medium tabular-nums pr-3">PRICE</th>
+                    <th className="pb-2 text-left font-medium">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colSpan={3} className="py-3 text-center text-gray-500 text-xs">Run analysis for detailed exit levels</td></tr>
+                </tbody>
+              </table>
+            )
+          })()}
+        </div>
+
+
 
         <div className="rounded-xl border border-semantic-accent-border bg-semantic-accent-bg px-3 py-3 space-y-2">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-semantic-accent">
@@ -1008,257 +1089,26 @@ export default function SwingTradeEnginePanel({
           </div>
         </div>
 
-        {/* ═══ 4-State Swing System (SETUP → ENTRY → ACTIVE → EXIT) ═══ */}
-        {(execLevels.breakoutTrigger || execLevels.riskBelow) && (
-          <div className="space-y-2">
-            {/* Single-line execution UI */}
-            <div className="rounded-xl border border-gray-800 bg-gray-900/60 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 mb-1">SINGLE-LINE EXECUTION</div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <div className="flex flex-col items-center gap-0">
-                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Bias</span>
-                  <span className="font-bold text-gray-100 uppercase text-[12px]">{result.bias === 'short' ? 'BEARISH' : 'BULLISH'}</span>
-                </div>
-                <span className="text-gray-700 text-[14px] font-light">|</span>
-                <div className="flex flex-col items-center gap-0">
-                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Breakout</span>
-                  <span className="text-amber-300 font-bold text-[12px]">{execLevels.breakoutTrigger}</span>
-                </div>
-                <span className="text-gray-700 text-[14px] font-light">|</span>
-                <div className="flex flex-col items-center gap-0">
-                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Base Zone</span>
-                  <span className="text-emerald-300 font-semibold text-[12px]">{execLevels.pullbackZone || 'base forming'}</span>
-                </div>
-                <span className="text-gray-700 text-[14px] font-light">|</span>
-                <div className="flex flex-col items-center gap-0">
-                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Targets</span>
-                  <span className="flex items-center gap-1 text-[12px]">
-                    <span className="text-violet-300 font-semibold">T1 {execLevels.firstTarget || '—'}</span>
-                    <span className="text-orange-300 font-semibold">T2 {execLevels.stretchTarget || '—'}</span>
-                  </span>
-                </div>
-                <span className="text-gray-700 text-[14px] font-light">|</span>
-                <div className="flex flex-col items-center gap-0">
-                  <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-600">Stop Loss</span>
-                  <span className="text-red-300 font-semibold text-[12px]">{execLevels.riskBelow}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Progress stepper */}
-            <div className="flex items-center">
-              {([['SETUP','amber'],['ENTRY','emerald'],['IN-PLAY','sky'],['EXIT','red']] as const).map(([label, color], i) => {
-                const n = i + 1
-                const isActive = n === swingActiveState
-                const isPast = n < swingActiveState
-                const nodeCls = isActive
-                  ? color === 'amber'   ? 'border-amber-400 bg-amber-500/25 text-amber-200 ring-2 ring-amber-400/40 ring-offset-1 ring-offset-gray-900'
-                    : color === 'emerald' ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40 ring-offset-1 ring-offset-gray-900'
-                    : color === 'sky'     ? 'border-sky-400 bg-sky-500/25 text-sky-200 ring-2 ring-sky-400/40 ring-offset-1 ring-offset-gray-900'
-                    :                      'border-red-400 bg-red-500/25 text-red-200 ring-2 ring-red-400/40 ring-offset-1 ring-offset-gray-900'
-                  : isPast ? 'border-gray-600 bg-gray-700/50 text-gray-500'
-                  : 'border-gray-700 bg-gray-800 text-gray-600'
-                const lblCls = isActive
-                  ? color === 'amber' ? 'text-amber-300' : color === 'emerald' ? 'text-emerald-300' : color === 'sky' ? 'text-sky-300' : 'text-red-300'
-                  : isPast ? 'text-gray-500' : 'text-gray-700'
-                return (
-                  <div key={n} className="flex items-center flex-1">
-                    <div className="flex flex-col items-center gap-0.5 flex-1">
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all ${nodeCls}`}>{n}</div>
-                      <span className={`text-[9px] font-bold uppercase tracking-wide ${lblCls}`}>{label}</span>
-                    </div>
-                    {i < 3 && <div className={`h-0.5 w-3 shrink-0 mb-3.5 ${isPast ? 'bg-gray-600' : 'bg-gray-800'}`} />}
-                  </div>
-                )
-              })}
-            </div>
 
-            {/* 4-State Grid */}
-            <div className="grid gap-2 sm:grid-cols-4">
-              {/* STATE 1: SETUP */}
-              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 1 ? 'border-amber-500/60 bg-amber-950/25 ring-2 ring-amber-500/20' : 'border-amber-700/40 bg-amber-950/12'}`}>
-                <div className="px-3 py-3">
-                <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                  STATE 1: SETUP
-{swingActiveState === 1 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 text-white dark:bg-amber-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
-
-              </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                {['WATCH', 'WATCH_CALL', 'WATCH_PUT', 'WATCH_CALL_OR_DEBIT_SPREAD'].includes(
-                  String(result.final_action || '').toUpperCase()
-                ) ? 'Watching — Setup Not Yet Confirmed' : 'Base / Accumulation'}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                  {result.bias === 'short'
-                    ? `Resistance zone ${execLevels.pullbackZone || 'forming'} — short bias building`
-                    : `Support zone ${execLevels.pullbackZone || 'forming'} — long bias building`}
-                </div>
-                <div className="text-[10px] text-amber-400/80 font-semibold">No entry — observe only</div>
-              </div>
-            </div>
-            </div>
-            {/* STATE 2: ENTRY */}
-            <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 2 ? 'border-emerald-500/60 bg-emerald-950/25 ring-2 ring-emerald-500/20' : 'border-emerald-700/40 bg-emerald-950/12'}`}>
-              <div className="px-3 py-3">
-              <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                STATE 2: ENTRY
-                {swingActiveState === 2 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white dark:bg-emerald-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
-                </div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Breakout Confirmation</div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">{result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                    <span className="text-violet-300 font-mono text-[12px] font-semibold">
-                      {result.bias === 'short'
-                        ? `break & hold below ${execLevels.breakoutTrigger || 'trigger'}`
-                        : `break & hold above ${execLevels.breakoutTrigger || 'trigger'}`}
-                    </span>
-                  </div>
-                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                    Entry on confirmed breakout — no anticipation
-                  </div>
-                </div>
-                </div>
-              </div>
-              {/* STATE 3: IN-PLAY */}
-              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 3 ? 'border-sky-500/60 bg-sky-950/25 ring-2 ring-sky-500/20' : 'border-sky-700/40 bg-sky-950/12'}`}>
-                <div className="px-3 py-3">
-                <div className="flex items-center gap-1.5 text-sky-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0" />
-                  STATE 3: IN-PLAY
-                  {swingActiveState === 3 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-500 text-white dark:bg-sky-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
-                </div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Trend Holding Phase</div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">HOLD {result.bias === 'short' ? 'SHORT' : 'LONG'}</span>
-                    <span className="text-emerald-300 font-mono text-[12px] font-semibold">
-                      TP1 {execLevels.firstTarget || '—'} · TP2 {execLevels.stretchTarget || '—'}
-                    </span>
-                  </div>
-                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                    Scale ½ at TP1, trail rest to TP2
-                  </div>
-                </div>
-                </div>
-              </div>
-              {/* STATE 4: EXIT */}
-              <div className={`rounded-xl border transition-all duration-200 ${swingActiveState === 4 ? 'border-red-500/60 bg-red-950/25 ring-2 ring-red-500/20' : 'border-red-700/40 bg-red-950/12'}`}>
-                <div className="px-3 py-3">
-                <div className="flex items-center gap-1.5 text-red-300 text-[11px] font-bold uppercase tracking-[0.12em] mb-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
-                  STATE 4: EXIT
-                  {swingActiveState === 4 && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-500 text-white dark:bg-red-600 dark:text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse shrink-0" />NOW</span>}
-                </div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Invalidated / Complete</div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-100 text-[11px] uppercase tracking-wide">SL</span>
-                    <span className="text-red-300 font-mono text-[12px] font-semibold">{execLevels.riskBelow || '—'}</span>
-                  </div>
-                  <div className="text-gray-300 text-[11px] leading-relaxed font-medium">
-                    {result.bias === 'short'
-                      ? `Breakout fails → cover`
-                      : `Structure breakdown → exit`}
-                    {execLevels.stretchTarget && ` · full exit at TP2`}
-                  </div>
-                </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {inPosition && latestPos && (
-          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Check size={14} className="text-amber-400 shrink-0" />
-              <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">Already in Position</span>
-              {latestPos.source && (
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  latestPos.source === 'day'   ? 'border-orange-600/40 bg-orange-900/30 text-orange-300' :
-                  latestPos.source === 'swing' ? 'border-blue-600/40 bg-blue-900/30 text-blue-300' :
-                                                 'border-gray-600/40 bg-gray-800/50 text-gray-400'
-                }`}>{latestPos.source}</span>
-              )}
-              {existingPositions.length > 1 && (
-                <span className="text-[10px] text-amber-400/70">{existingPositions.length} open positions</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-amber-200/80">
-              {latestPos.strategy && <span><span className="text-amber-400/60">Strategy</span> {latestPos.strategy}</span>}
-              {latestPos.contracts > 0 && <span><span className="text-amber-400/60">Contracts</span> {latestPos.contracts}</span>}
-              {latestPos.entryPrice > 0 && <span><span className="text-amber-400/60">Entry px</span> ${latestPos.entryPrice.toFixed(2)}</span>}
-              {latestPos.addedAt && <span><span className="text-amber-400/60">Added</span> {latestPos.addedAt.slice(0, 10)}</span>}
-            </div>
-            <p className="text-[11px] text-amber-200/70 leading-snug">
-              Follow your exit rules — manage this position rather than adding again without a clear plan.
-            </p>
-          </div>
-        )}
-
-        <MarketTimeGateBanner tradeType="swing" />
-
-        <div className="flex flex-wrap items-center gap-2">
-          {inPosition ? (
-            <button type="button" onClick={onViewPositions} className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50">
-              <BriefcaseBusiness size={14} />
-              View Positions
-            </button>
-          ) : onRequestEnterActiveTrade ? (
-            <button type="button" onClick={onRequestEnterActiveTrade} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${execTone === 'green' ? actionButtonClass(execTone) : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-              <PlusCircle size={14} />
-              Add to Positions
-            </button>
-          ) : null}
-          {onCreateAlert ? (
-            <button type="button" onClick={onCreateAlert} className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-colors ${getActionButtonClass('alert')}`}>
-              <Bell size={14} />
-              Create Alert
-            </button>
-          ) : null}
-          {onOpenStrategyFinder ? (
-            <button type="button" onClick={onOpenStrategyFinder} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('analyze')}`}>
-              <BarChart2 size={13} />
-              Strategy Finder
-            </button>
-          ) : null}
-          {onOpenCommandCenter ? (
-            <button type="button" onClick={onOpenCommandCenter} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}>
-              <Layers size={13} />
-              Command Center
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setSignalsOpen(true)
-              signalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              onViewSignals?.()
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${getActionButtonClass('surface')}`}
-          >
-            <Search size={13} />
-            View Signals
-          </button>
-          {onSaveToJournal ? (
-            <button type="button" onClick={onSaveToJournal} disabled={savedToJournal}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors ${
-                savedToJournal
-                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-700/40'
-                  : getActionButtonClass('surface')
-              }`}
-            >
-              {savedToJournal ? '✓ Added to Journal' : 'Save to Journal'}
-            </button>
-          ) : null}
-        </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
+      {/* ─── Details (collapsible) ─── */}
+      <div className="px-4 py-3 border-b border-gray-800">
+        <button
+          type="button"
+          onClick={() => setDetailOpen(p => !p)}
+          className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left"
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Details</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">Step-by-step analysis — market context, execution, and risk</div>
+          </div>
+          <ChevronDown size={14} className={`text-gray-500 transition-transform ${detailOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 1 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 1 ? focusToneText : 'text-semantic-info'}`}>Step 1</div>
@@ -1284,7 +1134,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 2 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 2 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 2 ? focusToneText : 'text-semantic-info'}`}>Step 2</div>
@@ -1357,7 +1207,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 3 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 3 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 3 ? focusToneText : 'text-semantic-info'}`}>Step 3</div>
@@ -1376,7 +1226,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 4 ? focusToneText : 'text-semantic-info'}`}>Step 4</div>
@@ -1533,7 +1383,7 @@ export default function SwingTradeEnginePanel({
         })()}
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 5 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 5 ? focusToneText : 'text-semantic-info'}`}>Step 5</div>
@@ -1607,7 +1457,7 @@ export default function SwingTradeEnginePanel({
         </div>
       </div>
 
-      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 6 ? ` ${focusBorderLeft}` : ''}`}>
+      <div className={`px-4 py-4 border-b border-gray-800 space-y-3${detailOpen ? '' : ' hidden'}${focusStep === 6 ? ` ${focusBorderLeft}` : ''}`}>
         <div>
           <div className="flex items-center gap-2">
             <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${focusStep === 6 ? focusToneText : 'text-semantic-info'}`}>Step 6</div>
@@ -1642,20 +1492,31 @@ export default function SwingTradeEnginePanel({
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
                   {exitRules.map((rule, i) => {
-                    const isStop   = rule.trigger.toLowerCase().includes('stop loss')
-                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1')
-                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2')
-                    const isClose  = rule.trigger.toLowerCase().includes('close') || rule.trigger.toLowerCase().includes('loses') || rule.trigger.toLowerCase().includes('reclaims')
-                    const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : isClose ? 'text-amber-400' : 'text-slate-300'
-                    const actionCls = isStop ? 'text-red-300' : isTarget2 ? 'text-orange-200' : isTarget1 ? 'text-emerald-300' : isClose ? 'text-amber-300' : 'text-gray-200'
+                    const t = rule.trigger.toLowerCase()
+                    const isStall   = t.includes('stalls')
+                    const isStop    = t.includes('stop')
+                    const isTarget2 = t.includes('target 2')
+                    const isTarget1 = t.includes('target 1') && !isTarget2 && !isStall
+                    const isBreak   = t.includes('ma20') || t.includes('breakdown') || t.includes('closes')
+                    const clr = isStop || isStall ? 'text-red-400'
+                      : isTarget1 ? 'text-emerald-400'
+                      : isTarget2 ? 'text-amber-400'
+                      : isBreak ? 'text-slate-400'
+                      : 'text-slate-500'
+                    const whenLabel = rule.trigger
+                      .replace(/^Target 1 reached$/i, 'Target 1')
+                      .replace(/^Target 2 reached$/i, 'Target 2')
+                      .replace(/^Stop loss$/i, 'Stop Loss')
+                      .replace(/^Price closes (below|above) MA20$/i, 'MA20 Breakdown')
+                      .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
                     return (
                       <tr key={i} className="group">
-                        <td className="py-2 pr-2 text-gray-400 leading-snug align-top w-[30%]">{rule.trigger}</td>
-                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                        <td className={`py-2 pr-2 leading-snug align-top w-[30%] font-semibold font-mono ${clr}`}>{whenLabel}</td>
+                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${clr}`}>
                           ${rule.price.toFixed(2)}
                         </td>
                         <td className="py-2 align-top">
-                          <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
+                          <div className={`font-semibold leading-snug ${clr}`}>{rule.action}</div>
                           <div className="text-[10px] text-gray-500 leading-snug mt-0.5">{rule.note}</div>
                         </td>
                       </tr>

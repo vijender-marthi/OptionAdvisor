@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -507,10 +507,10 @@ function DecisionPanel({ title, decision, ticker }: { title: string; decision: S
           </div>
         ) : null}
         {engineRoute ? (
-          <button type="button" onClick={() => navigate(engineRoute)} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
+          <Link to={engineRoute} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
             Open {title} Engine
             <ArrowUpRight size={13} />
-          </button>
+          </Link>
         ) : null}
       </div>
     </div>
@@ -944,7 +944,7 @@ export default function SignalFeedPage() {
   const payload = env?.data
   const rows = payload?.rows ?? []
   const summary = payload?.summary ?? { total: 0, ready: 0, watch: 0, extended: 0, avoid: 0, conflict: 0, manage: 0, alerts: 0, strong_bullish: 0, strong_bearish: 0 }
-  const aiSummary = payload?.ai_summary ?? { headline: 'No Signal Feed items yet', message: 'Add tickers to start the Signal Feed pipeline.', best_focus: 'Use Strategy Finder, day trade, or swing trade flows to seed tickers.', counts: {} }
+  const aiSummary = payload?.ai_summary ?? { headline: 'No Signal Feed items yet', message: 'Add tickers to start the Signal Feed pipeline.', best_focus: 'Use Position Trading, day trade, or swing trade flows to seed tickers.', counts: {} }
   const pagination = payload?.pagination ?? { page: 1, page_size: pageSize, total: 0, total_pages: 1 }
 
   const sectors = useMemo(() => {

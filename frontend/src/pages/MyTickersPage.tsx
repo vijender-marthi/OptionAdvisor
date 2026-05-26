@@ -403,7 +403,7 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
   const ENGINE_LABEL: Record<string, string> = {
     day: 'Day Trade',
     swing: 'Swing Trade',
-    regular: 'Strategy Finder',
+    regular: 'Position Trading',
   }
 
   return (

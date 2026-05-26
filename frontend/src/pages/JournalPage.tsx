@@ -768,19 +768,36 @@ export default function JournalPage() {
     await load()
   }
 
-  const handleDeleteConfirm = (id: string) => setDeleteTarget(id)
+  const handleDeleteConfirm = (id: string) => { setDeleteTarget(id); setDeleteError(null) }
+
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleDeleteExecute = async () => {
     if (!deleteTarget || !email) return
     setDeleting(true)
+    setDeleteError(null)
+    const prevEntries = entries
+    // Optimistic: remove immediately so UI feels instant
+    const next = entries.filter(e => e.id !== deleteTarget)
+    setEntries(next)
+    syncJournalEntryCount(next.length)
+    setDeleteTarget(null)
     try {
       await deleteJournalEntry(email, deleteTarget)
-      const nextLen = entries.filter(e => e.id !== deleteTarget).length
-      setEntries(prev => prev.filter(e => e.id !== deleteTarget))
-      syncJournalEntryCount(nextLen)
-      setDeleteTarget(null)
+      // Confirm with backend re-fetch
+      try {
+        const data = await getJournal(email)
+        const list = (data.entries as JournalEntry[]) ?? []
+        setEntries(list)
+        syncJournalEntryCount(list.length)
+      } catch { /* re-fetch failed; optimistic state is still correct */ }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
+      // Delete failed — restore previous list and show error in a toast-like banner
+      setEntries(prevEntries)
+      syncJournalEntryCount(prevEntries.length)
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? (e instanceof Error ? e.message : 'Delete failed')
+      setError(msg)
     } finally {
       setDeleting(false)
     }
@@ -847,9 +864,15 @@ export default function JournalPage() {
             <p className="text-sm text-gray-400 mb-4">
               This will permanently remove this trade from your journal. This action cannot be undone.
             </p>
+            {deleteError && (
+              <div className="mb-3 rounded-lg border border-red-700 bg-red-900/20 px-3 py-2 text-xs text-red-400 flex items-center gap-2">
+                <AlertTriangle size={12} className="shrink-0" />
+                {deleteError}
+              </div>
+            )}
             <div className="flex gap-2">
               <button
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
                 className="flex-1 px-4 py-3 sm:py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:bg-gray-700 transition-colors min-h-[44px] sm:min-h-0"
               >
                 Cancel

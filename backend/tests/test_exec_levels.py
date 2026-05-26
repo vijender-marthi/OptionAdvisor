@@ -93,11 +93,17 @@ class TestExecLevelsEdgeCases(unittest.TestCase):
         self.assertGreater(levels["target2"], levels["target1"])
 
     def test_avgo_example(self):
-        """Verify the AVGO numbers that triggered the fix."""
+        """Verify MA20 structural distance calculation with AVGO numbers.
+
+        Measured move = last - ma20 = 417 - 390 = 27
+        Breakout = last * 1.005 = 417 * 1.005 = 419.09
+        T1 = last + measured_move * 0.5 = 417 + 13.5 = 430.50
+        T2 = last + measured_move * 1.0 = 417 + 27.0 = 444.00
+        """
         levels = _compute_exec_levels(last=417, ma20=390, mom_5d_pct=2.5, bias="long")
-        self.assertAlmostEqual(levels["breakout"], 423.26, delta=0.1)
-        self.assertAlmostEqual(levels["target1"], 428.55, delta=0.1)
-        self.assertAlmostEqual(levels["target2"], 433.84, delta=0.1)
+        self.assertAlmostEqual(levels["breakout"], 419.09, delta=0.1)
+        self.assertAlmostEqual(levels["target1"], 430.50, delta=0.1)
+        self.assertAlmostEqual(levels["target2"], 444.00, delta=0.1)
 
 
 if __name__ == "__main__":

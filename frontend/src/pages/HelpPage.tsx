@@ -146,7 +146,7 @@ const optionExamples = [
 const workflowSteps = [
   { step: '1', title: 'Browse AI Radar', icon: <Brain size={16} />, color: 'text-violet-400', desc: 'Start in AI Radar to survey the ~60 AI/datacenter stocks organized by category (Chips, Software, Pure-Play, Data Centers, Power, Semicon Equip, Optical Networking, Networking, Applications). Click Analyze to instantly load any ticker.' },
   { step: '2', title: 'Add to Watchlist', icon: <Star size={16} />, color: 'text-yellow-400', desc: 'Star any ticker to add it to your Watchlist. The Watchlist groups tickers by their AI Radar category and shows last price. Background refresh keeps prices and signals current every 15 minutes.' },
-  { step: '3', title: 'Analyze in Strategy Finder', icon: <BarChart2 size={16} />, color: 'text-sky-400', desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w: 0w, 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.' },
+  { step: '3', title: 'Analyze in Position Trading', icon: <BarChart2 size={16} />, color: 'text-sky-400', desc: 'Enter a ticker in the search bar or click any Analyze button. Set weeks-out (0w–6w: 0w, 1w, 2w, 4w, 6w), spread width, and strategy mode. The engine fetches live option chains and builds the best candidates for the current market regime.' },
   { step: '4', title: 'Review Pre-Trade Checklist', icon: <CheckCircle2 size={16} />, color: 'text-emerald-400', desc: 'Each recommendation card shows a state badge (STATE 2: ENTRY, STATE 1: SETUP, WATCH, AVOID) and total score. Expand the card to see the pre-trade checklist with all check items, their pass/warn/fail status, and exact entry timing and exit rules for that specific trade.' },
   { step: '5', title: 'Scan Trade Signals', icon: <Radar size={16} />, color: 'text-amber-400', desc: 'Trade Signals shows every watchlist ticker with 4-state entry ratings for analyzed DTE windows (0w, 1w, 2w, 4w, 6w). Use "Fetch All Weeks" to populate all windows in one sweep, then filter by Entry / Setup / Watch / Avoid to find the best setups across your list.' },
   { step: '6', title: 'Add to Portfolio', icon: <Briefcase size={16} />, color: 'text-indigo-400', desc: 'Click "Add to Portfolio" on any recommendation. The contract picker shows Kelly Criterion sizing — how many contracts are mathematically optimal for your account size. Kelly data (edge ratio, Half-Kelly %, capital at risk) is saved with the position so you can review your sizing discipline later.' },
@@ -177,7 +177,7 @@ const positionLifecycleStates = [
 ]
 
 const tradeLifecycleStages = [
-  { stage: 'DISCOVER', subtitle: 'Find opportunities', desc: 'Browse AI Radar categories, scan Trade Signals, or load a ticker in Strategy Finder. The engine surfaces candidates based on market conditions.' },
+  { stage: 'DISCOVER', subtitle: 'Find opportunities', desc: 'Browse AI Radar categories, scan Trade Signals, or load a ticker in Position Trading. The engine surfaces candidates based on market conditions.' },
   { stage: 'ANALYZE', subtitle: 'Evaluate setup quality', desc: 'Run the pre-trade checklist. Each trade receives a 4-state entry rating — STATE 2: ENTRY, STATE 1: SETUP, WATCH, or AVOID — backed by 10 independent validation checks.' },
   { stage: 'READY', subtitle: 'Clear to enter', desc: 'Setup quality is GOOD, execution status is READY. Entry conditions are met or imminent. Proceed with position sizing.' },
   { stage: 'EXECUTE', subtitle: 'Place the trade', desc: 'Choose contract structure in the picker. Kelly sizing determines optimal capital allocation. Add to Portfolio to track.' },
@@ -738,7 +738,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               <DocCard icon={<TrendingUp size={15} />} title="Swing Trade Engine">
                 <p className="text-xs text-gray-400 leading-relaxed">Multi-day momentum setups using daily OHLCV analysis (MA20/MA50, RSI, MACD, volume trends). Provides entry quality grades, risk assessment, and structured playbooks.</p>
               </DocCard>
-              <DocCard icon={<SlidersHorizontal size={15} />} title="Strategy Finder">
+              <DocCard icon={<SlidersHorizontal size={15} />} title="Position Trading">
                 <p className="text-xs text-gray-400 leading-relaxed">Options structure discovery and analysis. Enter a ticker, set parameters (weeks-out, spread width, strategy mode), and the engine builds the best candidates for the current market regime.</p>
               </DocCard>
             </div>
@@ -1163,6 +1163,67 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
                     <p className="font-semibold text-emerald-300 text-[11px]">Entry Authorization Rule</p>
                     <p className="text-gray-400 text-[10px] mt-1">Entry Gate shows ENTER NOW only when: state = ENTRY_ACTIVE, all confirmations cleared, and session phase is not EOD_CLOSING. ENTRY_PULLBACK shows HOLD — MANAGE POSITION (amber). EOD_CLOSING shows no entry regardless of setup quality.</p>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Activity size={15} />} title="Action Badge Reference — What Each State Shows">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>The single <strong className="text-gray-200">Action</strong> badge at the top of the Day Trade engine panel tells you exactly what to do at each stage. It is driven by the 4-state system, not the raw engine verdict.</p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-700">
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">State</th>
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">Volume?</th>
+                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">ACTION badge</th>
+                          <th className="text-left py-1.5 text-gray-500 font-semibold">What to do</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {[
+                          { state: '1 · SETUP',   vol: '—',             action: 'Watch',         actionCls: 'text-sky-400',     todo: 'Monitor. No entry allowed.' },
+                          { state: '2 · ENTRY',   vol: 'Pending',       action: 'AWAIT VOLUME',  actionCls: 'text-amber-400',   todo: 'Setup formed — wait for volume spike to confirm.' },
+                          { state: '2 · ENTRY',   vol: '✅ Confirmed',  action: '⚡ ENTER NOW',  actionCls: 'text-emerald-400 font-black', todo: 'Pull the trigger. This is the entry window.' },
+                          { state: '3 · IN-PLAY', vol: '✅ Confirmed',  action: 'MANAGE STOP',   actionCls: 'text-amber-400',   todo: 'Trade active. Manage stop. No new entries.' },
+                          { state: '4 · EXIT',    vol: '✅ Confirmed',  action: 'SCALE OUT',     actionCls: 'text-red-400',     todo: 'Close or scale out. EOD or stop triggered.' },
+                        ].map((r, i) => (
+                          <tr key={i} className={r.action.includes('ENTER NOW') ? 'bg-emerald-950/20' : ''}>
+                            <td className="py-1.5 pr-3 text-gray-300 font-semibold">{r.state}</td>
+                            <td className="py-1.5 pr-3 text-gray-400">{r.vol}</td>
+                            <td className={`py-1.5 pr-3 font-bold ${r.actionCls}`}>{r.action}</td>
+                            <td className="py-1.5 text-gray-400">{r.todo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800/50 bg-gray-900/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">All ACTION values</p>
+                    {[
+                      { label: 'Watch',        color: 'text-sky-400',     when: 'State 1 — setup forming, no entry' },
+                      { label: 'AWAIT VOLUME', color: 'text-amber-400',   when: 'State 2 — entry gate open, waiting for volume spike' },
+                      { label: '⚡ ENTER NOW', color: 'text-emerald-400', when: 'State 2 + volume confirmed — enter immediately' },
+                      { label: 'MANAGE STOP',  color: 'text-amber-400',   when: 'State 3 — trade active, trail stop, no new entries' },
+                      { label: 'SCALE OUT',    color: 'text-red-400',     when: 'State 4 — close or reduce at EOD' },
+                      { label: 'Avoid',        color: 'text-red-400',     when: 'Any state — hard fail or no edge' },
+                    ].map(v => (
+                      <div key={v.label} className="flex items-baseline gap-2">
+                        <span className={`font-bold text-[10px] w-36 shrink-0 ${v.color}`}>{v.label}</span>
+                        <span className="text-[10px] text-gray-500">{v.when}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Alert system — when you get notified</p>
+                    <div className="mt-1 space-y-1 text-[10px] text-gray-400">
+                      <p><strong className="text-gray-300">1 → 2 (State change):</strong> Setup advancing — entry gate is now open. Prepare to enter on volume.</p>
+                      <p><strong className="text-gray-300">2 → 3 (State change):</strong> Breakout confirmed — if you're not in, this is your last chance on the move.</p>
+                      <p><strong className="text-emerald-300">⚡ ENTER NOW:</strong> Fired once when State 2 + volume confirmed simultaneously. This is the primary entry alert — act immediately.</p>
+                    </div>
                   </div>
                 </div>
               </DocCard>

@@ -216,6 +216,51 @@ def get_market_position(auth_email: str = Depends(require_access_email)):
         high_52w = float(closes.tail(n52w).max())
         drawdown_pct = (high_52w - last_price) / high_52w * 100.0
 
+        # SPY change %
+        spy_chg_pct = None
+        try:
+            spy_hist = bar_cache.get_history("SPY", period="5d", interval="1d")
+            if spy_hist is not None and not spy_hist.empty:
+                spy_closes = spy_hist["Close"].dropna()
+                if len(spy_closes) >= 2:
+                    spy_chg_pct = round((float(spy_closes.iloc[-1]) / float(spy_closes.iloc[-2]) - 1) * 100, 2)
+        except Exception:
+            pass
+
+        # QQQ price + change
+        qqq_price = None
+        qqq_chg_pct = None
+        try:
+            qqq_hist = bar_cache.get_history("QQQ", period="5d", interval="1d")
+            if qqq_hist is not None and not qqq_hist.empty:
+                qqq_closes = qqq_hist["Close"].dropna()
+                if len(qqq_closes) >= 1:
+                    qqq_price = round(float(qqq_closes.iloc[-1]), 2)
+                if len(qqq_closes) >= 2:
+                    qqq_chg_pct = round((float(qqq_closes.iloc[-1]) / float(qqq_closes.iloc[-2]) - 1) * 100, 2)
+        except Exception:
+            pass
+
+        # VIX level
+        vix_level = None
+        try:
+            vh = bar_cache.get_history("^VIX", period="5d", interval="1d")
+            if vh is not None and not vh.empty:
+                vix_level = round(float(vh["Close"].dropna().iloc[-1]), 2)
+        except Exception:
+            pass
+
+        vix_label = None
+        if vix_level is not None:
+            if vix_level < 15:
+                vix_label = "Low"
+            elif vix_level < 20:
+                vix_label = "Contained"
+            elif vix_level < 25:
+                vix_label = "Elevated"
+            else:
+                vix_label = "High"
+
         # Strategy signal — 25% reserve rule
         if dist_200ma_pct >= 10.0:
             position_signal = "HIGH_TERRITORY"
@@ -240,6 +285,11 @@ def get_market_position(auth_email: str = Depends(require_access_email)):
 
         return api_envelope({
             "spy_price":       round(last_price, 2),
+            "spy_change_pct":  spy_chg_pct,
+            "qqq_price":       qqq_price,
+            "qqq_change_pct":  qqq_chg_pct,
+            "vix":             vix_level,
+            "vix_label":       vix_label,
             "ma200":           round(ma200, 2),
             "dist_200ma_pct":  round(dist_200ma_pct, 1),
             "high_52w":        round(high_52w, 2),
@@ -277,6 +327,11 @@ def get_trade_command_center(
     """
     email = normalize_email(auth_email)
     t0 = time.perf_counter()
+
+    # ── Auto-seed default tickers on first TCC visit ──────────────────────────
+    state = get_user_state(email)
+    if not state.get("my_tickers"):
+        _seed_default_my_tickers(email)
 
     # ── Live engine aggregation ────────────────────────────────────────────────
     t_eng = time.perf_counter()
@@ -721,19 +776,25 @@ def _compute_positions_pnl(
         p for p in open_pos
         if isinstance(p, dict) and isinstance(p.get("legs"), list) and p.get("legs")
     ]
+    open_no_legs = [
+        p for p in open_pos
+        if isinstance(p, dict) and (not isinstance(p.get("legs"), list) or not p.get("legs"))
+    ]
 
-    if not open_with_legs:
+    all_open_for_pnl = open_with_legs + open_no_legs
+
+    if not all_open_for_pnl:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
-        return {"total_pl": total_pl, "day_pl": 0.0, "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": 0.0, "week_pl": 0.0, "per_position": per_position_pnl}
 
     # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
         tickers = list({
             str(p.get("ticker", "")).upper()
-            for p in open_with_legs
+            for p in all_open_for_pnl
             if p.get("ticker")
         })
-        price_map: dict[str, tuple[float, float]] = {}
+        price_map: dict[str, tuple[float, float, float]] = {}
         for sym in tickers:
             try:
                 h = bar_cache.get_history(sym, period="5d", interval="1d", auto_adjust=True)
@@ -742,7 +803,14 @@ def _compute_positions_pnl(
                 c = h["Close"].dropna()
                 if len(c) < 2:
                     continue
-                price_map[sym] = (float(c.iloc[-1]), float(c.iloc[-2]))
+                # (current_close, prev_close, monday_close)
+                mon_idx = None
+                for i in range(len(h)):
+                    if h.index[i].weekday() == 0:
+                        mon_idx = i
+                        break
+                mon_close = float(c.iloc[mon_idx]) if mon_idx is not None else float(c.iloc[-1])
+                price_map[sym] = (float(c.iloc[-1]), float(c.iloc[-2]), mon_close)
             except Exception:
                 continue
 
@@ -759,19 +827,23 @@ def _compute_positions_pnl(
             if marks:
                 live_marks[f"{sym}:{exp}"] = marks
 
-        today = datetime.today().date()
         mtm_total = 0.0
         day_total = 0.0
+        week_total = 0.0
         has_mtm = False
 
-        for p in open_with_legs:
+        for p in all_open_for_pnl:
             sym = str(p.get("ticker", "")).upper()
             if sym not in price_map:
                 continue
-            S_now, S_prev = price_map[sym]
+            S_now, S_prev, S_mon = price_map[sym]
+            has_legs = isinstance(p.get("legs"), list) and p.get("legs")
 
-            exp_key = f"{sym}:{str(p.get('expiry', ''))[:10]}"
-            pos_marks = live_marks.get(exp_key)
+            if has_legs:
+                exp_key = f"{sym}:{str(p.get('expiry', ''))[:10]}"
+                pos_marks = live_marks.get(exp_key)
+            else:
+                pos_marks = None
 
             current_result = calculate_position_pnl(
                 p,
@@ -796,11 +868,17 @@ def _compute_positions_pnl(
                 }
             mtm_total += current_result["pnl"]
             day_total += bs_today["pnl"] - bs_yesterday["pnl"]
+            # Weekly P&L: current BS value minus Monday BS value
+            bs_monday = calculate_position_pnl(
+                p, live_option_marks=None, underlying_price=S_mon,
+            )
+            week_total += bs_today["pnl"] - bs_monday["pnl"]
             has_mtm = True
 
         total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
         day_pl = round(day_total, 2) if has_mtm else None
-        return {"total_pl": total_pl, "day_pl": day_pl, "per_position": per_position_pnl}
+        week_pl = round(week_total, 2) if has_mtm else None
+        return {"total_pl": total_pl, "day_pl": day_pl, "week_pl": week_pl, "per_position": per_position_pnl}
 
     except Exception:  # noqa: BLE001
         total_pl = round(realized_pnl, 2) if realized_count > 0 else None
@@ -1130,6 +1208,7 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "stock_capital":          0.0,
         "total_pl":               pnl_data["total_pl"],
         "day_pl":                 pnl_data["day_pl"],
+        "week_pl":                pnl_data.get("week_pl"),
         "risk_status":            "elevated" if options_cap > 20000 else "normal",
         "alerts_count":           alerts_n,
         "open_risk_notional":     round(options_cap, 2),

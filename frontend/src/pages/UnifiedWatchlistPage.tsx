@@ -650,7 +650,7 @@ function StrategyWatchlistBoard() {
                       <div className="min-w-0">
                         <div className="font-semibold text-white text-sm tracking-tight font-mono">{r.ticker}</div>
                         <div className="text-xs text-gray-500 truncate sm:max-w-[110px]">{company}</div>
-                        <div className="text-[10px] text-gray-600">Options · Strategy Finder</div>
+                        <div className="text-[10px] text-gray-600">Options · Position Trading</div>
                       </div>
                     </div>
                   </div>

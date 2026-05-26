@@ -12,9 +12,9 @@
 :root, html.dark {
   color-scheme: dark;
 
-  --surface-canvas: #020617;
-  --surface-page: #020617;
-  --surface-card: #08111f;
+  --surface-canvas: #0a0a0a;
+  --surface-page: #0a0a0a;
+  --surface-card: #1a1a1a;
   --surface-elevated: #111c2e;
   --surface-raised: #1e2b3f;
   --surface-muted: #334155;
@@ -42,9 +42,9 @@
   --warning: #fbbf24;
   --warning-bg: rgba(245, 158, 11, 0.15);
   --warning-border: rgba(245, 158, 11, 0.4);
-  --accent: #a78bfa;
-  --accent-bg: rgba(168, 85, 247, 0.15);
-  --accent-border: rgba(168, 85, 247, 0.4);
+  --accent: #2dd4bf;
+  --accent-bg: rgba(20, 184, 166, 0.15);
+  --accent-border: rgba(20, 184, 166, 0.4);
 
   --info: #38bdf8;
   --info-bg: rgba(56, 189, 248, 0.15);
@@ -121,9 +121,9 @@ html.light {
   --warning: #d97706;
   --warning-bg: #fef3c7;
   --warning-border: #fcd34d;
-  --accent: #6d28d9;
-  --accent-bg: #ede9fe;
-  --accent-border: #a78bfa;
+  --accent: #0d9488;
+  --accent-bg: #ccfbf1;
+  --accent-border: #2dd4bf;
 
   --info: #0369a1;
   --info-bg: #e0f2fe;
@@ -665,39 +665,71 @@ html.light .signal-feed-page {
   background-color: var(--surface-canvas);
 }
 
-/* ── Day Trade Engine Panel — light theme text contrast ────────────────── */
+/* ── Day Trade Engine Panel / Swing Trade / Position Trading — light theme ── */
 html.light .day-trade-engine-panel .text-gray-100,
-html.light .day-trade-page .text-gray-100 { color: #0f172a !important; }
+html.light .day-trade-page .text-gray-100,
+html.light .swing-trade-page .text-gray-100,
+html.light .ticker-page .text-gray-100 { color: #0f172a !important; }
 html.light .day-trade-engine-panel .text-gray-200,
-html.light .day-trade-page .text-gray-200 { color: #1e293b !important; }
+html.light .day-trade-page .text-gray-200,
+html.light .swing-trade-page .text-gray-200,
+html.light .ticker-page .text-gray-200 { color: #1e293b !important; }
 html.light .day-trade-engine-panel .text-gray-300,
-html.light .day-trade-page .text-gray-300 { color: #334155 !important; }
+html.light .day-trade-page .text-gray-300,
+html.light .swing-trade-page .text-gray-300,
+html.light .ticker-page .text-gray-300 { color: #334155 !important; }
 html.light .day-trade-engine-panel .text-gray-400,
-html.light .day-trade-page .text-gray-400 { color: #475569 !important; }
+html.light .day-trade-page .text-gray-400,
+html.light .swing-trade-page .text-gray-400,
+html.light .ticker-page .text-gray-400 { color: #475569 !important; }
 html.light .day-trade-engine-panel .text-gray-500,
-html.light .day-trade-page .text-gray-500 { color: #64748b !important; }
+html.light .day-trade-page .text-gray-500,
+html.light .swing-trade-page .text-gray-500,
+html.light .ticker-page .text-gray-500 { color: #64748b !important; }
 html.light .day-trade-engine-panel .text-gray-600,
-html.light .day-trade-page .text-gray-600 { color: #94a3b8 !important; }
+html.light .day-trade-page .text-gray-600,
+html.light .swing-trade-page .text-gray-600,
+html.light .ticker-page .text-gray-600 { color: #94a3b8 !important; }
 html.light .day-trade-engine-panel .bg-gray-900\/70,
-html.light .day-trade-page .bg-gray-900\/70 { background-color: #f8fafc !important; }
+html.light .day-trade-page .bg-gray-900\/70,
+html.light .swing-trade-page .bg-gray-900\/70,
+html.light .ticker-page .bg-gray-900\/70 { background-color: #f8fafc !important; }
 html.light .day-trade-engine-panel .bg-black\/10,
-html.light .day-trade-page .bg-black\/10 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-black\/10,
+html.light .swing-trade-page .bg-black\/10,
+html.light .ticker-page .bg-black\/10 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-black\/15,
-html.light .day-trade-page .bg-black\/15 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-black\/15,
+html.light .swing-trade-page .bg-black\/15,
+html.light .ticker-page .bg-black\/15 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-black\/20,
-html.light .day-trade-page .bg-black\/20 { background-color: #e2e8f0 !important; }
+html.light .day-trade-page .bg-black\/20,
+html.light .swing-trade-page .bg-black\/20,
+html.light .ticker-page .bg-black\/20 { background-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .bg-black\/75,
-html.light .day-trade-page .bg-black\/75 { background-color: #e2e8f0 !important; }
+html.light .day-trade-page .bg-black\/75,
+html.light .swing-trade-page .bg-black\/75,
+html.light .ticker-page .bg-black\/75 { background-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-700\/40,
-html.light .day-trade-page .border-gray-700\/40 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-700\/40,
+html.light .swing-trade-page .border-gray-700\/40,
+html.light .ticker-page .border-gray-700\/40 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-700\/50,
-html.light .day-trade-page .border-gray-700\/50 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-700\/50,
+html.light .swing-trade-page .border-gray-700\/50,
+html.light .ticker-page .border-gray-700\/50 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-800\/80,
-html.light .day-trade-page .border-gray-800\/80 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-800\/80,
+html.light .swing-trade-page .border-gray-800\/80,
+html.light .ticker-page .border-gray-800\/80 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .border-gray-800\/90,
-html.light .day-trade-page .border-gray-800\/90 { border-color: #e2e8f0 !important; }
+html.light .day-trade-page .border-gray-800\/90,
+html.light .swing-trade-page .border-gray-800\/90,
+html.light .ticker-page .border-gray-800\/90 { border-color: #e2e8f0 !important; }
 html.light .day-trade-engine-panel .bg-gray-700\/50,
-html.light .day-trade-page .bg-gray-700\/50 { background-color: #f1f5f9 !important; }
+html.light .day-trade-page .bg-gray-700\/50,
+html.light .swing-trade-page .bg-gray-700\/50,
+html.light .ticker-page .bg-gray-700\/50 { background-color: #f1f5f9 !important; }
 html.light .day-trade-engine-panel .bg-gray-800\/60,
 html.light .day-trade-page .bg-gray-800\/60 { background-color: #f1f5f9 !important; }
 
@@ -739,6 +771,72 @@ html.light .day-trade-page .text-red-400,
 html.light .swing-trade-page .text-red-400 { color: #dc2626 !important; }
 html.light .day-trade-page .text-amber-400,
 html.light .swing-trade-page .text-amber-400 { color: #d97706 !important; }
+
+/* ── MarketStrip — always dark ────────────────────────────────────────────── */
+html.light .market-strip { background: #0A0B0D !important; border-bottom-color: #1E1F24 !important; color: #6B7280 !important; }
+html.light .market-strip .tz-dropdown { background: #111215 !important; border-color: #25262B !important; box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important; }
+html.light .market-strip .tz-dropdown button { color: #6B7280 !important; }
+html.light .market-strip .tz-dropdown button.tz-active { background: rgba(74,124,255,0.1) !important; color: #fff !important; }
+html.light .market-strip .tz-dropdown button.tz-active .tz-dot { background: #3B82F6 !important; border-color: #3B82F6 !important; }
+
+/* ── DayTradeWalkthrough — light theme ────────────────────────────────────── */
+html.light .day-trade-walkthrough { background: #ffffff !important; }
+html.light .day-trade-walkthrough .border-gray-800 { border-color: #e2e8f0 !important; }
+
+/* ── Day Trade Unified Cards — light theme ───────────────────────────────── */
+html.light .day-trade-unified .dt-card,
+html.light .day-trade-page .dt-card,
+html.light .ticker-page .dt-card { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .day-trade-unified .dt-muted,
+html.light .ticker-page .dt-muted { color: #64748b !important; }
+html.light .day-trade-unified .dt-primary,
+html.light .ticker-page .dt-primary { color: #0f172a !important; }
+
+/* ── TickerPage left panel elements — light theme ────────────────────────── */
+html.light .ticker-page table thead tr { background: #f8fafc !important; }
+html.light .ticker-page table tbody tr { border-bottom-color: #e2e8f0 !important; }
+html.light .ticker-page div[style*="rgb(24, 28, 35)"] { background: #ffffff !important; }
+html.light .ticker-page div[style*="rgb(17, 19, 24)"] { background: #ffffff !important; }
+html.light .ticker-page span[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+html.light .ticker-page div[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+
+/* ── TickerInput — light theme ──────────────────────────────────────────── */
+html.light .ticker-input { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .ticker-input input { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+html.light .ticker-input select { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+html.light .ticker-input button { border-color: #cbd5e1 !important; }
+html.light .ticker-input button[style*="rgb(24, 28, 35)"] { background: #f1f5f9 !important; }
+html.light .ticker-input span[style*="rgb(90, 100, 120)"] { color: #64748b !important; }
+html.light .ticker-input button { border-color: #cbd5e1 !important; }
+html.light .ticker-input button[style*="rgb(232, 235, 240)"] { color: #0f172a !important; }
+html.light .ticker-input button:hover { color: #0f172a !important; border-color: #4A7CFF !important; }
+
+/* ── SwingTradeWalkthrough — light theme ────────────────────────────────── */
+html.light .swing-trade-walkthrough { background: #ffffff !important; border-color: #e2e8f0 !important; }
+html.light .swing-trade-walkthrough .border-gray-800 { border-color: #e2e8f0 !important; }
+html.light .swing-trade-walkthrough .bg-black\/15 { background: #f1f5f9 !important; }
+html.light .swing-trade-walkthrough .bg-black\/10 { background: #f1f5f9 !important; }
+html.light .swing-trade-walkthrough .text-gray-600 { color: #94a3b8 !important; }
+html.light .swing-trade-walkthrough .text-gray-500 { color: #64748b !important; }
+html.light .swing-trade-walkthrough .text-gray-300 { color: #334155 !important; }
+html.light .swing-trade-walkthrough .text-gray-200 { color: #1e293b !important; }
+
+/* ── UnifiedVerdictCard — light theme ────────────────────────────────────── */
+html.light .uv-card .uv-reason { color: #475569 !important; }
+html.light .uv-card .uv-chip { background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+html.light .uv-card .uv-chip--pass { color: #0f172a !important; }
+html.light .uv-card .uv-chip--warn { color: #b45309 !important; }
+html.light .uv-card .uv-chip--fail { color: #dc2626 !important; }
+html.light .uv-card .uv-meta { border-top-color: #e2e8f0 !important; }
+html.light .uv-card .uv-muted { color: #64748b !important; }
+html.light .uv-card .uv-primary { color: #0f172a !important; }
+html.light .uv-card .uv-mkt { color: #64748b !important; }
+html.light .uv-card .uv-mkt .uv-primary { color: #0f172a !important; }
+
+/* ── UnifiedVerdictCard tooltip hover ──────────────────────────────────────── */
+.uv-card .uv-tooltip { opacity: 0; pointer-events: none; }
+.uv-card .uv-info-wrap:hover .uv-tooltip { opacity: 1; }
+html.light .uv-card .uv-tooltip { background: #ffffff !important; color: #0f172a !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; }
 
 /* ── Mobile navigation ───────────────────────────────────────────────────── */
 html.dark .mobile-bottom-nav-shell,
@@ -1040,6 +1138,25 @@ html.light .alerts-page .alert-item-row {
   border-color: #cbd5e1;
 }
 html.light .alerts-page .alert-item-row:hover { border-color: #94a3b8; }
+
+/* Alerts page light theme — text and background overrides */
+html.light .alerts-page .text-gray-100 { color: #0f172a !important; }
+html.light .alerts-page .text-gray-200 { color: #1e293b !important; }
+html.light .alerts-page .text-gray-300 { color: #334155 !important; }
+html.light .alerts-page .text-gray-400 { color: #475569 !important; }
+html.light .alerts-page .text-gray-500 { color: #64748b !important; }
+html.light .alerts-page .text-gray-600 { color: #94a3b8 !important; }
+html.light .alerts-page .bg-gray-900 { background-color: #ffffff !important; border-color: #cbd5e1 !important; }
+html.light .alerts-page .bg-gray-800 { background-color: #f8fafc !important; }
+html.light .alerts-page .bg-gray-500\/10 { background-color: #f1f5f9 !important; }
+html.light .alerts-page .border-gray-700 { border-color: #cbd5e1 !important; }
+html.light .alerts-page .border-gray-800 { border-color: #cbd5e1 !important; }
+html.light .alerts-page .border-gray-500\/30 { border-color: #cbd5e1 !important; }
+
+/* Alert severity cards — light theme text */
+html.light .alerts-page .text-red-100 { color: #b91c1c !important; }
+html.light .alerts-page .text-amber-100 { color: #b45309 !important; }
+html.light .alerts-page .text-emerald-100 { color: #065f46 !important; }
 
 /* ── Recommendation caution reason pill (light theme) ────────────────────── */
 html.light .recommendation-caution-reason {
@@ -1792,6 +1909,187 @@ html.light .oa-tt-regular {
   color: #92400e;
 }
 
+/* ── Accent color system ────────────────────────────────────────────────── */
+/* Default accent uses the --accent CSS variables defined in :root above.
+   Each .accent-* class overrides those variables and the Tailwind violet utilities. */
+
+/* Purple (default — maps to Tailwind's native violet) */
+html.accent-purple .bg-violet-600 { background-color: #7c3aed !important; }
+html.accent-purple .bg-violet-500 { background-color: #8b5cf6 !important; }
+html.accent-purple .bg-violet-700 { background-color: #6d28d9 !important; }
+html.accent-purple .text-violet-300 { color: #c4b5fd !important; }
+html.accent-purple .text-violet-400 { color: #a78bfa !important; }
+html.accent-purple .border-violet-500 { border-color: #8b5cf6 !important; }
+html.accent-purple .border-violet-600 { border-color: #7c3aed !important; }
+html.accent-purple .border-violet-700 { border-color: #6d28d9 !important; }
+html.accent-purple .ring-violet-500 { --tw-ring-color: #8b5cf6 !important; }
+html.accent-purple .hover\:bg-violet-500:hover { background-color: #8b5cf6 !important; }
+html.accent-purple .hover\:bg-violet-600:hover { background-color: #7c3aed !important; }
+html.accent-purple .hover\:text-violet-300:hover { color: #c4b5fd !important; }
+html.accent-purple .hover\:text-violet-400:hover { color: #a78bfa !important; }
+html.accent-purple .hover\:border-violet-500:hover { border-color: #8b5cf6 !important; }
+html.accent-purple .hover\:border-violet-600:hover { border-color: #7c3aed !important; }
+html.accent-purple .bg-violet-600\/20 { background-color: rgba(124, 58, 237, 0.2) !important; }
+html.accent-purple .bg-violet-600\/15 { background-color: rgba(124, 58, 237, 0.15) !important; }
+
+/* Blue (alias for Sky) */
+html.accent-blue .bg-violet-600 { background-color: #0284c7 !important; }
+html.accent-blue .bg-violet-500 { background-color: #0ea5e9 !important; }
+html.accent-blue .bg-violet-700 { background-color: #0369a1 !important; }
+html.accent-blue .text-violet-300 { color: #7dd3fc !important; }
+html.accent-blue .text-violet-400 { color: #38bdf8 !important; }
+html.accent-blue .border-violet-500 { border-color: #0ea5e9 !important; }
+html.accent-blue .border-violet-600 { border-color: #0284c7 !important; }
+html.accent-blue .border-violet-700 { border-color: #0369a1 !important; }
+html.accent-blue .hover\:bg-violet-500:hover { background-color: #0ea5e9 !important; }
+html.accent-blue .hover\:bg-violet-600:hover { background-color: #0284c7 !important; }
+html.accent-blue .hover\:text-violet-300:hover { color: #7dd3fc !important; }
+html.accent-blue .hover\:text-violet-400:hover { color: #38bdf8 !important; }
+html.accent-blue .bg-violet-600\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.accent-blue .bg-violet-600\/15 { background-color: rgba(2, 132, 199, 0.15) !important; }
+html.accent-blue .bg-violet-900\/30 { background-color: rgba(2, 132, 199, 0.3) !important; }
+html.accent-blue .bg-violet-900\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.light.accent-blue .text-violet-300 { color: #0369a1 !important; }
+html.light.accent-blue .text-violet-400 { color: #0284c7 !important; }
+
+/* Aqua / Teal */
+html.accent-aqua .bg-violet-600 { background-color: #0d9488 !important; }
+html.accent-aqua .bg-violet-500 { background-color: #14b8a6 !important; }
+html.accent-aqua .bg-violet-700 { background-color: #0f766e !important; }
+html.accent-aqua .text-violet-300 { color: #5eead4 !important; }
+html.accent-aqua .text-violet-400 { color: #2dd4bf !important; }
+html.accent-aqua .border-violet-500 { border-color: #14b8a6 !important; }
+html.accent-aqua .border-violet-600 { border-color: #0d9488 !important; }
+html.accent-aqua .border-violet-700 { border-color: #0f766e !important; }
+html.accent-aqua .ring-violet-500 { --tw-ring-color: #14b8a6 !important; }
+html.accent-aqua .hover\:bg-violet-500:hover { background-color: #14b8a6 !important; }
+html.accent-aqua .hover\:bg-violet-600:hover { background-color: #0d9488 !important; }
+html.accent-aqua .hover\:text-violet-300:hover { color: #5eead4 !important; }
+html.accent-aqua .hover\:text-violet-400:hover { color: #2dd4bf !important; }
+html.accent-aqua .hover\:border-violet-500:hover { border-color: #14b8a6 !important; }
+html.accent-aqua .hover\:border-violet-600:hover { border-color: #0d9488 !important; }
+html.accent-aqua .bg-violet-600\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.accent-aqua .bg-violet-600\/15 { background-color: rgba(13, 148, 136, 0.15) !important; }
+html.accent-aqua .bg-violet-900\/30 { background-color: rgba(13, 148, 136, 0.3) !important; }
+html.accent-aqua .bg-violet-900\/20 { background-color: rgba(13, 148, 136, 0.2) !important; }
+html.light.accent-aqua .text-violet-300 { color: #0d9488 !important; }
+html.light.accent-aqua .text-violet-400 { color: #14b8a6 !important; }
+
+/* Emerald */
+html.accent-emerald .bg-violet-600 { background-color: #059669 !important; }
+html.accent-emerald .bg-violet-500 { background-color: #10b981 !important; }
+html.accent-emerald .bg-violet-700 { background-color: #047857 !important; }
+html.accent-emerald .text-violet-300 { color: #6ee7b7 !important; }
+html.accent-emerald .text-violet-400 { color: #34d399 !important; }
+html.accent-emerald .border-violet-500 { border-color: #10b981 !important; }
+html.accent-emerald .border-violet-600 { border-color: #059669 !important; }
+html.accent-emerald .border-violet-700 { border-color: #047857 !important; }
+html.accent-emerald .ring-violet-500 { --tw-ring-color: #10b981 !important; }
+html.accent-emerald .hover\:bg-violet-500:hover { background-color: #10b981 !important; }
+html.accent-emerald .hover\:bg-violet-600:hover { background-color: #059669 !important; }
+html.accent-emerald .hover\:text-violet-300:hover { color: #6ee7b7 !important; }
+html.accent-emerald .hover\:text-violet-400:hover { color: #34d399 !important; }
+html.accent-emerald .hover\:border-violet-500:hover { border-color: #10b981 !important; }
+html.accent-emerald .hover\:border-violet-600:hover { border-color: #059669 !important; }
+html.accent-emerald .bg-violet-600\/20 { background-color: rgba(5, 150, 105, 0.2) !important; }
+html.accent-emerald .bg-violet-600\/15 { background-color: rgba(5, 150, 105, 0.15) !important; }
+html.accent-emerald .bg-violet-900\/30 { background-color: rgba(5, 150, 105, 0.3) !important; }
+html.accent-emerald .bg-violet-900\/20 { background-color: rgba(5, 150, 105, 0.2) !important; }
+html.light.accent-emerald .text-violet-300 { color: #059669 !important; }
+html.light.accent-emerald .text-violet-400 { color: #10b981 !important; }
+
+/* Amber */
+html.accent-amber .bg-violet-600 { background-color: #d97706 !important; }
+html.accent-amber .bg-violet-500 { background-color: #f59e0b !important; }
+html.accent-amber .bg-violet-700 { background-color: #b45309 !important; }
+html.accent-amber .text-violet-300 { color: #fcd34d !important; }
+html.accent-amber .text-violet-400 { color: #fbbf24 !important; }
+html.accent-amber .border-violet-500 { border-color: #f59e0b !important; }
+html.accent-amber .border-violet-600 { border-color: #d97706 !important; }
+html.accent-amber .border-violet-700 { border-color: #b45309 !important; }
+html.accent-amber .ring-violet-500 { --tw-ring-color: #f59e0b !important; }
+html.accent-amber .hover\:bg-violet-500:hover { background-color: #f59e0b !important; }
+html.accent-amber .hover\:bg-violet-600:hover { background-color: #d97706 !important; }
+html.accent-amber .hover\:text-violet-300:hover { color: #fcd34d !important; }
+html.accent-amber .hover\:text-violet-400:hover { color: #fbbf24 !important; }
+html.accent-amber .hover\:border-violet-500:hover { border-color: #f59e0b !important; }
+html.accent-amber .hover\:border-violet-600:hover { border-color: #d97706 !important; }
+html.accent-amber .bg-violet-600\/20 { background-color: rgba(217, 119, 6, 0.2) !important; }
+html.accent-amber .bg-violet-600\/15 { background-color: rgba(217, 119, 6, 0.15) !important; }
+html.accent-amber .bg-violet-900\/30 { background-color: rgba(217, 119, 6, 0.3) !important; }
+html.accent-amber .bg-violet-900\/20 { background-color: rgba(217, 119, 6, 0.2) !important; }
+html.light.accent-amber .text-violet-300 { color: #b45309 !important; }
+html.light.accent-amber .text-violet-400 { color: #d97706 !important; }
+
+/* Sky */
+html.accent-sky .bg-violet-600 { background-color: #0284c7 !important; }
+html.accent-sky .bg-violet-500 { background-color: #0ea5e9 !important; }
+html.accent-sky .bg-violet-700 { background-color: #0369a1 !important; }
+html.accent-sky .text-violet-300 { color: #7dd3fc !important; }
+html.accent-sky .text-violet-400 { color: #38bdf8 !important; }
+html.accent-sky .border-violet-500 { border-color: #0ea5e9 !important; }
+html.accent-sky .border-violet-600 { border-color: #0284c7 !important; }
+html.accent-sky .border-violet-700 { border-color: #0369a1 !important; }
+html.accent-sky .ring-violet-500 { --tw-ring-color: #0ea5e9 !important; }
+html.accent-sky .hover\:bg-violet-500:hover { background-color: #0ea5e9 !important; }
+html.accent-sky .hover\:bg-violet-600:hover { background-color: #0284c7 !important; }
+html.accent-sky .hover\:text-violet-300:hover { color: #7dd3fc !important; }
+html.accent-sky .hover\:text-violet-400:hover { color: #38bdf8 !important; }
+html.accent-sky .hover\:border-violet-500:hover { border-color: #0ea5e9 !important; }
+html.accent-sky .hover\:border-violet-600:hover { border-color: #0284c7 !important; }
+html.accent-sky .bg-violet-600\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.accent-sky .bg-violet-600\/15 { background-color: rgba(2, 132, 199, 0.15) !important; }
+html.accent-sky .bg-violet-900\/30 { background-color: rgba(2, 132, 199, 0.3) !important; }
+html.accent-sky .bg-violet-900\/20 { background-color: rgba(2, 132, 199, 0.2) !important; }
+html.light.accent-sky .text-violet-300 { color: #0369a1 !important; }
+html.light.accent-sky .text-violet-400 { color: #0284c7 !important; }
+
+/* Rose */
+html.accent-rose .bg-violet-600 { background-color: #e11d48 !important; }
+html.accent-rose .bg-violet-500 { background-color: #f43f5e !important; }
+html.accent-rose .bg-violet-700 { background-color: #be123c !important; }
+html.accent-rose .text-violet-300 { color: #fda4af !important; }
+html.accent-rose .text-violet-400 { color: #fb7185 !important; }
+html.accent-rose .border-violet-500 { border-color: #f43f5e !important; }
+html.accent-rose .border-violet-600 { border-color: #e11d48 !important; }
+html.accent-rose .border-violet-700 { border-color: #be123c !important; }
+html.accent-rose .ring-violet-500 { --tw-ring-color: #f43f5e !important; }
+html.accent-rose .hover\:bg-violet-500:hover { background-color: #f43f5e !important; }
+html.accent-rose .hover\:bg-violet-600:hover { background-color: #e11d48 !important; }
+html.accent-rose .hover\:text-violet-300:hover { color: #fda4af !important; }
+html.accent-rose .hover\:text-violet-400:hover { color: #fb7185 !important; }
+html.accent-rose .hover\:border-violet-500:hover { border-color: #f43f5e !important; }
+html.accent-rose .hover\:border-violet-600:hover { border-color: #e11d48 !important; }
+html.accent-rose .bg-violet-600\/20 { background-color: rgba(225, 29, 72, 0.2) !important; }
+html.accent-rose .bg-violet-600\/15 { background-color: rgba(225, 29, 72, 0.15) !important; }
+html.accent-rose .bg-violet-900\/30 { background-color: rgba(225, 29, 72, 0.3) !important; }
+html.accent-rose .bg-violet-900\/20 { background-color: rgba(225, 29, 72, 0.2) !important; }
+html.light.accent-rose .text-violet-300 { color: #be123c !important; }
+html.light.accent-rose .text-violet-400 { color: #e11d48 !important; }
+
+/* Orange */
+html.accent-orange .bg-violet-600 { background-color: #ea580c !important; }
+html.accent-orange .bg-violet-500 { background-color: #f97316 !important; }
+html.accent-orange .bg-violet-700 { background-color: #c2410c !important; }
+html.accent-orange .text-violet-300 { color: #fdba74 !important; }
+html.accent-orange .text-violet-400 { color: #fb923c !important; }
+html.accent-orange .border-violet-500 { border-color: #f97316 !important; }
+html.accent-orange .border-violet-600 { border-color: #ea580c !important; }
+html.accent-orange .border-violet-700 { border-color: #c2410c !important; }
+html.accent-orange .ring-violet-500 { --tw-ring-color: #f97316 !important; }
+html.accent-orange .hover\:bg-violet-500:hover { background-color: #f97316 !important; }
+html.accent-orange .hover\:bg-violet-600:hover { background-color: #ea580c !important; }
+html.accent-orange .hover\:text-violet-300:hover { color: #fdba74 !important; }
+html.accent-orange .hover\:text-violet-400:hover { color: #fb923c !important; }
+html.accent-orange .hover\:border-violet-500:hover { border-color: #f97316 !important; }
+html.accent-orange .hover\:border-violet-600:hover { border-color: #ea580c !important; }
+html.accent-orange .bg-violet-600\/20 { background-color: rgba(234, 88, 12, 0.2) !important; }
+html.accent-orange .bg-violet-600\/15 { background-color: rgba(234, 88, 12, 0.15) !important; }
+html.accent-orange .bg-violet-900\/30 { background-color: rgba(234, 88, 12, 0.3) !important; }
+html.accent-orange .bg-violet-900\/20 { background-color: rgba(234, 88, 12, 0.2) !important; }
+html.light.accent-orange .text-violet-300 { color: #c2410c !important; }
+html.light.accent-orange .text-violet-400 { color: #ea580c !important; }
+
 /* ── AI Radar Page - light theme ───────────────────────────────────────── */
 html.light .ai-radar-page .bg-gray-800\/40 { background-color: #e2e8f0 !important; }
 html.light .ai-radar-page .bg-gray-800\/60 { background-color: #cbd5e1 !important; }
@@ -1825,3 +2123,10 @@ html.light .ai-radar-page .bg-gray-800 { background-color: #f1f5f9 !important; }
 /* Hover states */
 html.light .ai-radar-page .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
 html.light .ai-radar-page .hover\:border-amber-600:hover { border-color: #d97706 !important; }
+
+/* Keep text white on colored action buttons in light mode */
+html.light .bg-orange-600.text-white { color: #ffffff !important; }
+html.light .bg-emerald-600.text-white { color: #ffffff !important; }
+html.light .bg-violet-600.text-white { color: #ffffff !important; }
+html.light .bg-orange-600 .text-white { color: #ffffff !important; }
+html.light .bg-emerald-600 .text-white { color: #ffffff !important; }

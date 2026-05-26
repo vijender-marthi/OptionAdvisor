@@ -1,8 +1,9 @@
-import { lazy, Suspense, useLayoutEffect } from 'react'
+import { lazy, Suspense, useLayoutEffect, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
@@ -11,10 +12,11 @@ import { locationToPage } from './routing/paths'
 
 const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
 
+const TradeDeskPage = lazy(() => import('./pages/TradeDeskPage'))
+const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 const TickerPage = lazy(() => import('./pages/TickerPage'))
 const TradeCommandCenterPage = lazy(() => import('./pages/TradeCommandCenter'))
 const PositionsCenterPage = lazy(() => import('./pages/PositionsCenter'))
-const AlertCenterPage = lazy(() => import('./pages/AlertCenter'))
 
 const AIStocksPage = lazy(() => import('./pages/AIStocksPage'))
 const QRadarPage = lazy(() => import('./pages/QRadarPage'))
@@ -55,6 +57,15 @@ function RouteFallback() {
   )
 }
 
+/** Apply saved accent theme on every page load */
+function ThemeInitializer() {
+  useEffect(() => {
+    const saved = (() => { try { return localStorage?.getItem('oa_accent') } catch { return null } })()
+    if (saved) document.documentElement.classList.add(`accent-${saved}`)
+  }, [])
+  return null
+}
+
 /** Migrates legacy `#watchlist`-style URLs to BrowserRouter paths (301-equivalent client redirect). */
 function LegacyHashRedirect() {
   const navigate = useNavigate()
@@ -67,7 +78,7 @@ function LegacyHashRedirect() {
     const redirects: Record<string, string> = {
       watchlist: '/signal-feed',
       portfolio: '/positions?tab=open',
-      ticker: '/strategy-finder',
+      ticker: '/position-trading',
       dashboard: '/trade-command-center',
       alerts: '/alerts',
       discovery: '/strategy-finder',
@@ -102,9 +113,11 @@ function RoleGuard() {
 
 function SuspensedOutlet() {
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Outlet />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 
@@ -121,9 +134,10 @@ function ShellRoutes() {
       <Route path="/watchlistx" element={<Navigate to="/signal-feed" replace />} />
       <Route path="/portfolio" element={<Navigate to="/positions?tab=open" replace />} />
       <Route path="/dashboard" element={<Navigate to="/trade-command-center" replace />} />
-      <Route path="/discovery" element={<Navigate to="/strategy-finder" replace />} />
-      <Route path="/scanner" element={<Navigate to="/strategy-finder" replace />} />
-      <Route path="/ticker" element={<Navigate to="/strategy-finder" replace />} />
+      <Route path="/discovery" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/scanner" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/ticker" element={<Navigate to="/position-trading" replace />} />
+      <Route path="/strategy-finder" element={<Navigate to="/position-trading" replace />} />
       <Route path="/trading-glossary" element={<Navigate to="/help" replace />} />
 
       <Route element={<RequireAuth />}>
@@ -132,8 +146,9 @@ function ShellRoutes() {
             <Route element={<SuspensedOutlet />}>
               <Route path="/" element={<Navigate to="/trade-command-center" replace />} />
               <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
+              <Route path="/desk" element={<TradeDeskPage />} />
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
-              <Route path="/strategy-finder" element={<TickerPage />} />
+              <Route path="/position-trading" element={<TickerPage />} />
               <Route path="/positions" element={<PositionsRoute />} />
               <Route path="/alerts" element={<AlertCenterPage />} />
               {/* /help is now a modal — redirect to landing */}
@@ -162,9 +177,53 @@ function ShellRoutes() {
   )
 }
 
+const PAGE_ICONS: Record<string, string> = {
+  'trade-command-center': '🏠',
+  'watchlist': '📡',
+  'my-tickers': '📋',
+  'alert-center': '🔔',
+  'positions': '💼',
+  'ticker': '🎯',
+  'trade-signals': '📊',
+  'day-trade': '⚡',
+  'swing-trade': '📈',
+  'day-trade-alerts': '🔔',
+  'active-trades': '⚡',
+  'ai-stocks': '🤖',
+  'q-radar': '🔍',
+  'journal': '📓',
+  'backtest': '🧪',
+  'settings': '⚙️',
+  'help': '❓',
+}
+
+function DynamicFavicon() {
+  const loc = useLocation()
+  const page = locationToPage(loc.pathname)
+  const icon = PAGE_ICONS[page] || '📊'
+  useEffect(() => {
+    try {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text y="28" font-size="28">${icon}</text></svg>`
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      link.href = url
+      return () => { try { URL.revokeObjectURL(url) } catch { /* ignore */ } }
+    } catch { return }
+  }, [icon])
+  return null
+}
+
 function AppBody() {
   return (
     <>
+      <ThemeInitializer />
+      <DynamicFavicon />
       <LegacyHashRedirect />
       <ShellRoutes />
     </>

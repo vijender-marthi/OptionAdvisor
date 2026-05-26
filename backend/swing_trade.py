@@ -1874,57 +1874,76 @@ def _exec_levels_fallback(last: float) -> dict[str, Optional[float]]:
 def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Optional[str]) -> dict[str, Optional[float]]:
     """
     Compute stop loss, pullback zone, breakout trigger, and targets.
-    All targets are anchored to the breakout level so price must confirm
-    above/below before targets are reachable.
+
+    METHOD: MA20 Structural Distance (measured move).
+    - The MA20 represents the "last anchor" — the average cost basis over the past month.
+    - The measured move = distance price has already traveled from MA20.
+    - T1 = current price + 50% of that measured move (price extends by half again).
+    - T2 = current price + 100% of that measured move (price extends by the full move).
+    - Stop = MA20 × 0.998 for long (just below the structural support).
+             MA20 × 1.002 for short (just above the structural resistance).
+    - Breakout trigger = last + small buffer (price confirmation level for new entries).
+
+    Example (TSLA long, last=$430, MA20=$415):
+        measured_move = 430 - 415 = $15
+        T1 = 430 + 15 × 0.5 = $437.50
+        T2 = 430 + 15 × 1.0 = $445.00
+        Stop = 415 × 0.998 = $414.17
+        Breakout = 430 × 1.005 = $432.15  (0.5% above current = confirmation)
     """
-    mom = max(abs(mom_5d_pct) / 100.0, 0.025)
     if bias == "long":
-        brk = last * 1.015
-        t1  = brk * (1.0 + mom * 0.5)
-        t2  = brk * (1.0 + mom)
-        pb_lo = ma20 * 0.98
-        pb_hi = ma20 * 1.015
-        stop  = ma20 * 0.96
-        if not (t1 > brk):
-            log.warning("_compute_exec_levels: target1 %s <= breakout %s for long bias; returning defaults", t1, brk)
+        # Measured move: distance price has traveled above MA20
+        measured_move = last - ma20 if last > ma20 else last * 0.02  # min 2% if price at/below MA20
+        measured_move = max(measured_move, last * 0.01)  # floor: at least 1% of price
+        brk  = round(last * 1.005, 2)    # 0.5% above current — breakout confirmation level
+        t1   = round(last + measured_move * 0.5, 2)  # half measured move extension
+        t2   = round(last + measured_move * 1.0, 2)  # full measured move extension
+        stop = round(ma20 * 0.998, 2)                # just below MA20 structural support
+        pb_lo = round(ma20 * 0.99, 2)
+        pb_hi = round(ma20 * 1.01, 2)
+        if not (t1 > last):
+            log.warning("_compute_exec_levels: target1 %s <= last %s for long bias; returning defaults", t1, last)
             return _exec_levels_fallback(last)
         if not (t2 > t1):
             log.warning("_compute_exec_levels: target2 %s <= target1 %s for long bias; returning defaults", t2, t1)
             return _exec_levels_fallback(last)
-        if not (stop < brk):
-            log.warning("_compute_exec_levels: stop %s >= breakout %s for long bias; returning defaults", stop, brk)
+        if not (stop < last):
+            log.warning("_compute_exec_levels: stop %s >= last %s for long bias; returning defaults", stop, last)
             return _exec_levels_fallback(last)
         return {
-            "pullback_zone_lo": round(pb_lo, 2),
-            "pullback_zone_hi": round(pb_hi, 2),
-            "breakout": round(brk, 2),
-            "target1":  round(t1, 2),
-            "target2":  round(t2, 2),
-            "stop":     round(stop, 2),
+            "pullback_zone_lo": pb_lo,
+            "pullback_zone_hi": pb_hi,
+            "breakout": brk,
+            "target1":  t1,
+            "target2":  t2,
+            "stop":     stop,
         }
     if bias == "short":
-        brk = last * 0.985
-        t1  = brk * (1.0 - mom * 0.5)
-        t2  = brk * (1.0 - mom)
-        pb_lo = ma20 * 1.01
-        pb_hi = ma20 * 1.025
-        stop  = ma20 * 1.04
-        if not (t1 < brk):
-            log.warning("_compute_exec_levels: target1 %s >= breakout %s for short bias; returning defaults", t1, brk)
+        # Measured move: distance price has traveled below MA20
+        measured_move = ma20 - last if last < ma20 else last * 0.02  # min 2% if price at/above MA20
+        measured_move = max(measured_move, last * 0.01)  # floor: at least 1% of price
+        brk  = round(last * 0.995, 2)    # 0.5% below current — breakdown confirmation level
+        t1   = round(last - measured_move * 0.5, 2)  # half measured move extension
+        t2   = round(last - measured_move * 1.0, 2)  # full measured move extension
+        stop = round(ma20 * 1.002, 2)                # just above MA20 structural resistance
+        pb_lo = round(ma20 * 0.99, 2)
+        pb_hi = round(ma20 * 1.01, 2)
+        if not (t1 < last):
+            log.warning("_compute_exec_levels: target1 %s >= last %s for short bias; returning defaults", t1, last)
             return _exec_levels_fallback(last)
         if not (t2 < t1):
             log.warning("_compute_exec_levels: target2 %s >= target1 %s for short bias; returning defaults", t2, t1)
             return _exec_levels_fallback(last)
-        if not (stop > brk):
-            log.warning("_compute_exec_levels: stop %s <= breakout %s for short bias; returning defaults", stop, brk)
+        if not (stop > last):
+            log.warning("_compute_exec_levels: stop %s <= last %s for short bias; returning defaults", stop, last)
             return _exec_levels_fallback(last)
         return {
-            "pullback_zone_lo": round(pb_lo, 2),
-            "pullback_zone_hi": round(pb_hi, 2),
-            "breakout": round(brk, 2),
-            "target1":  round(t1, 2),
-            "target2":  round(t2, 2),
-            "stop":     round(stop, 2),
+            "pullback_zone_lo": pb_lo,
+            "pullback_zone_hi": pb_hi,
+            "breakout": brk,
+            "target1":  t1,
+            "target2":  t2,
+            "stop":     stop,
         }
     return {}
 

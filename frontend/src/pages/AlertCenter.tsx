@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bell, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Bell, ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { acknowledgeAlert, fetchAlertCenterPage, resolveAlert } from '../api/commandCenter'
 import type { AlertCenterPayload, UnifiedAlert } from '../types/commandCenter'
+import { deskApi } from '../api/client'
+import type { DeskAlert } from '../api/client'
 import { useApp } from '../contexts/AppContext'
 
 const SECTION_ORDER: Array<{ key: keyof AlertCenterPayload['sections']; title: string }> = [
@@ -17,7 +19,10 @@ function fmtTime(value?: string | null): string {
   if (!value) return '—'
   const ts = Date.parse(value)
   if (!Number.isFinite(ts)) return '—'
-  return new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET'
+  let tz: string
+  try { tz = localStorage?.getItem('oa_timezone') || 'America/New_York' } catch { tz = 'America/New_York' }
+  const shortTz = tz === 'America/New_York' ? 'ET' : tz === 'America/Chicago' ? 'CT' : tz === 'America/Denver' ? 'MT' : 'PT'
+  return new Date(ts).toLocaleString('en-US', { timeZone: tz }) + ' ' + shortTz
 }
 
 function SeverityBadge({ severity }: { severity: UnifiedAlert['severity'] }) {
@@ -104,38 +109,43 @@ export default function AlertCenter() {
   const [todayOnly, setTodayOnly] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  const [armedRules, setArmedRules] = useState<DeskAlert[]>([])
+  const [rulesCollapsed, setRulesCollapsed] = useState(false)
+
+  const loadArmedRules = useCallback(async () => {
+    try {
+      const rules = await deskApi.getAlerts(true)
+      setArmedRules(rules)
+    } catch { /* non-fatal */ }
+  }, [])
+
+  const deleteRule = async (id: string) => {
+    try {
+      await deskApi.deleteAlert(id)
+      setArmedRules(prev => prev.filter(r => r.id !== id))
+    } catch { /* ignore */ }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const env = await fetchAlertCenterPage({
-        engine_type: engineType || undefined,
-        severity: severity || undefined,
-        status: status || undefined,
-        ticker: ticker.trim() || undefined,
-        active_only: activeOnly,
-        today_only: todayOnly,
-      })
-      if (import.meta.env.DEV) {
-        const rawAlerts = env.data?.alerts ?? []
-        const groupedCount = Object.values(env.data?.sections ?? {}).reduce((sum, rows) => sum + rows.length, 0)
-        console.debug('[alerts] alert center load', {
-          endpoint: '/api/alerts',
-          sidebarCount: null,
-          alertCenterRawCount: rawAlerts.length,
-          afterActiveFilter: activeOnly ? rawAlerts.length : null,
-          afterStatusFilter: status || 'ALL',
-          afterEngineTypeFilter: engineType || 'ALL',
-          afterGrouping: groupedCount,
-          summary: env.data?.summary ?? null,
-        })
-      }
+      const [env] = await Promise.all([
+        fetchAlertCenterPage({
+          engine_type: engineType || undefined,
+          severity: severity || undefined,
+          status: status || undefined,
+          ticker: ticker.trim() || undefined,
+          active_only: activeOnly,
+          today_only: todayOnly,
+        }),
+        loadArmedRules(),
+      ])
       setPayload(env.data)
       window.dispatchEvent(new Event('oa-alert-center-updated'))
     } finally {
       setLoading(false)
     }
-  }, [activeOnly, engineType, severity, status, ticker, todayOnly])
+  }, [activeOnly, engineType, severity, status, ticker, todayOnly, loadArmedRules])
 
   useEffect(() => {
     void load()
@@ -188,7 +198,7 @@ export default function AlertCenter() {
   }
 
   return (
-    <div className="oa-cc-page mx-auto max-w-6xl space-y-6 p-4 md:p-6">
+    <div className="alerts-page oa-cc-page mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-100">Alert Center</h1>
@@ -275,6 +285,58 @@ export default function AlertCenter() {
         </label>
       </div>
 
+      {/* Armed Alert Rules */}
+      <section className="overflow-hidden rounded-2xl border border-gray-800 bg-white dark:bg-gray-900">
+        <button
+          type="button"
+          onClick={() => setRulesCollapsed(p => !p)}
+          className="flex w-full items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3 text-left dark:border-gray-800 dark:bg-gray-800/40"
+        >
+          <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
+            <Bell size={16} className="text-amber-400" />
+            Armed Alert Rules
+            <span className="text-xs font-normal text-gray-500">({armedRules.length})</span>
+          </span>
+          {rulesCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {!rulesCollapsed && (
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {armedRules.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-gray-500">
+                No active alert rules. Set one from the Day Trade, Swing Trade, or Position Trading pages.
+              </div>
+            ) : (
+              armedRules.map(rule => {
+                const typeLabel = rule.alert_type.replace(/_/g, ' ')
+                const tradeLabel = rule.trade_type.toUpperCase()
+                const threshold = rule.threshold_value != null ? ` @ ${rule.threshold_value}` : ''
+                return (
+                  <div key={rule.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-bold text-gray-100">{rule.ticker}</span>
+                        <span className="rounded-full border border-gray-700 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-400">{tradeLabel}</span>
+                        <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">{typeLabel}{threshold}</span>
+                        <span className="text-[10px] text-gray-600 capitalize">{rule.notify_method} · expires {rule.expires}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500">Created {rule.created_at.slice(0, 10)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void deleteRule(rule.id)}
+                      className="shrink-0 rounded-lg border border-gray-700 p-1.5 text-gray-500 hover:border-red-700/50 hover:text-red-400 transition-colors"
+                      aria-label="Delete alert rule"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </section>
+
       {visibleSections.map(section => {
         const rows = sections[section.key] ?? []
         const open = !collapsed[section.key]
@@ -337,11 +399,21 @@ export default function AlertCenter() {
                             <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => void onResolve(row.id)}>
                               Resolve
                             </button>
-                            {row.ticker ? (
-                              <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => requestAnalysis(row.ticker)}>
-                                View Ticker
-                              </button>
-                            ) : null}
+                            {row.ticker ? (() => {
+                              const eng = (row.engine_type || '').toLowerCase()
+                              const href = eng === 'day' ? `/day-trade?ticker=${encodeURIComponent(row.ticker)}`
+                                : eng === 'swing' ? `/swing-trade?ticker=${encodeURIComponent(row.ticker)}`
+                                : null
+                              return href ? (
+                                <Link to={href} className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3 inline-flex items-center">
+                                  View Ticker
+                                </Link>
+                              ) : (
+                                <button type="button" className="oa-cc-btn-secondary text-[11px] sm:text-xs min-h-[32px] sm:min-h-[28px] px-2.5 sm:px-3" onClick={() => requestAnalysis(row.ticker)}>
+                                  View Ticker
+                                </button>
+                              )
+                            })() : null}
                             {row.related_trade_id ? (
                               <button
                                 type="button"

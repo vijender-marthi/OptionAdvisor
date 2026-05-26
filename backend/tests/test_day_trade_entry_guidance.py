@@ -92,12 +92,14 @@ class TestLongBiasEntryGuidance(unittest.TestCase):
         self.assertEqual(result["state"], "WAIT_FOR_BREAKOUT")
 
     def test_long_vwap_above_breakout_retest_no_volume_returns_entry_retest(self):
+        # OR retest without volume should wait for volume confirmation
         metrics = _make_metrics(
             vwap_position="above", or_breakout="above",
-            or_retest=True, volume_spike=False
+            or_retest=True, volume_spike=False,
+            or_historical="broke_up"
         )
         result = build_day_entry_guidance(metrics, self.td, "long")
-        self.assertEqual(result["state"], "ENTRY_RETEST")
+        self.assertEqual(result["state"], "WAIT_FOR_VOLUME")
 
     def test_long_vwap_above_breakout_no_volume_no_retest_returns_wait_for_volume(self):
         metrics = _make_metrics(

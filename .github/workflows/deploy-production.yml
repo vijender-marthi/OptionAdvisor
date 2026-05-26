@@ -45,7 +45,7 @@ jobs:
             export DEPLOY_REF='${{ env.DEPLOY_REF }}'
             cd /opt/optionadvisor
 
-            git fetch origin --tags --prune
+            git fetch origin --tags --prune --force
             git checkout "$DEPLOY_REF"
             if git symbolic-ref -q HEAD >/dev/null; then
               git pull --ff-only origin "$DEPLOY_REF" || git reset --hard "origin/$DEPLOY_REF"

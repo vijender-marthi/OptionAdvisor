@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
-import { Activity, Bell, Database, Mail, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Activity, Bell, Clock, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
-import { getEmailStatus, sendTestEmail, clearAllCaches } from '../api/client'
+import { getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
@@ -72,7 +72,9 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ sent: boolean; message: string } | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
   const [cacheResult, setCacheResult] = useState<{ ok: boolean; total: number } | null>(null)
+  const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'blue' } catch { return 'blue' } })
   const [deployedVersion, setDeployedVersion] = useState('—')
+  const [timezone, setTimezone] = useState(() => { try { return localStorage.getItem('oa_timezone') || 'America/New_York' } catch { return 'America/New_York' } })
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
     provider: 'sendgrid' | 'smtp' | 'none'
@@ -84,6 +86,19 @@ export default function SettingsPage() {
     envFile: string
     envFileExists: boolean
   } | null>(null)
+
+  // Load accent from backend on mount
+  useEffect(() => {
+    getUserAccent().then(a => {
+      if (a) { setAccent(a); try { localStorage.setItem('oa_accent', a) } catch {} }
+    }).catch(() => {})
+  }, [])
+
+  const handleSetAccent = useCallback((a: string) => {
+    setAccent(a)
+    try { localStorage.setItem('oa_accent', a) } catch {}
+    setUserAccent(a).catch(() => {})
+  }, [])
 
   useEffect(() => {
     getEmailStatus()
@@ -97,6 +112,17 @@ export default function SettingsPage() {
   useEffect(() => {
     setBuyingPowerInput(String(accountSize))
   }, [accountSize])
+
+  useEffect(() => {
+    try { localStorage.setItem('oa_accent', accent) } catch {}
+    const html = document.documentElement
+    html.classList.remove('accent-blue', 'accent-purple', 'accent-aqua', 'accent-emerald', 'accent-amber', 'accent-sky', 'accent-rose', 'accent-orange')
+    html.classList.add(`accent-${accent}`)
+  }, [accent])
+
+  useEffect(() => {
+    try { localStorage.setItem('oa_timezone', timezone) } catch {}
+  }, [timezone])
 
   const handleBuyingPowerSave = () => {
     const val = parseFloat(buyingPowerInput)
@@ -195,6 +221,55 @@ export default function SettingsPage() {
             }
           </div>
         )}
+      </SettingsCard>
+
+      {/* Accent Color */}
+      <SettingsCard title="Accent Color">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'blue', label: 'Blue', color: 'bg-sky-500' },
+            { id: 'purple', label: 'Purple', color: 'bg-purple-500' },
+            { id: 'aqua', label: 'Aqua', color: 'bg-teal-500' },
+            { id: 'emerald', label: 'Emerald', color: 'bg-emerald-500' },
+            { id: 'sky', label: 'Sky', color: 'bg-sky-500' },
+            { id: 'amber', label: 'Amber', color: 'bg-amber-500' },
+            { id: 'rose', label: 'Rose', color: 'bg-rose-500' },
+            { id: 'orange', label: 'Orange', color: 'bg-orange-500' },
+          ].map(a => (
+            <button key={a.id} onClick={() => handleSetAccent(a.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                accent === a.id
+                  ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                  : 'border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span className={`w-3 h-3 rounded-full ${a.color}`} />
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </SettingsCard>
+
+      {/* Timezone */}
+      <SettingsCard title="Timezone">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'America/New_York', label: 'Eastern (ET)' },
+            { id: 'America/Chicago', label: 'Central (CT)' },
+            { id: 'America/Denver', label: 'Mountain (MT)' },
+            { id: 'America/Los_Angeles', label: 'Pacific (PT)' },
+          ].map(tz => (
+            <button key={tz.id} onClick={() => setTimezone(tz.id)}
+              className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                timezone === tz.id
+                  ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                  : 'border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <Clock size={12} className="inline mr-1.5 -mt-0.5" />{tz.label}
+            </button>
+          ))}
+        </div>
       </SettingsCard>
 
       {/* Monitor / Troubleshooting — Admin only */}

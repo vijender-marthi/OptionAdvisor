@@ -363,6 +363,7 @@ class ActiveTradeEnterRequest(BaseModel):
     strike: Optional[float] = None
     expiry: Optional[str] = None  # YYYY-MM-DD; optional bookkeeping / future Greeks
     notes: Optional[str] = None
+    trade_type: str = "day"  # "day" | "swing"
 
 
 class ActiveTradeEnterResponse(BaseModel):
@@ -390,6 +391,7 @@ class ActiveTradeOut(BaseModel):
     notes: str = ""
     opened_at_ms: int
     exited_at_ms: Optional[int] = None
+    trade_type: str = "day"
     decision: dict = Field(default_factory=dict)
     metrics: dict = Field(default_factory=dict)
     intraday_error: Optional[str] = None
@@ -401,3 +403,115 @@ class ActiveTradeListResponse(BaseModel):
         default=False,
         description="False when the list excludes non-exited trades opened before the current US (America/New_York) session calendar date.",
     )
+
+
+# ─── TradeDesk models ─────────────────────────────────────────────────────────
+
+class WatchlistItem(BaseModel):
+    id: Optional[int] = None
+    ticker: str
+    trade_type: str = "day"
+    sort_order: int = 0
+    added_at: Optional[str] = None
+
+
+class WatchlistAddRequest(BaseModel):
+    ticker: str
+    trade_type: str = "day"
+
+
+class TradeLogCreate(BaseModel):
+    ticker: str
+    trade_type: str = "day"
+    signal_given: str = ""
+    confidence_score: float = 0
+    planned_entry: Optional[float] = None
+    planned_t1: Optional[float] = None
+    planned_t2: Optional[float] = None
+    planned_stop: Optional[float] = None
+    structure: str = ""
+    actual_entry: Optional[float] = None
+    contracts: int = 1
+    entry_time: Optional[str] = None
+    notes: str = ""
+
+
+class TradeLogUpdate(BaseModel):
+    actual_entry: Optional[float] = None
+    contracts: Optional[int] = None
+    entry_time: Optional[str] = None
+    exit_price: Optional[float] = None
+    exit_time: Optional[str] = None
+    exit_reason: Optional[str] = None
+    followed_plan: Optional[str] = None
+    outcome: Optional[str] = None
+    pnl_estimate: Optional[float] = None
+    notes: Optional[str] = None
+    planned_entry: Optional[float] = None
+    planned_t1: Optional[float] = None
+    planned_t2: Optional[float] = None
+    planned_stop: Optional[float] = None
+    structure: Optional[str] = None
+
+
+class TradeLogResponse(BaseModel):
+    id: str
+    user_id: str
+    ticker: str
+    trade_type: str
+    signal_given: str
+    confidence_score: float
+    planned_entry: Optional[float]
+    planned_t1: Optional[float]
+    planned_t2: Optional[float]
+    planned_stop: Optional[float]
+    structure: str
+    actual_entry: Optional[float]
+    contracts: int
+    entry_time: Optional[str]
+    exit_price: Optional[float]
+    exit_time: Optional[str]
+    exit_reason: str
+    followed_plan: str
+    outcome: str
+    pnl_estimate: Optional[float]
+    notes: str
+    logged_at: str
+    updated_at: str
+
+
+class AlertCreate(BaseModel):
+    ticker: str
+    trade_type: str = "day"
+    alert_type: str  # RVOL, PRICE_CROSS, VWAP_RETEST, SIGNAL_ENTER
+    threshold_value: Optional[float] = None
+    target_signal: str = ""
+    notify_method: str = "inapp"
+    expires: str = "eod"
+
+
+class AlertResponse(BaseModel):
+    id: str
+    user_id: str
+    ticker: str
+    trade_type: str
+    alert_type: str
+    threshold_value: Optional[float]
+    target_signal: str
+    notify_method: str
+    expires: str
+    is_active: int
+    fired_at: Optional[str]
+    fired_value: Optional[float]
+    action_taken: str
+    created_at: str
+
+
+class TradeStatsResponse(BaseModel):
+    total: int
+    wins: int
+    losses: int
+    open_count: int
+    win_rate: float
+    avg_rr: float
+    followed_plan_pct: float

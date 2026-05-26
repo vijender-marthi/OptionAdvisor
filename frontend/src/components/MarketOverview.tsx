@@ -8,131 +8,115 @@ interface Props {
   signals: Signals
 }
 
-const trendColor = (t: string) =>
-  t.includes('Bullish') ? 'text-green-400' : t.includes('Bearish') ? 'text-red-400' : 'text-amber-400'
-
-const trendBg = (t: string) =>
-  t.includes('Bullish') ? 'bg-green-900/40 border-green-700' : t.includes('Bearish') ? 'bg-red-900/40 border-red-700' : 'bg-amber-900/40 border-amber-700'
-
-function MetricCard({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
-  return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className={`font-bold text-lg font-mono ${valueColor || 'text-white'}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
-    </div>
-  )
+const C = {
+  bgPage:    '#0A0C10',
+  bgPanel:   '#111318',
+  bgCard:    '#181C23',
+  border:    '#1E2330',
+  borderSub: '#252C3A',
+  muted:     '#5A6478',
+  accent:    '#4A7CFF',
+  green:     '#00E5A0',
+  red:       '#FF4D6D',
+  amber:     '#F5A623',
+  purple:    '#6B7FD4',
 }
 
-function MaBadge({ label, above }: { label: string; above: boolean }) {
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full font-medium border
-      ${above ? 'bg-green-900/40 text-green-400 border-green-800' : 'bg-red-900/40 text-red-400 border-red-800'}`}>
-      {above ? '▲' : '▼'} {label}
-    </span>
-  )
+function trendColor(t: string): string {
+  if (t.includes('Bullish')) return C.green
+  if (t.includes('Bearish')) return C.red
+  return C.amber
 }
 
 export default function MarketOverview({ ticker, companyName, sector, marketCap, signals }: Props) {
   const up = signals.price_change >= 0
-  const rsiColor = signals.rsi >= 70 ? 'text-red-400' : signals.rsi <= 30 ? 'text-green-400' : 'text-white'
-  const ivColor = signals.iv_rank >= 65 ? 'text-red-400' : signals.iv_rank < 35 ? 'text-green-400' : 'text-amber-400'
-  const evColor = signals.iv_vs_hv > 0 ? 'text-red-400' : 'text-green-400'
+  const rsiColor = signals.rsi >= 70 ? C.red : signals.rsi <= 30 ? C.green : '#fff'
+  const ivColor = signals.iv_rank >= 65 ? C.red : signals.iv_rank < 35 ? C.green : C.amber
+
+  const pill: React.CSSProperties = { fontSize: '0.68rem', padding: '2px 8px', borderRadius: 20, fontWeight: 600, fontFamily: 'monospace' }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5 space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xl sm:text-2xl font-bold font-mono text-white">{ticker}</span>
-            <span className="text-gray-400 text-sm min-w-0 break-words">{companyName}</span>
-            <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{sector}</span>
-            <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full border border-gray-700">{marketCap}</span>
-          </div>
-          {/* Regular session price + day change */}
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
-            <span className="text-3xl sm:text-4xl font-bold font-mono">${signals.current_price.toFixed(2)}</span>
-            <span className={`text-base sm:text-lg font-semibold ${up ? 'text-green-400' : 'text-red-400'}`}>
-              {up ? '▲' : '▼'} {Math.abs(signals.price_change).toFixed(2)} ({signals.price_change_pct > 0 ? '+' : ''}{signals.price_change_pct.toFixed(2)}%)
-            </span>
-          </div>
-
-          {/* Extended-hours price — only shown when market is closed / pre/post */}
+    <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 14px' }}>
+      {/* Row 1: Ticker + price + bias compact */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+          <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: '#fff' }}>{ticker}</span>
+          <span style={{ fontSize: '0.72rem', color: C.muted }}>{companyName}</span>
+          <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: '#fff' }}>${signals.current_price.toFixed(2)}</span>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: up ? C.green : C.red }}>
+            {up ? '▲' : '▼'} {Math.abs(signals.price_change).toFixed(2)} ({signals.price_change_pct > 0 ? '+' : ''}{signals.price_change_pct.toFixed(2)}%)
+          </span>
           {!!signals.ext_market_price && signals.ext_market_price > 0 && (
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${
-                signals.ext_market_type === 'pre'
-                  ? 'bg-blue-900/40 text-blue-300 border-blue-700'
-                  : 'bg-purple-900/40 text-purple-300 border-purple-700'
-              }`}>
-                {signals.ext_market_type === 'pre' ? 'Pre-Market' : 'After Hours'}
+            <>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: `1px solid ${C.purple}`, color: C.purple, background: 'rgba(107,127,212,0.08)' }}>
+                {signals.ext_market_type === 'pre' ? 'Pre' : 'AH'}
               </span>
-              <span className="text-xl font-bold font-mono text-white">
-                ${signals.ext_market_price.toFixed(2)}
-              </span>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: '#fff' }}>${signals.ext_market_price.toFixed(2)}</span>
               {!!signals.ext_market_change && signals.ext_market_change !== 0 && (
-                <span className={`text-sm font-semibold ${signals.ext_market_change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {signals.ext_market_change >= 0 ? '▲' : '▼'}{' '}
-                  {Math.abs(signals.ext_market_change).toFixed(2)}{' '}
-                  ({(signals.ext_market_change_pct ?? 0) >= 0 ? '+' : ''}{(signals.ext_market_change_pct ?? 0).toFixed(2)}%)
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: signals.ext_market_change >= 0 ? C.green : C.red }}>
+                  {signals.ext_market_change >= 0 ? '▲' : '▼'}{Math.abs(signals.ext_market_change).toFixed(2)} ({(signals.ext_market_change_pct ?? 0) >= 0 ? '+' : ''}{(signals.ext_market_change_pct ?? 0).toFixed(2)}%)
                 </span>
               )}
-            </div>
+            </>
           )}
         </div>
-
-        {/* Bias badge */}
-        <div className={`w-full sm:w-auto rounded-xl p-3 border text-center sm:min-w-28 ${trendBg(signals.directional_bias)}`}>
-          <div className="text-xs text-gray-400 mb-1">Overall Bias</div>
-          <div className={`font-bold text-lg ${trendColor(signals.directional_bias)}`}>{signals.directional_bias}</div>
-          <div className="text-xs text-gray-400">{signals.bias_confidence}% confidence</div>
+        <div style={{ textAlign: 'center', flexShrink: 0 }}>
+          <div style={{ fontSize: '0.6rem', color: C.muted }}>Bias</div>
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: trendColor(signals.directional_bias) }}>{signals.directional_bias}</div>
+          <div style={{ fontSize: '0.6rem', color: C.muted }}>{signals.bias_confidence}%</div>
         </div>
       </div>
 
-      {/* Metrics grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard label="Trend" value={signals.trend} sub={signals.trend_strength} valueColor={trendColor(signals.trend)} />
-        <MetricCard label="RSI (14)" value={signals.rsi.toString()} sub={signals.rsi_signal} valueColor={rsiColor} />
-        <MetricCard label="IV Rank" value={`${signals.iv_rank.toFixed(0)}%`} sub={signals.iv_environment} valueColor={ivColor} />
-        <MetricCard label="IV vs HV20" value={`${signals.iv_vs_hv > 0 ? '+' : ''}${signals.iv_vs_hv.toFixed(1)}%`} sub={signals.iv_vs_hv > 0 ? 'IV rich' : 'IV cheap'} valueColor={evColor} />
-        <MetricCard label="Put/Call" value={signals.put_call_ratio.toFixed(2)} sub={signals.pcr_signal} valueColor={signals.pcr_signal === 'Bearish' ? 'text-red-400' : signals.pcr_signal === 'Bullish' ? 'text-green-400' : 'text-white'} />
-        <MetricCard label="Vol Regime" value={signals.volatility_regime} sub={`Skew: ${signals.skew_signal}`} valueColor={signals.volatility_regime === 'Sell Premium' ? 'text-amber-400' : signals.volatility_regime === 'Buy Premium' ? 'text-green-400' : 'text-white'} />
+      {/* Row 2: Condensed metrics strip */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <span style={{ ...pill, color: trendColor(signals.trend), border: `1px solid ${trendColor(signals.trend)}`, background: 'rgba(0,229,160,0.06)' }}>
+          Trend: {signals.trend}
+        </span>
+        <span style={{ ...pill, color: rsiColor, border: `1px solid ${rsiColor}`, background: 'rgba(255,255,255,0.04)' }}>
+          RSI: {signals.rsi.toFixed(1)} {signals.rsi_signal}
+        </span>
+        <span style={{ ...pill, color: ivColor, border: `1px solid ${ivColor}`, background: 'rgba(255,255,255,0.04)' }}>
+          IV Rank: {signals.iv_rank.toFixed(0)}% {signals.iv_environment}
+        </span>
+        <span style={{ ...pill, color: signals.iv_vs_hv > 0 ? C.red : C.green, border: `1px solid ${signals.iv_vs_hv > 0 ? C.red : C.green}`, background: 'rgba(255,255,255,0.04)' }}>
+          IV/HV: {signals.iv_vs_hv > 0 ? '+' : ''}{signals.iv_vs_hv.toFixed(1)}% ({signals.iv_vs_hv > 0 ? 'rich' : 'cheap'})
+        </span>
+        <span style={{ ...pill, color: signals.pcr_signal === 'Bearish' ? C.red : signals.pcr_signal === 'Bullish' ? C.green : C.muted, border: `1px solid ${signals.pcr_signal === 'Bearish' ? C.red : signals.pcr_signal === 'Bullish' ? C.green : C.border}` }}>
+          P/C: {signals.put_call_ratio.toFixed(2)} {signals.pcr_signal}
+        </span>
+        <span style={{ ...pill, color: signals.volatility_regime === 'Sell Premium' ? C.amber : signals.volatility_regime === 'Buy Premium' ? C.green : '#fff', border: `1px solid ${signals.volatility_regime === 'Sell Premium' ? C.amber : signals.volatility_regime === 'Buy Premium' ? C.green : C.border}` }}>
+          Vol: {signals.volatility_regime}
+        </span>
       </div>
 
-      {/* Vol regime banner */}
+      {/* Row 3: IV regime note (single line) */}
       {signals.volatility_regime === 'Sell Premium' && (
-        <div className="bg-amber-900/30 border border-amber-700 rounded-xl p-3 text-sm text-amber-300">
-          ⚡ <strong>High IV Environment</strong> — IV Rank {signals.iv_rank.toFixed(0)}%, IV is {signals.iv_vs_hv.toFixed(1)}% above realized vol.
-          Credit strategies (Iron Condor, Bull Put Spread, Bear Call Spread) are favored.
+        <div style={{ marginTop: 6, fontSize: '0.72rem', color: C.amber }}>
+          ⚡ IV Rank {signals.iv_rank.toFixed(0)}% · IV {signals.iv_vs_hv.toFixed(1)}% above HV · Credit strategies favored
         </div>
       )}
       {signals.volatility_regime === 'Buy Premium' && (
-        <div className="bg-green-900/30 border border-green-700 rounded-xl p-3 text-sm text-green-300">
-          💰 <strong>Low IV Environment</strong> — IV Rank {signals.iv_rank.toFixed(0)}%. Options are relatively cheap.
-          Debit strategies (Long Call/Put, Spreads) offer good value.
-        </div>
-      )}
-      {signals.volatility_regime === 'Neutral' && (
-        <div className="bg-blue-900/30 border border-blue-700 rounded-xl p-3 text-sm text-blue-300">
-          📊 <strong>Moderate IV</strong> — IV Rank {signals.iv_rank.toFixed(0)}%. Spreads offer a balanced risk/reward.
+        <div style={{ marginTop: 6, fontSize: '0.72rem', color: C.green }}>
+          💰 IV Rank {signals.iv_rank.toFixed(0)}% · Options relatively cheap · Debit strategies favored
         </div>
       )}
 
-      {/* MA badges */}
-      <div className="flex gap-2 flex-wrap">
-        <span className="text-xs text-gray-500 self-center">Moving Averages:</span>
-        <MaBadge label={`MA20 $${signals.ma20.toFixed(0)}`} above={signals.above_ma20} />
-        <MaBadge label={`MA50 $${signals.ma50.toFixed(0)}`} above={signals.above_ma50} />
-        <MaBadge label={`MA200 $${signals.ma200.toFixed(0)}`} above={signals.above_ma200} />
-        <span className={`text-xs px-2 py-1 rounded-full border font-medium
-          ${signals.ma50_slope > 0 ? 'bg-green-900/40 text-green-400 border-green-800' : 'bg-red-900/40 text-red-400 border-red-800'}`}>
-          MA50 slope: {signals.ma50_slope > 0 ? '↑' : '↓'} {signals.ma50_slope.toFixed(2)}%
+      {/* Row 4: Moving Averages + MACD (single compact line) */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
+        <span style={{ fontSize: '0.68rem', color: C.muted, alignSelf: 'center' }}>MAs:</span>
+        <span style={{ ...pill, color: signals.above_ma20 ? C.green : C.red, border: `1px solid ${signals.above_ma20 ? C.green : C.red}`, background: signals.above_ma20 ? 'rgba(0,229,160,0.06)' : 'rgba(255,77,109,0.06)' }}>
+          {signals.above_ma20 ? '▲' : '▼'} MA20 ${signals.ma20.toFixed(0)}
         </span>
-        <span className={`text-xs px-2 py-1 rounded-full border font-medium
-          ${signals.macd_crossover === 'Bullish' ? 'bg-green-900/40 text-green-400 border-green-800'
-            : signals.macd_crossover === 'Bearish' ? 'bg-red-900/40 text-red-400 border-red-800'
-            : 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+        <span style={{ ...pill, color: signals.above_ma50 ? C.green : C.red, border: `1px solid ${signals.above_ma50 ? C.green : C.red}`, background: signals.above_ma50 ? 'rgba(0,229,160,0.06)' : 'rgba(255,77,109,0.06)' }}>
+          {signals.above_ma50 ? '▲' : '▼'} MA50 ${signals.ma50.toFixed(0)}
+        </span>
+        <span style={{ ...pill, color: signals.above_ma200 ? C.green : C.red, border: `1px solid ${signals.above_ma200 ? C.green : C.red}`, background: signals.above_ma200 ? 'rgba(0,229,160,0.06)' : 'rgba(255,77,109,0.06)' }}>
+          {signals.above_ma200 ? '▲' : '▼'} MA200 ${signals.ma200.toFixed(0)}
+        </span>
+        <span style={{ ...pill, color: signals.ma50_slope > 0 ? C.green : C.red, border: `1px solid ${signals.ma50_slope > 0 ? C.green : C.red}`, background: signals.ma50_slope > 0 ? 'rgba(0,229,160,0.06)' : 'rgba(255,77,109,0.06)' }}>
+          MA50 slope: {signals.ma50_slope > 0 ? '↑' : '↓'} {Math.abs(signals.ma50_slope).toFixed(2)}%
+        </span>
+        <span style={{ ...pill, color: signals.macd_crossover === 'Bullish' ? C.green : signals.macd_crossover === 'Bearish' ? C.red : C.muted, border: `1px solid ${signals.macd_crossover === 'Bullish' ? C.green : signals.macd_crossover === 'Bearish' ? C.red : C.border}` }}>
           MACD: {signals.macd_crossover === 'None' ? 'No crossover' : signals.macd_crossover + ' crossover'}
         </span>
       </div>

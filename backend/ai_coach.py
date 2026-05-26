@@ -792,7 +792,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     elif is_bear and bounce == "orl_rejection_retest":
         best = f"ORL retest rejection — enter PUT, tight stop above {orl_str}, bigger target"
     elif is_bear and bounce == "no_mans_land":
-        best = f"Wait — price between VWAP and ORL. No trade until clean level rejection."
+        best = f"Wait — price below both VWAP and ORL. No trade until bounce reaches a key level."
     elif is_bear and bounce == "vwap_test":
         best = f"Bouncing toward VWAP {vwap_str} — wait for rejection candle + volume spike"
     elif not vol_ok:
