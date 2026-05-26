@@ -415,7 +415,7 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
       onDragEnd={onDragEnd}
       className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-all ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 border-violet-500/50 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3 flex-[2]">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -435,7 +435,49 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+
+      {/* Middle: Price & Change */}
+      <div className="flex flex-col items-end gap-0.5 flex-1 min-w-0">
+        {ticker.last_price != null && (
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold font-mono text-white">${ticker.last_price.toFixed(2)}</span>
+            {ticker.price_change != null && (
+              <span className={`text-sm font-mono font-semibold ${ticker.price_change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {ticker.price_change >= 0 ? '+' : ''}{ticker.price_change.toFixed(2)}
+              </span>
+            )}
+            {ticker.price_change_pct != null && (
+              <span className={`text-xs font-mono font-semibold ${ticker.price_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                ({ticker.price_change_pct >= 0 ? '+' : ''}{ticker.price_change_pct.toFixed(2)}%)
+              </span>
+            )}
+          </div>
+        )}
+        {ticker.pre_market_price != null && (
+          <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">Pre</span>
+            ${ticker.pre_market_price.toFixed(2)}
+            {ticker.pre_market_change_pct != null && (
+              <span className={ticker.pre_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                {ticker.pre_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.pre_market_change_pct).toFixed(2)}%
+              </span>
+            )}
+          </span>
+        )}
+        {ticker.post_market_price != null && (
+          <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">AH</span>
+            ${ticker.post_market_price.toFixed(2)}
+            {ticker.post_market_change_pct != null && (
+              <span className={ticker.post_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                {ticker.post_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.post_market_change_pct).toFixed(2)}%
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 flex-shrink-0">
         <div className="flex gap-1">
           {types.map(tt => (
             <button

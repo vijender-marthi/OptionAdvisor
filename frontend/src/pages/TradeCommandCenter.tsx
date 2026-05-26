@@ -780,11 +780,11 @@ export default function TradeCommandCenter() {
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
                     <Zap size={14} className="text-orange-400" />
                     <span className="text-sm font-bold text-orange-400">Day Trade</span>
-                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length} tickers</span>
+                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length} tickers</span>
                   </div>
                   <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                     {recommendations
-                      .filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase()))
+                      .filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
                       .slice(0, 8)
                       .map(rec => (
                         <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
@@ -799,7 +799,7 @@ export default function TradeCommandCenter() {
                           <ArrowRight size={12} className="text-slate-400 shrink-0" />
                         </button>
                       ))}
-                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length === 0 && (
+                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length === 0 && (
                       <div className="px-4 py-6 text-center text-xs text-slate-500">No day trade setups right now</div>
                     )}
                   </div>
@@ -811,11 +811,11 @@ export default function TradeCommandCenter() {
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
                     <TrendingUp size={14} className="text-violet-400" />
                     <span className="text-sm font-bold text-violet-400">Swing Trade</span>
-                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length} tickers</span>
+                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length} tickers</span>
                   </div>
                   <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                     {recommendations
-                      .filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase()))
+                      .filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
                       .slice(0, 8)
                       .map(rec => (
                         <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
@@ -830,7 +830,7 @@ export default function TradeCommandCenter() {
                           <ArrowRight size={12} className="text-slate-400 shrink-0" />
                         </button>
                       ))}
-                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.signal ?? r.final_decision ?? '').toUpperCase())).length === 0 && (
+                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length === 0 && (
                       <div className="px-4 py-6 text-center text-xs text-slate-500">No swing trade setups right now</div>
                     )}
                   </div>

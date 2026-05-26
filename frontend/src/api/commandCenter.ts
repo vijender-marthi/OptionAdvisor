@@ -247,6 +247,15 @@ export interface MyTickerEntry {
   is_active: boolean
   next_earnings_date?: string
   next_earnings_days?: number | null
+  last_price?: number | null
+  price_change?: number | null
+  price_change_pct?: number | null
+  pre_market_price?: number | null
+  pre_market_change?: number | null
+  pre_market_change_pct?: number | null
+  post_market_price?: number | null
+  post_market_change?: number | null
+  post_market_change_pct?: number | null
 }
 
 export interface SearchTickerResult {

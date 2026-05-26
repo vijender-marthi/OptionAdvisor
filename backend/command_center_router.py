@@ -1582,31 +1582,67 @@ def get_my_tickers(auth_email: str = Depends(require_access_email)):
         sym = str(t.get("symbol", "")).upper().strip()
         if not sym:
             continue
+
+        # Earnings calendar
         try:
             cal = bar_cache.get_calendar(sym)
-            if not isinstance(cal, dict):
-                continue
-            ed = cal.get("Earnings Date") or cal.get("Earnings Timestamp")
-            if ed is None:
-                continue
-            if isinstance(ed, (list, tuple)) and len(ed) > 0:
-                d0 = ed[0]
-            else:
-                d0 = ed
-            if isinstance(d0, datetime):
-                d0 = d0.date()
-            elif hasattr(d0, "date") and callable(d0.date) and not isinstance(d0, date):
-                d0 = d0.date()
-            elif isinstance(d0, pd.Timestamp):
-                d0 = d0.date()
-            elif isinstance(d0, str):
-                d0 = pd.Timestamp(d0).date()
-            if not isinstance(d0, date):
-                continue
-            t["next_earnings_date"] = d0.isoformat()
-            t["next_earnings_days"] = (d0 - today).days
+            if isinstance(cal, dict):
+                ed = cal.get("Earnings Date") or cal.get("Earnings Timestamp")
+                if ed is not None:
+                    if isinstance(ed, (list, tuple)) and len(ed) > 0:
+                        d0 = ed[0]
+                    else:
+                        d0 = ed
+                    if isinstance(d0, datetime):
+                        d0 = d0.date()
+                    elif hasattr(d0, "date") and callable(d0.date) and not isinstance(d0, date):
+                        d0 = d0.date()
+                    elif isinstance(d0, pd.Timestamp):
+                        d0 = d0.date()
+                    elif isinstance(d0, str):
+                        d0 = pd.Timestamp(d0).date()
+                    if isinstance(d0, date):
+                        t["next_earnings_date"] = d0.isoformat()
+                        t["next_earnings_days"] = (d0 - today).days
         except Exception:
-            continue
+            pass
+
+        # Current price + change
+        try:
+            tk = yf.Ticker(sym)
+            info = tk.info if tk else {}
+            if info:
+                prev_close = info.get("regularMarketPreviousClose") or info.get("previousClose")
+                current = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("price") or info.get("ask") or info.get("bid")
+                if current and isinstance(current, (int, float)) and current > 0:
+                    t["last_price"] = round(float(current), 2)
+                    if prev_close and isinstance(prev_close, (int, float)) and prev_close > 0:
+                        chg = float(current) - float(prev_close)
+                        chg_pct = (chg / float(prev_close)) * 100.0
+                        t["price_change"] = round(chg, 2)
+                        t["price_change_pct"] = round(chg_pct, 2)
+                # Pre-market
+                pre = info.get("preMarketPrice")
+                if pre and isinstance(pre, (int, float)) and pre > 0:
+                    t["pre_market_price"] = round(float(pre), 2)
+                    pre_chg = info.get("preMarketChange")
+                    if pre_chg and isinstance(pre_chg, (int, float)):
+                        t["pre_market_change"] = round(float(pre_chg), 2)
+                    pre_chg_pct = info.get("preMarketChangePercent")
+                    if pre_chg_pct and isinstance(pre_chg_pct, (int, float)):
+                        t["pre_market_change_pct"] = round(float(pre_chg_pct), 2)
+                # Post-market (after-hours)
+                post = info.get("postMarketPrice")
+                if post and isinstance(post, (int, float)) and post > 0:
+                    t["post_market_price"] = round(float(post), 2)
+                    post_chg = info.get("postMarketChange")
+                    if post_chg and isinstance(post_chg, (int, float)):
+                        t["post_market_change"] = round(float(post_chg), 2)
+                    post_chg_pct = info.get("postMarketChangePercent")
+                    if post_chg_pct and isinstance(post_chg_pct, (int, float)):
+                        t["post_market_change_pct"] = round(float(post_chg_pct), 2)
+        except Exception:
+            pass
     return api_envelope({"tickers": tickers})
 
 

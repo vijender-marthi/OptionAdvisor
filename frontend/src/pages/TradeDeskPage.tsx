@@ -499,8 +499,24 @@ export default function TradeDeskPage() {
                   </div>
                 )}
 
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setDrawer({ type: 'log-new' })}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: C.accent, border: `1px solid ${C.accent}`, color: '#fff', minWidth: 120 }}>
+                    📋 {openTradeForCurrent ? 'Update Trade' : 'Log Trade'}
+                  </button>
+                  <button type="button" onClick={() => setDrawer({ type: 'alert' })}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: `1px solid ${C.borderSub}`, color: '#fff', minWidth: 120 }}>
+                    🔔 Set Alert
+                  </button>
+                  <button type="button" onClick={() => void handleAddToWatchlist()}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: `1px solid ${C.amber}`, color: C.amber, minWidth: 120 }}>
+                    {watchlist.some(w => w.ticker === selectedTicker) ? '★ Watched' : '☆ Watchlist'}
+                  </button>
+                </div>
+
                 {/* Links to full engine pages */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                   <button type="button" onClick={() => navigate(`/${tradeType === 'day' ? 'day-trade' : 'swing-trade'}?ticker=${encodeURIComponent(analysis.ticker)}`)}
                     style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', background: 'transparent', border: `1px solid ${C.borderSub}`, color: C.muted, textAlign: 'center' }}>
                     Open in {tradeType === 'day' ? 'Day Trade' : 'Swing Trade'} →
