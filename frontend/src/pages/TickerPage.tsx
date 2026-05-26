@@ -765,8 +765,18 @@ export default function TickerPage() {
             {/* Context line: rec breakdown — uses selectedData for accurate counts */}
             {selectedData?.recommendations && selectedData.recommendations.length > 0 && (
             (() => {
-              const entryCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 70).length
-              const setupCount = selectedData.recommendations.filter(r => (r.scores?.total_score ?? 0) >= 55 && (r.scores?.total_score ?? 0) < 70).length
+              const entryCount = selectedData.recommendations.filter(r => {
+                const score = r.scores?.total_score ?? 0
+                const rec = r as any
+                const allFilters = rec.passes_liquidity_filter !== false && rec.passes_iv_filter !== false
+                return score >= 70 && allFilters
+              }).length
+              const setupCount = selectedData.recommendations.filter(r => {
+                const score = r.scores?.total_score ?? 0
+                const rec = r as any
+                if (score >= 70) return false // already counted as entry
+                return score >= 55 && rec.passes_liquidity_filter
+              }).length
               return (
                 <div style={{ marginTop: 6, marginBottom: 10, fontSize: '11px', color: C.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {entryCount > 0 && <span style={{ background: 'rgba(0,229,160,0.1)', color: '#00E5A0', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, padding: '1px 7px', fontSize: '10px', fontWeight: 600 }}>{entryCount} ready to enter</span>}
