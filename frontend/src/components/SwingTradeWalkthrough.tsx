@@ -394,15 +394,15 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
                       const price = typeof rule.price === 'number' ? rule.price : null
                       const action = String(rule.action || '')
                       const note = String(rule.note || '')
+                      const isStall = /stalls/i.test(trigger)
                       const isStop = /stop/i.test(trigger)
                       const isTarget2 = /target 2/i.test(trigger)
-                      const isTarget1 = /target 1/i.test(trigger) && !isTarget2
-                      const isStall = /stalls/i.test(trigger)
-                      const isBreakdown = /ma20|breakdown/i.test(trigger)
+                      const isTarget1 = /target 1/i.test(trigger) && !isTarget2 && !isStall
+                      const isBreakdown = /ma20|breakdown|closes/i.test(trigger)
                       // Color palette: T1=green, T2=amber, stop/stall=red, breakdown=muted, other=slate
-                      const colorCls = isTarget1 ? 'text-emerald-400'
+                      const colorCls = isStop || isStall ? 'text-red-400'
+                        : isTarget1 ? 'text-emerald-400'
                         : isTarget2 ? 'text-amber-400'
-                        : (isStop || isStall) ? 'text-red-400'
                         : isBreakdown ? 'text-slate-400'
                         : 'text-slate-500'
                       const whenLabel = trigger
