@@ -219,18 +219,15 @@ export default function SwingTradePage() {
     let legs: OptionLeg[] = []
     if (spread?.long_strike) {
       const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
+      const estDebit = Number(spread.est_debit || 0)
+      // Single BUY leg at net debit price — this is the position's actual cost per share.
+      // The short leg mid_price is unavailable without live market data; omitting it
+      // avoids distorting the P&L calc (backend sums BUY legs and subtracts SELL legs).
       legs.push({
         action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
-        expiry: String(spread.expiry || expiry), mid_price: Number(spread.est_debit || 0) / 2,
+        expiry: String(spread.expiry || expiry), mid_price: estDebit,
         delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
       })
-      if (spread.short_strike) {
-        legs.push({
-          action: 'SELL', option_type: optType, strike: Number(spread.short_strike),
-          expiry: String(spread.expiry || expiry), mid_price: Number(spread.est_debit || 0) / 2,
-          delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
-        })
-      }
     } else {
       legs = [{
         action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
@@ -429,18 +426,12 @@ export default function SwingTradePage() {
                 let legs: OptionLeg[] = []
                 if (spread?.long_strike) {
                   const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
+                  const estDebit = Number(spread.est_debit || 0)
                   legs.push({
                     action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
-                    expiry: String(spread.expiry || ''), mid_price: Number(spread.est_debit || 0) / 2,
+                    expiry: String(spread.expiry || ''), mid_price: estDebit,
                     delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
                   })
-                  if (spread.short_strike) {
-                    legs.push({
-                      action: 'SELL', option_type: optType, strike: Number(spread.short_strike),
-                      expiry: String(spread.expiry || ''), mid_price: Number(spread.est_debit || 0) / 2,
-                      delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
-                    })
-                  }
                 } else {
                   legs = [{
                     action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
