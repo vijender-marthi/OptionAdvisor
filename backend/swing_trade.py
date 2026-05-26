@@ -1988,32 +1988,37 @@ def _compute_exit_rules(
             "trigger": "Target 1 reached",
             "price":   t1,
             "action":  "Sell ½ position",
-            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)"
+            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)",
+            "type":    "t1",
         })
         rules.append({
             "trigger": "Target 2 reached",
             "price":   t2,
             "action":  "Sell remaining ½",
-            "note":    "Full exit — trade complete"
+            "note":    "Full exit — trade complete",
+            "type":    "t2",
         })
         rules.append({
             "trigger": "Price closes below MA20",
             "price":   round(ma20, 2),
             "action":  "Exit full position",
-            "note":    "Trend structure broken — do not hold through"
+            "note":    "Trend structure broken — do not hold through",
+            "type":    "stop",
         })
         if risk_level in ("HIGH", "VERY_HIGH"):
             rules.append({
                 "trigger": "Price stalls at Target 1 (no momentum)",
                 "price":   t1,
                 "action":  "Exit full position",
-                "note":    "High-risk setup — take full profit at first target, don't reach for T2"
+                "note":    "High-risk setup — take full profit at first target, don't reach for T2",
+                "type":    "stop",
             })
         rules.append({
             "trigger": "Stop loss",
             "price":   stop,
             "action":  "Exit full position",
-            "note":    "Capital preservation — accept the loss, protect the account"
+            "note":    "Capital preservation — accept the loss, protect the account",
+            "type":    "stop",
         })
 
     else:  # short / bearish
@@ -2023,32 +2028,37 @@ def _compute_exit_rules(
             "trigger": "Target 1 reached",
             "price":   t1,
             "action":  "Cover ½ position",
-            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)"
+            "note":    f"Lock in partial profit, move stop to {entry_label} (breakeven)",
+            "type":    "t1",
         })
         rules.append({
             "trigger": "Target 2 reached",
             "price":   t2,
             "action":  "Cover remaining ½",
-            "note":    "Full exit — trade complete"
+            "note":    "Full exit — trade complete",
+            "type":    "t2",
         })
         rules.append({
             "trigger": "Price closes above MA20",
             "price":   round(ma20, 2),
             "action":  "Exit full position",
-            "note":    "Bearish structure failed — exit immediately"
+            "note":    "Bearish structure failed — exit immediately",
+            "type":    "stop",
         })
         if risk_level in ("HIGH", "VERY_HIGH"):
             rules.append({
                 "trigger": "Price stalls at Target 1 (no momentum)",
                 "price":   t1,
                 "action":  "Cover full position",
-                "note":    "High-risk setup — take full profit at first target"
+                "note":    "High-risk setup — take full profit at first target",
+                "type":    "stop",
             })
         rules.append({
             "trigger": "Stop loss",
             "price":   stop,
             "action":  "Exit full position",
-            "note":    "Capital preservation — accept the loss"
+            "note":    "Capital preservation — accept the loss",
+            "type":    "stop",
         })
 
     return rules

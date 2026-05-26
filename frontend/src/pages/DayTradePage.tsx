@@ -5,7 +5,7 @@ import {
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check,
 } from 'lucide-react'
-import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade } from '../api/client'
+import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
@@ -34,6 +34,7 @@ export default function DayTradePage() {
     addManualPosition,
     portfolio,
     theme,
+    user,
   } = useApp()
 
   const isDark = theme !== 'light'
@@ -70,6 +71,7 @@ export default function DayTradePage() {
   const [portfolioDfltDte, setPortfolioDfltDte] = useState(7)
   const [portfolioBias, setPortfolioBias] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
+  const [savedToJournal, setSavedToJournal] = useState(false)
   const [side, setSide] = useState<'CALL' | 'PUT'>('CALL')
   const [tradeMode, setTradeMode] = useState<'day' | 'swing'>('day')
   const [entryPrice, setEntryPrice] = useState('')
@@ -189,6 +191,34 @@ export default function DayTradePage() {
       message: already ? `${result.ticker} is already on Signal Feed.` : `${result.ticker} added to Signal Feed.`,
     })
   }, [addToWatchlist, isWatched, result])
+
+  const handleSaveToJournal = useCallback(async () => {
+    if (!result || !user?.email) return
+    const eg = result.entry_guidance as Record<string, unknown> | undefined
+    const lastPrice = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price : 0
+    try {
+      await saveToJournal(user.email, {
+        ticker:           result.ticker,
+        company_name:     result.company_name || '',
+        strategy:         result.bias === 'short' ? 'Long Put' : 'Long Call',
+        bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
+        legs:             [],
+        expiry:           new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        entry_date:       new Date().toISOString().split('T')[0],
+        dte_at_entry:     7,
+        net_credit:       0,
+        max_profit:       0,
+        max_loss:         0,
+        underlying_entry: lastPrice,
+        prob_of_profit:   0,
+        expected_value:   0,
+        total_score:      result.confidence ?? 0,
+        notes:            '',
+      })
+      setSavedToJournal(true)
+      setTimeout(() => setSavedToJournal(false), 4000)
+    } catch { /* non-fatal */ }
+  }, [result, user?.email])
 
   const handleCreateAlert = useCallback(async (data: DeskAlertCreate) => {
     await deskApi.createAlert(data)
@@ -521,6 +551,14 @@ export default function DayTradePage() {
               <BarChart2 size={13} />
               Position Trading
             </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveToJournal()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/50 hover:bg-emerald-900/30 text-emerald-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              {savedToJournal ? <Check size={14} /> : <Activity size={14} />}
+              {savedToJournal ? 'Saved' : 'Save to Journal'}
+            </button>
           </div>
           )}
 
@@ -596,7 +634,7 @@ export default function DayTradePage() {
                     </span>
                   )}
                   {(() => {
-                    const eg = result?.entry_guidance
+                    const eg = (result as Record<string, unknown>)?.entry_guidance as Record<string, unknown> | undefined
                     const vwap = eg?.vwap
                     const orh = eg?.opening_range_high
                     const orl = eg?.opening_range_low
@@ -672,9 +710,21 @@ export default function DayTradePage() {
           </div>
 
           {/* Exit Plan */}
+          {(() => {
+          const eg = result?.entry_guidance as Record<string, unknown> | undefined
+          const scalpTarget = eg?.scalp_target as number | undefined
+          const scalpTarget2 = eg?.scalp_target_2 as number | undefined
+          const exitRows = [...(unified.exit_rows || [])]
+          if (scalpTarget != null && !exitRows.some(r => r.type === 't1')) {
+            exitRows.push({ when: 'Target 1 — sell ½', price: `$${scalpTarget.toFixed(2)}`, action: 'Sell ½ position', type: 't1' })
+          }
+          if (scalpTarget2 != null && !exitRows.some(r => r.type === 't2')) {
+            exitRows.push({ when: 'Target 2 — full exit', price: `$${scalpTarget2.toFixed(2)}`, action: 'Sell remaining ½', type: 't2' })
+          }
+          return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Exit Plan — Pre-Committed</div>
-            {unified.exit_rows.length > 0 ? (
+            {exitRows.length > 0 ? (
               <>
                 {/* Desktop table */}
                 <div className="hidden sm:block" style={{ overflowX: 'auto' }}>
@@ -687,7 +737,7 @@ export default function DayTradePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {unified.exit_rows.map((row, i) => {
+                      {exitRows.map((row, i) => {
                         const isStop = row.type === 'stop'
                         const isT2 = row.type === 't2'
                         const isT1 = row.type === 't1'
@@ -696,7 +746,7 @@ export default function DayTradePage() {
                         const priceCls = isStop ? dt.red : isT2 ? dt.amber : isT1 ? dt.green : dt.muted
                         return (
                           <tr key={i} style={{ borderBottom: `1px solid ${dt.border}` }}>
-                            <td style={{ paddingTop: 8, paddingBottom: 8, color: rowTone, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: isStop || isT1 || isT2 ? 600 : 400 }}>{row.when}</td>
+                            <td style={{ paddingTop: 8, paddingBottom: 8, color: dt.muted, fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
                             <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
                             <td style={{ paddingTop: 8, paddingBottom: 8, color: isStop ? dt.red : isT1 || isT2 ? dt.green : dt.muted, fontSize: '0.75rem', fontWeight: isStop ? 500 : 400 }}>{row.action}</td>
                           </tr>
@@ -707,7 +757,7 @@ export default function DayTradePage() {
                 </div>
                 {/* Mobile card list */}
                 <div className="sm:hidden space-y-2">
-                  {unified.exit_rows.map((row, i) => {
+                  {exitRows.map((row, i) => {
                     const isStop = row.type === 'stop'
                     const isT2 = row.type === 't2'
                     const isT1 = row.type === 't1'
@@ -716,7 +766,7 @@ export default function DayTradePage() {
                     return (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bgDeep }}>
                         <div>
-                          <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: rowTone, fontWeight: 600 }}>{row.when}</div>
+                          <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: dt.muted, fontWeight: 600 }}>{row.when}</div>
                           <div style={{ fontSize: '0.68rem', color: isStop ? dt.red : isT1 || isT2 ? dt.green : dt.muted, marginTop: 2 }}>{row.action}</div>
                         </div>
                         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: priceCls, fontSize: '0.88rem' }}>{row.price}</span>
@@ -729,6 +779,7 @@ export default function DayTradePage() {
               <div style={{ color: dt.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
             )}
           </div>
+          )})()}
 
           {/* AI Coach */}
           {unified.coach && (

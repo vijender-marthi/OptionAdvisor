@@ -594,14 +594,12 @@ export default function SwingTradePage() {
                       .replace(/^Stop loss$/i, 'Stop Loss')
                       .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
                       .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
+                    const displayAction = row.note ? `${row.action} · ${row.note}` : row.action
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, color: clr, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}>{whenLabel}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: clr }}>{row.price}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontSize: '0.75rem', verticalAlign: 'top' }}>
-                          <div style={{ color: clr, fontWeight: 600 }}>{row.action}</div>
-                          {row.note && <div style={{ color: '#5A6478', fontSize: '0.68rem', marginTop: 2 }}>{row.note}</div>}
-                        </td>
+                        <td className="dt-muted" style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontFamily: 'monospace', fontSize: '0.82rem' }}>{whenLabel}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: clr, fontSize: '0.82rem' }}>{row.price}</td>
+                        <td className="dt-muted" style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.82rem' }}>{displayAction}</td>
                       </tr>
                     )
                   })}

@@ -31,6 +31,8 @@ from decision_resolver import resolve_trade_decision
 from engine import pick_expiry_by_dte, run_engine
 from score_normalizer import normalize_day_score, normalize_regular_score, normalize_swing_score
 from storage import (
+    alert_center_active_count,
+    alert_center_critical_count,
     fetch_iv_atm_history_strict_before,
     get_user_state,
     normalize_email,
@@ -451,6 +453,9 @@ def _compute_ticker_engines(ticker: str) -> dict:
         "regular":                regular_payload,
         "regular_data":           regular_data,
         "day_metrics":            day_metrics,
+        "day_entry_guidance":     dict(day_scan.entry_guidance) if day_scan and hasattr(day_scan, 'entry_guidance') and day_scan.entry_guidance else {},
+        "swing_entry_guidance":   dict(swing_scan.entry_guidance) if swing_scan and hasattr(swing_scan, 'entry_guidance') and swing_scan.entry_guidance else {},
+        "swing_exec_levels":      dict(swing_scan.metrics.get("exec_levels", {})) if swing_scan and hasattr(swing_scan, 'metrics') and swing_scan.metrics else {},
         "swing_suggested_strategy": swing_scan.suggested_strategy if swing_scan else "",
         "cross_engine_conflict":  cross_engine_conflict,
     }
@@ -563,7 +568,7 @@ def _compute_overall_decision(engine_cards: list[dict]) -> dict:
                 f"{'are' if len(avoiding) > 1 else 'is'} signalling AVOID — "
                 "overall capped at WATCH until resolved."
             ),
-            "engines_agreeing":    go_list + watch_list,
+            "engines_agreeing":    go_list,
             "engines_conflicting": avoiding,
         }
 
@@ -627,7 +632,7 @@ def _compute_overall_decision(engine_cards: list[dict]) -> dict:
             "label":               f"{lead.title()} Only",
             "confidence":          min(55, int(lead_c.get("confidence") or 0)),
             "reason":              f"Only the {lead.upper()} engine is READY — wait for at least one more engine to confirm before acting.",
-            "engines_agreeing":    go_list + watch_list,
+            "engines_agreeing":    go_list,
             "engines_conflicting": [],
         }
 
@@ -715,6 +720,60 @@ def _is_spread_strategy(strategy: str) -> bool:
         if kw in s:
             return True
     return False
+
+
+def _entry_zone(engines: dict, eng_key: str, ticker: str) -> str:
+    """Extract entry zone price from engine guidance."""
+    try:
+        if eng_key == "day":
+            eg = engines.get("day_entry_guidance") or {}
+            v = eg.get("breakout_level") or eg.get("entry_price") or eg.get("current_price")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+        elif eng_key == "swing":
+            el = engines.get("swing_exec_levels") or {}
+            v = el.get("breakout") or el.get("entry")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+    except Exception:
+        pass
+    return "—"
+
+
+def _target(engines: dict, eng_key: str, ticker: str) -> str:
+    """Extract target price from engine guidance."""
+    try:
+        if eng_key == "day":
+            eg = engines.get("day_entry_guidance") or {}
+            v = eg.get("scalp_target")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+        elif eng_key == "swing":
+            el = engines.get("swing_exec_levels") or {}
+            v = el.get("target1")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+    except Exception:
+        pass
+    return "—"
+
+
+def _stop_loss(engines: dict, eng_key: str, ticker: str) -> str:
+    """Extract stop loss price from engine guidance."""
+    try:
+        if eng_key == "day":
+            eg = engines.get("day_entry_guidance") or {}
+            v = eg.get("risk_below") or eg.get("stop_price")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+        elif eng_key == "swing":
+            el = engines.get("swing_exec_levels") or {}
+            v = el.get("stop")
+            if v and isinstance(v, (int, float)) and v > 0:
+                return f"${v:.2f}"
+    except Exception:
+        pass
+    return "—"
 
 
 def _direction_from_bias(market_bias: str) -> str:
@@ -864,9 +923,9 @@ def build_command_center_payload(
                 "direction":             _direction_from_bias(p.get("market_bias", "")),
                 "strategy":              _strategy_label(eng_key, p.get("market_bias", ""), rdata, swing_strat),
                 "signal":                p.get("raw_signal") or fd,
-                "entry_zone":            "—",
-                "target":                "—",
-                "stop_loss":             "—",
+                "entry_zone":            _entry_zone(engines, eng_key, ticker),
+                "target":                _target(engines, eng_key, ticker),
+                "stop_loss":             _stop_loss(engines, eng_key, ticker),
                 "expiry":                _expiry_label(eng_key, rdata),
                 "risk_level":            _risk_label(p.get("risk_state", "MEDIUM")),
                 "action_label":          _action_label(fd),
@@ -1100,7 +1159,8 @@ def build_command_center_payload(
         "recommendations":  filtered,
         "conflicts":        conflicts,
         "alerts_summary": {
-            "active_alerts": 0, "critical_alerts": 0,
+            "active_alerts": alert_center_active_count(normalize_email(email)),
+            "critical_alerts": alert_center_critical_count(normalize_email(email)),
             "positions_requiring_exit": 0, "near_expiry_trades": 0,
             "high_iv_warnings": 0,
         },
