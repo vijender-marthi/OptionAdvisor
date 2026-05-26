@@ -343,6 +343,481 @@ def _rs_label(sym: str, rs: float) -> str:
     return f"{s} vs QQQ: {rs:+.2f}% (within noise band)."
 
 
+# ---------------------------------------------------------------------------
+# Edge Remaining Engine
+# ---------------------------------------------------------------------------
+
+def _edge_remaining(
+    last_price: float,
+    vwap_upper1: float,
+    vwap_lower1: float,
+    vwap_upper2: float,
+    vwap_lower2: float,
+    vwap_std_dev: float,
+    momentum_pct: float,
+    rvol: float,
+    daily_range_used_pct: float,
+    session_phase: str,
+) -> tuple[str, str, float]:
+    """
+    Estimates how much opportunity remains in the current move.
+
+    Returns (edge_state, edge_reason, extension_ratio).
+
+    edge_state:
+      "EARLY"      — Move is just starting. Best risk/reward.
+      "DEVELOPING" — Move has started but room to run.
+      "LATE"       — Majority of move done. RR compressed.
+      "EXHAUSTED"  — Move complete. Chasing is statistically losing.
+    """
+    reason_parts: list[str] = []
+    extension_ratio = 0.0
+    if vwap_std_dev > 0:
+        ext_u = abs(last_price - vwap_upper1) / vwap_std_dev if last_price > vwap_upper1 else 0.0
+        ext_l = abs(last_price - vwap_lower1) / vwap_std_dev if last_price < vwap_lower1 else 0.0
+        extension_ratio = max(ext_u, ext_l)
+
+    range_used = (daily_range_used_pct or 0.0) / 100.0
+    at_upper2 = vwap_upper2 > 0 and last_price >= vwap_upper2 * 0.999
+    at_lower2 = vwap_lower2 > 0 and last_price <= vwap_lower2 * 1.001
+    at_upper1 = vwap_upper1 > 0 and last_price >= vwap_upper1 * 0.999
+    at_lower1 = vwap_lower1 > 0 and last_price <= vwap_lower1 * 1.001
+
+    # EXHAUSTED: price at ±2σ OR range nearly full OR momentum collapsed
+    if at_upper2 or at_lower2:
+        reason_parts.append("Price at ±2σ — statistical extreme reached")
+        reason_parts.append("Mean-reversion probability elevated")
+        return "EXHAUSTED", "; ".join(reason_parts), extension_ratio
+
+    if range_used >= 0.80:
+        reason_parts.append(f"{daily_range_used_pct:.0f}% of daily range consumed")
+        reason_parts.append("Move near completion")
+        return "EXHAUSTED", "; ".join(reason_parts), extension_ratio
+
+    # LATE: price at +1σ OR >60% range used OR momentum fading
+    if at_upper1 or at_lower1:
+        if range_used >= 0.60:
+            reason_parts.append(f"Price at ±1σ with {daily_range_used_pct:.0f}% of range used")
+            reason_parts.append("RR is compressed — late to the move")
+            return "LATE", "; ".join(reason_parts), extension_ratio
+        reason_parts.append("Price at ±1σ — continuation possible but chase risk rising")
+
+    if range_used >= 0.60:
+        reason_parts.append(f"{daily_range_used_pct:.0f}% of range used — late stage")
+        return "LATE", "; ".join(reason_parts), extension_ratio
+
+    if momentum_pct > 0.8 and rvol < 1.0:
+        reason_parts.append("Momentum without volume — likely exhaustion ahead")
+        return "LATE", "; ".join(reason_parts), extension_ratio
+
+    # DEVELOPING: momentum building, range filling
+    if abs(momentum_pct) > 0.3 and rvol >= 1.0:
+        reason_parts.append(f"Momentum building ({momentum_pct:+.3f}%) with volume")
+        return "DEVELOPING", "; ".join(reason_parts), extension_ratio
+
+    if range_used >= 0.35:
+        reason_parts.append("Mid-range — move developing but room to run")
+        return "DEVELOPING", "; ".join(reason_parts), extension_ratio
+
+    # EARLY: default when none of the above triggered
+    reason_parts.append("Fresh setup — early opportunity with best RR")
+    return "EARLY", "; ".join(reason_parts), extension_ratio
+
+
+# ---------------------------------------------------------------------------
+# Chase Prevention Engine
+# ---------------------------------------------------------------------------
+
+def _is_chasing(
+    last_price: float,
+    vwap_upper1: float,
+    vwap_lower1: float,
+    vwap_upper2: float,
+    vwap_lower2: float,
+    vwap_std_dev: float,
+    momentum_pct: float,
+    rvol: float,
+    daily_range_used_pct: float,
+    or_state: str,
+    or_historical: str,
+    session_minutes_elapsed: int,
+    bias: Optional[str],
+    price_structure: str,
+) -> tuple[bool, str]:
+    """
+    Detects whether the trader would be chasing the move.
+    Returns (is_chasing, reason).
+    """
+    reasons: list[str] = []
+    bias = (bias or "long").lower()
+
+    # 1. Price beyond ±2σ
+    if vwap_upper2 > 0 and last_price >= vwap_upper2 * 0.999:
+        reasons.append("Price at +2σ — statistical extreme")
+    if vwap_lower2 > 0 and last_price <= vwap_lower2 * 1.001:
+        reasons.append("Price at -2σ — statistical extreme")
+
+    # 2. Price at +1σ and OR already broken (long side)
+    if bias == "long" and vwap_upper1 > 0 and last_price >= vwap_upper1 * 0.999:
+        if or_state == "above" and or_historical == "broke_up" and (daily_range_used_pct or 0) > 60:
+            reasons.append(f"OR breakout already at +1σ with {daily_range_used_pct:.0f}% range used")
+
+    # 3. Price at -1σ and OR already broken (short side)
+    if bias == "short" and vwap_lower1 > 0 and last_price <= vwap_lower1 * 0.999:
+        if or_state == "below" and or_historical == "broke_down" and (daily_range_used_pct or 0) > 60:
+            reasons.append(f"OR breakdown already at -1σ with {daily_range_used_pct:.0f}% range used")
+
+    # 4. Momentum spike without volume
+    if abs(momentum_pct) > 0.8 and rvol < 1.0:
+        reasons.append(f"Momentum spike ({momentum_pct:+.2f}%) without volume — exhaustion likely")
+
+    # 5. Late breakdown (OR broke >30 min ago)
+    if or_state == "below" and or_historical == "broke_down" and session_minutes_elapsed > 45:
+        reasons.append(f"OR broke earlier — late to the breakdown")
+
+    # 6. Late breakout
+    if or_state == "above" and or_historical == "broke_up" and session_minutes_elapsed > 45:
+        reasons.append(f"OR broke earlier — late to the breakout")
+
+    # 7. Momentum decay (strong move now fading)
+    if bias == "long" and price_structure == "LL_LH" and momentum_pct < 0:
+        reasons.append("Lower highs forming — momentum rolling over")
+    if bias == "short" and price_structure == "HH_HL" and momentum_pct > 0:
+        reasons.append("Higher lows forming — momentum recovering")
+
+    if not reasons:
+        return False, ""
+    return True, "; ".join(reasons)
+
+
+# ---------------------------------------------------------------------------
+# Risk Classification Engine
+# ---------------------------------------------------------------------------
+
+def _classify_risks(
+    last_price: float,
+    vwap: float,
+    vwap_upper1: float,
+    vwap_lower1: float,
+    vwap_upper2: float,
+    vwap_lower2: float,
+    vwap_std_dev: float,
+    momentum_pct: float,
+    rvol: float,
+    vix: float,
+    or_state: str,
+    or_historical: str,
+    daily_range_used_pct: float,
+    session_phase: str,
+    bias: Optional[str],
+    vol_spike: bool,
+) -> list[dict[str, str]]:
+    """
+    Classify active risks into typed risk factors with severity.
+    Returns list of {type, severity, message} dicts.
+    """
+    risks: list[dict[str, str]] = []
+    bias = (bias or "long").lower()
+
+    # 1. Extension Risk
+    if vwap_upper2 > 0 and last_price >= vwap_upper2 * 0.999:
+        risks.append({
+            "type": "EXTENSION", "severity": "HIGH",
+            "message": f"Price at +2σ (${vwap_upper2:.2f}) — extended above the band. Mean-reversion risk elevated; avoid chasing longs here."
+        })
+    elif vwap_lower2 > 0 and last_price <= vwap_lower2 * 1.001:
+        risks.append({
+            "type": "EXTENSION", "severity": "HIGH",
+            "message": f"Price at -2σ (${vwap_lower2:.2f}) — extended below the band. Mean-reversion risk elevated; avoid chasing shorts here."
+        })
+    elif vwap_upper1 > 0 and last_price >= vwap_upper1 * 0.999:
+        risks.append({
+            "type": "EXTENSION", "severity": "MEDIUM",
+            "message": f"Price at +1σ (${vwap_upper1:.2f}) — near band resistance. Scalp target for longs; new entries need pullback."
+        })
+    elif vwap_lower1 > 0 and last_price <= vwap_lower1 * 0.999:
+        risks.append({
+            "type": "EXTENSION", "severity": "MEDIUM",
+            "message": f"Price at -1σ (${vwap_lower1:.2f}) — near band support. Scalp target for shorts; new entries need bounce rejection."
+        })
+
+    # 2. Low Participation Risk
+    if rvol is not None:
+        if rvol < 0.6:
+            risks.append({
+                "type": "LOW_PARTICIPATION", "severity": "HIGH",
+                "message": f"RVOL {rvol:.1f}x — participation is thin. Breakouts in low volume have higher false-move probability."
+            })
+        elif rvol < 0.9:
+            risks.append({
+                "type": "LOW_PARTICIPATION", "severity": "LOW",
+                "message": f"RVOL {rvol:.1f}x — below-average participation. Confirm breakouts with volume expansion."
+            })
+
+    # 3. Macro Conflict Risk
+    if bias == "long" and or_state == "below" and or_historical == "broke_down":
+        risks.append({
+            "type": "MACRO_CONFLICT", "severity": "MEDIUM",
+            "message": "Stock broke down but need to confirm broad market weakness before committing to shorts."
+        })
+    elif bias == "short" and or_state == "above" and or_historical == "broke_up":
+        risks.append({
+            "type": "MACRO_CONFLICT", "severity": "MEDIUM",
+            "message": "Stock broke up but need to confirm broad market strength before committing to longs."
+        })
+
+    # 4. Volatility Risk (VIX elevated)
+    if vix is not None and vix >= 25:
+        risks.append({
+            "type": "VOLATILITY", "severity": "HIGH" if vix >= 30 else "MEDIUM",
+            "message": f"VIX at {vix:.1f} — elevated volatility increases gap risk and option premium decay."
+        })
+
+    # 5. Exhaustion Risk (range nearly consumed)
+    if (daily_range_used_pct or 0) >= 80:
+        risks.append({
+            "type": "EXHAUSTION", "severity": "HIGH",
+            "message": f"{daily_range_used_pct:.0f}% of daily range used — move near completion. Chasing here is statistically losing."
+        })
+    elif (daily_range_used_pct or 0) >= 60:
+        risks.append({
+            "type": "EXHAUSTION", "severity": "LOW",
+            "message": f"{daily_range_used_pct:.0f}% of daily range used — late to the move, RR is compressed."
+        })
+
+    # 6. Reversal Risk
+    if or_historical == "broke_up" and or_state == "inside":
+        risks.append({
+            "type": "REVERSAL", "severity": "MEDIUM",
+            "message": "OR breakout failed — price pulled back inside. Structure is weakened."
+        })
+    elif or_historical == "broke_down" and or_state == "inside":
+        risks.append({
+            "type": "REVERSAL", "severity": "MEDIUM",
+            "message": "OR breakdown failed — price reclaimed inside. Structure is weakened."
+        })
+
+    return risks
+
+
+# ---------------------------------------------------------------------------
+# Execution Quality Classifier
+# ---------------------------------------------------------------------------
+
+def _execution_quality(
+    verdict: str,
+    vwap_position: str,
+    or_state: str,
+    vol_spike: bool,
+    rvol: float,
+    rs_pct: float,
+    has_soft_edge: bool,
+    daily_range_used_pct: float,
+) -> str:
+    """
+    Classify execution quality: PRIME | GOOD | WEAK | AVOID
+    """
+    if verdict == "NO-GO":
+        return "AVOID"
+
+    if verdict in ("STRONG GO",) and vol_spike and vwap_position in ("above", "below") and or_state in ("above", "below"):
+        return "PRIME"
+
+    if verdict in ("GO", "STRONG GO") or (has_soft_edge and vol_spike):
+        if rvol >= 1.25:
+            return "GOOD"
+        return "WEAK"
+
+    if (daily_range_used_pct or 0) >= 80:
+        return "AVOID"
+
+    return "WEAK"
+
+
+# ---------------------------------------------------------------------------
+# Entry Timing Classifier
+# ---------------------------------------------------------------------------
+
+def _entry_timing(
+    should_enter_now: str,
+    state: str,
+    edge_state: str,
+    or_state: str,
+    vol_spike: bool,
+    vwap_position: str,
+) -> str:
+    """
+    Classify entry timing: READY_NOW | WAIT_CONFIRMATION | PULLBACK_NEEDED | AVOID_CHASING
+    """
+    s = state or ""
+    if edge_state == "EXHAUSTED":
+        return "AVOID_CHASING"
+
+    if should_enter_now == "YES" and edge_state in ("EARLY", "DEVELOPING"):
+        return "READY_NOW"
+
+    if s in ("ENTRY_ACTIVE", "ENTRY_RETEST") and edge_state in ("EARLY", "DEVELOPING"):
+        return "READY_NOW"
+
+    if edge_state == "LATE":
+        return "PULLBACK_NEEDED"
+
+    if "PULLBACK" in s:
+        return "PULLBACK_NEEDED"
+
+    if should_enter_now == "CONDITIONAL":
+        return "WAIT_CONFIRMATION"
+
+    if "WAIT" in s or "VWAP_TEST" in s:
+        return "WAIT_CONFIRMATION"
+
+    return "WAIT_CONFIRMATION"
+
+
+# ---------------------------------------------------------------------------
+# Market Bias Classifier
+# ---------------------------------------------------------------------------
+
+def _market_bias(
+    vwap_position: str,
+    or_state: str,
+    vwap_macro_slope_pct: float,
+    momentum_pct: float,
+) -> str:
+    """
+    Classify market bias: BULLISH | BEARISH | NEUTRAL | MIXED
+    """
+    above_or_broke = or_state in ("above", "below")
+    vwap_confirmed = vwap_position in ("above", "below")
+    slope_positive = vwap_macro_slope_pct is not None and vwap_macro_slope_pct > 0
+
+    bull_signals = 0
+    bear_signals = 0
+
+    if vwap_position == "above":
+        bull_signals += 2 if slope_positive else 1
+    elif vwap_position == "below":
+        bear_signals += 2 if not slope_positive else 1
+
+    if or_state == "above":
+        bull_signals += 2
+    elif or_state == "below":
+        bear_signals += 2
+
+    if momentum_pct > 0:
+        bull_signals += 1
+    elif momentum_pct < 0:
+        bear_signals += 1
+
+    if bull_signals >= 3 and bear_signals == 0:
+        return "BULLISH"
+    if bear_signals >= 3 and bull_signals == 0:
+        return "BEARISH"
+    if bull_signals >= 2 and bear_signals >= 2:
+        return "MIXED"
+    if bull_signals >= 2:
+        return "BULLISH"
+    if bear_signals >= 2:
+        return "BEARISH"
+    return "NEUTRAL"
+
+
+# ---------------------------------------------------------------------------
+# Trader Psychology Layer
+# ---------------------------------------------------------------------------
+
+def _psychology_message(
+    verdict: str,
+    edge_state: str,
+    entry_timing: str,
+    execution_quality: str,
+    is_chasing: bool,
+) -> dict[str, str]:
+    """
+    Return a psychology message addressing the trader's emotional state.
+    Returns {title, message, emotion}.
+    """
+    if is_chasing or entry_timing == "AVOID_CHASING":
+        return {
+            "title": "Move Already Happened",
+            "message": "What looks like momentum is mostly complete. The RR that existed earlier is gone. Chasing here is statistically losing. The next setup will be better than this one — protect your capital for it.",
+            "emotion": "FOMO reduced — discipline reinforced",
+        }
+
+    if verdict == "NO-GO":
+        return {
+            "title": "Stand Aside",
+            "message": "The engine has identified active reasons to avoid this trade. These are not suggestions — they're gates. Professional traders know that skipping a bad setup is more profitable than forcing a marginal one.",
+            "emotion": "Impulse controlled",
+        }
+
+    if execution_quality == "PRIME" and edge_state in ("EARLY", "DEVELOPING") and entry_timing == "READY_NOW":
+        return {
+            "title": "High Conviction Setup",
+            "message": "Multiple timeframes align. The difficult part is waiting for these moments — not trading the noise in between. Execute with confidence, defined stop, and pre-committed exit.",
+            "emotion": "Confidence reinforced",
+        }
+
+    if execution_quality in ("GOOD",) and entry_timing == "WAIT_CONFIRMATION":
+        return {
+            "title": "Patience Required",
+            "message": "The structure is there but the trigger isn't. Professionals wait for the confirmation candle — amateurs guess and hope. Which are you?",
+            "emotion": "FOMO reduced",
+        }
+
+    if edge_state == "LATE":
+        return {
+            "title": "Late to the Move",
+            "message": "The majority of this move has already occurred. Even if the direction is correct, the RR is compressed. Good trades come from good entries — not good directions entered poorly.",
+            "emotion": "Chasing prevented",
+        }
+
+    if edge_state == "EXHAUSTED":
+        return {
+            "title": "Move Complete",
+            "message": "Price has reached a statistical extreme. Even if the thesis is correct, the probability of a 1-2 bar pullback before continuation is too high for a good entry. Let it come back to value.",
+            "emotion": "Impulse controlled",
+        }
+
+    return {
+        "title": "No Clear Edge",
+        "message": "The hardest skill in trading is knowing when to do nothing. This is one of those moments. Let the market prove itself before you commit capital.",
+        "emotion": "Discipline reinforced",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Score Tier Classifier
+# ---------------------------------------------------------------------------
+
+def _score_tier(normalized_score: int) -> str:
+    """Map 0-100 normalized score to 5-tier label."""
+    if normalized_score >= 80:
+        return "PRIME_SETUP"
+    if normalized_score >= 60:
+        return "TRADABLE"
+    if normalized_score >= 40:
+        return "MONITOR"
+    if normalized_score >= 20:
+        return "STAND_ASIDE"
+    return "AVOID"
+
+
+def _risk_type_label(risk_type: str) -> str:
+    labels = {
+        "EXTENSION": "Extension Risk",
+        "THETA": "Theta Decay Risk",
+        "GAMMA": "Gamma Risk",
+        "LIQUIDITY": "Low Liquidity Risk",
+        "MACRO_CONFLICT": "Macro Conflict Risk",
+        "LOW_PARTICIPATION": "Low Participation Risk",
+        "REVERSAL": "Reversal Risk",
+        "VOLATILITY": "Volatility Risk",
+        "EXHAUSTION": "Exhaustion Risk",
+    }
+    return labels.get(risk_type, risk_type)
+
+
 def _confidence_block(
         *,
         momentum_pct: float,
@@ -2133,6 +2608,85 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         rvol=rvol,
     )
 
+    # ── New analysis layers ────────────────────────────────────────────
+    _range_span = session_high - session_low
+    _daily_range_pct = min(100.0, round((_range_span / max(0.01, last)) * 100, 1)) if _range_span > 0 and last > 0 else 0.0
+
+    edge_state, edge_reason, extension_ratio = _edge_remaining(
+        last_price=last,
+        vwap_upper1=vwap_upper1,
+        vwap_lower1=vwap_lower1,
+        vwap_upper2=vwap_upper2,
+        vwap_lower2=vwap_lower2,
+        vwap_std_dev=vwap_std_dev or 0,
+        momentum_pct=momentum_pct,
+        rvol=rvol or 0,
+        daily_range_used_pct=_daily_range_pct,
+        session_phase=session_phase,
+    )
+
+    is_chasing, chase_reason = _is_chasing(
+        last_price=last,
+        vwap_upper1=vwap_upper1,
+        vwap_lower1=vwap_lower1,
+        vwap_upper2=vwap_upper2,
+        vwap_lower2=vwap_lower2,
+        vwap_std_dev=vwap_std_dev or 0,
+        momentum_pct=momentum_pct,
+        rvol=rvol or 0,
+        daily_range_used_pct=_daily_range_pct,
+        or_state=or_state,
+        or_historical=or_historical,
+        session_minutes_elapsed=session_minutes_elapsed,
+        bias=bias,
+        price_structure=price_structure,
+    )
+
+    risk_profile = _classify_risks(
+        last_price=last,
+        vwap=vwap_last,
+        vwap_upper1=vwap_upper1,
+        vwap_lower1=vwap_lower1,
+        vwap_upper2=vwap_upper2,
+        vwap_lower2=vwap_lower2,
+        vwap_std_dev=vwap_std_dev or 0,
+        momentum_pct=momentum_pct,
+        rvol=rvol or 0,
+        vix=vix_level or 0,
+        or_state=or_state,
+        or_historical=or_historical,
+        daily_range_used_pct=_daily_range_pct,
+        session_phase=session_phase,
+        bias=bias,
+        vol_spike=vol_spike,
+    )
+
+    exec_quality = _execution_quality(
+        verdict=verdict,
+        vwap_position=vwap_position,
+        or_state=or_state,
+        vol_spike=vol_spike,
+        rvol=rvol or 0,
+        rs_pct=rs_vs_qqq_pct or 0,
+        has_soft_edge=soft_edge,
+        daily_range_used_pct=_daily_range_pct,
+    )
+
+    mkt_bias = _market_bias(
+        vwap_position=vwap_position,
+        or_state=or_state,
+        vwap_macro_slope_pct=vwap_macro_slope_pct or 0,
+        momentum_pct=momentum_pct,
+    )
+
+    psych = _psychology_message(
+        verdict=verdict,
+        edge_state=edge_state,
+        entry_timing="",
+        execution_quality=exec_quality,
+        is_chasing=is_chasing,
+    )
+
     reasons = prefix + body
 
     chart_bars: list[dict[str, Any]] = []
@@ -2228,6 +2782,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "chart_bars": chart_bars,
         "session_high": round(session_high, 4),
         "session_low": round(session_low, 4),
+        # New analysis layers
+        "edge_remaining": edge_state,
+        "edge_reason": edge_reason,
+        "extension_ratio": round(extension_ratio, 3),
+        "is_chasing": is_chasing,
+        "chase_reason": chase_reason,
+        "execution_quality": exec_quality,
+        "market_bias": mkt_bias,
+        "risk_profile": risk_profile,
+        "psychology": psych,
     }
 
     # ── Daily range exhaustion analysis ───────────────────────────────

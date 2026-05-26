@@ -671,6 +671,63 @@ export default function DayTradePage() {
 
           <UnifiedVerdictCard analysis={unified} />
 
+          {/* Analysis Layer — Edge, Execution, Risks */}
+          {(() => {
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const edgeState = m?.edge_remaining as string | undefined
+            const execQual = m?.execution_quality as string | undefined
+            const mktBias = m?.market_bias as string | undefined
+            const isChasing = m?.is_chasing as boolean | undefined
+            const riskProfile = m?.risk_profile as Array<Record<string, string>> | undefined
+            const psych = m?.psychology as Record<string, string> | undefined
+            if (!edgeState && !execQual && !mktBias && !isChasing && !riskProfile?.length) return null
+            return (
+              <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: riskProfile?.length ? 6 : 0 }}>
+                  {edgeState && (() => {
+                    const ec: Record<string, { color: string; label: string }> = {
+                      EARLY: { color: '#00A86B', label: 'Early' },
+                      DEVELOPING: { color: '#3B82F6', label: 'Developing' },
+                      LATE: { color: '#D4A017', label: 'Late' },
+                      EXHAUSTED: { color: '#D0312D', label: 'Exhausted' },
+                    }
+                    const c = ec[edgeState] || { color: '#6B7280', label: edgeState }
+                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c.color}`, color: c.color, background: `${c.color}15` }}>Edge: {c.label}</span>
+                  })()}
+                  {execQual && (() => {
+                    const qc: Record<string, string> = { PRIME: '#00A86B', GOOD: '#3B82F6', WEAK: '#D4A017', AVOID: '#D0312D' }
+                    const c = qc[execQual] || '#6B7280'
+                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Quality: {execQual}</span>
+                  })()}
+                  {mktBias && (() => {
+                    const mc: Record<string, string> = { BULLISH: '#00A86B', BEARISH: '#D0312D', NEUTRAL: '#6B7280', MIXED: '#D4A017' }
+                    const c = mc[mktBias] || '#6B7280'
+                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Market: {mktBias}</span>
+                  })()}
+                  {isChasing && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: '1px solid #D0312D', color: '#D0312D', background: 'rgba(208,49,45,0.08)' }}>⚠ Chasing</span>}
+                </div>
+                {riskProfile && riskProfile.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                    {riskProfile.slice(0, 4).map((r, i) => {
+                      const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
+                      const sc = sv[r.severity] || '#6B7280'
+                      return (
+                        <span key={i} title={r.message} style={{ fontSize: '0.55rem', padding: '2px 6px', borderRadius: 3, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
+                          {r.type}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+                {psych?.message && (
+                  <div style={{ fontSize: '0.65rem', color: dt.muted, fontStyle: 'italic', lineHeight: 1.4, paddingTop: 6, borderTop: `1px solid ${dt.border}`, marginTop: riskProfile?.length ? 6 : 4 }}>
+                    {psych.message}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* Entry Plan / Risk Profile */}
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
