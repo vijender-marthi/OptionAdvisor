@@ -565,24 +565,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [portfolio, user?.email, userDataLoaded])
 
   // Save per-email watchlist and portfolio changes to SQLite.
+  // RAF-debounced: batches rapid successive state changes into a single save call,
+  // eliminating the race between overlapping async PUTs that was causing closed
+  // positions to reappear and new positions to disappear.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!user?.email || !userDataLoaded) return
-    saveGenRef.current += 1
-    const gen = saveGenRef.current
-    const advisory =
-      advisoryAcceptedAt && advisoryTermsVersion
-        ? { advisoryTermsVersion, advisoryAcceptedAt }
-        : undefined
-    saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
-      .then(() => {
-        if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
-        setPortfolioRefreshKey(k => k + 1)
-      })
-      .catch(e => {
-        const msg = extractAxiosDetail(e)
-        if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
-        if (gen === saveGenRef.current) console.warn('[user-data] save failed:', e)
-      })
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveGenRef.current += 1
+      const gen = saveGenRef.current
+      const advisory =
+        advisoryAcceptedAt && advisoryTermsVersion
+          ? { advisoryTermsVersion, advisoryAcceptedAt }
+          : undefined
+      saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
+        .then(() => {
+          if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
+          setPortfolioRefreshKey(k => k + 1)
+        })
+        .catch(e => {
+          const msg = extractAxiosDetail(e)
+          if (msg && /watchlist/i.test(msg)) setWatchlistNotice(msg)
+          if (gen === saveGenRef.current) console.warn('[user-data] save failed:', e)
+        })
+    }, 300)
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
@@ -989,14 +997,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPortfolio(prev => prev.filter(p => p.id !== id))
   }, [])
 
-  const closePosition = useCallback((id: string, payload: ClosePositionPayload) => {
+  const closePosition = useCallback(async (id: string, payload: ClosePositionPayload) => {
     const now = payload.close_date || new Date().toISOString()
 
-    // Fire-and-forget API persist — updates local state first, then syncs to server.
-    // The saveGenRef in the effect prevents stale effect-based saves from overwriting.
-    closePortfolioPosition({ id, ...payload }).catch(e => {
+    try {
+      await closePortfolioPosition({ id, ...payload })
+    } catch (e) {
       console.warn('[portfolio] close API persist failed:', e)
-    })
+      return // don't update local state if API fails — position will reappear on reload
+    }
 
     setPortfolio(prev => {
       const idx = prev.findIndex(p => p.id === id && p.status === 'open')

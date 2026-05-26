@@ -1457,8 +1457,8 @@ export default function PositionsCenter() {
     setClosingId(pos.id)
   }, [])
 
-  const handleCloseConfirm = useCallback((id: string, payload: ClosePositionPayload) => {
-    closePosition(id, payload)
+  const handleCloseConfirm = useCallback(async (id: string, payload: ClosePositionPayload) => {
+    await closePosition(id, payload)
     setClosingId(null)
     toggleExpanded(id)
     setNotice({ message: 'Position closed.' })
