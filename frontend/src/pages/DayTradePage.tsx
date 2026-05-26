@@ -1000,7 +1000,6 @@ export default function DayTradePage() {
           tradeType="day"
           onClose={() => setAlertOpen(false)}
           onSubmit={handleCreateAlert}
-          drawerLeft={0}
         />
       )}
       </div>{/* end right content */}

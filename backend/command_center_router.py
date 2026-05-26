@@ -328,6 +328,11 @@ def get_trade_command_center(
     email = normalize_email(auth_email)
     t0 = time.perf_counter()
 
+    # ── Auto-seed default tickers on first TCC visit ──────────────────────────
+    state = get_user_state(email)
+    if not state.get("my_tickers"):
+        _seed_default_my_tickers(email)
+
     # ── Live engine aggregation ────────────────────────────────────────────────
     t_eng = time.perf_counter()
     payload = build_command_center_payload(

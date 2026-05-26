@@ -746,7 +746,6 @@ export default function SwingTradePage() {
           tradeType="swing"
           onClose={() => setAlertOpen(false)}
           onSubmit={handleCreateAlert}
-          drawerLeft={0}
         />
       )}
       </div>{/* end right content */}
