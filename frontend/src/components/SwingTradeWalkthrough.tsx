@@ -394,10 +394,17 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
                       const price = typeof rule.price === 'number' ? rule.price : null
                       const action = String(rule.action || '')
                       const note = String(rule.note || '')
-                      const isStop = trigger.toLowerCase().includes('stop')
-                      const isTarget2 = trigger.toLowerCase().includes('target 2')
-                      const isTarget1 = trigger.toLowerCase().includes('target 1')
-                      const priceCls = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : 'text-slate-400'
+                      const isStop = /stop/i.test(trigger)
+                      const isTarget2 = /target 2/i.test(trigger)
+                      const isTarget1 = /target 1/i.test(trigger) && !isTarget2
+                      const isStall = /stalls/i.test(trigger)
+                      const isBreakdown = /ma20|breakdown/i.test(trigger)
+                      // Color palette: T1=green, T2=amber, stop/stall=red, breakdown=muted, other=slate
+                      const colorCls = isTarget1 ? 'text-emerald-400'
+                        : isTarget2 ? 'text-amber-400'
+                        : (isStop || isStall) ? 'text-red-400'
+                        : isBreakdown ? 'text-slate-400'
+                        : 'text-slate-500'
                       const whenLabel = trigger
                         .replace(/^Target 1 reached$/i, 'Target 1')
                         .replace(/^Target 2 reached$/i, 'Target 2')
@@ -406,13 +413,13 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
                         .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
                       return (
                         <tr key={i}>
-                          <td className="py-2.5 pr-2 text-gray-400 leading-snug align-top font-medium" style={{ width: '28%' }}>{whenLabel}</td>
-                          <td className={`py-2.5 pr-4 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
+                          <td className={`py-2.5 pr-2 leading-snug align-top font-semibold text-[11px] font-mono ${colorCls}`} style={{ width: '28%' }}>{whenLabel}</td>
+                          <td className={`py-2.5 pr-4 text-right font-mono font-bold tabular-nums align-top ${colorCls}`}>
                             {price != null ? `$${price.toFixed(2)}` : '—'}
                           </td>
                           <td className="py-2.5 align-top">
-                            <div className="font-semibold leading-snug text-gray-200">{action}</div>
-                            {note && <div className="text-[10px] leading-snug mt-0.5" style={{ color: '#6B7280' }}>{note}</div>}
+                            <div className={`font-semibold leading-snug ${colorCls}`}>{action}</div>
+                            {note && <div className="text-[10px] leading-snug mt-0.5 text-gray-500">{note}</div>}
                           </td>
                         </tr>
                       )

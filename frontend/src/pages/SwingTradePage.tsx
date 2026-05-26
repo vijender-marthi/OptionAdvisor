@@ -571,18 +571,22 @@ export default function SwingTradePage() {
                     const isT2 = row.type === 't2'
                     const isT1 = row.type === 't1'
                     const isTime = row.type === 'time'
-                    const priceCls = isStop ? '#FF4D6D' : isT2 ? '#F5A623' : isT1 ? '#00E5A0' : isTime ? '#6B7FD4' : '#5A6478'
+                    const isStall = /stalls/i.test(row.when)
+                    const clr = isT1 ? '#00E5A0' : isT2 ? '#F5A623' : (isStop || isStall) ? '#FF4D6D' : isTime ? '#6B7FD4' : '#5A6478'
                     const whenLabel = row.when
                       .replace(/^Target 1 reached$/i, 'Target 1')
                       .replace(/^Target 2 reached$/i, 'Target 2')
                       .replace(/^Stop loss$/i, 'Stop Loss')
                       .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
-                    const displayAction = row.note ? `${row.action} · ${row.note}` : row.action
+                      .replace(/^Price stalls at Target 1.*$/i, 'Stalls at T1')
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #1E2330' }}>
-                        <td className="dt-primary" style={{ paddingTop: 8, paddingBottom: 8, color: '#E8EBF0', fontFamily: 'monospace', fontSize: '0.75rem' }}>{whenLabel}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: priceCls }}>{row.price}</td>
-                        <td className="dt-muted" style={{ paddingTop: 8, paddingBottom: 8, color: '#5A6478', fontSize: '0.75rem' }}>{displayAction}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, color: clr, fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}>{whenLabel}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: clr }}>{row.price}</td>
+                        <td style={{ paddingTop: 8, paddingBottom: 8, fontSize: '0.75rem', verticalAlign: 'top' }}>
+                          <div style={{ color: clr, fontWeight: 600 }}>{row.action}</div>
+                          {row.note && <div style={{ color: '#5A6478', fontSize: '0.68rem', marginTop: 2 }}>{row.note}</div>}
+                        </td>
                       </tr>
                     )
                   })}
