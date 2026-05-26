@@ -29,9 +29,9 @@ function etClock(tz: string): { time: string; session: string } {
   const dow = now.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short' }).toUpperCase()
   const dateStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit' })
 
-  // US market holidays (MM/DD format)
+  // US market holidays (MM/DD format) — update annually
   const holidays = new Set([
-    '01/01', '01/20', '02/17', '04/18', '05/26', '06/19', '07/04', '09/01', '11/27', '12/25',
+    '01/01', '01/20', '02/17', '04/18', '05/25', '06/19', '07/04', '09/01', '11/27', '12/25',
   ])
 
   const isHoliday = holidays.has(dateStr)
@@ -143,7 +143,7 @@ export default function MarketStrip() {
     setTzPickerStyle({
       position: 'fixed',
       top: rect.bottom + 4,
-      right: 12,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 170)),
       zIndex: 9999,
     })
   }, [showTzPicker])

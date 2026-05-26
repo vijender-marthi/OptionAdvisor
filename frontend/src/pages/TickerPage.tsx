@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
-import { analyzeOptions, analyzeV2, deskApi, saveToJournal } from '../api/client'
+import { analyzeOptions, analyzeV2, deskApi, saveToJournal, executeTrade } from '../api/client'
 import type { UnifiedAnalysis, DeskAlertCreate } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
@@ -294,7 +294,7 @@ export default function TickerPage() {
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
-    theme, navigate, user,
+    theme, navigate, user, addManualPosition,
   } = useApp()
 
   const C = theme === 'light' ? C_LIGHT : C_DARK
@@ -881,9 +881,37 @@ export default function TickerPage() {
                                 <td colSpan={12} style={{ padding: '10px 14px' }}>
                                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                     <span style={{ fontSize: '0.68rem', color: C.muted, marginRight: 4 }}>Actions:</span>
-                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('positions') }}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                      <Briefcase size={12} /> Add Position
+                                     <button type="button" onClick={e => {
+                                       e.stopPropagation()
+                                       if (!data) return
+                                       const midPrice = typeof rec.legs[0]?.mid_price === 'number' ? rec.legs[0].mid_price : 0
+                                       const isCredit = (rec.net_credit ?? 0) > 0
+                                       addManualPosition({
+                                         ticker: data.ticker,
+                                         companyName: data.company_name ?? data.ticker,
+                                         strategy: rec.strategy,
+                                         bias: rec.bias || 'Bullish',
+                                         legs: rec.legs as any[],
+                                         expiry: rec.expiry,
+                                         dte: rec.dte ?? 0,
+                                         net_credit: isCredit ? Math.abs(rec.net_credit ?? 0) : -(Math.abs(rec.net_credit ?? 0)),
+                                         spread_width: rec.spread_width ?? 0,
+                                         max_profit: (rec.max_profit ?? 0) * 100,
+                                         max_loss: (rec.max_loss ?? 0) * 100,
+                                         prob_of_profit: rec.prob_of_profit ?? 0,
+                                         expected_value: rec.expected_value ?? 0,
+                                         scores_total: rec.scores?.total_score ?? 0,
+                                         contracts: 1,
+                                         breakeven_lower: 0,
+                                         breakeven_upper: 0,
+                                         entryPrice: data.signals?.current_price ?? 0,
+                                         source: 'regular',
+                                         notes: '',
+                                       })
+                                       navigate('positions')
+                                     }}
+                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                                       <Briefcase size={12} /> Add Position
                                     </button>
                                     <button type="button" disabled={journalSaving} onClick={async e => {
                                         e.stopPropagation()
@@ -896,7 +924,7 @@ export default function TickerPage() {
                                             company_name: data.company_name ?? data.ticker,
                                             strategy: rec.strategy,
                                             bias: (rec.legs[0] as { side?: string })?.side ?? 'neutral',
-                                            legs: rec.legs as object[],
+                                         legs: rec.legs as import('../types').OptionLeg[],
                                             expiry: rec.expiry,
                                             entry_date: new Date().toISOString().slice(0, 10),
                                             dte_at_entry: rec.dte ?? 0,
@@ -919,7 +947,44 @@ export default function TickerPage() {
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.amber}50`, background: `${C.amber}12`, color: C.amber, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
                                       <Bell size={12} /> Set Alert
                                     </button>
-                                    <button type="button" onClick={e => { e.stopPropagation(); navigate('auto-trade') }}
+                                     <button type="button" onClick={e => {
+                                        e.stopPropagation()
+                                        if (!data || !user?.email) return
+                                        const isCredit = (rec.net_credit ?? 0) > 0
+                                        addManualPosition({
+                                          ticker: data.ticker,
+                                          companyName: data.company_name ?? data.ticker,
+                                          strategy: rec.strategy,
+                                          bias: rec.bias || 'Bullish',
+                                          legs: rec.legs as any[],
+                                          expiry: rec.expiry,
+                                          dte: rec.dte ?? 0,
+                                          net_credit: isCredit ? Math.abs(rec.net_credit ?? 0) : -(Math.abs(rec.net_credit ?? 0)),
+                                          spread_width: rec.spread_width ?? 0,
+                                          max_profit: (rec.max_profit ?? 0) * 100,
+                                          max_loss: (rec.max_loss ?? 0) * 100,
+                                          prob_of_profit: rec.prob_of_profit ?? 0,
+                                          expected_value: rec.expected_value ?? 0,
+                                          scores_total: rec.scores?.total_score ?? 0,
+                                          contracts: 1,
+                                          breakeven_lower: 0,
+                                          breakeven_upper: 0,
+                                          entryPrice: data.signals?.current_price ?? 0,
+                                          source: 'regular',
+                                          notes: '',
+                                        })
+                                        // Submit to Alpaca paper trading
+                                        try {
+                                          executeTrade({
+                                            email: user.email,
+                                            ticker: data.ticker,
+                                            strategy: rec.strategy,
+                                            legs: rec.legs as object[],
+                                            contracts: 1,
+                                          })
+                                        } catch { /* non-fatal — portfolio entry already added */ }
+                                        navigate('auto-trade')
+                                     }}
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.accent}50`, background: `${C.accent}12`, color: C.accent, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
                                       <Zap size={12} /> Paper Trade
                                     </button>
