@@ -54,9 +54,24 @@ STRUCTURE LABEL
 ----------------
 Comes from orc.structure_hint > orc.recommended_structure > f'{direction} · 1-2 DTE'
 """
-import pytest
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    import pytest
+except ImportError:
+    # Dummy pytest module when not installed (for CI environments)
+    class DummyMark:
+        @staticmethod
+        def parametrize(*args, **kwargs):
+            def decorator(func):
+                return func
+            return decorator
+
+    class DummyPytest:
+        mark = DummyMark()
+
+    pytest = DummyPytest()
 
 from unified_analysis import serialize_day_trade
 
