@@ -558,7 +558,6 @@ export default function TradeDeskPage() {
           tradeType={tradeType}
           onClose={() => setDrawer(null)}
           onSubmit={handleCreateAlert}
-          drawerLeft={drawerLeft}
         />
       )}
     </div>

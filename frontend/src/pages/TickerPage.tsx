@@ -853,7 +853,7 @@ export default function TickerPage() {
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         return (
                           <React.Fragment key={rec.rank}>
-                            {rec.legs.map((leg, li) => (
+                            {rec.legs.map((leg, li: number) => (
                               <tr key={`${rec.rank}-${li}`} onClick={() => { setSelectedRank(selectedRank === rec.rank ? null : rec.rank); setAlertOpen(false) }} style={{ borderBottom: selectedRank === rec.rank && li === rec.legs.length - 1 ? 'none' : `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
