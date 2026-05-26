@@ -191,7 +191,10 @@ def _migrate_day_trade_watchlist_last(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_desk_trade_alerts(conn: sqlite3.Connection) -> None:
+    # Table may not exist if init_tradedesk_db() hasn't been called yet (e.g., in tests)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(desk_trade_alerts)").fetchall()}
+    if not cols:
+        return  # Table doesn't exist yet; will be created by init_tradedesk_db()
     if "last_check_value" not in cols:
         conn.execute("ALTER TABLE desk_trade_alerts ADD COLUMN last_check_value TEXT")
     if "daily_fire_count" not in cols:
