@@ -467,8 +467,7 @@ def init_db() -> None:
         _migrate_desk_trade_alerts(conn)
 
         # ── Cleanup unused legacy tables ──────────────────────────────
-        # user_alerts: replaced by alert_center_items
-        conn.execute("DROP TABLE IF EXISTS user_alerts")
+        # user_alerts: kept for backwards compatibility; sync_user_alerts_to_alert_center() migrates to alert_center_items
         # trade_ideas: replaced by trade_journal with trade_type column
         conn.execute("DROP TABLE IF EXISTS trade_ideas")
 
