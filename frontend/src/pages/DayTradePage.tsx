@@ -280,12 +280,26 @@ export default function DayTradePage() {
       ? Math.max(1, Math.ceil((new Date(expiryOut + 'T00:00:00').getTime() - Date.now()) / 86400000))
       : portfolioDfltDte || 1
     setPortfolioSubmitting(true)
+    const isPut = bias === 'short'
     addManualPosition({
       ticker: result.ticker,
       companyName: result.company_name ?? result.ticker,
       strategy,
       bias: direction,
-      legs: [],
+      legs: [{
+        action: 'BUY' as const,
+        option_type: isPut ? 'PUT' as const : 'CALL' as const,
+        strike: 0,
+        expiry: expiryOut,
+        mid_price: ep,
+        delta: 0,
+        bid: 0,
+        ask: 0,
+        iv: 0,
+        oi: 0,
+        volume: 0,
+        bid_ask_spread_pct: 0,
+      }],
       expiry: expiryOut || (() => {
         const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
       })(),
