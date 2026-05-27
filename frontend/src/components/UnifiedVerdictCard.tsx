@@ -44,26 +44,15 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   // Engine verdict overrides: when the engine says GO/STRONG GO, respect it.
   const setupScore = displayScore
   const signalScore = sq.score
-  const rawVerdict = (analysis.verdict_raw || '').toUpperCase()
-  let statusText: string
-  let statusColor: string
-
-  if (rawVerdict === 'STRONG GO') {
-    statusText = 'Entry conditions met — ready to act'
-    statusColor = '#00A86B'
-  } else if (rawVerdict === 'GO' && setupScore >= 75 && signalScore >= 8.5) {
-    statusText = 'Entry conditions met — ready to act'
-    statusColor = '#00A86B'
-  } else if (rawVerdict === 'GO' && setupScore >= 65) {
-    statusText = 'Setup aligned — entry timing pending'
-    statusColor = '#D4A017'
-  } else if (setupScore >= 65 && signalScore >= 7.0) {
-    statusText = 'Setup building'
-    statusColor = '#D4A017'
-  } else {
-    statusText = 'Watching — entry not triggered'
-    statusColor = '#D4A017'
+  const verdictMap: Record<string, { status: string; color: string }> = {
+    'enter': { status: 'GO', color: '#00A86B' },
+    'watch': { status: 'WATCH', color: '#D4A017' },
+    'wait':  { status: 'WAIT', color: '#D4A017' },
+    'avoid': { status: 'AVOID', color: '#D0312D' },
   }
+  const vm = verdictMap[analysis.verdict] || { status: 'WAIT', color: '#D4A017' }
+  let statusText = vm.status
+  let statusColor = vm.color
 
   const scoreColor = statusColor
 
@@ -90,24 +79,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
 
         {/* Explanation */}
         <div className="uv-reason" style={{ fontSize: 12, color: C.textSec, lineHeight: 1.5, marginBottom: 10 }}>
-          {(() => {
-            if (!analysis.entry_price) {
-              if (rawVerdict === 'STRONG GO') {
-                return `Engine verdict is STRONG GO — all conditions aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
-              }
-              if (rawVerdict === 'GO' && setupScore >= 75 && signalScore >= 8.5) {
-                return `Engine verdict is GO — conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
-              }
-              if (rawVerdict === 'GO') {
-                return `Engine verdict is GO — trend is aligned but entry timing may not be confirmed (setup score ${setupScore}, signal quality ${signalScore}/10). Check execution timing before entering.`
-              }
-              if (setupScore >= 65 && signalScore >= 7.0) {
-                return `Setup is building. Setup score ${setupScore} with signal quality ${signalScore}/10. Conditions are developing — waiting for confirmation trigger before committing.`
-              }
-              return `Signal quality ${sq.label.toLowerCase()} on a ${analysis.verdict === 'enter' ? 'developing' : 'forming'} setup. Setup score is ${setupScore} — structural conditions are building but entry confirmation is not yet met. Wait for pullback hold or breakout with volume before acting.`
-            }
-            return analysis.reason || 'Setup conditions are being evaluated.'
-          })()}
+          {analysis.reason || (analysis.entry_price ? 'Entry levels available.' : 'Setup conditions are being evaluated.')}
           {analysis.structure && ` Best structure: ${analysis.structure}${analysis.spread_entry?.expiry ? `, \u00B7 ${analysis.spread_entry.expiry}` : ''}.`}
         </div>
 
