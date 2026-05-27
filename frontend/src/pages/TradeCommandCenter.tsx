@@ -681,29 +681,23 @@ export default function TradeCommandCenter() {
         : 'border-sky-700/40 bg-sky-950/30 text-sky-200'
 
   return (
-    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-6xl space-y-6 px-4 pt-4 pb-28 md:px-6 md:pt-6">
+    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-5xl space-y-4 px-4 pt-4 pb-28 md:px-6 md:pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center shrink-0">
-              <LayoutDashboard size={18} className="text-violet-400" />
-            </div>
-            <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Trade Command Center</h1>
+        <div className="min-w-0 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center shrink-0">
+            <LayoutDashboard size={16} className="text-violet-400" />
           </div>
-          <p className="mt-1.5 max-w-3xl text-sm text-gray-500">
-            Real-time regime snapshot — engine trust scores, READY/TRADE setups with entry/stop/target, cross-engine conflicts, and smart alerts. Act only when signal quality + execution timing agree.
-            {env?.stale ? <span className="text-amber-400"> Live market summary unavailable, using cached defaults.</span> : null}
-          </p>
+          <h1 className="tcc-hero-title text-lg font-bold tracking-tight text-heading">Trade Command Center</h1>
         </div>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="btn btn-outline h-10 w-10 rounded-xl"
+          className="btn btn-outline h-8 w-8 rounded-lg"
           aria-label="Refresh command center data"
           title={loading ? 'Loading…' : 'Refresh'}
         >
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -738,26 +732,29 @@ export default function TradeCommandCenter() {
       {!(loading && !env && !fetchError) && payload ? (
         <>
           {/* ═══ MARKET CONTEXT STRIP ═══ */}
-          <section className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
-              <span className="text-slate-500 text-xs">SPY</span>
-              <span className={`font-semibold text-xs ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>{String(market.spy_trend ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">·</span>
-              <span className="text-slate-500 text-xs">QQQ</span>
-              <span className={`font-semibold text-xs ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>{String(market.qqq_trend ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">·</span>
-              <span className="text-slate-500 text-xs">VIX</span>
-              <span className={`font-semibold text-xs ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-400' : String(market.vix_risk ?? '').toLowerCase().includes('low') ? 'text-emerald-400' : 'text-amber-400'}`}>{String(market.vix_risk ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600 hidden sm:inline">·</span>
-              <span className="text-slate-500 text-xs hidden sm:inline">Regime</span>
-              <span className="font-semibold text-xs text-violet-300 hidden sm:inline">{String(market.market_mode ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600 hidden sm:inline">·</span>
-              <span className="text-slate-500 text-xs hidden sm:inline">Best Style</span>
-              <span className="font-semibold text-xs text-slate-200 hidden sm:inline">{String(market.best_style_today ?? '—')}</span>
-              {env?.fetched_at ? <span className="ml-auto text-[10px] text-gray-600 shrink-0">Updated {new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
-            </div>
-            <div className="mt-3">
-              <MarketIntelligenceStrip market={market} />
+          <section className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className="font-semibold text-slate-500">SPY</span>
+              <span className={`font-bold ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-500' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-500' : 'text-slate-300'}`}>{String(market.spy_trend ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">QQQ</span>
+              <span className={`font-bold ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-500' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-500' : 'text-slate-300'}`}>{String(market.qqq_trend ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">VIX</span>
+              <span className={`font-bold ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-500' : String(market.vix_risk ?? '').toLowerCase().includes('low') ? 'text-emerald-500' : 'text-amber-500'}`}>{String(market.vix_risk ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">Regime</span>
+              <span className="font-bold text-violet-500">{String(market.market_mode ?? '—').toUpperCase()}</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">Best</span>
+              <span className="font-bold text-slate-200">{String(market.best_style_today ?? '—')}</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">Confidence</span>
+              <span className="font-bold text-slate-200">{confidenceScore}%</span>
+              <span className="text-slate-600">|</span>
+              <span className="font-semibold text-slate-500">Ready</span>
+              <span className="font-bold text-emerald-500">{actionable.length}</span>
+              {env?.fetched_at ? <span className="ml-auto text-[10px] text-gray-600">{new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
             </div>
           </section>
 
@@ -766,82 +763,137 @@ export default function TradeCommandCenter() {
             <OverallDecisionBanner od={payload.overall_decision} />
           ) : null}
 
-          {/* ═══ ELIGIBLE TICKERS ═══ */}
+          {/* ═══ ACTIVE TRADES (READY + WATCH signals, sorted by confidence) ═══ */}
           <section className="space-y-3">
             <div className="flex items-center gap-2">
               <LayoutGrid size={18} className="text-emerald-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Eligible Setups</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Active Trades</h2>
               <span className="text-xs text-slate-500">— READY &amp; WATCH signals by engine</span>
             </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Day Trade Table */}
-              {canDay && (
-                <div className="rounded-xl border border-orange-500/20 bg-white dark:bg-slate-900">
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-500/10">
-                    <Zap size={14} className="text-orange-400" />
-                    <span className="text-sm font-bold text-orange-400">Day Trade</span>
-                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length} tickers</span>
-                  </div>
-                  <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
-                    {recommendations
-                      .filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
-                      .slice(0, 8)
-                      .map(rec => (
-                        <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <span className="font-mono text-sm font-bold text-slate-900 dark:text-white w-14 shrink-0">{rec.ticker}</span>
-                          <SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} />
-                          <span className="text-xs text-slate-500 truncate flex-1">{rec.strategy || rec.direction || '—'}</span>
-                          <div className="text-right shrink-0">
-                            {rec.entry_zone ? <div className="text-[10px] font-mono text-slate-400">E {rec.entry_zone}</div> : null}
-                            {rec.target ? <div className="text-[10px] font-mono text-emerald-400">T {rec.target}</div> : null}
-                            {rec.stop_loss ? <div className="text-[10px] font-mono text-red-400">S {rec.stop_loss}</div> : null}
-                          </div>
-                          <ArrowRight size={12} className="text-slate-400 shrink-0" />
-                        </button>
-                      ))}
-                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'day' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length === 0 && (
-                      <div className="px-4 py-6 text-center text-xs text-slate-500">No day trade setups right now</div>
+            {(() => {
+              const active = recommendations
+                .filter(r => ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
+                .sort((a, b) => ((b.display_confidence ?? 0) - (a.display_confidence ?? 0)))
+              const primary = active.slice(0, 6)
+              const secondary = active.slice(6)
+              return (
+                <>
+                  {/* Primary cards */}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {primary.length === 0 ? (
+                      <div className="col-span-full rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
+                        No active setups right now
+                      </div>
+                    ) : (
+                      primary.map(rec => {
+                        const isGo = ['STRONG GO', 'GO', 'READY', 'TRADE'].includes(String(rec.final_decision ?? rec.signal ?? '').toUpperCase())
+                        const isWatch = String(rec.final_decision ?? rec.signal ?? '').toUpperCase() === 'WATCH'
+                        const badgeCls = isGo
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : isWatch
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                            : 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
+                        const badgeLabel = rec.signal_quality || rec.final_decision || '—'
+                        const isDay = rec.engine_type?.toLowerCase() === 'day'
+                        const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : 'border-violet-500/20 hover:border-violet-500/40'
+                        const engIcon = isDay ? <Zap size={12} className="text-orange-400" /> : <TrendingUp size={12} className="text-violet-400" />
+                        const engLabel = isDay ? 'Intraday Scalp' : rec.strategy || rec.direction || 'Swing'
+                        const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+
+                        return (
+                          <button
+                            key={rec.id}
+                            type="button"
+                            onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))}
+                            className={`rounded-xl border ${engAccent} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                          >
+                            {/* Ticker + signal badge */}
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{badgeLabel}</span>
+                            </div>
+
+                            {/* Price change placeholder */}
+                            <div className="flex items-center gap-1 mb-2.5">
+                              <span className={`text-xs font-semibold ${isGo ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                {rec.direction?.toLowerCase().includes('bull') || rec.direction?.toLowerCase().includes('call') ? '▲' : '▼'}
+                              </span>
+                              <span className="text-[11px] text-slate-500">{rec.strategy || rec.direction || '—'}</span>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="border-t border-slate-100 dark:border-white/[0.06] mb-2" />
+
+                            {/* Entry / Target / Stop */}
+                            <div className="space-y-1 text-[11px]">
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Entry</span>
+                                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Target</span>
+                                <span className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Stop</span>
+                                <span className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</span>
+                              </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="border-t border-slate-100 dark:border-white/[0.06] my-2" />
+
+                            {/* Footer: strategy tag + R/R + confidence */}
+                            <div className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-white/[0.08] px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                {engIcon}{engLabel}
+                              </span>
+                              <div className="flex items-center gap-2 text-[10px]">
+                                {confPct > 0 && (
+                                  <span className="font-mono text-slate-500">{confPct}% conf</span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })
                     )}
                   </div>
-                </div>
-              )}
-              {/* Swing Trade Table */}
-              {canSwing && (
-                <div className="rounded-xl border border-violet-500/20 bg-white dark:bg-slate-900">
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-violet-500/10">
-                    <TrendingUp size={14} className="text-violet-400" />
-                    <span className="text-sm font-bold text-violet-400">Swing Trade</span>
-                    <span className="ml-auto text-[10px] text-slate-500">{recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length} tickers</span>
-                  </div>
-                  <div className="divide-y divide-slate-100 dark:divide-white/[0.04]">
-                    {recommendations
-                      .filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
-                      .slice(0, 8)
-                      .map(rec => (
-                        <button key={rec.id} type="button" onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <span className="font-mono text-sm font-bold text-slate-900 dark:text-white w-14 shrink-0">{rec.ticker}</span>
-                          <SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} />
-                          <span className="text-xs text-slate-500 truncate flex-1">{rec.strategy || rec.direction || '—'}</span>
-                          <div className="text-right shrink-0">
-                            {rec.entry_zone ? <div className="text-[10px] font-mono text-slate-400">E {rec.entry_zone}</div> : null}
-                            {rec.target ? <div className="text-[10px] font-mono text-emerald-400">T {rec.target}</div> : null}
-                            {rec.stop_loss ? <div className="text-[10px] font-mono text-red-400">S {rec.stop_loss}</div> : null}
-                          </div>
-                          <ArrowRight size={12} className="text-slate-400 shrink-0" />
-                        </button>
-                      ))}
-                    {recommendations.filter(r => r.engine_type?.toLowerCase() === 'swing' && ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase())).length === 0 && (
-                      <div className="px-4 py-6 text-center text-xs text-slate-500">No swing trade setups right now</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {!canDay && !canSwing && (
-                <div className="col-span-2 rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                  No engine access — contact your administrator to enable Day Trade or Swing Trade engines.
-                </div>
-              )}
-            </div>
+
+                  {/* Secondary / Watchlist — collapsed */}
+                  {secondary.length > 0 && (
+                    <details className="group">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2 text-xs text-slate-500 select-none hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          Secondary / Watchlist — {secondary.length} lower-conviction signals
+                        </span>
+                        <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
+                        {secondary.map(rec => {
+                          const badgeLabel = rec.signal_quality || rec.final_decision || '—'
+                          const badgeCls = badgeLabel === 'STRONG GO' || badgeLabel === 'GO' || badgeLabel === 'READY'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                            :'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                          return (
+                            <button
+                              key={rec.id}
+                              type="button"
+                              onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                            >
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{badgeLabel}</span>
+                              <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )
+            })()}
           </section>
 
            {/* ═══ ENGINES — Engine Health (collapsed) ═══ */}
