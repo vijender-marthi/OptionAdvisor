@@ -787,14 +787,15 @@ export default function TradeCommandCenter() {
                     ) : (
                       primary.map(rec => {
                         const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
+                        const sq = (rec.signal_quality || '').toUpperCase()
+                        // Card border: green if signal_quality or final_decision indicates GO
                         const isGo = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY' || decision === 'TRADE'
-                        const isWatch = decision === 'WATCH'
+                          || sq === 'STRONG GO' || sq === 'GO'
+                        const isWatch = decision === 'WATCH' && !(sq === 'STRONG GO' || sq === 'GO')
                         const badgeCls = isGo
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                           : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        // Use signal_quality for the badge label (matches the detail page's
-                        // engine verdict), but final_decision for the card border (safety gate).
-                        const sq = (rec.signal_quality || '').toUpperCase()
+                        // Badge label uses signal_quality when it's a GO-level (matches detail page verdict)
                         const badgeLabel = (sq === 'STRONG GO' || sq === 'GO') ? sq : decision
                         const isDay = rec.engine_type?.toLowerCase() === 'day'
                         const isSwing = rec.engine_type?.toLowerCase() === 'swing'
@@ -918,8 +919,10 @@ export default function TradeCommandCenter() {
                       </summary>
                       <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
                         {secondary.map(rec => {
+                          const sq = (rec.signal_quality || '').toUpperCase()
                           const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
                           const badgeCls = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY'
+                            || sq === 'STRONG GO' || sq === 'GO'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
                           return (
