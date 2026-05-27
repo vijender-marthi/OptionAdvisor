@@ -3775,28 +3775,30 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
             </DocCard>
 
             <DocCard icon={<Gauge size={15} />} title="Status Thresholds">
-              <p className="text-xs text-gray-500 mb-3">The card shows one of three statuses. Both scores must meet the condition — never just one:</p>
+              <p className="text-xs text-gray-500 mb-3">The card determines the trade readiness status. The engine verdict overrides the score thresholds when it indicates an actionable setup:</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
                       <th className="px-2 py-1.5 font-semibold">Status</th>
+                      <th className="px-2 py-1.5 font-semibold">Engine Verdict</th>
                       <th className="px-2 py-1.5 font-semibold">Setup Score</th>
-                      <th className="px-2 py-1.5 font-semibold">Signal Quality</th>
                       <th className="px-2 py-1.5 font-semibold">Color</th>
                       <th className="px-2 py-1.5 font-semibold">Meaning</th>
                     </tr>
                   </thead>
                   <tbody>
                     {[
-                      { status: 'Entry conditions met', ss: '≥ 75', sq: '≥ 8.5', color: 'Green', meaning: 'Both scores are strong. The setup is fully aligned. Proceed with position sizing and entry.' },
-                      { status: 'Setup building', ss: '≥ 65', sq: '≥ 7.0', color: 'Amber', meaning: 'Scores are decent but not yet actionable. One or both need to improve. Monitor for confirmation triggers.' },
-                      { status: 'Watching', ss: '< 65', sq: '< 7.0', color: 'Amber', meaning: 'Scores are below both thresholds. Conditions are not forming. Do not enter.' },
+                      { status: 'Entry conditions met', verdict: 'STRONG GO', ss: 'any', color: 'Green', meaning: 'Engine verdict overrides scores. The setup is fully aligned regardless of confidence — proceed with entry.' },
+                      { status: 'Entry conditions met', verdict: 'GO', ss: '≥ 65', color: 'Green', meaning: 'Engine says GO and scores support it. Entry conditions are favorable.' },
+                      { status: 'Setup building', verdict: 'GO', ss: '< 65', color: 'Amber', meaning: 'Engine says GO but setup score is too low for full confidence. Scores must improve before acting.' },
+                      { status: 'Setup building', verdict: 'WATCH or lower', ss: '≥ 65 + SQ ≥ 7.0', color: 'Amber', meaning: 'Scores are decent but engine is not yet ready. Monitor for confirmation triggers.' },
+                      { status: 'Watching', verdict: 'WATCH or lower', ss: '< 65 or SQ < 7.0', color: 'Amber', meaning: 'Scores are below both thresholds. Conditions are not forming. Do not enter.' },
                     ].map(r => (
-                      <tr key={r.status} className="border-b border-gray-800/40 text-[11px]">
+                      <tr key={`${r.status}-${r.verdict}`} className="border-b border-gray-800/40 text-[11px]">
                         <td className={`px-2 py-1.5 font-semibold ${r.color === 'Green' ? 'text-emerald-400' : 'text-amber-400'}`}>{r.status}</td>
+                        <td className="px-2 py-1.5 font-mono text-gray-300">{r.verdict}</td>
                         <td className="px-2 py-1.5 font-mono text-gray-300">{r.ss}</td>
-                        <td className="px-2 py-1.5 font-mono text-gray-300">{r.sq}</td>
                         <td className="px-2 py-1.5">
                           <span className={`inline-block w-2 h-2 rounded-full ${r.color === 'Green' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                           <span className="ml-1.5 text-gray-400">{r.color}</span>
@@ -3808,7 +3810,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </table>
               </div>
               <div className="rounded-lg bg-amber-950/20 border border-amber-800/30 px-3 py-2 mt-3">
-                <p className="text-[10px] text-amber-200/80"><strong>Rule:</strong> Both numbers must cross the threshold. If one is below, the status stays at the lower tier. A 74 Setup Score with 9.0 Signal Quality still shows "Setup building" because Setup Score &lt; 75.</p>
+                <p className="text-[10px] text-amber-200/80"><strong>Rule:</strong> The engine verdict is checked first. STRONG GO always shows green regardless of scores. GO shows green only if setup score ≥ 65. For all other verdicts (WATCH, WAIT, AVOID), the score thresholds apply: both setup score ≥ 65 AND signal quality ≥ 7.0 are required for "Setup building."</p>
               </div>
             </DocCard>
 
@@ -3843,7 +3845,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
             <DocCard icon={<HelpCircle size={15} />} title="Frequently Asked Questions">
               <div className="space-y-3">
                 {[
-                  { q: 'Why is a GO trade still waiting?', a: 'GO refers to the trade quality — the setup is sound and passes all checks. But execution timing is a separate dimension. A GO trade can still show WAIT if the entry trigger (pullback, breakout confirmation) has not been met yet.' },
+                  { q: 'Why is a GO trade still waiting?', a: 'When the engine verdict is STRONG GO, the card always shows "Entry conditions met." When the verdict is GO, the card checks the setup score: if ≥ 65, it shows "Entry conditions met." If < 65, it shows "Setup building" because the scores don\'t support the GO verdict yet. This prevents contradiction between a high-level GO and weak underlying scores.' },
                   { q: 'Why is a setup EXTENDED?', a: 'Extension means price has moved significantly from a key level (typically 5%+ from MA20, or RSI above 70, or 5-day momentum above 5%). The move already happened — entering now means buying near the top. Wait for a pullback.' },
                   { q: 'Why can a positive EV still be CAUTION?', a: 'EV measures the expected value per trade, but Edge Ratio (EV ÷ max loss) measures the quality of that edge. If Edge Ratio is below 5%, a small model error or slippage can erase the edge entirely. CAUTION with positive EV says "the math works, but the margin is tight."' },
                   { q: 'Why are NO GO trades shown?', a: 'NO GO trades are shown for transparency. Even rejected trades help you understand what the engine is seeing and why. When market conditions improve, previously NO GO setups may become actionable.' },
