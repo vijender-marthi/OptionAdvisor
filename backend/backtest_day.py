@@ -56,11 +56,10 @@ def _forward_return(
     # Find the entry closest to scan_date close
     scan_dt = pd.Timestamp(scan_date, tz=idx.tz)
     # Get the bar on or after scan_date
-    mask = idx >= scan_dt
-    if not mask.any():
+    mask_arr = idx >= scan_dt
+    if not mask_arr.any():
         return None
-    entry_idx = mask.idxmax()
-    entry_pos = closes.index.get_loc(entry_idx)
+    entry_pos = int(mask_arr.argmax())
 
     future_pos = entry_pos + horizon
     if future_pos >= len(closes):

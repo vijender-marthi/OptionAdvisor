@@ -2325,7 +2325,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 f"Price below POC (${vp['poc']:.2f}) with negative delta ({vp['delta_pct']:.1f}%) "
                 "— bearish volume structure."
             )
-    metrics["volume_profile"] = vp
+    # Store vp in a temp var; assigned to metrics dict after metrics is created below
+    _vp_profile = vp
 
     spy_chg   = _index_change_pct("SPY", force_refresh=_fr)
     qqq_chg   = _index_change_pct("QQQ", force_refresh=_fr)
@@ -2574,8 +2575,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     # ── Daily trend context (swing_context group) ─────────────────────────
     # Note: bias is set by the verdict resolution below; for the swing context
-    # alignment check we use the scoring-level leading side as a proxy.
-    _scoring_bias = "long" if bull >= bear else "short"
+    # alignment check we use the scoring-level running totals as a proxy.
+    _scoring_bull = bull_scores.total(max_group=3.0)
+    _scoring_bear = bear_scores.total(max_group=3.0)
+    _scoring_bias = "long" if _scoring_bull >= _scoring_bear else "short"
     if daily_trend_context is not None:
         _swing_bias = daily_trend_context.get("bias", "").lower()
         _swing_verdict = str(daily_trend_context.get("verdict", "") or "").upper()
@@ -2611,6 +2614,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     diff = bull - bear
     verdict: Verdict = "WAIT"
+    bias: Bias = None
     soft_edge = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge = soft_edge and diff > 0
     short_edge = soft_edge and diff < 0
@@ -2935,6 +2939,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "market_bias": mkt_bias,
         "risk_profile": risk_profile,
         "psychology": psych,
+        "volume_profile": _vp_profile,
     }
 
     # ── Daily range exhaustion analysis ───────────────────────────────
