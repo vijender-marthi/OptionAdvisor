@@ -687,7 +687,7 @@ export default function DayTradePage() {
 
           <UnifiedVerdictCard analysis={unified} />
 
-          {/* Analysis Layer — Edge, Execution, Risks */}
+          {/* AI Coach — merged with analysis layer */}
           {(() => {
             const raw = result as unknown as Record<string, unknown> | undefined
             const m = raw?.metrics as Record<string, unknown> | undefined
@@ -697,36 +697,41 @@ export default function DayTradePage() {
             const isChasing = m?.is_chasing as boolean | undefined
             const riskProfile = m?.risk_profile as Array<Record<string, string>> | undefined
             const psych = m?.psychology as Record<string, string> | undefined
-            if (!edgeState && !execQual && !mktBias && !isChasing && !riskProfile?.length) return null
+            const hasAnalysis = edgeState || execQual || mktBias || isChasing || riskProfile?.length || psych?.message || unified.coach
+            if (!hasAnalysis) return null
+
+            const ec: Record<string, { color: string; label: string }> = {
+              EARLY: { color: '#00A86B', label: 'Early' },
+              DEVELOPING: { color: '#3B82F6', label: 'Developing' },
+              LATE: { color: '#D4A017', label: 'Late' },
+              EXHAUSTED: { color: '#D0312D', label: 'Exhausted' },
+            }
+            const qc: Record<string, string> = { PRIME: '#00A86B', GOOD: '#3B82F6', WEAK: '#D4A017', AVOID: '#D0312D' }
+            const mc: Record<string, string> = { BULLISH: '#00A86B', BEARISH: '#D0312D', NEUTRAL: '#6B7280', MIXED: '#D4A017' }
+            const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
+            const edgeC = edgeState ? (ec[edgeState] || { color: '#6B7280', label: edgeState }) : null
+            const execC = execQual ? { color: qc[execQual] || '#6B7280', label: execQual } : null
+            const mktC = mktBias ? { color: mc[mktBias] || '#6B7280', label: mktBias } : null
+
             return (
-              <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: riskProfile?.length ? 6 : 0 }}>
-                  {edgeState && (() => {
-                    const ec: Record<string, { color: string; label: string }> = {
-                      EARLY: { color: '#00A86B', label: 'Early' },
-                      DEVELOPING: { color: '#3B82F6', label: 'Developing' },
-                      LATE: { color: '#D4A017', label: 'Late' },
-                      EXHAUSTED: { color: '#D0312D', label: 'Exhausted' },
-                    }
-                    const c = ec[edgeState] || { color: '#6B7280', label: edgeState }
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c.color}`, color: c.color, background: `${c.color}15` }}>Edge: {c.label}</span>
-                  })()}
-                  {execQual && (() => {
-                    const qc: Record<string, string> = { PRIME: '#00A86B', GOOD: '#3B82F6', WEAK: '#D4A017', AVOID: '#D0312D' }
-                    const c = qc[execQual] || '#6B7280'
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Quality: {execQual}</span>
-                  })()}
-                  {mktBias && (() => {
-                    const mc: Record<string, string> = { BULLISH: '#00A86B', BEARISH: '#D0312D', NEUTRAL: '#6B7280', MIXED: '#D4A017' }
-                    const c = mc[mktBias] || '#6B7280'
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Market: {mktBias}</span>
-                  })()}
-                  {isChasing && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: '1px solid #D0312D', color: '#D0312D', background: 'rgba(208,49,45,0.08)' }}>⚠ Chasing</span>}
-                </div>
+              <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                {/* Header */}
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach</div>
+
+                {/* Signal chips row */}
+                {(edgeC || execC || mktC || isChasing) && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {edgeC && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${edgeC.color}`, color: edgeC.color, background: `${edgeC.color}15` }}>Edge: {edgeC.label}</span>}
+                    {execC && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${execC.color}`, color: execC.color, background: `${execC.color}15` }}>Quality: {execC.label}</span>}
+                    {mktC && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${mktC.color}`, color: mktC.color, background: `${mktC.color}15` }}>Market: {mktC.label}</span>}
+                    {isChasing && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: '1px solid #D0312D', color: '#D0312D', background: 'rgba(208,49,45,0.08)' }}>⚠ Chasing</span>}
+                  </div>
+                )}
+
+                {/* Risk profile chips */}
                 {riskProfile && riskProfile.length > 0 && (
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                     {riskProfile.slice(0, 4).map((r, i) => {
-                      const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
                       const sc = sv[r.severity] || '#6B7280'
                       return (
                         <span key={i} title={r.message} style={{ fontSize: '0.55rem', padding: '2px 6px', borderRadius: 3, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
@@ -736,9 +741,21 @@ export default function DayTradePage() {
                     })}
                   </div>
                 )}
+
+                {/* Psychology message */}
                 {psych?.message && (
-                  <div style={{ fontSize: '0.65rem', color: dt.muted, fontStyle: 'italic', lineHeight: 1.4, paddingTop: 6, borderTop: `1px solid ${dt.border}`, marginTop: riskProfile?.length ? 6 : 4 }}>
-                    {psych.message}
+                  <div style={{ fontSize: '0.72rem', color: dt.muted, fontStyle: 'italic', lineHeight: 1.5, marginBottom: 8, paddingBottom: 6, borderBottom: psych?.message && unified.coach ? `1px solid ${dt.border}` : 'none' }}>
+                    💡 {psych.message}
+                  </div>
+                )}
+
+                {/* Coach message */}
+                {unified.coach && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: 1 }}>🎯</span>
+                    <div>
+                      <div className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -855,18 +872,9 @@ export default function DayTradePage() {
           </div>
           )})()}
 
-          {/* AI Coach */}
-          {unified.coach && (
-            <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
-              <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
-                <div className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
-              </div>
-            </div>
-          )}
         </div>
       )}
+
 
       {/* Intraday chart */}
       {result && result.metrics && (() => {
