@@ -226,6 +226,77 @@ def _compute_vwap_bands(
     return vwap_ser, upper1, lower1, upper2, lower2
 
 
+def _volume_profile(session: pd.DataFrame) -> dict[str, Any]:
+    """
+    Volume profile analysis — point of control and buying/selling delta.
+
+    Returns:
+        poc:          price level with highest volume
+        delta_pct:    (buy_vol - sell_vol) / total_vol * 100
+        buying_vol:   volume on bars where close > open
+        selling_vol:  volume on bars where close < open
+        total_vol:    total volume in session
+        poc_position: "above" | "below" | "at" relative to last price
+    """
+    if session is None or session.empty:
+        return {"poc": None, "delta_pct": 0.0, "buying_vol": 0.0,
+                "selling_vol": 0.0, "total_vol": 0.0, "poc_position": "unknown"}
+
+    h = session["High"].to_numpy(dtype=float)
+    l = session["Low"].to_numpy(dtype=float)
+    c = session["Close"].to_numpy(dtype=float)
+    o = session["Open"].to_numpy(dtype=float)
+    v = session["Volume"].to_numpy(dtype=float).clip(min=0)
+
+    # Build 20-30 price buckets
+    price_min = np.min(l)
+    price_max = np.max(h)
+    if price_max <= price_min:
+        return {"poc": None, "delta_pct": 0.0, "buying_vol": 0.0,
+                "selling_vol": 0.0, "total_vol": 0.0, "poc_position": "unknown"}
+
+    n_buckets = max(20, min(30, int(len(session) / 3)))
+    buckets = np.linspace(price_min, price_max, n_buckets + 1)
+    vol_by_bucket = np.zeros(n_buckets)
+
+    for i in range(len(session)):
+        avg_px = (h[i] + l[i]) / 2.0
+        idx = int(np.clip(np.digitize(avg_px, buckets) - 1, 0, n_buckets - 1))
+        vol_by_bucket[idx] += v[i]
+
+    poc_idx = int(np.argmax(vol_by_bucket))
+    poc = round(float(buckets[poc_idx] + (buckets[poc_idx + 1] - buckets[poc_idx]) / 2.0), 2)
+
+    # Buying vs selling delta
+    up_mask = c > o
+    down_mask = c < o
+    buying_vol = float(np.sum(v[up_mask]))
+    selling_vol = float(np.sum(v[down_mask]))
+    total_vol = float(np.sum(v))
+
+    delta_pct = 0.0
+    if total_vol > 0:
+        delta_pct = round((buying_vol - selling_vol) / total_vol * 100, 1)
+
+    last_price = float(c[-1]) if len(c) > 0 else 0.0
+    band = (price_max - price_min) * 0.05
+    if last_price > poc + band:
+        poc_position = "above"
+    elif last_price < poc - band:
+        poc_position = "below"
+    else:
+        poc_position = "at"
+
+    return {
+        "poc": poc,
+        "delta_pct": delta_pct,
+        "buying_vol": round(buying_vol, 0),
+        "selling_vol": round(selling_vol, 0),
+        "total_vol": round(total_vol, 0),
+        "poc_position": poc_position,
+    }
+
+
 def _finite_price(x: float, fallback: float) -> float:
     if not isinstance(x, (int, float)):
         return fallback
@@ -1388,6 +1459,17 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 # Fallback: no OR data — use VWAP as anchor (0.5% below VWAP)
                 scalp_target = round(vwap * 0.995, 2)
 
+    # If scalp_target still None, fall back to ATR-based or fixed percentage
+    if scalp_target is None and last_price is not None:
+        _atr = metrics.get("atr14")
+        if _atr and _atr > 0.0 and last_price > 0:
+            # 1.5× ATR gives a volatility-adaptive target
+            _atr_target = last_price + (_atr * 1.5 / last_price * 100) if bidir == "long" else last_price - (_atr * 1.5 / last_price * 100)
+            scalp_target = round(_atr_target, 2)
+        else:
+            # Fixed 0.5% of price
+            scalp_target = round(last_price * (1.005 if bidir == "long" else 0.995), 2)
+
     pullback_zone = ""
     if vwap is not None and last_price is not None:
         lo, hi = min(vwap, last_price), max(vwap, last_price)
@@ -1811,16 +1893,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         vwap_tail = vwap_ser.iloc[-vwap_slope_bars:].values.astype(float)
         x = np.arange(vwap_slope_bars, dtype=float)
         slope = np.polyfit(x, vwap_tail, 1)[0]
-        vwap_slope_pct = round(slope / vwap_last * 100, 6)
-    else:
-        vwap_slope_pct = None
+        vwap_slope_pct = round(slope / vwap_last * 100, 4)
 
-    macro_slope_bars = min(VWAP_MACRO_BARS, len(vwap_ser))
-    if macro_slope_bars >= 20 and _vwap_is_real:
-        macro_tail = vwap_ser.iloc[-macro_slope_bars:].values.astype(float)
-        xm = np.arange(macro_slope_bars, dtype=float)
-        macro_slope = np.polyfit(xm, macro_tail, 1)[0]
-        vwap_macro_slope_pct = round(macro_slope / vwap_last * 100, 6)
+        vwap_macro_slope_pct = round(macro_slope / vwap_last * 100, 4)
     else:
         vwap_macro_slope_pct = None
 
@@ -2007,23 +2082,69 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         vwap_position = "at"
 
-    bull = 0.0
-    bear = 0.0
+    # ── Correlation-aware scoring ────────────────────────────────────────
+    # Signals are grouped by statistical correlation. Each group contributes
+    # at most MAX_GROUP_SCORE to the final bull/bear total. Within a group,
+    # the strongest directional signal dominates — correlated signals don't
+    # inflate the score by firing simultaneously.
+    #
+    # Example: if both OR breakout (+1.0) and secondary breakout (+1.0) fire,
+    # they both sit in the 'breakout' group and the group total can't exceed 3.0.
+    # But if VWAP position (+2.0), OR breakout (+1.0), and RS (+1.0) fire,
+    # they sit in three separate groups, so all three contribute.
+    
+    class _GroupScore:
+        """Collects signal scores per correlated group, then caps each group."""
+        def __init__(self) -> None:
+            self.groups: dict[str, float] = {}
+        
+        def add(self, group: str, delta: float) -> None:
+            val = self.groups.get(group, 0.0) + delta
+            self.groups[group] = val
+        
+        def total(self, max_group: float = 3.0) -> float:
+            t = 0.0
+            for val in self.groups.values():
+                t += max(0.0, min(val, max_group))
+            return t
+        
+        def side_total(self, side: float, other: float, group: str, delta: float) -> None:
+            """Add delta to *group* for the leading side (bull if side>=other else bear)."""
+            if side >= other:
+                self.add(group, delta)
+            else:
+                self.add(group, delta)
+    
+    bull_scores = _GroupScore()
+    bear_scores = _GroupScore()
+
+    def _g(
+        group: str, bull_delta: float = 0.0, bear_delta: float = 0.0,
+    ) -> None:
+        if bull_delta: bull_scores.add(group, bull_delta)
+        if bear_delta: bear_scores.add(group, bear_delta)
+
+    def _g_side(
+        group: str, delta: float, bull: float, bear: float,
+    ) -> None:
+        """Add *delta* to *group* on the leading side, penalize the trailing side."""
+        if bull >= bear:
+            bull_scores.add(group, delta)
+        else:
+            bear_scores.add(group, delta)
 
     if not _vwap_is_real:
         body.append("VWAP could not be computed (zero-volume session) — VWAP signals suppressed.")
     elif vwap_position == "at":
-        # Inside band: no confirmed hold or rejection yet — partial, distance-proportional score.
-        # Score ramps from 0.0 (right at VWAP) to 1.0 (at band edge), capped there.
         band_score = round(abs(vwap_dist_pct) / VWAP_BAND_PCT, 2)
         if vwap_dist_pct >= 0:
-            bull += band_score
+            _g("vwap", bull_delta=band_score)
             body.append(
                 f"Price testing VWAP from above ({vwap_dist_pct:+.2f}%) — within ±{VWAP_BAND_PCT}% band; "
                 "hold not yet confirmed."
             )
         else:
-            bear += band_score
+            _g("vwap", bear_delta=band_score)
             body.append(
                 f"Price testing VWAP from below ({vwap_dist_pct:+.2f}%) — within ±{VWAP_BAND_PCT}% band; "
                 "rejection not yet confirmed."
@@ -2041,8 +2162,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%) with flat VWAP.")
         else:
             body.append(f"Price above VWAP ({vwap_dist_pct:+.2f}%).")
-        bull += base_vwap
-    else:  # below
+        _g("vwap", bull_delta=base_vwap)
+    else:
         base_vwap = 2.0
         if vwap_slope_pct is not None:
             if vwap_slope_pct < -0.001:
@@ -2055,9 +2176,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%) with flat VWAP.")
         else:
             body.append(f"Price below VWAP ({vwap_dist_pct:+.2f}%).")
-        bear += base_vwap
+        _g("vwap", bear_delta=base_vwap)
 
-    # ── VWAP std-band extension scoring ──────────────────────────────────────
+    # ── VWAP std-band extension scoring (bucketed under 'vwap' group) ───────
     if _vwap_is_real:
         _at_upper2 = last >= vwap_upper2 * 0.999
         _at_lower2 = last <= vwap_lower2 * 1.001
@@ -2065,21 +2186,31 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         _at_lower1 = (not _at_lower2) and last <= vwap_lower1 * 1.001
 
         if _at_upper2:
-            if vol_spike:
-                bull += 0.3
+            # Differentiate between strong momentum (rideable) and exhaustion
+            _strong_momentum = (vol_spike and rvol is not None and rvol >= 2.0
+                                and momentum_pct is not None and momentum_pct > 0.5)
+            if _strong_momentum:
+                bull_scores.add("vwap", 0.5)
+                body.append(
+                    f"Price at VWAP +2σ (${vwap_upper2:.2f}) — strong momentum trend "
+                    f"(RVOL {rvol:.1f}x, momentum +{momentum_pct:.2f}%). "
+                    "Can ride extended move with trailing stop."
+                )
+            elif vol_spike:
+                bull_scores.add("vwap", 0.3)
                 body.append(
                     f"Price at VWAP +2σ (${vwap_upper2:.2f}) with volume — strong momentum. "
                     "Take partial profits; do not add new longs here."
                 )
             else:
-                bear += 1.0
+                _g("vwap", bear_delta=1.0)
                 body.append(
                     f"Price at VWAP +2σ (${vwap_upper2:.2f}) — extended above the band. "
                     "Mean-reversion risk elevated; avoid chasing longs here."
                 )
         elif _at_upper1:
             if vol_spike:
-                bull += 0.5
+                _g("vwap", bull_delta=0.5)
                 body.append(
                     f"Price at VWAP +1σ (${vwap_upper1:.2f}) with volume — momentum extension. "
                     "Valid scalp target for existing longs; new entries need pullback."
@@ -2091,21 +2222,30 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 )
 
         if _at_lower2:
-            if vol_spike:
-                bear += 0.3
+            _strong_momentum = (vol_spike and rvol is not None and rvol >= 2.0
+                                and momentum_pct is not None and momentum_pct < -0.5)
+            if _strong_momentum:
+                bear_scores.add("vwap", 0.5)
+                body.append(
+                    f"Price at VWAP -2σ (${vwap_lower2:.2f}) — strong momentum breakdown "
+                    f"(RVOL {rvol:.1f}x, momentum {momentum_pct:.2f}%). "
+                    "Can ride extended breakdown with trailing stop."
+                )
+            elif vol_spike:
+                _g("vwap", bear_delta=0.3)
                 body.append(
                     f"Price at VWAP -2σ (${vwap_lower2:.2f}) with volume — strong breakdown. "
                     "Take partial profits; do not add new shorts here."
                 )
             else:
-                bull += 1.0
+                _g("vwap", bull_delta=1.0)
                 body.append(
                     f"Price at VWAP -2σ (${vwap_lower2:.2f}) — extended below the band. "
                     "Mean-reversion risk elevated; avoid chasing shorts here."
                 )
         elif _at_lower1:
             if vol_spike:
-                bear += 0.5
+                _g("vwap", bear_delta=0.5)
                 body.append(
                     f"Price at VWAP -1σ (${vwap_lower1:.2f}) with volume — momentum breakdown. "
                     "Valid scalp target for existing shorts; new entries need bounce rejection."
@@ -2116,15 +2256,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                     "Scalp target for shorts; low-volume push raises bounce risk."
                 )
 
+    # ── Opening range breakout (breakout group) ─────────────────────────────
     or_weight = 3.0 if vol_spike else 1.0
     if or_state == "above":
-        bull += or_weight
+        _g("breakout", bull_delta=or_weight)
         if vol_spike:
             body.append("Above opening-range high with volume confirmation (bullish breakout).")
         else:
             body.append("Above opening-range high — no volume confirmation; treat with caution.")
     elif or_state == "below":
-        bear += or_weight
+        _g("breakout", bear_delta=or_weight)
         if vol_spike:
             body.append("Below opening-range low with volume confirmation (bearish breakdown).")
         else:
@@ -2132,25 +2273,51 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         body.append("Inside opening range (range-bound).")
 
+    # ── Momentum (momentum group) ───────────────────────────────────────────
     if momentum_pct > 0.12:
-        bull += 1.5
+        _g("momentum", bull_delta=1.5)
         body.append(f"Short-horizon momentum +{momentum_pct:.2f}%.")
     elif momentum_pct < -0.12:
-        bear += 1.5
+        _g("momentum", bear_delta=1.5)
         body.append(f"Short-horizon momentum {momentum_pct:.2f}%.")
 
+    # ── Price structure (momentum group — correlated with momentum_pct) ─────
+    if price_structure == "HH_HL":
+        _g("momentum", bull_delta=0.75)
+        body.append("Intraday price structure: higher highs and higher lows — confirmed uptrend.")
+    elif price_structure == "LL_LH":
+        _g("momentum", bear_delta=0.75)
+        body.append("Intraday price structure: lower lows and lower highs — confirmed downtrend.")
+    elif price_structure == "MIXED":
+        body.append("Intraday price structure: mixed swing highs/lows — no clear directional trend.")
+
+    # ── Volume spike (volume group) ─────────────────────────────────────────
+    # Direction of vol spike follows whichever side is already leading.
     if vol_spike:
-        if bull >= bear:
-            bull += 1.5
-            body.append("Volume spike confirms directional lean.")
-        else:
-            bear += 1.5
-            body.append("Volume spike confirms directional lean.")
+        _g_side("volume", 1.5, bull_scores.total(), bear_scores.total())
+        body.append("Volume spike confirms directional lean.")
     else:
         body.append(
             "No volume spike vs mid-session baseline — expansion not strongly confirmed; "
             "lower conviction, higher reversal risk (e.g. gaps, headline risk)."
         )
+
+    # ── Volume profile (POC + delta) (volume group) ──────────────────────────
+    vp = _volume_profile(session)
+    if vp["poc"] is not None and vp["poc_position"] != "unknown":
+        if vp["poc_position"] == "above" and vp["delta_pct"] > 0:
+            _g("volume", bull_delta=0.5)
+            body.append(
+                f"Price above POC (${vp['poc']:.2f}) with positive delta (+{vp['delta_pct']:.1f}%) "
+                "— bullish volume structure."
+            )
+        elif vp["poc_position"] == "below" and vp["delta_pct"] < 0:
+            _g("volume", bear_delta=0.5)
+            body.append(
+                f"Price below POC (${vp['poc']:.2f}) with negative delta ({vp['delta_pct']:.1f}%) "
+                "— bearish volume structure."
+            )
+    metrics["volume_profile"] = vp
 
     spy_chg   = _index_change_pct("SPY", force_refresh=_fr)
     qqq_chg   = _index_change_pct("QQQ", force_refresh=_fr)
@@ -2162,96 +2329,86 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     spy_session_pct = _intraday_session_return_pct(spy_sess)
     rs_vs_qqq_pct = _rs_vs_qqq_pct(session, qqq_sess)
 
-    # RS vs QQQ — scored bidirectionally; also logged as a reason.
-    # SPY/QQQ divergence guard: positive RS while BOTH indexes are down > 0.5%
-    # intraday may signal a short-squeeze / isolated move rather than genuine strength.
     _both_indexes_down  = (spy_session_pct is not None and spy_session_pct <= -0.5) and \
                           (qqq_session_pct is not None and qqq_session_pct <= -0.5)
     _both_indexes_up    = (spy_session_pct is not None and spy_session_pct >= 0.5) and \
                           (qqq_session_pct is not None and qqq_session_pct >= 0.5)
 
+    # ── RS vs QQQ (rs group) ───────────────────────────────────────────────
     if rs_vs_qqq_pct is not None:
         body.append(_rs_label(t, rs_vs_qqq_pct))
         if rs_vs_qqq_pct >= 0.5:
+            bs = 1.0
             if _both_indexes_down:
-                # Stock outperforming a falling market — cap the RS bonus (squeeze risk).
-                bull += 0.5
+                bs = 0.5
                 body.append(
                     f"RS vs QQQ +{rs_vs_qqq_pct:.2f}% BUT both SPY and QQQ are down intraday "
                     "— possible short-squeeze; RS bonus halved."
                 )
             else:
-                bull += 1.0
                 body.append(f"Strong RS vs QQQ (+{rs_vs_qqq_pct:.2f}%) adds bullish weight.")
+            _g("rs", bull_delta=bs)
         elif rs_vs_qqq_pct <= -0.5:
+            bs = 1.0
             if _both_indexes_up:
-                # Stock lagging a rising market — cap the RS penalty (sector rotation risk).
-                bear += 0.5
+                bs = 0.5
                 body.append(
                     f"RS vs QQQ {rs_vs_qqq_pct:.2f}% BUT both SPY and QQQ are up intraday "
                     "— possible sector rotation; RS penalty halved."
                 )
             else:
-                bear += 1.0
                 body.append(f"Weak RS vs QQQ ({rs_vs_qqq_pct:.2f}%) adds bearish weight.")
+            _g("rs", bear_delta=bs)
 
     _spy_daily = _spy_daily_trend(force_refresh=_fr)
     _spy_rsi_ok = _spy_daily.get("rsi") is not None and 40 <= _spy_daily["rsi"] <= 70
     _spy_rsi_extreme = _spy_daily.get("rsi") is not None and _spy_daily["rsi"] > 75
     _spy_ma50_up = _spy_daily.get("ma50_slope", 0) or 0 > 0
 
+    # ── SPY/QQQ market context (market group) ──────────────────────────────
     if spy_chg is not None and qqq_chg is not None:
         body.append(f"SPY {spy_chg:+.2f}% · QQQ {qqq_chg:+.2f}%.")
         if spy_chg >= 0.25 and qqq_chg >= 0.25:
             if _spy_ma50_up and _spy_rsi_ok:
-                bull += 1.0
+                _g("market", bull_delta=1.0)
             elif _spy_rsi_extreme:
                 body.append("SPY daily RSI overbought — rally may be exhausted.")
             else:
-                bull += 0.5
+                _g("market", bull_delta=0.5)
         elif spy_chg <= -0.25 and qqq_chg <= -0.25:
-            bear += 0.5
+            _g("market", bear_delta=0.5)
     else:
         if spy_chg is not None:
             body.append(f"SPY session-to-session ≈ {spy_chg:+.2f}%.")
             if spy_chg >= 0.25 and _spy_ma50_up and _spy_rsi_ok:
-                bull += 1.0
+                _g("market", bull_delta=1.0)
             elif spy_chg <= -0.25:
-                bear += 0.5
+                _g("market", bear_delta=0.5)
             elif spy_chg >= 0.25:
-                bull += 0.5
+                _g("market", bull_delta=0.5)
         if qqq_chg is not None:
             body.append(f"QQQ session-to-session ≈ {qqq_chg:+.2f}%.")
 
+    # ── VIX (market group — correlated with market context) ────────────────
     if vix_level is not None:
         body.append(f"VIX ≈ {vix_level:.1f}.")
         if vix_level >= VIX_CAUTION:
-            bull -= 0.5
-            bear -= 0.5
+            bull_scores.add("market", -0.5)
+            bear_scores.add("market", -0.5)
             body.append("Elevated VIX — wider swings; size down.")
-            # Clamp: directional scores must not go below zero — a negative score
-            # has no meaning and would inflate the diff calculation.
-            bull = max(0.0, bull)
-            bear = max(0.0, bear)
 
-    # ── #8 RVOL ──────────────────────────────────────────────────────────────
+    # ── RVOL (volume group) ──────────────────────────────────────────────────
     if rvol is not None:
         if rvol >= RVOL_HIGH:
-            if bull >= bear:
-                bull += 1.0
-            else:
-                bear += 1.0
-            body.append(f"RVOL {rvol:.1f}× expected — unusually high participation; conviction elevated.")
+            _g_side("volume", 1.0, bull_scores.total(), bear_scores.total())
+            body.append(f"RVOL {rvol:.1f}x expected — unusually high participation; conviction elevated.")
         elif rvol >= RVOL_ELEV:
-            if bull >= bear:
-                bull += 0.5
-            else:
-                bear += 0.5
-            body.append(f"RVOL {rvol:.1f}× expected — above-average volume for this time of day.")
+            _g_side("volume", 0.5, bull_scores.total(), bear_scores.total())
+            body.append(f"RVOL {rvol:.1f}x expected — above-average volume for this time of day.")
         else:
-            body.append(f"RVOL {rvol:.1f}× expected — volume tracking below average; lower conviction.")
+            body.append(f"RVOL {rvol:.1f}x expected — volume tracking below average; lower conviction.")
 
-    # ── #6 Pre-market gap ────────────────────────────────────────────────────
+    # ── Pre-market gap (gap group) ──────────────────────────────────────────
     if gap_pct is not None and abs(gap_pct) >= GAP_SIGNIFICANT_PCT:
         if gap_fill_risk:
             body.append(
@@ -2259,94 +2416,80 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 f"(${prior_close:.2f}) — gap fill in progress; avoid chasing."
             )
             if gap_pct > 0:
-                bull -= 0.5
+                _g("gap", bear_delta=0.5)
             elif gap_pct < 0:
-                bear -= 0.5
+                _g("gap", bull_delta=0.5)
         else:
             if gap_pct > 0:
-                bull += 0.5
+                _g("gap", bull_delta=0.5)
                 body.append(f"Gap up {gap_pct:+.2f}% from prior close — bullish pre-market context.")
             else:
-                bear += 0.5
+                _g("gap", bear_delta=0.5)
                 body.append(f"Gap down {gap_pct:.2f}% from prior close — bearish pre-market context.")
 
-    # ── #7 OR width ──────────────────────────────────────────────────────────
+    # ── OR width (or_width group) ──────────────────────────────────────────
     if or_width_label == "NARROW":
         body.append(
             f"Tight OR ({or_width_pct:.2f}% range) — coiling setup; breakout, if it comes, is likely sharp."
         )
-        # Amplify OR breakout bonus for coiling setups (the or_weight bonus already applied above,
-        # so we add an incremental bonus here only if price is already outside the OR).
         if or_state != "inside":
-            if bull >= bear:
-                bull += 0.5
-            else:
-                bear += 0.5
+            _g_side("or_width", 0.5, bull_scores.total(), bear_scores.total())
     elif or_width_label == "WIDE":
         body.append(
             f"Wide OR ({or_width_pct:.2f}% range) — chaotic open; breakout levels are loose, risk is elevated."
         )
-        bull = max(0.0, bull - 0.25)
-        bear = max(0.0, bear - 0.25)
+        bull_scores.add("or_width", -0.25)
+        bear_scores.add("or_width", -0.25)
 
-    # ── #10 Time-of-day ──────────────────────────────────────────────────────
+    # ── Time-of-day penalty (time_penalty group) ──────────────────────────
     if session_phase == "EOD_CLOSING":
         body.append("Last 10 minutes (≥15:50 ET) — no new entries. Exit existing positions only.")
-        bull = max(0.0, bull - 1.0)
-        bear = max(0.0, bear - 1.0)
+        bull_scores.add("time_penalty", -1.0)
+        bear_scores.add("time_penalty", -1.0)
     elif session_phase == "POWER_HOUR":
         body.append("Power hour (15:00–15:50 ET) — entries carry mandatory EOD exit risk; size down.")
-        bull = max(0.0, bull - 0.5)
-        bear = max(0.0, bear - 0.5)
+        bull_scores.add("time_penalty", -0.5)
+        bear_scores.add("time_penalty", -0.5)
     elif session_phase == "MIDDAY":
         body.append("Midday session — lower liquidity window; breakout follow-through less reliable.")
-        bull = max(0.0, bull - 0.25)
-        bear = max(0.0, bear - 0.25)
+        bull_scores.add("time_penalty", -0.25)
+        bear_scores.add("time_penalty", -0.25)
     elif session_phase == "OPENING":
         body.append("Opening range still forming — setup quality will improve once OR is established.")
 
-    # ── #9 Macro VWAP slope ──────────────────────────────────────────────────
+    # ── Macro VWAP slope (vwap group — same cap as VWAP position/bands) ──
     if vwap_macro_slope_pct is not None:
-        _macro_bias = "long" if bull >= bear else "short"
+        _b = bull_scores.total()
+        _be = bear_scores.total()
+        _macro_bias = "long" if _b >= _be else "short"
         if vwap_macro_slope_pct > 0.0005 and _macro_bias == "long":
-            bull += 0.5
+            _g("vwap", bull_delta=0.5)
             body.append(f"Macro VWAP slope rising ({vwap_macro_slope_pct:+.5f}%/bar over {VWAP_MACRO_BARS} bars) — structural trend aligns with long bias.")
         elif vwap_macro_slope_pct < -0.0005 and _macro_bias == "short":
-            bear += 0.5
+            _g("vwap", bear_delta=0.5)
             body.append(f"Macro VWAP slope declining ({vwap_macro_slope_pct:+.5f}%/bar over {VWAP_MACRO_BARS} bars) — structural trend aligns with short bias.")
         elif vwap_macro_slope_pct > 0.0005 and _macro_bias == "short":
-            bear = max(0.0, bear - 0.5)
+            bear_scores.add("vwap", -0.5)
             body.append(f"Macro VWAP slope rising ({vwap_macro_slope_pct:+.5f}%/bar) AGAINST short bias — structural caution.")
         elif vwap_macro_slope_pct < -0.0005 and _macro_bias == "long":
-            bull = max(0.0, bull - 0.5)
+            bull_scores.add("vwap", -0.5)
             body.append(f"Macro VWAP slope declining ({vwap_macro_slope_pct:+.5f}%/bar) AGAINST long bias — structural caution.")
 
-    # ── #4 HH/HL or LL/LH price structure ───────────────────────────────────
-    if price_structure == "HH_HL":
-        bull += 0.75
-        body.append("Intraday price structure: higher highs and higher lows — confirmed uptrend.")
-    elif price_structure == "LL_LH":
-        bear += 0.75
-        body.append("Intraday price structure: lower lows and lower highs — confirmed downtrend.")
-    elif price_structure == "MIXED":
-        body.append("Intraday price structure: mixed swing highs/lows — no clear directional trend.")
-
-    # ── #12 Secondary breakout ───────────────────────────────────────────────
+    # ── Secondary breakout (breakout group) ───────────────────────────────
     if secondary_breakout_up and vol_spike:
-        bull += 1.0
+        _g("breakout", bull_delta=1.0)
         body.append(
             f"Secondary breakout above ORH ({or_high:.2f}) — price broke out, retraced, and is breaking again. "
             "Higher-conviction entry than the first attempt."
         )
     elif secondary_breakout_down and vol_spike:
-        bear += 1.0
+        _g("breakout", bear_delta=1.0)
         body.append(
             f"Secondary breakdown below ORL ({or_low:.2f}) — price broke down, retraced, and is breaking again. "
             "Higher-conviction entry than the first attempt."
         )
 
-    # ── #3 OR re-test quality ────────────────────────────────────────────────
-    # Price cleared ORH/ORL earlier, pulled back near that level, holding without a reversal.
+    # ── OR re-test quality (breakout group) ──────────────────────────────
     _orh_retest_long  = (
             or_historical == "broke_up"
             and or_state == "above"
@@ -2360,76 +2503,60 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             and not vol_spike
     )
     if _orh_retest_long:
-        bull += 1.0
+        _g("breakout", bull_delta=1.0)
         body.append(
             f"Pullback to ORH re-test ({or_high:.2f}) — price holding above breakout level after a confirmed break; "
             "classic continuation setup."
         )
     elif _orl_retest_short:
-        bear += 1.0
+        _g("breakout", bear_delta=1.0)
         body.append(
             f"Pullback to ORL re-test ({or_low:.2f}) — price holding below breakdown level; "
             "continuation short setup."
         )
 
-    # ── #3b Bounce-rejection tier (after ORL breakdown) ─────────────────────
-    # After a breakdown, price may bounce toward resistance. WHERE the bounce gets
-    # rejected determines entry quality:
-    #   "vwap_rejection"       — bounce capped at VWAP (sellers stepped in early).
-    #                            Valid PUT entry; entry near VWAP, stop above VWAP.
-    #                            Sellers so aggressive they won't let price reach ORL —
-    #                            actually MORE bearish than an ORL retest.
-    #   "orl_rejection_retest" — bounce reached ORL from below, now being rejected.
-    #                            Strongest PUT re-entry; entry near ORL, bigger target.
-    #   "no_mans_land"         — price below both VWAP and ORL, no bounce to either level yet.
-    #                            Wait — no rejection confirmation at a key level.
-    #   (long-side mirror: orh_rejection and vwap_rejection_long handled symmetrically)
+    # ── Bounce-rejection tier (breakout group) ─────────────────────────────
     _bounce_scenario: str = ""
     if or_historical == "broke_down" and or_state == "below" and or_low > 0 and vwap_last > 0:
-        _pct_below_orl  = (or_low  - last) / or_low   * 100   # >0 means below ORL
-        _pct_from_vwap  = (last - vwap_last) / vwap_last * 100 # <0 means below VWAP
-        # Near VWAP from below, still a healthy distance from ORL
+        _pct_below_orl  = (or_low  - last) / or_low   * 100
+        _pct_from_vwap  = (last - vwap_last) / vwap_last * 100
         if abs(_pct_from_vwap) <= 0.45 and _pct_below_orl > 0.55:
             if vol_spike:
                 _bounce_scenario = "vwap_rejection"
-                bear += 1.2   # strong signal — early rejection = heavy selling pressure
+                _g("breakout", bear_delta=1.2)
                 body.append(
                     f"VWAP rejection short ({vwap_last:.2f}) — bounce capped before reaching ORL. "
                     f"Sellers stepped in at VWAP; stops above ${vwap_last:.2f}."
                 )
             else:
-                _bounce_scenario = "vwap_test"  # testing, not yet confirmed
+                _bounce_scenario = "vwap_test"
                 body.append(
                     f"Bouncing into VWAP ({vwap_last:.2f}) — rejection not confirmed. "
                     "Wait for volume to confirm the fade."
                 )
-        # Near ORL from below — existing _orl_retest_short covers holding; add vol-confirmed rejection
         elif 0 < _pct_below_orl <= 0.55 and _pct_from_vwap < -0.3:
             if vol_spike:
                 _bounce_scenario = "orl_rejection_retest"
-                bear += 0.8   # already scored by _orl_retest_short path, smaller add here
+                _g("breakout", bear_delta=0.8)
                 body.append(
                     f"ORL rejection confirmed ({or_low:.2f}) — volume spike at resistance. "
                     "Highest-conviction PUT re-entry."
                 )
             else:
-                _bounce_scenario = "orl_rejection_retest"  # use same bucket, no extra score
-        # Price well below both VWAP and ORL — no bounce to a key level yet
+                _bounce_scenario = "orl_rejection_retest"
         elif _pct_below_orl > 0.55 and _pct_from_vwap < -0.45:
             _bounce_scenario = "no_mans_land"
             body.append(
                 f"Price below both VWAP (${vwap_last:.2f}) and ORL (${or_low:.2f}) — no bounce to a key level yet. "
                 "Wait for a test of VWAP or ORL before considering entry."
             )
-
-    # Mirror for long-side bounce scenarios after ORH breakout
     elif or_historical == "broke_up" and or_state == "above" and or_high > 0 and vwap_last > 0:
         _pct_above_orh  = (last - or_high)  / or_high   * 100
         _pct_from_vwap  = (last - vwap_last) / vwap_last * 100
         if abs(_pct_from_vwap) <= 0.45 and _pct_above_orh > 0.55:
             if vol_spike:
                 _bounce_scenario = "vwap_rejection_long"
-                bull += 1.2
+                _g("breakout", bull_delta=1.2)
                 body.append(
                     f"VWAP support hold ({vwap_last:.2f}) after ORH breakout — pullback absorbed at VWAP. "
                     f"Stops below ${vwap_last:.2f}."
@@ -2437,7 +2564,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         elif _pct_above_orh > 0.55 and _pct_from_vwap > 0.45:
             _bounce_scenario = "no_mans_land_long"
 
-    # Daily trend context from swing scan (optional adjustment)
+    # ── Daily trend context (swing_context group) ─────────────────────────
     bias: Bias = None
     if daily_trend_context is not None:
         _swing_bias = daily_trend_context.get("bias", "").lower()
@@ -2449,27 +2576,28 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                     f"Swing verdict is {_swing_verdict}."
                 )
                 if bias == "long":
-                    bull += 0.5
+                    _g("swing_context", bull_delta=0.5)
                 elif bias == "short":
-                    bear += 0.5
+                    _g("swing_context", bear_delta=0.5)
             elif bias is not None and bias != _swing_bias:
                 body.append(
                     f"CAUTION — daily (swing) trend CONFLICTS with intraday bias. "
                     f"Swing signals {_swing_bias.upper()} ({_swing_verdict})."
                 )
                 if bias == "long":
-                    bull -= 0.5
+                    bull_scores.add("swing_context", -0.5)
                 elif bias == "short":
-                    bear -= 0.5
+                    bear_scores.add("swing_context", -0.5)
         elif _swing_verdict in ("NO-GO",) and bias:
             body.append("Swing engine says NO-GO — daily trend does not support any position.")
             if bias == "long":
-                bull -= 0.5
+                bull_scores.add("swing_context", -0.5)
             elif bias == "short":
-                bear -= 0.5
+                bear_scores.add("swing_context", -0.5)
 
-    bull = max(0.0, min(100.0, bull))
-    bear = max(0.0, min(100.0, bear))
+    # ── Finalize: cap each group at MAX_GROUP_SCORE, sum across groups ──
+    bull = max(0.0, min(100.0, bull_scores.total(max_group=3.0)))
+    bear = max(0.0, min(100.0, bear_scores.total(max_group=3.0)))
 
     diff = bull - bear
     verdict: Verdict = "WAIT"
@@ -2485,7 +2613,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                          (qqq_chg is not None and qqq_chg >= 1.2)
 
     # Vetoes → NO-GO
-    if vix_level is not None and vix_level >= VIX_NO_GO:
+    if session_minutes_elapsed < 5:
+        verdict = "NO-GO"
+        prefix = [
+            f"First {session_minutes_elapsed} minutes — opening range not yet established. No entries.",
+        ]
+    elif vix_level is not None and vix_level >= VIX_NO_GO:
         verdict = "NO-GO"
         prefix = [
             f"VIX very high ({vix_level:.0f}) — avoid new day-trade risk.",
@@ -2698,16 +2831,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         chart_bars.append(
             {
                 "t": t_iso,
-                "o": round(float(row["Open"]), 6),
-                "h": round(float(row["High"]), 6),
-                "l": round(float(row["Low"]), 6),
-                "c": round(float(row["Close"]), 6),
-                "v": round(float(row["Volume"]), 2),
-                "vwap":        round(vw_i, 6),
-                "vwap_upper1": round(float(vwap_upper1_ser.iloc[i]), 6),
-                "vwap_lower1": round(float(vwap_lower1_ser.iloc[i]), 6),
-                "vwap_upper2": round(float(vwap_upper2_ser.iloc[i]), 6),
-                "vwap_lower2": round(float(vwap_lower2_ser.iloc[i]), 6),
+                "o": round(float(row["Open"]), 4),
+                "h": round(float(row["High"]), 4),
+                "l": round(float(row["Low"]), 4),
+                "c": round(float(row["Close"]), 4),
+                "v": round(float(row["Volume"]), 4),
+                "vwap":        round(vw_i, 4),
+                "vwap_upper1": round(float(vwap_upper1_ser.iloc[i]), 4),
+                "vwap_lower1": round(float(vwap_lower1_ser.iloc[i]), 4),
+                "vwap_upper2": round(float(vwap_upper2_ser.iloc[i]), 4),
+                "vwap_lower2": round(float(vwap_lower2_ser.iloc[i]), 4),
             }
         )
 
