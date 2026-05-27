@@ -113,6 +113,30 @@ export interface TradeCommandCenterEngine {
   engine_score_breakdown?: Record<string, unknown>
 }
 
+export interface TccSubIndicator {
+  label: string
+  value: string
+  tone: 'bullish' | 'bearish' | 'warning' | 'neutral'
+}
+
+export interface TccSections {
+  top_by_engine: { day: TccRec | null; swing: TccRec | null; regular: TccRec | null }
+  ready_now: TccRec[]
+  high_conf_watch: TccRec[]
+  low_signals: TccRec[]
+  conf_threshold: number
+}
+
+/** Enriched recommendation as returned inside tcc_sections (all presentation fields pre-computed). */
+export type TccRec = TradeCommandCenterRecommendation & {
+  verdict: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
+  verdict_label: string
+  verdict_tone: 'bullish' | 'bearish' | 'warning' | 'neutral' | 'neutral'
+  verdict_rank: number
+  sub_indicators: TccSubIndicator[]
+  detail_route_key: 'day' | 'swing' | 'regular'
+}
+
 export interface TradeCommandCenterRecommendation {
   id: string
   ticker: string
@@ -222,6 +246,7 @@ export interface TradeCommandCenterPayload {
   engines: TradeCommandCenterEngine[]
   overall_decision?: OverallDecision
   recommendations: TradeCommandCenterRecommendation[]
+  tcc_sections?: TccSections
   conflicts?: TradeCommandCenterConflict[]
   alerts_summary?: TradeCommandCenterAlertsSummary
   recent_activity?: TradeCommandCenterActivity[]

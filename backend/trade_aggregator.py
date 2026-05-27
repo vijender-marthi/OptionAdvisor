@@ -839,6 +839,13 @@ def _empty_payload(
     return {
         "engines":         [],
         "recommendations": [],
+        "tcc_sections": {
+            "top_by_engine":   {"day": None, "swing": None, "regular": None},
+            "ready_now":       [],
+            "high_conf_watch": [],
+            "low_signals":     [],
+            "conf_threshold":  65,
+        },
         "conflicts":       [],
         "alerts_summary": {
             "active_alerts": 0, "critical_alerts": 0,
@@ -1155,10 +1162,14 @@ def build_command_center_payload(
 
     overall_decision = _compute_overall_decision(engine_cards)
 
+    from tcc_presenter import build_tcc_sections
+    tcc_sections = build_tcc_sections(filtered)
+
     return {
         "engines":          engine_cards,
         "overall_decision": overall_decision,
         "recommendations":  filtered,
+        "tcc_sections":     tcc_sections,
         "conflicts":        conflicts,
         "alerts_summary": {
             "active_alerts": alert_center_active_count(normalize_email(email)),
