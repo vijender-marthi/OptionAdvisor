@@ -415,25 +415,25 @@ function OverallDecisionBanner({ od }: { od: OverallDecision }) {
   const v = od.verdict
 
   const bannerCls =
-    v === 'STRONG GO' ? 'border-emerald-500/50 bg-emerald-950/20 dark:bg-emerald-900/15' :
+    v === 'STRONG_GO' ? 'border-emerald-500/50 bg-emerald-950/20 dark:bg-emerald-900/15' :
     v === 'GO'        ? 'border-sky-500/40    bg-sky-950/20    dark:bg-sky-900/15'       :
     v === 'WATCH'     ? 'border-amber-500/40  bg-amber-950/15  dark:bg-amber-900/10'     :
                         'border-slate-500/30  bg-slate-900/40  dark:bg-slate-800/20'
 
   const verdictCls =
-    v === 'STRONG GO' ? 'bg-emerald-500 text-white' :
+    v === 'STRONG_GO' ? 'bg-emerald-500 text-white' :
     v === 'GO'        ? 'bg-sky-500     text-white' :
     v === 'WATCH'     ? 'bg-amber-500   text-white' :
                         'bg-slate-600   text-white'
 
   const dotCls =
-    v === 'STRONG GO' ? 'bg-emerald-400' :
+    v === 'STRONG_GO' ? 'bg-emerald-400' :
     v === 'GO'        ? 'bg-sky-400'     :
     v === 'WATCH'     ? 'bg-amber-400'   :
                         'bg-slate-500'
 
   const labelCls =
-    v === 'STRONG GO' ? 'text-semantic-bullish' :
+    v === 'STRONG_GO' ? 'text-semantic-bullish' :
     v === 'GO'        ? 'text-semantic-info'    :
     v === 'WATCH'     ? 'text-semantic-warning' :
                         'text-gray-500'

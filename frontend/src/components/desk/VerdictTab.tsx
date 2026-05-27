@@ -203,7 +203,7 @@ export default function VerdictTab({
         background: vbg, border: `1px solid ${vborder}`,
         borderRadius: 16, overflow: 'hidden', position: 'relative',
         borderTop: `3px solid ${vc}`,
-        boxShadow: verdict === 'ENTER' ? '0 0 40px rgba(0,229,160,0.15)' : undefined,
+        boxShadow: verdict === 'GO' || verdict === 'STRONG_GO' ? '0 0 40px rgba(0,229,160,0.15)' : undefined,
       }}>
         <div style={{ padding: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>

@@ -157,8 +157,8 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   }
 
   // ─── Standard layout (day / regular) ────────────────────────────────
-  const stdColor = v === 'enter' ? '#00A86B' : v === 'watch' ? '#D4A017' : v === 'wait' ? '#3B82F6' : '#D0312D'
-  const stdLabel = v === 'enter' ? 'Ready to enter' : v === 'watch' ? 'Monitor — no entry yet' : v === 'wait' ? 'Waiting' : 'Not aligned'
+  const stdColor = (v === 'GO' || v === 'STRONG_GO') ? '#00A86B' : v === 'WATCH' ? '#D4A017' : v === 'WAIT' ? '#3B82F6' : '#D0312D'
+  const stdLabel = (v === 'GO' || v === 'STRONG_GO') ? 'Ready to enter' : v === 'WATCH' ? 'Monitor — no entry yet' : v === 'WAIT' ? 'Waiting' : 'Not aligned'
 
   return (
     <div className="uv-card" style={{ background: bg, border: `1px solid ${stdColor}30`, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
