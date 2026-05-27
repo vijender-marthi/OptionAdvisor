@@ -786,21 +786,15 @@ export default function TradeCommandCenter() {
                       </div>
                     ) : (
                       primary.map(rec => {
-                        const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
-                        const sq = (rec.signal_quality || '').toUpperCase()
-                        // Card border: green if signal_quality or final_decision indicates GO
-                        const isGo = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY' || decision === 'TRADE'
-                          || sq === 'STRONG GO' || sq === 'GO'
-                        const isWatch = decision === 'WATCH' && !(sq === 'STRONG GO' || sq === 'GO')
+                        const sq = (rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
+                        const isGo = sq === 'STRONG GO' || sq === 'GO'
+                        const isDay = rec.engine_type?.toLowerCase() === 'day'
                         const badgeCls = isGo
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                           : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        // Badge label uses signal_quality when it's a GO-level (matches detail page verdict)
-                        const badgeLabel = (sq === 'STRONG GO' || sq === 'GO') ? sq : decision
-                        const isDay = rec.engine_type?.toLowerCase() === 'day'
-                        const isSwing = rec.engine_type?.toLowerCase() === 'swing'
-                        const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : isSwing ? 'border-violet-500/20 hover:border-violet-500/40' : 'border-sky-500/20 hover:border-sky-500/40'
-                        const borderLeftCls = isGo ? 'border-l-emerald-500' : isWatch ? 'border-l-amber-500' : 'border-l-sky-500'
+                        const engCls = isDay
+                          ? 'border-orange-500/20 hover:border-orange-500/40'
+                          : 'border-violet-500/20 hover:border-violet-500/40'
                         const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
 
                         // Parse numeric values for R/R bar
@@ -812,7 +806,7 @@ export default function TradeCommandCenter() {
                         const rrBarPct = hasRR ? Math.min(100, (rrRatio / 3) * 100) : 0
                         const rrColor = rrRatio >= 2 ? '#22c55e' : rrRatio >= 1 ? '#f59e0b' : '#ef4444'
 
-                        // Price change display
+                        // Price change
                         const chgPct = rec.price_change_pct
                         const priceChangeDisplay = chgPct != null
                           ? `${chgPct >= 0 ? '▲' : '▼'} ${Math.abs(chgPct).toFixed(1)}%`
@@ -826,46 +820,41 @@ export default function TradeCommandCenter() {
                             key={rec.id}
                             type="button"
                             onClick={() => {
-                                const eng = (rec.engine_type || '').toLowerCase()
+                              const eng = (rec.engine_type || '').toLowerCase()
                               const strat = (rec.strategy || '').toLowerCase()
                               if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
                                 navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
                               else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
                               else navigate(getDetailsRoute(eng, rec.ticker))
                             }}
-                            className={`rounded-xl border ${engAccent} border-l-4 ${borderLeftCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                            className={`rounded-xl border ${engCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                           >
-                            {/* Row 1: Ticker + signal badge + engine badge */}
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <div className="flex items-center gap-1.5">
+                            {/* Row 1: Ticker + badge */}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                                 <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay
                                   ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20'
                                   : 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20'}`}>
                                   {isDay ? 'DAY' : 'SWING'}
                                 </span>
-                                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{badgeLabel}</span>
                               </div>
+                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{sq}</span>
                             </div>
 
-                            {/* Row 2: Price change + strategy */}
-                            <div className="flex items-center gap-2 mb-2.5">
+                            {/* Row 2: Price change + last price + strategy */}
+                            <div className="flex items-center gap-2 mb-3">
                               {priceChangeDisplay && (
-                                <span className={`text-[13px] font-bold font-mono ${chgColor}`}>
-                                  {priceChangeDisplay}
-                                </span>
+                                <span className={`text-[13px] font-bold font-mono ${chgColor}`}>{priceChangeDisplay}</span>
                               )}
-                              {rec.last_price != null && (
+                              {rec.last_price != null && !priceChangeDisplay && (
                                 <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>
                               )}
-                              <span className="text-[10px] text-slate-500 ml-auto">{rec.strategy || rec.direction || ''}</span>
+                              <span className="text-[10px] text-slate-500 ml-auto truncate">{rec.strategy || rec.direction || ''}</span>
                             </div>
 
-                            {/* Divider */}
-                            <div className="border-t border-slate-100 dark:border-white/[0.06] mb-2" />
-
-                            {/* Row 3: Entry / Target / Stop */}
-                            <div className="grid grid-cols-3 gap-1 text-[11px] mb-2">
+                            {/* Entry / Target / Stop row */}
+                            <div className="grid grid-cols-3 gap-1 text-[11px] mb-3">
                               <div>
                                 <div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div>
                                 <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div>
@@ -880,8 +869,8 @@ export default function TradeCommandCenter() {
                               </div>
                             </div>
 
-                            {/* Row 4: R/R bar + confidence */}
-                            <div className="flex items-center gap-3">
+                            {/* R/R bar + confidence */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
                               {hasRR && (
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between text-[10px] mb-1">
@@ -919,10 +908,8 @@ export default function TradeCommandCenter() {
                       </summary>
                       <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
                         {secondary.map(rec => {
-                          const sq = (rec.signal_quality || '').toUpperCase()
-                          const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
-                          const badgeCls = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY'
-                            || sq === 'STRONG GO' || sq === 'GO'
+                          const sq = (rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
+                          const badgeCls = sq === 'STRONG GO' || sq === 'GO' || sq === 'READY'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
                           return (
@@ -930,7 +917,7 @@ export default function TradeCommandCenter() {
                               key={rec.id}
                               type="button"
                               onClick={() => {
-                              const eng = (rec.engine_type || '').toLowerCase()
+                                const eng = (rec.engine_type || '').toLowerCase()
                                 const strat = (rec.strategy || '').toLowerCase()
                                 if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
                                   navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
@@ -940,12 +927,7 @@ export default function TradeCommandCenter() {
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                             >
                               <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>
-                                {(() => {
-                                  const sq = (rec.signal_quality || '').toUpperCase()
-                                  return (sq === 'STRONG GO' || sq === 'GO') ? sq : decision
-                                })()}
-                              </span>
+                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{sq}</span>
                               <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
                             </button>
                           )
