@@ -609,16 +609,16 @@ export default function SwingTradePage() {
                 <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
                   <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Entry status</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: unified.verdict === 'enter' ? st.green : unified.verdict === 'avoid' ? st.red : st.amber }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? st.green : unified.verdict === 'AVOID' ? st.red : st.amber }}>
                     {unified.entry_price
                       ? `$${unified.entry_price.toFixed(2)}`
-                      : unified.verdict === 'enter'
+                      : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO')
                         ? 'GO'
-                        : unified.verdict === 'watch'
+                        : unified.verdict === 'WATCH'
                           ? 'WATCH'
-                          : unified.verdict === 'wait'
+                          : unified.verdict === 'WAIT'
                             ? 'WAIT'
-                            : unified.verdict === 'avoid'
+                            : unified.verdict === 'AVOID'
                               ? 'AVOID'
                               : '—'}
                   </span>

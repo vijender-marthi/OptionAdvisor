@@ -105,3 +105,16 @@ VERDICT_RANK: dict[str, int] = {
     "AVOID":     1,
     "NO_EDGE":   0,
 }
+
+
+def verdict_label(v: str) -> str:
+    key = str(v).upper().replace(" ", "_")
+    return VERDICT_LABELS.get(key) or VERDICT_LABELS.get(Verdict(key) if key in Verdict._value2member_map_ else key, str(v))  # type: ignore[arg-type]
+
+
+def verdict_tone(v: str) -> str:
+    return VERDICT_TONE.get(str(v).upper().replace(" ", "_"), "neutral")
+
+
+def verdict_rank(v: str) -> int:
+    return VERDICT_RANK.get(str(v).upper().replace(" ", "_"), -1)

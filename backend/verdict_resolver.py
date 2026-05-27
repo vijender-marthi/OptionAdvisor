@@ -75,3 +75,145 @@ def resolve_verdict(
 
     # Rule 7: WAIT
     return Verdict.WAIT
+
+
+_RAW_MAP: dict[str, str] = {
+    "STRONG_GO":   "STRONG_GO",
+    "STRONG GO":   "STRONG_GO",
+    "QUALITY_LONG": "GO",
+    "READY":       "GO",
+    "ENTER":       "GO",
+    "TRADE":       "GO",
+    "GO":          "GO",
+    "WATCH":       "WATCH",
+    "EXTENDED":    "WATCH",
+    "MANAGE":      "WATCH",
+    "WAIT":        "WAIT",
+    "AVOID":       "AVOID",
+    "NO_GO":       "AVOID",
+    "NO-GO":       "AVOID",
+    "NO GO":       "AVOID",
+    "NO_TRADE":    "AVOID",
+    "EXIT":        "AVOID",
+    "SCALE_OUT":   "AVOID",
+}
+
+
+def _map_raw_to_verdict(raw: str) -> str:
+    """Normalize any raw verdict/signal string to a canonical verdict string."""
+    v = str(raw or "").strip().upper().replace("-", "_").replace(" ", "_")
+    if v in _RAW_MAP:
+        return _RAW_MAP[v]
+    v2 = str(raw or "").strip().upper()
+    if v2 in _RAW_MAP:
+        return _RAW_MAP[v2]
+    return "NO_EDGE"
+
+
+# Trader-decision action → verdict mapping (day engine)
+_TD_MAP: dict[str, str] = {
+    "STRONG_GO":             "STRONG_GO",
+    "GO_LONG":               "GO",
+    "GO_SHORT":              "GO",
+    "WATCH_LONG_ONLY":       "WATCH",
+    "WATCH_SHORT_ONLY":      "WATCH",
+    "WAIT_FOR_CONFIRMATION": "WAIT",
+    "WAIT_FOR_SETUP":        "WAIT",
+    "NO_TRADE":              "WAIT",
+    "AVOID_CALLS":           "AVOID",
+    "AVOID_PUTS":            "AVOID",
+    "AVOID_NAKED_CALLS":     "AVOID",
+    "AVOID_CHASING_PUTS":    "AVOID",
+    "AVOID_CHASE":           "AVOID",
+    "AVOID":                 "AVOID",
+}
+
+
+def resolve_verdict_day(scan: object) -> str:
+    """Return canonical verdict string for a day-trade scan object."""
+    metrics = getattr(scan, "metrics", None) or {}
+    vix = metrics.get("vix") if isinstance(metrics, dict) else None
+    if vix is not None and float(vix) >= 40:
+        return "AVOID"
+
+    raw = _map_raw_to_verdict(str(getattr(scan, "verdict", "") or ""))
+
+    td = getattr(scan, "trader_decision", None) or {}
+    if isinstance(td, dict):
+        sa = str(td.get("suggested_action", "") or "").upper().replace(" ", "_")
+    else:
+        sa = str(getattr(td, "suggested_action", "") or "").upper().replace(" ", "_")
+
+    td_verdict = _TD_MAP.get(sa)
+
+    # Raw STRONG_GO overrides trader WATCH/WAIT but not AVOID
+    if raw == "STRONG_GO" and td_verdict not in ("AVOID",):
+        return "STRONG_GO"
+
+    if td_verdict:
+        return td_verdict
+
+    return raw if raw != "NO_EDGE" else "WAIT"
+
+
+def resolve_verdict_swing(scan: object) -> str:
+    """Return canonical verdict string for a swing-trade scan object."""
+    metrics = getattr(scan, "metrics", None) or {}
+    vix = metrics.get("vix") if isinstance(metrics, dict) else None
+    if vix is not None and float(vix) >= 40:
+        return "AVOID"
+
+    raw = _map_raw_to_verdict(str(getattr(scan, "verdict", "") or ""))
+
+    # Strong setup upgrades GO → STRONG_GO
+    sq = ""
+    if isinstance(metrics, dict):
+        sq = str(metrics.get("setup_quality", "") or "").upper()
+    if raw == "GO" and "STRONG" in sq:
+        return "STRONG_GO"
+
+    return raw
+
+
+def resolve_verdict_regular(total_score: float, candidates_count: int = 0) -> str:
+    """Return canonical verdict for a regular/options engine score."""
+    if candidates_count == 0:
+        return "NO_EDGE"
+    if total_score >= 80:
+        return "STRONG_GO"
+    if total_score >= 60:
+        return "GO"
+    if total_score >= 45:
+        return "WATCH"
+    if total_score >= 30:
+        return "WAIT"
+    return "AVOID"
+
+
+def resolve_verdict_from_final_decision(
+    final_decision: str,
+    setup_quality: str = "",
+    risk_state: str = "",
+) -> str:
+    """Map a resolver final_decision string to a canonical verdict string."""
+    fd = str(final_decision or "").upper().replace(" ", "_").replace("-", "_")
+    _FD_MAP: dict[str, str] = {
+        "STRONG_GO": "STRONG_GO",
+        "READY":     "GO",
+        "TRADE":     "GO",
+        "GO":        "GO",
+        "WATCH":     "WATCH",
+        "MANAGE":    "WATCH",
+        "WAIT":      "WAIT",
+        "AVOID":     "AVOID",
+        "EXIT":      "AVOID",
+        "SCALE_OUT": "AVOID",
+        "NO_EDGE":   "NO_EDGE",
+    }
+    result = _FD_MAP.get(fd)
+    if result is None:
+        return "NO_EDGE"
+    # READY + STRONG setup → upgrade to STRONG_GO
+    if result == "GO" and "STRONG" in str(setup_quality or "").upper():
+        return "STRONG_GO"
+    return result
