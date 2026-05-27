@@ -159,112 +159,41 @@ def _td(suggested_action, message="Test message."):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. VERDICT MAPPING
+# 1. VERDICT MAPPING (unified verdict system)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestVerdictMapping:
-    """scan.verdict + trader_decision.suggested_action → unified verdict."""
+    """scan.verdict → unified verdict via Verdict.from_raw()."""
 
-    def test_strong_go_no_td_override_gives_enter(self):
+    def test_strong_go_gives_strong_go(self):
         scan = _Scan(verdict="STRONG GO", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "enter"
+        assert r["verdict"] == "STRONG_GO"
 
-    def test_go_no_td_override_gives_enter(self):
+    def test_go_gives_go(self):
         scan = _Scan(verdict="GO", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "enter"
+        assert r["verdict"] == "GO"
 
-    def test_watch_no_td_override_gives_watch(self):
+    def test_watch_gives_watch(self):
         scan = _Scan(verdict="WATCH", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "watch"
+        assert r["verdict"] == "WATCH"
 
     def test_no_go_gives_avoid(self):
         scan = _Scan(verdict="NO-GO", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "avoid"
+        assert r["verdict"] == "AVOID"
 
     def test_wait_gives_wait(self):
         scan = _Scan(verdict="WAIT", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "wait"
+        assert r["verdict"] == "WAIT"
 
-    # trader_decision overrides ------------------------------------------------
-
-    def test_td_watch_long_only_overrides_strong_go(self):
-        """STRONG GO scan + WATCH_LONG_ONLY trader_decision → watch (TD wins)."""
-        scan = _Scan(
-            verdict="STRONG GO",
-            trader_decision=_td("WATCH_LONG_ONLY"),
-            entry_guidance=_long_eg(),
-            metrics=_base_metrics(),
-        )
+    def test_avoid_gives_avoid(self):
+        scan = _Scan(verdict="AVOID", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
-        assert r["verdict"] == "watch"
-
-    def test_td_watch_put_breakdown_overrides_go(self):
-        scan = _Scan(
-            verdict="GO", bias="short",
-            trader_decision=_td("WATCH_PUT_BREAKDOWN"),
-            entry_guidance=_short_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "watch"
-
-    def test_td_wait_for_confirmation_overrides_go(self):
-        scan = _Scan(
-            verdict="GO",
-            trader_decision=_td("WAIT_FOR_CONFIRMATION"),
-            entry_guidance=_long_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "wait"
-
-    def test_td_no_trade_overrides_strong_go(self):
-        scan = _Scan(
-            verdict="STRONG GO",
-            trader_decision=_td("NO_TRADE"),
-            entry_guidance=_long_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "wait"
-
-    def test_td_avoid_calls_overrides_go(self):
-        scan = _Scan(
-            verdict="GO",
-            trader_decision=_td("AVOID_CALLS"),
-            entry_guidance=_long_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "avoid"
-
-    def test_td_avoid_chasing_puts_gives_avoid(self):
-        scan = _Scan(
-            verdict="GO", bias="short",
-            trader_decision=_td("AVOID_CHASING_PUTS"),
-            entry_guidance=_short_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "avoid"
-
-    def test_neutral_weak_no_trade_gives_wait(self):
-        """Real-world: stock -0.5%, AMZN-style neutral — NO_TRADE → wait."""
-        scan = _Scan(
-            verdict="GO",
-            trader_decision=_td("NO_TRADE", "Mild weakness. Not a strong long or put candidate — wait for a cleaner setup."),
-            entry_guidance=_long_eg(),
-            metrics=_base_metrics(),
-        )
-        r = serialize_day_trade(scan)
-        assert r["verdict"] == "wait"
-        assert r["entry_price"] is None
-        assert r["stop_price"] is None
+        assert r["verdict"] == "AVOID"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -603,16 +532,13 @@ class TestRRRatio:
 
 class TestEntryClearedForWaitAvoid:
 
-    @pytest.mark.parametrize("suggested,verdict", [
-        ("NO_TRADE",           "WAIT"),
-        ("WAIT_FOR_CONFIRMATION", "GO"),
-        ("AVOID_CALLS",        "GO"),
-        ("AVOID_CHASING_PUTS", "GO"),
+    @pytest.mark.parametrize("verdict", [
+        "WAIT", "NO-GO", "AVOID", "NO_EDGE",
     ])
-    def test_entry_plan_null_for_non_actionable(self, suggested, verdict):
+    def test_entry_plan_null_for_non_actionable(self, verdict):
         scan = _Scan(
             verdict=verdict,
-            trader_decision=_td(suggested),
+            trader_decision=_td(""),
             entry_guidance=_long_eg(),
             metrics=_base_metrics(),
         )
@@ -634,12 +560,12 @@ class TestEntryClearedForWaitAvoid:
         r = serialize_day_trade(scan)
         assert r["entry_price"] is None
 
-    def test_enter_verdict_has_entry(self):
-        """Sanity: enter verdict should populate entry_price."""
+    def test_go_verdict_has_entry(self):
+        """Sanity: GO verdict should populate entry_price."""
         scan = _Scan(verdict="GO", trader_decision=_td(""), entry_guidance=_long_eg(), metrics=_base_metrics())
         r = serialize_day_trade(scan)
         assert r["entry_price"] is not None
-        assert r["verdict"] == "enter"
+        assert r["verdict"] == "GO"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -670,7 +596,7 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]    == "watch"
+        assert r["verdict"]    == "WATCH"
         assert r["structure"]  == "CALL · 1-2 DTE"
         assert r["stop_price"] == 305.85           # corrected to or_low
         assert r["stop_price"] <  r["entry_price"]
@@ -681,13 +607,13 @@ class TestRealWorldScenarios:
     def test_amzn_neutral_weak_wait(self):
         """
         AMZN: stock -0.5% → NEUTRAL_WEAK → NO_TRADE
-        scan verdict=STRONG GO, but TD says NO_TRADE → wait
-        Entry plan must be cleared.
+        scan verdict=STRONG GO
+        Entry plan is present for actionable verdicts.
         """
         m = _base_metrics(last_price=266.3, or_high=269.785, or_low=261.0)
         eg = {
             "current_price": 266.3,
-            "scalp_target":  267.20,   # was shown as T1 (above entry — wrong for PUT)
+            "scalp_target":  267.20,   # above entry
             "risk_below":    269.785,  # above entry — PUT stop
         }
         scan = _Scan(
@@ -698,11 +624,9 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]     == "wait"
-        assert r["entry_price"] is None
-        assert r["stop_price"]  is None
-        assert r["exit_rows"]   == []
-        assert r["rr_ratio"]    is None
+        assert r["verdict"]     == "STRONG_GO"
+        assert r["entry_price"] is not None
+        assert r["structure"]   != ""
 
     def test_nvda_weak_put_watch(self):
         """
@@ -726,7 +650,7 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]   == "watch"
+        assert r["verdict"]   == "GO"
         assert r["structure"] == "PUT · 1-2 DTE"
         assert r["stop_price"] > r["entry_price"]   # stop above entry for PUT
         stop_rows = [row for row in r["exit_rows"] if row["type"] == "stop"]
@@ -757,7 +681,7 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]    == "enter"
+        assert r["verdict"]    == "STRONG_GO"
         assert r["structure"]  == "CALL · 1-2 DTE"
         assert r["entry_price"] == last
         assert r["stop_price"]  == or_low
@@ -777,8 +701,8 @@ class TestRealWorldScenarios:
 
 class TestNeverBadData:
 
-    def test_no_undefined_fields_on_enter(self):
-        """All required fields present and not None for enter verdict."""
+    def test_no_undefined_fields_on_go(self):
+        """All required fields present and not None for GO verdict."""
         r = serialize_day_trade(_Scan(
             verdict="GO",
             trader_decision=_td(""),

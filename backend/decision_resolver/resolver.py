@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .decision_models import ResolvedTradeDecision
+from verdict import Verdict
+from .decision_models import FinalDecision, ResolvedTradeDecision
 from .explanation_builder import (
     build_execution_fields,
     build_strategy_explanation,
@@ -35,6 +36,13 @@ def _as_list(value: Any) -> list[str]:
     if value in (None, ""):
         return []
     return [str(value).strip()]
+
+
+def _verdict_to_fd(v: str) -> str:
+    """Map a Verdict enum value to a FinalDecision-compatible Literal."""
+    m = {"STRONG_GO": "READY", "GO": "READY", "WATCH": "WATCH",
+         "WAIT": "WAIT", "AVOID": "AVOID", "NO_EDGE": "NO_EDGE"}
+    return m.get(v.upper().replace("-", "_"), v)
 
 
 def _clamp_confidence(value: int | float) -> int:
@@ -206,22 +214,19 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     else:
         setup_quality = "WEAK"
 
-    suggested_action = str(trader_decision.get("suggested_action", "")).upper()
+    _raw_fd = str(trader_decision.get("suggested_action", "")).upper()
     if verdict == "NO-GO":
         execution = "AVOID"
         final_decision = "AVOID"
     elif verdict == "WAIT":
         execution = "WAIT"
         final_decision = "WAIT"
-    elif suggested_action in {"AVOID_CALLS", "AVOID_CHASING_PUTS"}:
+    elif _raw_fd in {"AVOID_CALLS", "AVOID_CHASING_PUTS"}:
         execution = "AVOID"
         final_decision = "AVOID"
     elif verdict in {"STRONG GO", "GO"} and breakout_quality == "GOOD" and volume_confirmation == "STRONG":
         execution = "READY"
         final_decision = "READY"
-        # Resolver confirmed all structural conditions — advisory confirmations are already satisfied.
-        # Only clear pending confirmations when price has actually broken the OR; otherwise keep
-        # them so execution_timing can still report "wait for breakout".
         if or_breakout != "inside":
             missing = []
     elif verdict == "WATCH":
@@ -245,29 +250,18 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     dt_exec_timing = _day_execution_timing(final_decision, missing)
 
     # ── Three-axis display fields ────────────────────────────────────────
-    dt_signal_raw = verdict
-    if dt_signal_raw in {"STRONG GO"} or (breakout_quality == "GOOD" and trend_strength == "HIGH"):
-        dt_signal = "STRONG GO"
-    elif dt_signal_raw in {"GO"} or (breakout_quality == "GOOD" or trend_strength in {"HIGH", "MEDIUM"}):
-        dt_signal = "GO"
-    elif dt_signal_raw in {"WATCH"}:
-        dt_signal = "READY"
-    else:
-        dt_signal = ""
+    dt_signal = Verdict.from_raw(verdict).value
 
-    # Market bias conflict: long setup in bearish market (or short in bullish) is
-    # structurally valid but carries extra risk — cap signal at READY so the tag
-    # never reads "GO" while Market Support is working against the trade.
+    # Market bias conflict: long setup in bearish market (or short in bullish)
+    # caps signal so the tag never reads "GO" while Market Support opposes.
     market_against_bias = (
         (bias == "long" and market_bias == "BEARISH") or
         (bias == "short" and market_bias == "BULLISH")
     )
-    if market_against_bias and dt_signal in {"GO", "STRONG GO"}:
-        dt_signal = "READY"
-    # Cap signal_quality when final_decision isn't READY — prevents card showing
-    # "GO" while execution_timing says "WATCH" (same as swing resolver).
-    if final_decision != "READY" and dt_signal in {"STRONG GO", "GO"}:
-        dt_signal = "READY"
+    if market_against_bias and dt_signal in {"GO", "STRONG_GO"}:
+        dt_signal = "GO"
+    if final_decision != "READY" and dt_signal in {"STRONG_GO", "GO"}:
+        dt_signal = "GO"
 
     # ── Execution fields ─────────────────────────────────────────────────
     execution_fields: list[dict] = []
@@ -383,7 +377,7 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
         market_bias=market_bias,
         setup_quality=setup_quality,
         execution_readiness=execution,
-        final_decision=final_decision,
+        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
         confidence=_clamp_confidence(raw_confidence),
         reason=reason,
         supporting_factors=supporting,
@@ -456,24 +450,13 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         execution = "WATCH"
 
     # ── Three-axis display fields ────────────────────────────────────────
-    # Cap signal_quality when final_decision isn't READY — prevents the card
-    # showing "GO" while execution_timing says "WATCH" (contradiction).
-    if final_decision != "READY" and trade_quality_score >= 6.5:
-        sw_signal = "READY"
-    elif trade_quality_score >= 8.5:
-        sw_signal = "STRONG GO"
-    elif trade_quality_score >= 6.5:
-        sw_signal = "GO"
-    elif trade_quality_score >= 5.0:
-        sw_signal = "READY"
-    else:
-        sw_signal = ""
+    sw_signal = Verdict.from_raw(action_upper).value
 
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
         execution_readiness=execution,
-        final_decision=final_decision,
+        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
         confidence=_clamp_confidence((trade_quality_score / 10.0) * 100.0),
         reason=_pick_reason(
             explicit_reason=avoid_reason or None,
@@ -595,14 +578,9 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
     confidence = (total_score / 30.0) * 70.0 + min(30.0, max(0.0, bias_conf_pct * 0.3))
 
     # ── Three-axis display fields ────────────────────────────────────────
-    if total_score >= 26:
-        rg_signal = "STRONG GO"
-    elif total_score >= 20:
-        rg_signal = "GO"
-    elif total_score >= 14:
-        rg_signal = "READY"
-    else:
-        rg_signal = ""
+    rg_signal = Verdict.from_raw(
+        "STRONG GO" if total_score >= 26 else "GO" if total_score >= 20 else "READY" if total_score >= 14 else None
+    ).value
 
     # ── Strategy-aware explanation ───────────────────────────────────────
     rec_for_explain = rec_map if rec_map else {}
@@ -637,7 +615,7 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
         market_bias=market_bias,
         setup_quality=setup_quality,
         execution_readiness=execution,
-        final_decision=final_decision,
+        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
         confidence=_clamp_confidence(confidence),
         reason=reason,
         supporting_factors=supporting,

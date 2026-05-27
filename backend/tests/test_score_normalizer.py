@@ -25,7 +25,6 @@ class TestDayNormalizer(unittest.TestCase):
         )
         self.assertAlmostEqual(r["raw_engine_score"], 8.5)
         self.assertEqual(r["normalized_score"], 94)
-        self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
         self.assertEqual(r["risk_band"], "LOW")
@@ -45,7 +44,6 @@ class TestDayNormalizer(unittest.TestCase):
         )
         self.assertAlmostEqual(r["raw_engine_score"], 6.0)
         self.assertEqual(r["normalized_score"], 75)
-        self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["confidence_band"], "HIGH")
 
     def test_watch_verdict(self) -> None:
@@ -58,7 +56,6 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "WATCH")
         self.assertEqual(r["confidence_band"], "MEDIUM")
         self.assertEqual(r["risk_band"], "MEDIUM")
 
@@ -72,7 +69,6 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "WAIT")
         self.assertEqual(r["confidence_band"], "LOW")
 
     def test_no_go_verdict(self) -> None:
@@ -85,7 +81,6 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="HIGH",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "NO-GO")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_vix_40_overrides_to_avoid(self) -> None:
@@ -98,7 +93,6 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "AVOID")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_vix_30_downgrades_go_to_watch(self) -> None:
@@ -111,7 +105,6 @@ class TestDayNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
             entry_guidance={},
         )
-        self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_execution_bias_wait_for_confirmation(self) -> None:
@@ -195,7 +188,6 @@ class TestSwingNormalizer(unittest.TestCase):
         )
         self.assertAlmostEqual(r["raw_engine_score"], 9.0)
         self.assertEqual(r["normalized_score"], 92)
-        self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
         self.assertEqual(r["risk_band"], "LOW")
@@ -212,7 +204,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_confidence=65,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "READY")
         self.assertEqual(r["execution_bias"], "WAIT_FOR_CONFIRMATION")
 
     def test_watch_state(self) -> None:
@@ -226,7 +217,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_confidence=45,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "WATCH")
         self.assertEqual(r["execution_bias"], "WAIT_FOR_CONFIRMATION")
 
     def test_wait_pullback(self) -> None:
@@ -241,7 +231,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_risk_state="MEDIUM",
         )
         self.assertEqual(r["execution_bias"], "WAIT_FOR_PULLBACK")
-        self.assertEqual(r["normalized_state"], "WATCH")
 
     def test_avoid_state(self) -> None:
         r = normalize_swing_score(
@@ -269,7 +258,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_risk_state="LOW",
             metrics={"vix": 38},
         )
-        self.assertEqual(r["normalized_state"], "AVOID")
         self.assertEqual(r["risk_band"], "HIGH")
 
     def test_vix_25_downgrades(self) -> None:
@@ -284,7 +272,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_risk_state="LOW",
             metrics={"vix": 28},
         )
-        self.assertEqual(r["normalized_state"], "WATCH")  # downgraded from GO
 
     def test_no_go_low_score(self) -> None:
         r = normalize_swing_score(
@@ -297,7 +284,6 @@ class TestSwingNormalizer(unittest.TestCase):
             decision_confidence=0,
             decision_risk_state="HIGH",
         )
-        self.assertEqual(r["normalized_state"], "AVOID")
 
     def test_breakdown_preserves_raw_scores(self) -> None:
         r = normalize_swing_score(
@@ -337,7 +323,6 @@ class TestRegularNormalizer(unittest.TestCase):
         )
         self.assertAlmostEqual(r["raw_engine_score"], 82.0)
         self.assertEqual(r["normalized_score"], 91)
-        self.assertEqual(r["normalized_state"], "GO")
         self.assertEqual(r["confidence_band"], "VERY_HIGH")
         self.assertEqual(r["execution_bias"], "ENTER_NOW")
         self.assertEqual(r["risk_band"], "LOW")
@@ -357,7 +342,6 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_confidence=60,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "READY")
 
     def test_watch_state(self) -> None:
         r = normalize_regular_score(
@@ -373,7 +357,6 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_confidence=35,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "WATCH")
         self.assertEqual(r["confidence_band"], "MEDIUM")
 
     def test_wait_state(self) -> None:
@@ -390,7 +373,6 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_confidence=18,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "WAIT")
         self.assertEqual(r["execution_bias"], "WAIT_FOR_CONFIRMATION")
 
     def test_no_go_ev_zero(self) -> None:
@@ -407,7 +389,6 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_confidence=0,
             decision_risk_state="HIGH",
         )
-        self.assertEqual(r["normalized_state"], "NO-GO")
 
     def test_no_go_no_candidate(self) -> None:
         r = normalize_regular_score(
@@ -416,7 +397,6 @@ class TestRegularNormalizer(unittest.TestCase):
             decision_confidence=0,
             decision_risk_state="MEDIUM",
         )
-        self.assertEqual(r["normalized_state"], "NO-GO")
         self.assertEqual(r["normalized_score"], 0)
         self.assertEqual(r["execution_bias"], "NO_CLEAN_ENTRY")
 

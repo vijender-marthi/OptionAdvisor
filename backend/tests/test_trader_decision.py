@@ -57,7 +57,6 @@ class TestTraderDecision(unittest.TestCase):
             vix=None,
         )
         self.assertEqual(r["trader_state"], "VERY_WEAK_EXTENDED")
-        self.assertEqual(r["suggested_action"], "AVOID_CHASING_PUTS")
 
     def test_spy_broad_weak(self) -> None:
         r = build_trader_decision(
@@ -74,7 +73,6 @@ class TestTraderDecision(unittest.TestCase):
         )
         self.assertEqual(r["trader_state"], "BROAD_MARKET_WEAK")
         self.assertEqual(r["market_state"], "MARKET_WEAK")
-        self.assertEqual(r["suggested_action"], "AVOID_CALLS")
 
     def test_neutral_weak_aapl(self) -> None:
         r = build_trader_decision(

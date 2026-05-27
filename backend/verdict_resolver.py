@@ -23,6 +23,7 @@ def resolve_verdict(
     ONE function that produces the final verdict for any engine.
 
     Rules in priority order:
+
     1. VIX >= 35 → AVOID (any engine)
     2. raw_score < 3.0 → NO_EDGE
     3. raw_score < 5.0 → WAIT
@@ -63,11 +64,10 @@ def resolve_verdict(
 
     # Rule 5: GO
     if raw_score >= 6.0:
-        verdict = Verdict.GO
         # Swing-specific: weak volume → downgrade GO to WATCH
         if eng == "swing" and rvol is not None and rvol < 0.7:
             return Verdict.WATCH
-        return verdict
+        return Verdict.GO
 
     # Rule 6: WATCH
     if raw_score >= 4.5:
