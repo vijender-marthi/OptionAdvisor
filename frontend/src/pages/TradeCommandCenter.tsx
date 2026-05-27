@@ -786,12 +786,14 @@ export default function TradeCommandCenter() {
               const ready = recommendations
                 .filter(r => {
                   const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
-                  return er === 'READY' || er === 'ENTER NOW' || er === 'ENTER'
+                  const sig = (r.signal || '').toUpperCase()
+                  return er === 'READY' || er === 'ENTER NOW' || er === 'ENTER' || sig === 'STRONG GO' || sig === 'GO'
                 })
               const monitoring = recommendations
                 .filter(r => {
                   const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
-                  return !['READY', 'ENTER NOW', 'ENTER'].includes(er) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
+                  const sig = (r.signal || '').toUpperCase()
+                  return !['READY', 'ENTER NOW', 'ENTER'].includes(er) && !['STRONG GO', 'GO'].includes(sig) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
                 })
               const readyGroups = byEngine(ready)
               const monitoringGroups = byEngine(monitoring)
