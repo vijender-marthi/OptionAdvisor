@@ -685,6 +685,16 @@ export interface UnifiedAnalysis {
   session: string
   psychology: { message: string } | null
   risk_profile: Array<{ type: string; severity: string; message: string }>
+  verdict_presentation: {
+    status_text: string
+    status_color: string
+    signal_quality: { score: number; label: string; color: string }
+    setup_bar_pct: number
+    setup_bar_color: string
+    pass_count: number
+    warn_count: number
+    fail_count: number
+  }
   regular_recommendations: Array<{
     rank: number
     strategy: string
@@ -1008,6 +1018,21 @@ export const deskApi = {
   },
 }
 
+function _stubVp(verdict: string): UnifiedAnalysis['verdict_presentation'] {
+  const color = (verdict === 'enter' || verdict === 'GO' || verdict === 'STRONG_GO') ? '#00A86B'
+    : (verdict === 'avoid' || verdict === 'AVOID') ? '#D0312D' : '#D4A017'
+  return {
+    status_text: verdict.toUpperCase(),
+    status_color: color,
+    signal_quality: { score: 0, label: 'N/A', color: '#6B7280' },
+    setup_bar_pct: 0,
+    setup_bar_color: '#6B7280',
+    pass_count: 0,
+    warn_count: 0,
+    fail_count: 0,
+  }
+}
+
 export function deriveUnifiedFromDayResult(
   result: any
 ): UnifiedAnalysis {
@@ -1134,6 +1159,7 @@ export function deriveUnifiedFromDayResult(
     psychology: m.psychology || null,
     risk_profile: m.risk_profile || [],
     regular_recommendations: [],
+    verdict_presentation: _stubVp(verdict),
   }
 }
 
@@ -1203,5 +1229,6 @@ export function deriveUnifiedFromSwingResult(
     psychology: m.psychology || null,
     risk_profile: m.risk_profile || [],
     regular_recommendations: [],
+    verdict_presentation: _stubVp(verdict),
   }
 }

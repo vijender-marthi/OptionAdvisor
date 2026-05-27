@@ -2,18 +2,23 @@ import { Info } from 'lucide-react'
 import type { UnifiedAnalysis } from '../api/client'
 
 const VERDICT_BG: Record<string, string> = {
-  enter: 'rgba(0,168,107,0.06)',
-  watch: 'rgba(212,160,23,0.06)',
-  wait:  'rgba(107,114,128,0.06)',
-  avoid: 'rgba(208,49,45,0.06)',
+  GO:        'rgba(0,168,107,0.06)',
+  STRONG_GO: 'rgba(0,168,107,0.06)',
+  enter:     'rgba(0,168,107,0.06)',
+  WATCH:     'rgba(212,160,23,0.06)',
+  watch:     'rgba(212,160,23,0.06)',
+  WAIT:      'rgba(107,114,128,0.06)',
+  wait:      'rgba(107,114,128,0.06)',
+  AVOID:     'rgba(208,49,45,0.06)',
+  avoid:     'rgba(208,49,45,0.06)',
 }
 
 const C = {
-  text:  'var(--text-primary)',
+  text:    'var(--text-primary)',
   textSec: 'var(--text-secondary)',
   textTer: 'var(--text-tertiary)',
-  panel: 'var(--surface-elevated)',
-  border: 'var(--border-subtle)',
+  panel:   'var(--surface-elevated)',
+  border:  'var(--border-subtle)',
 }
 
 function fmtChg(pct: number | null): string | null {
@@ -21,54 +26,27 @@ function fmtChg(pct: number | null): string | null {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
 }
 
-function computeSignalQuality(conditions: { label: string; type: 'pass' | 'warn' | 'fail' }[]): { score: number; label: string; color: string } {
-  if (conditions.length === 0) return { score: 0, label: 'No data', color: '#6B7280' }
-  const pass = conditions.filter(c => c.type === 'pass').length
-  const warn = conditions.filter(c => c.type === 'warn').length
-  const total = conditions.length
-  const weighted = (pass * 2 + warn * 0.5) / (total * 2) * 10
-  const score = Math.round(weighted * 10) / 10
-  if (score >= 7) return { score, label: 'Strong', color: '#00A86B' }
-  if (score >= 4) return { score, label: 'Moderate', color: '#D4A017' }
-  return { score, label: 'Weak', color: '#6B7280' }
+function unifiedStructureLabel(s: string): string {
+  return s.replace(/\s*·\s*\d+\s*DTE.*$/, '').trim() || s
 }
 
 export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
   const isSwing = analysis.trade_type === 'swing'
-  const v = analysis.verdict
-  const bg = VERDICT_BG[v] ?? 'rgba(107,114,128,0.06)'
-  const sq = computeSignalQuality(analysis.conditions)
-  const displayScore = analysis.confidence
-
-  const verdictMap: Record<string, { status: string; color: string }> = {
-    'enter': { status: 'GO', color: '#00A86B' },
-    'watch': { status: 'WATCH', color: '#D4A017' },
-    'wait':  { status: 'WAIT', color: '#D4A017' },
-    'avoid': { status: 'AVOID', color: '#D0312D' },
-  }
-  const vm = verdictMap[analysis.verdict] || { status: 'WAIT', color: '#D4A017' }
-  const statusText = vm.status
-  const statusColor = vm.color
-  const scoreColor = statusColor
+  const vp = analysis.verdict_presentation
+  const { status_text, status_color, signal_quality, setup_bar_pct, setup_bar_color, pass_count, warn_count, fail_count } = vp
+  const bg = VERDICT_BG[analysis.verdict] ?? 'rgba(107,114,128,0.06)'
+  const spread = analysis.spread_entry
 
   // ─── Swing Trade Verdict Card ────────────────────────────────────────
   if (isSwing) {
-    const passCount = analysis.conditions.filter(c => c.type === 'pass').length
-    const warnCount = analysis.conditions.filter(c => c.type === 'warn').length
-    const failCount = analysis.conditions.filter(c => c.type === 'fail').length
-    const totalCond = analysis.conditions.length
-    const setupBarPct = totalCond > 0 ? Math.round((passCount / totalCond) * 100) : 0
-    const setupBarColor = setupBarPct >= 70 ? '#00A86B' : setupBarPct >= 40 ? '#D4A017' : '#D0312D'
-    const spread = analysis.spread_entry
-
     return (
-      <div className="uv-card" style={{ background: bg, border: `1px solid ${statusColor}40`, borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+      <div className="uv-card" style={{ background: bg, border: `1px solid ${status_color}40`, borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
 
         {/* Header band */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${statusColor}20`, background: `${statusColor}08` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${status_color}20`, background: `${status_color}08` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: statusColor, boxShadow: `0 0 7px ${statusColor}80`, flexShrink: 0 }} />
-            <span style={{ fontSize: 18, fontWeight: 800, color: statusColor, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '-0.01em' }}>{statusText}</span>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: status_color, boxShadow: `0 0 7px ${status_color}80`, flexShrink: 0 }} />
+            <span style={{ fontSize: 18, fontWeight: 800, color: status_color, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '-0.01em' }}>{status_text}</span>
             {analysis.structure && (
               <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px' }}>
                 {unifiedStructureLabel(analysis.structure)}
@@ -77,13 +55,13 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: scoreColor, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{displayScore}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: status_color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{analysis.confidence}</div>
               <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Setup</div>
             </div>
             <div style={{ width: 1, height: 28, background: C.border }} />
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: sq.color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>
-                {sq.score}<span style={{ fontSize: 13, fontWeight: 500, color: C.textTer }}>/10</span>
+              <div style={{ fontSize: 22, fontWeight: 800, color: signal_quality.color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>
+                {signal_quality.score}<span style={{ fontSize: 13, fontWeight: 500, color: C.textTer }}>/10</span>
               </div>
               <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Signal</div>
             </div>
@@ -97,18 +75,18 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
           </div>
 
           {/* Setup progress bar */}
-          {totalCond > 0 && (
+          {analysis.conditions.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <span style={{ fontSize: 10, fontWeight: 600, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Conditions</span>
                 <div style={{ display: 'flex', gap: 8, fontSize: 10 }}>
-                  {passCount > 0 && <span style={{ color: '#00A86B', fontWeight: 600 }}>{passCount} pass</span>}
-                  {warnCount > 0 && <span style={{ color: '#D4A017', fontWeight: 600 }}>{warnCount} warn</span>}
-                  {failCount > 0 && <span style={{ color: '#D0312D', fontWeight: 600 }}>{failCount} fail</span>}
+                  {pass_count > 0 && <span style={{ color: '#00A86B', fontWeight: 600 }}>{pass_count} pass</span>}
+                  {warn_count > 0 && <span style={{ color: '#D4A017', fontWeight: 600 }}>{warn_count} warn</span>}
+                  {fail_count > 0 && <span style={{ color: '#D0312D', fontWeight: 600 }}>{fail_count} fail</span>}
                 </div>
               </div>
               <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${setupBarPct}%`, background: setupBarColor, borderRadius: 2, transition: 'width 0.4s ease' }} />
+                <div style={{ height: '100%', width: `${setup_bar_pct}%`, background: setup_bar_color, borderRadius: 2, transition: 'width 0.4s ease' }} />
               </div>
             </div>
           )}
@@ -172,8 +150,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
           {analysis.risk_profile.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
               {analysis.risk_profile.slice(0, 5).map((r, i) => {
-                const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
-                const sc = sv[r.severity] || '#6B7280'
+                const sc = r.severity === 'HIGH' ? '#D0312D' : r.severity === 'MEDIUM' ? '#D4A017' : '#6B7280'
                 return (
                   <span key={i} title={r.message} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
                     {r.type}
@@ -201,16 +178,13 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
     )
   }
 
-  // ─── Standard layout (day / regular) ────────────────────────────────
-  const stdColor = v === 'enter' ? '#00A86B' : v === 'watch' ? '#D4A017' : v === 'wait' ? '#3B82F6' : '#D0312D'
-  const stdLabel = v === 'enter' ? 'Ready to enter' : v === 'watch' ? 'Monitor — no entry yet' : v === 'wait' ? 'Waiting' : 'Not aligned'
-
+  // ─── Day / Regular layout ────────────────────────────────────────────
   return (
-    <div className="uv-card" style={{ background: bg, border: `1px solid ${stdColor}30`, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
+    <div className="uv-card" style={{ background: bg, border: `1px solid ${status_color}30`, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, color: stdColor, fontFamily: "'Inter', system-ui, sans-serif", lineHeight: 1.2 }}>{stdLabel}</span>
+        <span style={{ fontSize: 22, fontWeight: 700, color: status_color, fontFamily: "'Inter', system-ui, sans-serif", lineHeight: 1.2 }}>{status_text}</span>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: stdColor, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1.2 }}>{analysis.confidence}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: status_color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1.2 }}>{analysis.confidence}</div>
           <div className="uv-muted" style={{ fontSize: 10, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Score</div>
         </div>
       </div>
@@ -233,12 +207,10 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
           ))}
         </div>
       )}
-      {/* Risk profile chips — standard layout */}
       {analysis.risk_profile.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, marginBottom: 4 }}>
           {analysis.risk_profile.slice(0, 4).map((r, i) => {
-            const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
-            const sc = sv[r.severity] || '#6B7280'
+            const sc = r.severity === 'HIGH' ? '#D0312D' : r.severity === 'MEDIUM' ? '#D4A017' : '#6B7280'
             return (
               <span key={i} title={r.message} style={{ fontSize: '0.55rem', padding: '2px 6px', borderRadius: 3, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
                 {r.type}
@@ -247,7 +219,6 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
           })}
         </div>
       )}
-      {/* Psychology — standard layout */}
       {analysis.psychology?.message && (
         <div style={{ fontSize: '0.65rem', color: C.textTer, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 6, paddingTop: 4 }}>
           {analysis.psychology.message}
@@ -270,9 +241,4 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
       )}
     </div>
   )
-}
-
-function unifiedStructureLabel(s: string): string {
-  const clean = s.replace(/\s*·\s*\d+\s*DTE.*$/, '').trim()
-  return clean || s
 }

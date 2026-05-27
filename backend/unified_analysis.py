@@ -10,6 +10,81 @@ from verdict import Verdict
 
 log = logging.getLogger(__name__)
 
+# ── Verdict presentation ─────────────────────────────────────────────────────
+# All color/label/score derivation for the verdict card lives here.
+# Frontend renders these fields directly — no derivation on the UI.
+
+_VERDICT_STATUS: dict[str, str] = {
+    "STRONG_GO": "STRONG GO",
+    "GO":        "GO",
+    "enter":     "GO",
+    "WATCH":     "WATCH",
+    "watch":     "WATCH",
+    "WAIT":      "WAIT",
+    "wait":      "WAIT",
+    "AVOID":     "AVOID",
+    "avoid":     "AVOID",
+    "NO_EDGE":   "NO EDGE",
+}
+
+_VERDICT_COLOR: dict[str, str] = {
+    "STRONG_GO": "#00A86B",
+    "GO":        "#00A86B",
+    "enter":     "#00A86B",
+    "WATCH":     "#D4A017",
+    "watch":     "#D4A017",
+    "WAIT":      "#D4A017",
+    "wait":      "#D4A017",
+    "AVOID":     "#D0312D",
+    "avoid":     "#D0312D",
+    "NO_EDGE":   "#6B7280",
+}
+
+
+def _signal_quality(conditions: list[dict]) -> dict:
+    """Compute signal quality score from conditions list."""
+    if not conditions:
+        return {"score": 0, "label": "No data", "color": "#6B7280"}
+    pass_c = sum(1 for c in conditions if c.get("type") == "pass")
+    warn_c = sum(1 for c in conditions if c.get("type") == "warn")
+    total  = len(conditions)
+    weighted = (pass_c * 2 + warn_c * 0.5) / (total * 2) * 10
+    score = round(weighted * 10) / 10
+    if score >= 7:
+        return {"score": score, "label": "Strong",   "color": "#00A86B"}
+    if score >= 4:
+        return {"score": score, "label": "Moderate", "color": "#D4A017"}
+    return {"score": score, "label": "Weak", "color": "#6B7280"}
+
+
+def verdict_presentation(verdict: str, conditions: list[dict]) -> dict:
+    """
+    Pre-compute all display fields for the verdict card.
+    Returns a dict that the frontend renders directly.
+    """
+    status_text  = _VERDICT_STATUS.get(verdict, verdict.upper())
+    status_color = _VERDICT_COLOR.get(verdict, "#6B7280")
+    sq = _signal_quality(conditions)
+
+    pass_c = sum(1 for c in conditions if c.get("type") == "pass")
+    warn_c = sum(1 for c in conditions if c.get("type") == "warn")
+    fail_c = sum(1 for c in conditions if c.get("type") == "fail")
+    total  = len(conditions)
+    bar_pct = round(pass_c / total * 100) if total else 0
+    bar_color = "#00A86B" if bar_pct >= 70 else "#D4A017" if bar_pct >= 40 else "#D0312D"
+
+    return {
+        "status_text":     status_text,
+        "status_color":    status_color,
+        "signal_quality":  sq,
+        "setup_bar_pct":   bar_pct,
+        "setup_bar_color": bar_color,
+        "pass_count":      pass_c,
+        "warn_count":      warn_c,
+        "fail_count":      fail_c,
+    }
+
+
 def _day_verdict(scan) -> str:
     raw = scan.verdict or ""
     return Verdict.from_raw(raw).value
@@ -369,6 +444,7 @@ def serialize_day_trade(scan) -> dict:
             "risk_profile": m.get("risk_profile") or [],
             "session": m.get("session_phase") or "",
             "regular_recommendations": [],
+            "verdict_presentation": verdict_presentation(_day_verdict(scan), conditions),
         }
     except Exception as e:
         log.error("serialize_day_trade error for %s: %s", getattr(scan, 'ticker', '?'), e, exc_info=True)
@@ -474,6 +550,7 @@ def serialize_swing_trade(scan) -> dict:
             "risk_profile": m.get("risk_profile") or [],
             "session": "swing",
             "regular_recommendations": [],
+            "verdict_presentation": verdict_presentation(sw_verdict_val, conditions),
         }
     except Exception as e:
         log.error("serialize_swing_trade error for %s: %s", getattr(scan, 'ticker', '?'), e, exc_info=True)
@@ -515,6 +592,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
                 "regular_recommendations": [],
                 "psychology": None,
                 "risk_profile": [],
+                "verdict_presentation": verdict_presentation("wait", []),
             }
 
         top = candidates[0]
@@ -624,6 +702,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
             "regular_recommendations": recs,
             "psychology": None,
             "risk_profile": [],
+            "verdict_presentation": verdict_presentation(verdict, conditions),
         }
     except Exception as e:
         log.error("serialize_regular_trade error for %s: %s", ticker, e, exc_info=True)
@@ -663,4 +742,5 @@ def _error_response(ticker: str, trade_type: str, error: str) -> dict:
         "regular_recommendations": [],
         "psychology": None,
         "risk_profile": [],
+        "verdict_presentation": verdict_presentation("wait", []),
     }
