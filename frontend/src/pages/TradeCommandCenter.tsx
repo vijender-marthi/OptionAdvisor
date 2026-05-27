@@ -792,9 +792,12 @@ export default function TradeCommandCenter() {
                         const badgeCls = isGo
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                           : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        const badgeLabel = rec.signal_quality || decision
+                        const badgeLabel = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY' || decision === 'TRADE'
+                          ? decision
+                          : rec.signal_quality || decision
                         const isDay = rec.engine_type?.toLowerCase() === 'day'
-                        const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : 'border-violet-500/20 hover:border-violet-500/40'
+                        const isSwing = rec.engine_type?.toLowerCase() === 'swing'
+                        const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : isSwing ? 'border-violet-500/20 hover:border-violet-500/40' : 'border-sky-500/20 hover:border-sky-500/40'
                         const borderLeftCls = isGo ? 'border-l-emerald-500' : isWatch ? 'border-l-amber-500' : 'border-l-sky-500'
                         const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
 
@@ -820,7 +823,12 @@ export default function TradeCommandCenter() {
                           <button
                             key={rec.id}
                             type="button"
-                            onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))}
+                            onClick={() => {
+                              const eng = rec.engine_type?.toLowerCase()
+                              if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                              else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                              else navigate(getDetailsRoute(eng ?? '', rec.ticker))
+                            }}
                             className={`rounded-xl border ${engAccent} border-l-4 ${borderLeftCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                           >
                             {/* Row 1: Ticker + signal badge + engine badge */}
@@ -915,11 +923,16 @@ export default function TradeCommandCenter() {
                             <button
                               key={rec.id}
                               type="button"
-                              onClick={() => navigate(getDetailsRoute(rec.engine_type, rec.ticker))}
+                              onClick={() => {
+                                const eng = rec.engine_type?.toLowerCase()
+                                if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                else navigate(getDetailsRoute(eng ?? '', rec.ticker))
+                              }}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                             >
                               <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{rec.signal_quality || decision}</span>
+                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{decision !== 'WATCH' ? decision : (rec.signal_quality || decision)}</span>
                               <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
                             </button>
                           )
