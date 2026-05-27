@@ -3994,9 +3994,11 @@ def journal_list(email: str, auth_email: str = Depends(require_access_email), st
     # Inject email for _refresh_entry
     for e in entries:
         e["email"] = normalized
-    # Auto-refresh OPEN entries that have stale (zero) current_price
+    # Auto-refresh prices for all entries (open and closed) so the journal
+    # always shows the latest market value regardless of status.
     for e in entries:
-        if e.get("status") == "OPEN" and not e.get("current_price"):
+        current_px = e.get("current_price") or 0
+        if current_px <= 0:
             from storage import update_journal_entry
             try:
                 info = bar_cache.get_info(e["ticker"])

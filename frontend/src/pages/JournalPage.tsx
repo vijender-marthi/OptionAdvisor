@@ -316,18 +316,33 @@ function EntryCard({
               </div>
             </div>
 
-            {/* Current price */}
+            {/* Current price — color by P&L */}
             <div className="min-w-0 sm:w-20 sm:shrink-0 text-right sm:text-left">
-              <div className={`text-xs font-bold font-mono ${
-                entry.current_price > 0
-                  ? 'text-slate-800 dark:text-slate-200'
-                  : 'text-slate-400 dark:text-slate-600'
-              }`}>
-                {entry.current_price > 0
-                  ? `$${entry.current_price.toFixed(2)}`
-                  : '—'}
-              </div>
-              <div className="text-[9px] text-slate-400 dark:text-gray-600">Price</div>
+              {(() => {
+                const isClosed = entry.status === 'CLOSED' || entry.status === 'EXPIRED'
+                const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
+                const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
+                const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
+                const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
+                const cp = hasOptionEntry ? currentOptPx : entry.current_price
+                const hasBoth = ep > 0 && cp > 0
+                const realizedPnl = isClosed && entry.realized_pnl != null ? entry.realized_pnl : null
+                const pnlColor = realizedPnl != null
+                  ? (realizedPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : realizedPnl < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200')
+                  : hasBoth && cp !== ep
+                    ? (cp > ep ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')
+                    : 'text-slate-800 dark:text-slate-200'
+                return (
+                  <>
+                    <div className={`text-xs font-bold font-mono ${pnlColor}`}>
+                      {entry.current_price > 0 ? `$${entry.current_price.toFixed(2)}` : '—'}
+                    </div>
+                    <div className="text-[9px] text-slate-400 dark:text-gray-600">
+                      {isClosed && realizedPnl != null ? 'Closed' : 'Price'}
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             {(() => {
