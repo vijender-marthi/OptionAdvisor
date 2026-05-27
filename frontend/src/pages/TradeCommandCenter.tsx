@@ -770,6 +770,18 @@ export default function TradeCommandCenter() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Active Trades</h2>
             </div>
             {(() => {
+              const byEngine = (list: typeof recommendations) => {
+                const groups: { key: string; label: string; accent: string; items: typeof recommendations }[] = []
+                for (const key of ['day', 'swing', 'regular']) {
+                  const items = list.filter(r => (r.engine_type || '').toLowerCase() === key)
+                  if (items.length === 0) continue
+                  const label = key === 'day' ? 'Day Trade' : key === 'swing' ? 'Swing Trade' : 'Position Trading'
+                  const accent = key === 'day' ? 'border-orange-500/20' : key === 'swing' ? 'border-violet-500/20' : 'border-sky-500/20'
+                  groups.push({ key, label, accent, items })
+                }
+                return groups
+              }
+
               // Each card shows the raw signal (matches detail page verdict exactly)
               const ready = recommendations
                 .filter(r => {
@@ -781,6 +793,8 @@ export default function TradeCommandCenter() {
                   const s = (r.signal || '').toUpperCase()
                   return !['STRONG GO', 'GO'].includes(s) && ['READY','TRADE','WATCH','WAIT'].includes(String(r.final_decision ?? '').toUpperCase())
                 })
+              const readyGroups = byEngine(ready)
+              const monitoringGroups = byEngine(monitoring)
               return (
                 <>
                   {/* Ready section */}
@@ -790,55 +804,59 @@ export default function TradeCommandCenter() {
                         <span className="text-emerald-500 text-sm font-bold">Ready</span>
                         <span className="text-xs text-slate-500">{ready.length} setup{ready.length > 1 ? 's' : ''}</span>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {ready.map(rec => {
-                          const verdict = (rec.signal || '').toUpperCase()
-                          const isDay = rec.engine_type?.toLowerCase() === 'day'
-                          const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
-                          const chgPct = rec.price_change_pct
-                          return (
-                            <button key={rec.id} type="button"
-                              onClick={() => {
-                                const eng = (rec.engine_type || '').toLowerCase()
-                                const strat = (rec.strategy || '').toLowerCase()
-                                if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
-                                  navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                                else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                                else navigate(getDetailsRoute(eng, rec.ticker))
-                              }}
-                              className="rounded-xl border border-emerald-500/20 bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                                  <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20' : 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20'}`}>
-                                    {isDay ? 'DAY' : 'SWING'}
-                                  </span>
-                                </div>
-                                <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{verdict}</span>
-                              </div>
-                              <div className="flex items-center gap-2 mb-3">
-                                {chgPct != null && <span className={`text-[13px] font-bold font-mono ${chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%</span>}
-                                {rec.last_price != null && chgPct == null && <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>}
-                                <span className="text-[10px] text-slate-500 ml-auto truncate">{rec.strategy || rec.direction || ''}</span>
-                              </div>
-                              <div className="grid grid-cols-3 gap-1 text-[11px] mb-3">
-                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div><div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div></div>
-                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Target</div><div className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</div></div>
-                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Stop</div><div className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</div></div>
-                              </div>
-                              {confPct > 0 && (
-                                <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-white/[0.06]">
-                                  <div className="text-right">
-                                    <div className="text-[9px] text-slate-500 uppercase">Confidence</div>
-                                    <div className={`font-mono text-sm font-bold ${confPct >= 70 ? 'text-emerald-500' : confPct >= 50 ? 'text-amber-500' : 'text-slate-400'}`}>{confPct}%</div>
+                      {readyGroups.map(group => (
+                        <div key={group.key}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{group.label}</span>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {group.items.map(rec => {
+                              const verdict = (rec.signal || '').toUpperCase()
+                              const isDay = group.key === 'day'
+                              const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+                              const chgPct = rec.price_change_pct
+                              return (
+                                <button key={rec.id} type="button"
+                                  onClick={() => {
+                                    if (group.key === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                    else if (group.key === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                    else navigate(getDetailsRoute(group.key, rec.ticker))
+                                  }}
+                                  className={`rounded-xl border ${group.accent} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                                      <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20' : group.key === 'swing' ? 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20' : 'border-sky-500/30 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/20'}`}>
+                                        {isDay ? 'DAY' : group.key === 'swing' ? 'SWING' : 'REGULAR'}
+                                      </span>
+                                    </div>
+                                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{verdict}</span>
                                   </div>
-                                </div>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
+                                  <div className="flex items-center gap-2 mb-3">
+                                    {chgPct != null && <span className={`text-[13px] font-bold font-mono ${chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%</span>}
+                                    {rec.last_price != null && chgPct == null && <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>}
+                                    <span className="text-[10px] text-slate-500 ml-auto truncate">{rec.strategy || rec.direction || ''}</span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-1 text-[11px] mb-3">
+                                    <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div><div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div></div>
+                                    <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Target</div><div className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</div></div>
+                                    <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Stop</div><div className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</div></div>
+                                  </div>
+                                  {confPct > 0 && (
+                                    <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+                                      <div className="text-right">
+                                        <div className="text-[9px] text-slate-500 uppercase">Confidence</div>
+                                        <div className={`font-mono text-sm font-bold ${confPct >= 70 ? 'text-emerald-500' : confPct >= 50 ? 'text-amber-500' : 'text-slate-400'}`}>{confPct}%</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </>
                   )}
 
@@ -849,24 +867,31 @@ export default function TradeCommandCenter() {
                         <span className="font-semibold text-slate-700 dark:text-slate-300">Monitoring — {monitoring.length} signal{monitoring.length > 1 ? 's' : ''}</span>
                         <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
                       </summary>
-                      <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
-                        {monitoring.map(rec => (
-                          <button key={rec.id} type="button"
-                            onClick={() => {
-                              const eng = (rec.engine_type || '').toLowerCase()
-                              const strat = (rec.strategy || '').toLowerCase()
-                              if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
-                                navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else navigate(getDetailsRoute(eng, rec.ticker))
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                          >
-                            <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                            <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${(rec.signal || '').toUpperCase() === 'STRONG GO' || (rec.signal || '').toUpperCase() === 'GO' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'}`}>
-                              {(rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
-                            </span>
-                          </button>
+                      <div className="rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 space-y-3">
+                        {monitoringGroups.map(group => (
+                          <div key={group.key}>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</span>
+                              <span className="text-[10px] text-slate-500">{group.items.length}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {group.items.map(rec => (
+                                <button key={rec.id} type="button"
+                                  onClick={() => {
+                                    if (group.key === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                    else if (group.key === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                    else navigate(getDetailsRoute(group.key, rec.ticker))
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                                >
+                                  <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                                  <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                                    {(rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </details>
