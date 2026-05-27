@@ -79,6 +79,19 @@ function navForRec(rec: TccRec): string {
   const key = rec.detail_route_key  // 'day' | 'swing' | 'regular' — set by backend
   return getDetailsRoute(key, rec.ticker)
 }
+// Regular engine uses requestAnalysis so pendingTicker is set in context
+// (direct URL nav would be ignored after the first visit due to a one-shot ref guard).
+function useRecNavigate() {
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
+  return (rec: TccRec) => {
+    if (rec.detail_route_key === 'regular') {
+      requestAnalysis(rec.ticker)
+    } else {
+      navigate(navForRec(rec))
+    }
+  }
+}
 
 // ── Sub-indicators (pure render) ─────────────────────────────────────────────
 function SubIndicators({ indicators }: { indicators: TccRec['sub_indicators'] }) {
@@ -193,7 +206,8 @@ function MarketPositionWidget() {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TradeCommandCenter() {
   const navigate = useNavigate()
-  const { canAccessPage } = useApp()
+  const { canAccessPage, requestAnalysis } = useApp()
+  const goToRec = useRecNavigate()
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<TradeCommandCenterPayload> | null>(null)
@@ -410,7 +424,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={engKey}
                       type="button"
-                      onClick={() => navigate(navForRec(top))}
+                      onClick={() => goToRec(top)}
                       className={`rounded-xl border border-l-4 ${borderCls} ${borderAccentClass(top.verdict_tone)} bg-slate-900 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex items-center justify-between mb-3">
@@ -459,7 +473,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} ${borderAccentClass(rec.verdict_tone)} bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       {/* Header row */}
@@ -502,7 +516,44 @@ export default function TradeCommandCenter() {
                               <div className="font-mono font-semibold text-red-400">{rec.stop_loss || '—'}</div>
                             </div>
                           </div>
-                        </>
+          {/* ── All Recommendations (collapsible) ── */}
+          {(() => {
+            const allRecs = [...readyNow, ...highConfWatch, ...lowSignals]
+            if (allRecs.length === 0) return null
+            return (
+            <details className="group mt-6">
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-t border-white/[0.06] pt-4 pb-2 text-sm text-slate-500 select-none hover:text-slate-300 transition-colors">
+                <ChevronDown size={14} className="text-slate-600 group-open:rotate-180 transition-transform" />
+                <span className="font-semibold">All Setups — {allRecs.length} total</span>
+              </summary>
+              <div className="space-y-2 mt-3">
+                {allRecs.map(rec => (
+                  <button
+                    key={rec.id}
+                    type="button"
+                    onClick={() => goToRec(rec)}
+                    className="w-full flex items-start gap-3 rounded-xl border border-white/[0.07] bg-slate-900 px-4 py-3 text-left transition-colors hover:bg-slate-800/50"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
+                      <span className="font-mono text-sm font-bold text-white">{rec.ticker}</span>
+                      <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChipClass(rec.detail_route_key)}`}>{rec.detail_route_key.toUpperCase()}</span>
+                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictBadgeClass(rec.verdict_tone)}`}>{rec.verdict_label}</span>
+                      {rec.strategy && <span className="text-[11px] text-slate-500 ml-1 truncate max-w-[120px]">{rec.strategy}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-600">Score</div>
+                        <div className="text-xs font-semibold text-slate-200">{rec.display_confidence ?? rec.confidence ?? '—'}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </details>
+            )
+          })()}
+
+        </>
                       )}
 
                       {/* Confidence score */}
@@ -537,7 +588,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} border-l-amber-500/60 bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex items-center justify-between mb-2">
@@ -587,7 +638,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-800/40 transition-colors"
                     >
                       <span className="font-mono font-bold text-slate-300">{rec.ticker}</span>
