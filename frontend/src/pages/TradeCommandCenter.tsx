@@ -792,7 +792,10 @@ export default function TradeCommandCenter() {
                         const badgeCls = isGo
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                           : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        const badgeLabel = decision
+                        // Use signal_quality for the badge label (matches the detail page's
+                        // engine verdict), but final_decision for the card border (safety gate).
+                        const sq = (rec.signal_quality || '').toUpperCase()
+                        const badgeLabel = (sq === 'STRONG GO' || sq === 'GO') ? sq : decision
                         const isDay = rec.engine_type?.toLowerCase() === 'day'
                         const isSwing = rec.engine_type?.toLowerCase() === 'swing'
                         const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : isSwing ? 'border-violet-500/20 hover:border-violet-500/40' : 'border-sky-500/20 hover:border-sky-500/40'
@@ -934,7 +937,12 @@ export default function TradeCommandCenter() {
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                             >
                               <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{decision}</span>
+                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>
+                                {(() => {
+                                  const sq = (rec.signal_quality || '').toUpperCase()
+                                  return (sq === 'STRONG GO' || sq === 'GO') ? sq : decision
+                                })()}
+                              </span>
                               <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
                             </button>
                           )
