@@ -763,159 +763,41 @@ export default function TradeCommandCenter() {
             <OverallDecisionBanner od={payload.overall_decision} />
           ) : null}
 
-          {/* ═══ ACTIVE TRADES (READY + WATCH signals, sorted by confidence) ═══ */}
+          {/* ═══ ACTIVE TRADES ═══ */}
           <section className="space-y-3">
             <div className="flex items-center gap-2">
               <LayoutGrid size={18} className="text-emerald-400" />
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Active Trades</h2>
-              <span className="text-xs text-slate-500">— sorted by confidence</span>
             </div>
             {(() => {
-              const active = recommendations
-                .filter(r => ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
-                .sort((a, b) => ((b.display_confidence ?? 0) - (a.display_confidence ?? 0)))
-              const primary = active.slice(0, 6)
-              const secondary = active.slice(6)
+              // Each card shows the raw signal (matches detail page verdict exactly)
+              const ready = recommendations
+                .filter(r => {
+                  const s = (r.signal || '').toUpperCase()
+                  return s === 'STRONG GO' || s === 'GO'
+                })
+              const monitoring = recommendations
+                .filter(r => {
+                  const s = (r.signal || '').toUpperCase()
+                  return !['STRONG GO', 'GO'].includes(s) && ['READY','TRADE','WATCH','WAIT'].includes(String(r.final_decision ?? '').toUpperCase())
+                })
               return (
                 <>
-                  {/* Primary cards */}
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {primary.length === 0 ? (
-                      <div className="col-span-full rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                        No active setups right now
+                  {/* Ready section */}
+                  {ready.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-500 text-sm font-bold">Ready</span>
+                        <span className="text-xs text-slate-500">{ready.length} setup{ready.length > 1 ? 's' : ''}</span>
                       </div>
-                    ) : (
-                      primary.map(rec => {
-                        const rawSignal = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
-                        const isGo = rawSignal === 'STRONG GO' || rawSignal === 'GO'
-                        const isDay = rec.engine_type?.toLowerCase() === 'day'
-                        const badgeCls = isGo
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        const engCls = isDay
-                          ? 'border-orange-500/20 hover:border-orange-500/40'
-                          : 'border-violet-500/20 hover:border-violet-500/40'
-                        const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
-
-                        // Parse numeric values for R/R bar
-                        const entryVal = rec.entry_zone ? parseFloat(rec.entry_zone.replace(/[^0-9.-]/g, '')) : NaN
-                        const targetVal = rec.target ? parseFloat(rec.target.replace(/[^0-9.-]/g, '')) : NaN
-                        const stopVal = rec.stop_loss ? parseFloat(rec.stop_loss.replace(/[^0-9.-]/g, '')) : NaN
-                        const hasRR = !isNaN(entryVal) && !isNaN(targetVal) && !isNaN(stopVal) && entryVal > 0 && stopVal > 0 && targetVal !== stopVal
-                        const rrRatio = hasRR ? Math.abs(targetVal - entryVal) / Math.abs(entryVal - stopVal) : 0
-                        const rrBarPct = hasRR ? Math.min(100, (rrRatio / 3) * 100) : 0
-                        const rrColor = rrRatio >= 2 ? '#22c55e' : rrRatio >= 1 ? '#f59e0b' : '#ef4444'
-
-                        // Price change
-                        const chgPct = rec.price_change_pct
-                        const priceChangeDisplay = chgPct != null
-                          ? `${chgPct >= 0 ? '▲' : '▼'} ${Math.abs(chgPct).toFixed(1)}%`
-                          : null
-                        const chgColor = chgPct != null
-                          ? chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'
-                          : 'text-slate-500'
-
-                        return (
-                          <button
-                            key={rec.id}
-                            type="button"
-                            onClick={() => {
-                              const eng = (rec.engine_type || '').toLowerCase()
-                              const strat = (rec.strategy || '').toLowerCase()
-                              if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
-                                navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else navigate(getDetailsRoute(eng, rec.ticker))
-                            }}
-                            className={`rounded-xl border ${engCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
-                          >
-                            {/* Row 1: Ticker + badge */}
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                                <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay
-                                  ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20'
-                                  : 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20'}`}>
-                                  {isDay ? 'DAY' : 'SWING'}
-                                </span>
-                              </div>
-                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{rawSignal}</span>
-                            </div>
-
-                            {/* Row 2: Price change + last price + strategy */}
-                            <div className="flex items-center gap-2 mb-3">
-                              {priceChangeDisplay && (
-                                <span className={`text-[13px] font-bold font-mono ${chgColor}`}>{priceChangeDisplay}</span>
-                              )}
-                              {rec.last_price != null && !priceChangeDisplay && (
-                                <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>
-                              )}
-                              <span className="text-[10px] text-slate-500 ml-auto truncate">{rec.strategy || rec.direction || ''}</span>
-                            </div>
-
-                            {/* Entry / Target / Stop row */}
-                            <div className="grid grid-cols-3 gap-1 text-[11px] mb-3">
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div>
-                                <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div>
-                              </div>
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Target</div>
-                                <div className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</div>
-                              </div>
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Stop</div>
-                                <div className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</div>
-                              </div>
-                            </div>
-
-                            {/* R/R bar + confidence */}
-                            <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
-                              {hasRR && (
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between text-[10px] mb-1">
-                                    <span className="text-slate-500">R/R</span>
-                                    <span className="font-mono font-bold" style={{ color: rrColor }}>{rrRatio.toFixed(1)}</span>
-                                  </div>
-                                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-700/30">
-                                    <div className="h-full rounded-full transition-all" style={{ width: `${rrBarPct}%`, backgroundColor: rrColor, opacity: 0.7 }} />
-                                  </div>
-                                </div>
-                              )}
-                              {confPct > 0 && (
-                                <div className="text-right shrink-0">
-                                  <div className="text-[9px] text-slate-500 uppercase">Conf</div>
-                                  <div className={`font-mono text-sm font-bold ${confPct >= 70 ? 'text-emerald-500' : confPct >= 50 ? 'text-amber-500' : 'text-slate-400'}`}>
-                                    {confPct}%
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
-
-                  {/* Secondary / Watchlist — collapsed */}
-                  {secondary.length > 0 && (
-                    <details className="group">
-                      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2 text-xs text-slate-500 select-none hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          Monitoring — {secondary.length} lower-conviction signals
-                        </span>
-                        <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-                      </summary>
-                      <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
-                        {secondary.map(rec => {
-                          const sq = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
-                          const badgeCls = sq === 'STRONG GO' || sq === 'GO' || sq === 'READY'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {ready.map(rec => {
+                          const verdict = (rec.signal || '').toUpperCase()
+                          const isDay = rec.engine_type?.toLowerCase() === 'day'
+                          const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+                          const chgPct = rec.price_change_pct
                           return (
-                            <button
-                              key={rec.id}
-                              type="button"
+                            <button key={rec.id} type="button"
                               onClick={() => {
                                 const eng = (rec.engine_type || '').toLowerCase()
                                 const strat = (rec.strategy || '').toLowerCase()
@@ -924,16 +806,74 @@ export default function TradeCommandCenter() {
                                 else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
                                 else navigate(getDetailsRoute(eng, rec.ticker))
                               }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                              className="rounded-xl border border-emerald-500/20 bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5"
                             >
-                              <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{sq}</span>
-                              <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                                  <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20' : 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20'}`}>
+                                    {isDay ? 'DAY' : 'SWING'}
+                                  </span>
+                                </div>
+                                <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{verdict}</span>
+                              </div>
+                              <div className="flex items-center gap-2 mb-3">
+                                {chgPct != null && <span className={`text-[13px] font-bold font-mono ${chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%</span>}
+                                {rec.last_price != null && chgPct == null && <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>}
+                                <span className="text-[10px] text-slate-500 ml-auto truncate">{rec.strategy || rec.direction || ''}</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1 text-[11px] mb-3">
+                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div><div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div></div>
+                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Target</div><div className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</div></div>
+                                <div><div className="text-slate-500 text-[9px] uppercase tracking-wide">Stop</div><div className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</div></div>
+                              </div>
+                              {confPct > 0 && (
+                                <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+                                  <div className="text-right">
+                                    <div className="text-[9px] text-slate-500 uppercase">Confidence</div>
+                                    <div className={`font-mono text-sm font-bold ${confPct >= 70 ? 'text-emerald-500' : confPct >= 50 ? 'text-amber-500' : 'text-slate-400'}`}>{confPct}%</div>
+                                  </div>
+                                </div>
+                              )}
                             </button>
                           )
                         })}
                       </div>
+                    </>
+                  )}
+
+                  {/* Monitoring section */}
+                  {monitoring.length > 0 && (
+                    <details className="group" open={ready.length === 0}>
+                      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2 text-xs text-slate-500 select-none hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Monitoring — {monitoring.length} signal{monitoring.length > 1 ? 's' : ''}</span>
+                        <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
+                        {monitoring.map(rec => (
+                          <button key={rec.id} type="button"
+                            onClick={() => {
+                              const eng = (rec.engine_type || '').toLowerCase()
+                              const strat = (rec.strategy || '').toLowerCase()
+                              if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
+                                navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                              else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                              else navigate(getDetailsRoute(eng, rec.ticker))
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                          >
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
+                            <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${(rec.signal || '').toUpperCase() === 'STRONG GO' || (rec.signal || '').toUpperCase() === 'GO' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'}`}>
+                              {(rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </details>
+                  )}
+
+                  {ready.length === 0 && monitoring.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">No active setups right now</div>
                   )}
                 </>
               )
