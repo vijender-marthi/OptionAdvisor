@@ -785,13 +785,13 @@ export default function TradeCommandCenter() {
               // Each card shows execution readiness status
               const ready = recommendations
                 .filter(r => {
-                  const er = (r.execution_readiness || '').toUpperCase()
-                  return er === 'READY' || er === 'ENTER NOW'
+                  const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
+                  return er === 'READY' || er === 'ENTER NOW' || er === 'ENTER'
                 })
               const monitoring = recommendations
                 .filter(r => {
-                  const er = (r.execution_readiness || '').toUpperCase()
-                  return !['READY', 'ENTER NOW'].includes(er) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
+                  const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
+                  return !['READY', 'ENTER NOW', 'ENTER'].includes(er) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
                 })
               const readyGroups = byEngine(ready)
               const monitoringGroups = byEngine(monitoring)
@@ -811,7 +811,7 @@ export default function TradeCommandCenter() {
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {group.items.map(rec => {
-                              const execStatus = (rec.execution_readiness || '').toUpperCase()
+                              const execStatus = (rec.execution_timing || rec.execution_readiness || '').toUpperCase()
                               const isDay = group.key === 'day'
                               const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
                               const chgPct = rec.price_change_pct
@@ -886,7 +886,7 @@ export default function TradeCommandCenter() {
                                 >
                                   <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                                   <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                                    {(rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
+                                    {(rec.execution_timing || rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
                                   </span>
                                 </button>
                               ))}
@@ -1108,15 +1108,14 @@ export default function TradeCommandCenter() {
                     const expanded = expandedOpportunityId === rec.id
                     const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
                     const recKey = rec.id
+                    const execStatus = (rec.execution_timing || rec.execution_readiness || rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
+                    const isReady = execStatus === 'READY' || execStatus === 'ENTER NOW'
                     return (
                       <div key={recKey}>
                         <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                           <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
                             <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                            <EngineBadge engine={rec.engine_type} />
-                            <SignalQualityBadge quality={rec.signal_quality || ''} />
-                            <ExecTimingBadge timing={rec.execution_timing || ''} />
-                            <RiskCatBadge category={rec.risk_category || ''} />
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isReady ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>{execStatus}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <div className="text-right">
@@ -1130,6 +1129,12 @@ export default function TradeCommandCenter() {
                         </button>
                         {expanded && (
                           <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <EngineBadge engine={rec.engine_type} />
+                              {rec.signal_quality && <SignalQualityBadge quality={rec.signal_quality} />}
+                              {rec.execution_timing && <ExecTimingBadge timing={rec.execution_timing} />}
+                              {rec.risk_category && <RiskCatBadge category={rec.risk_category} />}
+                            </div>
                             <div className="text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
                             <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
 
