@@ -160,6 +160,10 @@ export interface TradeCommandCenterRecommendation {
     option_execution_warning: string
   }
   engine_score_breakdown?: Record<string, unknown>
+  /** Price data from yfinance (populated by command_center_router) */
+  last_price?: number
+  price_change?: number
+  price_change_pct?: number
 }
 
 export interface TradeCommandCenterConflict {
