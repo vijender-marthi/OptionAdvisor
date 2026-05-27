@@ -1045,7 +1045,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
             upsert_day_trade_watchlist_last(email, t, now_verdict, session_date, "", "")
             continue
 
-        if prev_verdict == "WATCH" and now_verdict in {"GO", "STRONG GO"}:
+        if prev_verdict in {"WATCH"} and now_verdict in {"GO", "STRONG GO", "STRONG_GO"}:
             now_ms = int(time.time() * 1000)
             alert_id = f"dt-{t}-{now_ms}"
             escalations.append(
@@ -1071,7 +1071,7 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
         prev_state_row = get_ticker_state_last(email, t, "DAY")
         prev_state_num = int((prev_state_row or {}).get("state_num") or 1)
         prev_action = (prev_state_row or {}).get("action", "") if prev_state_row else ""
-        if eg_state and (prev_state_num, now_state_num) == (1, 2) and now_verdict in {"GO", "STRONG GO"} and prev_state_row is not None:
+        if eg_state and (prev_state_num, now_state_num) == (1, 2) and now_verdict in {"GO", "STRONG GO", "STRONG_GO"} and prev_state_row is not None:
             direction = _STATE_DIRECTION.get(
                 (prev_state_num, now_state_num),
                 f"{_STATE_LABEL.get(prev_state_num, str(prev_state_num))} → {_STATE_LABEL.get(now_state_num, str(now_state_num))}"
@@ -3321,7 +3321,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
                     # ── State-change alert (only 1→2: Setup→Entry, only when GO/STRONG GO) ──
                     scan_verdict = _norm_day_trade_verdict(dr.verdict)
-                    if state_changed and (prev_state, now_state) == (1, 2) and scan_verdict in {"GO", "STRONG GO"}:
+                    if state_changed and (prev_state, now_state) == (1, 2) and scan_verdict in {"GO", "STRONG GO", "STRONG_GO"}:
                         direction = _STATE_DIRECTION.get(
                             (prev_state, now_state),
                             f"{_STATE_LABEL.get(prev_state, str(prev_state))} → {_STATE_LABEL.get(now_state, str(now_state))}"

@@ -30,29 +30,44 @@ const C = {
   purple:    '#6B7FD4',
 }
 
-type Verdict = 'ENTER' | 'WATCH' | 'WAIT' | 'AVOID'
+type Verdict = 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
 
 function mapVerdict(raw: string): Verdict {
-  if (raw === 'enter') return 'ENTER'
-  if (raw === 'watch') return 'WATCH'
-  if (raw === 'wait') return 'WAIT'
-  return 'AVOID'
+  const v = (raw || '').toUpperCase().replace(/ /g, '_')
+  if (v === 'STRONG_GO')                         return 'STRONG_GO'
+  if (['GO', 'ENTER', 'READY', 'TRADE'].includes(v)) return 'GO'
+  if (v === 'WATCH')                             return 'WATCH'
+  if (v === 'WAIT')                              return 'WAIT'
+  if (['AVOID', 'NO_GO', 'NO_TRADE'].includes(v)) return 'AVOID'
+  return 'NO_EDGE'
 }
 
 function verdictLabel(v: Verdict): string {
-  return v === 'ENTER' ? 'ENTER NOW' : v
+  if (v === 'STRONG_GO') return 'STRONG GO'
+  if (v === 'GO')        return 'GO — ENTER NOW'
+  if (v === 'NO_EDGE')   return 'NO EDGE'
+  return v
 }
 
 function verdictColor(v: Verdict): string {
-  return v === 'ENTER' ? C.green : v === 'WATCH' ? C.amber : v === 'WAIT' ? C.purple : C.red
+  if (v === 'STRONG_GO' || v === 'GO') return C.green
+  if (v === 'WATCH')   return C.amber
+  if (v === 'WAIT')    return C.purple
+  return C.red
 }
 
 function verdictBg(v: Verdict): string {
-  return v === 'ENTER' ? 'rgba(0,229,160,0.07)' : v === 'WATCH' ? 'rgba(245,166,35,0.07)' : v === 'WAIT' ? 'rgba(107,127,212,0.07)' : 'rgba(255,77,109,0.07)'
+  if (v === 'STRONG_GO' || v === 'GO') return 'rgba(0,229,160,0.07)'
+  if (v === 'WATCH')   return 'rgba(245,166,35,0.07)'
+  if (v === 'WAIT')    return 'rgba(107,127,212,0.07)'
+  return 'rgba(255,77,109,0.07)'
 }
 
 function verdictBorder(v: Verdict): string {
-  return v === 'ENTER' ? 'rgba(0,229,160,0.25)' : v === 'WATCH' ? 'rgba(245,166,35,0.25)' : v === 'WAIT' ? 'rgba(107,127,212,0.25)' : 'rgba(255,77,109,0.25)'
+  if (v === 'STRONG_GO' || v === 'GO') return 'rgba(0,229,160,0.25)'
+  if (v === 'WATCH')   return 'rgba(245,166,35,0.25)'
+  if (v === 'WAIT')    return 'rgba(107,127,212,0.25)'
+  return 'rgba(255,77,109,0.25)'
 }
 
 // SVG confidence ring — matches HTML prototype exactly (64×64, r=26)

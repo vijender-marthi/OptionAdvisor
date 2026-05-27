@@ -37,18 +37,20 @@ function fmtNum(v: unknown, d = 2): string | null {
 }
 
 function verdictTone(verdict: string): Tone {
-  const v = verdict.toUpperCase()
-  if (v === 'ENTER' || v === 'READY' || v === 'STRONG GO') return 'green'
+  const v = verdict.toUpperCase().replace(/ /g, '_')
+  if (v === 'STRONG_GO' || v === 'GO' || v === 'ENTER' || v === 'READY') return 'green'
   if (v === 'WATCH') return 'blue'
   if (v === 'WAIT') return 'orange'
   return 'red'
 }
 
 function verdictLabel(verdict: string): string {
-  const v = verdict.toUpperCase()
-  if (v === 'READY' || v === 'STRONG GO') return 'Enter'
+  const v = verdict.toUpperCase().replace(/ /g, '_')
+  if (v === 'STRONG_GO') return 'Strong Go'
+  if (v === 'GO' || v === 'READY') return 'Go'
   if (v === 'WATCH') return 'Watch'
   if (v === 'WAIT') return 'Wait'
+  if (v === 'NO_EDGE') return 'No Edge'
   return 'Avoid'
 }
 
@@ -78,7 +80,7 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
   const el = (m.exec_levels ?? {}) as Record<string, unknown>
   const spread = unified.spread_entry
 
-  const focusStep: number = unified.verdict === 'avoid' ? 1 : unified.verdict === 'watch' ? 2 : unified.verdict === 'wait' ? 3 : unified.coach ? 6 : 5
+  const focusStep: number = (unified.verdict === 'AVOID' || unified.verdict === 'NO_EDGE') ? 1 : unified.verdict === 'WATCH' ? 2 : unified.verdict === 'WAIT' ? 3 : unified.coach ? 6 : 5
   const focusToneText = tone === 'green' ? 'text-semantic-bullish'
     : tone === 'orange' ? 'text-semantic-warning'
     : tone === 'red' ? 'text-semantic-bearish'
@@ -300,7 +302,7 @@ export default function SwingTradeWalkthrough({ unified, result }: { unified: Un
             </div>
             <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
               <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Confidence</div>
-              <span className="text-sm font-bold font-mono" style={{ color: unified.verdict === 'enter' ? '#00A86B' : unified.verdict === 'avoid' ? '#D0312D' : '#E5E7EB' }}>{unified.confidence}</span>
+              <span className="text-sm font-bold font-mono" style={{ color: (unified.verdict === 'STRONG_GO' || unified.verdict === 'GO') ? '#00A86B' : (unified.verdict === 'AVOID' || unified.verdict === 'NO_EDGE') ? '#D0312D' : '#E5E7EB' }}>{unified.confidence}</span>
             </div>
             <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
               <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">R/R</div>

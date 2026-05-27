@@ -167,6 +167,14 @@ export async function addPortfolioPosition(payload: {
   return data
 }
 
+export async function updatePortfolioPositionApi(payload: {
+  id: string
+  data: Record<string, unknown>
+}): Promise<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>> {
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; portfolio: Array<Record<string, unknown>> }>>('/portfolio/update', payload)
+  return data
+}
+
 export async function closePortfolioPosition(payload: {
   id: string
   realized_pnl?: number

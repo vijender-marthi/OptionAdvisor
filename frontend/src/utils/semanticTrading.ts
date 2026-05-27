@@ -2,6 +2,52 @@ export type SemanticActionType = 'analyze' | 'trade' | 'alert' | 'surface'
 export type MetricChipMetric = 'rsi' | 'relative_strength' | 'volume_ratio' | 'iv_rank' | 'trend'
 export type PositionCategoryKind = 'day' | 'swing' | 'regular'
 
+// ─── Unified Verdict ─────────────────────────────────────────────────────────
+// Single source of truth for verdict display across all cards and pages.
+// All three engines (day, swing, regular) emit one of these six values.
+
+export type UnifiedVerdict = 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
+
+const VERDICT_DISPLAY: Record<UnifiedVerdict, string> = {
+  STRONG_GO: 'Strong Go',
+  GO:        'Go',
+  WATCH:     'Watch',
+  WAIT:      'Wait',
+  AVOID:     'Avoid',
+  NO_EDGE:   'No Edge',
+}
+
+const VERDICT_TONE: Record<UnifiedVerdict, SemanticTone> = {
+  STRONG_GO: 'bullish',
+  GO:        'bullish',
+  WATCH:     'warning',
+  WAIT:      'warning',
+  AVOID:     'bearish',
+  NO_EDGE:   'neutral',
+}
+
+/** Display label for a unified verdict. */
+export function verdictLabel(v: string): string {
+  return VERDICT_DISPLAY[v as UnifiedVerdict] ?? v
+}
+
+/** Badge CSS classes for a unified verdict. */
+export function verdictBadgeClass(v: string): string {
+  const tone = VERDICT_TONE[v as UnifiedVerdict] ?? 'neutral'
+  return badgeToneClass(tone)
+}
+
+/** Normalize any legacy verdict string to a UnifiedVerdict. */
+export function normalizeToUnifiedVerdict(raw: string): UnifiedVerdict {
+  const v = String(raw || '').trim().toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
+  if (v === 'STRONG_GO')                          return 'STRONG_GO'
+  if (['GO', 'READY', 'ENTER', 'TRADE'].includes(v)) return 'GO'
+  if (v === 'WATCH')                              return 'WATCH'
+  if (v === 'WAIT')                               return 'WAIT'
+  if (['AVOID', 'NO_GO', 'NO_TRADE'].includes(v)) return 'AVOID'
+  return 'NO_EDGE'
+}
+
 type SemanticTone =
   | 'bullish'
   | 'bearish'

@@ -2,6 +2,14 @@ import { Info } from 'lucide-react'
 import type { UnifiedAnalysis } from '../api/client'
 
 const VERDICT_BG: Record<string, string> = {
+  // Unified verdict enum (new)
+  STRONG_GO: 'rgba(0,168,107,0.10)',
+  GO:        'rgba(0,168,107,0.06)',
+  WATCH:     'rgba(212,160,23,0.06)',
+  WAIT:      'rgba(107,114,128,0.06)',
+  AVOID:     'rgba(208,49,45,0.06)',
+  NO_EDGE:   'rgba(107,114,128,0.04)',
+  // Legacy lowercase (kept for backward compat)
   enter: 'rgba(0,168,107,0.06)',
   watch: 'rgba(212,160,23,0.06)',
   wait:  'rgba(107,114,128,0.06)',
@@ -44,14 +52,15 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   // Engine verdict overrides: when the engine says GO/STRONG GO, respect it.
   const setupScore = displayScore
   const signalScore = sq.score
-  const rawVerdict = (analysis.verdict_raw || '').toUpperCase()
+  const rawVerdict = (analysis.verdict || analysis.verdict_raw || '').toUpperCase().replace(/ /g, '_')
+  const isGo = rawVerdict === 'STRONG_GO' || rawVerdict === 'GO'
   let statusText: string
   let statusColor: string
 
-  if (rawVerdict === 'STRONG GO') {
+  if (rawVerdict === 'STRONG_GO') {
     statusText = 'Entry conditions met — ready to act'
     statusColor = '#00A86B'
-  } else if (rawVerdict === 'GO' && setupScore >= 65) {
+  } else if (isGo && setupScore >= 65) {
     statusText = 'Entry conditions met — ready to act'
     statusColor = '#00A86B'
   } else if (setupScore >= 65 && signalScore >= 7.0) {
@@ -89,13 +98,13 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
         <div className="uv-reason" style={{ fontSize: 12, color: C.textSec, lineHeight: 1.5, marginBottom: 10 }}>
           {(() => {
             if (!analysis.entry_price) {
-              if (rawVerdict === 'STRONG GO' || rawVerdict === 'GO') {
-                return `Engine verdict is ${rawVerdict} — setup conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
+              if (isGo) {
+                return `Engine verdict is ${rawVerdict.replace(/_/g, ' ')} — setup conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
               }
               if (setupScore >= 65 && signalScore >= 7.0) {
                 return `Setup is building. Setup score ${setupScore} with signal quality ${signalScore}/10. Conditions are developing — waiting for confirmation trigger before committing.`
               }
-              return `Signal quality ${sq.label.toLowerCase()} on a ${analysis.verdict === 'enter' ? 'developing' : 'forming'} setup. Setup score is ${setupScore} — structural conditions are building but entry confirmation is not yet met. Wait for pullback hold or breakout with volume before acting.`
+              return `Signal quality ${sq.label.toLowerCase()} on a ${isGo ? 'developing' : 'forming'} setup. Setup score is ${setupScore} — structural conditions are building but entry confirmation is not yet met. Wait for pullback hold or breakout with volume before acting.`
             }
             return analysis.reason || 'Setup conditions are being evaluated.'
           })()}

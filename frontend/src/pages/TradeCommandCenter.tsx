@@ -1,54 +1,25 @@
 import axios from 'axios'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle,
-  ArrowRight,
-  BarChart3,
-  BellRing,
-  BrainCircuit,
-  BriefcaseBusiness,
   ChevronDown,
-  ChevronUp,
-  Clock,
-  LineChart,
   RefreshCw,
-  ShieldAlert,
-  TrendingUp,
-  LayoutDashboard,
-  LayoutGrid,
-  Gauge,
   Zap,
+  TrendingUp,
+  Clock,
+  ShieldAlert,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import { fetchMarketPosition, fetchTradeCommandCenter } from '../api/commandCenter'
 import type { MarketPositionData } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES, getEngineRoute, routeForEngine, getDetailsRoute } from '../routing/routes'
-import GaugeMeter from '../components/GaugeMeter'
-import SignalRing from '../components/SignalRing'
-import SparklineCard from '../components/SparklineCard'
-import RiskGauge from '../components/RiskGauge'
-import HeatmapWidget from '../components/HeatmapWidget'
-import CoachSummaryCard from '../components/CoachSummaryCard'
-import MarketIntelligenceStrip from '../components/MarketIntelligenceStrip'
-import ReserveSignalCard from '../components/ReserveSignalCard'
+import { ROUTES, getDetailsRoute } from '../routing/routes'
 import type {
   ApiEnvelope,
   OverallDecision,
-  TradeCommandCenterActivity,
-  TradeCommandCenterConflict,
   TradeCommandCenterEngine,
   TradeCommandCenterPayload,
   TradeCommandCenterRecommendation,
+  TradeCommandCenterConflict,
 } from '../types/commandCenter'
 
 function axiosErrorMessage(err: unknown): string {
@@ -673,6 +644,102 @@ export default function TradeCommandCenter() {
     setNotice('info', `Alert Center opened. Custom alert creation for ${ticker} is not wired yet.`)
   }
 
+  // ── Unified verdict helpers ──────────────────────────────────────────────
+  function recVerdict(rec: TradeCommandCenterRecommendation): string {
+    if (rec.verdict) return rec.verdict
+    const fd = String(rec.final_decision || rec.signal || '').toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
+    if (fd === 'STRONG_GO' || fd === 'STRONG GO') return 'STRONG_GO'
+    if (fd === 'READY' || fd === 'TRADE' || fd === 'GO') return 'GO'
+    if (fd === 'WATCH') return 'WATCH'
+    if (fd === 'WAIT') return 'WAIT'
+    if (fd === 'AVOID' || fd === 'EXIT' || fd === 'NO_EDGE') return 'AVOID'
+    return 'NO_EDGE'
+  }
+
+  function verdictRank(v: string): number {
+    if (v === 'STRONG_GO') return 5
+    if (v === 'GO')        return 4
+    if (v === 'WATCH')     return 3
+    if (v === 'WAIT')      return 2
+    if (v === 'AVOID')     return 1
+    return 0
+  }
+
+  function verdictBadge(v: string): { label: string; cls: string } {
+    if (v === 'STRONG_GO') return { label: 'Strong Go', cls: 'bg-emerald-500 text-white' }
+    if (v === 'GO')        return { label: 'Go',         cls: 'bg-emerald-400/20 text-emerald-300 border border-emerald-500/40' }
+    if (v === 'WATCH')     return { label: 'Watch',      cls: 'bg-amber-400/15 text-amber-300 border border-amber-500/40' }
+    if (v === 'WAIT')      return { label: 'Wait',       cls: 'bg-slate-700/60 text-slate-300 border border-slate-600/40' }
+    if (v === 'AVOID')     return { label: 'Avoid',      cls: 'bg-rose-500/15 text-rose-300 border border-rose-600/40' }
+    return                         { label: 'No Edge',   cls: 'bg-slate-800/60 text-slate-500 border border-slate-700/40' }
+  }
+
+  function borderAccent(v: string): string {
+    if (v === 'STRONG_GO') return 'border-l-emerald-500'
+    if (v === 'GO')        return 'border-l-emerald-400'
+    if (v === 'WATCH')     return 'border-l-amber-400'
+    if (v === 'WAIT')      return 'border-l-slate-500'
+    return                        'border-l-rose-500'
+  }
+
+  function engineAccent(eng: string): string {
+    if (eng === 'day')     return 'border-orange-500/20 hover:border-orange-500/40'
+    if (eng === 'swing')   return 'border-violet-500/20 hover:border-violet-500/40'
+    return                        'border-teal-500/20 hover:border-teal-500/40'
+  }
+
+  function engineChip(eng: string): string {
+    if (eng === 'day')   return 'border-orange-500/30 text-orange-400 bg-orange-950/20'
+    if (eng === 'swing') return 'border-violet-500/30 text-violet-400 bg-violet-950/20'
+    return                      'border-teal-500/30 text-teal-400 bg-teal-950/20'
+  }
+
+  function navForRec(rec: TradeCommandCenterRecommendation) {
+    const eng = (rec.engine_type || '').toLowerCase()
+    const strat = (rec.strategy || '').toLowerCase()
+    if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
+      return `/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`
+    if (eng === 'day') return `/day-trade?ticker=${encodeURIComponent(rec.ticker)}`
+    return getDetailsRoute(eng, rec.ticker)
+  }
+
+  // ── Sorted trade lists ────────────────────────────────────────────────────
+  const sortedRecs = useMemo(() =>
+    [...recommendations].sort((a, b) => {
+      const vDiff = verdictRank(recVerdict(b)) - verdictRank(recVerdict(a))
+      if (vDiff !== 0) return vDiff
+      return ((b.display_confidence ?? 0) - (a.display_confidence ?? 0))
+    }),
+    [recommendations] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  // Top pick per engine (best verdict then confidence)
+  const topByEngine = useMemo(() => {
+    const result: Record<string, TradeCommandCenterRecommendation | undefined> = {}
+    for (const rec of sortedRecs) {
+      const eng = (rec.engine_type || '').toLowerCase()
+      if (!result[eng]) result[eng] = rec
+    }
+    return result
+  }, [sortedRecs])
+
+  const readyNow = sortedRecs.filter(r => {
+    const v = recVerdict(r)
+    return v === 'STRONG_GO' || v === 'GO'
+  })
+
+  const highConfWatch = sortedRecs.filter(r => {
+    const v = recVerdict(r)
+    const conf = r.display_confidence ?? (typeof r.confidence === 'number' ? r.confidence : 0)
+    return v === 'WATCH' && conf >= 65
+  })
+
+  const lowSignals = sortedRecs.filter(r => {
+    const v = recVerdict(r)
+    const conf = r.display_confidence ?? (typeof r.confidence === 'number' ? r.confidence : 0)
+    return v === 'WAIT' || (v === 'WATCH' && conf < 65)
+  })
+
   const noticeClass =
     actionNotice?.tone === 'success'
       ? 'border-emerald-700/40 bg-emerald-950/30 text-emerald-200'
@@ -681,26 +748,32 @@ export default function TradeCommandCenter() {
         : 'border-sky-700/40 bg-sky-950/30 text-sky-200'
 
   return (
-    <div className="trade-command-center-page oa-cc-page mx-auto min-h-screen max-w-5xl space-y-4 px-4 pt-4 pb-28 md:px-6 md:pt-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 flex items-center gap-3">
+    <div className="mx-auto min-h-screen max-w-4xl space-y-5 px-4 pt-4 pb-28 md:px-6 md:pt-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center shrink-0">
-            <LayoutDashboard size={16} className="text-violet-400" />
+            <Zap size={15} className="text-violet-400" />
           </div>
-          <h1 className="tcc-hero-title text-lg font-bold tracking-tight text-heading">Trade Command Center</h1>
+          <div className="min-w-0">
+            <h1 className="text-base font-bold tracking-tight text-white leading-tight">Trade Command Center</h1>
+            <p className="text-[11px] text-slate-500 leading-tight">What to trade today</p>
+          </div>
         </div>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="btn btn-outline h-8 w-8 rounded-lg"
-          aria-label="Refresh command center data"
+          className="btn btn-outline h-8 w-8 rounded-lg shrink-0"
+          aria-label="Refresh"
           title={loading ? 'Loading…' : 'Refresh'}
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
+      {/* ── Notice ── */}
       {actionNotice ? (
         <div className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${noticeClass}`}>
           <div className="flex items-start justify-between gap-3">
@@ -712,981 +785,349 @@ export default function TradeCommandCenter() {
         </div>
       ) : null}
 
+      {/* ── Loading / Errors ── */}
       {loading && !env ? (
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-6 text-sm text-slate-500">
+        <div className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-slate-900 px-4 py-6 text-sm text-slate-500">
           <RefreshCw size={16} className="animate-spin text-violet-400" />
-          Loading Trade Command Center…
+          Loading…
         </div>
       ) : null}
+      {fetchError ? <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{fetchError}</div> : null}
+      {env?.error ? <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{(env.error as { message?: string }).message ?? 'Error'}</div> : null}
 
-      {fetchError ? (
-        <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{fetchError}</div>
-      ) : null}
-
-      {env?.error ? (
-        <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-          {(env.error as { message?: string }).message ?? 'Error'}
-        </div>
-      ) : null}
-
-      {!(loading && !env && !fetchError) && payload ? (
+      {payload ? (
         <>
-          {/* ═══ MARKET CONTEXT STRIP ═══ */}
-          <section className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2">
+          {/* ── Market Pulse Strip ── */}
+          <section className="rounded-xl border border-white/[0.08] bg-slate-900 px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
               <span className="font-semibold text-slate-500">SPY</span>
-              <span className={`font-bold ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-500' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-500' : 'text-slate-300'}`}>{String(market.spy_trend ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">|</span>
+              <span className={`font-bold ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>
+                {String(market.spy_trend ?? '—').toUpperCase()}
+              </span>
+              <span className="text-slate-700">·</span>
               <span className="font-semibold text-slate-500">QQQ</span>
-              <span className={`font-bold ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-500' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-500' : 'text-slate-300'}`}>{String(market.qqq_trend ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">|</span>
+              <span className={`font-bold ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>
+                {String(market.qqq_trend ?? '—').toUpperCase()}
+              </span>
+              <span className="text-slate-700">·</span>
               <span className="font-semibold text-slate-500">VIX</span>
-              <span className={`font-bold ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-500' : String(market.vix_risk ?? '').toLowerCase().includes('low') ? 'text-emerald-500' : 'text-amber-500'}`}>{String(market.vix_risk ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">|</span>
+              <span className={`font-bold ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-400' : 'text-emerald-400'}`}>
+                {String(market.vix_risk ?? '—').toUpperCase()}
+              </span>
+              <span className="text-slate-700">·</span>
               <span className="font-semibold text-slate-500">Regime</span>
-              <span className="font-bold text-violet-500">{String(market.market_mode ?? '—').toUpperCase()}</span>
-              <span className="text-slate-600">|</span>
+              <span className="font-bold text-violet-400">{String(market.market_mode ?? '—').toUpperCase()}</span>
+              <span className="text-slate-700">·</span>
               <span className="font-semibold text-slate-500">Best</span>
               <span className="font-bold text-slate-200">{String(market.best_style_today ?? '—')}</span>
-              <span className="text-slate-600">|</span>
-              <span className="font-semibold text-slate-500">Confidence</span>
-              <span className="font-bold text-slate-200">{confidenceScore}%</span>
-              <span className="text-slate-600">|</span>
-              <span className="font-semibold text-slate-500">Ready</span>
-              <span className="font-bold text-emerald-500">{actionable.length}</span>
-              {env?.fetched_at ? <span className="ml-auto text-[10px] text-gray-600">{new Date(env.fetched_at).toLocaleTimeString()}</span> : null}
+              <span className="text-slate-700">·</span>
+              <span className="font-semibold text-emerald-500">{readyNow.length} ready</span>
+              <span className="font-semibold text-amber-500">{highConfWatch.length} watching</span>
+              {env?.fetched_at ? (
+                <span className="ml-auto font-mono text-[10px] text-slate-600 flex items-center gap-1">
+                  <Clock size={9} />
+                  {new Date(env.fetched_at).toLocaleTimeString()}
+                </span>
+              ) : null}
             </div>
           </section>
 
-          {/* ═══ OVERALL DECISION ═══ */}
-          {payload.overall_decision ? (
-            <OverallDecisionBanner od={payload.overall_decision} />
-          ) : null}
+          {/* ── Today's Overall Verdict ── */}
+          {payload.overall_decision && (() => {
+            const od = payload.overall_decision as OverallDecision
+            const v = String(od.verdict || '').toUpperCase().replace(/ /g, '_')
+            const { label: vLabel, cls: vCls } = verdictBadge(v)
+            const bannerBg =
+              v === 'STRONG_GO' ? 'border-emerald-500/40 bg-emerald-950/20' :
+              v === 'GO'        ? 'border-sky-500/30 bg-sky-950/15' :
+              v === 'WATCH'     ? 'border-amber-500/30 bg-amber-950/15' :
+                                   'border-slate-700/40 bg-slate-900/40'
+            const reasonDot =
+              v === 'STRONG_GO' ? 'bg-emerald-400' :
+              v === 'GO'        ? 'bg-sky-400' :
+              v === 'WATCH'     ? 'bg-amber-400' : 'bg-slate-500'
 
-          {/* ═══ ACTIVE TRADES (READY + WATCH signals, sorted by confidence) ═══ */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <LayoutGrid size={18} className="text-emerald-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Active Trades</h2>
-              <span className="text-xs text-slate-500">— sorted by confidence</span>
-            </div>
-            {(() => {
-              const active = recommendations
-                .filter(r => ['READY','TRADE','WATCH'].includes(String(r.final_decision ?? r.signal ?? '').toUpperCase()))
-                .sort((a, b) => ((b.display_confidence ?? 0) - (a.display_confidence ?? 0)))
-              const primary = active.slice(0, 6)
-              const secondary = active.slice(6)
-              return (
-                <>
-                  {/* Primary cards */}
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {primary.length === 0 ? (
-                      <div className="col-span-full rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                        No active setups right now
-                      </div>
-                    ) : (
-                      primary.map(rec => {
-                        const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
-                        const isGo = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY' || decision === 'TRADE'
-                        const isWatch = decision === 'WATCH'
-                        const badgeCls = isGo
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                        const badgeLabel = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY' || decision === 'TRADE'
-                          ? decision
-                          : rec.signal_quality || decision
-                        const isDay = rec.engine_type?.toLowerCase() === 'day'
-                        const isSwing = rec.engine_type?.toLowerCase() === 'swing'
-                        const engAccent = isDay ? 'border-orange-500/20 hover:border-orange-500/40' : isSwing ? 'border-violet-500/20 hover:border-violet-500/40' : 'border-sky-500/20 hover:border-sky-500/40'
-                        const borderLeftCls = isGo ? 'border-l-emerald-500' : isWatch ? 'border-l-amber-500' : 'border-l-sky-500'
-                        const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
-
-                        // Parse numeric values for R/R bar
-                        const entryVal = rec.entry_zone ? parseFloat(rec.entry_zone.replace(/[^0-9.-]/g, '')) : NaN
-                        const targetVal = rec.target ? parseFloat(rec.target.replace(/[^0-9.-]/g, '')) : NaN
-                        const stopVal = rec.stop_loss ? parseFloat(rec.stop_loss.replace(/[^0-9.-]/g, '')) : NaN
-                        const hasRR = !isNaN(entryVal) && !isNaN(targetVal) && !isNaN(stopVal) && entryVal > 0 && stopVal > 0 && targetVal !== stopVal
-                        const rrRatio = hasRR ? Math.abs(targetVal - entryVal) / Math.abs(entryVal - stopVal) : 0
-                        const rrBarPct = hasRR ? Math.min(100, (rrRatio / 3) * 100) : 0
-                        const rrColor = rrRatio >= 2 ? '#22c55e' : rrRatio >= 1 ? '#f59e0b' : '#ef4444'
-
-                        // Price change display
-                        const chgPct = rec.price_change_pct
-                        const priceChangeDisplay = chgPct != null
-                          ? `${chgPct >= 0 ? '▲' : '▼'} ${Math.abs(chgPct).toFixed(1)}%`
-                          : null
-                        const chgColor = chgPct != null
-                          ? chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'
-                          : 'text-slate-500'
-
-                        return (
-                          <button
-                            key={rec.id}
-                            type="button"
-                            onClick={() => {
-                                const eng = (rec.engine_type || '').toLowerCase()
-                              const strat = (rec.strategy || '').toLowerCase()
-                              if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
-                                navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else navigate(getDetailsRoute(eng, rec.ticker))
-                            }}
-                            className={`rounded-xl border ${engAccent} border-l-4 ${borderLeftCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
-                          >
-                            {/* Row 1: Ticker + signal badge + engine badge */}
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="font-mono text-base font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${isDay
-                                  ? 'border-orange-500/30 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20'
-                                  : 'border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20'}`}>
-                                  {isDay ? 'DAY' : 'SWING'}
-                                </span>
-                                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{badgeLabel}</span>
-                              </div>
-                            </div>
-
-                            {/* Row 2: Price change + strategy */}
-                            <div className="flex items-center gap-2 mb-2.5">
-                              {priceChangeDisplay && (
-                                <span className={`text-[13px] font-bold font-mono ${chgColor}`}>
-                                  {priceChangeDisplay}
-                                </span>
-                              )}
-                              {rec.last_price != null && (
-                                <span className="font-mono text-[12px] text-slate-500">${rec.last_price.toFixed(2)}</span>
-                              )}
-                              <span className="text-[10px] text-slate-500 ml-auto">{rec.strategy || rec.direction || ''}</span>
-                            </div>
-
-                            {/* Divider */}
-                            <div className="border-t border-slate-100 dark:border-white/[0.06] mb-2" />
-
-                            {/* Row 3: Entry / Target / Stop */}
-                            <div className="grid grid-cols-3 gap-1 text-[11px] mb-2">
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Entry</div>
-                                <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">{rec.entry_zone || '—'}</div>
-                              </div>
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Target</div>
-                                <div className="font-mono font-semibold text-emerald-500">{rec.target || '—'}</div>
-                              </div>
-                              <div>
-                                <div className="text-slate-500 text-[9px] uppercase tracking-wide">Stop</div>
-                                <div className="font-mono font-semibold text-red-500">{rec.stop_loss || '—'}</div>
-                              </div>
-                            </div>
-
-                            {/* Row 4: R/R bar + confidence */}
-                            <div className="flex items-center gap-3">
-                              {hasRR && (
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between text-[10px] mb-1">
-                                    <span className="text-slate-500">R/R</span>
-                                    <span className="font-mono font-bold" style={{ color: rrColor }}>{rrRatio.toFixed(1)}</span>
-                                  </div>
-                                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-700/30">
-                                    <div className="h-full rounded-full transition-all" style={{ width: `${rrBarPct}%`, backgroundColor: rrColor, opacity: 0.7 }} />
-                                  </div>
-                                </div>
-                              )}
-                              {confPct > 0 && (
-                                <div className="text-right shrink-0">
-                                  <div className="text-[9px] text-slate-500 uppercase">Conf</div>
-                                  <div className={`font-mono text-sm font-bold ${confPct >= 70 ? 'text-emerald-500' : confPct >= 50 ? 'text-amber-500' : 'text-slate-400'}`}>
-                                    {confPct}%
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
-
-                  {/* Secondary / Watchlist — collapsed */}
-                  {secondary.length > 0 && (
-                    <details className="group">
-                      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2 text-xs text-slate-500 select-none hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          Monitoring — {secondary.length} lower-conviction signals
-                        </span>
-                        <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-                      </summary>
-                      <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
-                        {secondary.map(rec => {
-                          const decision = String(rec.final_decision ?? rec.signal ?? '').toUpperCase()
-                          const badgeCls = decision === 'STRONG GO' || decision === 'GO' || decision === 'READY'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                          return (
-                            <button
-                              key={rec.id}
-                              type="button"
-                              onClick={() => {
-                              const eng = (rec.engine_type || '').toLowerCase()
-                                const strat = (rec.strategy || '').toLowerCase()
-                                if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
-                                  navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                                else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                                else navigate(getDetailsRoute(eng, rec.ticker))
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                            >
-                              <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                              <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${badgeCls}`}>{decision !== 'WATCH' ? decision : (rec.signal_quality || decision)}</span>
-                              <span className="text-slate-400 text-[10px]">{rec.strategy || rec.direction || ''}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </details>
+            return (
+              <section className={`rounded-2xl border p-4 ${bannerBg}`}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`rounded-lg px-3 py-1 text-sm font-black uppercase tracking-wide ${vCls}`}>{vLabel}</span>
+                  <span className="text-sm font-semibold text-slate-200">{od.label}</span>
+                  <span className="font-mono text-xs text-slate-500">{od.confidence}% conf.</span>
+                  {od.engines_agreeing.length > 0 && (
+                    <div className="flex items-center gap-1 ml-auto">
+                      <span className="text-[10px] text-slate-600 uppercase tracking-wide">Aligned:</span>
+                      {od.engines_agreeing.map(e => (
+                        <span key={e} className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${engineChip(e)}`}>{e}</span>
+                      ))}
+                    </div>
                   )}
-                </>
-              )
-            })()}
-          </section>
-
-           {/* ═══ ENGINES — Engine Health (collapsed) ═══ */}
-          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
-              <BarChart3 size={16} className="text-teal-400" />
-              <span className="text-sm font-semibold text-slate-900 dark:text-white">Engine Details &amp; Trust Scores</span>
-              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-            </summary>
-            <div className="px-5 pb-5 space-y-4">
-            <div className="border-t border-slate-100 dark:border-white/[0.05] mb-4" />
-            <div className="flex flex-col gap-2">
-              {/* Locked-engine notices for engines this role can't access */}
-              {!canDay && (
-                <div className="flex items-center gap-3 rounded-xl border border-dashed border-orange-700/30 bg-orange-950/10 px-4 py-3 text-sm text-orange-400/70">
-                  <Zap size={15} className="shrink-0 opacity-50" />
-                  <div>
-                    <span className="font-semibold">Day Trade Engine</span>
-                    <span className="ml-2 text-[11px] text-orange-500/60 uppercase tracking-wide">— Administrator access required</span>
-                  </div>
                 </div>
-              )}
-              {!canSwing && (
-                <div className="flex items-center gap-3 rounded-xl border border-dashed border-violet-700/30 bg-violet-950/10 px-4 py-3 text-sm text-violet-400/70">
-                  <TrendingUp size={15} className="shrink-0 opacity-50" />
-                  <div>
-                    <span className="font-semibold">Swing Trade Engine</span>
-                    <span className="ml-2 text-[11px] text-violet-500/60 uppercase tracking-wide">— Swing Trader plan required</span>
-                  </div>
+                <div className="mt-2.5 flex items-start gap-2">
+                  <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${reasonDot}`} />
+                  <p className="text-xs leading-relaxed text-slate-400">{od.reason}</p>
                 </div>
-              )}
-              {engines.length === 0 && canDay && canSwing ? (
-                <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                  No engine data loaded — check that the backend is running and the last scan completed successfully.
-                </div>
-              ) : (
-                engines.map((card: TradeCommandCenterEngine) => {
-                   const topTicker = String(card.top_recommendation?.ticker || '').toUpperCase()
-                   const confPct = confidenceNumber(card.confidence)
-                   const confColor = readinessColor(confPct)
-                   const sigCount = summaryNumber(card.signal_count)
-                   const engKey = String(card.engine_type || '').toLowerCase()
-                   const isExpanded = expandedEngines.has(engKey)
-                   const detailRoute = topTicker ? routeForEngine(engKey, topTicker) : null
+              </section>
+            )
+          })()}
 
-                   const engineAccent = engKey === 'day' ? 'text-orange-500 border-orange-500/30 bg-orange-50 dark:bg-orange-950/20' :
-                     engKey === 'swing' ? 'text-violet-500 border-violet-500/30 bg-violet-50 dark:bg-violet-950/20' :
-                     'text-teal-500 border-teal-500/30 bg-teal-50 dark:bg-teal-950/20'
-                   const buttonAccent = engKey === 'day' ? 'bg-orange-600 hover:bg-orange-500' :
-                     engKey === 'swing' ? 'bg-violet-600 hover:bg-violet-500' :
-                     'bg-teal-600 hover:bg-teal-500'
+          {/* ── Engine Overview: Best Pick Per Engine ── */}
+          {(() => {
+            const engineOrder = ['day', 'swing', 'regular'].filter(e => {
+              if (e === 'day')   return canDay
+              if (e === 'swing') return canSwing
+              return true
+            })
+            if (engineOrder.length === 0) return null
+            const gridCols = engineOrder.length === 3 ? 'grid-cols-3' : engineOrder.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
+            return (
+              <div className={`grid gap-3 ${gridCols}`}>
+                {engineOrder.map(engKey => {
+                  const top = topByEngine[engKey]
+                  const engData = engines.find(e => String(e.engine_type || '').toLowerCase() === engKey)
+                  const label = engKey === 'day' ? 'Day Trade' : engKey === 'swing' ? 'Swing Trade' : 'Options'
+                  const timeframe = engKey === 'day' ? 'Intraday' : engKey === 'swing' ? '5–21 days' : 'Multi-leg'
+                  const chipCls = engineChip(engKey)
+                  const engConf = summaryNumber(engData?.confidence) || 0
 
-                   return (
-                      <div key={engKey}>
-                         <button type="button" onClick={() => setExpandedEngines(prev => { const next = new Set(prev); isExpanded ? next.delete(engKey) : next.add(engKey); return next })} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs sm:text-sm font-bold ${engKey === 'day' ? 'text-orange-600 dark:text-orange-400' : engKey === 'swing' ? 'text-violet-600 dark:text-violet-400' : 'text-teal-600 dark:text-teal-400'}`}>{String(card.engine_type || '').toUpperCase()}</span>
-                            <span className="text-[9px] sm:text-[10px] text-slate-500 whitespace-nowrap">{card.timeframe || '—'}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-1.5 w-12 sm:w-16 rounded-full bg-slate-100 dark:bg-slate-700/30">
-                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${confPct}%`, backgroundColor: confColor, opacity: 0.7 }} />
-                            </div>
-                            <span className="text-[10px] sm:text-[11px] font-bold text-slate-900 dark:text-white whitespace-nowrap">{(card as any).display_confidence ?? confPct}%</span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1 min-w-0">
-                            <span className="text-[10px] sm:text-[11px] text-slate-400 whitespace-nowrap">{card.market_bias || '—'}</span>
-                            <RiskBadge risk={String(card.risk_level || 'Unknown')} />
-                            <SignalQualityBadge quality={card.signal_quality || ''} />
-                            <ExecTimingBadge timing={card.execution_timing || ''} />
-                            <RiskCatBadge category={card.risk_category || ''} />
-                            <span className="text-[10px] sm:text-[11px] text-slate-500 whitespace-nowrap">{sigCount} setup{sigCount !== 1 ? 's' : ''}</span>
-                          </div>
-                          {topTicker ? (
-                            <span className="ml-auto shrink-0 text-[10px] sm:text-xs font-semibold text-violet-600 dark:text-violet-300">{topTicker}</span>
-                          ) : null}
-                          <span className="shrink-0 text-slate-400 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                            <ChevronDown size={14} />
-                          </span>
-                        </button>
-                        {isExpanded && (
-                          <div className={`rounded-b-xl border-x border-b px-4 pb-4 pt-2 -mt-1 space-y-3 ${engineAccent}`}>
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                              {card.setup_quality ? (
-                                <div><span className="text-slate-500">Setup Quality</span><span className={`ml-2 font-medium ${qualityColor(card.setup_quality)}`}>{card.setup_quality}</span></div>
-                              ) : null}
-                              {card.execution_readiness ? (
-                                <div><span className="text-slate-500">Execution Readiness</span><span className={`ml-2 font-medium ${qualityColor(card.execution_readiness)}`}>{card.execution_readiness}</span></div>
-                              ) : null}
-                              {card.final_decision ? (
-                                <div><span className="text-slate-500">Final Decision</span><span className={`ml-2 font-medium ${qualityColor(card.final_decision)}`}>{card.final_decision}</span></div>
-                              ) : null}
-                              {card.risk_state ? (
-                                <div><span className="text-slate-500">Risk State</span><span className={`ml-2 font-medium ${qualityColor(card.risk_state)}`}>{card.risk_state}</span></div>
-                              ) : null}
-                            </div>
-                            {card.reason || card.summary ? (
-                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{card.reason || card.summary}</p>
-                            ) : null}
-                            {card.risk_reason ? (
-                              <p className="text-xs text-amber-600/80 dark:text-amber-300/70 italic">{card.risk_reason}</p>
-                            ) : null}
-                            {card.missing_confirmations.length > 0 ? (
-                              <p className="text-[10px] text-amber-700 dark:text-amber-200/70 font-medium">Waiting: {card.missing_confirmations.join(' · ')}</p>
-                            ) : null}
-                            {card.explanation && Object.keys(card.explanation).length > 0 ? (
-                              <div className="rounded-lg border border-slate-200 dark:border-white/[0.06] bg-white/50 dark:bg-slate-800/40 px-3 py-2 space-y-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">AI Explanation</span>
-                                {Object.entries(card.explanation).map(([k, v]) => (
-                                  <p key={k} className="text-xs text-slate-700 dark:text-slate-300"><span className="font-medium capitalize">{k.replace(/_/g, ' ')}:</span> {v}</p>
-                                ))}
-                              </div>
-                            ) : null}
-                            {detailRoute && canAccessPage(engKey === 'day' ? 'day-trade' : engKey === 'swing' ? 'swing-trade' : 'ticker') ? (
-                              <button type="button" onClick={() => navigate(detailRoute)} className={`inline-flex items-center gap-1.5 rounded-lg text-white font-semibold px-3 py-2 text-xs transition-colors ${buttonAccent}`}>
-                                Open {String(card.engine_type || '').toUpperCase()} Engine
-                                <ArrowRight size={14} />
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                   )
-                 })
-              )}
-            </div>
-            </div>
-          </details>
-
-          {/* ═══ ALL SETUPS ═══ */}
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <BriefcaseBusiness size={18} className="text-emerald-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">All Setups</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAllRecommendations(prev => !prev)}
-                className="btn btn-outline gap-2 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide"
-              >
-                {showAllRecommendations ? 'Hide full table' : 'Show all'}
-              </button>
-            </div>
-            <div className="border-t border-slate-100 dark:border-white/[0.05]" />
-
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 py-2.5 text-xs text-slate-500 select-none">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">Filter Setups</span>
-                <ChevronDown size={12} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-              </summary>
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-4 pb-4 pt-3">
-              <label className="text-xs text-slate-500">
-                Engine Type
-                <select value={engine} onChange={e => setEngine(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
-                  <option value="">All</option>
-                  {canDay   && <option value="day">Day</option>}
-                  {canSwing && <option value="swing">Swing</option>}
-                  <option value="regular">Regular</option>
-                </select>
-              </label>
-              <label className="text-xs text-slate-500">
-                Signal
-                <select value={signal} onChange={e => setSignal(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
-                  <option value="">All</option>
-                  <option value="READY">READY</option>
-                  <option value="WATCH">WATCH</option>
-                  <option value="WAIT">WAIT</option>
-                  <option value="AVOID">AVOID</option>
-                  <option value="NO_EDGE">NO_EDGE</option>
-                </select>
-              </label>
-              <label className="text-xs text-slate-500">
-                Direction
-                <select value={direction} onChange={e => setDirection(e.target.value)} className="mt-1 block w-full sm:w-36 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
-                  <option value="">All</option>
-                  <option value="call">Call</option>
-                  <option value="put">Put</option>
-                  <option value="spread">Spread</option>
-                  <option value="stock">Stock</option>
-                </select>
-              </label>
-              <label className="text-xs text-slate-500">
-                Risk
-                <select value={risk} onChange={e => setRisk(e.target.value)} className="mt-1 block w-full sm:w-32 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-slate-900 dark:text-white">
-                  <option value="">All</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
-              </div>
-            </details>
-
-            <div className="grid gap-4 xl:grid-cols-[1.6fr_0.8fr] items-start">
-                <div className="grid gap-2">
-                {actionable.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                    No READY or TRADE signals match the current filters — widen engine/direction filters or wait for next scan cycle.
-                  </div>
-                ) : (
-                  actionable.map(rec => {
-                    const expanded = expandedOpportunityId === rec.id
-                    const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
-                    const recKey = rec.id
+                  if (!top) {
                     return (
-                      <div key={recKey}>
-                        <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
-                            <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                            <EngineBadge engine={rec.engine_type} />
-                            <SignalQualityBadge quality={rec.signal_quality || ''} />
-                            <ExecTimingBadge timing={rec.execution_timing || ''} />
-                            <RiskCatBadge category={rec.risk_category || ''} />
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <div className="text-right">
-                              <div className="text-[10px] uppercase tracking-wide text-slate-500">Signal</div>
-                              <div className="text-xs font-semibold text-slate-900 dark:text-white">{String(rec.display_confidence || rec.confidence || '—')}</div>
-                            </div>
-                            <span className="text-slate-400 transition-transform duration-200" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                              <ChevronDown size={16} />
-                            </span>
-                          </div>
-                        </button>
-                        {expanded && (
-                          <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
-                            <div className="text-sm font-semibold text-violet-700 dark:text-violet-200">{rec.strategy}</div>
-                            <div className="text-xs text-slate-500">{rec.direction} · Expiry {rec.expiry || '—'}</div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Regime Bias</div>
-                                <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.market_bias || '—'}</div>
-                              </div>
-                              <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry Timing</div>
-                                <div className="mt-1"><ExecTimingBadge timing={String(rec.execution_timing || rec.execution_readiness || '—')} /></div>
-                              </div>
-                            </div>
-
-                            {(rec.execution_fields && rec.execution_fields.length > 0) ? (
-                              <div className="flex flex-wrap gap-2 text-sm">
-                                {rec.execution_fields.map((ef: { label: string; value: string }, i: number) => (
-                                  <div key={i} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2 min-w-[100px] flex-1">
-                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">{ef.label}</div>
-                                    <div className="mt-1 text-slate-900 dark:text-slate-100 font-medium">{ef.value}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (rec.entry_zone || rec.target || rec.stop_loss) ? (
-                              <div className="grid grid-cols-3 gap-3 text-sm">
-                                {rec.entry_zone ? (
-                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Entry</div>
-                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.entry_zone}</div>
-                                  </div>
-                                ) : null}
-                                {rec.target ? (
-                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Target</div>
-                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.target}</div>
-                                  </div>
-                                ) : null}
-                                {rec.stop_loss ? (
-                                  <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Stop</div>
-                                    <div className="mt-1 text-slate-900 dark:text-slate-100">{rec.stop_loss}</div>
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-
-                            {rec.explanation?.summary ? (
-                              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{rec.explanation.summary}</p>
-                            ) : (
-                              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</p>
-                            )}
-                            {rec.explanation?.recommended_action ? (
-                              <p className="text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90">{rec.explanation.recommended_action}</p>
-                            ) : (
-                              <p className="text-sm leading-relaxed text-violet-700/90 dark:text-violet-200/90">{rec.recommended_action || rec.action_label || 'Verify entry trigger, stop, and target before sizing in.'}</p>
-                            )}
-                            {rec.risk_reason ? (
-                              <p className="text-xs text-amber-600/80 dark:text-amber-300/70 italic">{rec.risk_reason}</p>
-                            ) : null}
-                            {(rec.engine_type || '').toLowerCase() === 'day' && rec.option_risk_context?.option_execution_warning ? (
-                              <div className="rounded-lg border border-amber-200/70 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/15 dark:text-amber-200/90">
-                                <span className="font-semibold">Option execution:</span> {rec.option_risk_context.option_execution_warning}
-                              </div>
-                            ) : null}
-                            {rec.missing_confirmations && rec.missing_confirmations.length > 0 ? (
-                              <p className={`text-xs ${(rec.engine_type || '').toLowerCase() === 'day' ? 'text-orange-700/90 dark:text-orange-200/90' : 'text-amber-700/90 dark:text-amber-200/90'}`}>
-                                {(rec.engine_type || '').toLowerCase() === 'day'
-                                  ? `WAIT — confirming: ${rec.missing_confirmations.slice(0, 2).join(', ')}${rec.missing_confirmations.length > 2 ? '…' : ''} before entry is valid.`
-                                  : `PENDING — needs: ${rec.missing_confirmations.join(' · ')} to align before acting.`}
-                              </p>
-                            ) : null}
-
-                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-white/[0.05]">
-                              <button type="button" className="btn btn-primary gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleAddToPositions(rec)}>
-                                Add to Positions
-                              </button>
-                              <button type="button" className="btn btn-warning gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => handleCreateAlert(rec.ticker)}>
-                                Create Alert
-                              </button>
-                              <button type="button" className="btn btn-outline gap-2 rounded-lg px-2.5 py-1.5 text-xs" onClick={() => navigate(detailsRoute)}>
-                                View Details
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                      <div key={engKey} className={`rounded-xl border border-l-4 ${engineAccent(engKey)} border-l-slate-700 bg-slate-900 p-4`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${chipCls}`}>{engKey.toUpperCase()}</span>
+                          <span className="text-[10px] text-slate-600">{timeframe}</span>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-600">No setup</div>
+                        <div className="text-[10px] text-slate-700 mt-1">{label} has no actionable signals</div>
                       </div>
                     )
-                  })
-                )}
-              </div>
+                  }
 
-              <div className="sticky top-4 self-start space-y-4">
-                <div className="rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-950/10 border-l-[3px] border-l-rose-500 p-4 md:p-5">
-                  <div className="mb-3 flex items-center gap-2">
-                    <AlertTriangle size={16} className="text-rose-300" />
-                    <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-300">AVOID — High-Risk or Conflicting Tickers</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {avoids.length === 0 ? (
-                      <div className="text-sm text-slate-500">No AVOID signals under current filters — all scanned tickers are WATCH or better.</div>
-                    ) : (
-                      avoids.map(rec => (
-                        <div key={`avoid-${rec.id}`} className="rounded-lg border border-rose-100 dark:border-rose-900/20 bg-white dark:bg-slate-900/80 p-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono font-semibold text-slate-900 dark:text-white">{rec.ticker}</span>
-                            <EngineBadge engine={rec.engine_type} />
-                            <div className="flex items-center gap-1">
-                              <SignalQualityBadge quality={rec.signal_quality || ''} />
-                              <ExecTimingBadge timing={rec.execution_timing || ''} />
-                              <RiskCatBadge category={rec.risk_category || ''} />
+                  const v = recVerdict(top)
+                  const { label: vLabel, cls: vCls } = verdictBadge(v)
+                  const conf = top.display_confidence ?? (typeof top.confidence === 'number' ? top.confidence : 0)
+
+                  return (
+                    <button
+                      key={engKey}
+                      type="button"
+                      onClick={() => navigate(navForRec(top))}
+                      className={`rounded-xl border border-l-4 ${engineAccent(engKey)} ${borderAccent(v)} bg-slate-900 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${chipCls}`}>{engKey.toUpperCase()}</span>
+                          <span className="text-[10px] text-slate-600">{timeframe}</span>
+                        </div>
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${vCls}`}>{vLabel}</span>
+                      </div>
+                      <div className="font-mono text-xl font-bold text-white mb-1">{top.ticker}</div>
+                      <div className="text-[11px] text-slate-500 truncate mb-3">{top.strategy || top.direction || label}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] text-slate-600 uppercase tracking-wide">Confidence</div>
+                        <div className={`font-mono text-sm font-bold ${conf >= 70 ? 'text-emerald-400' : conf >= 50 ? 'text-amber-400' : 'text-slate-500'}`}>{conf}%</div>
+                      </div>
+                      <div className="mt-1.5 h-1 w-full rounded-full bg-slate-800">
+                        <div
+                          className={`h-full rounded-full transition-all ${conf >= 70 ? 'bg-emerald-500' : conf >= 50 ? 'bg-amber-500' : 'bg-slate-600'}`}
+                          style={{ width: `${conf}%` }}
+                        />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
+
+          {/* ── Ready to Act: STRONG_GO + GO ── */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Ready to Act</h2>
+              <span className="ml-2 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400">{readyNow.length}</span>
+              <span className="text-[10px] text-slate-600 ml-1">Strong Go + Go · sorted by confidence</span>
+            </div>
+
+            {readyNow.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/[0.08] px-4 py-8 text-center text-sm text-slate-600">
+                No strong setups right now — check Watch list below
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {readyNow.map(rec => {
+                  const v = recVerdict(rec)
+                  const { label: vLabel, cls: vCls } = verdictBadge(v)
+                  const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+                  const eng = (rec.engine_type || '').toLowerCase()
+                  const chgPct = rec.price_change_pct
+                  const chgColor = chgPct != null ? (chgPct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500'
+
+                  return (
+                    <button
+                      key={rec.id}
+                      type="button"
+                      onClick={() => navigate(navForRec(rec))}
+                      className={`rounded-xl border border-l-4 ${engineAccent(eng)} ${borderAccent(v)} bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                    >
+                      {/* Header row */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-base font-bold text-white">{rec.ticker}</span>
+                          <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChip(eng)}`}>{eng.toUpperCase()}</span>
+                        </div>
+                        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${vCls}`}>{vLabel}</span>
+                      </div>
+
+                      {/* Price + strategy */}
+                      <div className="flex items-center gap-2 mb-2.5">
+                        {chgPct != null && (
+                          <span className={`text-xs font-bold font-mono ${chgColor}`}>
+                            {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
+                          </span>
+                        )}
+                        {rec.last_price != null && (
+                          <span className="font-mono text-[11px] text-slate-500">${rec.last_price.toFixed(2)}</span>
+                        )}
+                        <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
+                      </div>
+
+                      {/* Entry / Target / Stop */}
+                      {(rec.entry_zone || rec.target || rec.stop_loss) && (
+                        <>
+                          <div className="border-t border-white/[0.06] mb-2" />
+                          <div className="grid grid-cols-3 gap-1 text-[11px] mb-2">
+                            <div>
+                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Entry</div>
+                              <div className="font-mono font-semibold text-slate-200">{rec.entry_zone || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Target</div>
+                              <div className="font-mono font-semibold text-emerald-400">{rec.target || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Stop</div>
+                              <div className="font-mono font-semibold text-red-400">{rec.stop_loss || '—'}</div>
                             </div>
                           </div>
-                          <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rec.reason || 'No reason from API.'}</div>
-                          <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">Action: {rec.recommended_action || rec.action_label || 'Stand aside — re-evaluate if signal flips to WATCH above key resistance.'}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+                        </>
+                      )}
 
-            {showAllRecommendations ? (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900">
-                <table className="min-w-[1080px] w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-white/[0.05] text-left text-[11px] uppercase tracking-wide text-slate-500">
-                      <th className="px-3 py-2">Ticker</th>
-                      <th className="px-3 py-2">Engine</th>
-                      <th className="px-3 py-2">Setup</th>
-                      <th className="px-3 py-2">Timing</th>
-                      <th className="px-3 py-2">Risk</th>
-                      <th className="px-3 py-2">Direction</th>
-                      <th className="px-3 py-2">Strategy</th>
-                      <th className="px-3 py-2">Expiry</th>
-                      <th className="px-3 py-2">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recommendations.map(rec => (
-                      <tr key={`table-${rec.id}`} className="border-b border-slate-100 dark:border-white/[0.05] align-top">
-                        <td className="px-3 py-3 font-semibold text-slate-900 dark:text-white">{rec.ticker}</td>
-                        <td className="px-3 py-3"><EngineBadge engine={rec.engine_type} /></td>
-                        <td className="px-3 py-3"><SignalQualityBadge quality={rec.signal_quality || rec.final_decision || ''} /></td>
-                        <td className="px-3 py-3"><ExecTimingBadge timing={rec.execution_timing || rec.execution_readiness || ''} /></td>
-                        <td className="px-3 py-3"><RiskCatBadge category={rec.risk_category || rec.risk_state || ''} /></td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.direction || '—'}</td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.strategy || '—'}</td>
-                        <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{rec.expiry || '—'}</td>
-                        <td className="max-w-sm px-3 py-3 text-slate-500">{rec.reason || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      {/* Confidence bar */}
+                      <div className="flex items-center gap-2 mt-auto">
+                        <div className="flex-1">
+                          <div className="h-1 w-full rounded-full bg-slate-800">
+                            <div
+                              className={`h-full rounded-full ${conf >= 70 ? 'bg-emerald-500' : 'bg-sky-500'}`}
+                              style={{ width: `${conf}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className={`font-mono text-xs font-bold ${conf >= 70 ? 'text-emerald-400' : 'text-sky-400'}`}>{conf}%</span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
-            ) : null}
+            )}
           </section>
 
-          {(canDay || canSwing) && <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <ShieldAlert size={18} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Cross-Engine Signal Conflicts — Do Not Trade Until Resolved</h2>
-            </div>
-            <div className="grid gap-2">
-              {conflicts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-8 text-center text-sm text-slate-500">
-                  No cross-engine conflicts right now — all active engines are in signal agreement.
-                </div>
-              ) : (
-                conflicts.map(conflict => {
-                  const conflictKey = conflict.id
-                  const conflictExpanded = expandedConflictId === conflictKey
+          {/* ── Watch: high-confidence WATCH setups ── */}
+          {highConfWatch.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Watch — Entry Developing</h2>
+                <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">{highConfWatch.length}</span>
+                <span className="text-[10px] text-slate-600 ml-1">≥ 65% confidence · not yet triggered</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {highConfWatch.map(rec => {
+                  const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+                  const eng = (rec.engine_type || '').toLowerCase()
+                  const chgPct = rec.price_change_pct
+                  const chgColor = chgPct != null ? (chgPct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500'
+                  const missingStr = (rec.missing_confirmations || []).slice(0, 2).join(' · ')
+
                   return (
-                    <div key={conflictKey}>
-                      <button type="button" onClick={() => setExpandedConflictId(conflictExpanded ? null : conflictKey)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <span className="font-mono text-sm font-bold text-slate-900 dark:text-white shrink-0">{conflict.ticker}</span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass(toneFromText(conflict.state))}`}>
-                          {conflict.state === 'CONFLICTING_SIGNALS' ? 'SIGNAL CONFLICT' : conflict.state.replace(/_/g, ' ')}
-                        </span>
-                        <span className="ml-auto shrink-0 text-slate-400 transition-transform duration-200" style={{ transform: conflictExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                          <ChevronDown size={16} />
-                        </span>
-                      </button>
-                      {conflictExpanded && (
-                        <div className="rounded-b-xl border-x border-b border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900/60 px-4 pb-4 pt-2 -mt-1 space-y-3">
-                          <div className="text-sm text-slate-700 dark:text-slate-300">{conflict.summary}</div>
-                          <div className="space-y-2 text-sm">
-                            {conflict.signals.map(row => (
-                              <div key={`${conflict.id}-${row.engine_type}`} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <EngineBadge engine={row.engine_type} />
-                                  <SignalBadge signal={row.signal} />
-                                </div>
-                                {row.note ? <div className="mt-2 text-slate-500">{row.note}</div> : null}
-                              </div>
-                            ))}
-                          </div>
-                          <div className="rounded-xl border border-amber-700/25 bg-amber-500/5 p-3">
-                            <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-200/80">Root Cause</div>
-                            <div className="mt-1 text-sm text-slate-800 dark:text-slate-200">{conflict.resolution}</div>
-                            <div className="mt-2 text-sm text-amber-700 dark:text-amber-200">ACTION — {conflict.suggested_action}</div>
-                          </div>
+                    <button
+                      key={rec.id}
+                      type="button"
+                      onClick={() => navigate(navForRec(rec))}
+                      className={`rounded-xl border border-l-4 ${engineAccent(eng)} border-l-amber-500/60 bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-base font-bold text-white">{rec.ticker}</span>
+                          <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChip(eng)}`}>{eng.toUpperCase()}</span>
+                        </div>
+                        <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-400/15 text-amber-300 border border-amber-500/40">Watch</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-2">
+                        {chgPct != null && (
+                          <span className={`text-xs font-bold font-mono ${chgColor}`}>
+                            {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
+                          </span>
+                        )}
+                        {rec.last_price != null && (
+                          <span className="font-mono text-[11px] text-slate-500">${rec.last_price.toFixed(2)}</span>
+                        )}
+                        <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
+                      </div>
+
+                      {missingStr && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <ShieldAlert size={10} className="text-amber-500 shrink-0" />
+                          <span className="text-[10px] text-amber-600 truncate">{missingStr}</span>
                         </div>
                       )}
-                    </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="h-1 w-full rounded-full bg-slate-800">
+                            <div className="h-full rounded-full bg-amber-500/60" style={{ width: `${conf}%` }} />
+                          </div>
+                        </div>
+                        <span className="font-mono text-xs font-bold text-amber-400">{conf}%</span>
+                      </div>
+                    </button>
                   )
-                })
-              )}
-            </div>
-          </section>}
-
-          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
-              <LineChart size={16} className="text-violet-400" />
-              <span className="text-sm font-semibold text-slate-900 dark:text-white">Market Graphs / Trend Visuals</span>
-              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-            </summary>
-            <div className="px-5 pb-5 space-y-4">
-            <div className="grid gap-4 xl:grid-cols-2">
-              <ChartShell title="SPY vs QQQ Trend Strength" subtitle="Trend conviction and direction for the two major indices.">
-                <div className="space-y-4">
-                  {(charts?.trend_strength ?? []).map(entry => {
-                    const val = Math.min(100, Math.max(0, entry.value))
-                    const isBullish = toneFromText(String(entry.tone ?? 'neutral')) === 'bullish'
-                    const fillColor = isBullish ? '#34d399' : '#60a5fa'
-                    const bgColor = isBullish ? 'bg-emerald-500/10' : 'bg-blue-500/10'
-                    const textColor = isBullish ? 'text-emerald-400' : 'text-blue-400'
-                    const label = entry.tone ? String(entry.tone).toUpperCase() : isBullish ? 'BULLISH' : 'BEARISH'
-                    return (
-                      <div key={entry.label}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-semibold text-slate-900 dark:text-white">{entry.label}</span>
-                          <span className={`text-xs font-bold ${textColor}`}>{label}</span>
-                        </div>
-                        <div className="relative h-8 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
-                          <div className="absolute inset-0 flex items-center justify-center z-10">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white drop-shadow-sm">{val}/100</span>
-                          </div>
-                          <div className="h-full rounded-lg transition-all duration-500" style={{ width: `${val}%`, backgroundColor: fillColor, opacity: 0.75 }} />
-                        </div>
-                        <div className="flex justify-between mt-0.5 text-[10px] text-slate-500">
-                          <span>Bearish</span>
-                          <span>Neutral</span>
-                          <span>Bullish</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {(charts?.trend_strength ?? []).length === 0 && (
-                    <div className="h-20 flex items-center justify-center text-xs text-slate-500">No trend data available.</div>
-                  )}
-                </div>
-              </ChartShell>
-
-              <ChartShell title="Engine Signal Distribution" subtitle="How each engine is leaning right now.">
-                <div className="space-y-4">
-                  {(charts?.engine_signal_distribution ?? []).filter(entry => {
-                    const e = entry.engine.toLowerCase()
-                    if (e === 'day')   return canDay
-                    if (e === 'swing') return canSwing
-                    return true
-                  }).map(entry => {
-                    const total = (entry.READY || 0) + (entry.WATCH || 0) + (entry.WAIT || 0) + (entry.AVOID || 0) + (entry.NO_EDGE || 0)
-                    const segments = [
-                      { key: 'READY', value: entry.READY || 0, color: '#34d399', label: 'Ready' },
-                      { key: 'WATCH', value: entry.WATCH || 0, color: '#f59e0b', label: 'Watch' },
-                      { key: 'WAIT', value: entry.WAIT || 0, color: '#fbbf24', label: 'Wait' },
-                      { key: 'AVOID', value: entry.AVOID || 0, color: '#ef4444', label: 'Avoid' },
-                      { key: 'NO_EDGE', value: entry.NO_EDGE || 0, color: '#94a3b8', label: 'No Edge' },
-                    ].filter(s => s.value > 0)
-                    return (
-                      <div key={entry.engine}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-sm font-semibold text-slate-900 dark:text-white">{entry.engine}</span>
-                          <span className="text-xs text-slate-500">{total} signal{total !== 1 ? 's' : ''}</span>
-                        </div>
-                        {segments.length > 0 ? (
-                          <div className="flex h-7 rounded-lg overflow-hidden">
-                            {segments.map(seg => {
-                              const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
-                              return (
-                                <div key={seg.key} className="flex items-center justify-center text-[10px] font-bold text-white transition-all" style={{ width: `${pct}%`, backgroundColor: seg.color, minWidth: pct > 0 ? '8px' : '0' }} title={`${seg.label}: ${seg.value}`}>
-                                  {pct >= 15 ? seg.label : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] text-slate-500">No signals</div>
-                        )}
-                        <div className="flex flex-wrap gap-3 mt-1">
-                          {segments.map(seg => {
-                            const pct = total > 0 ? Math.round((seg.value / total) * 100) : 0
-                            return (
-                              <span key={seg.key} className="flex items-center gap-1 text-[10px] text-slate-500">
-                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: seg.color }} />
-                                {seg.label} {seg.value} ({pct}%)
-                              </span>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {(charts?.engine_signal_distribution ?? []).filter(entry => {
-                    const e = entry.engine.toLowerCase()
-                    if (e === 'day')   return canDay
-                    if (e === 'swing') return canSwing
-                    return true
-                  }).length === 0 && (
-                    <div className="h-20 flex items-center justify-center text-xs text-slate-500">No engine signal data available.</div>
-                  )}
-                </div>
-              </ChartShell>
-
-              <ChartShell title="Risk Distribution" subtitle="Current opportunity mix by risk tier.">
-                <div className="space-y-4">
-                  {(() => {
-                    const data = charts?.risk_distribution ?? []
-                    const total = data.reduce((s, r) => s + (r.value || 0), 0)
-                    const riskColors: Record<string, string> = { low: '#34d399', medium: '#f59e0b', high: '#ef4444' }
-                    const riskLabels: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' }
-                    return (
-                      <>
-                        {total > 0 ? (
-                          <div className="flex h-10 rounded-lg overflow-hidden">
-                            {['low', 'medium', 'high'].map(key => {
-                              const entry = data.find(d => String(d.label || '').toLowerCase() === key)
-                              const val = entry?.value || 0
-                              const pct = total > 0 ? Math.round((val / total) * 100) : 0
-                              const color = riskColors[key]
-                              return (
-                                <div key={key} className="flex flex-col items-center justify-center text-white transition-all" style={{ width: `${pct}%`, backgroundColor: color, minWidth: pct > 0 ? '8px' : '0' }}>
-                                  {pct >= 12 ? <span className="text-[11px] font-bold">{key.charAt(0).toUpperCase() + key.slice(1)}</span> : null}
-                                  {pct >= 12 ? <span className="text-[9px] opacity-80">{val}</span> : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs text-slate-500">No risk data</div>
-                        )}
-                        <div className="grid grid-cols-3 gap-2">
-                          {['low', 'medium', 'high'].map(key => {
-                            const entry = data.find(d => String(d.label || '').toLowerCase() === key)
-                            const val = entry?.value || 0
-                            const pct = total > 0 ? Math.round((val / total) * 100) : 0
-                            const color = riskColors[key]
-                            return (
-                              <div key={key} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 p-2 text-center">
-                                <div className="w-2 h-2 rounded-full mx-auto mb-1" style={{ backgroundColor: color }} />
-                                <div className="text-xs font-semibold text-slate-900 dark:text-white">{val}</div>
-                                <div className="text-[10px] text-slate-500">{riskLabels[key]}</div>
-                                <div className="text-[10px] text-slate-400">{pct}%</div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </>
-                    )
-                  })()}
-                </div>
-              </ChartShell>
-
-              <ChartShell title="Best Style Allocation" subtitle="How today’s tape is pushing your focus across trade styles.">
-                <div className="space-y-4 pt-2">
-                  {(charts?.style_allocation ?? []).map(entry => (
-                    <div key={entry.label} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-700 dark:text-slate-300">{entry.label}</span>
-                        <span className="font-semibold text-slate-900 dark:text-slate-100">{entry.value}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div className="h-2 rounded-full bg-violet-400" style={{ width: `${Math.max(0, Math.min(100, entry.value))}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ChartShell>
-            </div>
-            </div>
-          </details>
-
-          <details className="group rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 select-none">
-              <BellRing size={16} className="text-violet-400" />
-              <span className="text-sm font-semibold text-slate-900 dark:text-white">Activity &amp; Alerts</span>
-              <ChevronDown size={14} className="ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-            </summary>
-            <div className="px-5 pb-5">
-            <div className="grid gap-4 xl:grid-cols-[1fr_1fr] pt-4">
-            <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
-              <div className="mb-4 flex items-center gap-2">
-                <BellRing size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Risk &amp; Alert Snapshot</h2>
+                })}
               </div>
+            </section>
+          )}
 
-              {(() => {
-                const pressure = alertPressureLevel(alertsSummary)
-                const pct = Math.min(90, Math.max(5, (alertsSummary.active_alerts + alertsSummary.critical_alerts * 2 + alertsSummary.high_iv_warnings) * 10))
-                return (
-                  <div className="mb-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Alert Pressure</span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: pressure.color }}>{pressure.label}</span>
-                    </div>
-                    <div className="tcc-alert-bar">
-                      <div className="tcc-alert-bar-segment quiet" style={{ width: '20%' }} />
-                      <div className="tcc-alert-bar-segment watch" style={{ width: '20%' }} />
-                      <div className={`tcc-alert-bar-segment active ${alertsSummary.active_alerts >= 3 ? 'active-fill' : ''}`} style={{ width: '20%' }} />
-                      <div className={`tcc-alert-bar-segment elevated ${alertsSummary.critical_alerts >= 2 || alertsSummary.positions_requiring_exit > 0 ? 'elevated-fill' : ''}`} style={{ width: '20%' }} />
-                      <div className={`tcc-alert-bar-segment critical ${alertsSummary.critical_alerts >= 3 || alertsSummary.positions_requiring_exit >= 2 ? 'critical-fill' : ''}`} style={{ width: '20%' }} />
-                      <div className="tcc-alert-bar-active" style={{ left: `${pct}%` }} />
-                    </div>
-                  </div>
-                )
-              })()}
+          {/* ── Monitoring: lower signals (collapsed) ── */}
+          {lowSignals.length > 0 && (
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/[0.07] bg-slate-900 px-4 py-2.5 text-xs text-slate-500 select-none hover:bg-slate-800/50 transition-colors">
+                <div className="h-2 w-2 rounded-full bg-slate-600" />
+                <span className="font-semibold text-slate-400">Monitoring — {lowSignals.length} lower signals</span>
+                <span className="text-slate-600 ml-1">Wait + lower-confidence Watch</span>
+                <ChevronDown size={12} className="ml-auto text-slate-600 group-open:rotate-180 transition-transform" />
+              </summary>
+              <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-white/[0.07] bg-slate-900 px-4 py-3">
+                {lowSignals.map(rec => {
+                  const v = recVerdict(rec)
+                  const { label: vLabel, cls: vCls } = verdictBadge(v)
+                  const eng = (rec.engine_type || '').toLowerCase()
+                  return (
+                    <button
+                      key={rec.id}
+                      type="button"
+                      onClick={() => navigate(navForRec(rec))}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-800/40 transition-colors"
+                    >
+                      <span className="font-mono font-bold text-slate-300">{rec.ticker}</span>
+                      <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChip(eng)}`}>{eng.toUpperCase()}</span>
+                      <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${vCls}`}>{vLabel}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </details>
+          )}
 
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Breadth</span>
-                  <span className="text-[10px] text-gray-500">{(() => {
-                    const mode = String(market.market_mode ?? '').toLowerCase()
-                    if (mode.includes('bull') || mode.includes('euphoric')) return 'Bullish bias'
-                    if (mode.includes('bear') || mode.includes('defensive')) return 'Bearish bias'
-                    return 'Mixed'
-                  })()}</span>
-                </div>
-                <div className="tcc-breadth-bar">
-                  <div
-                    className="tcc-breadth-advancing"
-                    style={{ width: `${(() => {
-                      const mode = String(market.market_mode ?? '').toLowerCase()
-                      if (mode.includes('euphoric')) return 72
-                      if (mode.includes('bull')) return 62
-                      if (mode.includes('neutral')) return 52
-                      if (mode.includes('defensive')) return 38
-                      if (mode.includes('bear')) return 28
-                      return 50
-                    })()}%` }}
-                  />
-                  <div
-                    className="tcc-breadth-declining"
-                    style={{ width: `${(() => {
-                      const mode = String(market.market_mode ?? '').toLowerCase()
-                      if (mode.includes('euphoric')) return 28
-                      if (mode.includes('bull')) return 38
-                      if (mode.includes('neutral')) return 48
-                      if (mode.includes('defensive')) return 62
-                      if (mode.includes('bear')) return 72
-                      return 50
-                    })()}%` }}
-                  />
-                </div>
-                <div className="mt-1 flex justify-between text-[10px] text-gray-600">
-                  <span>Adv.</span>
-                  <span>Dec.</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  ['Active alerts', alertsSummary.active_alerts],
-                  ['Critical alerts', alertsSummary.critical_alerts],
-                  ['Positions requiring exit', alertsSummary.positions_requiring_exit],
-                  ['Near expiry trades', alertsSummary.near_expiry_trades],
-                  ['High IV warnings', alertsSummary.high_iv_warnings],
-                ].map(([label, raw]) => (
-                  <div key={label} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
-                    <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{summaryNumber(raw)}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline gap-2 rounded-lg px-3 py-2 text-xs" onClick={() => navigate(ROUTES.alerts)}>
-                  View Alert Center
-                </button>
-                <button type="button" className="btn btn-outline gap-2 rounded-lg px-3 py-2 text-xs" onClick={() => navigate(ROUTES.positions)}>
-                  View Positions Center
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 p-4">
-              <div className="mb-4 flex items-center gap-2">
-                <Clock size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Decisions / Activity</h2>
-              </div>
-              <div className="space-y-3">
-                {recentActivity.length === 0 ? (
-                  <div className="text-sm text-slate-500">No recent activity from the API yet.</div>
-                ) : (
-                  recentActivity.map((item: TradeCommandCenterActivity) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/50 p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-semibold text-slate-900 dark:text-white">{item.ticker}</span>
-                        <EngineBadge engine={item.engine_type} />
-                        <SignalBadge signal={item.signal} />
-                      </div>
-                      <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-                        {item.action_taken ? `${item.action_taken} · ` : ''}
-                        {item.message || 'Decision update'}
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">{fmtTimestamp(item.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            </div>
-            </div>
-          </details>
         </>
       ) : null}
     </div>

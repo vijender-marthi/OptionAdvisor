@@ -100,7 +100,12 @@ export interface Signals {
   ext_market_type?: string        // "pre" | "post" | ""
 }
 
+/** Unified verdict — single value shown on all cards and command center. */
+export type UnifiedVerdict = 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
+
 export interface ResolvedTradeDecision {
+  /** Unified verdict — the only verdict field the UI should display on cards. */
+  verdict: UnifiedVerdict
   market_bias: string
   setup_quality: string
   execution_readiness: string
@@ -110,6 +115,7 @@ export interface ResolvedTradeDecision {
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
+  /** Detail fields — shown on detail pages only, not command center cards. */
   signal_quality: string
   execution_timing: string
   risk_category: string
@@ -433,6 +439,8 @@ export interface AnalyzeResponse {
   price_history: PricePoint[]
   filters_applied: Record<string, unknown>
   quote_quality_summary?: QuoteQualitySummary
+  /** Unified verdict — the only verdict shown on cards. */
+  verdict: UnifiedVerdict
   market_bias: string
   setup_quality: string
   execution_readiness: string

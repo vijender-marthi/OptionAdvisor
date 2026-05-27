@@ -1426,6 +1426,30 @@ def post_portfolio_add(body: PortfolioAddBody, auth_email: str = Depends(require
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
 
 
+class PortfolioUpdateBody(BaseModel):
+    id: str = Field(..., min_length=1)
+    data: dict = Field(...)
+
+
+@command_center_router.post("/portfolio/update")
+def post_portfolio_update(body: PortfolioUpdateBody, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    state = get_user_state(email)
+    port = list(state.get("portfolio") or [])
+    found = False
+    for i, p in enumerate(port):
+        if not isinstance(p, dict) or str(p.get("id")) != body.id:
+            continue
+        immutable = {k: p[k] for k in ("id", "addedAt", "status") if k in p}
+        port[i] = {**p, **body.data, **immutable}
+        found = True
+        break
+    if not found:
+        raise HTTPException(status_code=404, detail="Position not found")
+    saved = save_user_state(email, state.get("watchlist") or [], port)
+    return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
+
+
 class PortfolioCloseBody(BaseModel):
     id: str = Field(..., min_length=1)
     mistake_tag: Optional[str] = None
