@@ -248,12 +248,16 @@ def compute_iv_from_chain(calls: pd.DataFrame, puts: pd.DataFrame, price: float)
     ntm_puts = puts[abs(puts["strike"] - price) / price <= 0.05]
     combined = pd.concat([ntm_calls, ntm_puts])
     iv_vals = combined["impliedVolatility"].replace(0, np.nan).dropna()
+    # Filter out implausibly low IV (< 1% annualized) — Yahoo occasionally returns
+    # near-zero impliedVolatility for high-priced stocks (MU, NVDA, etc.)
+    iv_vals = iv_vals[iv_vals >= 0.01]
     if iv_vals.empty:
         # fallback: all NTM options within 10%
         ntm_calls = calls[abs(calls["strike"] - price) / price <= 0.10]
         ntm_puts = puts[abs(puts["strike"] - price) / price <= 0.10]
         combined = pd.concat([ntm_calls, ntm_puts])
         iv_vals = combined["impliedVolatility"].replace(0, np.nan).dropna()
+        iv_vals = iv_vals[iv_vals >= 0.01]
     if iv_vals.empty:
         return 30.0
     return round(float(iv_vals.median() * 100), 1)
@@ -461,7 +465,15 @@ def generate_signals(
     hv_20 = compute_hv(close, 20)
     hv_60 = compute_hv(close, 60)
     current_iv = compute_iv_from_chain(calls, puts, current_price)
+    # Sanity check: if Yahoo returns implausibly low IV (below HV 5th percentile
+    # by more than 10pp), it's likely a data quality issue (common for high-priced
+    # stocks like MU, NVDA). Use HV median as a proxy.
     hv_series = build_hv_series(hist, 20)
+    _hv_clean = hv_series.dropna().astype(float)
+    _hv_clean = _hv_clean[_hv_clean > 0]
+    if len(_hv_clean) >= 20 and current_iv < float(_hv_clean.quantile(0.05)) - 10:
+        _hv_median = float(_hv_clean.median())
+        current_iv = round(_hv_median, 1)
     iv_hist = implied_iv_history if implied_iv_history is not None else []
     iv_rank_impl = compute_iv_rank_implied_history(iv_hist, current_iv)
     iv_pct_impl = compute_iv_percentile_implied_history(iv_hist, current_iv)
