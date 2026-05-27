@@ -2178,7 +2178,7 @@ def get_signal_feed(
             )
             swing_metrics = dict(swing_scan.metrics or {})
             swing_reason = swing_decision.reason
-            swing_raw = swing_scan.final_action
+            swing_raw = swing_scan.verdict
         except Exception as exc:  # noqa: BLE001
             swing_reason = f"Swing evaluation unavailable: {exc}"
 
