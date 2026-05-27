@@ -1584,16 +1584,12 @@ def _analyze_ticker(
         quote_quality_summary=quote_quality_summary,
         market_bias=resolved.market_bias,
         setup_quality=resolved.setup_quality,
-        execution_readiness=resolved.execution_readiness,
-        final_decision=resolved.final_decision,
+        verdict=str(resolved.verdict or "WAIT"),
         confidence=resolved.confidence,
         reason=resolved.reason,
         supporting_factors=resolved.supporting_factors,
         missing_confirmations=resolved.missing_confirmations,
         risk_state=resolved.risk_state,
-        signal_quality=resolved.signal_quality or "",
-        execution_timing=resolved.execution_timing or "",
-        risk_category=resolved.risk_category or "",
         explanation=dict(resolved.explanation or {}),
         risk_reason=resolved.risk_reason or "",
         display_confidence=int(resolved.display_confidence or 0),
@@ -1692,12 +1688,12 @@ def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str 
     if decision is None:
         final_decision = "WATCH"
     else:
-        resolved = str(decision.final_decision or "").upper()
+        resolved = str(decision.verdict or "").upper()
         if resolved in {"EXIT", "SCALE_OUT", "MANAGE"}:
             final_decision = "MANAGE"
         elif resolved in {"AVOID", "NO_EDGE"}:
             final_decision = "AVOID"
-        elif resolved == "READY":
+        elif resolved in {"STRONG_GO", "GO", "READY"}:
             final_decision = "READY"
         elif "extended" in reason_text.lower():
             final_decision = "EXTENDED"
@@ -1709,7 +1705,6 @@ def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str 
             "engine": label,
             "market_bias": "NEUTRAL",
             "setup_quality": "WEAK",
-            "execution_readiness": "WAIT",
             "final_decision": final_decision,
             "confidence": 0,
             "reason": reason_text or f"{label.title()} evaluation unavailable.",
@@ -1717,9 +1712,6 @@ def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str 
             "missing_confirmations": [],
             "risk_state": "MEDIUM",
             "raw_signal": raw_signal,
-            "signal_quality": "",
-            "execution_timing": "",
-            "risk_category": "",
             "explanation": {},
             "risk_reason": "",
             "display_confidence": 0,
@@ -1737,7 +1729,6 @@ def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str 
         "engine": label,
         "market_bias": decision.market_bias,
         "setup_quality": decision.setup_quality,
-        "execution_readiness": decision.execution_readiness,
         "final_decision": final_decision,
         "confidence": decision.confidence,
         "reason": decision.reason or reason_text,
@@ -1745,9 +1736,6 @@ def _signal_feed_decision_payload(decision: Any, *, label: str, raw_signal: str 
         "missing_confirmations": list(decision.missing_confirmations or []),
         "risk_state": decision.risk_state,
         "raw_signal": raw_signal,
-        "signal_quality": getattr(decision, "signal_quality", "") or "",
-        "execution_timing": getattr(decision, "execution_timing", "") or "",
-        "risk_category": getattr(decision, "risk_category", "") or "",
         "explanation": dict(getattr(decision, "explanation", {}) or {}),
         "risk_reason": getattr(decision, "risk_reason", "") or "",
         "display_confidence": int(getattr(decision, "display_confidence", 0) or 0),
@@ -2133,7 +2121,7 @@ def get_signal_feed(
                 {"engine_type": "regular", "signals": regular_data.signals, "recommendations": regular_data.recommendations}
             )
             regular_reason = regular_data.reason
-            regular_raw = regular_data.final_decision
+            regular_raw = regular_data.verdict
         except Exception as exc:  # noqa: BLE001
             regular_reason = f"Regular evaluation unavailable: {exc}"
 
@@ -2651,16 +2639,11 @@ def day_trade_scan(
             trader_decision=r.trader_decision,
             market_bias=resolved.market_bias,
             setup_quality=resolved.setup_quality,
-            execution_readiness=resolved.execution_readiness,
-            final_decision=resolved.final_decision,
             confidence=resolved.confidence,
             reason=resolved.reason,
             supporting_factors=resolved.supporting_factors,
             missing_confirmations=resolved.missing_confirmations,
             risk_state=resolved.risk_state,
-            signal_quality=resolved.signal_quality or "",
-            execution_timing=resolved.execution_timing or "",
-            risk_category=resolved.risk_category or "",
             explanation=dict(resolved.explanation or {}),
             risk_reason=resolved.risk_reason or "",
             display_confidence=int(resolved.display_confidence or 0),
@@ -2729,16 +2712,11 @@ def swing_trade_scan(
             playbook_hint=r.playbook_hint,
             market_bias=resolved.market_bias,
             setup_quality=resolved.setup_quality,
-            execution_readiness=resolved.execution_readiness,
-            final_decision=resolved.final_decision,
             confidence=resolved.confidence,
             reason=resolved.reason,
             supporting_factors=resolved.supporting_factors,
             missing_confirmations=resolved.missing_confirmations,
             risk_state=resolved.risk_state,
-            signal_quality=resolved.signal_quality or "",
-            execution_timing=resolved.execution_timing or "",
-            risk_category=resolved.risk_category or "",
             expected_holding_period=str(getattr(r, "expected_holding_period", "") or ""),
             recommended_contract_duration=str(getattr(r, "recommended_contract_duration", "") or ""),
             explanation=dict(resolved.explanation or {}),
@@ -3370,8 +3348,8 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
 
                     # ── ENTER NOW alert (State 2 + volume confirmed) ─────
                     enter_now_to_store = carry_enter_now
-                    exec_timing = str(dr.execution_timing or "").upper().strip()
-                    enter_now_confirmed = now_state == 2 and ("ENTER" in exec_timing)
+                    verdict_str = str(dr.verdict or "").upper().strip()
+                    enter_now_confirmed = now_state == 2 and verdict_str in ("GO", "STRONG_GO", "STRONG GO")
                     if enter_now_confirmed and not carry_enter_now:
                         enter_now_to_store = 1
                         direction_lbl = "LONG · CALL" if bias_raw == "long" else "SHORT · PUT"

@@ -35,7 +35,7 @@ class Verdict(str, Enum):
             return cls.WATCH
         if v in ("WAIT", "NO_TRADE_WAIT"):
             return cls.WAIT
-        if v in ("AVOID", "NO-GO", "NO GO", "NO_TRADE", "AVOID_NAKED_CALLS",
+        if v in ("AVOID", "NO_GO", "NO-GO", "NO GO", "NO_TRADE", "AVOID_NAKED_CALLS",
                  "AVOID_CALLS", "AVOID_CHASING_PUTS", "AVOID_CHASE"):
             return cls.AVOID
         if v in ("NO_EDGE",):

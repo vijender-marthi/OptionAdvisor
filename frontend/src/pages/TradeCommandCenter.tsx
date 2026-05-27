@@ -88,7 +88,7 @@ function fmtTimestamp(value?: string): string {
 function signalClass(signal: string): string {
   const s = signal.toUpperCase()
   if (s === 'READY' || s === 'TRADE' || s === 'GO' || s === 'STRONG_GO' || s === 'STRONG GO') return 'oa-signal-badge oa-signal-go'
-  if (s === 'WATCH' || s === 'WAIT' || s === 'HOLD') return 'oa-signal-badge oa-signal-watch'
+  if (s === 'WATCH' || s === 'WAIT' || s === 'HOLD' || s === 'NO_EDGE') return 'oa-signal-badge oa-signal-watch'
   return 'oa-signal-badge oa-signal-avoid'
 }
 
@@ -152,7 +152,7 @@ function confidenceNumber(raw: string | number | undefined): number {
 
 function isActionable(rec: TradeCommandCenterRecommendation): boolean {
   const signal = String(rec.final_decision || rec.signal || '').toUpperCase()
-  if (signal === 'READY' || signal === 'TRADE') return true
+  if (signal === 'READY' || signal === 'TRADE' || signal === 'GO' || signal === 'STRONG_GO') return true
   return signal === 'WATCH' && confidenceNumber(rec.confidence) >= 70
 }
 
@@ -235,7 +235,7 @@ function buildFallbackConflicts(recommendations: TradeCommandCenterRecommendatio
   for (const [ticker, rows] of byTicker.entries()) {
     if (rows.length < 2) continue
     const signals = rows.map(row => String(row.final_decision || row.signal || '').toUpperCase())
-    const hasGo = signals.some(sig => sig === 'READY' || sig === 'TRADE' || sig === 'WATCH')
+    const hasGo = signals.some(sig => sig === 'READY' || sig === 'TRADE' || sig === 'GO' || sig === 'STRONG_GO' || sig === 'WATCH')
     const hasAvoid = signals.some(sig => sig === 'AVOID' || sig === 'EXIT' || sig === 'NO_EDGE')
     if (!hasGo || !hasAvoid) continue
     out.push({
@@ -268,7 +268,7 @@ function buildFallbackCharts(payload: TradeCommandCenterPayload) {
     const key = engine.charAt(0).toUpperCase() + engine.slice(1)
     const bucket = engineSignalMap.get(key) ?? { engine: key, READY: 0, WATCH: 0, WAIT: 0, AVOID: 0, NO_EDGE: 0 }
     const signal = String(rec.final_decision || rec.signal || '').toUpperCase()
-    if (signal === 'READY' || signal === 'TRADE') bucket.READY += 1
+    if (signal === 'READY' || signal === 'TRADE' || signal === 'GO' || signal === 'STRONG_GO') bucket.READY += 1
     else if (signal === 'WATCH') bucket.WATCH += 1
     else if (signal === 'WAIT') bucket.WAIT += 1
     else if (signal === 'AVOID' || signal === 'EXIT') bucket.AVOID += 1

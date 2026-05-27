@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from verdict import Verdict
-from .decision_models import FinalDecision, ResolvedTradeDecision
+from .decision_models import ResolvedTradeDecision
 from .explanation_builder import (
     build_execution_fields,
     build_strategy_explanation,
@@ -38,13 +38,6 @@ def _as_list(value: Any) -> list[str]:
     return [str(value).strip()]
 
 
-def _verdict_to_fd(v: str) -> str:
-    """Map a Verdict enum value to a FinalDecision-compatible Literal."""
-    m = {"STRONG_GO": "READY", "GO": "READY", "WATCH": "WATCH",
-         "WAIT": "WAIT", "AVOID": "AVOID", "NO_EDGE": "NO_EDGE"}
-    return m.get(v.upper().replace("-", "_"), v)
-
-
 def _clamp_confidence(value: int | float) -> int:
     try:
         n = int(round(float(value)))
@@ -73,63 +66,6 @@ def _risk_state_from_text(*values: Any) -> str:
     if "LOW" in joined:
         return "LOW"
     return "MEDIUM"
-
-
-def _signal_quality_from_setup(quality: str) -> str:
-    q = str(quality or "").upper()
-    if q == "STRONG":
-        return "STRONG GO"
-    if q in ("GOOD", "FAIR"):
-        return "GO"
-    if q == "WEAK":
-        return "READY"
-    return ""
-
-
-def _execution_timing_from_decision(fd: str) -> str:
-    f = str(fd or "").upper()
-    if f in ("READY", "TRADE"):
-        return "ENTER NOW"
-    if f == "WATCH":
-        return "WATCH"
-    if f == "WAIT":
-        return "WAIT FOR PULLBACK"
-    if f == "AVOID":
-        return "STAND ASIDE"
-    if f in ("EXIT", "MANAGE", "SCALE_OUT"):
-        return "MANAGE"
-    return ""
-
-
-def _day_execution_timing(final_decision: str, missing_confirmations: list[str]) -> str:
-    f = str(final_decision or "").upper()
-    if f != "READY":
-        return _execution_timing_from_decision(final_decision)
-    if not missing_confirmations:
-        return "ENTER NOW"
-    confirmations_lower = " ".join(c.lower() for c in missing_confirmations)
-    if "vwap" in confirmations_lower and "breakout" not in confirmations_lower:
-        return "WAIT FOR VWAP HOLD"
-    if "breakout" in confirmations_lower:
-        return "WAIT FOR BREAKOUT"
-    if "pullback" in confirmations_lower:
-        return "WAIT FOR PULLBACK"
-    if "volume" in confirmations_lower:
-        return "WAIT FOR CONFIRMATION"
-    return "ENTRY CONDITIONAL"
-
-
-def _risk_category_from_state(rs: str) -> str:
-    r = str(rs or "").upper()
-    if r == "LOW":
-        return "LOW"
-    if r == "MEDIUM":
-        return "MODERATE"
-    if r == "HIGH":
-        return "EXTENDED"
-    if r == "EXTREME":
-        return "HIGH"
-    return ""
 
 
 def _humanize_confirmation(item: str) -> str:
@@ -246,10 +182,7 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     reasons = _as_list(_get(engine_analysis, "reasons"))
     supporting = reasons[:4]
 
-    # ── Execution timing (signal vs execution separation) ────────────────
-    dt_exec_timing = _day_execution_timing(final_decision, missing)
-
-    # ── Three-axis display fields ────────────────────────────────────────
+    # ── Unified verdict ──────────────────────────────────────────────────
     dt_signal = Verdict.from_raw(verdict).value
 
     # Market bias conflict: long setup in bearish market (or short in bullish)
@@ -376,16 +309,12 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
-        execution_readiness=execution,
-        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
+        verdict=Verdict.from_raw(final_decision).value,
         confidence=_clamp_confidence(raw_confidence),
         reason=reason,
         supporting_factors=supporting,
         missing_confirmations=missing,
         risk_state=risk_state,
-        signal_quality=dt_signal,
-        execution_timing=dt_exec_timing,
-        risk_category=_risk_category_from_state(risk_state),
         explanation={
             "summary": summary_text,
             "recommended_action": recommended_action_text,
@@ -455,8 +384,7 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
-        execution_readiness=execution,
-        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
+        verdict=Verdict.from_raw(final_decision).value,
         confidence=_clamp_confidence((trade_quality_score / 10.0) * 100.0),
         reason=_pick_reason(
             explicit_reason=avoid_reason or None,
@@ -467,9 +395,6 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         supporting_factors=reasons[:4],
         missing_confirmations=missing,
         risk_state=risk_state,
-        signal_quality=sw_signal,
-        execution_timing=_swing_execution_timing(final_decision, missing),
-        risk_category=_risk_category_from_state(risk_state),
     )
 
 
@@ -497,8 +422,7 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
         return ResolvedTradeDecision(
             market_bias=market_bias,
             setup_quality="WEAK",
-            execution_readiness="NO_EDGE",
-            final_decision="NO_EDGE",
+            verdict="NO_EDGE",
             confidence=20,
             reason="No option structure passed the current filters.",
             supporting_factors=[],
@@ -614,16 +538,12 @@ def _resolve_regular_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeD
     return ResolvedTradeDecision(
         market_bias=market_bias,
         setup_quality=setup_quality,
-        execution_readiness=execution,
-        final_decision=_verdict_to_fd(Verdict.from_raw(final_decision).value),
+        verdict=Verdict.from_raw(final_decision).value,
         confidence=_clamp_confidence(confidence),
         reason=reason,
         supporting_factors=supporting,
         missing_confirmations=missing,
         risk_state=risk_state,
-        signal_quality=rg_signal,
-        execution_timing=_execution_timing_from_decision(final_decision),
-        risk_category=_risk_category_from_state(risk_state),
         explanation=explanation,
         risk_reason=risk_reason,
         display_confidence=display_confidence,

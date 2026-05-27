@@ -80,16 +80,16 @@ export interface TradeCommandCenterEngine {
   summary: string
   market_bias: string
   setup_quality: string
-  execution_readiness: string
+  execution_readiness?: string
   final_decision: string
   confidence: number
   reason: string
   supporting_factors: string[]
   missing_confirmations: string[]
   risk_state: string
-  signal_quality: string
-  execution_timing: string
-  risk_category: string
+  signal_quality?: string
+  execution_timing?: string
+  risk_category?: string
   explanation: Record<string, string>
   risk_reason: string
   display_confidence: number
@@ -130,7 +130,7 @@ export interface TradeCommandCenterRecommendation {
   recommended_action?: string
   market_bias: string
   setup_quality: string
-  execution_readiness: string
+  execution_readiness?: string
   final_decision: string
   confidence?: string | number
   supporting_factors?: string[]

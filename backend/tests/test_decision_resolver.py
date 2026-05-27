@@ -30,8 +30,7 @@ class DecisionResolverTests(unittest.TestCase):
             }
         )
         self.assertEqual(decision.market_bias, "BULLISH")
-        self.assertEqual(decision.execution_readiness, "WATCH")
-        self.assertEqual(decision.final_decision, "WATCH")
+        self.assertEqual(decision.verdict, "WATCH")
         self.assertIn("Breakout confirmation", decision.missing_confirmations)
 
     def test_swing_trade_quality_long_maps_to_ready(self) -> None:
@@ -49,7 +48,7 @@ class DecisionResolverTests(unittest.TestCase):
                 "reasons": ["MA20 and MA50 are rising", "Relative strength is improving"],
             }
         )
-        self.assertEqual(decision.final_decision, "READY")
+        self.assertEqual(decision.verdict, "GO")
         self.assertEqual(decision.setup_quality, "GOOD")
         self.assertEqual(decision.market_bias, "BULLISH")
 
@@ -82,8 +81,7 @@ class DecisionResolverTests(unittest.TestCase):
             }
         )
         self.assertEqual(decision.market_bias, "BULLISH")
-        self.assertEqual(decision.final_decision, "AVOID")
-        self.assertEqual(decision.execution_readiness, "AVOID")
+        self.assertEqual(decision.verdict, "AVOID")
         self.assertIn("iv", decision.reason.lower())
 
 

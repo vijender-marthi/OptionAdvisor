@@ -249,7 +249,6 @@ def decision_payload(
             "engine":              label,
             "market_bias":         "NEUTRAL",
             "setup_quality":       "WEAK",
-            "execution_readiness": "WAIT",
             "final_decision":      "NO_EDGE",
             "confidence":          0,
             "reason":              reason_text or f"{label.title()} evaluation unavailable.",
@@ -257,9 +256,6 @@ def decision_payload(
             "missing_confirmations": [],
             "risk_state":          "MEDIUM",
             "raw_signal":          raw_signal,
-            "signal_quality":      "",
-            "execution_timing":    "",
-            "risk_category":       "",
             "explanation":         {},
             "risk_reason":         "",
             "display_confidence":  0,
@@ -278,17 +274,13 @@ def decision_payload(
         "engine":              label,
         "market_bias":         decision.market_bias,
         "setup_quality":       decision.setup_quality,
-        "execution_readiness": decision.execution_readiness,
-        "final_decision":      str(decision.final_decision or "NO_EDGE").upper(),
+        "final_decision":      str(decision.verdict or "NO_EDGE").upper(),
         "confidence":          int(decision.confidence or 0),
         "reason":              decision.reason or reason_text,
         "supporting_factors":  list(decision.supporting_factors or []),
         "missing_confirmations": list(decision.missing_confirmations or []),
         "risk_state":          decision.risk_state,
         "raw_signal":          raw_signal,
-        "signal_quality":      decision.signal_quality or "",
-        "execution_timing":    decision.execution_timing or "",
-        "risk_category":       decision.risk_category or "",
         "explanation":         dict(decision.explanation or {}),
         "risk_reason":         decision.risk_reason or "",
         "display_confidence":  int(decision.display_confidence or 0),
@@ -388,7 +380,7 @@ def _compute_ticker_engines(ticker: str) -> dict:
                 "recommendations": regular_data["recommendations"],
             })
             regular_reason = regular_decision.reason
-            regular_raw    = str(regular_decision.final_decision or "")
+            regular_raw    = str(regular_decision.verdict or "")
         else:
             regular_reason = "No options data available."
     except Exception as exc:

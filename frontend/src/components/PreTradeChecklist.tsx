@@ -444,13 +444,12 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   return items
 }
 
+/** @deprecated Verdict now comes from the backend. Kept for callers that build checklist locally. */
 export function deriveVerdict(items: CheckItem[]): Verdict {
   const hardFails = items.filter(i => i.status === 'fail' && i.hard).length
   const softFails = items.filter(i => i.status === 'fail' && !i.hard).length
-  const warns     = items.filter(i => i.status === 'warn').length
-  const hasThinEdge = items.some(i => i.label === 'Kelly Edge' && i.status === 'warn')
   if (hardFails > 0 || softFails >= 2) return 'NO GO'
-  if (softFails === 1 || hasThinEdge || warns >= 5) return 'CAUTION'
+  if (softFails === 1 || items.filter(i => i.status === 'warn').length >= 5) return 'CAUTION'
   return 'GO'
 }
 
