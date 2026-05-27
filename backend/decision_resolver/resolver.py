@@ -264,6 +264,10 @@ def _resolve_day_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDecis
     )
     if market_against_bias and dt_signal in {"GO", "STRONG GO"}:
         dt_signal = "READY"
+    # Cap signal_quality when final_decision isn't READY — prevents card showing
+    # "GO" while execution_timing says "WATCH" (same as swing resolver).
+    if final_decision != "READY" and dt_signal in {"STRONG GO", "GO"}:
+        dt_signal = "READY"
 
     # ── Execution fields ─────────────────────────────────────────────────
     execution_fields: list[dict] = []
@@ -452,7 +456,11 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         execution = "WATCH"
 
     # ── Three-axis display fields ────────────────────────────────────────
-    if trade_quality_score >= 8.5:
+    # Cap signal_quality when final_decision isn't READY — prevents the card
+    # showing "GO" while execution_timing says "WATCH" (contradiction).
+    if final_decision != "READY" and trade_quality_score >= 6.5:
+        sw_signal = "READY"
+    elif trade_quality_score >= 8.5:
         sw_signal = "STRONG GO"
     elif trade_quality_score >= 6.5:
         sw_signal = "GO"
