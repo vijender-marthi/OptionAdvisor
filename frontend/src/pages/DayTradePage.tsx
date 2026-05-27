@@ -797,93 +797,42 @@ export default function DayTradePage() {
           </div>
           )})()}
 
-          {/* AI Coach — Walkthrough Step 6 */}
+          {/* AI Coach — Final Intraday Decision (Step 5) */}
           {result && (() => {
-            const raw = result as unknown as Record<string, unknown> | undefined
-            const m = raw?.metrics as Record<string, unknown> | undefined
-            const vwapDist = m?.vwap_dist_pct as number | undefined
-            const mom = m?.momentum_pct as number | undefined
-            const volSpike = !!m?.volume_spike
-            const vix = m?.vix as number | undefined
-            const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
-            const isShort = result.bias === 'short'
-            const riskTone: 'green' | 'amber' | 'red' | 'gray' = (() => {
-              const r = result?.risk_state?.toUpperCase()
-              if (r === 'LOW') return 'green'
-              if (r === 'MEDIUM' || r === 'HIGH' || r === 'VERY_HIGH') return 'amber'
-              if (r === 'EXTREME') return 'red'
-              return 'gray'
-            })()
-            const riskPanel = [
-              { label: 'Overall Risk', value: result?.risk_state ? result.risk_state.replace(/_/g, ' ') : '—', tone: riskTone },
-              { label: 'Momentum Risk', value: mom != null && Math.abs(mom) > 1.5 ? 'Elevated' : 'Manageable', tone: mom != null && Math.abs(mom) > 1.5 ? 'amber' as const : 'green' as const },
-              { label: 'Breakout Failure', value: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'Low' : 'Moderate', tone: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'green' as const : 'amber' as const },
-              { label: 'Extended Move', value: mom != null && mom > 2 ? 'High' : mom != null && mom < -2 ? 'High' : 'Low', tone: mom != null && Math.abs(mom) > 2 ? 'red' as const : 'green' as const },
-              { label: 'Volume Fade', value: volSpike ? 'Low' : 'Possible', tone: volSpike ? 'green' as const : 'amber' as const },
-              { label: 'VIX Context', value: vix != null ? `${vix.toFixed(1)}` : '—', tone: vix == null ? 'gray' as const : vix >= 30 ? 'red' as const : vix <= 18 ? 'green' as const : 'amber' as const },
-            ]
-            const managementPlan: string[] = []
-            if (orBreakout === 'ABOVE' || orBreakout === 'BELOW') {
-              managementPlan.push(isShort
-                ? 'If the breakdown extends, scale into weakness and keep the stop anchored above the trigger level.'
-                : 'If the breakout extends, scale into strength and keep the stop anchored to the breakout level.')
-            }
-            if (isShort) {
-              managementPlan.push(vwapDist != null && vwapDist <= 0
-                ? 'If price reclaims VWAP after entry, cut size immediately — the breakdown thesis is invalidated.'
-                : 'If price fails to break below VWAP, do not force entry; wait for the structure to develop.')
-            } else {
-              managementPlan.push(vwapDist != null && vwapDist >= 0
-                ? 'If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.'
-                : 'If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
-            }
-            if (!volSpike) {
-              managementPlan.push(isShort
-                ? 'If volume stays weak, avoid adding to the short even if price drifts lower — low-volume drops reverse fast.'
-                : 'If volume stays weak, avoid adding size even if price drifts higher.')
-            } else {
-              managementPlan.push(isShort
-                ? 'If volume fades after the entry candle, tighten stops above the most recent resistance.'
-                : 'If volume fades after the entry candle, tighten stops under the most recent support.')
-            }
-            if (mom != null && Math.abs(mom) > 2) {
-              managementPlan.push('If extension keeps increasing, protect profits early and avoid turning an intraday trade into a hope trade.')
-            } else {
-              managementPlan.push('If momentum cools while structure holds, partial scale-outs are fine before reloading on confirmation.')
-            }
-            managementPlan.push(isShort
-              ? 'If price reclaims above the breakdown trigger and closes there, the short thesis is broken — step aside.'
-              : 'If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
+            const eg = result.entry_guidance
+            const fd = (result.final_decision || '').toUpperCase()
+            const execTiming = result.execution_timing || result.execution_readiness || ''
+            const toneGreen = fd === 'READY' || fd === 'GO' || fd === 'STRONG GO'
+            const toneAmber = fd === 'WATCH' || fd === 'WAIT'
+            const toneRed = fd === 'AVOID' || fd === 'NO_EDGE' || fd === 'NO-GO'
+            const decisionTone = toneGreen ? 'green' : toneRed ? 'red' : toneAmber ? 'amber' : 'gray'
+            const tColor = decisionTone === 'green' ? '#00A86B' : decisionTone === 'red' ? '#D0312D' : decisionTone === 'amber' ? '#D4A017' : '#6B7280'
+            const tBg = decisionTone === 'green' ? 'rgba(0,168,107,0.08)' : decisionTone === 'red' ? 'rgba(208,49,45,0.08)' : decisionTone === 'amber' ? 'rgba(212,160,23,0.08)' : 'rgba(107,114,128,0.08)'
 
             return (
               <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach — Intraday Management Plan</div>
-
-                {/* Risk Panel */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 12 }}>
-                  {riskPanel.map(item => {
-                    const tColor = item.tone === 'green' ? dt.green : item.tone === 'amber' ? dt.amber : item.tone === 'red' ? dt.red : dt.muted
-                    return (
-                      <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bg, padding: '6px 10px' }}>
-                        <span style={{ fontSize: '10px', color: dt.muted }}>{item.label}</span>
-                        <span style={{ fontSize: '11px', fontWeight: 600, fontFamily: 'monospace', color: tColor }}>{item.value}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Management Checklist */}
-                <div style={{ borderRadius: 10, border: `1px solid ${dt.border}`, background: dt.bg, padding: '10px 12px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: dt.muted, marginBottom: 8 }}>Management Checklist</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {managementPlan.map((item, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6, fontSize: '11px', color: dt.muted, lineHeight: 1.5 }}>
-                        <span style={{ marginTop: 5, width: 5, height: 5, borderRadius: '50%', backgroundColor: dt.accent, flexShrink: 0 }} />
-                        {item}
-                      </div>
-                    ))}
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach — Final Intraday Decision</div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 12 }}>
+                  <div style={{ borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bg, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 4 }}>Decision</div>
+                    <span style={{ display: 'inline-flex', borderRadius: 20, border: `1px solid ${tColor}`, padding: '2px 10px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: tColor, background: tBg }}>{fd}</span>
+                  </div>
+                  <div style={{ borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bg, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 4 }}>Timing</div>
+                    <span style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace', color: tColor }}>{execTiming || '—'}</span>
+                  </div>
+                  <div style={{ borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bg, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 4 }}>Risk State</div>
+                    <span style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace', color: result.risk_state === 'LOW' ? '#00A86B' : result.risk_state === 'HIGH' || result.risk_state === 'EXTREME' ? '#D0312D' : '#D4A017' }}>{result.risk_state || '—'}</span>
                   </div>
                 </div>
+                <div style={{ fontSize: '12px', color: dt.muted, lineHeight: 1.6, marginBottom: eg?.avoid ? 8 : 0 }}>{result.reason || eg?.action || 'Wait for the next valid confirmation before entry.'}</div>
+                {eg?.avoid && (
+                  <div style={{ display: 'flex', gap: 6, fontSize: '11px', color: '#D0312D', borderRadius: 8, border: '1px solid rgba(208,49,45,0.2)', background: 'rgba(208,49,45,0.06)', padding: '8px 10px' }}>
+                    <span style={{ flexShrink: 0, marginTop: 1 }}>⚠</span>
+                    {eg.avoid}
+                  </div>
+                )}
               </div>
             )
           })()}
