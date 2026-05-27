@@ -797,6 +797,97 @@ export default function DayTradePage() {
           </div>
           )})()}
 
+          {/* AI Coach — Walkthrough Step 6 */}
+          {result && (() => {
+            const raw = result as unknown as Record<string, unknown> | undefined
+            const m = raw?.metrics as Record<string, unknown> | undefined
+            const vwapDist = m?.vwap_dist_pct as number | undefined
+            const mom = m?.momentum_pct as number | undefined
+            const volSpike = !!m?.volume_spike
+            const vix = m?.vix as number | undefined
+            const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
+            const isShort = result.bias === 'short'
+            const riskTone: 'green' | 'amber' | 'red' | 'gray' = (() => {
+              const r = result?.risk_state?.toUpperCase()
+              if (r === 'LOW') return 'green'
+              if (r === 'MEDIUM' || r === 'HIGH' || r === 'VERY_HIGH') return 'amber'
+              if (r === 'EXTREME') return 'red'
+              return 'gray'
+            })()
+            const riskPanel = [
+              { label: 'Overall Risk', value: result?.risk_state ? result.risk_state.replace(/_/g, ' ') : '—', tone: riskTone },
+              { label: 'Momentum Risk', value: mom != null && Math.abs(mom) > 1.5 ? 'Elevated' : 'Manageable', tone: mom != null && Math.abs(mom) > 1.5 ? 'amber' as const : 'green' as const },
+              { label: 'Breakout Failure', value: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'Low' : 'Moderate', tone: orBreakout === 'ABOVE' || orBreakout === 'BELOW' ? 'green' as const : 'amber' as const },
+              { label: 'Extended Move', value: mom != null && mom > 2 ? 'High' : mom != null && mom < -2 ? 'High' : 'Low', tone: mom != null && Math.abs(mom) > 2 ? 'red' as const : 'green' as const },
+              { label: 'Volume Fade', value: volSpike ? 'Low' : 'Possible', tone: volSpike ? 'green' as const : 'amber' as const },
+              { label: 'VIX Context', value: vix != null ? `${vix.toFixed(1)}` : '—', tone: vix == null ? 'gray' as const : vix >= 30 ? 'red' as const : vix <= 18 ? 'green' as const : 'amber' as const },
+            ]
+            const managementPlan: string[] = []
+            if (orBreakout === 'ABOVE' || orBreakout === 'BELOW') {
+              managementPlan.push(isShort
+                ? 'If the breakdown extends, scale into weakness and keep the stop anchored above the trigger level.'
+                : 'If the breakout extends, scale into strength and keep the stop anchored to the breakout level.')
+            }
+            if (isShort) {
+              managementPlan.push(vwapDist != null && vwapDist <= 0
+                ? 'If price reclaims VWAP after entry, cut size immediately — the breakdown thesis is invalidated.'
+                : 'If price fails to break below VWAP, do not force entry; wait for the structure to develop.')
+            } else {
+              managementPlan.push(vwapDist != null && vwapDist >= 0
+                ? 'If VWAP fails after entry, cut size quickly instead of hoping for a second breakout.'
+                : 'If price reclaims VWAP cleanly, reassess whether execution readiness improves.')
+            }
+            if (!volSpike) {
+              managementPlan.push(isShort
+                ? 'If volume stays weak, avoid adding to the short even if price drifts lower — low-volume drops reverse fast.'
+                : 'If volume stays weak, avoid adding size even if price drifts higher.')
+            } else {
+              managementPlan.push(isShort
+                ? 'If volume fades after the entry candle, tighten stops above the most recent resistance.'
+                : 'If volume fades after the entry candle, tighten stops under the most recent support.')
+            }
+            if (mom != null && Math.abs(mom) > 2) {
+              managementPlan.push('If extension keeps increasing, protect profits early and avoid turning an intraday trade into a hope trade.')
+            } else {
+              managementPlan.push('If momentum cools while structure holds, partial scale-outs are fine before reloading on confirmation.')
+            }
+            managementPlan.push(isShort
+              ? 'If price reclaims above the breakdown trigger and closes there, the short thesis is broken — step aside.'
+              : 'If the opening range rejects and price cannot reclaim the trigger, step aside and wait for a new setup.')
+
+            return (
+              <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach — Intraday Management Plan</div>
+
+                {/* Risk Panel */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 12 }}>
+                  {riskPanel.map(item => {
+                    const tColor = item.tone === 'green' ? dt.green : item.tone === 'amber' ? dt.amber : item.tone === 'red' ? dt.red : dt.muted
+                    return (
+                      <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, borderRadius: 8, border: `1px solid ${dt.border}`, background: dt.bg, padding: '6px 10px' }}>
+                        <span style={{ fontSize: '10px', color: dt.muted }}>{item.label}</span>
+                        <span style={{ fontSize: '11px', fontWeight: 600, fontFamily: 'monospace', color: tColor }}>{item.value}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Management Checklist */}
+                <div style={{ borderRadius: 10, border: `1px solid ${dt.border}`, background: dt.bg, padding: '10px 12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: dt.muted, marginBottom: 8 }}>Management Checklist</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {managementPlan.map((item, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 6, fontSize: '11px', color: dt.muted, lineHeight: 1.5 }}>
+                        <span style={{ marginTop: 5, width: 5, height: 5, borderRadius: '50%', backgroundColor: dt.accent, flexShrink: 0 }} />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
         </div>
       )}
 
