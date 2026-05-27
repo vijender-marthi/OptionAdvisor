@@ -1893,9 +1893,17 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         vwap_tail = vwap_ser.iloc[-vwap_slope_bars:].values.astype(float)
         x = np.arange(vwap_slope_bars, dtype=float)
         slope = np.polyfit(x, vwap_tail, 1)[0]
-        vwap_slope_pct = round(slope / vwap_last * 100, 4)
+        vwap_slope_pct = round(slope / vwap_last * 100, 4) if vwap_last > 0 else None
 
-        vwap_macro_slope_pct = round(macro_slope / vwap_last * 100, 4)
+        # Macro VWAP slope (60 bars) for structural trend alignment
+        macro_bars = min(VWAP_MACRO_BARS, len(vwap_ser))
+        if macro_bars >= 20:
+            macro_tail = vwap_ser.iloc[-macro_bars:].values.astype(float)
+            x_macro = np.arange(macro_bars, dtype=float)
+            macro_slope = np.polyfit(x_macro, macro_tail, 1)[0]
+            vwap_macro_slope_pct = round(macro_slope / vwap_last * 100, 4) if vwap_last > 0 else None
+        else:
+            vwap_macro_slope_pct = None
     else:
         vwap_macro_slope_pct = None
 
@@ -2299,15 +2307,19 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         )
 
     # ── Volume profile (POC + delta) (volume group) ──────────────────────────
-    vp = _volume_profile(session)
-    if vp["poc"] is not None and vp["poc_position"] != "unknown":
-        if vp["poc_position"] == "above" and vp["delta_pct"] > 0:
+    try:
+        vp = _volume_profile(session)
+    except Exception:
+        vp = {"poc": None, "delta_pct": 0.0, "buying_vol": 0.0,
+              "selling_vol": 0.0, "total_vol": 0.0, "poc_position": "unknown"}
+    if vp.get("poc") is not None and vp.get("poc_position", "unknown") != "unknown":
+        if vp["poc_position"] == "above" and vp.get("delta_pct", 0) > 0:
             _g("volume", bull_delta=0.5)
             body.append(
                 f"Price above POC (${vp['poc']:.2f}) with positive delta (+{vp['delta_pct']:.1f}%) "
                 "— bullish volume structure."
             )
-        elif vp["poc_position"] == "below" and vp["delta_pct"] < 0:
+        elif vp["poc_position"] == "below" and vp.get("delta_pct", 0) < 0:
             _g("volume", bear_delta=0.5)
             body.append(
                 f"Price below POC (${vp['poc']:.2f}) with negative delta ({vp['delta_pct']:.1f}%) "
