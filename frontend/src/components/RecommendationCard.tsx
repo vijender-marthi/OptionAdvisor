@@ -7,13 +7,13 @@ import { saveToJournal, executeTrade, deskApi, type DeskAlertCreate } from '../a
 import SetAlertDrawer from './desk/SetAlertDrawer'
 
 const C = {
-  bg:        '#0A0B0D',
-  panel:     '#111215',
-  card:      '#18191D',
-  border:    '#1E1F24',
-  borderSub: '#25262B',
-  text:      '#E5E7EB',
-  muted:     '#6B7280',
+  bg:        'var(--surface-canvas)',
+  panel:     'var(--surface-card)',
+  card:      'var(--surface-elevated)',
+  border:    'var(--border-default)',
+  borderSub: 'var(--border-subtle)',
+  text:      'var(--text-primary)',
+  muted:     'var(--text-muted)',
   accent:    '#3B82F6',
   accentDim: 'rgba(59,130,246,0.12)',
   green:     '#00A86B',
