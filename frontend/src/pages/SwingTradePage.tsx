@@ -609,12 +609,16 @@ export default function SwingTradePage() {
                 <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
                   <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Entry status</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: unified.entry_price ? st.green : (unified.verdict === 'enter' || (unified.verdict_raw || '').toUpperCase() === 'GO') ? st.green : st.amber }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: unified.entry_price ? st.green : st.amber }}>
                     {unified.entry_price
                       ? `$${unified.entry_price.toFixed(2)}`
-                      : unified.verdict === 'enter' || (unified.verdict_raw || '').toUpperCase() === 'GO'
+                      : (unified.verdict_raw || '').toUpperCase() === 'STRONG GO'
                         ? 'Ready to enter'
-                        : 'Wait for trigger'}
+                        : (unified.verdict_raw || '').toUpperCase() === 'GO' && unified.confidence >= 75
+                          ? 'Ready to enter'
+                          : unified.verdict === 'enter' || (unified.verdict_raw || '').toUpperCase() === 'GO'
+                            ? 'Entry aligned — check timing'
+                            : 'Wait for trigger'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
