@@ -736,8 +736,6 @@ function TradingPositionCard({
       }
       const rawPct = pos.realized_pnl_percent ?? pos.pnlPct
       if (rawPct != null && Number.isFinite(rawPct)) {
-        // If the stored percent is wildly inconsistent with realized_pnl vs cost
-        // (e.g. computed from stock price instead of option premium), recalculate.
         if (pos.net_credit < 0) {
           const costBasis = Math.abs(pos.net_credit) * 100 * pos.contracts
           if (costBasis > 0) {
@@ -751,8 +749,20 @@ function TradingPositionCard({
       }
       return { pnl: pos.realized_pnl, pnl_pct: 0 }
     }
+    // Fallback: estimate from pnlPct or entry/exit price difference
     const d = computePnlDollar(pos)
-    return d != null ? { pnl: d, pnl_pct: pos.pnlPct ?? 0 } : null
+    if (d != null) return { pnl: d, pnl_pct: pos.pnlPct ?? 0 }
+    // Last resort: compute from entry_price vs exit_price
+    const entryP = pos.entryPrice || 0
+    const exitP = pos.exit_price || 0
+    if (entryP > 0 && exitP > 0) {
+      const multiplier = pos.strategy === 'Stock' ? 1 : 100
+      const estPnl = (exitP - entryP) * pos.contracts * multiplier
+      const costBas = entryP * pos.contracts * multiplier
+      const estPct = costBas > 0 ? (estPnl / costBas) * 100 : 0
+      return { pnl: estPnl, pnl_pct: estPct }
+    }
+    return null
   })() : null
 
   const displayPnl = (pos.status === 'closed' && closedPnl != null)
@@ -824,9 +834,11 @@ function TradingPositionCard({
               <div className={`font-mono text-xl font-bold tabular-nums leading-tight tracking-tight ${pnlColor}`}>
                 {displayPnl.pnl >= 0 ? '+' : ''}{fmtUsd(displayPnl.pnl)}
               </div>
+              {displayPnl.pnl_pct != null && (
               <div className={`text-[11px] font-semibold tabular-nums tracking-tight ${pnlColor}`}>
-                {displayPnl.pnl_pct != null && <>{displayPnl.pnl_pct >= 0 ? '+' : ''}{displayPnl.pnl_pct.toFixed(2)}%</>}
+                {displayPnl.pnl_pct >= 0 ? '+' : ''}{displayPnl.pnl_pct.toFixed(2)}%
               </div>
+              )}
               <div className="mt-1 flex gap-1 justify-end">
                 {pos.status === 'open' && displayPnl.pnl > 0 && (displayPnl.pnl_pct ?? 0) > 30 && <ProtectProfitsBadge />}
                 <PlBadge pnl={displayPnl.pnl} />
@@ -2014,13 +2026,26 @@ function computeClosePnl(
     realizedPnl = (exitPrice - pos.entryPrice) * contracts
     costBasis = pos.entryPrice * contracts
   } else if (netCredit >= 0 && exitDebitCredit != null) {
+    // Credit strategy (credit spread, short put/call)
     realizedPnl = (netCredit - exitDebitCredit) * contracts * 100
     costBasis = (pos.capital_at_risk != null
       ? (pos.capital_at_risk * contracts) / (pos.contracts || 1)
       : (pos.max_loss || netCredit) * contracts * 100)
   } else if (netCredit < 0 && exitPrice != null) {
+    // Debit strategy (long call/put, debit spread)
     realizedPnl = (exitPrice - Math.abs(netCredit)) * contracts * 100
     costBasis = Math.abs(netCredit) * contracts * 100
+  } else if (pos.pnlPct != null && Number.isFinite(pos.pnlPct)) {
+    // Fallback: estimate from stored pnlPct when user didn't enter exit details
+    const ref = costBasisRefPerShare(pos)
+    if (ref > 0) {
+      realizedPnl = (pos.pnlPct / 100) * ref * 100 * contracts
+    } else {
+      realizedPnl = 0
+    }
+    costBasis = Math.abs(netCredit) > 0
+      ? Math.abs(netCredit) * contracts * 100
+      : ref * contracts * 100
   }
 
   const realizedPnlPct = realizedPnl != null && costBasis > 0
