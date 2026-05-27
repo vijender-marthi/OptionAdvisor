@@ -40,10 +40,6 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   const sq = computeSignalQuality(analysis.conditions)
   const displayScore = analysis.confidence
 
-  // Score-gated status: both scores must cross thresholds before green.
-  // Engine verdict overrides: when the engine says GO/STRONG GO, respect it.
-  const setupScore = displayScore
-  const signalScore = sq.score
   const verdictMap: Record<string, { status: string; color: string }> = {
     'enter': { status: 'GO', color: '#00A86B' },
     'watch': { status: 'WATCH', color: '#D4A017' },
@@ -51,78 +47,155 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
     'avoid': { status: 'AVOID', color: '#D0312D' },
   }
   const vm = verdictMap[analysis.verdict] || { status: 'WAIT', color: '#D4A017' }
-  let statusText = vm.status
-  let statusColor = vm.color
-
+  const statusText = vm.status
+  const statusColor = vm.color
   const scoreColor = statusColor
 
+  // ─── Swing Trade Verdict Card ────────────────────────────────────────
   if (isSwing) {
+    const passCount = analysis.conditions.filter(c => c.type === 'pass').length
+    const warnCount = analysis.conditions.filter(c => c.type === 'warn').length
+    const failCount = analysis.conditions.filter(c => c.type === 'fail').length
+    const totalCond = analysis.conditions.length
+    const setupBarPct = totalCond > 0 ? Math.round((passCount / totalCond) * 100) : 0
+    const setupBarColor = setupBarPct >= 70 ? '#00A86B' : setupBarPct >= 40 ? '#D4A017' : '#D0312D'
+    const spread = analysis.spread_entry
+
     return (
-      <div className="uv-card" style={{ background: bg, border: `1px solid ${statusColor}30`, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
-        {/* Status line */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-            <span style={{ fontSize: 16, fontWeight: 700, color: statusColor, fontFamily: "'Inter', system-ui, sans-serif", lineHeight: 1.2 }}>{statusText}</span>
+      <div className="uv-card" style={{ background: bg, border: `1px solid ${statusColor}40`, borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+
+        {/* Header band */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${statusColor}20`, background: `${statusColor}08` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: statusColor, boxShadow: `0 0 7px ${statusColor}80`, flexShrink: 0 }} />
+            <span style={{ fontSize: 18, fontWeight: 800, color: statusColor, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '-0.01em' }}>{statusText}</span>
+            {analysis.structure && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px' }}>
+                {unifiedStructureLabel(analysis.structure)}
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: scoreColor, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{displayScore}</div>
-              <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 1 }}>Setup score</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: scoreColor, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{displayScore}</div>
+              <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Setup</div>
             </div>
+            <div style={{ width: 1, height: 28, background: C.border }} />
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: sq.color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{sq.score}/10</div>
-              <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 1 }}>Signal quality</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: sq.color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>
+                {sq.score}<span style={{ fontSize: 13, fontWeight: 500, color: C.textTer }}>/10</span>
+              </div>
+              <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Signal</div>
             </div>
           </div>
         </div>
 
-        {/* Explanation */}
-        <div className="uv-reason" style={{ fontSize: 12, color: C.textSec, lineHeight: 1.5, marginBottom: 10 }}>
-          {analysis.reason || (analysis.entry_price ? 'Entry levels available.' : 'Setup conditions are being evaluated.')}
-          {analysis.structure && ` Best structure: ${analysis.structure}${analysis.spread_entry?.expiry ? `, \u00B7 ${analysis.spread_entry.expiry}` : ''}.`}
-        </div>
+        <div style={{ padding: '12px 16px' }}>
+          {/* Reason */}
+          <div className="uv-reason" style={{ fontSize: 12.5, color: C.textSec, lineHeight: 1.55, marginBottom: 12 }}>
+            {analysis.reason || (analysis.entry_price ? 'Entry levels available.' : 'Setup conditions are being evaluated.')}
+          </div>
 
-        {/* Conditions as inline chips */}
-        {analysis.conditions.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {analysis.conditions.slice(0, 8).map((c, i) => (
-                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c.type === 'pass' ? 'rgba(0,168,107,0.3)' : c.type === 'warn' ? 'rgba(212,160,23,0.3)' : 'rgba(208,49,45,0.3)'}`, color: c.type === 'pass' ? '#00A86B' : c.type === 'warn' ? '#D4A017' : '#D0312D', background: c.type === 'pass' ? 'rgba(0,168,107,0.06)' : c.type === 'warn' ? 'rgba(212,160,23,0.06)' : 'rgba(208,49,45,0.06)' }}>
+          {/* Setup progress bar */}
+          {totalCond > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Conditions</span>
+                <div style={{ display: 'flex', gap: 8, fontSize: 10 }}>
+                  {passCount > 0 && <span style={{ color: '#00A86B', fontWeight: 600 }}>{passCount} pass</span>}
+                  {warnCount > 0 && <span style={{ color: '#D4A017', fontWeight: 600 }}>{warnCount} warn</span>}
+                  {failCount > 0 && <span style={{ color: '#D0312D', fontWeight: 600 }}>{failCount} fail</span>}
+                </div>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${setupBarPct}%`, background: setupBarColor, borderRadius: 2, transition: 'width 0.4s ease' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Conditions chips */}
+          {analysis.conditions.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+              {analysis.conditions.slice(0, 10).map((c, i) => (
+                <span key={i} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, padding: '3px 8px', borderRadius: 5,
+                  border: `1px solid ${c.type === 'pass' ? 'rgba(0,168,107,0.35)' : c.type === 'warn' ? 'rgba(212,160,23,0.35)' : 'rgba(208,49,45,0.35)'}`,
+                  color: c.type === 'pass' ? '#00A86B' : c.type === 'warn' ? '#D4A017' : '#D0312D',
+                  background: c.type === 'pass' ? 'rgba(0,168,107,0.07)' : c.type === 'warn' ? 'rgba(212,160,23,0.07)' : 'rgba(208,49,45,0.07)',
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
                   {c.label}
                 </span>
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Risk profile chips */}
-        {analysis.risk_profile.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-            {analysis.risk_profile.slice(0, 4).map((r, i) => {
-              const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
-              const sc = sv[r.severity] || '#6B7280'
-              return (
-                <span key={i} title={r.message} style={{ fontSize: '0.55rem', padding: '2px 6px', borderRadius: 3, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
-                  {r.type}
-                </span>
-              )
-            })}
-          </div>
-        )}
+          {/* Spread entry summary */}
+          {spread && (
+            <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.15)', padding: '10px 12px', marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Spread Entry</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Buy</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#00A86B' }}>{spread.long_leg}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Sell</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#D0312D' }}>{spread.short_leg}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Expiry</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: C.text }}>{spread.expiry}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Debit</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#00A86B' }}>${spread.est_debit.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Max Gain</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#00A86B' }}>${(spread.max_gain || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.textTer }}>Max Loss</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#D0312D' }}>${(spread.max_loss || 0).toFixed(2)}</span>
+                </div>
+              </div>
+              {spread.entry_note && (
+                <div style={{ marginTop: 8, padding: '5px 8px', borderRadius: 4, background: 'rgba(212,160,23,0.08)', fontSize: 10.5, color: '#D4A017' }}>
+                  {spread.entry_note}
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* Psychology message */}
-        {analysis.psychology?.message && (
-          <div style={{ fontSize: '0.65rem', color: C.textTer, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 10, paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
-            {analysis.psychology.message}
-          </div>
-        )}
+          {/* Risk profile chips */}
+          {analysis.risk_profile.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+              {analysis.risk_profile.slice(0, 5).map((r, i) => {
+                const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
+                const sc = sv[r.severity] || '#6B7280'
+                return (
+                  <span key={i} title={r.message} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
+                    {r.type}
+                  </span>
+                )
+              })}
+            </div>
+          )}
 
-        {/* Meta row */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: C.textTer, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
-          {analysis.structure && <span>Structure: <span style={{ color: C.text, fontWeight: 500 }}>{unifiedStructureLabel(analysis.structure)}</span></span>}
-          <span>Risk if entered: <span style={{ color: analysis.risk_level === 'LOW' ? '#00A86B' : analysis.risk_level === 'MEDIUM' ? '#D4A017' : '#D0312D', fontWeight: 500 }}>{analysis.risk_level || '—'}</span></span>
-          <span>RVOL: <span style={{ color: C.text, fontFamily: 'monospace' }}>{analysis.rvol || '—'}</span></span>
+          {/* Psychology */}
+          {analysis.psychology?.message && (
+            <div style={{ fontSize: 11, color: C.textTer, fontStyle: 'italic', lineHeight: 1.45, marginBottom: 10, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+              {analysis.psychology.message}
+            </div>
+          )}
+
+          {/* Meta row */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: C.textTer, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+            <span>Risk: <span style={{ color: analysis.risk_level === 'LOW' ? '#00A86B' : analysis.risk_level === 'MEDIUM' ? '#D4A017' : '#D0312D', fontWeight: 600 }}>{analysis.risk_level || '—'}</span></span>
+            {analysis.rr_ratio && <span>R/R: <span style={{ color: '#00A86B', fontWeight: 600, fontFamily: 'monospace' }}>{analysis.rr_ratio}</span></span>}
+            <span>RVOL: <span style={{ color: C.text, fontFamily: 'monospace' }}>{analysis.rvol || '—'}</span></span>
+          </div>
         </div>
       </div>
     )
