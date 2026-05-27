@@ -246,6 +246,7 @@ def decision_payload(
     reason_text = str(reason or "")
     if decision is None:
         return {
+            "verdict":             "NO_EDGE",
             "engine":              label,
             "market_bias":         "NEUTRAL",
             "setup_quality":       "WEAK",
@@ -275,6 +276,7 @@ def decision_payload(
             "option_risk_context":   {},
         }
     return {
+        "verdict":             str(getattr(decision, "verdict", None) or "NO_EDGE"),
         "engine":              label,
         "market_bias":         decision.market_bias,
         "setup_quality":       decision.setup_quality,
@@ -486,7 +488,7 @@ def _detect_cross_engine_conflict(day_scan: Any, swing_scan: Any) -> Optional[di
     day_verdict   = str(getattr(day_scan,   "verdict", "") or "").upper()
     swing_verdict = str(getattr(swing_scan, "verdict", "") or "").upper()
 
-    _go_verdicts = {"STRONG GO", "STRONG-GO", "GO"}
+    _go_verdicts = {"STRONG_GO", "STRONG GO", "STRONG-GO", "GO"}
     both_active = day_verdict in _go_verdicts and swing_verdict in _go_verdicts
     level = "HARD" if both_active else "SOFT"
 
@@ -589,7 +591,7 @@ def _compute_overall_decision(engine_cards: list[dict]) -> dict:
     # ── Rule 3: All three READY ──────────────────────────────────────────────
     if len(go_list) == 3:
         return {
-            "verdict":             "STRONG GO",
+            "verdict":             "STRONG_GO",
             "label":               "Full Alignment",
             "confidence":          min(95, _avg_conf(day_c, swing_c, reg_c) + 10),
             "reason":              "All three engines confirm — maximum conviction setup across every timeframe.",

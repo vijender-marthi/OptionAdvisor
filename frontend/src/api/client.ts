@@ -641,7 +641,7 @@ export interface UnifiedAnalysis {
   trade_type: 'day' | 'swing' | 'regular'
   price: number
   change_pct: number | null
-  verdict: 'enter' | 'watch' | 'wait' | 'avoid'
+  verdict: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   verdict_raw: string
   confidence: number
   reason: string
@@ -1015,24 +1015,22 @@ export function deriveUnifiedFromDayResult(
   const eg = result.entry_guidance || {}
   const m = result.metrics || {}
 
-  // Use suggested_action for verdict
-  const actionMap: Record<string, string> = {
-    'WATCH_LONG_ONLY':       'watch',
-    'WATCH_PUT_BREAKDOWN':   'watch',
-    'WAIT_FOR_CONFIRMATION': 'wait',
-    'NO_TRADE':              'wait',
-    'AVOID_CALLS':           'avoid',
-    'AVOID_CHASING_PUTS':    'avoid',
+  // Derive unified verdict: prefer backend verdict field, then infer from suggested_action
+  const actionToVerdict: Record<string, string> = {
+    'WATCH_LONG_ONLY':       'WATCH',
+    'WATCH_PUT_BREAKDOWN':   'WATCH',
+    'WAIT_FOR_CONFIRMATION': 'WAIT',
+    'NO_TRADE':              'WAIT',
+    'AVOID_CALLS':           'AVOID',
+    'AVOID_CHASING_PUTS':    'AVOID',
   }
 
-  const rawVerdict =
-    result.verdict?.toUpperCase() ?? ''
-  const verdict =
-    rawVerdict === 'STRONG GO'
-      ? 'enter'
-    : actionMap[td.suggested_action]
-      ?? (rawVerdict === 'GO'
-          ? 'watch' : 'wait')
+  const rawVerdict = (result.verdict ?? '').toString().toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
+  const verdict: UnifiedAnalysis['verdict'] =
+    (rawVerdict === 'STRONG_GO' || rawVerdict === 'GO' || rawVerdict === 'WATCH' || rawVerdict === 'WAIT' || rawVerdict === 'AVOID' || rawVerdict === 'NO_EDGE')
+      ? rawVerdict as UnifiedAnalysis['verdict']
+      : (actionToVerdict[td.suggested_action] as UnifiedAnalysis['verdict'])
+        ?? (rawVerdict === 'STRONG_GO' ? 'STRONG_GO' : rawVerdict === 'GO' ? 'GO' : 'WAIT')
 
   // Extract confidence from dict
   const conf = m.confidence
@@ -1099,8 +1097,8 @@ export function deriveUnifiedFromDayResult(
     trade_type: 'day',
     price: m.last_price ?? 0,
     change_pct: m.session_change_pct,
-    verdict: verdict as any,
-    verdict_raw: result.verdict,
+    verdict,
+    verdict_raw: rawVerdict,
     confidence,
     reason: td.decision_message
       || reasons[0] || '',
@@ -1143,18 +1141,17 @@ export function deriveUnifiedFromSwingResult(
   const m = result.metrics || {}
   const exec = m.exec_levels || {}
 
-  const verdictMap: Record<string,string> = {
-    'STRONG GO': 'enter',
-    'GO':        'enter',
-    'WATCH':     'watch',
-    'WAIT':      'wait',
-    'NO-GO':     'avoid',
-    'AVOID':     'avoid',
+  const swingRawVerdict = (result.verdict ?? '').toString().toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
+  const swingVerdictMap: Record<string, UnifiedAnalysis['verdict']> = {
+    'STRONG_GO': 'STRONG_GO',
+    'GO':        'GO',
+    'WATCH':     'WATCH',
+    'WAIT':      'WAIT',
+    'NO_GO':     'AVOID',
+    'AVOID':     'AVOID',
   }
 
-  const verdict =
-    verdictMap[result.verdict?.toUpperCase()]
-    ?? 'wait'
+  const verdict: UnifiedAnalysis['verdict'] = swingVerdictMap[swingRawVerdict] ?? 'WAIT'
 
   const conf = m.confidence
   // same confidence extraction as above
@@ -1165,8 +1162,8 @@ export function deriveUnifiedFromSwingResult(
     trade_type: 'swing',
     price: m.last_price ?? 0,
     change_pct: m.momentum_5d_pct,
-    verdict: verdict as any,
-    verdict_raw: result.verdict,
+    verdict,
+    verdict_raw: swingRawVerdict,
     confidence: 0, // compute same way
     reason: result.decision_message || '',
     conditions: (result.reasons || [])

@@ -66,10 +66,19 @@ export function swingEngineWatchlistExpandedAccentBarClass(tone: Tone): string {
 }
 
 export function toneForFinalAction(fa: string): Tone {
-  if (fa === 'READY' || fa === 'TRADE' || fa === 'STRONG_GO') return 'green'
+  if (fa === 'READY' || fa === 'TRADE' || fa === 'STRONG_GO' || fa === 'GO') return 'green'
   if (fa === 'WATCH' || fa === 'WATCH_CALL_OR_DEBIT_SPREAD' || fa === 'WATCH_CALL' || fa === 'WATCH_PUT' || fa === 'GO_SMALL') return 'blue'
   if (fa === 'WAIT' || fa === 'WAIT_PULLBACK' || fa === 'WAIT_BREAKOUT' || fa === 'WAIT_FOR_BREAKDOWN' || fa === 'AVOID_CHASE') return 'orange'
   if (fa === 'AVOID' || fa === 'EXIT' || fa === 'NO_EDGE' || fa === 'AVOID_NAKED_CALLS' || fa === 'NO_TRADE') return 'red'
+  return 'gray'
+}
+
+/** Tone for unified verdict (STRONG_GO | GO | WATCH | WAIT | AVOID | NO_EDGE). */
+export function toneForVerdict(v: string): Tone {
+  if (v === 'STRONG_GO' || v === 'GO') return 'green'
+  if (v === 'WATCH')                   return 'blue'
+  if (v === 'WAIT')                    return 'orange'
+  if (v === 'AVOID')                   return 'red'
   return 'gray'
 }
 

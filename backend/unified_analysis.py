@@ -1,65 +1,20 @@
 """
 Unified analysis serializer.
 Wraps day_trade, swing_trade, and engine into one consistent response shape.
+
+All verdict values come from verdict_resolver — never computed inline here.
 """
 from __future__ import annotations
 from typing import Any, Optional
 import logging
 
+from verdict_resolver import (
+    resolve_verdict_day,
+    resolve_verdict_swing,
+    resolve_verdict_regular,
+)
+
 log = logging.getLogger(__name__)
-
-def _day_verdict(scan) -> str:
-    """
-    Use trader_decision.suggested_action
-    as primary — it's the Decision Quality
-    Layer output, more nuanced than verdict.
-
-    suggested_action values from trader_decision.py:
-      WATCH_LONG_ONLY       → watch
-      WATCH_PUT_BREAKDOWN   → watch
-      WAIT_FOR_CONFIRMATION → wait
-      NO_TRADE              → wait
-      AVOID_CALLS           → avoid
-      AVOID_CHASING_PUTS    → avoid
-
-    STRONG GO only applies when trader_decision
-    does not explicitly override (e.g. WAIT_FOR_CONFIRMATION
-    wins over STRONG GO — the DQL layer has more context).
-    """
-    td = scan.trader_decision or {}
-    suggested = td.get('suggested_action', '')
-    raw_verdict = scan.verdict.upper()
-
-    # trader_decision takes priority — check it first
-    action_map = {
-        'WATCH_LONG_ONLY':       'watch',
-        'WATCH_PUT_BREAKDOWN':   'watch',
-        'WAIT_FOR_CONFIRMATION': 'wait',
-        'NO_TRADE':              'wait',
-        'AVOID_CALLS':           'avoid',
-        'AVOID_CHASING_PUTS':    'avoid',
-    }
-    if suggested in action_map:
-        return action_map[suggested]
-
-    # STRONG GO only applies when trader_decision has no override
-    if raw_verdict == 'STRONG GO':
-        return 'enter'
-
-    # Fall back to scan.verdict mapping
-    return normalize_verdict(raw_verdict)
-
-def normalize_verdict(raw: str) -> str:
-    v = (raw or "").upper().strip()
-    if v in ("STRONG GO", "GO"):
-        return "enter"
-    if v == "WATCH":
-        return "watch"
-    if v == "WAIT":
-        return "wait"
-    if v in ("NO-GO", "NO GO", "AVOID", "NO-TRADE"):
-        return "avoid"
-    return "wait"
 
 
 def _fmt_price(price: Optional[float]) -> str:
@@ -100,7 +55,7 @@ def _risk_level(verdict: str, metrics: dict) -> str:
     if vix > 30:
         return "HIGH"
     v = verdict.upper()
-    if v in ("NO-GO", "WAIT"):
+    if v in ("AVOID", "WAIT", "NO_EDGE"):
         return "HIGH"
     return "MEDIUM"
 
@@ -372,9 +327,11 @@ def serialize_day_trade(scan) -> dict:
         spy_chg = m.get("spy_change_pct")
         qqq_chg = m.get("qqq_change_pct")
 
+        # Unified verdict — single source of truth
+        verdict = resolve_verdict_day(scan)
+
         # Clear entry plan for non-actionable verdicts
-        normalized = _day_verdict(scan)
-        if normalized in ('avoid', 'wait'):
+        if verdict in ("AVOID", "WAIT", "NO_EDGE"):
             entry_price = None
             stop_price = None
             structure = ""
@@ -387,8 +344,8 @@ def serialize_day_trade(scan) -> dict:
             "trade_type": "day",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("session_change_pct"),
-            "verdict": _day_verdict(scan),
-            "verdict_raw": _day_verdict(scan),
+            "verdict": verdict,
+            "verdict_raw": verdict,
             "confidence": _extract_confidence(m.get("confidence")),
             "reason": td.get("decision_message") or (scan.reasons[0] if scan.reasons else ""),
             "conditions": conditions,
@@ -399,7 +356,7 @@ def serialize_day_trade(scan) -> dict:
             "structure": structure,
             "exit_rows": exit_rows,
             "rr_ratio": rr_str,
-            "risk_level": _risk_level(scan.verdict or "", m),
+            "risk_level": _risk_level(verdict, m),
             "rvol": rvol_str,
             "coach": coach,
             "spy_price": None,
@@ -475,9 +432,11 @@ def serialize_swing_trade(scan) -> dict:
 
         coach = getattr(scan, "playbook_hint", "") or getattr(scan, "decision_message", "") or ""
 
+        # Unified verdict — single source of truth
+        verdict = resolve_verdict_swing(scan)
+
         # Clear entry plan for non-actionable verdicts
-        sw_verdict = normalize_verdict(scan.verdict or "")
-        if sw_verdict in ('avoid', 'wait'):
+        if verdict in ("AVOID", "WAIT", "NO_EDGE"):
             entry_price = None
             stop_price = None
             structure = ""
@@ -489,8 +448,8 @@ def serialize_swing_trade(scan) -> dict:
             "trade_type": "swing",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("momentum_5d_pct"),
-            "verdict": normalize_verdict(scan.verdict or ""),
-            "verdict_raw": scan.verdict or "",
+            "verdict": verdict,
+            "verdict_raw": verdict,
             "confidence": _extract_confidence(m.get("confidence")),
             "reason": getattr(scan, "decision_message", "") or (scan.reasons[0] if scan.reasons else ""),
             "conditions": conditions,
@@ -531,8 +490,8 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
                 "trade_type": "regular",
                 "price": price,
                 "change_pct": None,
-                "verdict": "wait",
-                "verdict_raw": "NO_TRADES",
+                "verdict": "NO_EDGE",
+                "verdict_raw": "NO_EDGE",
                 "confidence": 0,
                 "reason": "No trades passed all filters. Try a more liquid ticker or adjust strategy mode.",
                 "conditions": [],
@@ -561,12 +520,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
 
         top = candidates[0]
         score = getattr(top, 'total_score', 0) or 0
-        if score >= 70:
-            verdict, verdict_raw = "enter", "GO"
-        elif score >= 50:
-            verdict, verdict_raw = "watch", "WATCH"
-        else:
-            verdict, verdict_raw = "wait", "WAIT"
+        verdict = resolve_verdict_regular(score, len(candidates))
 
         confidence = min(int(score), 99)
 
@@ -643,7 +597,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
             "price": price,
             "change_pct": None,
             "verdict": verdict,
-            "verdict_raw": verdict_raw,
+            "verdict_raw": verdict,
             "confidence": confidence,
             "reason": reason,
             "conditions": conditions,
@@ -681,8 +635,8 @@ def _error_response(ticker: str, trade_type: str, error: str) -> dict:
         "trade_type": trade_type,
         "price": 0,
         "change_pct": None,
-        "verdict": "wait",
-        "verdict_raw": "ERROR",
+        "verdict": "NO_EDGE",
+        "verdict_raw": "NO_EDGE",
         "confidence": 0,
         "reason": f"Analysis error: {error}",
         "conditions": [],

@@ -120,6 +120,8 @@ export interface TradeCommandCenterRecommendation {
   direction: string
   strategy: string
   signal: string
+  /** Unified verdict — the only verdict field shown on cards. */
+  verdict?: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   entry_zone?: string
   target?: string
   stop_loss?: string
@@ -206,7 +208,8 @@ export interface TradeCommandCenterCharts {
 }
 
 export interface OverallDecision {
-  verdict: 'STRONG GO' | 'GO' | 'WATCH' | 'WAIT'
+  /** Unified verdict — single value from verdict_resolver. */
+  verdict: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   label: string
   confidence: number
   reason: string
@@ -227,6 +230,8 @@ export interface TradeCommandCenterPayload {
 }
 
 export interface SignalFeedDecisionBlock {
+  /** Unified verdict — the only verdict field shown on cards. */
+  verdict?: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   engine: 'day' | 'swing' | 'regular' | string
   market_bias: string
   setup_quality: string

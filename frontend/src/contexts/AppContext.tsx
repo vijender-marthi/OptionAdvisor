@@ -32,7 +32,7 @@ import {
   setAccessToken,
   type AuthLoginResponse,
 } from '../api/client'
-import { addPortfolioPosition, closePortfolioPosition, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
+import { addPortfolioPosition, closePortfolioPosition, updatePortfolioPositionApi, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import {
@@ -579,7 +579,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         advisoryAcceptedAt && advisoryTermsVersion
           ? { advisoryTermsVersion, advisoryAcceptedAt }
           : undefined
-      saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
+      // Portfolio is excluded here — add/update/close each use their own dedicated
+      // endpoint (/portfolio/add, /portfolio/update, /portfolio/close) which return
+      // the authoritative server state. Including portfolio in this bulk PUT caused
+      // a race where a stale React closure snapshot would overwrite freshly saved positions.
+      saveUserData(user.email, watchlist, portfolioRef.current, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
         .then(() => {
           if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
           setPortfolioRefreshKey(k => k + 1)
@@ -591,7 +595,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
     }, 300)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
+  }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
     user &&
@@ -971,26 +975,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updatePortfolioPosition = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
+    // Optimistic update so the UI responds immediately
     setPortfolio(prev => prev.map(p =>
-      p.id !== id
-        ? p
-        : {
-            ...data,
-            id: p.id,
-            addedAt: p.addedAt,
-            status: p.status,
-            pnlPct: p.pnlPct,
-            exitDate: data.exitDate ?? p.exitDate,
-            exit_price: data.exit_price ?? p.exit_price,
-            exit_debit_credit: data.exit_debit_credit ?? p.exit_debit_credit,
-            realized_pnl: data.realized_pnl ?? p.realized_pnl,
-            realized_pnl_percent: data.realized_pnl_percent ?? p.realized_pnl_percent,
-            exit_reason: data.exit_reason ?? p.exit_reason,
-            close_notes: data.close_notes ?? p.close_notes,
-            pnl_overridden: data.pnl_overridden ?? p.pnl_overridden,
-            pnl_override_reason: data.pnl_override_reason ?? p.pnl_override_reason,
-          },
+      p.id !== id ? p : { ...p, ...data, id: p.id, addedAt: p.addedAt, status: p.status },
     ))
+    // Persist to DB via dedicated endpoint — avoids race with the bulk debounce
+    updatePortfolioPositionApi({ id, data: data as unknown as Record<string, unknown> })
+      .then(resp => {
+        if (resp.data?.ok && Array.isArray(resp.data.portfolio)) {
+          setPortfolio(resp.data.portfolio as unknown as PortfolioPosition[])
+        }
+      })
+      .catch(e => {
+        console.warn('[portfolio] update persist failed:', e)
+      })
   }, [])
 
   const removeFromPortfolio = useCallback((id: string) => {
