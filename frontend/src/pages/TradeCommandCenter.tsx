@@ -694,6 +694,76 @@ export default function TradeCommandCenter() {
     return                      'border-teal-500/30 text-teal-400 bg-teal-950/20'
   }
 
+  // ── Shared sub-indicator rows shown inside every card ────────────────────
+  function SubIndicators({ rec }: { rec: TradeCommandCenterRecommendation }) {
+    const rows: Array<{ label: string; value: string; tone: string }> = []
+
+    function tone(val: string): string {
+      const v = val.toUpperCase()
+      if (['STRONG', 'PRIME', 'READY', 'HIGH', 'LOW_RISK', 'BULLISH', 'CONFIRMED'].some(k => v.includes(k))) return 'text-emerald-400'
+      if (['WEAK', 'AVOID', 'HIGH_RISK', 'EXTREME', 'NO_EDGE', 'POOR'].some(k => v.includes(k))) return 'text-rose-400'
+      if (['WATCH', 'MODERATE', 'MEDIUM', 'PARTIAL', 'MIXED', 'ELEVATED'].some(k => v.includes(k))) return 'text-amber-400'
+      return 'text-slate-400'
+    }
+
+    if (rec.setup_quality)       rows.push({ label: 'Setup',     value: rec.setup_quality,       tone: tone(rec.setup_quality) })
+    if (rec.execution_readiness) rows.push({ label: 'Execution', value: rec.execution_readiness,  tone: tone(rec.execution_readiness) })
+    if (rec.signal_quality)      rows.push({ label: 'Signal',    value: rec.signal_quality,       tone: tone(rec.signal_quality) })
+    if (rec.risk_state)          rows.push({ label: 'Risk',      value: rec.risk_state,           tone: tone(rec.risk_state) })
+    if (rec.market_bias)         rows.push({ label: 'Bias',      value: rec.market_bias,          tone: tone(rec.market_bias) })
+
+    const supporting = (rec.supporting_factors || []).slice(0, 2)
+    const missing    = (rec.missing_confirmations || []).slice(0, 2)
+    const hasReason  = rec.reason && String(rec.reason).length > 0
+
+    if (rows.length === 0 && supporting.length === 0 && missing.length === 0 && !hasReason) return null
+
+    return (
+      <div className="mt-2.5 space-y-1.5 border-t border-white/[0.06] pt-2.5">
+        {/* Sub-indicator pills */}
+        {rows.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {rows.map(r => (
+              <div key={r.label} className="flex items-center gap-1 min-w-0">
+                <span className="text-[9px] uppercase tracking-wide text-slate-600 shrink-0">{r.label}</span>
+                <span className={`text-[10px] font-semibold uppercase ${r.tone} truncate`}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Supporting factors */}
+        {supporting.length > 0 && (
+          <div className="space-y-0.5">
+            {supporting.map((f, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[10px] text-emerald-600">
+                <span className="mt-0.5 shrink-0">✓</span>
+                <span className="leading-tight truncate">{f}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Missing confirmations */}
+        {missing.length > 0 && (
+          <div className="space-y-0.5">
+            {missing.map((m, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-600">
+                <span className="mt-0.5 shrink-0">⚠</span>
+                <span className="leading-tight truncate">{m}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Reason */}
+        {hasReason && (
+          <p className="text-[10px] leading-snug text-slate-500 line-clamp-2">{rec.reason}</p>
+        )}
+      </div>
+    )
+  }
+
   function navForRec(rec: TradeCommandCenterRecommendation) {
     const eng = (rec.engine_type || '').toLowerCase()
     const strat = (rec.strategy || '').toLowerCase()
@@ -932,6 +1002,7 @@ export default function TradeCommandCenter() {
                           style={{ width: `${conf}%` }}
                         />
                       </div>
+                      <SubIndicators rec={top} />
                     </button>
                   )
                 })}
@@ -1024,6 +1095,7 @@ export default function TradeCommandCenter() {
                         </div>
                         <span className={`font-mono text-xs font-bold ${conf >= 70 ? 'text-emerald-400' : 'text-sky-400'}`}>{conf}%</span>
                       </div>
+                      <SubIndicators rec={rec} />
                     </button>
                   )
                 })}
@@ -1075,13 +1147,6 @@ export default function TradeCommandCenter() {
                         <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
                       </div>
 
-                      {missingStr && (
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <ShieldAlert size={10} className="text-amber-500 shrink-0" />
-                          <span className="text-[10px] text-amber-600 truncate">{missingStr}</span>
-                        </div>
-                      )}
-
                       <div className="flex items-center gap-2">
                         <div className="flex-1">
                           <div className="h-1 w-full rounded-full bg-slate-800">
@@ -1090,6 +1155,7 @@ export default function TradeCommandCenter() {
                         </div>
                         <span className="font-mono text-xs font-bold text-amber-400">{conf}%</span>
                       </div>
+                      <SubIndicators rec={rec} />
                     </button>
                   )
                 })}
