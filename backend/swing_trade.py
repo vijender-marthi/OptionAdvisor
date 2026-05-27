@@ -790,15 +790,32 @@ def build_swing_trade_decision(
     else:
         suggested_strategy = "NO_TRADE"
 
+    # ── 9b. DTE penalty — 35+ DTE for a 5-day hold is too long ─────────
+    # A 3-5 day hold should use 7-14 DTE options. Penalize longer durations
+    # that waste premium on unnecessary time value.
+    if recommended_contract_duration:
+        parts = recommended_contract_duration.replace("–", "-").split("-")
+        nums = [int(p.strip()) for p in parts if p.strip().isdigit()]
+        if len(nums) == 2:
+            avg_dte = (nums[0] + nums[1]) // 2
+        elif len(nums) == 1:
+            avg_dte = nums[0]
+        else:
+            avg_dte = 0
+        if avg_dte > 15:
+            penalty = round((avg_dte - 15) * 0.05, 2)  # −0.05 per DTE over 15
+            trade_quality_score = max(0.0, trade_quality_score - penalty)
+            risk_flags.append(f"DTE_TOO_LONG({avg_dte}d)")
+
     # ── 10. Suggested expiry window ────────────────────────────────────
     if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
         suggested_expiry_window = "No trade"
     elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
         suggested_expiry_window = "6-8 weeks"
     elif trade_quality_score >= 7.0 and entry_quality == "GOOD_ENTRY":
-        suggested_expiry_window = "3-6 weeks"
+        suggested_expiry_window = "1-2 weeks"
     else:
-        suggested_expiry_window = "4-6 weeks"
+        suggested_expiry_window = "2-3 weeks"
 
     # ── 11. Separate holding period from contract duration ──────────────
     # Holding period always stays ~3-5 trading days for swing (overnight holds).
@@ -810,9 +827,9 @@ def build_swing_trade_decision(
     elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
         recommended_contract_duration = "42-56"
     elif trade_quality_score >= 7.0 and entry_quality == "GOOD_ENTRY":
-        recommended_contract_duration = "21-42"
+        recommended_contract_duration = "7-14"
     else:
-        recommended_contract_duration = "28-42"
+        recommended_contract_duration = "10-21"
 
     # ── 12. Decision message ───────────────────────────────────────────
     decision_message = _build_decision_message(
@@ -1420,32 +1437,32 @@ def compute_playbook_hint(
     def _bullish_entry_hint() -> str:
         if iv_unknown:
             return (
-                "Long call — bullish with a clean entry; implied IV missing from feed — "
+                "Long call (7-14 DTE) — bullish with a clean entry; implied IV missing from feed — "
                 "confirm IV vs HV on your platform."
             )
         if _very_high_iv:
             return (
-                f"Bull put spread (put credit spread) — bullish; IV rank {_iv_rank_val:.0f} is very high — "
+                f"Bull put spread 7-14 DTE — bullish; IV rank {_iv_rank_val:.0f} is very high — "
                 "sell premium rather than buy it; credit spread profits from IV crush + time decay."
             )
         if _high_iv_hint:
-            return f"Call debit spread — bullish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
-        return "Long call — bullish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
+            return f"Call debit spread 7-14 DTE — bullish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
+        return "Long call (7-14 DTE) — bullish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
 
     def _bearish_entry_hint() -> str:
         if iv_unknown:
             return (
-                "Long put — bearish with a clean entry; implied IV missing from feed — "
+                "Long put (7-14 DTE) — bearish with a clean entry; implied IV missing from feed — "
                 "confirm IV vs HV on your platform."
             )
         if _very_high_iv:
             return (
-                f"Bear call spread (call credit spread) — bearish; IV rank {_iv_rank_val:.0f} is very high — "
+                f"Bear call spread 7-14 DTE — bearish; IV rank {_iv_rank_val:.0f} is very high — "
                 "sell premium rather than buy it; credit spread profits from IV crush + time decay."
             )
         if _high_iv_hint:
-            return f"Put debit spread — bearish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
-        return "Long put — bearish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
+            return f"Put debit spread 7-14 DTE — bearish with a clean entry; IV elevated (rank {_iv_rank_val:.0f} ≥50)."
+        return "Long put (7-14 DTE) — bearish with a clean entry; IV not elevated (rank <50 vs HV proxy, or IV at/below HV20)."
 
     hint: str
 
@@ -1678,7 +1695,7 @@ def _suggest_spread_entry(
             return None
 
         # Parse DTE range → target midpoint
-        target_dte = 35
+        target_dte = 12
         if recommended_contract_duration:
             parts = recommended_contract_duration.replace("–", "-").split("-")
             nums = [int(p.strip()) for p in parts if p.strip().isdigit()]
