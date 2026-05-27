@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Database, Layers, CheckCircle2, AlertTriangle, XCircle, Bell, BookOpen, Briefcase, Zap } from 'lucide-react'
-import { analyzeOptions, analyzeV2, deskApi, saveToJournal, executeTrade } from '../api/client'
-import type { UnifiedAnalysis, DeskAlertCreate } from '../api/client'
+import { Search, Database, Layers, AlertTriangle } from 'lucide-react'
+import { analyzeOptions, analyzeV2 } from '../api/client'
+import type { UnifiedAnalysis } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
-import SetAlertDrawer from '../components/desk/SetAlertDrawer'
+import RecommendationCard from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
@@ -294,7 +294,7 @@ export default function TickerPage() {
     pendingTicker, pendingAnalysisOptions, clearPendingTicker,
     getCached, setCached, tickerCache,
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
-    theme, navigate, user, addManualPosition,
+    theme, navigate,
   } = useApp()
 
   const C = theme === 'light' ? C_LIGHT : C_DARK
@@ -319,9 +319,6 @@ export default function TickerPage() {
   const didRestoreLastAnalysis = useRef(false)
   const pendingRecFocusRef = useRef<{ strategy: string; expiry: string } | null>(null)
   const [scrollFocusRank, setScrollFocusRank] = useState<number | null>(null)
-  const [selectedRank, setSelectedRank] = useState<number | null>(null)
-  const [alertOpen, setAlertOpen]       = useState(false)
-  const [journalSaving, setJournalSaving] = useState(false)
 
   const handleAnalyze = async (
     ticker: string,
@@ -836,189 +833,22 @@ export default function TickerPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflowX: 'auto' }}>
-                  <table style={{ minWidth: 800, width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr style={{ background: C.bgPanel }}>
-                        <th style={{ width: '3%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>#</th>
-                        <th style={{ width: '22%', padding: '8px 10px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strategy</th>
-                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Action</th>
-                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Type</th>
-                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Strike</th>
-                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'left', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Expiry</th>
-                        <th style={{ width: '8%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Cost</th>
-                        <th style={{ width: '9%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Max Profit</th>
-                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>R:R</th>
-                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Score</th>
-                        <th style={{ width: '6%', padding: '8px 6px', textAlign: 'right', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>PoP</th>
-                        <th style={{ width: '10%', padding: '8px 6px', textAlign: 'center', color: C.muted, fontWeight: 600, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedData.recommendations.map(rec => {
-                        const isCredit = (rec.net_credit ?? 0) > 0
-                        const score = rec.scores?.total_score ?? 0
-                        const rr = rec.risk_reward_ratio ?? 0
-                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
-                        const status = score >= 70 && allFilters ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : score >= 40 ? 'WATCH' : 'AVOID'
-                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
-                        return (
-                          <React.Fragment key={rec.rank}>
-                            {rec.legs.map((leg, li: number) => (
-                              <tr key={`${rec.rank}-${li}`} onClick={() => { setSelectedRank(selectedRank === rec.rank ? null : rec.rank); setAlertOpen(false) }} style={{ borderBottom: selectedRank === rec.rank && li === rec.legs.length - 1 ? 'none' : `1px solid ${C.border}`, cursor: 'pointer', background: selectedRank === rec.rank ? 'rgba(74,124,255,0.06)' : undefined }}>
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
-                                  <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
-                                  <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}</div>
-                                  <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
-                                </td>)}
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600, color: leg.action === 'BUY' ? C.green : C.red }}>{leg.action}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.text }}>{leg.option_type}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: C.text, textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: rr > 0 && rr <= 3 ? C.green : rr > 0 ? C.amber : C.muted }}>{rr > 0 ? `1:${rr.toFixed(1)}` : '—'}</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
-                                {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
-                                </td>)}
-                              </tr>
-                            ))}
-                            {selectedRank === rec.rank && (
-                              <tr style={{ background: 'rgba(74,124,255,0.04)', borderBottom: `1px solid ${C.border}` }}>
-                                <td colSpan={12} style={{ padding: '10px 14px' }}>
-                                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.68rem', color: C.muted, marginRight: 4 }}>Actions:</span>
-                                     <button type="button" onClick={e => {
-                                       e.stopPropagation()
-                                       if (!data) return
-                                       const midPrice = typeof rec.legs[0]?.mid_price === 'number' ? rec.legs[0].mid_price : 0
-                                       const isCredit = (rec.net_credit ?? 0) > 0
-                                       addManualPosition({
-                                         ticker: data.ticker,
-                                         companyName: data.company_name ?? data.ticker,
-                                         strategy: rec.strategy,
-                                         bias: rec.bias || 'Bullish',
-                                         legs: rec.legs as any[],
-                                         expiry: rec.expiry,
-                                         dte: rec.dte ?? 0,
-                                         net_credit: isCredit ? Math.abs(rec.net_credit ?? 0) : -(Math.abs(rec.net_credit ?? 0)),
-                                         spread_width: rec.spread_width ?? 0,
-                                         max_profit: (rec.max_profit ?? 0) * 100,
-                                         max_loss: (rec.max_loss ?? 0) * 100,
-                                         prob_of_profit: rec.prob_of_profit ?? 0,
-                                         expected_value: rec.expected_value ?? 0,
-                                         scores_total: rec.scores?.total_score ?? 0,
-                                         contracts: 1,
-                                         breakeven_lower: 0,
-                                         breakeven_upper: 0,
-                                         entryPrice: data.signals?.current_price ?? 0,
-                                         source: 'regular',
-                                         notes: '',
-                                       })
-                                       navigate('positions')
-                                     }}
-                                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.violet}50`, background: `${C.violet}12`, color: C.violet, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                       <Briefcase size={12} /> Add Position
-                                    </button>
-                                    <button type="button" disabled={journalSaving} onClick={async e => {
-                                        e.stopPropagation()
-                                        const email = user?.email
-                                        if (!email || !data) return
-                                        setJournalSaving(true)
-                                        try {
-                                          await saveToJournal(email, {
-                                            ticker: data.ticker,
-                                            company_name: data.company_name ?? data.ticker,
-                                            strategy: rec.strategy,
-                                            bias: (rec.legs[0] as { side?: string })?.side ?? 'neutral',
-                                         legs: rec.legs as import('../types').OptionLeg[],
-                                            expiry: rec.expiry,
-                                            entry_date: new Date().toISOString().slice(0, 10),
-                                            dte_at_entry: rec.dte ?? 0,
-                                            net_credit: rec.net_credit ?? 0,
-                                            max_profit: (rec.max_profit ?? 0) * 100,
-                                            max_loss: (rec.max_loss ?? 0) * 100,
-                                            underlying_entry: data.signals?.current_price ?? 0,
-                                            prob_of_profit: rec.prob_of_profit ?? 0,
-                                            expected_value: rec.expected_value ?? 0,
-                                            total_score: rec.scores?.total_score ?? 0,
-                                            trade_type: 'regular',
-                                          })
-                                          navigate('journal')
-                                        } catch { /* silently navigate anyway */ navigate('journal') } finally { setJournalSaving(false) }
-                                      }}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.green}50`, background: `${C.green}12`, color: C.green, fontSize: '0.72rem', fontWeight: 600, cursor: journalSaving ? 'wait' : 'pointer', opacity: journalSaving ? 0.6 : 1 }}>
-                                      <BookOpen size={12} /> {journalSaving ? 'Saving…' : 'Save to Journal'}
-                                    </button>
-                                    <button type="button" onClick={e => { e.stopPropagation(); setAlertOpen(o => !o) }}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.amber}50`, background: `${C.amber}12`, color: C.amber, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                      <Bell size={12} /> Set Alert
-                                    </button>
-                                     <button type="button" onClick={e => {
-                                        e.stopPropagation()
-                                        if (!data || !user?.email) return
-                                        const isCredit = (rec.net_credit ?? 0) > 0
-                                        addManualPosition({
-                                          ticker: data.ticker,
-                                          companyName: data.company_name ?? data.ticker,
-                                          strategy: rec.strategy,
-                                          bias: rec.bias || 'Bullish',
-                                          legs: rec.legs as any[],
-                                          expiry: rec.expiry,
-                                          dte: rec.dte ?? 0,
-                                          net_credit: isCredit ? Math.abs(rec.net_credit ?? 0) : -(Math.abs(rec.net_credit ?? 0)),
-                                          spread_width: rec.spread_width ?? 0,
-                                          max_profit: (rec.max_profit ?? 0) * 100,
-                                          max_loss: (rec.max_loss ?? 0) * 100,
-                                          prob_of_profit: rec.prob_of_profit ?? 0,
-                                          expected_value: rec.expected_value ?? 0,
-                                          scores_total: rec.scores?.total_score ?? 0,
-                                          contracts: 1,
-                                          breakeven_lower: 0,
-                                          breakeven_upper: 0,
-                                          entryPrice: data.signals?.current_price ?? 0,
-                                          source: 'regular',
-                                          notes: '',
-                                        })
-                                        // Submit to Alpaca paper trading
-                                        try {
-                                          executeTrade({
-                                            email: user.email,
-                                            ticker: data.ticker,
-                                            strategy: rec.strategy,
-                                            legs: rec.legs as object[],
-                                            contracts: 1,
-                                          })
-                                        } catch { /* non-fatal — portfolio entry already added */ }
-                                        navigate('auto-trade')
-                                     }}
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.accent}50`, background: `${C.accent}12`, color: C.accent, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                      <Zap size={12} /> Paper Trade
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {selectedData.recommendations.map(rec => (
+                    <RecommendationCard
+                      key={rec.rank}
+                      rec={rec}
+                      ticker={displayData.ticker}
+                      companyName={displayData.company_name ?? displayData.ticker}
+                      currentPrice={displayData.signals.current_price}
+                      signals={displayData.signals}
+                      scrollFocusRank={scrollFocusRank}
+                      onScrollFocusConsumed={() => setScrollFocusRank(null)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
-
-            {alertOpen && data && (
-              <SetAlertDrawer
-                ticker={data.ticker}
-                tradeType="regular"
-                onClose={() => setAlertOpen(false)}
-                onSubmit={async (d: DeskAlertCreate) => { await deskApi.createAlert(d); setAlertOpen(false) }}
-              />
-            )}
 
             {/* Chart / Calculator (collapsed by default) */}
             <div style={{
