@@ -790,23 +790,6 @@ def build_swing_trade_decision(
     else:
         suggested_strategy = "NO_TRADE"
 
-    # ── 9b. DTE penalty — 35+ DTE for a 5-day hold is too long ─────────
-    # A 3-5 day hold should use 7-14 DTE options. Penalize longer durations
-    # that waste premium on unnecessary time value.
-    if recommended_contract_duration:
-        parts = recommended_contract_duration.replace("–", "-").split("-")
-        nums = [int(p.strip()) for p in parts if p.strip().isdigit()]
-        if len(nums) == 2:
-            avg_dte = (nums[0] + nums[1]) // 2
-        elif len(nums) == 1:
-            avg_dte = nums[0]
-        else:
-            avg_dte = 0
-        if avg_dte > 15:
-            penalty = round((avg_dte - 15) * 0.05, 2)  # −0.05 per DTE over 15
-            trade_quality_score = max(0.0, trade_quality_score - penalty)
-            risk_flags.append(f"DTE_TOO_LONG({avg_dte}d)")
-
     # ── 10. Suggested expiry window ────────────────────────────────────
     if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
         suggested_expiry_window = "No trade"
@@ -830,6 +813,21 @@ def build_swing_trade_decision(
         recommended_contract_duration = "7-14"
     else:
         recommended_contract_duration = "10-21"
+
+    # ── 11b. DTE penalty — >15 DTE for a 5-day hold is too long ────────
+    if recommended_contract_duration:
+        _parts = recommended_contract_duration.replace("–", "-").split("-")
+        _nums = [int(p.strip()) for p in _parts if p.strip().isdigit()]
+        if len(_nums) == 2:
+            _avg_dte = (_nums[0] + _nums[1]) // 2
+        elif len(_nums) == 1:
+            _avg_dte = _nums[0]
+        else:
+            _avg_dte = 0
+        if _avg_dte > 15:
+            _penalty = round((_avg_dte - 15) * 0.05, 2)
+            trade_quality_score = max(0.0, trade_quality_score - _penalty)
+            risk_flags.append(f"DTE_TOO_LONG({_avg_dte}d)")
 
     # ── 12. Decision message ───────────────────────────────────────────
     decision_message = _build_decision_message(
