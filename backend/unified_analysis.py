@@ -1,20 +1,96 @@
 """
 Unified analysis serializer.
 Wraps day_trade, swing_trade, and engine into one consistent response shape.
-
-All verdict values come from verdict_resolver — never computed inline here.
 """
 from __future__ import annotations
 from typing import Any, Optional
 import logging
 
-from verdict_resolver import (
-    resolve_verdict_day,
-    resolve_verdict_swing,
-    resolve_verdict_regular,
-)
+from verdict import Verdict
 
 log = logging.getLogger(__name__)
+
+# ── Verdict presentation ─────────────────────────────────────────────────────
+# All color/label/score derivation for the verdict card lives here.
+# Frontend renders these fields directly — no derivation on the UI.
+
+_VERDICT_STATUS: dict[str, str] = {
+    "STRONG_GO": "STRONG GO",
+    "GO":        "GO",
+    "enter":     "GO",
+    "WATCH":     "WATCH",
+    "watch":     "WATCH",
+    "WAIT":      "WAIT",
+    "wait":      "WAIT",
+    "AVOID":     "AVOID",
+    "avoid":     "AVOID",
+    "NO_EDGE":   "NO EDGE",
+}
+
+_VERDICT_COLOR: dict[str, str] = {
+    "STRONG_GO": "#00A86B",
+    "GO":        "#00A86B",
+    "enter":     "#00A86B",
+    "WATCH":     "#D4A017",
+    "watch":     "#D4A017",
+    "WAIT":      "#D4A017",
+    "wait":      "#D4A017",
+    "AVOID":     "#D0312D",
+    "avoid":     "#D0312D",
+    "NO_EDGE":   "#6B7280",
+}
+
+
+def _signal_quality(conditions: list[dict]) -> dict:
+    """Compute signal quality score from conditions list."""
+    if not conditions:
+        return {"score": 0, "label": "No data", "color": "#6B7280"}
+    pass_c = sum(1 for c in conditions if c.get("type") == "pass")
+    warn_c = sum(1 for c in conditions if c.get("type") == "warn")
+    total  = len(conditions)
+    weighted = (pass_c * 2 + warn_c * 0.5) / (total * 2) * 10
+    score = round(weighted * 10) / 10
+    if score >= 7:
+        return {"score": score, "label": "Strong",   "color": "#00A86B"}
+    if score >= 4:
+        return {"score": score, "label": "Moderate", "color": "#D4A017"}
+    return {"score": score, "label": "Weak", "color": "#6B7280"}
+
+
+def verdict_presentation(verdict: str, conditions: list[dict]) -> dict:
+    """
+    Pre-compute all display fields for the verdict card.
+    Returns a dict that the frontend renders directly.
+    """
+    status_text  = _VERDICT_STATUS.get(verdict, verdict.upper())
+    status_color = _VERDICT_COLOR.get(verdict, "#6B7280")
+    sq = _signal_quality(conditions)
+
+    pass_c = sum(1 for c in conditions if c.get("type") == "pass")
+    warn_c = sum(1 for c in conditions if c.get("type") == "warn")
+    fail_c = sum(1 for c in conditions if c.get("type") == "fail")
+    total  = len(conditions)
+    bar_pct = round(pass_c / total * 100) if total else 0
+    bar_color = "#00A86B" if bar_pct >= 70 else "#D4A017" if bar_pct >= 40 else "#D0312D"
+
+    return {
+        "status_text":     status_text,
+        "status_color":    status_color,
+        "signal_quality":  sq,
+        "setup_bar_pct":   bar_pct,
+        "setup_bar_color": bar_color,
+        "pass_count":      pass_c,
+        "warn_count":      warn_c,
+        "fail_count":      fail_c,
+    }
+
+
+def _day_verdict(scan) -> str:
+    raw = scan.verdict or ""
+    return Verdict.from_raw(raw).value
+
+def normalize_verdict(raw: str) -> str:
+    return Verdict.from_raw(raw).value
 
 
 def _fmt_price(price: Optional[float]) -> str:
@@ -55,7 +131,7 @@ def _risk_level(verdict: str, metrics: dict) -> str:
     if vix > 30:
         return "HIGH"
     v = verdict.upper()
-    if v in ("AVOID", "WAIT", "NO_EDGE"):
+    if v in ("NO-GO", "WAIT"):
         return "HIGH"
     return "MEDIUM"
 
@@ -327,11 +403,9 @@ def serialize_day_trade(scan) -> dict:
         spy_chg = m.get("spy_change_pct")
         qqq_chg = m.get("qqq_change_pct")
 
-        # Unified verdict — single source of truth
-        verdict = resolve_verdict_day(scan)
-
         # Clear entry plan for non-actionable verdicts
-        if verdict in ("AVOID", "WAIT", "NO_EDGE"):
+        normalized = _day_verdict(scan)
+        if normalized in ('AVOID', 'WAIT', 'NO_EDGE'):
             entry_price = None
             stop_price = None
             structure = ""
@@ -344,8 +418,8 @@ def serialize_day_trade(scan) -> dict:
             "trade_type": "day",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("session_change_pct"),
-            "verdict": verdict,
-            "verdict_raw": verdict,
+            "verdict": _day_verdict(scan),
+            "verdict_raw": _day_verdict(scan),
             "confidence": _extract_confidence(m.get("confidence")),
             "reason": td.get("decision_message") or (scan.reasons[0] if scan.reasons else ""),
             "conditions": conditions,
@@ -356,7 +430,7 @@ def serialize_day_trade(scan) -> dict:
             "structure": structure,
             "exit_rows": exit_rows,
             "rr_ratio": rr_str,
-            "risk_level": _risk_level(verdict, m),
+            "risk_level": _risk_level(scan.verdict or "", m),
             "rvol": rvol_str,
             "coach": coach,
             "spy_price": None,
@@ -370,6 +444,7 @@ def serialize_day_trade(scan) -> dict:
             "risk_profile": m.get("risk_profile") or [],
             "session": m.get("session_phase") or "",
             "regular_recommendations": [],
+            "verdict_presentation": verdict_presentation(_day_verdict(scan), conditions),
         }
     except Exception as e:
         log.error("serialize_day_trade error for %s: %s", getattr(scan, 'ticker', '?'), e, exc_info=True)
@@ -432,11 +507,31 @@ def serialize_swing_trade(scan) -> dict:
 
         coach = getattr(scan, "playbook_hint", "") or getattr(scan, "decision_message", "") or ""
 
-        # Unified verdict — single source of truth
-        verdict = resolve_verdict_swing(scan)
+        # Use final_action (same source as the decision resolver and TCC) so the
+        # verdict shown on this detail page matches the TCC card verdict.
+        # scan.verdict is the raw score-based signal; final_action reflects
+        # confirmation requirements, risk gating, and wait conditions.
+        final_action = str(getattr(scan, "final_action", "") or "").upper()
+        _ACTION_MAP: dict[str, str] = {
+            "STRONG_GO":                 "STRONG_GO",
+            "QUALITY_LONG":              "GO",
+            "WATCH_CALL_OR_DEBIT_SPREAD": "WATCH",
+            "WATCH_CALL":                "WATCH",
+            "WATCH_PUT":                 "WATCH",
+            "GO_SMALL":                  "WATCH",
+        }
+        if final_action in _ACTION_MAP:
+            sw_verdict_val = _ACTION_MAP[final_action]
+        elif final_action.startswith("WAIT") or final_action in ("MARKET_CONFIRMATION_ONLY", "NO_TRADE_WAIT"):
+            sw_verdict_val = "WAIT"
+        elif final_action.startswith("AVOID") or final_action == "NO_TRADE":
+            sw_verdict_val = "AVOID"
+        else:
+            # Fallback to raw scan verdict when final_action is unknown/empty
+            sw_verdict_val = normalize_verdict(scan.verdict or "")
 
         # Clear entry plan for non-actionable verdicts
-        if verdict in ("AVOID", "WAIT", "NO_EDGE"):
+        if sw_verdict_val in ('AVOID', 'WAIT', 'NO_EDGE'):
             entry_price = None
             stop_price = None
             structure = ""
@@ -448,8 +543,8 @@ def serialize_swing_trade(scan) -> dict:
             "trade_type": "swing",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("momentum_5d_pct"),
-            "verdict": verdict,
-            "verdict_raw": verdict,
+            "verdict": sw_verdict_val,
+            "verdict_raw": Verdict.from_raw(scan.verdict or "").value,
             "confidence": _extract_confidence(m.get("confidence")),
             "reason": getattr(scan, "decision_message", "") or (scan.reasons[0] if scan.reasons else ""),
             "conditions": conditions,
@@ -475,6 +570,7 @@ def serialize_swing_trade(scan) -> dict:
             "risk_profile": m.get("risk_profile") or [],
             "session": "swing",
             "regular_recommendations": [],
+            "verdict_presentation": verdict_presentation(sw_verdict_val, conditions),
         }
     except Exception as e:
         log.error("serialize_swing_trade error for %s: %s", getattr(scan, 'ticker', '?'), e, exc_info=True)
@@ -490,8 +586,8 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
                 "trade_type": "regular",
                 "price": price,
                 "change_pct": None,
-                "verdict": "NO_EDGE",
-                "verdict_raw": "NO_EDGE",
+                "verdict": "wait",
+                "verdict_raw": "NO_TRADES",
                 "confidence": 0,
                 "reason": "No trades passed all filters. Try a more liquid ticker or adjust strategy mode.",
                 "conditions": [],
@@ -516,11 +612,15 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
                 "regular_recommendations": [],
                 "psychology": None,
                 "risk_profile": [],
+                "verdict_presentation": verdict_presentation("wait", []),
             }
 
         top = candidates[0]
         score = getattr(top, 'total_score', 0) or 0
-        verdict = resolve_verdict_regular(score, len(candidates))
+
+        _v = "GO" if score >= 70 else "WATCH" if score >= 50 else "WAIT"
+        verdict     = Verdict.from_raw(_v).value
+        verdict_raw = Verdict.from_raw(_v).value
 
         confidence = min(int(score), 99)
 
@@ -597,7 +697,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
             "price": price,
             "change_pct": None,
             "verdict": verdict,
-            "verdict_raw": verdict,
+            "verdict_raw": verdict_raw,
             "confidence": confidence,
             "reason": reason,
             "conditions": conditions,
@@ -622,6 +722,7 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
             "regular_recommendations": recs,
             "psychology": None,
             "risk_profile": [],
+            "verdict_presentation": verdict_presentation(verdict, conditions),
         }
     except Exception as e:
         log.error("serialize_regular_trade error for %s: %s", ticker, e, exc_info=True)
@@ -635,8 +736,8 @@ def _error_response(ticker: str, trade_type: str, error: str) -> dict:
         "trade_type": trade_type,
         "price": 0,
         "change_pct": None,
-        "verdict": "NO_EDGE",
-        "verdict_raw": "NO_EDGE",
+        "verdict": "wait",
+        "verdict_raw": "ERROR",
         "confidence": 0,
         "reason": f"Analysis error: {error}",
         "conditions": [],
@@ -661,4 +762,5 @@ def _error_response(ticker: str, trade_type: str, error: str) -> dict:
         "regular_recommendations": [],
         "psychology": None,
         "risk_profile": [],
+        "verdict_presentation": verdict_presentation("wait", []),
     }

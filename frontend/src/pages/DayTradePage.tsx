@@ -687,64 +687,6 @@ export default function DayTradePage() {
 
           <UnifiedVerdictCard analysis={unified} />
 
-          {/* Analysis Layer — Edge, Execution, Risks */}
-          {(() => {
-            const raw = result as unknown as Record<string, unknown> | undefined
-            const m = raw?.metrics as Record<string, unknown> | undefined
-            const edgeState = m?.edge_remaining as string | undefined
-            const execQual = m?.execution_quality as string | undefined
-            const mktBias = m?.market_bias as string | undefined
-            const isChasing = m?.is_chasing as boolean | undefined
-            const riskProfile = m?.risk_profile as Array<Record<string, string>> | undefined
-            const psych = m?.psychology as Record<string, string> | undefined
-            if (!edgeState && !execQual && !mktBias && !isChasing && !riskProfile?.length) return null
-            return (
-              <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: riskProfile?.length ? 6 : 0 }}>
-                  {edgeState && (() => {
-                    const ec: Record<string, { color: string; label: string }> = {
-                      EARLY: { color: '#00A86B', label: 'Early' },
-                      DEVELOPING: { color: '#3B82F6', label: 'Developing' },
-                      LATE: { color: '#D4A017', label: 'Late' },
-                      EXHAUSTED: { color: '#D0312D', label: 'Exhausted' },
-                    }
-                    const c = ec[edgeState] || { color: '#6B7280', label: edgeState }
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c.color}`, color: c.color, background: `${c.color}15` }}>Edge: {c.label}</span>
-                  })()}
-                  {execQual && (() => {
-                    const qc: Record<string, string> = { PRIME: '#00A86B', GOOD: '#3B82F6', WEAK: '#D4A017', AVOID: '#D0312D' }
-                    const c = qc[execQual] || '#6B7280'
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Quality: {execQual}</span>
-                  })()}
-                  {mktBias && (() => {
-                    const mc: Record<string, string> = { BULLISH: '#00A86B', BEARISH: '#D0312D', NEUTRAL: '#6B7280', MIXED: '#D4A017' }
-                    const c = mc[mktBias] || '#6B7280'
-                    return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: `1px solid ${c}`, color: c, background: `${c}15` }}>Market: {mktBias}</span>
-                  })()}
-                  {isChasing && <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, border: '1px solid #D0312D', color: '#D0312D', background: 'rgba(208,49,45,0.08)' }}>⚠ Chasing</span>}
-                </div>
-                {riskProfile && riskProfile.length > 0 && (
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {riskProfile.slice(0, 4).map((r, i) => {
-                      const sv: Record<string, string> = { HIGH: '#D0312D', MEDIUM: '#D4A017', LOW: '#6B7280' }
-                      const sc = sv[r.severity] || '#6B7280'
-                      return (
-                        <span key={i} title={r.message} style={{ fontSize: '0.55rem', padding: '2px 6px', borderRadius: 3, border: `1px solid ${sc}40`, color: sc, background: `${sc}10`, cursor: 'help' }}>
-                          {r.type}
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
-                {psych?.message && (
-                  <div style={{ fontSize: '0.65rem', color: dt.muted, fontStyle: 'italic', lineHeight: 1.4, paddingTop: 6, borderTop: `1px solid ${dt.border}`, marginTop: riskProfile?.length ? 6 : 4 }}>
-                    {psych.message}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-
           {/* Entry Plan / Risk Profile */}
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
@@ -855,18 +797,9 @@ export default function DayTradePage() {
           </div>
           )})()}
 
-          {/* AI Coach */}
-          {unified.coach && (
-            <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
-              <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
-                <div className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
-              </div>
-            </div>
-          )}
         </div>
       )}
+
 
       {/* Intraday chart */}
       {result && result.metrics && (() => {
@@ -881,6 +814,73 @@ export default function DayTradePage() {
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
+          </div>
+        )
+      })()}
+
+      {/* AI Coach Walkthrough */}
+      {result && (() => {
+        const raw = result as unknown as Record<string, unknown> | undefined
+        const m = raw?.metrics as Record<string, unknown> | undefined
+        const marketBias = (result.market_bias || '').toLowerCase().replace(/_/g, ' ')
+        const vwapDist = m?.vwap_dist_pct as number | undefined
+        const volSpike = !!m?.volume_spike
+        const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
+        const isShortWalk = result.bias === 'short'
+        const optionRisk = result.option_risk_context
+        const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+
+        const steps: string[] = []
+        steps.push(marketBias ? `Market is ${marketBias}.` : 'Market context is mixed.')
+        steps.push(
+          isShortWalk
+            ? vwapDist != null && vwapDist <= 0
+              ? 'Price is below VWAP — bearish intraday structure is confirmed.'
+              : 'Price is still above VWAP, so the short structure is not yet confirmed.'
+            : vwapDist != null && vwapDist >= 0
+              ? 'Price is holding above VWAP, so intraday structure is constructive.'
+              : 'Price is not holding above VWAP yet, so structure is still fragile.'
+        )
+        steps.push(
+          orBreakout === 'ABOVE'
+            ? isShortWalk
+              ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
+              : 'The breakout is present, but it still needs continuation quality.'
+            : orBreakout === 'BELOW'
+              ? isShortWalk
+                ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
+                : 'Breakdown pressure exists below the opening range.'
+              : isShortWalk
+                ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
+                : 'Opening-range confirmation is still missing.'
+        )
+        steps.push(
+          volSpike
+            ? 'Volume is confirming the move, so execution quality improves.'
+            : 'Volume is not expanding yet, so the safer entry comes after confirmation.'
+        )
+        if (optionRisk?.option_execution_warning) {
+          steps.push(optionRisk.option_execution_warning)
+        }
+        steps.push(
+          exec === 'YES'
+            ? 'Execution is allowed now, but intraday risk still requires a tight invalidation.'
+            : exec === 'CONDITIONAL'
+              ? 'Entry is conditional, so wait for the trigger candle before committing size.'
+              : 'Execution is not ready yet, so patience is the trade.'
+        )
+
+        return (
+          <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach Walkthrough</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {steps.map((step, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: '12px', color: dt.muted, lineHeight: 1.5 }}>
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: dt.accent, fontFamily: 'monospace', flexShrink: 0, width: 16, textAlign: 'right' }}>{i + 1}</span>
+                  {step}
+                </div>
+              ))}
+            </div>
           </div>
         )
       })()}

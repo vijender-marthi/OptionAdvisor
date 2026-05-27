@@ -30,7 +30,9 @@ from analysis import build_hv_series, compute_hv, compute_iv_rank
 
 log = logging.getLogger(__name__)
 
-Verdict = Literal["STRONG GO", "GO", "WATCH", "WAIT", "NO-GO", "AVOID"]
+from verdict import Verdict
+from verdict_resolver import resolve_verdict
+
 Bias    = Optional[Literal["long", "short"]]
 
 # ── Scoring constants ─────────────────────────────────────────────────
@@ -113,13 +115,14 @@ class SwingTradeScan:
     # ── Core scoring (existing fields, unchanged) ─────────────────────
     ticker:       str
     company_name: str
-    verdict:      Verdict
+    verdict:      str
     bias:         Bias
     bull_score:   float
     bear_score:   float
     reasons:      list[str]
     metrics:      dict[str, Any]
     # ── Decision Quality Layer ─────────────────────────────────────────
+    raw_score:               float             = 0.0
     swing_bias:              str               = "NEUTRAL"
     entry_quality:           str               = "NO_CLEAN_ENTRY"
     risk_level:              str               = "MEDIUM"
@@ -1306,7 +1309,7 @@ def _confidence_block(
 
     if vix_level is not None and vix_level >= 28:
         risk = "HIGH"
-    elif verdict == "NO-GO":
+    elif verdict in ("AVOID", "NO_EDGE"):
         risk = "HIGH"
     elif vix_level is not None and vix_level >= VIX_CAUTION:
         risk = "MEDIUM"
@@ -1473,7 +1476,7 @@ def compute_playbook_hint(
         )
         return _finalize_playbook_earnings(hint, earnings_days)
 
-    if verdict == "NO-GO":
+    if verdict in ("AVOID", "NO_EDGE"):
         hint = "No trade — risk gate (e.g. very high VIX)."
         return _finalize_playbook_earnings(hint, earnings_days)
 
@@ -1503,9 +1506,9 @@ def compute_playbook_hint(
         hint = _finalize_playbook_earnings(_bearish_entry_hint(), earnings_days)
         return hint
 
-    if verdict in ("GO", "STRONG GO") and is_bullish:
+    if verdict in ("GO", "STRONG_GO") and is_bullish:
         return _finalize_playbook_earnings(_bullish_entry_hint(), earnings_days)
-    if verdict in ("GO", "STRONG GO") and is_bearish:
+    if verdict in ("GO", "STRONG_GO") and is_bearish:
         return _finalize_playbook_earnings(_bearish_entry_hint(), earnings_days)
 
     if fa == "NO_TRADE" or dl in ("WEAK_SETUP", "NO_TRADE_WAIT"):
@@ -1861,7 +1864,7 @@ def _validate_swing_scan(scan: SwingTradeScan) -> list[str]:
     Returns a list of issue descriptions (empty = valid).
     """
     issues: list[str] = []
-    if scan.verdict in ("GO", "STRONG GO") and scan.entry_quality in ("BAD_ENTRY", "NO_CLEAN_ENTRY"):
+    if scan.verdict in ("GO", "STRONG_GO") and scan.entry_quality in ("BAD_ENTRY", "NO_CLEAN_ENTRY"):
         issues.append(f"verdict={scan.verdict} contradicts entry_quality={scan.entry_quality}")
     if scan.bull_score < 0 or scan.bear_score < 0:
         issues.append(f"negative score: bull={scan.bull_score} bear={scan.bear_score}")
@@ -1869,7 +1872,7 @@ def _validate_swing_scan(scan: SwingTradeScan) -> list[str]:
         issues.append(f"trade_quality_score {scan.trade_quality_score} outside [0, 10]")
     if scan.bias not in ("long", "short", None):
         issues.append(f"unexpected bias={scan.bias}")
-    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO", "AVOID"):
+    if scan.verdict not in ("STRONG_GO", "GO", "WATCH", "WAIT", "AVOID", "NO_EDGE"):
         issues.append(f"unexpected verdict={scan.verdict}")
     return issues
 
@@ -2332,33 +2335,32 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         _is_very_extended = False
         _is_extended = False
 
-    # ── Verdict logic (extension-aware) ─────────────────────────────────
+    # ── Unified verdict via resolve_verdict ─────────────────────────────
+    raw_score = max(bull, bear)
+    verdict = resolve_verdict("swing", raw_score, vix=vix_level, rvol=vol_ratio, volume_spike=False).value
+
+    # ── Bias + prefix (human-readable reasons, not verdict override) ────
     diff       = bull - bear
     bias: Bias = None
-    verdict: Verdict = "WAIT"
     soft_edge  = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge  = soft_edge and diff > 0
     short_edge = soft_edge and diff < 0
 
     if vix_level is not None and vix_level >= VIX_NO_GO:
-        verdict = "NO-GO"
         prefix  = [f"VIX very high ({vix_level:.0f}) — avoid new multi-day swing exposure."]
 
     elif not soft_edge:
-        verdict = "WAIT"
         prefix  = ["No clear swing edge — signals conflicting or scores insufficient."]
 
     elif long_edge:
         bias = "long"
         rsi_extended = rsi_val > RSI_OVERBOUGHT
         if _is_very_extended:
-            verdict = "AVOID"
             prefix = [
                 f"AVOID — {mom_pct:+.1f}% in 5d — very extended, avoid chase.",
                 "Long-bias context (stock long, long calls, short puts).",
             ]
         elif rsi_extended or _is_extended:
-            verdict = "WATCH"
             details = []
             if rsi_extended:
                 details.append(f"RSI {rsi_val:.0f} is extended")
@@ -2379,14 +2381,12 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         else:
             strong_ok = bull >= STRONG_THRESHOLD and abs(diff) >= STRONG_DIFF
             if strong_ok:
-                verdict = "STRONG GO"
                 prefix  = [
                     "STRONG GO — multiple daily signals aligning: trend structure, momentum, "
                     "and volume confirm the directional thesis.",
                     "Long-bias context (stock long, long calls, short puts).",
                 ]
             else:
-                verdict = "GO"
                 prefix  = [
                     "GO — solid multi-day setup with edge; manage gap-risk and earnings "
                     "dates before sizing up.",
@@ -2397,13 +2397,11 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         bias = "short"
         rsi_extended = rsi_val < RSI_OVERSOLD
         if _is_very_extended:
-            verdict = "AVOID"
             prefix = [
                 f"AVOID — {mom_pct:+.1f}% in 5d — very extended, avoid chase.",
                 "Short-bias context (stock short, long puts, short calls).",
             ]
         elif rsi_extended or _is_extended:
-            verdict = "WATCH"
             details = []
             if rsi_extended:
                 details.append(f"RSI {rsi_val:.0f} is oversold")
@@ -2424,21 +2422,18 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         else:
             strong_ok = bear >= STRONG_THRESHOLD and abs(diff) >= STRONG_DIFF
             if strong_ok:
-                verdict = "STRONG GO"
                 prefix  = [
                     "STRONG GO — bearish stack confirmed: trend, momentum, and volume "
                     "align for a multi-day move.",
                     "Short-bias context (stock short, long puts, short calls).",
                 ]
             else:
-                verdict = "GO"
                 prefix  = [
                     "GO — bearish edge present; watch for sharp bounces and news catalysts.",
                     "Short-bias context (stock short, long puts, short calls).",
                 ]
 
     else:
-        verdict = "WAIT"
         prefix  = ["No clear swing edge — scores too close or too low."]
 
     # ── Confidence block (v1 metadata) ────────────────────────────────
@@ -2588,6 +2583,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         ticker=t,
         company_name=company,
         verdict=verdict,
+        raw_score=round(raw_score, 2),
         bias=bias,
         bull_score=round(bull, 2),
         bear_score=round(bear, 2),

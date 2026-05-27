@@ -56,8 +56,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 "summary": "Momentum aligned.",
                 "market_bias": "BULLISH",
                 "setup_quality": "GOOD",
-                "execution_readiness": "READY",
-                "final_decision": "READY",
+                "final_decision": "GO",
                 "confidence": 78,
                 "reason": "Momentum aligned.",
                 "supporting_factors": ["Above VWAP"],
@@ -73,8 +72,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 "signal": "GO",
                 "market_bias": "BULLISH",
                 "setup_quality": "GOOD",
-                "execution_readiness": "READY",
-                "final_decision": "READY",
+                "final_decision": "GO",
                 "confidence": 78,
                 "reason": "Momentum aligned.",
                 "supporting_factors": ["Above VWAP"],
@@ -114,9 +112,8 @@ class CommandCenterApiTests(unittest.TestCase):
         self.assertIn("charts", data)
         self.assertIn("confidence_score", data["market_summary"])
         self.assertIn("final_decision", data["engines"][0])
-        self.assertIn("execution_readiness", data["engines"][0])
         self.assertIn("final_decision", data["recommendations"][0])
-        self.assertIn(data["recommendations"][0]["final_decision"], {"READY", "WATCH", "WAIT", "AVOID", "NO_EDGE"})
+        self.assertIn(data["recommendations"][0]["final_decision"], {"STRONG_GO", "GO", "WATCH", "WAIT", "AVOID", "NO_EDGE"})
 
     def test_alerts_list_normalized_envelope(self) -> None:
         r = self.client.get("/api/alerts")
@@ -222,16 +219,12 @@ class CommandCenterApiTests(unittest.TestCase):
         fake_resolved = SimpleNamespace(
             market_bias="BULLISH",
             setup_quality="GOOD",
-            execution_readiness="READY",
-            final_decision="READY",
+            verdict="GO",
             confidence=82,
             reason="Intraday structure is aligned.",
             supporting_factors=["Above VWAP"],
             missing_confirmations=[],
             risk_state="MEDIUM",
-            signal_quality="GO",
-            execution_timing="ENTER NOW",
-            risk_category="MODERATE",
             explanation={"recommended_action": "Enter with confirmation"},
             risk_reason="0DTE options require tighter execution.",
             display_confidence=84,
@@ -267,7 +260,7 @@ class CommandCenterApiTests(unittest.TestCase):
             return SimpleNamespace(
                 company_name="Mock Co",
                 reason="Trend is still healthy.",
-                final_decision="READY",
+                verdict="GO",
                 signals=SimpleNamespace(current_price=123.45, price_change_pct=2.1, trend="UPTREND", rsi=61.2),
                 recommendations=[SimpleNamespace(strategy="Long Call", bias="Bullish")],
                 price_history=[
@@ -323,8 +316,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 return SimpleNamespace(
                     market_bias="BULLISH",
                     setup_quality="GOOD",
-                    execution_readiness="READY",
-                    final_decision="READY",
+                    verdict="GO",
                     confidence=78,
                     reason="Day setup is aligned.",
                     supporting_factors=["VWAP held"],
@@ -335,8 +327,7 @@ class CommandCenterApiTests(unittest.TestCase):
                 return SimpleNamespace(
                     market_bias="BULLISH",
                     setup_quality="GOOD",
-                    execution_readiness="WATCH",
-                    final_decision="WATCH",
+                    verdict="WATCH",
                     confidence=72,
                     reason="Swing setup is constructive.",
                     supporting_factors=["Trend intact"],
@@ -346,8 +337,7 @@ class CommandCenterApiTests(unittest.TestCase):
             return SimpleNamespace(
                 market_bias="BULLISH",
                 setup_quality="GOOD",
-                execution_readiness="READY",
-                final_decision="READY",
+                verdict="GO",
                 confidence=75,
                 reason="Regular setup is ready.",
                 supporting_factors=["Liquid chain"],

@@ -23,6 +23,8 @@ from zoneinfo import ZoneInfo
 import bar_cache
 from day_option_risk import build_day_option_risk_context
 from trader_decision import build_trader_decision
+from verdict import Verdict
+from verdict_resolver import resolve_verdict
 
 ET = ZoneInfo("America/New_York")
 
@@ -96,10 +98,11 @@ SESSION_EOD_CLOSING   = 380   # 15:50–16:00 ET (last 10 minutes — exit only)
 class DayTradeScan:
     ticker: str
     company_name: str
-    verdict: Verdict
-    bias: Bias
+    verdict: str  # normalized by Verdict.from_raw()
+    bias: str | None
     bull_score: float
     bear_score: float
+    raw_score: float  # max(bull, bear)
     reasons: list[str]
     metrics: dict[str, Any]
     trader_decision: dict[str, Any]
@@ -2613,135 +2616,51 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     bear = max(0.0, min(100.0, bear_scores.total(max_group=3.0)))
 
     diff = bull - bear
-    verdict: Verdict = "WAIT"
-    bias: Bias = None
+    raw_score = max(bull, bear)
+    bias = "long" if diff > 0 else "short" if diff < 0 else None
+
+    # Soft edge check (used by downstream layers)
     soft_edge = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge = soft_edge and diff > 0
     short_edge = soft_edge and diff < 0
 
-    # Counter-trend NO-GO veto — checks both SPY and QQQ so a strong QQQ move
-    # against the bias (e.g. tech rip vs bearish setup) is also caught.
+    # Counter-trend NO-GO veto
     _mkt_strongly_down = (spy_chg is not None and spy_chg <= -1.2) or \
                          (qqq_chg is not None and qqq_chg <= -1.2)
     _mkt_strongly_up   = (spy_chg is not None and spy_chg >= 1.2) or \
                          (qqq_chg is not None and qqq_chg >= 1.2)
 
     # Vetoes → NO-GO
+    # ── Veto checks → prefix reasons ─────────────────────────────────────
+    prefix: list[str] = []
     if session_minutes_elapsed < 5:
-        verdict = "NO-GO"
-        prefix = [
-            f"First {session_minutes_elapsed} minutes — opening range not yet established. No entries.",
-        ]
+        prefix = [f"First {session_minutes_elapsed} minutes — opening range not yet established. No entries."]
     elif vix_level is not None and vix_level >= VIX_NO_GO:
-        verdict = "NO-GO"
-        prefix = [
-            f"VIX very high ({vix_level:.0f}) — avoid new day-trade risk.",
-        ]
+        prefix = [f"VIX very high ({vix_level:.0f}) — avoid new day-trade risk."]
     elif diff > 0 and _mkt_strongly_down:
-        chg_str = f"SPY {spy_chg:+.2f}%" if spy_chg is not None else f"QQQ {qqq_chg:+.2f}%"
-        verdict = "NO-GO"
-        prefix = [f"Strong negative broad market ({chg_str}) vs bullish stock tilt."]
+        prefix = [f"Strong negative broad market vs bullish stock tilt."]
     elif diff < 0 and _mkt_strongly_up:
-        chg_str = f"SPY {spy_chg:+.2f}%" if spy_chg is not None else f"QQQ {qqq_chg:+.2f}%"
-        verdict = "NO-GO"
-        prefix = [f"Strong positive broad market ({chg_str}) vs bearish stock tilt."]
-    elif (
-            # Compound NO-GO: long bias signalled but entry trigger never fired.
-            # CALL entry requires an ORH break — if OR is still intact all session,
-            # RVOL is weak (no institutional participation), and the market is leaning
-            # against the bias, the setup is a false positive. Flag it rather than
-            # letting it show as "Bullish GO/WATCH" with an unreachable entry condition.
-            diff > 0
-            and or_historical == "contained"          # ORH never broken today
-            and (rvol is not None and rvol < 0.75)    # < 75 % of expected volume
-            and spy_chg is not None and spy_chg <= -0.25
-            and qqq_chg is not None and qqq_chg <= -0.25
-    ):
-        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
-        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
-        verdict = "NO-GO"
-        prefix = [
-            f"NO-GO — CALL entry condition not met all session: ORH never broken "
-            f"(price contained inside opening range), {_rvol_str} "
-            f"(no institutional participation), market leaning bearish ({_mkt_str}). "
-            "Bullish bias exists on VWAP position alone but the actual trigger has not fired — "
-            "do not anticipate the breakout.",
-        ]
-    elif (
-            # Mirror: short bias but ORL never broken + weak RVOL + bullish market.
-            diff < 0
-            and or_historical == "contained"
-            and (rvol is not None and rvol < 0.75)
-            and spy_chg is not None and spy_chg >= 0.25
-            and qqq_chg is not None and qqq_chg >= 0.25
-    ):
-        _rvol_str = f"RVOL {rvol:.1f}×" if rvol is not None else "low RVOL"
-        _mkt_str  = f"SPY {spy_chg:+.2f}% / QQQ {qqq_chg:+.2f}%"
-        verdict = "NO-GO"
-        prefix = [
-            f"NO-GO — PUT entry condition not met all session: ORL never broken "
-            f"(price contained inside opening range), {_rvol_str} "
-            f"(no institutional participation), market leaning bullish ({_mkt_str}). "
-            "Bearish bias exists on VWAP position alone but the actual trigger has not fired — "
-            "do not anticipate the breakdown.",
-        ]
+        prefix = [f"Strong positive broad market vs bearish stock tilt."]
+    elif diff > 0 and or_historical == "contained" and (rvol is not None and rvol < 0.75) and spy_chg is not None and spy_chg <= -0.25 and qqq_chg is not None and qqq_chg <= -0.25:
+        prefix = [f"NO-GO — CALL entry condition not met all session: ORH never broken, weak volume, market bearish."]
+    elif diff < 0 and or_historical == "contained" and (rvol is not None and rvol < 0.75) and spy_chg is not None and spy_chg >= 0.25 and qqq_chg is not None and qqq_chg >= 0.25:
+        prefix = [f"NO-GO — PUT entry condition not met all session: ORL never broken, weak volume, market bullish."]
     elif not soft_edge:
-        verdict = "WAIT"
         prefix = ["No clear intraday edge — scores too close or too low."]
     elif long_edge:
-        bias = "long"
         if not vol_spike:
-            verdict = "WATCH"
-            prefix = [
-                "WATCH — volume confirmation WEAK: breakout not aggressively expanding yet; "
-                "stand aside or wait for a thrust / higher conviction bar.",
-                "Long-bias tape — but fragile follow-through risk until volume confirms.",
-            ]
+            prefix = ["WATCH — volume confirmation WEAK: breakout not aggressively expanding yet."]
         else:
-            strong_ok = bull >= STRONG_BULL and abs(diff) >= STRONG_DIFF
-            if rs_vs_qqq_pct is not None and rs_vs_qqq_pct < -0.4:
-                strong_ok = False
-            if strong_ok:
-                verdict = "STRONG GO"
-                prefix = [
-                    "STRONG GO — strong setup: trend + opening-range logic + volume expansion; "
-                    "favor planned size with defined stops.",
-                    "Long-bias context (stock long, long calls, short puts).",
-                ]
-            else:
-                verdict = "GO"
-                prefix = [
-                    "GO — medium setup: edge vs VWAP / range with volume present; manage gap and reversal risk.",
-                    "Long-bias context (stock long, long calls, short puts).",
-                ]
+            prefix = ["GO — medium setup: edge with volume present."]
     elif short_edge:
-        bias = "short"
         if not vol_spike:
-            verdict = "WATCH"
-            prefix = [
-                "WATCH — volume confirmation WEAK: breakdown / continuation not aggressively confirmed; "
-                "avoid forcing size.",
-                "Short-bias tape — higher trap risk without volume expansion.",
-            ]
+            prefix = ["WATCH — volume confirmation WEAK."]
         else:
-            strong_ok = bear >= STRONG_BULL and abs(diff) >= STRONG_DIFF
-            if rs_vs_qqq_pct is not None and rs_vs_qqq_pct > 0.4:
-                strong_ok = False
-            if strong_ok:
-                verdict = "STRONG GO"
-                prefix = [
-                    "STRONG GO — strong setup: bearish stack + volume confirmation; use defined risk.",
-                    "Short-bias context (stock short, long puts, short calls).",
-                ]
-            else:
-                verdict = "GO"
-                prefix = [
-                    "GO — medium setup: edge with volume; watch sharp bounces.",
-                    "Short-bias context (stock short, long puts, short calls).",
-                ]
+            prefix = ["GO — medium setup: edge with volume."]
     else:
-        verdict = "WAIT"
-        prefix = ["No clear intraday edge — scores too close or too low."]
+        prefix = ["No clear intraday edge."]
+
+    _internal_verdict = resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value
 
     conf = _confidence_block(
         momentum_pct=momentum_pct,
@@ -2751,7 +2670,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         spy_chg=spy_chg,
         qqq_chg=qqq_chg,
         vix_level=vix_level,
-        verdict=verdict,
+        verdict=_internal_verdict,
         rvol=rvol,
     )
 
@@ -2809,7 +2728,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     )
 
     exec_quality = _execution_quality(
-        verdict=verdict,
+        verdict=_internal_verdict,
         vwap_position=vwap_position,
         or_state=or_state,
         vol_spike=vol_spike,
@@ -2827,7 +2746,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     )
 
     psych = _psychology_message(
-        verdict=verdict,
+        verdict=_internal_verdict,
         edge_state=edge_state,
         entry_timing="",
         execution_quality=exec_quality,
@@ -3037,10 +2956,11 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     scan = DayTradeScan(
         ticker=t,
         company_name=company,
-        verdict=verdict,
+        verdict=resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value,
         bias=bias,
         bull_score=round(bull, 2),
         bear_score=round(bear, 2),
+        raw_score=round(raw_score, 2),
         reasons=reasons,
         metrics=metrics,
         trader_decision=trader_decision,
@@ -3051,8 +2971,6 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     _issues: list[str] = []
     if scan.bull_score < 0 or scan.bear_score < 0:
         _issues.append(f"negative score: bull={scan.bull_score} bear={scan.bear_score}")
-    if scan.verdict not in ("STRONG GO", "GO", "WATCH", "WAIT", "NO-GO"):
-        _issues.append(f"unexpected verdict={scan.verdict}")
     if _issues:
         log.error("DayTradeScan invariant violation for %s: %s", t, _issues)
     elif daily_trend_context is None:

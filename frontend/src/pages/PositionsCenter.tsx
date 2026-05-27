@@ -1244,7 +1244,25 @@ function TradingPositionCard({
                     const dotCls  = isStop ? 'bg-red-400' : isTarget2 ? 'bg-orange-400' : isTarget1 ? 'bg-emerald-400' : isTime ? 'bg-amber-400' : 'bg-sky-400'
                     const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : 'text-amber-400'
                     const actionCls = isStop ? 'text-red-700 dark:text-red-300' : isTarget2 ? 'text-orange-700 dark:text-orange-200' : isTarget1 ? 'text-emerald-700 dark:text-emerald-300' : isTime ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'
-                    const priceLabel = isEOD ? 'EOD' : isTime ? 'time-based' : `$${rule.price!.toFixed(2)}`
+                    const priceLabel = (() => {
+                      if (isEOD) return 'EOD'
+                      if (isTime) return 'time-based'
+                      if (rule.price == null) return '—'
+                      // User-entered targets (target1/target2/stopLoss) are actual price levels.
+                      // Derived rules from deriveExitRules use total profit/loss $ amounts.
+                      const isDerived = (rule.trigger.includes('50%') || rule.trigger.includes('Loss reaches') || rule.trigger.includes('max profit'))
+                      if (isDerived && pos.strategy === 'Stock' && pos.entryPrice > 0) {
+                        const isProfit = rule.trigger.includes('50%') || rule.trigger.includes('profit')
+                        const targetPx = isProfit ? pos.entryPrice + rule.price / pos.contracts : pos.entryPrice - rule.price / pos.contracts
+                        return `$${targetPx.toFixed(2)}`
+                      }
+                      if (isDerived) {
+                        // For options: show as per-share premium to close
+                        const perShare = rule.price / 100 / (pos.contracts || 1)
+                        return `$${perShare.toFixed(2)}`
+                      }
+                      return `$${rule.price.toFixed(2)}`
+                    })()
                     return (
                       <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] px-2.5 py-1.5">
                         <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />

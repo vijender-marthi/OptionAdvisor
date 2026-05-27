@@ -55,16 +55,6 @@ def _missing_section(label: str, actual: str, must_contain: list[str]) -> list[s
 # ── Contradiction rules ────────────────────────────────────────────────────────
 
 CONTRADICTION_RULES: list[tuple[list[tuple[str, str]], str]] = [
-    ([("execution_timing", "ENTER NOW"), ("execution_timing", "WAIT FOR PULLBACK")],
-     "ENTER NOW and WAIT FOR PULLBACK together"),
-    ([("signal_quality", "STRONG GO"), ("execution_timing", "STAND ASIDE")],
-     "STRONG GO with STAND ASIDE"),
-    ([("signal_quality", "GO"), ("execution_timing", "STAND ASIDE")],
-     "GO with STAND ASIDE"),
-    ([("final_decision", "READY"), ("execution_timing", "STAND ASIDE")],
-     "READY with STAND ASIDE"),
-    ([("final_decision", "READY"), ("execution_timing", "WAIT FOR PULLBACK")],
-     "READY with WAIT FOR PULLBACK"),
     ([("risk_state", "LOW"), ("missing_confirmations", "earnings")],
      "LOW risk with earnings danger"),
 ]
@@ -126,11 +116,8 @@ def run_scenario(path: str, verbose: bool = False) -> dict:
     field_checks = [
         ("market_bias", "market_bias", str),
         ("setup_quality", "setup_quality", str),
-        ("final_decision", "final_decision", str),
-        ("execution_timing", "execution_timing", str),
-        ("signal_quality", "signal_quality", str),
+        ("verdict", "verdict", str),
         ("risk_state", "risk_state", str),
-        ("risk_category", "risk_category", str),
     ]
 
     for field, attr, _ in field_checks:
@@ -169,9 +156,7 @@ def run_scenario(path: str, verbose: bool = False) -> dict:
     # ── Must-not-contain ────────────────────────────────────────────────────
     must_not = expected.get("must_not_contain", [])
     check_fields = {
-        "execution_timing": str(getattr(decision, "execution_timing", "") or ""),
-        "final_decision": str(getattr(decision, "final_decision", "") or ""),
-        "signal_quality": str(getattr(decision, "signal_quality", "") or ""),
+        "verdict": str(getattr(decision, "verdict", "") or ""),
     }
     for phrase in must_not:
         for fname, fval in check_fields.items():
@@ -222,9 +207,7 @@ def run_scenario(path: str, verbose: bool = False) -> dict:
 
     # ── Contradiction detection ─────────────────────────────────────────────
     decision_dict = {
-        "execution_timing": str(getattr(decision, "execution_timing", "") or ""),
-        "signal_quality": str(getattr(decision, "signal_quality", "") or ""),
-        "final_decision": str(getattr(decision, "final_decision", "") or ""),
+        "verdict": str(getattr(decision, "verdict", "") or ""),
         "risk_state": str(getattr(decision, "risk_state", "") or ""),
         "missing_confirmations": [str(x).lower() for x in
                                    getattr(decision, "missing_confirmations", [])],
@@ -233,20 +216,12 @@ def run_scenario(path: str, verbose: bool = False) -> dict:
     for _, rule_desc in CONTRADICTION_RULES:
         pass  # We check independent contradictions below
 
-    # Specific contradiction: ENTER NOW with non-empty confirmations
-    exec_timing = str(getattr(decision, "execution_timing", "") or "")
-    if "ENTER NOW" in exec_timing.upper():
-        if actual_missing:
-            result["errors"].append(
-                f"CONTRADICTION: execution_timing='{exec_timing}' but missing_confirmations={actual_missing}"
-            )
-
-    # Specific contradiction: READY + HIGH risk (for day/swing)
-    fd = str(getattr(decision, "final_decision", "") or "")
+    # Specific contradiction: GO/STRONG_GO + HIGH risk (for day/swing)
+    fd = str(getattr(decision, "verdict", "") or "")
     rs = str(getattr(decision, "risk_state", "") or "")
-    if fd == "READY" and rs in ("HIGH", "EXTREME"):
+    if fd in ("GO", "STRONG_GO") and rs in ("HIGH", "EXTREME"):
         result["errors"].append(
-            f"CONTRADICTION: final_decision='READY' with risk_state='{rs}'"
+            f"CONTRADICTION: verdict='{fd}' with risk_state='{rs}'"
         )
 
     # Specific contradiction: AVOID + high confidence

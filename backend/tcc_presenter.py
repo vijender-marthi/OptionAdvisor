@@ -103,16 +103,20 @@ def _sub_indicators(rec: dict[str, Any]) -> list[dict[str, str]]:
 def _detail_route_key(rec: dict[str, Any]) -> str:
     """
     Returns 'day' | 'swing' | 'regular' — the frontend maps this to the actual URL.
-    The routing decision (which engine → which page) is made here, not on the UI.
+    engine_type is authoritative; strategy keywords are only a fallback for unknown engines.
     """
-    eng   = str(rec.get("engine_type") or "").lower()
-    strat = str(rec.get("strategy") or "").lower()
-    # Spread / options strategies always go to swing or regular detail
-    spread_keywords = ("swing", "credit", "debit", "spread", "put", "call", "iron", "condor", "butterfly")
-    if eng == "swing" or any(k in strat for k in spread_keywords):
-        return "swing"
+    eng = str(rec.get("engine_type") or "").lower()
     if eng == "day":
         return "day"
+    if eng == "regular":
+        return "regular"
+    if eng == "swing":
+        return "swing"
+    # Unknown engine: use strategy as fallback (avoid generic options terms like "put"/"call")
+    strat = str(rec.get("strategy") or "").lower()
+    swing_keywords = ("swing", "credit spread", "debit spread", "iron condor", "butterfly spread")
+    if any(k in strat for k in swing_keywords):
+        return "swing"
     return "regular"
 
 

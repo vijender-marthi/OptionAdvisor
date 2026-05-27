@@ -213,7 +213,6 @@ def normalize_day_score(
     return {
         "raw_engine_score": round(raw, 2),
         "normalized_score": norm_score,
-        "normalized_state": state,
         "confidence_band": conf_band,
         "execution_bias": exec_bias,
         "risk_band": risk_val,
@@ -309,7 +308,6 @@ def normalize_swing_score(
     return {
         "raw_engine_score": round(raw, 2),
         "normalized_score": norm_score,
-        "normalized_state": state,
         "confidence_band": conf_band,
         "execution_bias": exec_bias,
         "risk_band": risk_val,

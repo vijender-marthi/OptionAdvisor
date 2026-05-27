@@ -609,7 +609,19 @@ export default function SwingTradePage() {
                 <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
                   <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Entry status</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? st.green : st.amber, fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : 'Wait for trigger'}</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: unified.verdict === 'enter' ? st.green : unified.verdict === 'avoid' ? st.red : st.amber }}>
+                    {unified.entry_price
+                      ? `$${unified.entry_price.toFixed(2)}`
+                      : unified.verdict === 'enter'
+                        ? 'GO'
+                        : unified.verdict === 'watch'
+                          ? 'WATCH'
+                          : unified.verdict === 'wait'
+                            ? 'WAIT'
+                            : unified.verdict === 'avoid'
+                              ? 'AVOID'
+                              : '—'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
                   <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Structure</span>
