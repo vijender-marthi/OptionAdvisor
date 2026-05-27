@@ -785,15 +785,13 @@ export default function TradeCommandCenter() {
               // Each card shows execution readiness status
               const ready = recommendations
                 .filter(r => {
-                  const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
                   const sig = (r.signal || '').toUpperCase()
-                  return er === 'READY' || er === 'ENTER NOW' || er === 'ENTER' || sig === 'STRONG GO' || sig === 'GO'
+                  return sig === 'STRONG GO' || sig === 'GO'
                 })
               const monitoring = recommendations
                 .filter(r => {
-                  const er = (r.execution_timing || r.execution_readiness || '').toUpperCase()
                   const sig = (r.signal || '').toUpperCase()
-                  return !['READY', 'ENTER NOW', 'ENTER'].includes(er) && !['STRONG GO', 'GO'].includes(sig) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
+                  return !['STRONG GO', 'GO'].includes(sig) && ['READY', 'WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(sig)
                 })
               const readyGroups = byEngine(ready)
               const monitoringGroups = byEngine(monitoring)
@@ -813,7 +811,10 @@ export default function TradeCommandCenter() {
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {group.items.map(rec => {
-                              const execStatus = (rec.execution_timing || rec.execution_readiness || '').toUpperCase()
+                              const rawV = (rec.signal || '').toUpperCase()
+                              // Normalize: STRONG GO, GO, READY all show as GO (matches detail page verdict card)
+                              const badgeV = (rawV === 'STRONG GO' || rawV === 'GO' || rawV === 'READY') ? 'GO' : rawV || '—'
+                              const isGo = badgeV === 'GO'
                               const isDay = group.key === 'day'
                               const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
                               const chgPct = rec.price_change_pct
@@ -834,17 +835,16 @@ export default function TradeCommandCenter() {
                                       </span>
                                     </div>
                                     {(() => {
-                                      const ec = execStatus
-                                      const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
+                                      const eCls = badgeV === 'GO'
                                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                        : ec === 'WATCH'
+                                        : badgeV === 'WATCH'
                                           ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-                                          : ec === 'WAIT'
+                                          : badgeV === 'WAIT'
                                             ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
-                                            : ec === 'AVOID' || ec === 'NO_EDGE'
+                                            : badgeV === 'AVOID' || badgeV === 'NO_EDGE'
                                               ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                                               : 'bg-slate-100 text-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
-                                      return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${eCls}`}>{ec}</span>
+                                      return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${eCls}`}>{badgeV}</span>
                                     })()}
                                   </div>
                                   <div className="flex items-center gap-2 mb-3">
@@ -900,17 +900,18 @@ export default function TradeCommandCenter() {
                                 >
                                   <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                                   {(() => {
-                                    const ec = (rec.execution_timing || rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
-                                      const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
+                                    const rawV = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
+                                    const badgeV = (rawV === 'STRONG GO' || rawV === 'GO' || rawV === 'READY') ? 'GO' : rawV || '—'
+                                      const eCls = badgeV === 'GO'
                                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                                        : ec === 'WATCH'
+                                        : badgeV === 'WATCH'
                                           ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                                          : ec === 'WAIT'
+                                          : badgeV === 'WAIT'
                                             ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300'
-                                            : ec === 'AVOID' || ec === 'NO_EDGE'
+                                            : badgeV === 'AVOID' || badgeV === 'NO_EDGE'
                                               ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300'
                                               : 'bg-slate-100 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'
-                                    return <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${eCls}`}>{ec}</span>
+                                    return <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${eCls}`}>{badgeV}</span>
                                   })()}
                                 </button>
                               ))}
@@ -1132,8 +1133,12 @@ export default function TradeCommandCenter() {
                     const expanded = expandedOpportunityId === rec.id
                     const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
                     const recKey = rec.id
-                    const execStatus = (rec.execution_timing || rec.execution_readiness || rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
-                    const execBadgeCls = execStatus === 'ENTER NOW' || execStatus === 'READY' || execStatus === 'ENTER'
+                    const execStatus = (() => {
+                      const raw = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
+                      if (raw === 'STRONG GO' || raw === 'GO' || raw === 'READY') return 'GO'
+                      return raw || '—'
+                    })()
+                    const execBadgeCls = execStatus === 'GO'
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                       : execStatus === 'WATCH'
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
