@@ -797,73 +797,6 @@ export default function DayTradePage() {
           </div>
           )})()}
 
-          {/* AI Coach Walkthrough */}
-          {result && (() => {
-            const raw = result as unknown as Record<string, unknown> | undefined
-            const m = raw?.metrics as Record<string, unknown> | undefined
-            const marketBias = (result.market_bias || '').toLowerCase().replace(/_/g, ' ')
-            const vwapDist = m?.vwap_dist_pct as number | undefined
-            const volSpike = !!m?.volume_spike
-            const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
-            const isShortWalk = result.bias === 'short'
-            const optionRisk = result.option_risk_context
-            const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
-
-            const steps: string[] = []
-            steps.push(marketBias ? `Market is ${marketBias}.` : 'Market context is mixed.')
-            steps.push(
-              isShortWalk
-                ? vwapDist != null && vwapDist <= 0
-                  ? 'Price is below VWAP — bearish intraday structure is confirmed.'
-                  : 'Price is still above VWAP, so the short structure is not yet confirmed.'
-                : vwapDist != null && vwapDist >= 0
-                  ? 'Price is holding above VWAP, so intraday structure is constructive.'
-                  : 'Price is not holding above VWAP yet, so structure is still fragile.'
-            )
-            steps.push(
-              orBreakout === 'ABOVE'
-                ? isShortWalk
-                  ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
-                  : 'The breakout is present, but it still needs continuation quality.'
-                : orBreakout === 'BELOW'
-                  ? isShortWalk
-                    ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
-                    : 'Breakdown pressure exists below the opening range.'
-                  : isShortWalk
-                    ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
-                    : 'Opening-range confirmation is still missing.'
-            )
-            steps.push(
-              volSpike
-                ? 'Volume is confirming the move, so execution quality improves.'
-                : 'Volume is not expanding yet, so the safer entry comes after confirmation.'
-            )
-            if (optionRisk?.option_execution_warning) {
-              steps.push(optionRisk.option_execution_warning)
-            }
-            steps.push(
-              exec === 'YES'
-                ? 'Execution is allowed now, but intraday risk still requires a tight invalidation.'
-                : exec === 'CONDITIONAL'
-                  ? 'Entry is conditional, so wait for the trigger candle before committing size.'
-                  : 'Execution is not ready yet, so patience is the trade.'
-            )
-
-            return (
-              <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach Walkthrough</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {steps.map((step, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, fontSize: '12px', color: dt.muted, lineHeight: 1.5 }}>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: dt.accent, fontFamily: 'monospace', flexShrink: 0, width: 16, textAlign: 'right' }}>{i + 1}</span>
-                      {step}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })()}
-
         </div>
       )}
 
@@ -881,6 +814,73 @@ export default function DayTradePage() {
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
+          </div>
+        )
+      })()}
+
+      {/* AI Coach Walkthrough */}
+      {result && (() => {
+        const raw = result as unknown as Record<string, unknown> | undefined
+        const m = raw?.metrics as Record<string, unknown> | undefined
+        const marketBias = (result.market_bias || '').toLowerCase().replace(/_/g, ' ')
+        const vwapDist = m?.vwap_dist_pct as number | undefined
+        const volSpike = !!m?.volume_spike
+        const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
+        const isShortWalk = result.bias === 'short'
+        const optionRisk = result.option_risk_context
+        const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
+
+        const steps: string[] = []
+        steps.push(marketBias ? `Market is ${marketBias}.` : 'Market context is mixed.')
+        steps.push(
+          isShortWalk
+            ? vwapDist != null && vwapDist <= 0
+              ? 'Price is below VWAP — bearish intraday structure is confirmed.'
+              : 'Price is still above VWAP, so the short structure is not yet confirmed.'
+            : vwapDist != null && vwapDist >= 0
+              ? 'Price is holding above VWAP, so intraday structure is constructive.'
+              : 'Price is not holding above VWAP yet, so structure is still fragile.'
+        )
+        steps.push(
+          orBreakout === 'ABOVE'
+            ? isShortWalk
+              ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
+              : 'The breakout is present, but it still needs continuation quality.'
+            : orBreakout === 'BELOW'
+              ? isShortWalk
+                ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
+                : 'Breakdown pressure exists below the opening range.'
+              : isShortWalk
+                ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
+                : 'Opening-range confirmation is still missing.'
+        )
+        steps.push(
+          volSpike
+            ? 'Volume is confirming the move, so execution quality improves.'
+            : 'Volume is not expanding yet, so the safer entry comes after confirmation.'
+        )
+        if (optionRisk?.option_execution_warning) {
+          steps.push(optionRisk.option_execution_warning)
+        }
+        steps.push(
+          exec === 'YES'
+            ? 'Execution is allowed now, but intraday risk still requires a tight invalidation.'
+            : exec === 'CONDITIONAL'
+              ? 'Entry is conditional, so wait for the trigger candle before committing size.'
+              : 'Execution is not ready yet, so patience is the trade.'
+        )
+
+        return (
+          <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach Walkthrough</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {steps.map((step, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: '12px', color: dt.muted, lineHeight: 1.5 }}>
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: dt.accent, fontFamily: 'monospace', flexShrink: 0, width: 16, textAlign: 'right' }}>{i + 1}</span>
+                  {step}
+                </div>
+              ))}
+            </div>
           </div>
         )
       })()}
