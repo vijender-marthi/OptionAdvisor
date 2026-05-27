@@ -831,7 +831,19 @@ export default function TradeCommandCenter() {
                                         {isDay ? 'DAY' : group.key === 'swing' ? 'SWING' : 'REGULAR'}
                                       </span>
                                     </div>
-                                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{execStatus}</span>
+                                    {(() => {
+                                      const ec = execStatus
+                                      const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                        : ec === 'WATCH'
+                                          ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
+                                          : ec === 'WAIT'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                                            : ec === 'AVOID' || ec === 'NO_EDGE'
+                                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                                              : 'bg-slate-100 text-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
+                                      return <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${eCls}`}>{ec}</span>
+                                    })()}
                                   </div>
                                   <div className="flex items-center gap-2 mb-3">
                                     {chgPct != null && <span className={`text-[13px] font-bold font-mono ${chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%</span>}
@@ -885,9 +897,19 @@ export default function TradeCommandCenter() {
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                                 >
                                   <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                                  <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                                    {(rec.execution_timing || rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
-                                  </span>
+                                  {(() => {
+                                    const ec = (rec.execution_timing || rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
+                                    const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                      : ec === 'WATCH'
+                                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+                                        : ec === 'WAIT'
+                                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                                          : ec === 'AVOID' || ec === 'NO_EDGE'
+                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'
+                                    return <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${eCls}`}>{ec}</span>
+                                  })()}
                                 </button>
                               ))}
                             </div>
@@ -1109,13 +1131,21 @@ export default function TradeCommandCenter() {
                     const detailsRoute = getDetailsRoute(rec.engine_type, rec.ticker)
                     const recKey = rec.id
                     const execStatus = (rec.execution_timing || rec.execution_readiness || rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
-                    const isReady = execStatus === 'READY' || execStatus === 'ENTER NOW'
+                    const execBadgeCls = execStatus === 'ENTER NOW' || execStatus === 'READY' || execStatus === 'ENTER'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : execStatus === 'WATCH'
+                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
+                        : execStatus === 'WAIT'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                          : execStatus === 'AVOID' || execStatus === 'NO_EDGE'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                            : 'bg-slate-100 text-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
                     return (
                       <div key={recKey}>
                         <button type="button" onClick={() => setExpandedOpportunityId(expanded ? null : recKey)} className="flex w-full items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 shadow-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                           <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
                             <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
-                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isReady ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>{execStatus}</span>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${execBadgeCls}`}>{execStatus}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <div className="text-right">
