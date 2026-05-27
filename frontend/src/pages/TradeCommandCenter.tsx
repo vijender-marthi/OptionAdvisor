@@ -824,10 +824,12 @@ export default function TradeCommandCenter() {
                             key={rec.id}
                             type="button"
                             onClick={() => {
-                              const eng = rec.engine_type?.toLowerCase()
-                              if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                                const eng = (rec.engine_type || '').toLowerCase()
+                              const strat = (rec.strategy || '').toLowerCase()
+                              if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
+                                navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
                               else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                              else navigate(getDetailsRoute(eng ?? '', rec.ticker))
+                              else navigate(getDetailsRoute(eng, rec.ticker))
                             }}
                             className={`rounded-xl border ${engAccent} border-l-4 ${borderLeftCls} bg-white dark:bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                           >
@@ -924,10 +926,12 @@ export default function TradeCommandCenter() {
                               key={rec.id}
                               type="button"
                               onClick={() => {
-                                const eng = rec.engine_type?.toLowerCase()
-                                if (eng === 'swing') navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
+                              const eng = (rec.engine_type || '').toLowerCase()
+                                const strat = (rec.strategy || '').toLowerCase()
+                                if (eng === 'swing' || strat.includes('swing') || strat.includes('credit') || strat.includes('debit') || strat.includes('spread'))
+                                  navigate(`/swing-trade?ticker=${encodeURIComponent(rec.ticker)}`)
                                 else if (eng === 'day') navigate(`/day-trade?ticker=${encodeURIComponent(rec.ticker)}`)
-                                else navigate(getDetailsRoute(eng ?? '', rec.ticker))
+                                else navigate(getDetailsRoute(eng, rec.ticker))
                               }}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                             >
