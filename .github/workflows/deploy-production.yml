@@ -57,6 +57,7 @@ jobs:
             pip install --quiet -r requirements.txt
 
             cd ../frontend
+            rm -rf dist
             npm ci
             export NODE_OPTIONS='--max-old-space-size=4096'
             npm run build
