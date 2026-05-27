@@ -2105,15 +2105,11 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         def total(self, max_group: float = 3.0) -> float:
             t = 0.0
             for val in self.groups.values():
-                t += max(0.0, min(val, max_group))
+                if val >= 0:
+                    t += min(val, max_group)
+                else:
+                    t += val  # penalties (VIX, time, etc.) pass through
             return t
-        
-        def side_total(self, side: float, other: float, group: str, delta: float) -> None:
-            """Add delta to *group* for the leading side (bull if side>=other else bear)."""
-            if side >= other:
-                self.add(group, delta)
-            else:
-                self.add(group, delta)
     
     bull_scores = _GroupScore()
     bear_scores = _GroupScore()
@@ -2565,34 +2561,36 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             _bounce_scenario = "no_mans_land_long"
 
     # ── Daily trend context (swing_context group) ─────────────────────────
-    bias: Bias = None
+    # Note: bias is set by the verdict resolution below; for the swing context
+    # alignment check we use the scoring-level leading side as a proxy.
+    _scoring_bias = "long" if bull >= bear else "short"
     if daily_trend_context is not None:
         _swing_bias = daily_trend_context.get("bias", "").lower()
         _swing_verdict = str(daily_trend_context.get("verdict", "") or "").upper()
         if _swing_verdict in ("STRONG GO", "GO") and _swing_bias:
-            if _swing_bias == bias:
+            if _swing_bias == _scoring_bias:
                 body.append(
                     f"Daily (swing) trend aligns: {_swing_bias.upper()}. "
                     f"Swing verdict is {_swing_verdict}."
                 )
-                if bias == "long":
+                if _scoring_bias == "long":
                     _g("swing_context", bull_delta=0.5)
-                elif bias == "short":
+                elif _scoring_bias == "short":
                     _g("swing_context", bear_delta=0.5)
-            elif bias is not None and bias != _swing_bias:
+            elif _scoring_bias is not None and _scoring_bias != _swing_bias:
                 body.append(
                     f"CAUTION — daily (swing) trend CONFLICTS with intraday bias. "
                     f"Swing signals {_swing_bias.upper()} ({_swing_verdict})."
                 )
-                if bias == "long":
+                if _scoring_bias == "long":
                     bull_scores.add("swing_context", -0.5)
-                elif bias == "short":
+                elif _scoring_bias == "short":
                     bear_scores.add("swing_context", -0.5)
-        elif _swing_verdict in ("NO-GO",) and bias:
+        elif _swing_verdict in ("NO-GO",) and _scoring_bias:
             body.append("Swing engine says NO-GO — daily trend does not support any position.")
-            if bias == "long":
+            if _scoring_bias == "long":
                 bull_scores.add("swing_context", -0.5)
-            elif bias == "short":
+            elif _scoring_bias == "short":
                 bear_scores.add("swing_context", -0.5)
 
     # ── Finalize: cap each group at MAX_GROUP_SCORE, sum across groups ──
