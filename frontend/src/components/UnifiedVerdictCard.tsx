@@ -40,13 +40,18 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   const sq = computeSignalQuality(analysis.conditions)
   const displayScore = analysis.confidence
 
-  // Score-gated status: both scores must cross thresholds before green
+  // Score-gated status: both scores must cross thresholds before green.
+  // Engine verdict overrides: when the engine says GO/STRONG GO, respect it.
   const setupScore = displayScore
   const signalScore = sq.score
+  const rawVerdict = (analysis.verdict_raw || '').toUpperCase()
   let statusText: string
   let statusColor: string
 
-  if (setupScore >= 75 && signalScore >= 8.5) {
+  if (rawVerdict === 'STRONG GO') {
+    statusText = 'Entry conditions met — ready to act'
+    statusColor = '#00A86B'
+  } else if (rawVerdict === 'GO' && setupScore >= 65) {
     statusText = 'Entry conditions met — ready to act'
     statusColor = '#00A86B'
   } else if (setupScore >= 65 && signalScore >= 7.0) {
@@ -84,6 +89,9 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
         <div className="uv-reason" style={{ fontSize: 12, color: C.textSec, lineHeight: 1.5, marginBottom: 10 }}>
           {(() => {
             if (!analysis.entry_price) {
+              if (rawVerdict === 'STRONG GO' || rawVerdict === 'GO') {
+                return `Engine verdict is ${rawVerdict} — setup conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
+              }
               if (setupScore >= 65 && signalScore >= 7.0) {
                 return `Setup is building. Setup score ${setupScore} with signal quality ${signalScore}/10. Conditions are developing — waiting for confirmation trigger before committing.`
               }
