@@ -179,10 +179,10 @@ const BASE_CONTRACT_OPTIONS = [1, 2, 3, 5, 10]
 
 export default function RecommendationCard({
   rec, ticker, companyName, currentPrice, signals, onFetchAllWeeks, fetchingAllWeeks = false,
-  scrollFocusRank = null, onScrollFocusConsumed,
-}: Props) {
+  scrollFocusRank = null, onScrollFocusConsumed, initialOpen = false, detailOnly = false,
+}: Props & { initialOpen?: boolean; detailOnly?: boolean }) {
   const { addToPortfolio, addToWatchlist, isInPortfolio, isWatched, navigate, user, refreshJournalCount, accountSize, setAccountSize } = useApp()
-  const [open, setOpen]                       = useState(false)
+  const [open, setOpen]                       = useState(initialOpen)
   const [exitOpen, setExitOpen]               = useState(false)
   const [addedPort, setAddedPort]             = useState(false)
   const [addedWatch, setAddedWatch]           = useState(false)
@@ -315,6 +315,14 @@ export default function RecommendationCard({
     })
   }, [scrollFocusRank, rec.rank, onScrollFocusConsumed])
 
+  if (detailOnly) {
+    return (
+      <div id={`oa-rec-${rec.rank}`} style={{ background: C.panel, borderRadius: 12, overflow: 'hidden' }}>
+        {open && renderDetail()}
+      </div>
+    )
+  }
+
   return (
     <div id={`oa-rec-${rec.rank}`} style={{ background: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${statusBorderColor}`, borderRadius: 14, overflow: 'hidden', marginBottom: 10 }}>
 
@@ -379,7 +387,11 @@ export default function RecommendationCard({
       )}
 
       {/* ── Expanded detail ── */}
-      {open && (
+      {open && renderDetail()}
+    </div>
+  )
+
+  function renderDetail() { return (
         <div>
           {/* ── Entry state guidance strip ── */}
           {(() => {
@@ -904,7 +916,5 @@ export default function RecommendationCard({
         )}
       </div>
         </div>
-      )}
-    </div>
-  )
+  ) }
 }
