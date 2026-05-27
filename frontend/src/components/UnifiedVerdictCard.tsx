@@ -51,9 +51,12 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
   if (rawVerdict === 'STRONG GO') {
     statusText = 'Entry conditions met — ready to act'
     statusColor = '#00A86B'
-  } else if (rawVerdict === 'GO' && setupScore >= 65) {
+  } else if (rawVerdict === 'GO' && setupScore >= 75 && signalScore >= 8.5) {
     statusText = 'Entry conditions met — ready to act'
     statusColor = '#00A86B'
+  } else if (rawVerdict === 'GO' && setupScore >= 65) {
+    statusText = 'Setup aligned — entry timing pending'
+    statusColor = '#D4A017'
   } else if (setupScore >= 65 && signalScore >= 7.0) {
     statusText = 'Setup building'
     statusColor = '#D4A017'
@@ -89,8 +92,14 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
         <div className="uv-reason" style={{ fontSize: 12, color: C.textSec, lineHeight: 1.5, marginBottom: 10 }}>
           {(() => {
             if (!analysis.entry_price) {
-              if (rawVerdict === 'STRONG GO' || rawVerdict === 'GO') {
-                return `Engine verdict is ${rawVerdict} — setup conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
+              if (rawVerdict === 'STRONG GO') {
+                return `Engine verdict is STRONG GO — all conditions aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
+              }
+              if (rawVerdict === 'GO' && setupScore >= 75 && signalScore >= 8.5) {
+                return `Engine verdict is GO — conditions are aligned. Setup score ${setupScore} with signal quality ${signalScore}/10. Proceed with entry plan.`
+              }
+              if (rawVerdict === 'GO') {
+                return `Engine verdict is GO — trend is aligned but entry timing may not be confirmed (setup score ${setupScore}, signal quality ${signalScore}/10). Check execution timing before entering.`
               }
               if (setupScore >= 65 && signalScore >= 7.0) {
                 return `Setup is building. Setup score ${setupScore} with signal quality ${signalScore}/10. Conditions are developing — waiting for confirmation trigger before committing.`
