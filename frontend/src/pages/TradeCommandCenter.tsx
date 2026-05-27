@@ -426,12 +426,6 @@ export default function TradeCommandCenter() {
                         <div className="text-[10px] text-slate-600 uppercase tracking-wide">Confidence</div>
                         <div className={`font-mono text-sm font-bold ${conf >= 70 ? 'text-emerald-400' : conf >= 50 ? 'text-amber-400' : 'text-slate-500'}`}>{conf}%</div>
                       </div>
-                      <div className="mt-1.5 h-1 w-full rounded-full bg-slate-800">
-                        <div
-                          className={`h-full rounded-full transition-all ${conf >= 70 ? 'bg-emerald-500' : conf >= 50 ? 'bg-amber-500' : 'bg-slate-600'}`}
-                          style={{ width: `${conf}%` }}
-                        />
-                      </div>
                       <SubIndicators indicators={top.sub_indicators} />
                     </button>
                   )
@@ -511,16 +505,8 @@ export default function TradeCommandCenter() {
                         </>
                       )}
 
-                      {/* Confidence bar */}
-                      <div className="flex items-center gap-2 mt-auto">
-                        <div className="flex-1">
-                          <div className="h-1 w-full rounded-full bg-slate-800">
-                            <div
-                              className={`h-full rounded-full ${conf >= 70 ? 'bg-emerald-500' : 'bg-sky-500'}`}
-                              style={{ width: `${conf}%` }}
-                            />
-                          </div>
-                        </div>
+                      {/* Confidence score */}
+                      <div className="flex items-center justify-end mt-auto">
                         <span className={`font-mono text-xs font-bold ${conf >= 70 ? 'text-emerald-400' : 'text-sky-400'}`}>{conf}%</span>
                       </div>
                       <SubIndicators indicators={rec.sub_indicators} />
@@ -574,12 +560,7 @@ export default function TradeCommandCenter() {
                         <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <div className="h-1 w-full rounded-full bg-slate-800">
-                            <div className="h-full rounded-full bg-amber-500/60" style={{ width: `${conf}%` }} />
-                          </div>
-                        </div>
+                      <div className="flex items-center justify-end">
                         <span className="font-mono text-xs font-bold text-amber-400">{conf}%</span>
                       </div>
                       <SubIndicators indicators={rec.sub_indicators} />
