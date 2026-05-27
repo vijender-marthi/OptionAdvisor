@@ -786,8 +786,8 @@ export default function TradeCommandCenter() {
                       </div>
                     ) : (
                       primary.map(rec => {
-                        const sq = (rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
-                        const isGo = sq === 'STRONG GO' || sq === 'GO'
+                        const rawSignal = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
+                        const isGo = rawSignal === 'STRONG GO' || rawSignal === 'GO'
                         const isDay = rec.engine_type?.toLowerCase() === 'day'
                         const badgeCls = isGo
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
@@ -839,7 +839,7 @@ export default function TradeCommandCenter() {
                                   {isDay ? 'DAY' : 'SWING'}
                                 </span>
                               </div>
-                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{sq}</span>
+                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeCls}`}>{rawSignal}</span>
                             </div>
 
                             {/* Row 2: Price change + last price + strategy */}
@@ -908,7 +908,7 @@ export default function TradeCommandCenter() {
                       </summary>
                       <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3">
                         {secondary.map(rec => {
-                          const sq = (rec.signal_quality || rec.final_decision || rec.signal || '').toUpperCase()
+                          const sq = (rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
                           const badgeCls = sq === 'STRONG GO' || sq === 'GO' || sq === 'READY'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
