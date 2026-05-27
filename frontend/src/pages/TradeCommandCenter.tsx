@@ -782,16 +782,16 @@ export default function TradeCommandCenter() {
                 return groups
               }
 
-              // Each card shows the raw signal (matches detail page verdict exactly)
+              // Each card shows execution readiness status
               const ready = recommendations
                 .filter(r => {
-                  const s = (r.signal || '').toUpperCase()
-                  return s === 'STRONG GO' || s === 'GO'
+                  const er = (r.execution_readiness || '').toUpperCase()
+                  return er === 'READY' || er === 'ENTER NOW'
                 })
               const monitoring = recommendations
                 .filter(r => {
-                  const s = (r.signal || '').toUpperCase()
-                  return !['STRONG GO', 'GO'].includes(s) && ['READY','TRADE','WATCH','WAIT'].includes(String(r.final_decision ?? '').toUpperCase())
+                  const er = (r.execution_readiness || '').toUpperCase()
+                  return !['READY', 'ENTER NOW'].includes(er) && ['WATCH', 'WAIT', 'AVOID', 'NO_EDGE'].includes(er)
                 })
               const readyGroups = byEngine(ready)
               const monitoringGroups = byEngine(monitoring)
@@ -811,7 +811,7 @@ export default function TradeCommandCenter() {
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {group.items.map(rec => {
-                              const verdict = (rec.signal || '').toUpperCase()
+                              const execStatus = (rec.execution_readiness || '').toUpperCase()
                               const isDay = group.key === 'day'
                               const confPct = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
                               const chgPct = rec.price_change_pct
@@ -831,7 +831,7 @@ export default function TradeCommandCenter() {
                                         {isDay ? 'DAY' : group.key === 'swing' ? 'SWING' : 'REGULAR'}
                                       </span>
                                     </div>
-                                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{verdict}</span>
+                                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{execStatus}</span>
                                   </div>
                                   <div className="flex items-center gap-2 mb-3">
                                     {chgPct != null && <span className={`text-[13px] font-bold font-mono ${chgPct >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%</span>}
@@ -886,7 +886,7 @@ export default function TradeCommandCenter() {
                                 >
                                   <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                                   <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                                    {(rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
+                                    {(rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()}
                                   </span>
                                 </button>
                               ))}
