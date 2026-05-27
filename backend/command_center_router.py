@@ -15,7 +15,7 @@ import logging
 import math
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
@@ -737,15 +737,21 @@ def _compute_positions_pnl(
     realized_pnl = 0.0
     realized_count = 0
     today_closed_pnl = 0.0
-    today_str = datetime.now(timezone.utc).date().isoformat()
+    week_closed_pnl = 0.0
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+    monday = today - timedelta(days=today.weekday())  # this week's Monday
+    total_cost_basis = 0.0
     for p in closed_pos:
         rp = p.get("realized_pnl")
+        exit_date = str(p.get("exitDate") or "")[:10]
         if rp is not None:
             realized_pnl += _float_or(rp, 0.0)
             realized_count += 1
-            exit_date = str(p.get("exitDate") or "")[:10]
             if exit_date == today_str:
                 today_closed_pnl += _float_or(rp, 0.0)
+            if exit_date >= str(monday):
+                week_closed_pnl += _float_or(rp, 0.0)
         else:
             pnl_pct = p.get("pnlPct")
             if pnl_pct is None:
@@ -757,9 +763,11 @@ def _compute_positions_pnl(
             pnl_dollar = (_float_or(pnl_pct, 0.0) / 100.0) * cost_ref * SHARES * contracts
             realized_pnl += pnl_dollar
             realized_count += 1
-            exit_date = str(p.get("exitDate") or "")[:10]
             if exit_date == today_str:
                 today_closed_pnl += pnl_dollar
+            if exit_date >= str(monday):
+                week_closed_pnl += pnl_dollar
+        total_cost_basis += _float_or(p.get("entryPrice"), 0.0) * max(1, _float_or(p.get("contracts"), 1.0)) * SHARES
 
     per_position_pnl: dict[str, dict[str, float]] = {}
     for p in closed_pos:
@@ -794,7 +802,7 @@ def _compute_positions_pnl(
 
     if not all_open_for_pnl:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
-        return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "week_pl": 0.0, "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "day_pl_pct": round((today_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "week_pl": round(week_closed_pnl, 2), "week_pl_pct": round((week_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "per_position": per_position_pnl}
 
     # ── 2. Fetch underlying prices and live option marks for open positions ─
     try:
@@ -886,12 +894,14 @@ def _compute_positions_pnl(
 
         total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
         day_pl = round(day_total + today_closed_pnl, 2) if (has_mtm or today_closed_pnl != 0) else None
-        week_pl = round(week_total, 2) if has_mtm else None
-        return {"total_pl": total_pl, "day_pl": day_pl, "week_pl": week_pl, "per_position": per_position_pnl}
+        day_pl_pct = round(((day_total + today_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or today_closed_pnl != 0) and total_cost_basis > 0 else None
+        week_pl = round(week_total + week_closed_pnl, 2) if (has_mtm or week_closed_pnl != 0) else None
+        week_pl_pct = round(((week_total + week_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or week_closed_pnl != 0) and total_cost_basis > 0 else None
+        return {"total_pl": total_pl, "day_pl": day_pl, "day_pl_pct": day_pl_pct, "week_pl": week_pl, "week_pl_pct": week_pl_pct, "per_position": per_position_pnl}
 
     except Exception:  # noqa: BLE001
         total_pl = round(realized_pnl, 2) if realized_count > 0 else None
-        return {"total_pl": total_pl, "day_pl": None, "per_position": per_position_pnl}
+        return {"total_pl": total_pl, "day_pl": None, "day_pl_pct": None, "per_position": per_position_pnl}
 
 
 def _fetch_market_snapshot() -> dict[str, Any]:
@@ -1217,7 +1227,9 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "stock_capital":          0.0,
         "total_pl":               pnl_data["total_pl"],
         "day_pl":                 pnl_data["day_pl"],
+        "day_pl_pct":             pnl_data.get("day_pl_pct"),
         "week_pl":                pnl_data.get("week_pl"),
+        "week_pl_pct":            pnl_data.get("week_pl_pct"),
         "risk_status":            "elevated" if options_cap > 20000 else "normal",
         "alerts_count":           alerts_n,
         "open_risk_notional":     round(options_cap, 2),
