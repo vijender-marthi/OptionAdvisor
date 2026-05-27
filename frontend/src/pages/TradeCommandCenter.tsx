@@ -119,7 +119,7 @@ function ExecTimingBadge({ timing }: { timing: string }) {
   const t = String(timing || '').toUpperCase()
   if (!t) return null
   const tClass = t === 'ENTER NOW' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
-    t === 'WATCH' ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300' :
+    t === 'WATCH' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
     t === 'WAIT FOR PULLBACK' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' :
     t === 'STAND ASIDE' ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' :
     'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
@@ -836,9 +836,9 @@ export default function TradeCommandCenter() {
                                       const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
                                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                                         : ec === 'WATCH'
-                                          ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                                           : ec === 'WAIT'
-                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
                                             : ec === 'AVOID' || ec === 'NO_EDGE'
                                               ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                                               : 'bg-slate-100 text-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
@@ -899,15 +899,15 @@ export default function TradeCommandCenter() {
                                   <span className="font-mono font-bold text-slate-900 dark:text-white">{rec.ticker}</span>
                                   {(() => {
                                     const ec = (rec.execution_timing || rec.execution_readiness || rec.signal || rec.signal_quality || rec.final_decision || '').toUpperCase()
-                                    const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
-                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                                      : ec === 'WATCH'
-                                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
-                                        : ec === 'WAIT'
+                                      const eCls = ec === 'ENTER NOW' || ec === 'READY' || ec === 'ENTER'
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                        : ec === 'WATCH'
                                           ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                                          : ec === 'AVOID' || ec === 'NO_EDGE'
-                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300'
-                                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'
+                                          : ec === 'WAIT'
+                                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300'
+                                            : ec === 'AVOID' || ec === 'NO_EDGE'
+                                              ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300'
                                     return <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${eCls}`}>{ec}</span>
                                   })()}
                                 </button>
@@ -1134,9 +1134,9 @@ export default function TradeCommandCenter() {
                     const execBadgeCls = execStatus === 'ENTER NOW' || execStatus === 'READY' || execStatus === 'ENTER'
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                       : execStatus === 'WATCH'
-                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                         : execStatus === 'WAIT'
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
                           : execStatus === 'AVOID' || execStatus === 'NO_EDGE'
                             ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                             : 'bg-slate-100 text-slate-800 dark:bg-slate-800/50 dark:text-slate-300'
