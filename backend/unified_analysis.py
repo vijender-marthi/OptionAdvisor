@@ -507,15 +507,35 @@ def serialize_swing_trade(scan) -> dict:
 
         coach = getattr(scan, "playbook_hint", "") or getattr(scan, "decision_message", "") or ""
 
+        # Use final_action (same source as the decision resolver and TCC) so the
+        # verdict shown on this detail page matches the TCC card verdict.
+        # scan.verdict is the raw score-based signal; final_action reflects
+        # confirmation requirements, risk gating, and wait conditions.
+        final_action = str(getattr(scan, "final_action", "") or "").upper()
+        _ACTION_MAP: dict[str, str] = {
+            "STRONG_GO":                 "STRONG_GO",
+            "QUALITY_LONG":              "GO",
+            "WATCH_CALL_OR_DEBIT_SPREAD": "WATCH",
+            "WATCH_CALL":                "WATCH",
+            "WATCH_PUT":                 "WATCH",
+            "GO_SMALL":                  "WATCH",
+        }
+        if final_action in _ACTION_MAP:
+            sw_verdict_val = _ACTION_MAP[final_action]
+        elif final_action.startswith("WAIT") or final_action in ("MARKET_CONFIRMATION_ONLY", "NO_TRADE_WAIT"):
+            sw_verdict_val = "WAIT"
+        elif final_action.startswith("AVOID") or final_action == "NO_TRADE":
+            sw_verdict_val = "AVOID"
+        else:
+            # Fallback to raw scan verdict when final_action is unknown/empty
+            sw_verdict_val = normalize_verdict(scan.verdict or "")
+
         # Clear entry plan for non-actionable verdicts
-        sw_verdict = normalize_verdict(scan.verdict or "")
-        if sw_verdict in ('AVOID', 'WAIT', 'NO_EDGE'):
+        if sw_verdict_val in ('AVOID', 'WAIT', 'NO_EDGE'):
             entry_price = None
             stop_price = None
             structure = ""
             exit_rows = []
-
-        sw_verdict_val = normalize_verdict(scan.verdict or "")
 
         return {
             "ticker": scan.ticker,
