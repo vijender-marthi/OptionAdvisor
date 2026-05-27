@@ -87,3 +87,21 @@ VERDICT_COLORS = {
     Verdict.AVOID: "#D0312D",
     Verdict.NO_EDGE: "#6B7280",
 }
+
+VERDICT_TONE: dict[str, str] = {
+    "STRONG_GO": "bullish",
+    "GO":        "bullish",
+    "WATCH":     "warning",
+    "WAIT":      "neutral",
+    "AVOID":     "bearish",
+    "NO_EDGE":   "neutral",
+}
+
+VERDICT_RANK: dict[str, int] = {
+    "STRONG_GO": 5,
+    "GO":        4,
+    "WATCH":     3,
+    "WAIT":      2,
+    "AVOID":     1,
+    "NO_EDGE":   0,
+}
