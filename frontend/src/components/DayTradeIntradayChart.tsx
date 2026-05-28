@@ -390,9 +390,9 @@ export default function DayTradeIntradayChart({
                   clipPath="url(#daytrade-plot-clip)"
                 />
                 <text
-                  x={PAD.l + innerW - 4}
+                  x={PAD.l + 4}
                   y={Math.max(PAD.t + 9, ey - 4)}
-                  textAnchor="end" fill={color} fontSize={9} fontWeight={600}
+                  textAnchor="start" fill={color} fontSize={9} fontWeight={600}
                 >
                   {ep.label} · ${fmtPrice(ep.price)}
                 </text>
