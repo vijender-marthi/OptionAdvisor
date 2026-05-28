@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import type { AiCoachResult, DayTradeScanResult } from '../api/client'
 import type { PortfolioPosition } from '../types'
-import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
@@ -766,10 +766,75 @@ export default function DayTradeEnginePanel({
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
   const td = coerceTraderDecision(result.trader_decision ?? null)
   const eg = result.entry_guidance
+
+  // ── Derive entry points from available signal sources ───────────────────────
+  const chartEntryPoints = (() => {
+    const pts: ChartEntryPoint[] = []
+    const ac = result.ai_coach
+    const isShort = result.bias === 'short'
+
+    // Fallback values directly from metrics (always present)
+    const mVwap      = asFiniteNum(m.vwap)
+    const mOrHigh    = orChartHigh
+    const mOrLow     = orChartLow
+    const stopFallback = isShort
+      ? (mOrHigh != null ? mOrHigh : undefined)
+      : (mOrLow  != null ? mOrLow  : undefined)
+
+    const seen = new Set<number>()
+    const add = (pt: ChartEntryPoint) => {
+      if (!Number.isFinite(pt.price) || pt.price <= 0) return
+      if (seen.has(pt.price)) return
+      seen.add(pt.price)
+      pts.push({ ...pt, label: `E${pts.length + 1}` })
+    }
+
+    // E1: AI Coach entry gate trigger (most specific)
+    const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
+    add({
+      label: '',
+      price: gatePrice ?? 0,
+      trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
+      stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+    })
+
+    // E2: AI Coach trade entry price with R/R
+    const aiPrice = asFiniteNum(ac?.trade?.entry_price)
+    add({
+      label: '',
+      price: aiPrice ?? 0,
+      trigger: ac?.trade
+        ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)`
+        : 'AI Coach',
+      stop: asFiniteNum(ac?.trade?.stop) ?? stopFallback,
+    })
+
+    // E3: OR breakout level — use entry_guidance first, fall back to OR high/low
+    const breakoutLevel = asFiniteNum(eg?.breakout_level)
+      ?? (isShort ? mOrLow : mOrHigh)
+    add({
+      label: '',
+      price: breakoutLevel ?? 0,
+      trigger: isShort ? 'OR low breakout' : 'OR high breakout',
+      stop: isShort ? (mOrHigh ?? undefined) : (mOrLow ?? undefined),
+    })
+
+    // E4: VWAP re-test — use entry_guidance.vwap first, fall back to metrics vwap
+    const vwapPrice = asFiniteNum(eg?.vwap) ?? mVwap
+    add({
+      label: '',
+      price: vwapPrice ?? 0,
+      trigger: 'VWAP re-test',
+      stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+    })
+
+    return pts.length > 0 ? pts : undefined
+  })()
   const signals = computeSignals(result, m)
   const reasoning = computeReasoning(result, m)
   const riskPanel = computeRiskPanel(result, m)
-  const decisionTone = actionTone(result.final_decision)
+  const isChasing = result.is_chasing === true
+  const decisionTone = isChasing ? 'orange' : actionTone(result.final_decision)
   const execTone = actionTone(result.execution_readiness || result.execution_timing)
   const optionRisk = result.option_risk_context
   const hasOptionOverlay = !!optionRisk
@@ -908,7 +973,7 @@ export default function DayTradeEnginePanel({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                {formatLabel(result.final_decision)}
+                {isChasing ? 'EXTENDED' : formatLabel(result.final_decision)}
               </span>
               {result.final_decision === 'WAIT' && (() => {
                 const missing = Array.isArray(eg?.pending_confirmations) ? (eg.pending_confirmations as string[]) : []
@@ -945,6 +1010,7 @@ export default function DayTradeEnginePanel({
               { label: 'Structure', value: (() => {
                 const fd = String(result.final_decision || '').toUpperCase()
                 const dir = result.bias === 'short' ? 'SHORT' : 'LONG'
+                if (isChasing) return <span className="font-mono font-semibold text-amber-400 text-xs">{dir + ' · Extended'}</span>
                 if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{dir + ' · Ready'}</span>
                 if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{dir + ' · Waiting'}</span>
                 if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{dir + ' · Watching'}</span>
@@ -1053,6 +1119,7 @@ export default function DayTradeEnginePanel({
               orLow={orChartLow}
               orMinutes={orMinN}
               sessionDate={String(m.session_date ?? '')}
+              entryPoints={chartEntryPoints}
             />
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
               {eg?.vwap != null && <span>VWAP: <span className="font-mono text-gray-200">${eg.vwap.toFixed(2)}</span></span>}
@@ -1642,6 +1709,7 @@ export default function DayTradeEnginePanel({
                     orLow={orChartLow}
                     orMinutes={orMinN}
                     sessionDate={String(m.session_date ?? '')}
+                    entryPoints={chartEntryPoints}
                   />
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'

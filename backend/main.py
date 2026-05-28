@@ -239,9 +239,18 @@ def _user_wants_trade_alert_emails(user_state: dict) -> bool:
         return True
 
 
-ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
+ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "300"))  # 5-min default for day trade
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
+
+# Day trade alert window (PST/PDT): 5:00 AM – 1:00 PM.  Next day starts at 5 AM.
+_DAY_TRADE_ALERT_START_HOUR_PT = 5   # 5:00 AM PT
+_DAY_TRADE_ALERT_END_HOUR_PT   = 13  # 1:00 PM PT
+
+# Swing trade alert window (PST/PDT): 6:00 AM – 2:00 PM, every 2 hours.
+_SWING_TRADE_ALERT_START_HOUR_PT   = 6     # 6:00 AM PT
+_SWING_TRADE_ALERT_END_HOUR_PT     = 14    # 2:00 PM PT
+SWING_ALERT_SCAN_INTERVAL_SECONDS  = int(os.getenv("SWING_ALERT_SCAN_INTERVAL_SECONDS", "7200"))
 ALERT_ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ALERT_ANALYSIS_CACHE_TTL_SECONDS", str(ALERT_SCAN_INTERVAL_SECONDS)))
 ALERT_SCAN_WEEKS_OUT = 4
 # Strategy Finder / email deeplink ?weeks= must match frontend MULTI_WEEK_TARGETS
@@ -452,6 +461,22 @@ def _is_market_hours_now() -> bool:
     if now.weekday() >= 5:
         return False
     return (now.hour > 9 or (now.hour == 9 and now.minute >= 30)) and now.hour < 16
+
+
+def _is_day_trade_alert_window_pt() -> bool:
+    """True between 5:00 AM and 1:00 PM PT on weekdays (day trade alert window)."""
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.weekday() >= 5:
+        return False
+    return _DAY_TRADE_ALERT_START_HOUR_PT <= now.hour < _DAY_TRADE_ALERT_END_HOUR_PT
+
+
+def _is_swing_trade_alert_window_pt() -> bool:
+    """True between 6:00 AM and 2:00 PM PT on weekdays (swing trade alert window)."""
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.weekday() >= 5:
+        return False
+    return _SWING_TRADE_ALERT_START_HOUR_PT <= now.hour < _SWING_TRADE_ALERT_END_HOUR_PT
 
 
 def _normalize_public_origin(url: str) -> str:
@@ -1167,14 +1192,21 @@ def _scan_user_day_trade_watchlist(user_state: dict) -> None:
     if not escalations:
         return
 
-    if _user_wants_trade_alert_emails(user_state):
-        result = _send_day_trade_escalation_email(email, user_name, escalations)
+    # Only email verdict escalations that are GO / STRONG GO; all others go to app-only
+    _GO_VERDICTS = {"GO", "STRONG GO", "STRONG_GO"}
+    email_escalations = [
+        e for e in escalations
+        if _norm_day_trade_verdict(e.get("verdict")) in _GO_VERDICTS
+    ]
+
+    if email_escalations and _user_wants_trade_alert_emails(user_state):
+        result = _send_day_trade_escalation_email(email, user_name, email_escalations)
     else:
-        result = {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE}
+        result = {"sent": False, "message": USER_ALERT_EMAIL_DISABLED_MESSAGE if not email_escalations else "No GO/STRONG GO verdicts — app alert only"}
     message = str(result.get("message", ""))
     sent = bool(result.get("sent"))
     for row in escalations:
-        row["emailSent"] = sent
+        row["emailSent"] = sent and (row in email_escalations)
         row["emailMessage"] = message
         add_day_trade_alert_event(email, row)
 
@@ -3212,6 +3244,67 @@ _STATE_DIRECTION = {
 }
 
 
+def _build_price_snapshot_summary(
+    ticker: str,
+    verdict: str,
+    bias: str,
+    *,
+    price: object,
+    vwap: object,
+    orh: object,
+    orl: object,
+    stop: object,
+    target: object,
+    alert_type: str,
+) -> str:
+    """
+    Build a rich one-line summary with price snapshot at detection time.
+    This is the text that appears in the alert inbox and email — it must be
+    actionable when read 5-10 minutes after firing.
+    """
+    def _p(v: object) -> str:
+        try:
+            return f"${float(v):.2f}" if v is not None else ""  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return ""
+
+    px  = _p(price)
+    vw  = _p(vwap)
+    orh_ = _p(orh)
+    st  = _p(stop)
+    tg  = _p(target)
+
+    direction = "LONG" if bias == "long" else "SHORT" if bias == "short" else ""
+    verdict_label = verdict.replace("_", " ")
+
+    parts: list[str] = []
+    if px:
+        parts.append(f"Price {px}")
+    if vw:
+        parts.append(f"VWAP {vw}")
+    if orh_:
+        parts.append(f"ORH {orh_}")
+    if st:
+        parts.append(f"Stop {st}")
+    if tg:
+        parts.append(f"Target {tg}")
+
+    levels = " · ".join(parts)
+
+    if alert_type == "ENTER_NOW":
+        return (
+            f"{ticker} {verdict_label} — Entry window OPEN · {direction}"
+            + (f" · {levels}" if levels else "")
+            + " · Act within 1-2 candles or wait for next setup."
+        )
+    else:
+        return (
+            f"{ticker} {verdict_label} — Setup confirmed · {direction}"
+            + (f" · {levels}" if levels else "")
+            + " · Check extension before entering."
+        )
+
+
 def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     email = user_state.get("email", "").strip().lower()
     if not email:
@@ -3220,9 +3313,6 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     # my_tickers uses "symbol" key; support both for safety
     raw_tickers = user_state.get("my_tickers") or []
     if not raw_tickers:
-        return
-
-    if not user_state.get("alert_email_enabled", True):
         return
 
     user_name = email.split("@")[0] or email
@@ -3261,11 +3351,15 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
             now_ms = int(time.time() * 1000)
             prev   = get_ticker_state_last(email, ticker, "DAY")
 
+            ew        = dr.entry_window
+            now_ew_status = (ew.status if ew else "WAIT")
+
             if prev is None:
                 inplay_since = now_ms if now_state == 3 else 0
                 upsert_ticker_state_last(
                     email, ticker, "DAY", now_state, now_action, sd,
                     target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                    entry_window_status=now_ew_status, entry_window_alerted=0,
                 )
             else:
                 prev_state  = int(prev.get("state_num") or 1)
@@ -3277,6 +3371,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     upsert_ticker_state_last(
                         email, ticker, "DAY", now_state, now_action, sd,
                         target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                        entry_window_status=now_ew_status, entry_window_alerted=0,
                     )
                 else:
                     state_changed = prev_state != now_state
@@ -3292,6 +3387,9 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                         inplay_since      = int(prev.get("inplay_since_ms") or now_ms)
                     # enter_now_alerted resets whenever state changes (new setup = new alert allowed)
                     carry_enter_now   = 0 if state_changed else int(prev.get("enter_now_alerted") or 0)
+
+                    prev_ew_status    = prev.get("entry_window_status") or "WAIT"
+                    carry_ew_alerted  = 0 if state_changed else int(prev.get("entry_window_alerted") or 0)
 
                     last_price_val = eg.get("current_price") or m.get("last_price")
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
@@ -3318,6 +3416,18 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             except (TypeError, ValueError):
                                 pass
 
+                        _vwap_sc   = eg.get("vwap") or m.get("vwap")
+                        _stop_sc   = eg.get("risk_below")
+                        _tgt_sc    = eg.get("scalp_target")
+                        _price_sc  = last_price_val
+                        _sc_summary = _build_price_snapshot_summary(
+                            ticker, scan_verdict, bias_raw,
+                            price=_price_sc, vwap=_vwap_sc,
+                            orh=orh_val, orl=orl_val,
+                            stop=_stop_sc, target=_tgt_sc,
+                            alert_type="STATE_CHANGE",
+                        )
+
                         day_escalations.append({
                             "id":             f"dt-state-{ticker}-{now_ms}",
                             "alertType":      "STATE_CHANGE",
@@ -3333,14 +3443,14 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "egAction":       eg_action,
                             "bias":           bias_label,
                             "sessionDate":    sd,
-                            "currentPrice":   last_price_val,
-                            "vwap":           eg.get("vwap") or m.get("vwap"),
+                            "currentPrice":   _price_sc,
+                            "vwap":           _vwap_sc,
                             "orh":            orh_val,
                             "orl":            orl_val,
                             "breakoutLevel":  eg.get("breakout_level"),
-                            "scalp_target":   eg.get("scalp_target"),
-                            "riskBelow":      eg.get("risk_below"),
-                            "summary":        eg.get("summary") or eg.get("action") or "",
+                            "scalp_target":   _tgt_sc,
+                            "riskBelow":      _stop_sc,
+                            "summary":        _sc_summary,
                             "decisionMsg":    str((dr.trader_decision or {}).get("decision_message") or ""),
                             "narrowOrCaution":narrow_or_caution,
                             "orWidthPct":     or_width_pct_val,
@@ -3353,6 +3463,16 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     if enter_now_confirmed and not carry_enter_now:
                         enter_now_to_store = 1
                         direction_lbl = "LONG · CALL" if bias_raw == "long" else "SHORT · PUT"
+                        _vwap_en  = eg.get("vwap") or m.get("vwap")
+                        _stop_en  = eg.get("risk_below")
+                        _tgt_en   = eg.get("scalp_target")
+                        _en_summary = _build_price_snapshot_summary(
+                            ticker, verdict_str, bias_raw,
+                            price=last_price_val, vwap=_vwap_en,
+                            orh=orh_val, orl=orl_val,
+                            stop=_stop_en, target=_tgt_en,
+                            alert_type="ENTER_NOW",
+                        )
                         day_escalations.append({
                             "id":           f"dt-enternow-{ticker}-{now_ms}",
                             "alertType":    "ENTER_NOW",
@@ -3367,13 +3487,13 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "bias":         bias_label,
                             "sessionDate":  sd,
                             "currentPrice": last_price_val,
-                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "vwap":         _vwap_en,
                             "orh":          orh_val,
                             "orl":          orl_val,
                             "breakoutLevel": eg.get("breakout_level"),
-                            "scalp_target": eg.get("scalp_target"),
-                            "riskBelow":    eg.get("risk_below"),
-                            "summary":      f"Volume confirmed — entry window open. Action: Ready · Execution: Enter Now.",
+                            "scalp_target": _tgt_en,
+                            "riskBelow":    _stop_en,
+                            "summary":      _en_summary,
                             "decisionMsg":  eg.get("summary") or eg.get("action") or "",
                             "narrowOrCaution": False,
                             "orWidthPct":   None,
@@ -3459,12 +3579,46 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                                     "decisionMsg":  f"Price ${lp:.2f} has not cleared {stop_level} + 0.3% threshold. Momentum is stalling — protect capital now.",
                                 })
 
+                    # ── Entry window CLOSING alert ────────────────────────
+                    ew_alerted_to_store = carry_ew_alerted
+                    scan_verdict_ew = _norm_day_trade_verdict(dr.verdict)
+                    ew_was_open   = prev_ew_status == "OPEN"
+                    ew_now_narrow = now_ew_status in ("CLOSING", "CLOSED")
+                    if (ew_was_open and ew_now_narrow and not carry_ew_alerted
+                            and scan_verdict_ew in {"GO", "STRONG GO", "STRONG_GO"}):
+                        ew_alerted_to_store = 1
+                        _ew_reason = ew.reason if ew else "Entry window is closing."
+                        _ew_price  = last_price_val
+                        day_escalations.append({
+                            "id":           f"dt-ewclose-{ticker}-{now_ms}",
+                            "alertType":    "WINDOW_CLOSING",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": _ew_price,
+                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "orh":          orh_val,
+                            "orl":          orl_val,
+                            "scalp_target": eg.get("scalp_target"),
+                            "riskBelow":    eg.get("risk_below"),
+                            "pullbackTarget": ew.pullback_target if ew else None,
+                            "rrRatio":      ew.rr_ratio if ew else None,
+                            "summary":      _ew_reason,
+                            "decisionMsg":  f"Window moving to {now_ew_status}. {_ew_reason}",
+                        })
+
                     upsert_ticker_state_last(
                         email, ticker, "DAY", now_state, now_action, sd,
                         target_hit=target_to_store,
                         inplay_since_ms=inplay_since,
                         weak_breakout_alerted=weak_bo_to_store,
                         enter_now_alerted=enter_now_to_store,
+                        entry_window_status=now_ew_status,
+                        entry_window_alerted=ew_alerted_to_store,
                     )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
@@ -3472,24 +3626,44 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     if not day_escalations:
         return
 
+    # Mirror all escalations to the in-app alert center regardless of alert type
     public_base = _option_advisor_public_base()
+    for it in day_escalations:
+        try:
+            _px = it.get("currentPrice")
+            _px_str = f" @ ${float(_px):.2f}" if _px is not None else ""
+            _title = f"⚡ {it.get('ticker', '')}{_px_str} — {it.get('summary') or it.get('alertType', '')}"
+            alert_center_create(
+                email,
+                alert_group="day-trade",
+                severity="CRITICAL" if it.get("alertType") in ("ENTER_NOW", "STATE_CHANGE") else "WARNING",
+                engine="DAY_TRADE",
+                signal=it.get("alertType", ""),
+                title=_title,
+                body=it.get("decisionMsg") or "",
+                meta={"ticker": it.get("ticker"), "alertType": it.get("alertType"), "sessionDate": it.get("sessionDate"),
+                      "currentPrice": it.get("currentPrice"), "vwap": it.get("vwap"), "orh": it.get("orh")},
+            )
+        except Exception:
+            pass
+
+    # Email only for GO / STRONG GO status changes (ENTER_NOW or STATE_CHANGE with GO verdict)
+    _GO_VERDICTS = {"GO", "STRONG GO", "STRONG_GO"}
+    email_items = [
+        it for it in day_escalations
+        if it.get("alertType") in ("STATE_CHANGE", "ENTER_NOW")
+    ]
+
+    if not email_items or not _user_wants_trade_alert_emails(user_state):
+        return
+
     try:
-        tickers_str    = ", ".join(sorted({it["ticker"] for it in day_escalations}))
-        target_items   = [it for it in day_escalations if it.get("alertType") == "TARGET_REACHED"]
-        weak_bo_items  = [it for it in day_escalations if it.get("alertType") == "WEAK_BREAKOUT"]
-        state_items    = [it for it in day_escalations if it.get("alertType") == "STATE_CHANGE"]
-        if target_items and not state_items and not weak_bo_items:
-            subject = f"💰 OptionAdvisor: Take-profit target hit — {tickers_str}"
-        elif weak_bo_items and not state_items and not target_items:
-            subject = f"⚠️ OptionAdvisor: Breakout stalling — {tickers_str}"
-        elif target_items or weak_bo_items:
-            subject = f"⚡ OptionAdvisor: Day trade alert — {tickers_str}"
-        else:
-            count = len(state_items)
-            subject = f"⚡ OptionAdvisor: {count} day-trade state change{'s' if count != 1 else ''} — {tickers_str}"
-        html_body = _build_state_transition_email_html(email, user_name, day_escalations, public_base=public_base)
+        tickers_str = ", ".join(sorted({it["ticker"] for it in email_items}))
+        count = len(email_items)
+        subject = f"⚡ OptionAdvisor: {count} day-trade GO signal{'s' if count != 1 else ''} — {tickers_str}"
+        html_body = _build_state_transition_email_html(email, user_name, email_items, public_base=public_base)
         _deliver_html_email(email, user_name, subject, html_body)
-        print(f"[state-scan] sent {len(day_escalations)} DAY alert(s) to {email}", flush=True)
+        print(f"[state-scan] emailed {len(email_items)} GO alert(s) to {email}", flush=True)
     except Exception as exc:
         print(f"[state-scan] email failed for {email}: {exc}", flush=True)
 
@@ -3857,6 +4031,7 @@ class JournalUpdateRequest(_BM):
     trade_type: Optional[str] = None
     engine_signal: Optional[str] = None
     engine_state: Optional[int] = None
+    legs: Optional[list[dict]] = None
 
 
 def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:
@@ -4326,3 +4501,319 @@ def set_user_accent(auth_email: str = Depends(require_access_email), body: dict 
             (accent, normalize_email(email)),
         )
     return {"ok": True, "accent": accent}
+
+
+# ─── Swing trade alert scanner ────────────────────────────────────────────────
+
+_SWING_GO_VERDICTS = {"GO", "STRONG GO", "STRONG_GO", "STRONG GO"}
+_SWING_STATE_LABEL = {1: "SETUP", 2: "WATCH", 3: "READY", 4: "EXIT"}
+
+
+def _scan_my_tickers_for_swing_alerts(user_state: dict) -> None:
+    """
+    Scan all my_tickers for swing trade state transitions.
+    Email is sent only when verdict transitions to GO / STRONG GO.
+    All other changes go to the in-app alert center only.
+    """
+    email = user_state.get("email", "").strip().lower()
+    if not email:
+        return
+
+    raw_tickers = user_state.get("my_tickers") or []
+    if not raw_tickers:
+        return
+
+    user_name = email.split("@")[0] or email
+    session_date_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    swing_escalations: list[dict] = []
+
+    for ti, mt_item in enumerate(raw_tickers):
+        if isinstance(mt_item, dict):
+            ticker = str(mt_item.get("symbol") or mt_item.get("ticker") or "").strip().upper()
+        else:
+            ticker = str(mt_item).strip().upper()
+        if not ticker:
+            continue
+        if ti:
+            time.sleep(0.8)
+
+        try:
+            sr = run_swing_trade_scan(ticker)
+        except Exception as exc:
+            print(f"[swing-alert] {email} {ticker} failed: {exc}", flush=True)
+            continue
+
+        try:
+            final_action = str(getattr(sr, "final_action", "") or "").upper().strip()
+            verdict      = str(getattr(sr, "verdict", "") or "").upper().strip()
+            bias_raw     = str(getattr(sr, "bias", "") or "").lower()
+            bias_label   = "BULLISH / LONG" if bias_raw == "long" else "BEARISH / SHORT" if bias_raw == "short" else bias_raw.upper()
+            now_state    = _swing_active_state(final_action)
+            m            = dict(getattr(sr, "metrics", None) or {})
+            sd           = str(m.get("session_date") or session_date_today)[:10]
+            now_ms       = int(time.time() * 1000)
+
+            prev = get_ticker_state_last(email, ticker, "SWING")
+
+            if prev is None:
+                upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
+                continue
+
+            prev_state  = int(prev.get("state_num") or 1)
+            prev_sd     = (prev.get("session_date") or "")[:10]
+
+            # New trading day — reset without alerting
+            if prev_sd and sd and prev_sd != sd:
+                upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
+                continue
+
+            if prev_state == now_state:
+                upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
+                continue
+
+            direction = f"{_SWING_STATE_LABEL.get(prev_state, str(prev_state))} → {_SWING_STATE_LABEL.get(now_state, str(now_state))}"
+            last_price = m.get("last_price") or m.get("current_price")
+            support    = m.get("support")
+            resistance = m.get("resistance")
+            stop_loss  = m.get("stop_loss")
+
+            alert_payload = {
+                "id":           f"sw-state-{ticker}-{now_ms}",
+                "alertType":    "STATE_CHANGE",
+                "engine":       "SWING",
+                "ticker":       ticker,
+                "companyName":  getattr(sr, "company_name", None) or ticker,
+                "prevState":    prev_state,
+                "prevLabel":    _SWING_STATE_LABEL.get(prev_state, str(prev_state)),
+                "nowState":     now_state,
+                "nowLabel":     _SWING_STATE_LABEL.get(now_state, str(now_state)),
+                "direction":    direction,
+                "verdict":      verdict,
+                "finalAction":  final_action,
+                "bias":         bias_label,
+                "sessionDate":  sd,
+                "currentPrice": last_price,
+                "support":      support,
+                "resistance":   resistance,
+                "stopLoss":     stop_loss,
+                "summary":      str(getattr(sr, "decision_message", "") or ""),
+                "decisionMsg":  str(getattr(sr, "decision_message", "") or ""),
+                "score":        getattr(sr, "trade_quality_score", None),
+            }
+
+            # Always mirror to in-app alert center
+            severity = "CRITICAL" if verdict in _SWING_GO_VERDICTS else "INFO"
+            try:
+                alert_center_create(
+                    email,
+                    alert_group="swing-trade",
+                    severity=severity,
+                    engine="SWING_TRADE",
+                    signal=verdict or final_action,
+                    title=f"⚡ {ticker} — Swing: {direction}",
+                    body=alert_payload["summary"],
+                    meta={"ticker": ticker, "alertType": "STATE_CHANGE", "sessionDate": sd, "verdict": verdict},
+                )
+            except Exception:
+                pass
+
+            # Only escalate to email for GO / STRONG GO verdicts
+            if verdict in _SWING_GO_VERDICTS:
+                swing_escalations.append(alert_payload)
+
+            upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
+
+        except Exception as exc:
+            print(f"[swing-alert] state-scan {email} {ticker} failed: {exc}", flush=True)
+
+    if not swing_escalations or not _user_wants_trade_alert_emails(user_state):
+        return
+
+    try:
+        public_base = _option_advisor_public_base()
+        tickers_str = ", ".join(sorted({it["ticker"] for it in swing_escalations}))
+        count       = len(swing_escalations)
+        subject     = f"⚡ OptionAdvisor: {count} swing-trade GO signal{'s' if count != 1 else ''} — {tickers_str}"
+        html_body   = _build_swing_alert_email_html(email, user_name, swing_escalations, public_base=public_base)
+        _deliver_html_email(email, user_name, subject, html_body)
+        print(f"[swing-alert] emailed {count} GO swing alert(s) to {email}", flush=True)
+    except Exception as exc:
+        print(f"[swing-alert] email failed for {email}: {exc}", flush=True)
+
+
+def _build_swing_alert_email_html(
+    email: str,
+    user_name: str | None,
+    items: list[dict],
+    *,
+    public_base: str,
+) -> str:
+    display_name = (user_name or "").strip() or email
+    base         = public_base.rstrip("/")
+    swing_url    = f"{base}/swing-trade"
+
+    cards_html = ""
+    for it in items:
+        ticker    = html.escape(str(it.get("ticker", "")).upper())
+        company   = html.escape(str(it.get("companyName") or ticker))
+        direction = html.escape(str(it.get("direction", "")))
+        bias      = html.escape(str(it.get("bias", "")))
+        summary   = html.escape(str(it.get("summary", "")))
+        verdict   = html.escape(str(it.get("verdict", "")))
+        session   = html.escape(str(it.get("sessionDate", "")))
+        ticker_url = html.escape(f"{swing_url}?ticker={it.get('ticker', '').upper()}")
+
+        price      = _fmt_price(it.get("currentPrice"))
+        support    = _fmt_price(it.get("support"))
+        resistance = _fmt_price(it.get("resistance"))
+        stop_loss  = _fmt_price(it.get("stopLoss"))
+        score_val  = it.get("score")
+        score_str  = f"{int(score_val)}" if score_val is not None else "—"
+
+        bias_color = "#166534" if "BULL" in bias.upper() or "LONG" in bias.upper() else \
+                     "#991b1b" if "BEAR" in bias.upper() or "SHORT" in bias.upper() else "#64748b"
+
+        level_pairs = [("Price", price), ("Support", support), ("Resistance", resistance), ("Stop", stop_loss)]
+        levels_html = ""
+        for lbl, val in level_pairs:
+            if val and val != "—":
+                levels_html += (
+                    f'<span style="margin-right:14px;white-space:nowrap;">'
+                    f'<span style="color:#94a3b8;font-size:10px;">{html.escape(lbl)}</span> '
+                    f'<span style="font-family:monospace;font-weight:700;font-size:12px;color:#1e293b;">{val}</span>'
+                    f'</span>'
+                )
+
+        summary_row = f'<p style="margin:8px 0 0;font-size:12px;color:#374151;">{summary}</p>' if summary else ""
+
+        cards_html += f"""
+<div style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:2px solid #22c55e;">
+  <div style="background:linear-gradient(90deg,#14532d,#166534);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>
+      <a href="{ticker_url}" style="color:#ffffff;font-family:monospace;font-size:16px;font-weight:800;text-decoration:none;">{ticker}</a>
+      <span style="color:rgba(255,255,255,0.75);font-size:12px;margin-left:8px;">{company}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="background:rgba(255,255,255,0.15);color:#ffffff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">SWING TRADE</span>
+      <span style="background:#dcfce7;color:#14532d;padding:3px 12px;border-radius:4px;font-size:11px;font-weight:900;">⚡ {verdict}</span>
+    </div>
+  </div>
+  <div style="background:#f0fdf4;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:700;color:{bias_color};">{bias}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:12px;font-weight:700;color:#166534;">{direction}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:11px;color:#64748b;">Score {score_str}</span>
+      <span style="color:#cbd5e1;">|</span>
+      <span style="font-size:10px;color:#94a3b8;">{session}</span>
+    </div>
+    <div style="background:#dcfce7;border-radius:6px;padding:8px 10px;flex-wrap:wrap;border:1px solid #bbf7d0;">
+      {levels_html}
+    </div>
+    {summary_row}
+  </div>
+</div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    body {{ margin:0; padding:24px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+           background:#f1f5f9; line-height:1.55; -webkit-font-smoothing:antialiased; }}
+  </style>
+</head>
+<body>
+  <div style="max-width:620px;margin:0 auto;">
+    <div style="background:#14532d;border-radius:12px 12px 0 0;padding:18px 24px;">
+      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:800;">⚡ Swing Trade GO Signal</h1>
+      <p style="margin:4px 0 0;color:rgba(255,255,255,0.75);font-size:13px;">Hi {html.escape(display_name)} — a swing trade opportunity is ready to review.</p>
+    </div>
+    <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:20px 24px;border:1px solid #e2e8f0;border-top:none;">
+      {cards_html}
+      <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;">
+        Prices may be delayed. Review in OptionAdvisor before entering any trade.
+        <a href="{html.escape(swing_url)}" style="color:#166534;">Open Swing Trade Engine →</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+# ─── Day trade alert batch runner ─────────────────────────────────────────────
+
+def _run_day_trade_alert_batch() -> None:
+    """Run one pass of day-trade alert scanning for all users with my_tickers."""
+    if not _is_day_trade_alert_window_pt():
+        print("[day-alert-batch] outside alert window (5 AM – 1 PM PT) — skipping", flush=True)
+        return
+    try:
+        users = list_user_states()
+    except Exception as exc:
+        print(f"[day-alert-batch] failed to load users: {exc}", flush=True)
+        return
+    for user_state in users:
+        role = (user_state.get("role") or "").lower()
+        if role not in ("day", "admin", "super_user"):
+            continue
+        try:
+            _scan_my_tickers_for_state_alerts(user_state)
+        except Exception as exc:
+            print(f"[day-alert-batch] scan failed for {user_state.get('email')}: {exc}", flush=True)
+
+
+def _day_alert_batch_loop() -> None:
+    """Daemon thread: run day-trade alert batch every ALERT_SCAN_INTERVAL_SECONDS."""
+    time.sleep(ALERT_SCAN_START_DELAY_SECONDS)
+    while True:
+        try:
+            _run_day_trade_alert_batch()
+        except Exception as exc:
+            print(f"[day-alert-batch] unhandled error: {exc}", flush=True)
+        time.sleep(ALERT_SCAN_INTERVAL_SECONDS)
+
+
+_batch_thread = threading.Thread(target=_day_alert_batch_loop, daemon=True, name="day-alert-batch")
+_batch_thread.start()
+print(f"[day-alert-batch] background scanner started (interval={ALERT_SCAN_INTERVAL_SECONDS}s, window=5AM–1PM PT)", flush=True)
+
+
+# ─── Swing trade alert batch runner ───────────────────────────────────────────
+
+def _run_swing_trade_alert_batch() -> None:
+    """Run one pass of swing-trade alert scanning for all users with my_tickers."""
+    if not _is_swing_trade_alert_window_pt():
+        print("[swing-alert-batch] outside alert window (6 AM – 2 PM PT) — skipping", flush=True)
+        return
+    try:
+        users = list_user_states()
+    except Exception as exc:
+        print(f"[swing-alert-batch] failed to load users: {exc}", flush=True)
+        return
+    for user_state in users:
+        role = (user_state.get("role") or "").lower()
+        if role not in ("swing", "admin", "super_user"):
+            continue
+        try:
+            _scan_my_tickers_for_swing_alerts(user_state)
+        except Exception as exc:
+            print(f"[swing-alert-batch] scan failed for {user_state.get('email')}: {exc}", flush=True)
+
+
+def _swing_alert_batch_loop() -> None:
+    """Daemon thread: run swing-trade alert batch every SWING_ALERT_SCAN_INTERVAL_SECONDS."""
+    time.sleep(ALERT_SCAN_START_DELAY_SECONDS + 5)  # stagger start slightly from day batch
+    while True:
+        try:
+            _run_swing_trade_alert_batch()
+        except Exception as exc:
+            print(f"[swing-alert-batch] unhandled error: {exc}", flush=True)
+        time.sleep(SWING_ALERT_SCAN_INTERVAL_SECONDS)
+
+
+_swing_batch_thread = threading.Thread(target=_swing_alert_batch_loop, daemon=True, name="swing-alert-batch")
+_swing_batch_thread.start()
+print(f"[swing-alert-batch] background scanner started (interval={SWING_ALERT_SCAN_INTERVAL_SECONDS}s, window=6AM–2PM PT)", flush=True)

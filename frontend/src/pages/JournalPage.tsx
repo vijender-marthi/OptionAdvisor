@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter,
+  AlertTriangle, DollarSign, BarChart3, Filter, Pencil,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry, executeTrade } from '../api/client'
 import type { JournalEntry } from '../types'
@@ -179,6 +179,217 @@ function CloseModal({ entry, onClose, onConfirm }: {
   )
 }
 
+// ─── Edit modal ──────────────────────────────────────────────────────────────
+
+function EditModal({ entry, onClose, onSave }: {
+  entry: JournalEntry
+  onClose: () => void
+  onSave: (fields: Record<string, unknown>) => Promise<void>
+}) {
+  // Detect existing single leg (for day trades edited previously)
+  const existingLeg = entry.legs.length === 1 ? entry.legs[0] : null
+
+  const [form, setForm] = useState({
+    strategy:         entry.strategy ?? '',
+    bias:             entry.bias ?? '',
+    underlying_entry: entry.underlying_entry > 0 ? String(entry.underlying_entry) : '',
+    // net_credit is stored per share (e.g. 9.00 = $9/share = $900/contract)
+    net_credit:       entry.net_credit !== 0 ? String(Math.abs(entry.net_credit).toFixed(2)) : '',
+    strike:           existingLeg?.strike ? String(existingLeg.strike) : '',
+    // iv in leg is stored as decimal (0.45 = 45%); display as %
+    iv:               existingLeg?.iv ? String((existingLeg.iv * 100).toFixed(1)) : '',
+    expiry:           entry.expiry ?? '',
+    max_profit:       entry.max_profit > 0 ? String((entry.max_profit * 100).toFixed(2)) : '',
+    max_loss:         entry.max_loss > 0 ? String((entry.max_loss * 100).toFixed(2)) : '',
+    total_score:      entry.total_score > 0 ? String(entry.total_score) : '',
+    notes:            entry.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Determine option type from bias or strategy
+  const optType = form.bias.toLowerCase().includes('bearish') || form.strategy.toLowerCase().includes('put') ? 'PUT' : 'CALL'
+
+  const handleSave = async () => {
+    setSaving(true)
+    setErr(null)
+    try {
+      const fields: Record<string, unknown> = {}
+      if (form.strategy.trim())     fields.strategy         = form.strategy.trim()
+      if (form.bias.trim())         fields.bias             = form.bias.trim()
+      if (form.expiry.trim())       fields.expiry           = form.expiry.trim()
+      fields.notes = form.notes
+
+      const ue = parseFloat(form.underlying_entry)
+      if (!isNaN(ue) && ue > 0)    fields.underlying_entry = ue
+
+      // nc = per-share option price (e.g. 9.00 = $9/share = $900/contract)
+      const nc = parseFloat(form.net_credit)
+      const strike = parseFloat(form.strike)
+      const iv = parseFloat(form.iv)               // user enters %, stored as decimal
+
+      if (!isNaN(nc) && nc > 0) fields.net_credit = nc   // store per share, no division
+
+      const mp = parseFloat(form.max_profit)
+      if (!isNaN(mp))               fields.max_profit       = mp / 100
+      const ml = parseFloat(form.max_loss)
+      if (!isNaN(ml))               fields.max_loss         = ml / 100
+      const sc = parseInt(form.total_score, 10)
+      if (!isNaN(sc))               fields.total_score      = sc
+
+      // Build option leg — mid_price is per share (same unit as nc)
+      if (!isNaN(strike) && strike > 0 && !isNaN(nc) && nc > 0) {
+        fields.legs = [{
+          action:      'BUY',
+          option_type: optType,
+          strike:      strike,
+          mid_price:   nc,                                       // per share
+          iv:          !isNaN(iv) && iv > 0 ? iv / 100 : 0.25,  // store as decimal
+          delta:       optType === 'CALL' ? 0.5 : -0.5,
+        }]
+      }
+
+      await onSave(fields)
+      onClose()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-violet-600"
+  const labelCls = "text-xs text-gray-500 mb-1 block"
+
+  const hasStrike = form.strike.trim() !== ''
+  const hasPremium = form.net_credit.trim() !== ''
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-lg max-h-[90dvh] overflow-y-auto overscroll-contain bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Pencil size={14} className="text-violet-400" />
+            Edit Journal Entry
+          </div>
+          <button onClick={onClose} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"><X size={16} /></button>
+        </div>
+
+        <div className="text-xs text-gray-400 mb-4 font-semibold">{entry.ticker} · {entry.trade_type?.toUpperCase() ?? 'TRADE'}</div>
+
+        {/* Option leg section — required for accurate MTM */}
+        <div className="mb-4 p-3 bg-violet-950/30 border border-violet-800/40 rounded-xl">
+          <div className="text-xs font-semibold text-violet-300 mb-2">Option Details <span className="text-violet-500 font-normal">(required for live P&L tracking)</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={labelCls}>Strike Price ($) <span className="text-red-400">*</span></label>
+              <input
+                className={`${inputCls} ${!hasStrike ? 'border-amber-700/60' : ''}`}
+                type="number" step="0.5"
+                value={form.strike}
+                onChange={set('strike')}
+                placeholder="e.g. 515"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Option Premium ($/share) <span className="text-red-400">*</span></label>
+              <input
+                className={`${inputCls} ${!hasPremium ? 'border-amber-700/60' : ''}`}
+                type="number" step="0.01"
+                value={form.net_credit}
+                onChange={set('net_credit')}
+                placeholder="e.g. 3.50"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>IV at Entry (%) <span className="text-gray-600">optional</span></label>
+              <input
+                className={inputCls}
+                type="number" step="0.1"
+                value={form.iv}
+                onChange={set('iv')}
+                placeholder="e.g. 45.2"
+              />
+            </div>
+          </div>
+          {(!hasStrike || !hasPremium) && (
+            <div className="mt-2 text-[11px] text-amber-500/80">
+              Without strike + premium, live option P&L cannot be computed. Stock price change will be tracked instead.
+            </div>
+          )}
+          {hasStrike && hasPremium && (
+            <div className="mt-2 text-[11px] text-emerald-500">
+              {optType === 'CALL' ? 'Long Call' : 'Long Put'} · Strike ${form.strike} · ${form.net_credit}/sh (${(parseFloat(form.net_credit) * 100 || 0).toFixed(0)}/contract) · IV {form.iv || '25'}%
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className={labelCls}>Strategy</label>
+            <input className={inputCls} value={form.strategy} onChange={set('strategy')} placeholder="Long Call, Long Put…" />
+          </div>
+          <div>
+            <label className={labelCls}>Bias</label>
+            <select className={inputCls} value={form.bias} onChange={set('bias')}>
+              <option value="">— select —</option>
+              <option value="Bullish">Bullish</option>
+              <option value="Bearish">Bearish</option>
+              <option value="Neutral">Neutral</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Underlying Entry Price ($)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.underlying_entry} onChange={set('underlying_entry')} placeholder="e.g. 512.50" />
+          </div>
+          <div>
+            <label className={labelCls}>Expiry Date</label>
+            <input className={inputCls} type="date" value={form.expiry} onChange={set('expiry')} />
+          </div>
+          <div>
+            <label className={labelCls}>Score (0–100)</label>
+            <input className={inputCls} type="number" min="0" max="100" value={form.total_score} onChange={set('total_score')} placeholder="e.g. 78" />
+          </div>
+          <div>
+            <label className={labelCls}>Max Loss ($/contract)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.max_loss} onChange={set('max_loss')} placeholder="e.g. 150" />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className={labelCls}>Notes</label>
+          <textarea
+            value={form.notes}
+            onChange={set('notes')}
+            rows={3}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-violet-600 resize-none"
+            placeholder="Trade rationale, observations, lessons…"
+          />
+        </div>
+
+        {err && <div className="mb-3 text-xs text-red-400 bg-red-900/20 border border-red-700 rounded-lg px-3 py-2">{err}</div>}
+
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button onClick={onClose} className="flex-1 px-4 py-3 sm:py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:bg-gray-700 transition-colors">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 px-4 py-3 sm:py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Entry card ──────────────────────────────────────────────────────────────
 
 function EntryCard({
@@ -198,12 +409,10 @@ function EntryCard({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showClose, setShowClose] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesText, setNotesText] = useState(entry.notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
-  const [editingField, setEditingField] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const [savingField, setSavingField] = useState(false)
   const [executingTrade, setExecutingTrade] = useState(false)
   const [executedTrade, setExecutedTrade] = useState(false)
   const [tradeError, setTradeError] = useState<string | null>(null)
@@ -227,24 +436,6 @@ function EntryCard({
     } finally {
       setSavingNotes(false)
     }
-  }
-
-  const handleFieldSave = async (field: string) => {
-    setSavingField(true)
-    try {
-      const val = field === 'underlying_entry' ? parseFloat(editValue) : editValue
-      await onUpdate(entry.id, { [field]: val })
-      setEditingField(null)
-      setEditValue('')
-    } catch {
-    } finally {
-      setSavingField(false)
-    }
-  }
-
-  const startEditing = (field: string, current: string | number) => {
-    setEditingField(field)
-    setEditValue(String(current ?? ''))
   }
 
   const outcomeColor = entry.outcome ? OUTCOME_COLORS[entry.outcome] ?? 'text-gray-400' : ''
@@ -289,6 +480,15 @@ function EntryCard({
           }}
         />
       )}
+      {showEdit && (
+        <EditModal
+          entry={entry}
+          onClose={() => setShowEdit(false)}
+          onSave={async (fields) => {
+            await onUpdate(entry.id, fields)
+          }}
+        />
+      )}
 
       <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden transition-colors hover:border-slate-300 dark:hover:border-white/[0.12]">
         {/* Header row — grid/flex aligned with Watchlist ticker rows */}
@@ -316,29 +516,21 @@ function EntryCard({
               </div>
             </div>
 
-            {/* Current price — color by P&L */}
+            {/* Stock price column — always shows underlying */}
             <div className="min-w-0 sm:w-20 sm:shrink-0 text-right sm:text-left">
               {(() => {
                 const isClosed = entry.status === 'CLOSED' || entry.status === 'EXPIRED'
-                const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
-                const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
-                const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
-                const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
-                const cp = hasOptionEntry ? currentOptPx : entry.current_price
-                const hasBoth = ep > 0 && cp > 0
                 const realizedPnl = isClosed && entry.realized_pnl != null ? entry.realized_pnl : null
                 const pnlColor = realizedPnl != null
                   ? (realizedPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : realizedPnl < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200')
-                  : hasBoth && cp !== ep
-                    ? (cp > ep ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')
-                    : 'text-slate-800 dark:text-slate-200'
+                  : 'text-slate-800 dark:text-slate-200'
                 return (
                   <>
                     <div className={`text-xs font-bold font-mono ${pnlColor}`}>
                       {entry.current_price > 0 ? `$${entry.current_price.toFixed(2)}` : '—'}
                     </div>
                     <div className="text-[9px] text-slate-400 dark:text-gray-600">
-                      {isClosed && realizedPnl != null ? 'Closed' : 'Price'}
+                      {isClosed && realizedPnl != null ? 'Closed' : 'Stock'}
                     </div>
                   </>
                 )
@@ -346,26 +538,34 @@ function EntryCard({
             </div>
 
             {(() => {
-              // For option trades with legs, show option market value vs entry debit
-              const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
-              const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
-              const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
-              const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
-              const cp = hasOptionEntry ? currentOptPx : entry.current_price
+              // For option trades (net_credit set): show option P&L in $/contract
+              // net_credit is stored per share; current_pnl is stored per contract
+              const hasOptPremium = entry.net_credit !== 0
+              const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0        // $/share
+              const entryPerCtx = entryPerSh * 100                                       // $/contract
+              // current option value per share = entry + pnl_per_share
+              const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
+              const curPerCtx   = curPerSh * 100
+
+              const ep = hasOptPremium ? entryPerCtx : entry.underlying_entry
+              const cp = hasOptPremium ? curPerCtx   : entry.current_price
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
-              const pct = hasBoth ? (diff / ep) * 100 : 0
+              const pct  = hasBoth && ep > 0 ? (diff / ep) * 100 : 0
               const color = hasBoth ? (diff > 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200') : 'text-slate-500 dark:text-gray-200'
+
               return (
                 <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
                   <div className={`text-sm font-semibold font-mono ${color}`}>
-                    ${cp?.toFixed(2) ?? '—'}
+                    {hasBoth ? `$${cp.toFixed(2)}` : '—'}
                     {hasBoth && (
                       <span className="text-[10px] ml-1 font-normal">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
                     )}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-gray-500">
-                    {ep > 0 ? `entry $${ep.toFixed(2)}` : '—'}
+                    {hasOptPremium
+                      ? `Option P&L · entry $${entryPerCtx.toFixed(0)}`
+                      : ep > 0 ? `Stock Δ · entry $${ep.toFixed(2)}` : 'Stock Δ'}
                   </div>
                 </div>
               )
@@ -397,10 +597,11 @@ function EntryCard({
                 <span className="text-violet-300 font-semibold truncate block" title={entry.strategy}>{entry.strategy}</span>
                 <span className="text-gray-500">
                   {(() => {
-                    const optPx = entry.net_credit !== 0 && entry.legs.length > 0
-                      ? Math.abs(entry.net_credit) + (entry.current_pnl / 100)
-                      : 0
-                    return optPx > 0 ? `$${optPx.toFixed(2)} · ` : ''
+                    // net_credit per share; show current option price per share
+                    const entryPerSh = entry.net_credit !== 0 && entry.legs.length > 0
+                      ? Math.abs(entry.net_credit) : 0
+                    const curPerSh = entryPerSh > 0 ? entryPerSh + (entry.current_pnl / 100) : 0
+                    return curPerSh > 0 ? `$${curPerSh.toFixed(2)}/sh · ` : ''
                   })()}
                   +${(entry.max_profit * 100).toFixed(0)} max · {(entry.prob_of_profit * 100).toFixed(0)}% PoP
                 </span>
@@ -433,9 +634,12 @@ function EntryCard({
               {[
                 { label: 'Entry Date', value: fmtDate(entry.entry_date), note: '' },
                 {
-                  label: 'Net / contract',
-                  value: `${entry.net_credit > 0 ? '+' : ''}$${(entry.net_credit * 100).toFixed(0)}`,
-                  note: entry.net_credit > 0 ? 'Credit' : 'Debit',
+                  // net_credit stored per share → × 100 = per contract cost
+                  label: entry.trade_type === 'day' ? 'Premium / contract' : 'Net / contract',
+                  value: entry.net_credit !== 0
+                    ? `$${(Math.abs(entry.net_credit) * 100).toFixed(0)}`
+                    : '—',
+                  note: entry.trade_type === 'day' ? 'Option cost' : entry.net_credit > 0 ? 'Credit' : 'Debit',
                 },
                 {
                   label: 'Score',
@@ -459,40 +663,59 @@ function EntryCard({
               ))}
             </div>
 
-            {/* Price comparison: entry vs current (open) — shows option value for trades with legs */}
+            {/* Price comparison: entry vs current (open) */}
             {isOpen && entry.current_price > 0 && (
               <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-x-3 gap-y-1">
                 {(() => {
-                  const hasOpt = entry.net_credit !== 0 && entry.legs.length > 0
-                  const eOpt = hasOpt ? Math.abs(entry.net_credit) : 0
-                  const cOpt = hasOpt ? eOpt + (entry.current_pnl / 100) : 0
+                  const hasOptPremium = entry.net_credit !== 0
+                  // net_credit per share; current_pnl per contract
+                  const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0
+                  const entryPerCtx = entryPerSh * 100
+                  const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
+                  const curPerCtx   = curPerSh * 100
+                  const pnlPerCtx   = entry.current_pnl   // already per contract
+
                   return (
                     <>
-                      {hasOpt ? (
+                      {hasOptPremium ? (
                         <>
                           <span className="text-gray-500">
-                            Entry: <span className="font-mono text-gray-300">${eOpt.toFixed(2)}/sh</span>
+                            Option paid: <span className="font-mono text-gray-300">${entryPerSh.toFixed(2)}/sh</span>
+                            <span className="text-gray-600"> (${entryPerCtx.toFixed(0)}/contract)</span>
                           </span>
                           <span className="text-gray-500">
-                            Current: <span className="font-mono text-gray-300">${cOpt.toFixed(2)}/sh</span>
+                            Est. current: <span className="font-mono text-gray-300">${curPerSh.toFixed(2)}/sh</span>
+                            <span className="text-gray-600"> (${curPerCtx.toFixed(0)}/contract)</span>
                           </span>
                           <span className="text-gray-500">
-                            P&L: <PriceDiff current={cOpt} entry={eOpt} />
+                            Option P&L: <PriceDiff current={curPerCtx} entry={entryPerCtx} />
+                            {Math.abs(pnlPerCtx) > 0 && (
+                              <span className={`font-mono ml-1 ${pnlPerCtx >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                ({pnlPerCtx >= 0 ? '+' : ''}${pnlPerCtx.toFixed(2)}/contract)
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-gray-500">
+                            Stock: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
+                            {entry.underlying_entry > 0 && (
+                              <> · paid <span className="font-mono">${entry.underlying_entry.toFixed(2)}</span></>
+                            )}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="text-gray-500">
-                            Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
+                            Stock paid: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
                           </span>
                           <span className="text-gray-500">
                             Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
                           </span>
                           {entry.underlying_entry > 0 && (
                             <span className="text-gray-500">
-                              P&L: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
+                              Stock Δ: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
                             </span>
                           )}
+                          <span className="text-xs text-gray-600 italic">Open Edit → set Option Premium to track option P&L</span>
                         </>
                       )}
                     </>
@@ -519,58 +742,34 @@ function EntryCard({
               </div>
             )}
 
-            {/* Editable fields: strategy, bias, entry price */}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {([
-                { key: 'strategy', label: 'Strategy', value: entry.strategy },
-                { key: 'bias', label: 'Bias', value: entry.bias },
-                { key: 'underlying_entry', label: 'Entry Price', value: entry.underlying_entry > 0 ? `$${entry.underlying_entry.toFixed(2)}` : '$--' },
-              ] as const).map(f => (
-                <div key={f.key} className="group flex items-center gap-1.5 bg-gray-800 rounded-lg px-2.5 py-1.5 text-xs">
-                  <span className="text-gray-500">{f.label}:</span>
-                  {editingField === f.key ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type={f.key === 'underlying_entry' ? 'number' : 'text'}
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleFieldSave(f.key)
-                          if (e.key === 'Escape') { setEditingField(null); setEditValue('') }
-                        }}
-                        autoFocus
-                        className="w-24 bg-gray-700 border border-violet-600 rounded px-1.5 py-0.5 text-gray-200 font-mono text-xs outline-none"
-                        step={f.key === 'underlying_entry' ? '0.01' : undefined}
-                      />
-                      <button
-                        onClick={() => handleFieldSave(f.key)}
-                        disabled={savingField}
-                        className="text-violet-400 hover:text-violet-300 p-0.5"
-                      >
-                        <Check size={12} />
-                      </button>
-                      <button
-                        onClick={() => { setEditingField(null); setEditValue('') }}
-                        className="text-gray-500 hover:text-gray-400 p-0.5"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        const val = f.key === 'underlying_entry' ? entry.underlying_entry
-                          : f.key === 'strategy' ? entry.strategy
-                          : entry.bias
-                        startEditing(f.key, val)
-                      }}
-                      className="text-gray-300 font-semibold hover:text-violet-400 transition-colors cursor-text"
-                    >
-                      {f.value}
-                    </button>
-                  )}
-                </div>
-              ))}
+            {/* Summary chips — key info at a glance */}
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {entry.strategy && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5">
+                  <span className="text-gray-500">Strategy: </span>
+                  <span className="text-gray-200 font-semibold">{entry.strategy}</span>
+                </span>
+              )}
+              {entry.bias && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5">
+                  <span className="text-gray-500">Bias: </span>
+                  <span className={`font-semibold ${biasColor}`}>{entry.bias}</span>
+                </span>
+              )}
+              {entry.underlying_entry > 0 && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5 font-mono">
+                  <span className="text-gray-500">Entry: </span>
+                  <span className="text-gray-200">${entry.underlying_entry.toFixed(2)}</span>
+                </span>
+              )}
+              {entry.net_credit !== 0 && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5 font-mono">
+                  <span className="text-gray-500">Premium: </span>
+                  {/* net_credit per share; show /sh and $/contract */}
+                  <span className="text-gray-200">${Math.abs(entry.net_credit).toFixed(2)}/sh</span>
+                  <span className="text-gray-500"> · ${(Math.abs(entry.net_credit) * 100).toFixed(0)}/contract</span>
+                </span>
+              )}
             </div>
 
             {/* Engine signal at creation */}
@@ -602,8 +801,8 @@ function EntryCard({
                         <td className="pr-3 py-1 text-white">{leg.option_type}</td>
                         <td className="pr-3 py-1 text-right text-white">${leg.strike.toFixed(1)}</td>
                         <td className="pr-3 py-1 text-right text-gray-400">{leg.delta?.toFixed(3) ?? '—'}</td>
-                        <td className="pr-3 py-1 text-right text-gray-400">${leg.mid_price?.toFixed(2) ?? '—'}</td>
-                        <td className="py-1 text-right text-gray-400">{leg.iv?.toFixed(1) ?? '—'}%</td>
+                        <td className="pr-3 py-1 text-right text-gray-400">${leg.mid_price?.toFixed(2) ?? '—'}/sh</td>
+                        <td className="py-1 text-right text-gray-400">{leg.iv != null ? (leg.iv > 1 ? leg.iv.toFixed(1) : (leg.iv * 100).toFixed(1)) : '—'}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -678,6 +877,16 @@ function EntryCard({
                   <CheckSquare size={16} />
                 </button>
               )}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setShowEdit(true) }}
+                title="Edit entry"
+                aria-label="Edit journal entry"
+                className="inline-flex h-10 items-center gap-1.5 px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                           text-gray-400 hover:text-violet-300 hover:border-violet-700/50 rounded-xl transition-colors touch-manipulation shrink-0 text-xs font-semibold"
+              >
+                <Pencil size={13} /> Edit
+              </button>
               {userRole === 'admin' && entry.legs.length > 0 && (
                 <button
                   type="button"
@@ -777,10 +986,21 @@ export default function JournalPage() {
     }
   }
 
+  const _reloadFromDb = useCallback(async (triggerPriceRefresh = false) => {
+    if (!email) return
+    try {
+      const fn = triggerPriceRefresh ? refreshJournal : getJournal
+      const data = await fn(email)
+      const list = (data.entries as JournalEntry[]) ?? []
+      setEntries(list)
+      syncJournalEntryCount(list.length)
+    } catch { /* non-fatal — stale state is preferable to an error banner */ }
+  }, [email, syncJournalEntryCount])
+
   const handleClose = async (id: string, reason: string, notes: string) => {
     if (!email) return
     await closeJournalEntry(email, id, reason, notes)
-    await load()
+    await _reloadFromDb()
   }
 
   const handleDeleteConfirm = (id: string) => { setDeleteTarget(id); setDeleteError(null) }
@@ -791,25 +1011,12 @@ export default function JournalPage() {
     if (!deleteTarget || !email) return
     setDeleting(true)
     setDeleteError(null)
-    const prevEntries = entries
-    // Optimistic: remove immediately so UI feels instant
-    const next = entries.filter(e => e.id !== deleteTarget)
-    setEntries(next)
-    syncJournalEntryCount(next.length)
+    const targetId = deleteTarget
     setDeleteTarget(null)
     try {
-      await deleteJournalEntry(email, deleteTarget)
-      // Confirm with backend re-fetch
-      try {
-        const data = await getJournal(email)
-        const list = (data.entries as JournalEntry[]) ?? []
-        setEntries(list)
-        syncJournalEntryCount(list.length)
-      } catch { /* re-fetch failed; optimistic state is still correct */ }
+      await deleteJournalEntry(email, targetId)
+      await _reloadFromDb()
     } catch (e: unknown) {
-      // Delete failed — restore previous list and show error in a toast-like banner
-      setEntries(prevEntries)
-      syncJournalEntryCount(prevEntries.length)
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? (e instanceof Error ? e.message : 'Delete failed')
       setError(msg)
@@ -821,13 +1028,14 @@ export default function JournalPage() {
   const handleNotesSave = async (id: string, notes: string) => {
     if (!email) return
     await updateJournalNotes(email, id, notes)
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, notes } : e))
+    await _reloadFromDb()
   }
 
   const handleUpdate = async (id: string, fields: Record<string, unknown>) => {
     if (!email) return
     await updateJournalEntry(email, id, fields)
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, ...fields } as JournalEntry : e))
+    // legs update → trigger price refresh so MTM is recomputed server-side
+    await _reloadFromDb('legs' in fields)
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────

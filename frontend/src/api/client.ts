@@ -289,6 +289,8 @@ export interface DayTradeScanResult {
   option_risk_context?: DayOptionRiskContext
   /** Structured AI coaching summary — Anthropic / OpenAI / deterministic fallback. */
   ai_coach?: AiCoachResult
+  /** True when the setup fired earlier but price has extended beyond a valid entry window. */
+  is_chasing?: boolean
 }
 
 export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {

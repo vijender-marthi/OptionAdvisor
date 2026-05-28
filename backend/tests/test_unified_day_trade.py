@@ -624,8 +624,8 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]     == "WAIT"
-        assert r["entry_price"] is None   # entry cleared for WAIT
+        assert r["verdict"]     == "WAIT"   # NO_TRADE override trumps scan verdict
+        assert r["entry_price"] is None    # entry cleared for WAIT
         assert r["structure"]   == ""
 
     def test_nvda_weak_put_watch(self):
@@ -650,7 +650,7 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]   == "WATCH"
+        assert r["verdict"]   == "WATCH"  # WATCH_PUT_BREAKDOWN override trumps GO
         assert r["structure"] == "PUT · 1-2 DTE"
         assert r["stop_price"] > r["entry_price"]   # stop above entry for PUT
         stop_rows = [row for row in r["exit_rows"] if row["type"] == "stop"]

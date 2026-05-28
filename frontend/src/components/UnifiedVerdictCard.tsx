@@ -48,7 +48,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: status_color, boxShadow: `0 0 7px ${status_color}80`, flexShrink: 0 }} />
             <span style={{ fontSize: 18, fontWeight: 800, color: status_color, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '-0.01em' }}>{status_text}</span>
             {analysis.structure && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, background: 'var(--surface-raised)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px' }}>
                 {unifiedStructureLabel(analysis.structure)}
               </span>
             )}
@@ -85,7 +85,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
                   {fail_count > 0 && <span style={{ color: '#D0312D', fontWeight: 600 }}>{fail_count} fail</span>}
                 </div>
               </div>
-              <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--surface-muted)', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${setup_bar_pct}%`, background: setup_bar_color, borderRadius: 2, transition: 'width 0.4s ease' }} />
               </div>
             </div>
@@ -110,7 +110,7 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
 
           {/* Spread entry summary */}
           {spread && (
-            <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.15)', padding: '10px 12px', marginBottom: 12 }}>
+            <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: 'var(--surface-raised)', padding: '10px 12px', marginBottom: 12 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Spread Entry</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>

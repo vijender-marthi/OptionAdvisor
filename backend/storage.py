@@ -360,6 +360,8 @@ def init_db() -> None:
             ("inplay_since_ms",       "INTEGER NOT NULL DEFAULT 0"),
             ("weak_breakout_alerted", "INTEGER NOT NULL DEFAULT 0"),
             ("enter_now_alerted",     "INTEGER NOT NULL DEFAULT 0"),
+            ("entry_window_status",   "TEXT NOT NULL DEFAULT 'WAIT'"),
+            ("entry_window_alerted",  "INTEGER NOT NULL DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE ticker_state_last ADD COLUMN {_col} {_ddl}")
@@ -757,6 +759,8 @@ def upsert_ticker_state_last(
     inplay_since_ms: int = 0,
     weak_breakout_alerted: int = 0,
     enter_now_alerted: int = 0,
+    entry_window_status: str = "WAIT",
+    entry_window_alerted: int = 0,
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -770,8 +774,9 @@ def upsert_ticker_state_last(
             """
             INSERT INTO ticker_state_last
                 (email, ticker, engine, state_num, action, session_date, updated_at,
-                 target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted,
+                 entry_window_status, entry_window_alerted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker, engine) DO UPDATE SET
                 state_num             = excluded.state_num,
                 action                = excluded.action,
@@ -780,12 +785,15 @@ def upsert_ticker_state_last(
                 target_hit            = excluded.target_hit,
                 inplay_since_ms       = excluded.inplay_since_ms,
                 weak_breakout_alerted = excluded.weak_breakout_alerted,
-                enter_now_alerted     = excluded.enter_now_alerted
+                enter_now_alerted     = excluded.enter_now_alerted,
+                entry_window_status   = excluded.entry_window_status,
+                entry_window_alerted  = excluded.entry_window_alerted
             """,
             (
                 normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms,
                 int(target_hit), int(inplay_since_ms), int(weak_breakout_alerted),
-                int(enter_now_alerted),
+                int(enter_now_alerted), (entry_window_status or "WAIT").upper().strip(),
+                int(entry_window_alerted),
             ),
         )
 
@@ -802,7 +810,8 @@ def get_ticker_state_last(
         row = conn.execute(
             """
             SELECT state_num, action, session_date, updated_at,
-                   target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted
+                   target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted,
+                   entry_window_status, entry_window_alerted
             FROM ticker_state_last
             WHERE email = ? AND ticker = ? AND engine = ?
             """,
@@ -819,6 +828,8 @@ def get_ticker_state_last(
         "inplay_since_ms":       int(row["inplay_since_ms"]       if row["inplay_since_ms"]       is not None else 0),
         "weak_breakout_alerted": int(row["weak_breakout_alerted"] if row["weak_breakout_alerted"] is not None else 0),
         "enter_now_alerted":     int(row["enter_now_alerted"]     if row["enter_now_alerted"]     is not None else 0),
+        "entry_window_status":   row["entry_window_status"]       if row["entry_window_status"]   is not None else "WAIT",
+        "entry_window_alerted":  int(row["entry_window_alerted"]  if row["entry_window_alerted"]  is not None else 0),
     }
 
 
@@ -1877,7 +1888,11 @@ def update_journal_entry(email: str, entry_id: str, **fields) -> None:
         "total_score", "expiry", "entry_date", "company_name",
         "trade_type", "engine_signal", "engine_state",
     }
+    # legs is stored as legs_json in the DB — handle separately
+    legs_val = fields.pop("legs", None)
     updates = {k: v for k, v in fields.items() if k in allowed}
+    if legs_val is not None:
+        updates["legs_json"] = json.dumps(legs_val)
     if not updates:
         return
     set_clause = ", ".join(f"{k} = ?" for k in updates)

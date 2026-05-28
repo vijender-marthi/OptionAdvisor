@@ -85,6 +85,8 @@ def verdict_presentation(verdict: str, conditions: list[dict]) -> dict:
     }
 
 
+# suggested_action → verdict: only used to DOWNGRADE when trader guardrails apply.
+# These values must never exceed the score-based verdict from resolve_verdict().
 _SA_VERDICT_OVERRIDE = {
     "WATCH_LONG_ONLY":        "WATCH",
     "WATCH_PUT_BREAKDOWN":    "WATCH",
@@ -94,13 +96,22 @@ _SA_VERDICT_OVERRIDE = {
     "AVOID_CHASING_PUTS":     "AVOID",
 }
 
+# Rank order: higher index = stronger verdict. Override only applies if it is LOWER.
+_VERDICT_RANK: dict[str, int] = {
+    "AVOID": 0, "NO_EDGE": 1, "WAIT": 2, "WATCH": 3, "GO": 4, "STRONG_GO": 5,
+}
+
 def _day_verdict(scan) -> str:
+    raw = scan.verdict or ""
+    base = Verdict.from_raw(raw).value
     td = scan.trader_decision or {}
     suggested = td.get("suggested_action", "") if isinstance(td, dict) else ""
     if suggested in _SA_VERDICT_OVERRIDE:
-        return _SA_VERDICT_OVERRIDE[suggested]
-    raw = scan.verdict or ""
-    return Verdict.from_raw(raw).value
+        override = Verdict.from_raw(_SA_VERDICT_OVERRIDE[suggested]).value
+        # Only apply if the override is a genuine downgrade
+        if _VERDICT_RANK.get(override, 0) < _VERDICT_RANK.get(base, 0):
+            return override
+    return base
 
 def normalize_verdict(raw: str) -> str:
     return Verdict.from_raw(raw).value

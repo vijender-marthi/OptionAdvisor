@@ -10,7 +10,7 @@ import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import DayTradeIntradayChart, { parseChartBars } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
@@ -147,6 +147,15 @@ export default function DayTradePage() {
     runScan(sym)
   }, []) // eslint-disable-line
 
+  // Re-scan when TCC navigates here with a different ?ticker= (page already mounted)
+  useEffect(() => {
+    const t = searchParams.get('ticker')?.trim().toUpperCase()
+    if (t && t.length <= 12 && didMountRef.current) {
+      setUi(cur => ({ ...cur, ticker: t }))
+      runScan(t)
+    }
+  }, [searchParams, setUi, runScan])
+
   useEffect(() => {
     if (!notice) return
     const t = setTimeout(() => setNotice(null), 2800)
@@ -196,25 +205,40 @@ export default function DayTradePage() {
     if (!result || !user?.email) return
     const eg = result.entry_guidance as Record<string, unknown> | undefined
     const lastPrice = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price : 0
+    const egState = typeof (eg?.state) === 'number' ? (eg.state as number) : 0
+    const scalp = typeof eg?.scalp_target === 'number' ? (eg.scalp_target as number) : 0
+    const stop = typeof eg?.risk_below === 'number' ? (eg.risk_below as number) : 0
+    const maxProfit = scalp > lastPrice && lastPrice > 0 ? (scalp - lastPrice) / lastPrice : 0
+    const maxLoss   = stop > 0 && lastPrice > stop ? (lastPrice - stop) / lastPrice : 0
+    const verdict   = result.verdict ?? result.final_decision ?? ''
+    const notes     = [
+      verdict ? `Signal: ${verdict}` : '',
+      scalp   ? `Target: $${scalp.toFixed(2)}` : '',
+      stop    ? `Stop: $${stop.toFixed(2)}` : '',
+      (result.metrics as Record<string, unknown>)?.entry_rr_ratio
+        ? `R/R: ${(result.metrics as Record<string, unknown>).entry_rr_ratio}` : '',
+    ].filter(Boolean).join(' · ')
     try {
       await saveToJournal(user.email, {
         ticker:           result.ticker,
         company_name:     result.company_name || '',
         strategy:         result.bias === 'short' ? 'Long Put' : 'Long Call',
         trade_type:       'day',
-        bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
+        bias:             result.bias === 'long' ? 'Bullish' : result.bias === 'short' ? 'Bearish' : 'Neutral',
         legs:             [],
         expiry:           new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         entry_date:       new Date().toISOString().split('T')[0],
         dte_at_entry:     7,
         net_credit:       0,
-        max_profit:       0,
-        max_loss:         0,
+        max_profit:       maxProfit,
+        max_loss:         maxLoss,
         underlying_entry: lastPrice,
         prob_of_profit:   0,
         expected_value:   0,
         total_score:      result.confidence ?? 0,
-        notes:            '',
+        engine_signal:    verdict,
+        engine_state:     egState,
+        notes,
       })
       setSavedToJournal(true)
       setTimeout(() => setSavedToJournal(false), 4000)
@@ -810,10 +834,28 @@ export default function DayTradePage() {
         const orMin = m.or_minutes as number | undefined
         const sessionDate = String(m.session_date ?? '')
         if (!chartBars || orHigh == null || orLow == null) return null
+
+        const eg = result.entry_guidance
+        const ac = result.ai_coach
+        const isShort = result.bias === 'short'
+        const mVwap = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap : null
+        const stopFallback = isShort ? orHigh : orLow
+        const seen = new Set<number>()
+        const pageEntryPoints: ChartEntryPoint[] = []
+        const addEntry = (price: number | null | undefined, trigger: string, stop?: number) => {
+          if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
+          seen.add(price)
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop })
+        }
+        addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
+        addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)
+        addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
+        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback)
+
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
+            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} />
           </div>
         )
       })()}
