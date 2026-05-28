@@ -56,7 +56,7 @@ export interface ChartEntryPoint {
   price: number
   trigger: string // short description for table
   stop?: number
-  color?: string  // CSS color — defaults to bullish green
+  color?: string  // CSS color — defaults to per-index color
 }
 
 const ENTRY_COLORS = [
@@ -83,6 +83,13 @@ export default function DayTradeIntradayChart({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(720)
+  // Set of entry indices that are hidden (empty = all visible)
+  const [hidden, setHidden] = useState<Set<number>>(new Set())
+
+  // Reset toggles when entry points change (new scan result)
+  useEffect(() => {
+    setHidden(new Set())
+  }, [entryPoints])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -94,6 +101,17 @@ export default function DayTradeIntradayChart({
     setCw(Math.max(320, el.clientWidth))
     return () => ro.disconnect()
   }, [])
+
+  // First bar where price was touched (bar high >= price >= bar low)
+  const firstTouchTimes = useMemo(() => {
+    if (!entryPoints) return []
+    return entryPoints.map(ep => {
+      for (const b of bars) {
+        if (b.l <= ep.price && ep.price <= b.h) return fmtEtShort(b.t)
+      }
+      return null
+    })
+  }, [entryPoints, bars])
 
   const layout = useMemo(() => {
     const n = bars.length
@@ -142,23 +160,8 @@ export default function DayTradeIntradayChart({
     const xLabelIdx = [0, Math.floor(n / 2), n - 1]
 
     return {
-      W,
-      H,
-      innerW,
-      innerH,
-      xAt,
-      yAt,
-      bodyW,
-      slot,
-      yMin,
-      yMax,
-      yTicks,
-      orStartX,
-      orEndX,
-      tMin,
-      span,
-      xLabelIdx,
-      times,
+      W, H, innerW, innerH, xAt, yAt, bodyW, slot,
+      yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xLabelIdx, times,
     }
   }, [bars, cw, orHigh, orLow, orMinutes])
 
@@ -170,27 +173,20 @@ export default function DayTradeIntradayChart({
     )
   }
 
-  const {
-    W,
-    H,
-    innerW,
-    innerH,
-    xAt,
-    yAt,
-    bodyW,
-    yMin,
-    yMax,
-    yTicks,
-    orStartX,
-    orEndX,
-    tMin,
-    times,
-    xLabelIdx,
-  } = layout
+  const { W, H, innerW, innerH, xAt, yAt, bodyW, yMin, yMax, yTicks,
+          orStartX, orEndX, tMin, times, xLabelIdx } = layout
 
   const vwapPts = bars
     .map((b, i) => `${xAt(times[i]!)},${yAt(b.vwap)}`)
     .join(' ')
+
+  const toggleEntry = (idx: number) => {
+    setHidden(prev => {
+      const next = new Set(prev)
+      next.has(idx) ? next.delete(idx) : next.add(idx)
+      return next
+    })
+  }
 
   return (
     <div ref={wrapRef} className="day-trade-chart w-full">
@@ -208,11 +204,37 @@ export default function DayTradeIntradayChart({
           {bars.some(b => b.vwap_upper1 != null) && (
             <><span className="text-gray-500"> · </span><span className="text-info">±1σ</span><span className="text-gray-500"> · </span><span className="text-info" style={{ opacity: 0.5 }}>±2σ</span></>
           )}
-          {entryPoints && entryPoints.length > 0 && (
-            <><span className="text-gray-500"> · </span><span style={{ color: ENTRY_COLORS[0] }}>E1</span>{entryPoints.length > 1 && <><span className="text-gray-500">–</span><span style={{ color: ENTRY_COLORS[entryPoints.length - 1] }}>E{entryPoints.length}</span></>}<span className="text-gray-500"> entries</span></>
-          )}
         </div>
       </div>
+
+      {/* ── Entry toggle chips ── */}
+      {entryPoints && entryPoints.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {entryPoints.map((ep, idx) => {
+            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const isHidden = hidden.has(idx)
+            return (
+              <button
+                key={`chip-${idx}`}
+                type="button"
+                onClick={() => toggleEntry(idx)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-opacity cursor-pointer select-none"
+                style={{
+                  borderColor: isHidden ? 'rgba(75,85,99,0.5)' : color,
+                  color: isHidden ? '#6b7280' : color,
+                  background: isHidden ? 'transparent' : `${color}18`,
+                  opacity: isHidden ? 0.55 : 1,
+                }}
+                title={isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isHidden ? '#4b5563' : color, display: 'inline-block', flexShrink: 0 }} />
+                {ep.label}
+                <span className="font-mono" style={{ opacity: 0.8 }}>${fmtPrice(ep.price)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-gray-800/80 bg-black/20">
         <svg
@@ -267,89 +289,47 @@ export default function DayTradeIntradayChart({
           ))}
 
           <line
-            x1={PAD.l}
-            x2={PAD.l + innerW}
-            y1={yAt(orHigh)}
-            y2={yAt(orHigh)}
-            stroke="var(--chart-line-ma50)"
-            strokeWidth={1.2}
-            strokeDasharray="6 4"
-            strokeOpacity={0.95}
+            x1={PAD.l} x2={PAD.l + innerW}
+            y1={yAt(orHigh)} y2={yAt(orHigh)}
+            stroke="var(--chart-line-ma50)" strokeWidth={1.2}
+            strokeDasharray="6 4" strokeOpacity={0.95}
             clipPath="url(#daytrade-plot-clip)"
           />
           <line
-            x1={PAD.l}
-            x2={PAD.l + innerW}
-            y1={yAt(orLow)}
-            y2={yAt(orLow)}
-            stroke="var(--chart-line-ma50)"
-            strokeWidth={1.2}
-            strokeDasharray="6 4"
-            strokeOpacity={0.95}
+            x1={PAD.l} x2={PAD.l + innerW}
+            y1={yAt(orLow)} y2={yAt(orLow)}
+            stroke="var(--chart-line-ma50)" strokeWidth={1.2}
+            strokeDasharray="6 4" strokeOpacity={0.95}
             clipPath="url(#daytrade-plot-clip)"
           />
-
-          <text
-            x={PAD.l + innerW - 4}
-            y={yAt(orHigh) - 4}
-            textAnchor="end"
-            fill="var(--chart-line-ma50)"
-            fontSize={9}
-            fontWeight={600}
-            clipPath="url(#daytrade-plot-clip)"
-          >
-            OR high
-          </text>
-          <text
-            x={PAD.l + innerW - 4}
-            y={yAt(orLow) + 12}
-            textAnchor="end"
-            fill="var(--chart-line-ma50)"
-            fontSize={9}
-            fontWeight={600}
-            clipPath="url(#daytrade-plot-clip)"
-          >
-            OR low
-          </text>
+          <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 4} textAnchor="end"
+            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}
+            clipPath="url(#daytrade-plot-clip)">OR high</text>
+          <text x={PAD.l + innerW - 4} y={yAt(orLow) + 12} textAnchor="end"
+            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}
+            clipPath="url(#daytrade-plot-clip)">OR low</text>
 
           <g clipPath="url(#daytrade-plot-clip)">
             {bars.map((b, i) => {
               const cx = xAt(times[i]!)
-              const yL = yAt(b.l)
-              const yH = yAt(b.h)
-              const yO = yAt(b.o)
-              const yC = yAt(b.c)
-              const top = Math.min(yO, yC)
-              const bot = Math.max(yO, yC)
+              const yL = yAt(b.l), yH = yAt(b.h)
+              const yO = yAt(b.o), yC = yAt(b.c)
+              const top = Math.min(yO, yC), bot = Math.max(yO, yC)
               const up = b.c >= b.o
-              const bodyFill = up ? 'var(--bullish)' : 'var(--bearish)'
-              const wickStroke = 'var(--chart-grid)'
               const bh = Math.max(1, bot - top)
               return (
                 <g key={`${b.t}-${i}`}>
-                  <line x1={cx} x2={cx} y1={yL} y2={yH} stroke={wickStroke} strokeWidth={1} />
-                  <rect
-                    x={cx - bodyW / 2}
-                    y={top}
-                    width={bodyW}
-                    height={bh}
-                    fill={bodyFill}
-                    fillOpacity={0.92}
-                  />
+                  <line x1={cx} x2={cx} y1={yL} y2={yH} stroke="var(--chart-grid)" strokeWidth={1} />
+                  <rect x={cx - bodyW / 2} y={top} width={bodyW} height={bh}
+                    fill={up ? 'var(--bullish)' : 'var(--bearish)'} fillOpacity={0.92} />
                 </g>
               )
             })}
           </g>
 
-          <polyline
-            fill="none"
-            stroke="var(--chart-line-iv)"
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            points={vwapPts}
-            clipPath="url(#daytrade-plot-clip)"
-          />
+          <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={1.5}
+            strokeLinejoin="round" strokeLinecap="round"
+            points={vwapPts} clipPath="url(#daytrade-plot-clip)" />
 
           {/* VWAP ±1σ bands */}
           {bars.some(b => b.vwap_upper1 != null) && (() => {
@@ -375,29 +355,15 @@ export default function DayTradeIntradayChart({
             )
           })()}
 
-          <rect
-            x={PAD.l}
-            y={PAD.t}
-            width={innerW}
-            height={innerH}
-            fill="none"
-            stroke="var(--chart-grid)"
-            strokeWidth={1}
-            opacity={0.6}
-          />
+          <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH}
+            fill="none" stroke="var(--chart-grid)" strokeWidth={1} opacity={0.6} />
 
           {xLabelIdx.map(i => {
             const bar = bars[i]
             if (!bar) return null
             return (
-              <text
-                key={`xt-${i}`}
-                x={xAt(times[i]!)}
-                y={H - 10}
-                textAnchor="middle"
-                fill="var(--chart-axis)"
-                fontSize={10}
-              >
+              <text key={`xt-${i}`} x={xAt(times[i]!)} y={H - 10}
+                textAnchor="middle" fill="var(--chart-axis)" fontSize={10}>
                 {fmtEtShort(bar.t)}
               </text>
             )
@@ -407,8 +373,9 @@ export default function DayTradeIntradayChart({
             Price · {fmtPrice(yMax)} → {fmtPrice(yMin)}
           </text>
 
-          {/* ── Entry price lines ── */}
+          {/* ── Entry price lines (respects toggle) ── */}
           {entryPoints?.map((ep, idx) => {
+            if (hidden.has(idx)) return null
             if (!Number.isFinite(ep.price) || ep.price <= 0) return null
             if (ep.price < yMin || ep.price > yMax) return null
             const ey = yAt(ep.price)
@@ -416,23 +383,16 @@ export default function DayTradeIntradayChart({
             return (
               <g key={`entry-${idx}`}>
                 <line
-                  x1={PAD.l}
-                  x2={PAD.l + innerW}
-                  y1={ey}
-                  y2={ey}
-                  stroke={color}
-                  strokeWidth={1.2}
-                  strokeDasharray="3 3"
-                  strokeOpacity={0.9}
+                  x1={PAD.l} x2={PAD.l + innerW}
+                  y1={ey} y2={ey}
+                  stroke={color} strokeWidth={1.2}
+                  strokeDasharray="3 3" strokeOpacity={0.9}
                   clipPath="url(#daytrade-plot-clip)"
                 />
                 <text
                   x={PAD.l + innerW - 4}
                   y={Math.max(PAD.t + 9, ey - 4)}
-                  textAnchor="end"
-                  fill={color}
-                  fontSize={9}
-                  fontWeight={600}
+                  textAnchor="end" fill={color} fontSize={9} fontWeight={600}
                 >
                   {ep.label} · ${fmtPrice(ep.price)}
                 </text>
@@ -450,6 +410,7 @@ export default function DayTradeIntradayChart({
               <tr className="border-b border-gray-800/60">
                 <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Entry</th>
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Price</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Time</th>
                 <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Trigger</th>
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">Stop</th>
               </tr>
@@ -457,10 +418,24 @@ export default function DayTradeIntradayChart({
             <tbody>
               {entryPoints.map((ep, idx) => {
                 const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+                const isHidden = hidden.has(idx)
+                const touchTime = firstTouchTimes[idx]
                 return (
-                  <tr key={`erow-${idx}`} className="border-b border-gray-800/40 last:border-0">
-                    <td className="py-1 pr-3 font-semibold" style={{ color }}>{ep.label}</td>
+                  <tr
+                    key={`erow-${idx}`}
+                    className="border-b border-gray-800/40 last:border-0 cursor-pointer transition-opacity"
+                    style={{ opacity: isHidden ? 0.38 : 1 }}
+                    onClick={() => toggleEntry(idx)}
+                    title={isHidden ? `Click to show ${ep.label} on chart` : `Click to hide ${ep.label} on chart`}
+                  >
+                    <td className="py-1 pr-3 font-semibold" style={{ color: isHidden ? '#6b7280' : color }}>
+                      <span className="inline-flex items-center gap-1">
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isHidden ? '#4b5563' : color, display: 'inline-block' }} />
+                        {ep.label}
+                      </span>
+                    </td>
                     <td className="py-1 pr-3 text-right font-mono text-gray-200">${fmtPrice(ep.price)}</td>
+                    <td className="py-1 pr-3 text-right font-mono text-gray-400">{touchTime ?? '—'}</td>
                     <td className="py-1 pr-3 text-gray-400">{ep.trigger}</td>
                     <td className="py-1 text-right font-mono text-red-400">
                       {ep.stop && ep.stop > 0 ? `$${fmtPrice(ep.stop)}` : '—'}
@@ -470,6 +445,7 @@ export default function DayTradeIntradayChart({
               })}
             </tbody>
           </table>
+          <div className="mt-1 text-[10px] text-gray-600">Click an entry row or chip above to toggle its line on the chart.</div>
         </div>
       )}
     </div>
