@@ -80,6 +80,19 @@ function navForRec(rec: TccRec): string {
   return getDetailsRoute(key, rec.ticker)
 }
 
+function useRecNavigate() {
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
+  return (rec: TccRec) => {
+    if (rec.detail_route_key === 'regular') {
+      requestAnalysis(rec.ticker)
+      navigate(navForRec(rec))
+    } else {
+      navigate(navForRec(rec))
+    }
+  }
+}
+
 // ── Sub-indicators (pure render) ─────────────────────────────────────────────
 function SubIndicators({ indicators }: { indicators: TccRec['sub_indicators'] }) {
   if (!indicators || indicators.length === 0) return null
@@ -192,8 +205,8 @@ function MarketPositionWidget() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TradeCommandCenter() {
-  const navigate = useNavigate()
   const { canAccessPage } = useApp()
+  const goToRec = useRecNavigate()
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<TradeCommandCenterPayload> | null>(null)
@@ -410,7 +423,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={engKey}
                       type="button"
-                      onClick={() => navigate(navForRec(top))}
+                      onClick={() => goToRec(top)}
                       className={`rounded-xl border border-l-4 ${borderCls} ${borderAccentClass(top.verdict_tone)} bg-slate-900 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex items-center justify-between mb-3">
@@ -459,7 +472,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} ${borderAccentClass(rec.verdict_tone)} bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       {/* Header row */}
@@ -537,7 +550,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} border-l-amber-500/60 bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex items-center justify-between mb-2">
@@ -587,7 +600,7 @@ export default function TradeCommandCenter() {
                     <button
                       key={rec.id}
                       type="button"
-                      onClick={() => navigate(navForRec(rec))}
+                      onClick={() => goToRec(rec)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-800/40 transition-colors"
                     >
                       <span className="font-mono font-bold text-slate-300">{rec.ticker}</span>
