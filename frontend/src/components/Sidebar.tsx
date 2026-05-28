@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, LayoutGrid,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -134,6 +134,7 @@ export default function Sidebar() {
       label: 'Trades',
       items: [
         { id: 'day-trade', label: 'Intraday', icon: <Zap size={18} /> },
+        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <LayoutGrid size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Wallet size={18} /> },
