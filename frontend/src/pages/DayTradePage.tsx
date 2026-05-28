@@ -10,7 +10,7 @@ import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import DayTradeIntradayChart, { parseChartBars } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
@@ -834,10 +834,28 @@ export default function DayTradePage() {
         const orMin = m.or_minutes as number | undefined
         const sessionDate = String(m.session_date ?? '')
         if (!chartBars || orHigh == null || orLow == null) return null
+
+        const eg = result.entry_guidance
+        const ac = result.ai_coach
+        const isShort = result.bias === 'short'
+        const mVwap = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap : null
+        const stopFallback = isShort ? orHigh : orLow
+        const seen = new Set<number>()
+        const pageEntryPoints: ChartEntryPoint[] = []
+        const addEntry = (price: number | null | undefined, trigger: string, stop?: number) => {
+          if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
+          seen.add(price)
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop })
+        }
+        addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
+        addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)
+        addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
+        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback)
+
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} />
+            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} />
           </div>
         )
       })()}
