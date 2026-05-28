@@ -102,16 +102,17 @@ export default function DayTradeIntradayChart({
     return () => ro.disconnect()
   }, [])
 
-  // First bar where price was touched (bar high >= price >= bar low)
+  // First bar where price was touched, excluding the opening range window (first orMinutes bars)
   const firstTouchTimes = useMemo(() => {
     if (!entryPoints) return []
+    const postOrBars = bars.slice(orMinutes)
     return entryPoints.map(ep => {
-      for (const b of bars) {
+      for (const b of postOrBars) {
         if (b.l <= ep.price && ep.price <= b.h) return fmtEtShort(b.t)
       }
       return null
     })
-  }, [entryPoints, bars])
+  }, [entryPoints, bars, orMinutes])
 
   const layout = useMemo(() => {
     const n = bars.length
