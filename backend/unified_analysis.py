@@ -85,7 +85,20 @@ def verdict_presentation(verdict: str, conditions: list[dict]) -> dict:
     }
 
 
+_SA_VERDICT_OVERRIDE = {
+    "WATCH_LONG_ONLY":        "WATCH",
+    "WATCH_PUT_BREAKDOWN":    "WATCH",
+    "WAIT_FOR_CONFIRMATION":  "WAIT",
+    "NO_TRADE":               "WAIT",
+    "AVOID_CALLS":            "AVOID",
+    "AVOID_CHASING_PUTS":     "AVOID",
+}
+
 def _day_verdict(scan) -> str:
+    td = scan.trader_decision or {}
+    suggested = td.get("suggested_action", "") if isinstance(td, dict) else ""
+    if suggested in _SA_VERDICT_OVERRIDE:
+        return Verdict.from_raw(_SA_VERDICT_OVERRIDE[suggested]).value
     raw = scan.verdict or ""
     return Verdict.from_raw(raw).value
 

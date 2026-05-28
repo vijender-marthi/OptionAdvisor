@@ -233,7 +233,7 @@ class TestDirection:
         r = serialize_day_trade(scan)
         # verdict=avoid → entry cleared, but structure should be CALL when set
         # (cleared because verdict=avoid)
-        assert r["verdict"] == "avoid"
+        assert r["verdict"] == "AVOID"
         assert r["structure"] == ""   # cleared with entry plan
 
     def test_fallback_stop_above_entry_infers_put(self):
@@ -624,9 +624,9 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]     == "STRONG_GO"
-        assert r["entry_price"] is not None
-        assert r["structure"]   != ""
+        assert r["verdict"]     == "WAIT"   # NO_TRADE override trumps scan verdict
+        assert r["entry_price"] is None    # entry cleared for WAIT
+        assert r["structure"]   == ""
 
     def test_nvda_weak_put_watch(self):
         """
@@ -650,7 +650,7 @@ class TestRealWorldScenarios:
             metrics=m,
         )
         r = serialize_day_trade(scan)
-        assert r["verdict"]   == "GO"
+        assert r["verdict"]   == "WATCH"  # WATCH_PUT_BREAKDOWN override trumps GO
         assert r["structure"] == "PUT · 1-2 DTE"
         assert r["stop_price"] > r["entry_price"]   # stop above entry for PUT
         stop_rows = [row for row in r["exit_rows"] if row["type"] == "stop"]
