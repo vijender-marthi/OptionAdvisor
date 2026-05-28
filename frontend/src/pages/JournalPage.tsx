@@ -193,10 +193,11 @@ function EditModal({ entry, onClose, onSave }: {
     strategy:         entry.strategy ?? '',
     bias:             entry.bias ?? '',
     underlying_entry: entry.underlying_entry > 0 ? String(entry.underlying_entry) : '',
-    // net_credit stored as per-share fraction; display as $/contract (×100)
-    net_credit:       entry.net_credit !== 0 ? String((Math.abs(entry.net_credit) * 100).toFixed(2)) : '',
+    // net_credit is stored per share (e.g. 9.00 = $9/share = $900/contract)
+    net_credit:       entry.net_credit !== 0 ? String(Math.abs(entry.net_credit).toFixed(2)) : '',
     strike:           existingLeg?.strike ? String(existingLeg.strike) : '',
-    iv:               existingLeg?.iv ? String(existingLeg.iv) : '',   // stored as % (e.g. 45.2)
+    // iv in leg is stored as decimal (0.45 = 45%); display as %
+    iv:               existingLeg?.iv ? String((existingLeg.iv * 100).toFixed(1)) : '',
     expiry:           entry.expiry ?? '',
     max_profit:       entry.max_profit > 0 ? String((entry.max_profit * 100).toFixed(2)) : '',
     max_loss:         entry.max_loss > 0 ? String((entry.max_loss * 100).toFixed(2)) : '',
@@ -225,13 +226,12 @@ function EditModal({ entry, onClose, onSave }: {
       const ue = parseFloat(form.underlying_entry)
       if (!isNaN(ue) && ue > 0)    fields.underlying_entry = ue
 
-      const nc = parseFloat(form.net_credit)       // $/contract entered by user
+      // nc = per-share option price (e.g. 9.00 = $9/share = $900/contract)
+      const nc = parseFloat(form.net_credit)
       const strike = parseFloat(form.strike)
-      const iv = parseFloat(form.iv)               // % entered by user
+      const iv = parseFloat(form.iv)               // user enters %, stored as decimal
 
-      // net_credit stored as per-share (nc / 100); mid_price in leg also per share
-      const midPerShare = !isNaN(nc) && nc > 0 ? nc / 100 : 0
-      if (midPerShare > 0) fields.net_credit = midPerShare
+      if (!isNaN(nc) && nc > 0) fields.net_credit = nc   // store per share, no division
 
       const mp = parseFloat(form.max_profit)
       if (!isNaN(mp))               fields.max_profit       = mp / 100
@@ -240,15 +240,15 @@ function EditModal({ entry, onClose, onSave }: {
       const sc = parseInt(form.total_score, 10)
       if (!isNaN(sc))               fields.total_score      = sc
 
-      // Build option leg if strike is provided — enables Black-Scholes MTM on refresh
-      if (!isNaN(strike) && strike > 0 && midPerShare > 0) {
+      // Build option leg — mid_price is per share (same unit as nc)
+      if (!isNaN(strike) && strike > 0 && !isNaN(nc) && nc > 0) {
         fields.legs = [{
           action:      'BUY',
           option_type: optType,
           strike:      strike,
-          mid_price:   midPerShare,
+          mid_price:   nc,                                       // per share
           iv:          !isNaN(iv) && iv > 0 ? iv / 100 : 0.25,  // store as decimal
-          delta:       optType === 'CALL' ? 0.5 : -0.5,           // rough ATM default
+          delta:       optType === 'CALL' ? 0.5 : -0.5,
         }]
       }
 
@@ -298,7 +298,7 @@ function EditModal({ entry, onClose, onSave }: {
               />
             </div>
             <div>
-              <label className={labelCls}>Premium Paid ($/contract) <span className="text-red-400">*</span></label>
+              <label className={labelCls}>Option Premium ($/share) <span className="text-red-400">*</span></label>
               <input
                 className={`${inputCls} ${!hasPremium ? 'border-amber-700/60' : ''}`}
                 type="number" step="0.01"
@@ -325,7 +325,7 @@ function EditModal({ entry, onClose, onSave }: {
           )}
           {hasStrike && hasPremium && (
             <div className="mt-2 text-[11px] text-emerald-500">
-              {optType === 'CALL' ? 'Long Call' : 'Long Put'} · Strike ${form.strike} · ${form.net_credit}/contract · IV {form.iv || '25'}% (default)
+              {optType === 'CALL' ? 'Long Call' : 'Long Put'} · Strike ${form.strike} · ${form.net_credit}/sh (${(parseFloat(form.net_credit) * 100 || 0).toFixed(0)}/contract) · IV {form.iv || '25'}%
             </div>
           )}
         </div>
@@ -516,29 +516,21 @@ function EntryCard({
               </div>
             </div>
 
-            {/* Current price — color by P&L */}
+            {/* Stock price column — always shows underlying */}
             <div className="min-w-0 sm:w-20 sm:shrink-0 text-right sm:text-left">
               {(() => {
                 const isClosed = entry.status === 'CLOSED' || entry.status === 'EXPIRED'
-                const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
-                const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
-                const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
-                const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
-                const cp = hasOptionEntry ? currentOptPx : entry.current_price
-                const hasBoth = ep > 0 && cp > 0
                 const realizedPnl = isClosed && entry.realized_pnl != null ? entry.realized_pnl : null
                 const pnlColor = realizedPnl != null
                   ? (realizedPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : realizedPnl < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200')
-                  : hasBoth && cp !== ep
-                    ? (cp > ep ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')
-                    : 'text-slate-800 dark:text-slate-200'
+                  : 'text-slate-800 dark:text-slate-200'
                 return (
                   <>
                     <div className={`text-xs font-bold font-mono ${pnlColor}`}>
                       {entry.current_price > 0 ? `$${entry.current_price.toFixed(2)}` : '—'}
                     </div>
                     <div className="text-[9px] text-slate-400 dark:text-gray-600">
-                      {isClosed && realizedPnl != null ? 'Closed' : 'Price'}
+                      {isClosed && realizedPnl != null ? 'Closed' : 'Stock'}
                     </div>
                   </>
                 )
@@ -546,30 +538,34 @@ function EntryCard({
             </div>
 
             {(() => {
-              // For option trades (net_credit set), show option premium change; else show underlying Δ
+              // For option trades (net_credit set): show option P&L in $/contract
+              // net_credit is stored per share; current_pnl is stored per contract
               const hasOptPremium = entry.net_credit !== 0
-              const entryOptPx = hasOptPremium ? Math.abs(entry.net_credit) * 100 : 0  // per-contract $
-              const currentOptPx = hasOptPremium ? entryOptPx + entry.current_pnl : 0
-              const ep = hasOptPremium ? entryOptPx : entry.underlying_entry
-              const cp = hasOptPremium ? currentOptPx : entry.current_price
+              const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0        // $/share
+              const entryPerCtx = entryPerSh * 100                                       // $/contract
+              // current option value per share = entry + pnl_per_share
+              const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
+              const curPerCtx   = curPerSh * 100
+
+              const ep = hasOptPremium ? entryPerCtx : entry.underlying_entry
+              const cp = hasOptPremium ? curPerCtx   : entry.current_price
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
-              const pct = hasBoth && ep > 0 ? (diff / ep) * 100 : 0
+              const pct  = hasBoth && ep > 0 ? (diff / ep) * 100 : 0
               const color = hasBoth ? (diff > 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200') : 'text-slate-500 dark:text-gray-200'
-              const colLabel = hasOptPremium ? 'Premium Δ' : 'Stock Δ'
-              const displayVal = hasOptPremium
-                ? (cp > 0 ? `$${cp.toFixed(2)}` : '—')
-                : (cp > 0 ? `$${cp.toFixed(2)}` : '—')
+
               return (
                 <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
                   <div className={`text-sm font-semibold font-mono ${color}`}>
-                    {displayVal}
+                    {hasBoth ? `$${cp.toFixed(2)}` : '—'}
                     {hasBoth && (
                       <span className="text-[10px] ml-1 font-normal">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
                     )}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-gray-500">
-                    {ep > 0 ? `${colLabel} · entry $${ep.toFixed(2)}` : colLabel}
+                    {hasOptPremium
+                      ? `Option P&L · entry $${entryPerCtx.toFixed(0)}`
+                      : ep > 0 ? `Stock Δ · entry $${ep.toFixed(2)}` : 'Stock Δ'}
                   </div>
                 </div>
               )
@@ -601,10 +597,11 @@ function EntryCard({
                 <span className="text-violet-300 font-semibold truncate block" title={entry.strategy}>{entry.strategy}</span>
                 <span className="text-gray-500">
                   {(() => {
-                    const optPx = entry.net_credit !== 0 && entry.legs.length > 0
-                      ? Math.abs(entry.net_credit) + (entry.current_pnl / 100)
-                      : 0
-                    return optPx > 0 ? `$${optPx.toFixed(2)} · ` : ''
+                    // net_credit per share; show current option price per share
+                    const entryPerSh = entry.net_credit !== 0 && entry.legs.length > 0
+                      ? Math.abs(entry.net_credit) : 0
+                    const curPerSh = entryPerSh > 0 ? entryPerSh + (entry.current_pnl / 100) : 0
+                    return curPerSh > 0 ? `$${curPerSh.toFixed(2)}/sh · ` : ''
                   })()}
                   +${(entry.max_profit * 100).toFixed(0)} max · {(entry.prob_of_profit * 100).toFixed(0)}% PoP
                 </span>
@@ -637,9 +634,12 @@ function EntryCard({
               {[
                 { label: 'Entry Date', value: fmtDate(entry.entry_date), note: '' },
                 {
-                  label: 'Net / contract',
-                  value: `${entry.net_credit > 0 ? '+' : ''}$${(entry.net_credit * 100).toFixed(0)}`,
-                  note: entry.net_credit > 0 ? 'Credit' : 'Debit',
+                  // net_credit stored per share → × 100 = per contract cost
+                  label: entry.trade_type === 'day' ? 'Premium / contract' : 'Net / contract',
+                  value: entry.net_credit !== 0
+                    ? `$${(Math.abs(entry.net_credit) * 100).toFixed(0)}`
+                    : '—',
+                  note: entry.trade_type === 'day' ? 'Option cost' : entry.net_credit > 0 ? 'Credit' : 'Debit',
                 },
                 {
                   label: 'Score',
@@ -668,42 +668,54 @@ function EntryCard({
               <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-x-3 gap-y-1">
                 {(() => {
                   const hasOptPremium = entry.net_credit !== 0
-                  const eOpt = hasOptPremium ? Math.abs(entry.net_credit) * 100 : 0  // per-contract $
-                  const cOpt = hasOptPremium ? eOpt + entry.current_pnl : 0
+                  // net_credit per share; current_pnl per contract
+                  const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0
+                  const entryPerCtx = entryPerSh * 100
+                  const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
+                  const curPerCtx   = curPerSh * 100
+                  const pnlPerCtx   = entry.current_pnl   // already per contract
+
                   return (
                     <>
                       {hasOptPremium ? (
                         <>
                           <span className="text-gray-500">
-                            Premium Entry: <span className="font-mono text-gray-300">${eOpt.toFixed(2)}/contract</span>
+                            Option paid: <span className="font-mono text-gray-300">${entryPerSh.toFixed(2)}/sh</span>
+                            <span className="text-gray-600"> (${entryPerCtx.toFixed(0)}/contract)</span>
                           </span>
                           <span className="text-gray-500">
-                            Current: <span className="font-mono text-gray-300">${cOpt.toFixed(2)}/contract</span>
+                            Est. current: <span className="font-mono text-gray-300">${curPerSh.toFixed(2)}/sh</span>
+                            <span className="text-gray-600"> (${curPerCtx.toFixed(0)}/contract)</span>
                           </span>
                           <span className="text-gray-500">
-                            P&L: <PriceDiff current={cOpt} entry={eOpt} />
+                            Option P&L: <PriceDiff current={curPerCtx} entry={entryPerCtx} />
+                            {Math.abs(pnlPerCtx) > 0 && (
+                              <span className={`font-mono ml-1 ${pnlPerCtx >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                ({pnlPerCtx >= 0 ? '+' : ''}${pnlPerCtx.toFixed(2)}/contract)
+                              </span>
+                            )}
                           </span>
                           <span className="text-gray-500">
                             Stock: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
                             {entry.underlying_entry > 0 && (
-                              <> · entry <span className="font-mono">${entry.underlying_entry.toFixed(2)}</span></>
+                              <> · paid <span className="font-mono">${entry.underlying_entry.toFixed(2)}</span></>
                             )}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="text-gray-500">
-                            Stock Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
+                            Stock paid: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
                           </span>
                           <span className="text-gray-500">
                             Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
                           </span>
                           {entry.underlying_entry > 0 && (
                             <span className="text-gray-500">
-                              Δ: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
+                              Stock Δ: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
                             </span>
                           )}
-                          <span className="text-xs text-gray-600 italic">Set Premium Paid via Edit to track option P&L</span>
+                          <span className="text-xs text-gray-600 italic">Open Edit → set Option Premium to track option P&L</span>
                         </>
                       )}
                     </>
@@ -753,7 +765,9 @@ function EntryCard({
               {entry.net_credit !== 0 && (
                 <span className="bg-gray-800 rounded-lg px-2.5 py-1.5 font-mono">
                   <span className="text-gray-500">Premium: </span>
-                  <span className="text-gray-200">${(Math.abs(entry.net_credit) * 100).toFixed(2)}/contract</span>
+                  {/* net_credit per share; show /sh and $/contract */}
+                  <span className="text-gray-200">${Math.abs(entry.net_credit).toFixed(2)}/sh</span>
+                  <span className="text-gray-500"> · ${(Math.abs(entry.net_credit) * 100).toFixed(0)}/contract</span>
                 </span>
               )}
             </div>
@@ -787,8 +801,8 @@ function EntryCard({
                         <td className="pr-3 py-1 text-white">{leg.option_type}</td>
                         <td className="pr-3 py-1 text-right text-white">${leg.strike.toFixed(1)}</td>
                         <td className="pr-3 py-1 text-right text-gray-400">{leg.delta?.toFixed(3) ?? '—'}</td>
-                        <td className="pr-3 py-1 text-right text-gray-400">${leg.mid_price?.toFixed(2) ?? '—'}</td>
-                        <td className="py-1 text-right text-gray-400">{leg.iv?.toFixed(1) ?? '—'}%</td>
+                        <td className="pr-3 py-1 text-right text-gray-400">${leg.mid_price?.toFixed(2) ?? '—'}/sh</td>
+                        <td className="py-1 text-right text-gray-400">{leg.iv != null ? (leg.iv > 1 ? leg.iv.toFixed(1) : (leg.iv * 100).toFixed(1)) : '—'}%</td>
                       </tr>
                     ))}
                   </tbody>
