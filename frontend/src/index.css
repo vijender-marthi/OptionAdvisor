@@ -2195,3 +2195,27 @@ html.light [id^="oa-rec-"] .border-red-800 { border-color: #fca5a5 !important; }
 html.light [id^="oa-rec-"] .text-red-400 { color: #dc2626 !important; }
 /* Kelly input */
 html.light [id^="oa-rec-"] input.bg-gray-800 { background-color: #f8fafc !important; border-color: #e2e8f0 !important; color: #0f172a !important; }
+
+/* ── TCC responsive card grid ──────────────────────────────────────────────── */
+.tcc-card-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 480px) {
+  .tcc-card-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 900px) {
+  .tcc-card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Engine overview grid collapses to 1 col on mobile */
+.tcc-engine-grid {
+  grid-template-columns: 1fr !important;
+}
+@media (min-width: 480px) {
+  .tcc-engine-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (min-width: 700px) {
+  .tcc-engine-grid { grid-template-columns: repeat(3, 1fr) !important; }
+}
