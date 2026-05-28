@@ -202,6 +202,11 @@ export default function DayTradeIntradayChart({
           <span className="text-semantic-warning">OR high / low</span>
           {' · '}
           <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
+          {' · '}
+          <span style={{ color: 'var(--bullish)' }}>▲</span>
+          <span style={{ color: 'var(--bearish)' }}>▼</span>
+          {' '}
+          <span className="text-gray-600">bias flip</span>
           {bars.some(b => b.vwap_upper1 != null) && (
             <><span className="text-gray-500"> · </span><span className="text-info">±1σ</span><span className="text-gray-500"> · </span><span className="text-info" style={{ opacity: 0.5 }}>±2σ</span></>
           )}
@@ -331,6 +336,34 @@ export default function DayTradeIntradayChart({
           <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={1.5}
             strokeLinejoin="round" strokeLinecap="round"
             points={vwapPts} clipPath="url(#daytrade-plot-clip)" />
+
+          {/* ── VWAP bias-flip markers (skip first orMinutes bars) ── */}
+          {bars.map((b, i) => {
+            if (i < orMinutes || i === 0) return null
+            const prev = bars[i - 1]!
+            const prevAbove = prev.c >= prev.vwap
+            const currAbove = b.c >= b.vwap
+            if (prevAbove === currAbove) return null          // no flip
+            const cx = xAt(times[i]!)
+            const vy = yAt(b.vwap)
+            const bullish = currAbove                         // flipped up → bullish
+            const color = bullish ? 'var(--bullish)' : 'var(--bearish)'
+            // Triangle: ▲ below VWAP line for bullish flip, ▼ above for bearish flip
+            const ty = bullish ? vy + 10 : vy - 10
+            const size = 4
+            const pts = bullish
+              ? `${cx},${ty - size} ${cx - size},${ty + size} ${cx + size},${ty + size}`
+              : `${cx},${ty + size} ${cx - size},${ty - size} ${cx + size},${ty - size}`
+            return (
+              <polygon
+                key={`vflip-${i}`}
+                points={pts}
+                fill={color}
+                fillOpacity={0.9}
+                clipPath="url(#daytrade-plot-clip)"
+              />
+            )
+          })}
 
           {/* VWAP ±1σ bands */}
           {bars.some(b => b.vwap_upper1 != null) && (() => {
