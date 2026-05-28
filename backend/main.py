@@ -239,7 +239,7 @@ def _user_wants_trade_alert_emails(user_state: dict) -> bool:
         return True
 
 
-ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "900"))
+ALERT_SCAN_INTERVAL_SECONDS = int(os.getenv("ALERT_SCAN_INTERVAL_SECONDS", "300"))  # 5-min default for day trade
 ALERT_SCAN_START_DELAY_SECONDS = int(os.getenv("ALERT_SCAN_START_DELAY_SECONDS", "20"))
 ALERT_SCAN_MARKET_HOURS_ONLY = os.getenv("ALERT_SCAN_MARKET_HOURS_ONLY", "true").lower() != "false"
 
@@ -3244,6 +3244,67 @@ _STATE_DIRECTION = {
 }
 
 
+def _build_price_snapshot_summary(
+    ticker: str,
+    verdict: str,
+    bias: str,
+    *,
+    price: object,
+    vwap: object,
+    orh: object,
+    orl: object,
+    stop: object,
+    target: object,
+    alert_type: str,
+) -> str:
+    """
+    Build a rich one-line summary with price snapshot at detection time.
+    This is the text that appears in the alert inbox and email — it must be
+    actionable when read 5-10 minutes after firing.
+    """
+    def _p(v: object) -> str:
+        try:
+            return f"${float(v):.2f}" if v is not None else ""  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return ""
+
+    px  = _p(price)
+    vw  = _p(vwap)
+    orh_ = _p(orh)
+    st  = _p(stop)
+    tg  = _p(target)
+
+    direction = "LONG" if bias == "long" else "SHORT" if bias == "short" else ""
+    verdict_label = verdict.replace("_", " ")
+
+    parts: list[str] = []
+    if px:
+        parts.append(f"Price {px}")
+    if vw:
+        parts.append(f"VWAP {vw}")
+    if orh_:
+        parts.append(f"ORH {orh_}")
+    if st:
+        parts.append(f"Stop {st}")
+    if tg:
+        parts.append(f"Target {tg}")
+
+    levels = " · ".join(parts)
+
+    if alert_type == "ENTER_NOW":
+        return (
+            f"{ticker} {verdict_label} — Entry window OPEN · {direction}"
+            + (f" · {levels}" if levels else "")
+            + " · Act within 1-2 candles or wait for next setup."
+        )
+    else:
+        return (
+            f"{ticker} {verdict_label} — Setup confirmed · {direction}"
+            + (f" · {levels}" if levels else "")
+            + " · Check extension before entering."
+        )
+
+
 def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     email = user_state.get("email", "").strip().lower()
     if not email:
@@ -3347,6 +3408,18 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             except (TypeError, ValueError):
                                 pass
 
+                        _vwap_sc   = eg.get("vwap") or m.get("vwap")
+                        _stop_sc   = eg.get("risk_below")
+                        _tgt_sc    = eg.get("scalp_target")
+                        _price_sc  = last_price_val
+                        _sc_summary = _build_price_snapshot_summary(
+                            ticker, scan_verdict, bias_raw,
+                            price=_price_sc, vwap=_vwap_sc,
+                            orh=orh_val, orl=orl_val,
+                            stop=_stop_sc, target=_tgt_sc,
+                            alert_type="STATE_CHANGE",
+                        )
+
                         day_escalations.append({
                             "id":             f"dt-state-{ticker}-{now_ms}",
                             "alertType":      "STATE_CHANGE",
@@ -3362,14 +3435,14 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "egAction":       eg_action,
                             "bias":           bias_label,
                             "sessionDate":    sd,
-                            "currentPrice":   last_price_val,
-                            "vwap":           eg.get("vwap") or m.get("vwap"),
+                            "currentPrice":   _price_sc,
+                            "vwap":           _vwap_sc,
                             "orh":            orh_val,
                             "orl":            orl_val,
                             "breakoutLevel":  eg.get("breakout_level"),
-                            "scalp_target":   eg.get("scalp_target"),
-                            "riskBelow":      eg.get("risk_below"),
-                            "summary":        eg.get("summary") or eg.get("action") or "",
+                            "scalp_target":   _tgt_sc,
+                            "riskBelow":      _stop_sc,
+                            "summary":        _sc_summary,
                             "decisionMsg":    str((dr.trader_decision or {}).get("decision_message") or ""),
                             "narrowOrCaution":narrow_or_caution,
                             "orWidthPct":     or_width_pct_val,
@@ -3382,6 +3455,16 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     if enter_now_confirmed and not carry_enter_now:
                         enter_now_to_store = 1
                         direction_lbl = "LONG · CALL" if bias_raw == "long" else "SHORT · PUT"
+                        _vwap_en  = eg.get("vwap") or m.get("vwap")
+                        _stop_en  = eg.get("risk_below")
+                        _tgt_en   = eg.get("scalp_target")
+                        _en_summary = _build_price_snapshot_summary(
+                            ticker, verdict_str, bias_raw,
+                            price=last_price_val, vwap=_vwap_en,
+                            orh=orh_val, orl=orl_val,
+                            stop=_stop_en, target=_tgt_en,
+                            alert_type="ENTER_NOW",
+                        )
                         day_escalations.append({
                             "id":           f"dt-enternow-{ticker}-{now_ms}",
                             "alertType":    "ENTER_NOW",
@@ -3396,13 +3479,13 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "bias":         bias_label,
                             "sessionDate":  sd,
                             "currentPrice": last_price_val,
-                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "vwap":         _vwap_en,
                             "orh":          orh_val,
                             "orl":          orl_val,
                             "breakoutLevel": eg.get("breakout_level"),
-                            "scalp_target": eg.get("scalp_target"),
-                            "riskBelow":    eg.get("risk_below"),
-                            "summary":      f"Volume confirmed — entry window open. Action: Ready · Execution: Enter Now.",
+                            "scalp_target": _tgt_en,
+                            "riskBelow":    _stop_en,
+                            "summary":      _en_summary,
                             "decisionMsg":  eg.get("summary") or eg.get("action") or "",
                             "narrowOrCaution": False,
                             "orWidthPct":   None,
@@ -3505,15 +3588,19 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
     public_base = _option_advisor_public_base()
     for it in day_escalations:
         try:
+            _px = it.get("currentPrice")
+            _px_str = f" @ ${float(_px):.2f}" if _px is not None else ""
+            _title = f"⚡ {it.get('ticker', '')}{_px_str} — {it.get('summary') or it.get('alertType', '')}"
             alert_center_create(
                 email,
                 alert_group="day-trade",
                 severity="CRITICAL" if it.get("alertType") in ("ENTER_NOW", "STATE_CHANGE") else "WARNING",
                 engine="DAY_TRADE",
                 signal=it.get("alertType", ""),
-                title=it.get("summary") or f"{it.get('ticker', '')} {it.get('alertType', '')}",
+                title=_title,
                 body=it.get("decisionMsg") or "",
-                meta={"ticker": it.get("ticker"), "alertType": it.get("alertType"), "sessionDate": it.get("sessionDate")},
+                meta={"ticker": it.get("ticker"), "alertType": it.get("alertType"), "sessionDate": it.get("sessionDate"),
+                      "currentPrice": it.get("currentPrice"), "vwap": it.get("vwap"), "orh": it.get("orh")},
             )
         except Exception:
             pass
