@@ -769,7 +769,8 @@ export default function DayTradeEnginePanel({
   const signals = computeSignals(result, m)
   const reasoning = computeReasoning(result, m)
   const riskPanel = computeRiskPanel(result, m)
-  const decisionTone = actionTone(result.final_decision)
+  const isChasing = result.is_chasing === true
+  const decisionTone = isChasing ? 'orange' : actionTone(result.final_decision)
   const execTone = actionTone(result.execution_readiness || result.execution_timing)
   const optionRisk = result.option_risk_context
   const hasOptionOverlay = !!optionRisk
@@ -908,7 +909,7 @@ export default function DayTradeEnginePanel({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                {formatLabel(result.final_decision)}
+                {isChasing ? 'EXTENDED' : formatLabel(result.final_decision)}
               </span>
               {result.final_decision === 'WAIT' && (() => {
                 const missing = Array.isArray(eg?.pending_confirmations) ? (eg.pending_confirmations as string[]) : []
@@ -945,6 +946,7 @@ export default function DayTradeEnginePanel({
               { label: 'Structure', value: (() => {
                 const fd = String(result.final_decision || '').toUpperCase()
                 const dir = result.bias === 'short' ? 'SHORT' : 'LONG'
+                if (isChasing) return <span className="font-mono font-semibold text-amber-400 text-xs">{dir + ' · Extended'}</span>
                 if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{dir + ' · Ready'}</span>
                 if (fd === 'WAIT' || fd === 'CONDITIONAL') return <span className="font-mono text-amber-400 text-xs">{dir + ' · Waiting'}</span>
                 if (fd === 'WATCH') return <span className="font-mono text-sky-400 text-xs">{dir + ' · Watching'}</span>
