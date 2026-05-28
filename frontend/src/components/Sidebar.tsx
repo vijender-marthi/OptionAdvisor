@@ -126,6 +126,7 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
+        { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
         { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
       ],
     },
@@ -162,7 +163,6 @@ export default function Sidebar() {
     label: 'Analyze',
     items: [
       { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
-      { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
     ],
   },
   {
