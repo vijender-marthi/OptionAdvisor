@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -390,8 +390,14 @@ function engineLabel(engine: string): string {
 
 function EngineCard({ engine, decision, ticker }: { engine: string; decision: SignalFeedDecisionBlock; ticker?: string }) {
   const engineRoute = ticker ? getEngineRoute(engine, ticker) : null
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
   const optionRisk = decision.option_risk_context
   const showOptionRisk = engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
+  const handleNav = engineRoute ? () => {
+    if (engine === 'regular') requestAnalysis(ticker!)
+    navigate(engineRoute)
+  } : undefined
   const labelEl = (
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${engineLabelClass(engine)}`}>
       {engineLabel(engine)}
@@ -401,8 +407,8 @@ function EngineCard({ engine, decision, ticker }: { engine: string; decision: Si
   return (
     <div className={`rounded-xl border p-3 ${engineCardBorder(engine)}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
-        {engineRoute ? (
-          <Link to={engineRoute} className="hover:underline underline-offset-2">{labelEl}</Link>
+        {handleNav ? (
+          <button onClick={handleNav} className="hover:underline underline-offset-2 text-left">{labelEl}</button>
         ) : labelEl}
         <StatusPill value={decision.final_decision} />
       </div>
@@ -432,6 +438,12 @@ function EngineCard({ engine, decision, ticker }: { engine: string; decision: Si
 
 function RegularEngineBar({ decision, ticker }: { decision: SignalFeedDecisionBlock; ticker?: string }) {
   const engineRoute = ticker ? getEngineRoute('regular', ticker) : null
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
+  const handleNav = engineRoute ? () => {
+    requestAnalysis(ticker!)
+    navigate(engineRoute)
+  } : undefined
   const labelEl = (
     <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-violet-700 dark:text-violet-400 shrink-0">
       🏛 Regular / Position
@@ -441,8 +453,8 @@ function RegularEngineBar({ decision, ticker }: { decision: SignalFeedDecisionBl
   return (
     <div className={`rounded-xl border px-3 py-2 flex flex-wrap items-center justify-between gap-2 ${engineCardBorder('regular')}`}>
       <div className="flex flex-wrap items-center gap-2 min-w-0">
-        {engineRoute ? (
-          <Link to={engineRoute} className="hover:underline underline-offset-2">{labelEl}</Link>
+        {handleNav ? (
+          <button onClick={handleNav} className="hover:underline underline-offset-2 text-left">{labelEl}</button>
         ) : labelEl}
         <StatusPill value={decision.final_decision} />
         <SignalQualityBadge quality={decision.signal_quality || ''} />
