@@ -51,18 +51,35 @@ function fmtPrice(n: number) {
   return n.toFixed(d)
 }
 
+export interface ChartEntryPoint {
+  label: string   // "E1", "E2", "E3"
+  price: number
+  trigger: string // short description for table
+  stop?: number
+  color?: string  // CSS color — defaults to bullish green
+}
+
+const ENTRY_COLORS = [
+  '#34d399', // emerald
+  '#38bdf8', // sky
+  '#a78bfa', // violet
+  '#fbbf24', // amber (4th if needed)
+]
+
 export default function DayTradeIntradayChart({
   bars,
   orHigh,
   orLow,
   orMinutes,
   sessionDate,
+  entryPoints,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
   orLow: number
   orMinutes: number
   sessionDate: string
+  entryPoints?: ChartEntryPoint[]
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(720)
@@ -190,6 +207,9 @@ export default function DayTradeIntradayChart({
           <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
           {bars.some(b => b.vwap_upper1 != null) && (
             <><span className="text-gray-500"> · </span><span className="text-info">±1σ</span><span className="text-gray-500"> · </span><span className="text-info" style={{ opacity: 0.5 }}>±2σ</span></>
+          )}
+          {entryPoints && entryPoints.length > 0 && (
+            <><span className="text-gray-500"> · </span><span style={{ color: ENTRY_COLORS[0] }}>E1</span>{entryPoints.length > 1 && <><span className="text-gray-500">–</span><span style={{ color: ENTRY_COLORS[entryPoints.length - 1] }}>E{entryPoints.length}</span></>}<span className="text-gray-500"> entries</span></>
           )}
         </div>
       </div>
@@ -386,8 +406,73 @@ export default function DayTradeIntradayChart({
           <text x={PAD.l} y={12} fill="var(--chart-axis)" fontSize={10}>
             Price · {fmtPrice(yMax)} → {fmtPrice(yMin)}
           </text>
+
+          {/* ── Entry price lines ── */}
+          {entryPoints?.map((ep, idx) => {
+            if (!Number.isFinite(ep.price) || ep.price <= 0) return null
+            if (ep.price < yMin || ep.price > yMax) return null
+            const ey = yAt(ep.price)
+            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            return (
+              <g key={`entry-${idx}`}>
+                <line
+                  x1={PAD.l}
+                  x2={PAD.l + innerW}
+                  y1={ey}
+                  y2={ey}
+                  stroke={color}
+                  strokeWidth={1.2}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.9}
+                  clipPath="url(#daytrade-plot-clip)"
+                />
+                <text
+                  x={PAD.l + innerW - 4}
+                  y={ey - 4}
+                  textAnchor="end"
+                  fill={color}
+                  fontSize={9}
+                  fontWeight={600}
+                  clipPath="url(#daytrade-plot-clip)"
+                >
+                  {ep.label} · ${fmtPrice(ep.price)}
+                </text>
+              </g>
+            )
+          })}
         </svg>
       </div>
+
+      {/* ── Entry points table ── */}
+      {entryPoints && entryPoints.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-[11px] border-collapse">
+            <thead>
+              <tr className="border-b border-gray-800/60">
+                <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Entry</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Price</th>
+                <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Trigger</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">Stop</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entryPoints.map((ep, idx) => {
+                const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+                return (
+                  <tr key={`erow-${idx}`} className="border-b border-gray-800/40 last:border-0">
+                    <td className="py-1 pr-3 font-semibold" style={{ color }}>{ep.label}</td>
+                    <td className="py-1 pr-3 text-right font-mono text-gray-200">${fmtPrice(ep.price)}</td>
+                    <td className="py-1 pr-3 text-gray-400">{ep.trigger}</td>
+                    <td className="py-1 text-right font-mono text-red-400">
+                      {ep.stop && ep.stop > 0 ? `$${fmtPrice(ep.stop)}` : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

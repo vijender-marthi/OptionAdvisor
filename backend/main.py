@@ -4756,6 +4756,9 @@ def _run_day_trade_alert_batch() -> None:
         print(f"[day-alert-batch] failed to load users: {exc}", flush=True)
         return
     for user_state in users:
+        role = (user_state.get("role") or "").lower()
+        if role not in ("day", "admin", "super_user"):
+            continue
         try:
             _scan_my_tickers_for_state_alerts(user_state)
         except Exception as exc:
@@ -4791,6 +4794,9 @@ def _run_swing_trade_alert_batch() -> None:
         print(f"[swing-alert-batch] failed to load users: {exc}", flush=True)
         return
     for user_state in users:
+        role = (user_state.get("role") or "").lower()
+        if role not in ("swing", "admin", "super_user"):
+            continue
         try:
             _scan_my_tickers_for_swing_alerts(user_state)
         except Exception as exc:

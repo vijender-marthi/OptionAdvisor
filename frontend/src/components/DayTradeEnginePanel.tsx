@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import type { AiCoachResult, DayTradeScanResult } from '../api/client'
 import type { PortfolioPosition } from '../types'
-import DayTradeIntradayChart, { parseChartBars } from './DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
@@ -766,6 +766,58 @@ export default function DayTradeEnginePanel({
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
   const td = coerceTraderDecision(result.trader_decision ?? null)
   const eg = result.entry_guidance
+
+  // ── Derive entry points from available signal sources ───────────────────────
+  const chartEntryPoints = (() => {
+    const pts: ChartEntryPoint[] = []
+    const ac = result.ai_coach
+    const isShort = result.bias === 'short'
+
+    const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
+    if (gatePrice != null && gatePrice > 0) {
+      pts.push({
+        label: 'E1',
+        price: gatePrice,
+        trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
+        stop: asFiniteNum(eg?.risk_below) ?? undefined,
+      })
+    }
+
+    const aiPrice = asFiniteNum(ac?.trade?.entry_price)
+    if (aiPrice != null && aiPrice > 0 && aiPrice !== gatePrice) {
+      pts.push({
+        label: `E${pts.length + 1}`,
+        price: aiPrice,
+        trigger: ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach',
+        stop: asFiniteNum(ac?.trade?.stop) ?? undefined,
+      })
+    }
+
+    const breakoutLevel = asFiniteNum(eg?.breakout_level)
+    if (breakoutLevel != null && breakoutLevel > 0 && breakoutLevel !== gatePrice && breakoutLevel !== aiPrice) {
+      pts.push({
+        label: `E${pts.length + 1}`,
+        price: breakoutLevel,
+        trigger: 'OR breakout level',
+        stop: isShort ? asFiniteNum(orChartHigh) ?? undefined : asFiniteNum(orChartLow) ?? undefined,
+      })
+    }
+
+    const vwapPrice = asFiniteNum(eg?.vwap)
+    if (vwapPrice != null && vwapPrice > 0) {
+      const seen = pts.map(p => p.price)
+      if (!seen.includes(vwapPrice)) {
+        pts.push({
+          label: `E${pts.length + 1}`,
+          price: vwapPrice,
+          trigger: 'VWAP re-test',
+          stop: asFiniteNum(eg?.risk_below) ?? undefined,
+        })
+      }
+    }
+
+    return pts.length > 0 ? pts : undefined
+  })()
   const signals = computeSignals(result, m)
   const reasoning = computeReasoning(result, m)
   const riskPanel = computeRiskPanel(result, m)
@@ -1055,6 +1107,7 @@ export default function DayTradeEnginePanel({
               orLow={orChartLow}
               orMinutes={orMinN}
               sessionDate={String(m.session_date ?? '')}
+              entryPoints={chartEntryPoints}
             />
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
               {eg?.vwap != null && <span>VWAP: <span className="font-mono text-gray-200">${eg.vwap.toFixed(2)}</span></span>}
@@ -1644,6 +1697,7 @@ export default function DayTradeEnginePanel({
                     orLow={orChartLow}
                     orMinutes={orMinN}
                     sessionDate={String(m.session_date ?? '')}
+                    entryPoints={chartEntryPoints}
                   />
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
