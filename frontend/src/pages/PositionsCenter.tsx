@@ -704,7 +704,6 @@ function TradingPositionCard({
   onToggle,
   onClose,
   onManage,
-  onRoll,
   onAlert,
 }: {
   pos: PortfolioPosition
@@ -720,7 +719,6 @@ function TradingPositionCard({
   onToggle: () => void
   onClose: () => void
   onManage: () => void
-  onRoll: () => void
   onAlert: () => void
 }) {
   const aiStatus = deriveAiStatus(pos)
@@ -894,7 +892,6 @@ function TradingPositionCard({
             <button type="button" onClick={onManage} className={`${getActionButtonClass('trade')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}>
               <Edit3 size={10} />Edit
             </button>
-            <button type="button" onClick={onRoll} className={`${getActionButtonClass('surface')} px-2 py-0.5 text-[10px]`}>Roll</button>
             <button type="button" onClick={onAlert} className={`${getActionButtonClass('alert')} px-2 py-0.5 text-[10px]`}>Alert</button>
           </>
         )}
@@ -1778,7 +1775,6 @@ export default function PositionsCenter() {
               onToggle={() => toggleExpanded(pos.id)}
               onClose={() => handleClose(pos)}
               onManage={() => handleManage(pos)}
-              onRoll={() => setNotice({ message: `Roll — open the ${pos.ticker} engine page, verify new expiry/strike, then add the new leg here.` })}
               onAlert={() => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
             />
           ))}
