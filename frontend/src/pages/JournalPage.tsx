@@ -186,11 +186,17 @@ function EditModal({ entry, onClose, onSave }: {
   onClose: () => void
   onSave: (fields: Record<string, unknown>) => Promise<void>
 }) {
+  // Detect existing single leg (for day trades edited previously)
+  const existingLeg = entry.legs.length === 1 ? entry.legs[0] : null
+
   const [form, setForm] = useState({
     strategy:         entry.strategy ?? '',
     bias:             entry.bias ?? '',
     underlying_entry: entry.underlying_entry > 0 ? String(entry.underlying_entry) : '',
-    net_credit:       entry.net_credit !== 0 ? String(Math.abs(entry.net_credit)) : '',
+    // net_credit stored as per-share fraction; display as $/contract (×100)
+    net_credit:       entry.net_credit !== 0 ? String((Math.abs(entry.net_credit) * 100).toFixed(2)) : '',
+    strike:           existingLeg?.strike ? String(existingLeg.strike) : '',
+    iv:               existingLeg?.iv ? String(existingLeg.iv) : '',   // stored as % (e.g. 45.2)
     expiry:           entry.expiry ?? '',
     max_profit:       entry.max_profit > 0 ? String((entry.max_profit * 100).toFixed(2)) : '',
     max_loss:         entry.max_loss > 0 ? String((entry.max_loss * 100).toFixed(2)) : '',
@@ -203,25 +209,49 @@ function EditModal({ entry, onClose, onSave }: {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
 
+  // Determine option type from bias or strategy
+  const optType = form.bias.toLowerCase().includes('bearish') || form.strategy.toLowerCase().includes('put') ? 'PUT' : 'CALL'
+
   const handleSave = async () => {
     setSaving(true)
     setErr(null)
     try {
       const fields: Record<string, unknown> = {}
-      if (form.strategy.trim())         fields.strategy         = form.strategy.trim()
-      if (form.bias.trim())             fields.bias             = form.bias.trim()
-      if (form.expiry.trim())           fields.expiry           = form.expiry.trim()
-      if (form.notes !== undefined)     fields.notes            = form.notes
+      if (form.strategy.trim())     fields.strategy         = form.strategy.trim()
+      if (form.bias.trim())         fields.bias             = form.bias.trim()
+      if (form.expiry.trim())       fields.expiry           = form.expiry.trim()
+      fields.notes = form.notes
+
       const ue = parseFloat(form.underlying_entry)
-      if (!isNaN(ue) && ue > 0)        fields.underlying_entry = ue
-      const nc = parseFloat(form.net_credit)
-      if (!isNaN(nc) && nc > 0)        fields.net_credit       = nc / 100  // store as per-share fraction
+      if (!isNaN(ue) && ue > 0)    fields.underlying_entry = ue
+
+      const nc = parseFloat(form.net_credit)       // $/contract entered by user
+      const strike = parseFloat(form.strike)
+      const iv = parseFloat(form.iv)               // % entered by user
+
+      // net_credit stored as per-share (nc / 100); mid_price in leg also per share
+      const midPerShare = !isNaN(nc) && nc > 0 ? nc / 100 : 0
+      if (midPerShare > 0) fields.net_credit = midPerShare
+
       const mp = parseFloat(form.max_profit)
-      if (!isNaN(mp))                   fields.max_profit       = mp / 100
+      if (!isNaN(mp))               fields.max_profit       = mp / 100
       const ml = parseFloat(form.max_loss)
-      if (!isNaN(ml))                   fields.max_loss         = ml / 100
+      if (!isNaN(ml))               fields.max_loss         = ml / 100
       const sc = parseInt(form.total_score, 10)
-      if (!isNaN(sc))                   fields.total_score      = sc
+      if (!isNaN(sc))               fields.total_score      = sc
+
+      // Build option leg if strike is provided — enables Black-Scholes MTM on refresh
+      if (!isNaN(strike) && strike > 0 && midPerShare > 0) {
+        fields.legs = [{
+          action:      'BUY',
+          option_type: optType,
+          strike:      strike,
+          mid_price:   midPerShare,
+          iv:          !isNaN(iv) && iv > 0 ? iv / 100 : 0.25,  // store as decimal
+          delta:       optType === 'CALL' ? 0.5 : -0.5,           // rough ATM default
+        }]
+      }
+
       await onSave(fields)
       onClose()
     } catch (e: unknown) {
@@ -233,6 +263,9 @@ function EditModal({ entry, onClose, onSave }: {
 
   const inputCls = "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-violet-600"
   const labelCls = "text-xs text-gray-500 mb-1 block"
+
+  const hasStrike = form.strike.trim() !== ''
+  const hasPremium = form.net_credit.trim() !== ''
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -250,10 +283,57 @@ function EditModal({ entry, onClose, onSave }: {
 
         <div className="text-xs text-gray-400 mb-4 font-semibold">{entry.ticker} · {entry.trade_type?.toUpperCase() ?? 'TRADE'}</div>
 
+        {/* Option leg section — required for accurate MTM */}
+        <div className="mb-4 p-3 bg-violet-950/30 border border-violet-800/40 rounded-xl">
+          <div className="text-xs font-semibold text-violet-300 mb-2">Option Details <span className="text-violet-500 font-normal">(required for live P&L tracking)</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={labelCls}>Strike Price ($) <span className="text-red-400">*</span></label>
+              <input
+                className={`${inputCls} ${!hasStrike ? 'border-amber-700/60' : ''}`}
+                type="number" step="0.5"
+                value={form.strike}
+                onChange={set('strike')}
+                placeholder="e.g. 515"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Premium Paid ($/contract) <span className="text-red-400">*</span></label>
+              <input
+                className={`${inputCls} ${!hasPremium ? 'border-amber-700/60' : ''}`}
+                type="number" step="0.01"
+                value={form.net_credit}
+                onChange={set('net_credit')}
+                placeholder="e.g. 3.50"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>IV at Entry (%) <span className="text-gray-600">optional</span></label>
+              <input
+                className={inputCls}
+                type="number" step="0.1"
+                value={form.iv}
+                onChange={set('iv')}
+                placeholder="e.g. 45.2"
+              />
+            </div>
+          </div>
+          {(!hasStrike || !hasPremium) && (
+            <div className="mt-2 text-[11px] text-amber-500/80">
+              Without strike + premium, live option P&L cannot be computed. Stock price change will be tracked instead.
+            </div>
+          )}
+          {hasStrike && hasPremium && (
+            <div className="mt-2 text-[11px] text-emerald-500">
+              {optType === 'CALL' ? 'Long Call' : 'Long Put'} · Strike ${form.strike} · ${form.net_credit}/contract · IV {form.iv || '25'}% (default)
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
             <label className={labelCls}>Strategy</label>
-            <input className={inputCls} value={form.strategy} onChange={set('strategy')} placeholder="Long Call, Vertical…" />
+            <input className={inputCls} value={form.strategy} onChange={set('strategy')} placeholder="Long Call, Long Put…" />
           </div>
           <div>
             <label className={labelCls}>Bias</label>
@@ -269,20 +349,12 @@ function EditModal({ entry, onClose, onSave }: {
             <input className={inputCls} type="number" step="0.01" value={form.underlying_entry} onChange={set('underlying_entry')} placeholder="e.g. 512.50" />
           </div>
           <div>
-            <label className={labelCls}>Premium Paid ($/contract)</label>
-            <input className={inputCls} type="number" step="0.01" value={form.net_credit} onChange={set('net_credit')} placeholder="e.g. 3.50 per contract" />
-          </div>
-          <div>
             <label className={labelCls}>Expiry Date</label>
             <input className={inputCls} type="date" value={form.expiry} onChange={set('expiry')} />
           </div>
           <div>
             <label className={labelCls}>Score (0–100)</label>
             <input className={inputCls} type="number" min="0" max="100" value={form.total_score} onChange={set('total_score')} placeholder="e.g. 78" />
-          </div>
-          <div>
-            <label className={labelCls}>Max Profit ($/contract)</label>
-            <input className={inputCls} type="number" step="0.01" value={form.max_profit} onChange={set('max_profit')} placeholder="e.g. 350" />
           </div>
           <div>
             <label className={labelCls}>Max Loss ($/contract)</label>
@@ -950,7 +1022,17 @@ export default function JournalPage() {
   const handleUpdate = async (id: string, fields: Record<string, unknown>) => {
     if (!email) return
     await updateJournalEntry(email, id, fields)
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, ...fields } as JournalEntry : e))
+    // If legs were updated, re-fetch so MTM P&L is recomputed server-side
+    if ('legs' in fields) {
+      try {
+        const data = await refreshJournal(email)
+        const list = (data.entries as JournalEntry[]) ?? []
+        setEntries(list)
+        syncJournalEntryCount(list.length)
+      } catch { /* fall through to optimistic update */ }
+    } else {
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, ...fields } as JournalEntry : e))
+    }
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────

@@ -1888,7 +1888,11 @@ def update_journal_entry(email: str, entry_id: str, **fields) -> None:
         "total_score", "expiry", "entry_date", "company_name",
         "trade_type", "engine_signal", "engine_state",
     }
+    # legs is stored as legs_json in the DB — handle separately
+    legs_val = fields.pop("legs", None)
     updates = {k: v for k, v in fields.items() if k in allowed}
+    if legs_val is not None:
+        updates["legs_json"] = json.dumps(legs_val)
     if not updates:
         return
     set_clause = ", ".join(f"{k} = ?" for k in updates)
