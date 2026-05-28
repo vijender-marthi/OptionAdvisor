@@ -514,6 +514,99 @@ def _edge_remaining(
 # Chase Prevention Engine
 # ---------------------------------------------------------------------------
 
+def _vwap_hold_state(
+    session: "pd.DataFrame",
+    vwap_series: "pd.Series",
+    bias: str,
+    lookback: int = 3,
+) -> str:
+    """
+    Examine the last `lookback` 1-minute bars to classify VWAP hold status.
+
+    Returns one of:
+      CONFIRMED  — price touched/tested VWAP and closed above (long) or below (short)
+                   on the confirmation candle, with the next candle continuing in direction
+      TESTING    — price is at VWAP right now; hold not yet confirmed
+      FAILED     — 2+ consecutive closes on wrong side of VWAP
+      NOT_TESTED — price has not been near VWAP recently (no test to confirm)
+    """
+    if session.empty or len(session) < 2 or vwap_series is None or vwap_series.empty:
+        return "NOT_TESTED"
+
+    n = min(lookback, len(session))
+    closes = session["Close"].iloc[-n:].astype(float).values
+    lows   = session["Low"].iloc[-n:].astype(float).values
+    highs  = session["High"].iloc[-n:].astype(float).values
+    vwaps  = vwap_series.iloc[-n:].astype(float).values
+    volumes = session["Volume"].iloc[-n:].astype(float).values
+
+    if len(closes) < 2:
+        return "NOT_TESTED"
+
+    vwap_now = float(vwap_series.iloc[-1])
+    last_close = closes[-1]
+    tol = vwap_now * 0.0015  # 0.15% proximity band — counts as "at VWAP"
+
+    if bias == "long":
+        # Count consecutive closes below VWAP from most recent bar backwards
+        consec_below = 0
+        for c, v in zip(reversed(closes), reversed(vwaps)):
+            if c < v - tol:
+                consec_below += 1
+            else:
+                break
+        if consec_below >= 2:
+            return "FAILED"
+
+        # Check if any bar in lookback touched VWAP (low <= vwap + tol)
+        touched = any(lo <= vw + tol for lo, vw in zip(lows, vwaps))
+        if not touched:
+            return "NOT_TESTED"
+
+        # TESTING: last close is within the tolerance band
+        if abs(last_close - vwap_now) <= tol:
+            return "TESTING"
+
+        # CONFIRMED: last close is above VWAP, prior bar had a wick/touch near VWAP,
+        # and the confirmation candle volume >= the test candle volume
+        if last_close > vwap_now + tol:
+            prior_touched = lows[-2] <= vwaps[-2] + tol if len(lows) >= 2 else False
+            vol_confirm = volumes[-1] >= volumes[-2] * 0.8 if len(volumes) >= 2 else True
+            if prior_touched and vol_confirm:
+                return "CONFIRMED"
+            # Weaker confirmation: just above VWAP and moving away
+            return "CONFIRMED"
+
+        return "TESTING"
+
+    else:  # short
+        # Count consecutive closes above VWAP
+        consec_above = 0
+        for c, v in zip(reversed(closes), reversed(vwaps)):
+            if c > v + tol:
+                consec_above += 1
+            else:
+                break
+        if consec_above >= 2:
+            return "FAILED"
+
+        touched = any(hi >= vw - tol for hi, vw in zip(highs, vwaps))
+        if not touched:
+            return "NOT_TESTED"
+
+        if abs(last_close - vwap_now) <= tol:
+            return "TESTING"
+
+        if last_close < vwap_now - tol:
+            prior_touched = highs[-2] >= vwaps[-2] - tol if len(highs) >= 2 else False
+            vol_confirm = volumes[-1] >= volumes[-2] * 0.8 if len(volumes) >= 2 else True
+            if prior_touched and vol_confirm:
+                return "CONFIRMED"
+            return "CONFIRMED"
+
+        return "TESTING"
+
+
 def _is_chasing(
     last_price: float,
     vwap_upper1: float,
@@ -753,6 +846,9 @@ def _entry_timing(
 
     if should_enter_now == "CONDITIONAL":
         return "WAIT_CONFIRMATION"
+
+    if "VWAP_HOLD_FAILED" in s:
+        return "AVOID_CHASING"
 
     if "WAIT" in s or "VWAP_TEST" in s:
         return "WAIT_CONFIRMATION"
@@ -1331,6 +1427,7 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
 
     # Bounce-scenario tier — read from metrics (computed in scoring phase)
     bounce_scenario = str(metrics.get("bounce_scenario") or "")
+    vwap_hold = str(metrics.get("vwap_hold_state") or "NOT_TESTED")
 
     if bidir == "long":
         if vwap_pos == "below":
@@ -1338,11 +1435,17 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "Strong setup, but entry should wait for VWAP hold."
             action = "Wait for price to reclaim VWAP and hold above it for confirmation."
             avoid = "Avoid entering while price is below VWAP."
-        elif vwap_pos == "at":
-            state = "VWAP_TEST"
-            summary = "Price is testing VWAP from above \u2014 hold not yet confirmed."
-            action = f"Wait for price to push through the VWAP band (\u00b1{VWAP_BAND_PCT}%) with sustained volume before entry."
-            avoid = "Avoid entering at VWAP \u2014 a rejection here turns the setup bearish quickly."
+        elif vwap_pos == "at" or vwap_hold == "TESTING":
+            if vwap_hold == "FAILED":
+                state = "VWAP_HOLD_FAILED"
+                summary = "VWAP hold failed \u2014 price closed below VWAP on 2+ consecutive bars. Setup is invalidated."
+                action = "Stand aside. Wait for price to reclaim VWAP with a confirmed green close and volume."
+                avoid = "Do not enter \u2014 the buyers who drove the setup have lost control of VWAP."
+            else:
+                state = "VWAP_TEST"
+                summary = "Price is testing VWAP \u2014 hold not yet confirmed. One red candle at VWAP is a test, not a failure."
+                action = f"Wait for a green candle close above VWAP with volume \u2265 the prior bar before entering."
+                avoid = "Avoid entering at VWAP \u2014 a rejection here turns the setup bearish quickly."
         elif or_breakout == "inside" and or_historical != "broke_up":
             # Genuinely hasn't broken out yet \u2014 first breakout still pending.
             state = "WAIT_FOR_BREAKOUT"
@@ -1412,11 +1515,17 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             summary = "Bearish setup, but entry should wait for VWAP breakdown."
             action = "Wait for price to break below VWAP and hold under it for confirmation."
             avoid = "Avoid entering while price is above VWAP."
-        elif vwap_pos == "at":
-            state = "VWAP_TEST"
-            summary = "Price is testing VWAP from below \u2014 rejection not yet confirmed."
-            action = f"Wait for price to fail the VWAP band (\u00b1{VWAP_BAND_PCT}%) and roll over with volume before entry."
-            avoid = "Avoid shorting at VWAP \u2014 a hold here could accelerate a squeeze."
+        elif vwap_pos == "at" or vwap_hold == "TESTING":
+            if vwap_hold == "FAILED":
+                state = "VWAP_HOLD_FAILED"
+                summary = "VWAP rejection failed \u2014 price closed above VWAP on 2+ consecutive bars. Short setup is invalidated."
+                action = "Stand aside. The sellers have lost control. Wait for a new rejection setup."
+                avoid = "Do not short \u2014 buyers reclaimed VWAP."
+            else:
+                state = "VWAP_TEST"
+                summary = "Price is testing VWAP from below \u2014 rejection not yet confirmed. One green candle at VWAP is a test, not a reclaim."
+                action = f"Wait for a red candle close below VWAP with volume \u2265 the prior bar before entering."
+                avoid = "Avoid shorting at VWAP \u2014 a hold here could accelerate a squeeze."
         elif or_breakout == "inside" and or_historical != "broke_down":
             # Genuinely hasn't broken down yet \u2014 first breakdown still pending.
             state = "WAIT_FOR_BREAKDOWN"
@@ -1515,6 +1624,13 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     # State machine confirmed all entry gates — clear aspirational confirmations from trader_decision
     if state in ("ENTRY_ACTIVE", "ENTRY_RETEST", "ENTRY_PULLBACK"):
         confirmations = []
+    elif state == "VWAP_TEST":
+        _hold_verb = "hold above" if bidir == "long" else "close below"
+        _vwap_confirm_msg = f"VWAP {_hold_verb} with confirming candle close + volume \u2265 prior bar"
+        if _vwap_confirm_msg not in confirmations:
+            confirmations = [_vwap_confirm_msg] + [c for c in confirmations if "VWAP" not in c.upper()]
+    elif state == "VWAP_HOLD_FAILED":
+        confirmations = ["VWAP hold failed — stand aside until VWAP is reclaimed with volume"]
 
     session_phase = str(metrics.get("session_phase") or "")
 
@@ -1688,6 +1804,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         pullback_score += 5
     elif state == "VWAP_TEST":
         pullback_score += 2
+    elif state == "VWAP_HOLD_FAILED":
+        pullback_score += 10
 
     if pullback_score >= 8:
         pullback_prob = "HIGH"
@@ -1703,6 +1821,8 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         should_now = "HOLD"
     elif state in ("WAIT_FOR_VOLUME", "VWAP_TEST"):
         should_now = "CONDITIONAL"
+    elif state == "VWAP_HOLD_FAILED":
+        should_now = "NO"
     else:
         should_now = "NO"
 
@@ -1839,8 +1959,15 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         hold_or_fail = "hold above" if bidir == "long" else "fail below"
         day_alerts.append({
             "type": "VWAP_TEST",
-            "message": f"Price testing VWAP ({vwap:.2f}) — watch for {hold_or_fail} with volume",
-            "condition": f"Price moves >{VWAP_BAND_PCT}% {'above' if bidir == 'long' else 'below'} VWAP with volume confirmation",
+            "message": f"Price testing VWAP ({vwap:.2f}) — watch for {hold_or_fail} with volume. Wait for confirmed close, not just a touch.",
+            "condition": f"Green close above VWAP with volume \u2265 prior bar ({'long' if bidir == 'long' else 'short'} confirmation)",
+        })
+    if vwap is not None and state == "VWAP_HOLD_FAILED":
+        side = "below" if bidir == "long" else "above"
+        day_alerts.append({
+            "type": "VWAP_HOLD_FAILED",
+            "message": f"VWAP hold failed — 2+ closes {side} VWAP ({vwap:.2f}). Stand aside until VWAP is reclaimed.",
+            "condition": "Price reclaims VWAP with confirmed close and volume before re-entry",
         })
     if not volume_spike and or_breakout != "inside":
         day_alerts.append({
@@ -2036,6 +2163,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         else "WIDE" if vwap_std_dev is not None and vwap_std_dev > last * 0.010
         else "NORMAL"
     ) if vwap_std_dev is not None else None
+
+    # VWAP hold confirmation — requires actual bar data (session + vwap_ser)
+    # Deferred until bias is known; placeholder set here, overwritten after bias resolved.
+    _vwap_hold_state_raw: str = "NOT_TESTED"
 
     n_or = min(OR_MINUTES, len(session))
     or_seg = session.iloc[:n_or]
@@ -2775,6 +2906,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     raw_score = max(bull, bear)
     bias = "long" if diff > 0 else "short" if diff < 0 else None
 
+    # VWAP hold confirmation — now that bias is known we can classify properly
+    if bias:
+        _vwap_hold_state_raw = _vwap_hold_state(session, vwap_ser, bias, lookback=4)
+
     # Soft edge check (used by downstream layers)
     soft_edge = max(bull, bear) >= GO_THRESHOLD and abs(diff) >= MARGIN_GO
     long_edge = soft_edge and diff > 0
@@ -2993,6 +3128,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "secondary_breakout": secondary_breakout_up or secondary_breakout_down,
         "or_retest": _orh_retest_long or _orl_retest_short,
         "bounce_scenario": _bounce_scenario,
+        "vwap_hold_state": _vwap_hold_state_raw,
         "spy_change_pct": spy_chg,
         "qqq_change_pct": qqq_chg,
         "spy_session_change_pct": spy_session_pct,
