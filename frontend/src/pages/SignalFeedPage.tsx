@@ -8,20 +8,17 @@ import {
   BarChart3,
   BellPlus,
   BriefcaseBusiness,
-  BrainCircuit,
   ChevronDown,
   ChevronUp,
   EyeOff,
   Filter,
   Info,
-  LineChart as LineChartIcon,
   RefreshCw,
   Search,
   Sparkles,
   Star,
   X,
 } from 'lucide-react'
-import { Line, LineChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { createSignalFeedAlert, fetchSignalFeed } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES, getEngineRoute } from '../routing/routes'
@@ -241,13 +238,6 @@ function fmtNumber(value?: number | null, digits = 1): string {
   return value.toFixed(digits)
 }
 
-function fmtDate(value?: string): string {
-  if (!value) return '\u2014'
-  const ts = Date.parse(value)
-  if (!Number.isFinite(ts)) return value
-  return new Date(ts).toLocaleDateString()
-}
-
 function fmtRelativeTime(value?: string): string {
   if (!value) return '\u2014'
   const ts = Date.parse(value)
@@ -302,12 +292,6 @@ function normalizeAgreementBadge(row: SignalFeedRow): string {
   return 'PARTIAL_AGREEMENT'
 }
 
-function decisionSummary(decision: SignalFeedDecisionBlock): string {
-  const parts = [decision.market_bias, decision.setup_quality, decision.execution_readiness]
-    .map(part => String(part || '').trim())
-    .filter(Boolean)
-  return parts.length ? parts.join(' \u00b7 ') : 'No decision context yet'
-}
 
 function marketContextTone(value?: string | null): string {
   return getMarketContextBadgeClass(String(value || ''))
@@ -335,25 +319,6 @@ function metricValue(metrics: SignalFeedMetrics | undefined, key: keyof SignalFe
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function SignalFeedSparkline({ points, height = 180 }: { points: Array<{ date: string; close: number }>; height?: number }) {
-  if (!points.length) {
-    return <div className="flex h-[160px] items-center justify-center text-sm text-gray-500">No chart data yet.</div>
-  }
-  return (
-    <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points}>
-          <Tooltip
-            contentStyle={{ backgroundColor: 'var(--chart-tooltip-bg)', border: '1px solid var(--chart-tooltip-border)', borderRadius: 16 }}
-            labelStyle={{ color: 'var(--chart-tooltip-label)' }}
-            formatter={(value: number) => [`$${Number(value).toFixed(2)}`, 'Close']}
-          />
-          <Line type="monotone" dataKey="close" stroke="#38bdf8" strokeWidth={2.25} dot={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
 
 function StatusPill({ value, agreement = false }: { value: string; agreement?: boolean }) {
   return (
@@ -405,6 +370,108 @@ function SourcePill({ source, decision, emphasized = true }: { source: string; d
   )
 }
 
+function engineCardBorder(engine: string): string {
+  if (engine === 'day') return 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-50/60 dark:bg-emerald-900/10'
+  if (engine === 'swing') return 'border-sky-500/30 dark:border-sky-500/25 bg-sky-50/60 dark:bg-sky-900/10'
+  return 'border-violet-500/20 dark:border-violet-500/15 bg-violet-50/40 dark:bg-violet-900/10'
+}
+
+function engineLabelClass(engine: string): string {
+  if (engine === 'day') return 'text-emerald-700 dark:text-emerald-400'
+  if (engine === 'swing') return 'text-sky-700 dark:text-sky-400'
+  return 'text-violet-700 dark:text-violet-400'
+}
+
+function engineLabel(engine: string): string {
+  if (engine === 'day') return '⚡ Day Trade'
+  if (engine === 'swing') return '📈 Swing Trade'
+  return '🏛 Regular / Position'
+}
+
+function EngineCard({ engine, decision, ticker }: { engine: string; decision: SignalFeedDecisionBlock; ticker?: string }) {
+  const engineRoute = ticker ? getEngineRoute(engine, ticker) : null
+  const optionRisk = decision.option_risk_context
+  const showOptionRisk = engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
+  const labelEl = (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${engineLabelClass(engine)}`}>
+      {engineLabel(engine)}
+      {engineRoute && <ArrowUpRight size={10} className="opacity-60" />}
+    </span>
+  )
+  return (
+    <div className={`rounded-xl border p-3 ${engineCardBorder(engine)}`}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        {engineRoute ? (
+          <Link to={engineRoute} className="hover:underline underline-offset-2">{labelEl}</Link>
+        ) : labelEl}
+        <StatusPill value={decision.final_decision} />
+      </div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        <SignalQualityBadge quality={decision.signal_quality || ''} />
+        <ExecTimingBadge timing={decision.execution_timing || ''} />
+        <RiskCatBadge category={decision.risk_category || decision.risk_state || ''} />
+      </div>
+      {decision.reason ? (
+        <p className="text-[11px] leading-relaxed text-secondary line-clamp-2">{decision.reason}</p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted">
+        {decision.expected_holding_period && <span>Hold: <span className="font-semibold text-secondary">~{decision.expected_holding_period}</span></span>}
+        {decision.recommended_contract_duration && <span>Contract: <span className="font-semibold text-secondary">{decision.recommended_contract_duration} DTE</span></span>}
+      </div>
+      {showOptionRisk ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          <OptionRiskPill label="Theta" value={optionRisk.theta_risk} />
+          <OptionRiskPill label="Gamma" value={optionRisk.gamma_risk} />
+          <OptionRiskPill label="IV" value={optionRisk.iv_risk} />
+          <OptionRiskPill label="Liq" value={optionRisk.liquidity_risk} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function RegularEngineBar({ decision, ticker }: { decision: SignalFeedDecisionBlock; ticker?: string }) {
+  const engineRoute = ticker ? getEngineRoute('regular', ticker) : null
+  const labelEl = (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-violet-700 dark:text-violet-400 shrink-0">
+      🏛 Regular / Position
+      {engineRoute && <ArrowUpRight size={10} className="opacity-60" />}
+    </span>
+  )
+  return (
+    <div className={`rounded-xl border px-3 py-2 flex flex-wrap items-center justify-between gap-2 ${engineCardBorder('regular')}`}>
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        {engineRoute ? (
+          <Link to={engineRoute} className="hover:underline underline-offset-2">{labelEl}</Link>
+        ) : labelEl}
+        <StatusPill value={decision.final_decision} />
+        <SignalQualityBadge quality={decision.signal_quality || ''} />
+        {decision.reason ? (
+          <span className="text-[11px] text-secondary line-clamp-1 min-w-0 hidden sm:block">{decision.reason}</span>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <ExecTimingBadge timing={decision.execution_timing || ''} />
+      </div>
+    </div>
+  )
+}
+
+function EngineCardsGrid({ row, canDay, canSwing }: { row: SignalFeedRow; canDay: boolean; canSwing: boolean }) {
+  const hasActiveEngines = canDay || canSwing
+  return (
+    <div className="space-y-2 px-3 pb-2">
+      {hasActiveEngines && (
+        <div className={`grid gap-2 ${canDay && canSwing ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {canDay && <EngineCard engine="day" decision={row.day} ticker={row.ticker} />}
+          {canSwing && <EngineCard engine="swing" decision={row.swing} ticker={row.ticker} />}
+        </div>
+      )}
+      <RegularEngineBar decision={row.regular} ticker={row.ticker} />
+    </div>
+  )
+}
+
 function SignalQualityBadge({ quality }: { quality: string }) {
   const q = String(quality || '').toUpperCase()
   if (!q) return null
@@ -452,143 +519,17 @@ function OptionRiskPill({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DecisionPanel({ title, decision, ticker }: { title: string; decision: SignalFeedDecisionBlock; ticker?: string }) {
-  const navigate = useNavigate()
-  const optionRisk = decision.option_risk_context
-  const showOptionRisk = decision.engine === 'day' && optionRisk && Object.keys(optionRisk).length > 0
-  const engineRoute = ticker ? getEngineRoute(title.toLowerCase(), ticker) : null
 
-  return (
-    <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-heading">{title}</div>
-          <div className="mt-0.5 truncate text-[11px] text-muted">{decisionSummary(decision)}</div>
-        </div>
-        <StatusPill value={decision.final_decision} />
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <SignalQualityBadge quality={decision.signal_quality || ''} />
-        <ExecTimingBadge timing={decision.execution_timing || ''} />
-        <RiskCatBadge category={decision.risk_category || decision.risk_state || ''} />
-      </div>
-      <div className="mt-2 space-y-2">
-        <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Reason</div>
-          <div className="mt-1 text-sm text-secondary">{decision.reason || 'No reason provided.'}</div>
-        </div>
-        {(decision.expected_holding_period || decision.recommended_contract_duration) ? (
-          <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-            <div className="flex items-center gap-3 text-[11px] text-muted">
-              {decision.expected_holding_period && <span>Hold: <span className="font-semibold text-secondary">~{decision.expected_holding_period}</span></span>}
-              {decision.recommended_contract_duration && <span>Contract: <span className="font-semibold text-secondary">{decision.recommended_contract_duration} DTE</span></span>}
-            </div>
-          </div>
-        ) : null}
-        {showOptionRisk ? (
-          <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Option execution</div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              <OptionRiskPill label="Theta" value={optionRisk.theta_risk} />
-              <OptionRiskPill label="Gamma" value={optionRisk.gamma_risk} />
-              <OptionRiskPill label="IV" value={optionRisk.iv_risk} />
-              <OptionRiskPill label="Liquidity" value={optionRisk.liquidity_risk} />
-            </div>
-            {optionRisk.suggested_contract_window ? (
-              <div className="mt-2 text-[11px] font-semibold text-violet-600 dark:text-violet-300">
-                Suggested window: {optionRisk.suggested_contract_window}
-              </div>
-            ) : null}
-            {optionRisk.option_execution_warning ? (
-              <div className="mt-1 text-xs leading-relaxed text-secondary">
-                {optionRisk.option_execution_warning}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {engineRoute ? (
-          <Link to={engineRoute} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold px-3 py-2 text-xs transition-colors">
-            Open {title} Engine
-            <ArrowUpRight size={13} />
-          </Link>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function ExpandedAnalysis({
-  row,
-  alertBusy,
-  canDay,
-  canSwing,
-  onAnalyze,
-  onViewChart,
-  onCreateAlert,
-  onAddToPositions,
-}: {
-  row: SignalFeedRow
-  alertBusy: boolean
-  canDay: boolean
-  canSwing: boolean
-  onAnalyze: () => void
-  onViewChart: () => void
-  onCreateAlert: () => void
-  onAddToPositions: () => void
-}) {
-  return (
-    <div className="min-w-0 space-y-3 border-t border-slate-100 dark:border-white/[0.05] px-4 py-3">
-      <div className="min-w-0 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-3">
-          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-heading">
-              <LineChartIcon size={14} className="text-info" />
-              Price action
-            </div>
-            <div className="mt-2">
-              <SignalFeedSparkline points={row.chart_points} />
-            </div>
-          </div>
-          {(canDay || canSwing) && (
-          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-slate-800/40 p-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-heading">
-              <BrainCircuit size={14} className="text-accent" />
-              AI coach
-            </div>
-            <div className="mt-2 text-sm leading-5 text-secondary">{row.ai_summary}</div>
-            {row.agreement_reason ? (
-              <div className="mt-2 rounded-lg border border-slate-100 dark:border-white/[0.05] bg-white dark:bg-slate-800/50 p-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Engine consensus</div>
-                <div className="mt-1 text-sm text-secondary">{row.agreement_reason}</div>
-              </div>
-            ) : null}
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted">
-              {row.notes?.trim() && <span><span className="font-semibold">Note:</span> {row.notes.trim()}</span>}
-              {row.added_at && <span>Added {fmtDate(row.added_at)}</span>}
-            </div>
-          </div>
-          )}
-        </div>
-        <div className="space-y-3">
-          {canDay && <DecisionPanel title="Day" decision={row.day} ticker={row.ticker} />}
-          {canSwing && <DecisionPanel title="Swing" decision={row.swing} ticker={row.ticker} />}
-          <DecisionPanel title="Regular" decision={row.regular} ticker={row.ticker} />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 const SignalFeedCard = memo(function SignalFeedCard({
   row,
-  isOpen,
+  isCompact,
   isFavorite,
   isIgnored,
   alertBusy,
-  sourceFilter,
   canDay,
   canSwing,
-  onToggle,
+  onToggleCompact,
   onAnalyze,
   onViewChart,
   onCreateAlert,
@@ -597,11 +538,10 @@ const SignalFeedCard = memo(function SignalFeedCard({
   onIgnore,
 }: {
   row: SignalFeedRow
-  isOpen: boolean
+  isCompact: boolean
   isFavorite: boolean
   isIgnored: boolean
   alertBusy: boolean
-  sourceFilter: SourceFilter
   canDay: boolean
   canSwing: boolean
   onAnalyze: () => void
@@ -610,13 +550,12 @@ const SignalFeedCard = memo(function SignalFeedCard({
   onAddToPositions: () => void
   onFavorite: () => void
   onIgnore: () => void
-  onToggle: (id: string) => void
+  onToggleCompact: (id: string) => void
 }) {
   const metrics = row.metrics
   const agreementBadge = normalizeAgreementBadge(row)
   const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
   const trendTone = trendClass(row.trend)
-  const marketContext = metrics?.market_context || 'MARKET_MIXED'
   const rsiAppearance = getMetricChipAppearance('rsi', metricValue(metrics, 'rsi'))
   const rsAppearance = getMetricChipAppearance('relative_strength', metricValue(metrics, 'relative_strength'))
   const volumeAppearance = getMetricChipAppearance('volume_ratio', metricValue(metrics, 'volume_ratio'))
@@ -625,7 +564,7 @@ const SignalFeedCard = memo(function SignalFeedCard({
   const updatedLabel = row.cache_age_seconds != null && Number.isFinite(row.cache_age_seconds)
     ? `${Math.max(0, Math.round(row.cache_age_seconds))}s ago`
     : 'cached'
-  const handleToggle = useCallback(() => onToggle(row.id), [onToggle, row.id])
+  const handleToggleCompact = useCallback(() => onToggleCompact(row.id), [onToggleCompact, row.id])
 
   const accentBorder =
     agreementBadge === 'STRONG_BULLISH' ? 'border-l-emerald-500'
@@ -656,14 +595,10 @@ const SignalFeedCard = memo(function SignalFeedCard({
             </button>
             <StatusPill value={agreementBadge} agreement />
           </div>
-          {/* Row 2: company · sector · engine pills · updated */}
+          {/* Row 2: company · sector · updated */}
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted">
             <span className="text-secondary font-medium">{row.company_name || row.ticker}</span>
             {row.sector && <><span className="opacity-30">·</span><span className="opacity-60">{row.sector}</span></>}
-            <span className="opacity-30">·</span>
-            {canDay && <SourcePill source="day" decision={row.day_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'day'} />}
-            {canSwing && <SourcePill source="swing" decision={row.swing_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'swing'} />}
-            <SourcePill source="regular" decision={row.regular_decision} emphasized={sourceFilter === 'all' || sourceFilter === 'regular'} />
             <span className="opacity-30">·</span>
             <span>{updatedLabel}</span>
           </div>
@@ -684,6 +619,17 @@ const SignalFeedCard = memo(function SignalFeedCard({
         </div>
       </div>
 
+      {/* Engine Cards Grid \u2014 or compact pills */}
+      {isCompact ? (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+          {canDay && <SourcePill source="day" decision={row.day_decision} />}
+          {canSwing && <SourcePill source="swing" decision={row.swing_decision} />}
+          <SourcePill source="regular" decision={row.regular_decision} />
+        </div>
+      ) : (
+        <EngineCardsGrid row={row} canDay={canDay} canSwing={canSwing} />
+      )}
+
       {/* Metrics chips */}
       <div className="flex flex-wrap gap-1 px-3 pb-2">
         <CompactChip label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} tone={rsiAppearance.value} chrome={rsiAppearance.container} />
@@ -693,11 +639,13 @@ const SignalFeedCard = memo(function SignalFeedCard({
         <CompactChip label="Trend" value={row.trend || 'NEUTRAL'} tone={trendTone} chrome={trendAppearance.container} />
       </div>
 
-      {/* AI insight strip */}
-      <div className="flex items-start gap-1.5 px-3 pb-2 text-sm text-secondary">
-        <Sparkles size={11} className="mt-px shrink-0 text-violet-400" />
-        <p className="min-w-0 leading-snug line-clamp-2">{row.ai_summary}</p>
-      </div>
+      {/* AI insight \u2014 shown in compact mode; in full mode it lives in the Chart details panel */}
+      {isCompact && (
+        <div className="flex items-start gap-1.5 px-3 pb-2 text-sm text-secondary">
+          <Sparkles size={11} className="mt-px shrink-0 text-violet-400" />
+          <p className="min-w-0 leading-snug line-clamp-2">{row.ai_summary}</p>
+        </div>
+      )}
 
       {/* Action footer */}
       <div className="flex items-center gap-1 border-t border-slate-100 dark:border-white/[0.05] px-3 py-1.5">
@@ -713,33 +661,20 @@ const SignalFeedCard = memo(function SignalFeedCard({
         <div className="relative ml-auto flex items-center gap-1">
           <button
             type="button"
+            onClick={handleToggleCompact}
+            className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
+          >
+            {isCompact ? <><ChevronDown size={10} />Expand</> : <><ChevronUp size={10} />Compact</>}
+          </button>
+          <button
+            type="button"
             onClick={onIgnore}
             className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
           >
             <EyeOff size={10} /> {isIgnored ? 'Unignore' : 'Ignore'}
           </button>
-          <button
-            type="button"
-            onClick={handleToggle}
-            className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}
-          >
-            {isOpen ? <><ChevronUp size={10} />Less</> : <><ChevronDown size={10} />Details</>}
-          </button>
         </div>
       </div>
-
-      {isOpen ? (
-        <ExpandedAnalysis
-          row={row}
-          alertBusy={alertBusy}
-          canDay={canDay}
-          canSwing={canSwing}
-          onAnalyze={onAnalyze}
-          onViewChart={onViewChart}
-          onCreateAlert={onCreateAlert}
-          onAddToPositions={onAddToPositions}
-        />
-      ) : null}
     </article>
   )
 })
@@ -829,6 +764,16 @@ export default function SignalFeedPage() {
   const [showInfo, setShowInfo] = useState(false)
   const [showIgnored, setShowIgnored] = useState(false)
   const [onlyIgnored, setOnlyIgnored] = useState(false)
+  const [compactIds, setCompactIds] = useState<Set<string>>(new Set())
+
+  const toggleCompact = useCallback((id: string) => {
+    setCompactIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   useEffect(() => { saveJson(FAVORITES_KEY, favorites) }, [favorites])
   useEffect(() => { saveJson(FILTERS_EXPANDED_KEY, filtersExpanded) }, [filtersExpanded])
@@ -1324,12 +1269,12 @@ export default function SignalFeedPage() {
         ) : (
           <div className="grid gap-4">
             {visibleRows.map(row => {
-              const isOpen = expandedId === row.id
               const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
+              const isCompact = compactIds.has(row.id)
               return (
-                <SignalFeedCard key={row.id} row={row} sourceFilter={sourceFilter} canDay={canDay} canSwing={canSwing}
-                  isOpen={isOpen} isFavorite={isFavorite} isIgnored={ignoredSet.has(row.ticker.toUpperCase())} alertBusy={Boolean(alertBusy[row.id])}
-                  onToggle={toggleExpanded} onAnalyze={() => handleAnalyze(row.ticker)}
+                <SignalFeedCard key={row.id} row={row} canDay={canDay} canSwing={canSwing}
+                  isCompact={isCompact} isFavorite={isFavorite} isIgnored={ignoredSet.has(row.ticker.toUpperCase())} alertBusy={Boolean(alertBusy[row.id])}
+                  onToggleCompact={toggleCompact} onAnalyze={() => handleAnalyze(row.ticker)}
                   onViewChart={() => handleTickerDetail(row)}
                   onCreateAlert={() => void handleCreateAlert(row)}
                   onAddToPositions={() => handleAddToPositions(row)}
