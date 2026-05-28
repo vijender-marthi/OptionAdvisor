@@ -3351,11 +3351,15 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
             now_ms = int(time.time() * 1000)
             prev   = get_ticker_state_last(email, ticker, "DAY")
 
+            ew        = dr.entry_window
+            now_ew_status = (ew.status if ew else "WAIT")
+
             if prev is None:
                 inplay_since = now_ms if now_state == 3 else 0
                 upsert_ticker_state_last(
                     email, ticker, "DAY", now_state, now_action, sd,
                     target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                    entry_window_status=now_ew_status, entry_window_alerted=0,
                 )
             else:
                 prev_state  = int(prev.get("state_num") or 1)
@@ -3367,6 +3371,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     upsert_ticker_state_last(
                         email, ticker, "DAY", now_state, now_action, sd,
                         target_hit=0, inplay_since_ms=inplay_since, weak_breakout_alerted=0,
+                        entry_window_status=now_ew_status, entry_window_alerted=0,
                     )
                 else:
                     state_changed = prev_state != now_state
@@ -3382,6 +3387,9 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                         inplay_since      = int(prev.get("inplay_since_ms") or now_ms)
                     # enter_now_alerted resets whenever state changes (new setup = new alert allowed)
                     carry_enter_now   = 0 if state_changed else int(prev.get("enter_now_alerted") or 0)
+
+                    prev_ew_status    = prev.get("entry_window_status") or "WAIT"
+                    carry_ew_alerted  = 0 if state_changed else int(prev.get("entry_window_alerted") or 0)
 
                     last_price_val = eg.get("current_price") or m.get("last_price")
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
@@ -3571,12 +3579,46 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                                     "decisionMsg":  f"Price ${lp:.2f} has not cleared {stop_level} + 0.3% threshold. Momentum is stalling — protect capital now.",
                                 })
 
+                    # ── Entry window CLOSING alert ────────────────────────
+                    ew_alerted_to_store = carry_ew_alerted
+                    scan_verdict_ew = _norm_day_trade_verdict(dr.verdict)
+                    ew_was_open   = prev_ew_status == "OPEN"
+                    ew_now_narrow = now_ew_status in ("CLOSING", "CLOSED")
+                    if (ew_was_open and ew_now_narrow and not carry_ew_alerted
+                            and scan_verdict_ew in {"GO", "STRONG GO", "STRONG_GO"}):
+                        ew_alerted_to_store = 1
+                        _ew_reason = ew.reason if ew else "Entry window is closing."
+                        _ew_price  = last_price_val
+                        day_escalations.append({
+                            "id":           f"dt-ewclose-{ticker}-{now_ms}",
+                            "alertType":    "WINDOW_CLOSING",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": _ew_price,
+                            "vwap":         eg.get("vwap") or m.get("vwap"),
+                            "orh":          orh_val,
+                            "orl":          orl_val,
+                            "scalp_target": eg.get("scalp_target"),
+                            "riskBelow":    eg.get("risk_below"),
+                            "pullbackTarget": ew.pullback_target if ew else None,
+                            "rrRatio":      ew.rr_ratio if ew else None,
+                            "summary":      _ew_reason,
+                            "decisionMsg":  f"Window moving to {now_ew_status}. {_ew_reason}",
+                        })
+
                     upsert_ticker_state_last(
                         email, ticker, "DAY", now_state, now_action, sd,
                         target_hit=target_to_store,
                         inplay_since_ms=inplay_since,
                         weak_breakout_alerted=weak_bo_to_store,
                         enter_now_alerted=enter_now_to_store,
+                        entry_window_status=now_ew_status,
+                        entry_window_alerted=ew_alerted_to_store,
                     )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)
