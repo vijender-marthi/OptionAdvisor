@@ -4031,6 +4031,7 @@ class JournalUpdateRequest(_BM):
     trade_type: Optional[str] = None
     engine_signal: Optional[str] = None
     engine_state: Optional[int] = None
+    legs: Optional[list[dict]] = None
 
 
 def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:
