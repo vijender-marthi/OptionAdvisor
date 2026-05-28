@@ -582,52 +582,188 @@ export default function TradeCommandCenter() {
               </section>
             )}
 
-            {/* ── Monitoring: lower signals (collapsed) ── */}
-            {lowSignals.length > 0 && (
-              <details className="group" style={{ borderRadius: 12 }}>
-                <summary style={{
-                  display: 'flex', cursor: 'pointer', listStyle: 'none', alignItems: 'center', gap: 8,
-                  border: `1px solid ${C.border}`, background: C.card, borderRadius: 12,
-                  padding: '10px 16px', fontSize: 12, color: C.textSub, userSelect: 'none',
-                }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.textFaint }} />
-                  <span style={{ fontWeight: 600 }}>Monitoring — {lowSignals.length} lower signals</span>
-                  <span style={{ color: C.textMuted }}>Wait + lower-confidence Watch</span>
-                  <ChevronDown size={12} color={C.textMuted} style={{ marginLeft: 'auto' }} className="group-open:rotate-180 transition-transform" />
-                </summary>
-                <div style={{
-                  display: 'flex', flexWrap: 'wrap', gap: 8,
-                  border: `1px solid ${C.border}`, borderTop: 'none',
-                  borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
-                  background: C.card, padding: '12px 16px',
-                }}>
-                  {lowSignals.map(rec => {
-                    const eng = rec.detail_route_key
-                    const chipStyle = engineChipStyle(eng, isDark)
-                    return (
-                      <button
-                        key={rec.id}
-                        type="button"
-                        onClick={() => goToRec(rec)}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          borderRadius: 8, border: `1px solid ${C.border}`,
-                          padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                          background: 'transparent', color: C.textSub,
-                          transition: 'background 0.12s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.cardHover}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                      >
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.text }}>{rec.ticker}</span>
-                        <span style={{ border: '1px solid', borderRadius: 4, padding: '1px 4px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle }}>{eng.toUpperCase()}</span>
-                        <span style={{ borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...verdictBadgeStyle(rec.verdict_tone, isDark) }}>{rec.verdict_label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </details>
-            )}
+            {/* ── Monitoring: lower signals — grouped by ticker ── */}
+            {lowSignals.length > 0 && (() => {
+              // Group by ticker, sort alphabetically
+              const byTicker = new Map<string, TccRec[]>()
+              ;[...lowSignals]
+                .sort((a, b) => a.ticker.localeCompare(b.ticker))
+                .forEach(rec => {
+                  const g = byTicker.get(rec.ticker) ?? []
+                  g.push(rec)
+                  byTicker.set(rec.ticker, g)
+                })
+              const groups = [...byTicker.entries()]
+
+              return (
+                <details className="group" style={{ borderRadius: 12 }}>
+                  <summary style={{
+                    display: 'flex', cursor: 'pointer', listStyle: 'none', alignItems: 'center', gap: 8,
+                    border: `1px solid ${C.border}`, background: C.card, borderRadius: 12,
+                    padding: '10px 16px', fontSize: 12, color: C.textSub, userSelect: 'none',
+                  }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.textFaint }} />
+                    <span style={{ fontWeight: 600 }}>Monitoring</span>
+                    <span style={{
+                      background: isDark ? 'rgba(71,85,105,0.4)' : 'rgba(107,114,128,0.1)',
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700, color: C.textMuted,
+                    }}>{groups.length} tickers · {lowSignals.length} signals</span>
+                    <span style={{ color: C.textMuted, fontSize: 11 }}>Wait + lower-confidence Watch · sorted A→Z</span>
+                    <ChevronDown size={12} color={C.textMuted} style={{ marginLeft: 'auto' }} className="group-open:rotate-180 transition-transform" />
+                  </summary>
+
+                  <div style={{
+                    border: `1px solid ${C.border}`, borderTop: 'none',
+                    borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+                    background: C.card, padding: '12px 14px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                    gap: 10,
+                  }}>
+                    {groups.map(([ticker, recs]) => {
+                      // Best verdict across all engines for this ticker
+                      const bestRec = recs.reduce((best, r) => r.verdict_rank > best.verdict_rank ? r : best, recs[0])
+                      const chgPct = bestRec.price_change_pct
+                      const chgColor = chgPct != null ? (chgPct >= 0 ? '#10B981' : '#EF4444') : C.textMuted
+
+                      return (
+                        <div
+                          key={ticker}
+                          style={{
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            borderLeft: `3px solid ${verdictAccentColor(bestRec.verdict_tone)}`,
+                            background: isDark ? 'rgba(15,23,42,0.6)' : '#FAFAFA',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {/* Ticker header */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 12px',
+                            borderBottom: `1px solid ${C.borderFaint}`,
+                            gap: 8,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: C.text, letterSpacing: '-0.02em' }}>
+                                {ticker}
+                              </span>
+                              {bestRec.last_price != null && (
+                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.textMuted }}>
+                                  ${bestRec.last_price.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                            {chgPct != null && (
+                              <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: chgColor, whiteSpace: 'nowrap' }}>
+                                {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Engine rows */}
+                          {recs.map(rec => {
+                            const eng = rec.detail_route_key
+                            const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+                            const chipStyle = engineChipStyle(eng, isDark)
+                            const badgeStyle = verdictBadgeStyle(rec.verdict_tone, isDark)
+                            const signalLine = rec.execution_timing || rec.signal_quality || rec.reason || rec.strategy || ''
+                            const dirLine = rec.direction || rec.strategy || ''
+
+                            return (
+                              <button
+                                key={rec.id}
+                                type="button"
+                                onClick={() => goToRec(rec)}
+                                style={{
+                                  display: 'block', width: '100%', textAlign: 'left',
+                                  padding: '8px 12px', cursor: 'pointer', background: 'transparent',
+                                  borderBottom: `1px solid ${C.borderFaint}`,
+                                  transition: 'background 0.1s',
+                                }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.cardHover}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                              >
+                                {/* Top row: engine chip + verdict + confidence */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <span style={{
+                                    border: '1px solid', borderRadius: 4, padding: '1px 5px',
+                                    fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle,
+                                  }}>{eng === 'regular' ? 'REG' : eng.toUpperCase()}</span>
+                                  <span style={{
+                                    borderRadius: 4, padding: '1px 6px',
+                                    fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...badgeStyle,
+                                  }}>{rec.verdict_label}</span>
+                                  <span style={{
+                                    marginLeft: 'auto', fontFamily: 'monospace', fontSize: 11, fontWeight: 700,
+                                    color: conf >= 70 ? '#10B981' : conf >= 50 ? '#F59E0B' : C.textMuted,
+                                  }}>{conf}%</span>
+                                </div>
+
+                                {/* Direction / strategy */}
+                                {dirLine && (
+                                  <div style={{ fontSize: 10, color: C.textSub, marginBottom: 2, fontWeight: 600 }}>
+                                    {dirLine}
+                                  </div>
+                                )}
+
+                                {/* Signal / reason line */}
+                                {signalLine && (
+                                  <div style={{
+                                    fontSize: 10, color: C.textMuted,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    maxWidth: '100%',
+                                  }} title={signalLine}>
+                                    {signalLine}
+                                  </div>
+                                )}
+
+                                {/* Entry / Target / Stop — only if available */}
+                                {(rec.entry_zone || rec.target || rec.stop_loss) && (
+                                  <div style={{ display: 'flex', gap: 10, marginTop: 5, fontSize: 10, fontFamily: 'monospace' }}>
+                                    {rec.entry_zone && (
+                                      <span style={{ color: C.textSub }}>
+                                        <span style={{ fontSize: 9, color: C.textMuted }}>Entry </span>{rec.entry_zone}
+                                      </span>
+                                    )}
+                                    {rec.target && (
+                                      <span style={{ color: '#10B981' }}>
+                                        <span style={{ fontSize: 9, color: C.textMuted }}>T </span>{rec.target}
+                                      </span>
+                                    )}
+                                    {rec.stop_loss && (
+                                      <span style={{ color: '#EF4444' }}>
+                                        <span style={{ fontSize: 9, color: C.textMuted }}>S </span>{rec.stop_loss}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </button>
+                            )
+                          })}
+
+                          {/* Footer: expiry / risk level from best rec */}
+                          {(bestRec.expiry || bestRec.risk_level || bestRec.risk_category) && (
+                            <div style={{
+                              display: 'flex', gap: 10, padding: '5px 12px',
+                              fontSize: 9, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em',
+                            }}>
+                              {bestRec.expiry && <span>Exp {bestRec.expiry}</span>}
+                              {(bestRec.risk_level || bestRec.risk_category) && (
+                                <span style={{ color: bestRec.risk_level === 'HIGH' || bestRec.risk_category === 'HIGH' ? '#EF4444' : C.textFaint }}>
+                                  {bestRec.risk_level || bestRec.risk_category} RISK
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </details>
+              )
+            })()}
 
           </>
         ) : null}
