@@ -94,6 +94,18 @@ SESSION_EOD_CLOSING   = 380   # 15:50–16:00 ET (last 10 minutes — exit only)
 
 
 @dataclass
+class EntryWindow:
+    status: str              # "OPEN" | "CLOSING" | "CLOSED" | "WAIT"
+    suggested_action: str    # "ENTER_NOW" | "WAIT_PULLBACK" | "WAIT_SETUP" | "STAND_ASIDE"
+    rr_ratio: float          # reward:risk at current price (0.0 when uncalculable)
+    price_vs_vwap: str       # "BELOW_2S"|"BELOW_1S"|"AT"|"ABOVE_1S"|"ABOVE_2S"|"FAR_ABOVE"
+    price_vs_orh: str        # "BELOW"|"AT"|"ABOVE"|"EXTENDED"
+    chasing_risk: str        # "LOW" | "MEDIUM" | "HIGH"
+    reason: str              # one sentence shown to user
+    pullback_target: float | None   # price level to wait for (ORH or VWAP)
+
+
+@dataclass
 class DayTradeScan:
     ticker: str
     company_name: str
@@ -107,6 +119,7 @@ class DayTradeScan:
     trader_decision: dict[str, Any]
     entry_guidance: dict[str, Any]
     option_risk_context: dict[str, Any]
+    entry_window: EntryWindow | None = None
 
 
 def _ensure_et_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -1140,6 +1153,150 @@ def _build_day_exit_rules(
     })
 
     return rules
+
+
+def _compute_entry_window(
+    *,
+    verdict: str,
+    bias: str | None,
+    last: float,
+    vwap: float,
+    vwap_upper1: float,
+    vwap_upper2: float,
+    vwap_lower1: float,
+    vwap_lower2: float,
+    or_high: float,
+    or_low: float,
+    stop: float | None,
+    target: float | None,
+) -> EntryWindow:
+    """Classify the current entry window quality for an active GO/STRONG GO setup."""
+    _NO_VERDICT = {"WAIT", "AVOID", "NO_EDGE", "NO-GO"}
+    if verdict in _NO_VERDICT:
+        return EntryWindow(
+            status="WAIT",
+            suggested_action="WAIT_SETUP",
+            rr_ratio=0.0,
+            price_vs_vwap="AT",
+            price_vs_orh="BELOW",
+            chasing_risk="LOW",
+            reason="No directional edge — wait for setup to develop.",
+            pullback_target=None,
+        )
+
+    # ── Price vs VWAP bands ───────────────────────────────────────────────────
+    if vwap > 0:
+        if last >= vwap_upper2 * 0.995:
+            price_vs_vwap = "FAR_ABOVE" if last > vwap_upper2 * 1.005 else "ABOVE_2S"
+        elif last >= vwap_upper1 * 0.995:
+            price_vs_vwap = "ABOVE_1S"
+        elif last <= vwap_lower2 * 1.005:
+            price_vs_vwap = "BELOW_2S"
+        elif last <= vwap_lower1 * 1.005:
+            price_vs_vwap = "BELOW_1S"
+        else:
+            price_vs_vwap = "AT"
+    else:
+        price_vs_vwap = "AT"
+
+    # ── Price vs OR high ──────────────────────────────────────────────────────
+    if or_high > 0:
+        or_range = or_high - or_low if or_low > 0 else or_high * 0.005
+        if last > or_high + or_range:
+            price_vs_orh = "EXTENDED"
+        elif last > or_high * 1.001:
+            price_vs_orh = "ABOVE"
+        elif last >= or_high * 0.998:
+            price_vs_orh = "AT"
+        else:
+            price_vs_orh = "BELOW"
+    else:
+        price_vs_orh = "BELOW"
+
+    # ── R/R ratio ─────────────────────────────────────────────────────────────
+    rr_ratio = 0.0
+    if stop and target and last > 0:
+        if bias == "long":
+            reward = target - last
+            risk = last - stop
+        else:
+            reward = last - target
+            risk = stop - last
+        if risk > 0:
+            rr_ratio = round(reward / risk, 2)
+
+    # ── Chasing risk ─────────────────────────────────────────────────────────
+    if price_vs_vwap in ("FAR_ABOVE", "ABOVE_2S") or price_vs_orh == "EXTENDED":
+        chasing_risk = "HIGH"
+    elif price_vs_vwap == "ABOVE_1S" or price_vs_orh == "ABOVE":
+        chasing_risk = "MEDIUM"
+    else:
+        chasing_risk = "LOW"
+
+    # ── Status + action + reason ──────────────────────────────────────────────
+    if bias == "long":
+        if price_vs_vwap in ("FAR_ABOVE", "ABOVE_2S"):
+            status = "CLOSED"
+            suggested_action = "STAND_ASIDE"
+            reason = f"Price at +2σ (${vwap_upper2:.2f}) — extended. Risk/reward unfavorable; wait for a pullback to VWAP or OR high."
+            pullback_target = or_high if or_high > vwap else vwap
+        elif price_vs_vwap == "ABOVE_1S" or price_vs_orh == "EXTENDED":
+            status = "CLOSING"
+            suggested_action = "WAIT_PULLBACK"
+            pt = or_high if or_high > vwap else vwap
+            reason = f"Price stretched above +1σ — entry timing poor. Wait for pullback toward ${pt:.2f}."
+            pullback_target = round(pt, 2)
+        elif rr_ratio > 0 and rr_ratio < 1.5:
+            status = "CLOSING"
+            suggested_action = "WAIT_PULLBACK"
+            pullback_target = round(vwap, 2) if vwap > 0 else None
+            reason = f"R/R {rr_ratio:.1f}:1 — below minimum threshold. Wait for a better entry near VWAP."
+        else:
+            status = "OPEN"
+            suggested_action = "ENTER_NOW"
+            pullback_target = None
+            rr_str = f" R/R {rr_ratio:.1f}:1." if rr_ratio > 0 else ""
+            reason = f"Price in favorable zone — VWAP support intact, OR breakout confirmed.{rr_str}"
+    elif bias == "short":
+        if price_vs_vwap in ("BELOW_2S",):
+            status = "CLOSED"
+            suggested_action = "STAND_ASIDE"
+            reason = f"Price at -2σ (${vwap_lower2:.2f}) — extended. Risk/reward unfavorable; wait for a bounce."
+            pullback_target = or_low if or_low > 0 else vwap
+        elif price_vs_vwap == "BELOW_1S":
+            status = "CLOSING"
+            suggested_action = "WAIT_PULLBACK"
+            pt = or_low if or_low > 0 else vwap
+            reason = f"Price stretched below -1σ — entry timing poor. Wait for bounce toward ${pt:.2f}."
+            pullback_target = round(pt, 2)
+        elif rr_ratio > 0 and rr_ratio < 1.5:
+            status = "CLOSING"
+            suggested_action = "WAIT_PULLBACK"
+            pullback_target = round(vwap, 2) if vwap > 0 else None
+            reason = f"R/R {rr_ratio:.1f}:1 — below minimum threshold. Wait for a better entry near VWAP."
+        else:
+            status = "OPEN"
+            suggested_action = "ENTER_NOW"
+            pullback_target = None
+            rr_str = f" R/R {rr_ratio:.1f}:1." if rr_ratio > 0 else ""
+            reason = f"Price in favorable short zone — VWAP resistance intact.{rr_str}"
+    else:
+        status = "WAIT"
+        suggested_action = "WAIT_SETUP"
+        chasing_risk = "LOW"
+        reason = "No directional bias — wait for a clear setup."
+        pullback_target = None
+
+    return EntryWindow(
+        status=status,
+        suggested_action=suggested_action,
+        rr_ratio=rr_ratio,
+        price_vs_vwap=price_vs_vwap,
+        price_vs_orh=price_vs_orh,
+        chasing_risk=chasing_risk,
+        reason=reason,
+        pullback_target=pullback_target,
+    )
 
 
 def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str]) -> dict:
@@ -2952,10 +3109,26 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     option_risk_context = build_day_option_risk_context(t, info)
 
+    _verdict_val = resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value
+    entry_window = _compute_entry_window(
+        verdict=_verdict_val,
+        bias=bias,
+        last=last,
+        vwap=metrics.get("vwap") or 0.0,
+        vwap_upper1=metrics.get("vwap_upper1") or 0.0,
+        vwap_upper2=metrics.get("vwap_upper2") or 0.0,
+        vwap_lower1=metrics.get("vwap_lower1") or 0.0,
+        vwap_lower2=metrics.get("vwap_lower2") or 0.0,
+        or_high=metrics.get("or_high") or 0.0,
+        or_low=metrics.get("or_low") or 0.0,
+        stop=entry_guidance.get("risk_below"),
+        target=entry_guidance.get("scalp_target"),
+    )
+
     scan = DayTradeScan(
         ticker=t,
         company_name=company,
-        verdict=resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value,
+        verdict=_verdict_val,
         bias=bias,
         bull_score=round(bull, 2),
         bear_score=round(bear, 2),
@@ -2965,6 +3138,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         trader_decision=trader_decision,
         entry_guidance=entry_guidance,
         option_risk_context=option_risk_context,
+        entry_window=entry_window,
     )
     # Validate scan invariants before caching
     _issues: list[str] = []
