@@ -543,12 +543,13 @@ function EntryCard({
               const hasOptPremium = entry.net_credit !== 0
               const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0        // $/share
               const entryPerCtx = entryPerSh * 100                                       // $/contract
-              // current option value per share = entry + pnl_per_share
-              const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
+              // current_pnl = 0 means no valid strike — MTM unavailable
+              const hasMtm      = hasOptPremium && entry.current_pnl !== 0
+              const curPerSh    = hasMtm ? entryPerSh + (entry.current_pnl / 100) : 0
               const curPerCtx   = curPerSh * 100
 
               const ep = hasOptPremium ? entryPerCtx : entry.underlying_entry
-              const cp = hasOptPremium ? curPerCtx   : entry.current_price
+              const cp = hasMtm ? curPerCtx : (hasOptPremium ? 0 : entry.current_price)
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
               const pct  = hasBoth && ep > 0 ? (diff / ep) * 100 : 0
@@ -671,8 +672,10 @@ function EntryCard({
                   // net_credit per share; current_pnl per contract
                   const entryPerSh  = hasOptPremium ? Math.abs(entry.net_credit) : 0
                   const entryPerCtx = entryPerSh * 100
-                  const curPerSh    = hasOptPremium ? entryPerSh + (entry.current_pnl / 100) : 0
-                  const curPerCtx   = curPerSh * 100
+                  // current_pnl = 0 means MTM unavailable (no valid strike on legs)
+                  const hasMtm      = hasOptPremium && entry.current_pnl !== 0
+                  const curPerSh    = hasMtm ? entryPerSh + (entry.current_pnl / 100) : null
+                  const curPerCtx   = curPerSh !== null ? curPerSh * 100 : null
                   const pnlPerCtx   = entry.current_pnl   // already per contract
 
                   return (
@@ -684,9 +687,13 @@ function EntryCard({
                             <span className="text-gray-600"> (${entryPerCtx.toFixed(0)}/contract)</span>
                           </span>
                           <span className="text-gray-500">
-                            Est. current: <span className="font-mono text-gray-300">${curPerSh.toFixed(2)}/sh</span>
-                            <span className="text-gray-600"> (${curPerCtx.toFixed(0)}/contract)</span>
+                            Est. current:{' '}
+                            {curPerSh !== null
+                              ? <><span className="font-mono text-gray-300">${curPerSh.toFixed(2)}/sh</span><span className="text-gray-600"> (${curPerCtx!.toFixed(0)}/contract)</span></>
+                              : <span className="font-mono text-gray-500">N/A — no strike data</span>
+                            }
                           </span>
+                          {curPerCtx !== null && (
                           <span className="text-gray-500">
                             Option P&L: <PriceDiff current={curPerCtx} entry={entryPerCtx} />
                             {Math.abs(pnlPerCtx) > 0 && (
@@ -695,6 +702,7 @@ function EntryCard({
                               </span>
                             )}
                           </span>
+                          )}
                           <span className="text-gray-500">
                             Stock: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
                             {entry.underlying_entry > 0 && (

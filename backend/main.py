@@ -4043,10 +4043,13 @@ def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:
     from backtest import bs_price, RISK_FREE_RATE
     pnl = 0.0
     for leg in legs:
+        strike = float(leg.get("strike", 0))
+        if strike <= 0:
+            # No valid strike — cannot price with BS; skip this leg (contributes 0 P&L)
+            continue
         iv = float(leg.get("iv", 0) or 0)
         if iv <= 0.005:
             iv = 0.25  # fallback
-        strike     = float(leg.get("strike", 0))
         entry_p    = float(leg.get("mid_price", 0))
         opt_type   = str(leg.get("option_type", "CALL")).upper()
         action     = str(leg.get("action", "BUY")).upper()
