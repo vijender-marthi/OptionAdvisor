@@ -56,7 +56,6 @@ def _scan_cache_ttl() -> int:
     in_market = 9 * 60 + 30 <= minutes < 16 * 60
     return _SCAN_CACHE_TTL_MARKET if in_market else _SCAN_CACHE_TTL_OFF
 
-Verdict = Literal["STRONG GO", "GO", "WATCH", "NO-GO", "WAIT"]
 Bias = Optional[Literal["long", "short"]]
 
 OR_MINUTES = 15  # opening range = first 15 × 1m bars of RTH
@@ -2636,27 +2635,27 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     if session_minutes_elapsed < 5:
         prefix = [f"First {session_minutes_elapsed} minutes — opening range not yet established. No entries."]
     elif vix_level is not None and vix_level >= VIX_NO_GO:
-        prefix = [f"VIX very high ({vix_level:.0f}) — avoid new day-trade risk."]
+        prefix = [f"VIX elevated ({vix_level:.0f}) — broad market volatility is high."]
     elif diff > 0 and _mkt_strongly_down:
-        prefix = [f"Strong negative broad market vs bullish stock tilt."]
+        prefix = ["Bullish stock tilt against a strongly negative broad market — counter-trend condition."]
     elif diff < 0 and _mkt_strongly_up:
-        prefix = [f"Strong positive broad market vs bearish stock tilt."]
+        prefix = ["Bearish stock tilt against a strongly positive broad market — counter-trend condition."]
     elif diff > 0 and or_historical == "contained" and (rvol is not None and rvol < 0.75) and spy_chg is not None and spy_chg <= -0.25 and qqq_chg is not None and qqq_chg <= -0.25:
-        prefix = [f"NO-GO — CALL entry condition not met all session: ORH never broken, weak volume, market bearish."]
+        prefix = ["ORH not broken all session, volume below average, broad market bearish — call entry conditions not met."]
     elif diff < 0 and or_historical == "contained" and (rvol is not None and rvol < 0.75) and spy_chg is not None and spy_chg >= 0.25 and qqq_chg is not None and qqq_chg >= 0.25:
-        prefix = [f"NO-GO — PUT entry condition not met all session: ORL never broken, weak volume, market bullish."]
+        prefix = ["ORL not broken all session, volume below average, broad market bullish — put entry conditions not met."]
     elif not soft_edge:
         prefix = ["No clear intraday edge — scores too close or too low."]
     elif long_edge:
         if not vol_spike:
-            prefix = ["WATCH — volume confirmation WEAK: breakout not aggressively expanding yet."]
+            prefix = ["Bullish edge present; volume confirmation is weak — breakout not yet aggressively expanding."]
         else:
-            prefix = ["GO — medium setup: edge with volume present."]
+            prefix = ["Bullish edge with volume confirmation present."]
     elif short_edge:
         if not vol_spike:
-            prefix = ["WATCH — volume confirmation WEAK."]
+            prefix = ["Bearish edge present; volume confirmation is weak."]
         else:
-            prefix = ["GO — medium setup: edge with volume."]
+            prefix = ["Bearish edge with volume confirmation present."]
     else:
         prefix = ["No clear intraday edge."]
 

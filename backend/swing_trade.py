@@ -811,7 +811,7 @@ def build_swing_trade_decision(
     if suggested_strategy == "NO_TRADE" and final_action not in ("AVOID_NAKED_CALLS",):
         recommended_contract_duration = ""
     elif risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
-        recommended_contract_duration = "42-56"
+        recommended_contract_duration = "14-21"
     elif trade_quality_score >= 7.0 and entry_quality == "GOOD_ENTRY":
         recommended_contract_duration = "7-14"
     else:
@@ -1476,12 +1476,12 @@ def compute_playbook_hint(
         )
         return _finalize_playbook_earnings(hint, earnings_days)
 
-    if verdict in ("AVOID", "NO_EDGE"):
-        hint = "No trade — risk gate (e.g. very high VIX)."
+    if verdict == "NO_EDGE":
+        hint = "No trade — insufficient edge."
         return _finalize_playbook_earnings(hint, earnings_days)
 
     if verdict == "AVOID":
-        hint = "Avoid chase — move already happened, wait for a meaningful pullback before entry."
+        hint = "No trade — risk gate active (e.g. very high VIX, earnings imminent, or poor liquidity)."
         return _finalize_playbook_earnings(hint, earnings_days)
 
     # Rules 3 & 6 — align with scan verdict + RSI extension
@@ -1607,9 +1607,9 @@ def _compute_option_liquidity_score(ticker: str, price: float) -> Optional[float
         if not opt_dates:
             return None
 
-        # Pick ~4-week expiry (30 DTE sweet spot, ±2 weeks)
+        # Pick ~3-week expiry (21 DTE sweet spot, ±2 weeks) — matches playbook recommendation
         now = datetime.now()
-        target_dte = 30
+        target_dte = 21
         best_expiry = None
         best_diff = 999
         for d in opt_dates:
