@@ -205,25 +205,40 @@ export default function DayTradePage() {
     if (!result || !user?.email) return
     const eg = result.entry_guidance as Record<string, unknown> | undefined
     const lastPrice = typeof result.metrics?.last_price === 'number' ? result.metrics.last_price : 0
+    const egState = typeof (eg?.state) === 'number' ? (eg.state as number) : 0
+    const scalp = typeof eg?.scalp_target === 'number' ? (eg.scalp_target as number) : 0
+    const stop = typeof eg?.risk_below === 'number' ? (eg.risk_below as number) : 0
+    const maxProfit = scalp > lastPrice && lastPrice > 0 ? (scalp - lastPrice) / lastPrice : 0
+    const maxLoss   = stop > 0 && lastPrice > stop ? (lastPrice - stop) / lastPrice : 0
+    const verdict   = result.verdict ?? result.final_decision ?? ''
+    const notes     = [
+      verdict ? `Signal: ${verdict}` : '',
+      scalp   ? `Target: $${scalp.toFixed(2)}` : '',
+      stop    ? `Stop: $${stop.toFixed(2)}` : '',
+      (result.metrics as Record<string, unknown>)?.entry_rr_ratio
+        ? `R/R: ${(result.metrics as Record<string, unknown>).entry_rr_ratio}` : '',
+    ].filter(Boolean).join(' · ')
     try {
       await saveToJournal(user.email, {
         ticker:           result.ticker,
         company_name:     result.company_name || '',
         strategy:         result.bias === 'short' ? 'Long Put' : 'Long Call',
         trade_type:       'day',
-        bias:             result.bias === 'long' ? 'Bullish' : 'Bearish',
+        bias:             result.bias === 'long' ? 'Bullish' : result.bias === 'short' ? 'Bearish' : 'Neutral',
         legs:             [],
         expiry:           new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         entry_date:       new Date().toISOString().split('T')[0],
         dte_at_entry:     7,
         net_credit:       0,
-        max_profit:       0,
-        max_loss:         0,
+        max_profit:       maxProfit,
+        max_loss:         maxLoss,
         underlying_entry: lastPrice,
         prob_of_profit:   0,
         expected_value:   0,
         total_score:      result.confidence ?? 0,
-        notes:            '',
+        engine_signal:    verdict,
+        engine_state:     egState,
+        notes,
       })
       setSavedToJournal(true)
       setTimeout(() => setSavedToJournal(false), 4000)

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
-  AlertTriangle, DollarSign, BarChart3, Filter,
+  AlertTriangle, DollarSign, BarChart3, Filter, Pencil,
 } from 'lucide-react'
 import { getJournal, refreshJournal, closeJournalEntry, updateJournalNotes, deleteJournalEntry, updateJournalEntry, executeTrade } from '../api/client'
 import type { JournalEntry } from '../types'
@@ -179,6 +179,145 @@ function CloseModal({ entry, onClose, onConfirm }: {
   )
 }
 
+// ─── Edit modal ──────────────────────────────────────────────────────────────
+
+function EditModal({ entry, onClose, onSave }: {
+  entry: JournalEntry
+  onClose: () => void
+  onSave: (fields: Record<string, unknown>) => Promise<void>
+}) {
+  const [form, setForm] = useState({
+    strategy:         entry.strategy ?? '',
+    bias:             entry.bias ?? '',
+    underlying_entry: entry.underlying_entry > 0 ? String(entry.underlying_entry) : '',
+    net_credit:       entry.net_credit !== 0 ? String(Math.abs(entry.net_credit)) : '',
+    expiry:           entry.expiry ?? '',
+    max_profit:       entry.max_profit > 0 ? String((entry.max_profit * 100).toFixed(2)) : '',
+    max_loss:         entry.max_loss > 0 ? String((entry.max_loss * 100).toFixed(2)) : '',
+    total_score:      entry.total_score > 0 ? String(entry.total_score) : '',
+    notes:            entry.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setErr(null)
+    try {
+      const fields: Record<string, unknown> = {}
+      if (form.strategy.trim())         fields.strategy         = form.strategy.trim()
+      if (form.bias.trim())             fields.bias             = form.bias.trim()
+      if (form.expiry.trim())           fields.expiry           = form.expiry.trim()
+      if (form.notes !== undefined)     fields.notes            = form.notes
+      const ue = parseFloat(form.underlying_entry)
+      if (!isNaN(ue) && ue > 0)        fields.underlying_entry = ue
+      const nc = parseFloat(form.net_credit)
+      if (!isNaN(nc) && nc > 0)        fields.net_credit       = nc / 100  // store as per-share fraction
+      const mp = parseFloat(form.max_profit)
+      if (!isNaN(mp))                   fields.max_profit       = mp / 100
+      const ml = parseFloat(form.max_loss)
+      if (!isNaN(ml))                   fields.max_loss         = ml / 100
+      const sc = parseInt(form.total_score, 10)
+      if (!isNaN(sc))                   fields.total_score      = sc
+      await onSave(fields)
+      onClose()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-violet-600"
+  const labelCls = "text-xs text-gray-500 mb-1 block"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-lg max-h-[90dvh] overflow-y-auto overscroll-contain bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Pencil size={14} className="text-violet-400" />
+            Edit Journal Entry
+          </div>
+          <button onClick={onClose} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"><X size={16} /></button>
+        </div>
+
+        <div className="text-xs text-gray-400 mb-4 font-semibold">{entry.ticker} · {entry.trade_type?.toUpperCase() ?? 'TRADE'}</div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className={labelCls}>Strategy</label>
+            <input className={inputCls} value={form.strategy} onChange={set('strategy')} placeholder="Long Call, Vertical…" />
+          </div>
+          <div>
+            <label className={labelCls}>Bias</label>
+            <select className={inputCls} value={form.bias} onChange={set('bias')}>
+              <option value="">— select —</option>
+              <option value="Bullish">Bullish</option>
+              <option value="Bearish">Bearish</option>
+              <option value="Neutral">Neutral</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Underlying Entry Price ($)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.underlying_entry} onChange={set('underlying_entry')} placeholder="e.g. 512.50" />
+          </div>
+          <div>
+            <label className={labelCls}>Premium Paid ($/contract)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.net_credit} onChange={set('net_credit')} placeholder="e.g. 3.50 per contract" />
+          </div>
+          <div>
+            <label className={labelCls}>Expiry Date</label>
+            <input className={inputCls} type="date" value={form.expiry} onChange={set('expiry')} />
+          </div>
+          <div>
+            <label className={labelCls}>Score (0–100)</label>
+            <input className={inputCls} type="number" min="0" max="100" value={form.total_score} onChange={set('total_score')} placeholder="e.g. 78" />
+          </div>
+          <div>
+            <label className={labelCls}>Max Profit ($/contract)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.max_profit} onChange={set('max_profit')} placeholder="e.g. 350" />
+          </div>
+          <div>
+            <label className={labelCls}>Max Loss ($/contract)</label>
+            <input className={inputCls} type="number" step="0.01" value={form.max_loss} onChange={set('max_loss')} placeholder="e.g. 150" />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className={labelCls}>Notes</label>
+          <textarea
+            value={form.notes}
+            onChange={set('notes')}
+            rows={3}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-violet-600 resize-none"
+            placeholder="Trade rationale, observations, lessons…"
+          />
+        </div>
+
+        {err && <div className="mb-3 text-xs text-red-400 bg-red-900/20 border border-red-700 rounded-lg px-3 py-2">{err}</div>}
+
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button onClick={onClose} className="flex-1 px-4 py-3 sm:py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:bg-gray-700 transition-colors">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 px-4 py-3 sm:py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Entry card ──────────────────────────────────────────────────────────────
 
 function EntryCard({
@@ -198,12 +337,10 @@ function EntryCard({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showClose, setShowClose] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesText, setNotesText] = useState(entry.notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
-  const [editingField, setEditingField] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const [savingField, setSavingField] = useState(false)
   const [executingTrade, setExecutingTrade] = useState(false)
   const [executedTrade, setExecutedTrade] = useState(false)
   const [tradeError, setTradeError] = useState<string | null>(null)
@@ -227,24 +364,6 @@ function EntryCard({
     } finally {
       setSavingNotes(false)
     }
-  }
-
-  const handleFieldSave = async (field: string) => {
-    setSavingField(true)
-    try {
-      const val = field === 'underlying_entry' ? parseFloat(editValue) : editValue
-      await onUpdate(entry.id, { [field]: val })
-      setEditingField(null)
-      setEditValue('')
-    } catch {
-    } finally {
-      setSavingField(false)
-    }
-  }
-
-  const startEditing = (field: string, current: string | number) => {
-    setEditingField(field)
-    setEditValue(String(current ?? ''))
   }
 
   const outcomeColor = entry.outcome ? OUTCOME_COLORS[entry.outcome] ?? 'text-gray-400' : ''
@@ -286,6 +405,15 @@ function EntryCard({
           onConfirm={async (reason, notes) => {
             await onClose(entry.id, reason, notes)
             setShowClose(false)
+          }}
+        />
+      )}
+      {showEdit && (
+        <EditModal
+          entry={entry}
+          onClose={() => setShowEdit(false)}
+          onSave={async (fields) => {
+            await onUpdate(entry.id, fields)
           }}
         />
       )}
@@ -346,26 +474,30 @@ function EntryCard({
             </div>
 
             {(() => {
-              // For option trades with legs, show option market value vs entry debit
-              const hasOptionEntry = entry.net_credit !== 0 && entry.legs.length > 0
-              const entryOptPx = hasOptionEntry ? Math.abs(entry.net_credit) : 0
-              const currentOptPx = hasOptionEntry ? entryOptPx + (entry.current_pnl / 100) : 0
-              const ep = hasOptionEntry ? entryOptPx : entry.underlying_entry
-              const cp = hasOptionEntry ? currentOptPx : entry.current_price
+              // For option trades (net_credit set), show option premium change; else show underlying Δ
+              const hasOptPremium = entry.net_credit !== 0
+              const entryOptPx = hasOptPremium ? Math.abs(entry.net_credit) * 100 : 0  // per-contract $
+              const currentOptPx = hasOptPremium ? entryOptPx + entry.current_pnl : 0
+              const ep = hasOptPremium ? entryOptPx : entry.underlying_entry
+              const cp = hasOptPremium ? currentOptPx : entry.current_price
               const hasBoth = ep > 0 && cp > 0
               const diff = hasBoth ? cp - ep : 0
-              const pct = hasBoth ? (diff / ep) * 100 : 0
+              const pct = hasBoth && ep > 0 ? (diff / ep) * 100 : 0
               const color = hasBoth ? (diff > 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-gray-200') : 'text-slate-500 dark:text-gray-200'
+              const colLabel = hasOptPremium ? 'Premium Δ' : 'Stock Δ'
+              const displayVal = hasOptPremium
+                ? (cp > 0 ? `$${cp.toFixed(2)}` : '—')
+                : (cp > 0 ? `$${cp.toFixed(2)}` : '—')
               return (
                 <div className="min-w-0 text-right sm:text-left sm:w-28 sm:shrink-0">
                   <div className={`text-sm font-semibold font-mono ${color}`}>
-                    ${cp?.toFixed(2) ?? '—'}
+                    {displayVal}
                     {hasBoth && (
                       <span className="text-[10px] ml-1 font-normal">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
                     )}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-gray-500">
-                    {ep > 0 ? `entry $${ep.toFixed(2)}` : '—'}
+                    {ep > 0 ? `${colLabel} · entry $${ep.toFixed(2)}` : colLabel}
                   </div>
                 </div>
               )
@@ -459,40 +591,47 @@ function EntryCard({
               ))}
             </div>
 
-            {/* Price comparison: entry vs current (open) — shows option value for trades with legs */}
+            {/* Price comparison: entry vs current (open) */}
             {isOpen && entry.current_price > 0 && (
               <div className="mt-3 p-2.5 bg-blue-950/30 border border-blue-800/50 rounded-xl text-[11px] sm:text-xs flex flex-wrap gap-x-3 gap-y-1">
                 {(() => {
-                  const hasOpt = entry.net_credit !== 0 && entry.legs.length > 0
-                  const eOpt = hasOpt ? Math.abs(entry.net_credit) : 0
-                  const cOpt = hasOpt ? eOpt + (entry.current_pnl / 100) : 0
+                  const hasOptPremium = entry.net_credit !== 0
+                  const eOpt = hasOptPremium ? Math.abs(entry.net_credit) * 100 : 0  // per-contract $
+                  const cOpt = hasOptPremium ? eOpt + entry.current_pnl : 0
                   return (
                     <>
-                      {hasOpt ? (
+                      {hasOptPremium ? (
                         <>
                           <span className="text-gray-500">
-                            Entry: <span className="font-mono text-gray-300">${eOpt.toFixed(2)}/sh</span>
+                            Premium Entry: <span className="font-mono text-gray-300">${eOpt.toFixed(2)}/contract</span>
                           </span>
                           <span className="text-gray-500">
-                            Current: <span className="font-mono text-gray-300">${cOpt.toFixed(2)}/sh</span>
+                            Current: <span className="font-mono text-gray-300">${cOpt.toFixed(2)}/contract</span>
                           </span>
                           <span className="text-gray-500">
                             P&L: <PriceDiff current={cOpt} entry={eOpt} />
+                          </span>
+                          <span className="text-gray-500">
+                            Stock: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
+                            {entry.underlying_entry > 0 && (
+                              <> · entry <span className="font-mono">${entry.underlying_entry.toFixed(2)}</span></>
+                            )}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="text-gray-500">
-                            Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
+                            Stock Entry: <span className="font-mono text-gray-300">${entry.underlying_entry?.toFixed(2) ?? '—'}</span>
                           </span>
                           <span className="text-gray-500">
                             Current: <span className="font-mono text-gray-300">${entry.current_price.toFixed(2)}</span>
                           </span>
                           {entry.underlying_entry > 0 && (
                             <span className="text-gray-500">
-                              P&L: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
+                              Δ: <PriceDiff current={entry.current_price} entry={entry.underlying_entry} />
                             </span>
                           )}
+                          <span className="text-xs text-gray-600 italic">Set Premium Paid via Edit to track option P&L</span>
                         </>
                       )}
                     </>
@@ -519,58 +658,32 @@ function EntryCard({
               </div>
             )}
 
-            {/* Editable fields: strategy, bias, entry price */}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {([
-                { key: 'strategy', label: 'Strategy', value: entry.strategy },
-                { key: 'bias', label: 'Bias', value: entry.bias },
-                { key: 'underlying_entry', label: 'Entry Price', value: entry.underlying_entry > 0 ? `$${entry.underlying_entry.toFixed(2)}` : '$--' },
-              ] as const).map(f => (
-                <div key={f.key} className="group flex items-center gap-1.5 bg-gray-800 rounded-lg px-2.5 py-1.5 text-xs">
-                  <span className="text-gray-500">{f.label}:</span>
-                  {editingField === f.key ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type={f.key === 'underlying_entry' ? 'number' : 'text'}
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleFieldSave(f.key)
-                          if (e.key === 'Escape') { setEditingField(null); setEditValue('') }
-                        }}
-                        autoFocus
-                        className="w-24 bg-gray-700 border border-violet-600 rounded px-1.5 py-0.5 text-gray-200 font-mono text-xs outline-none"
-                        step={f.key === 'underlying_entry' ? '0.01' : undefined}
-                      />
-                      <button
-                        onClick={() => handleFieldSave(f.key)}
-                        disabled={savingField}
-                        className="text-violet-400 hover:text-violet-300 p-0.5"
-                      >
-                        <Check size={12} />
-                      </button>
-                      <button
-                        onClick={() => { setEditingField(null); setEditValue('') }}
-                        className="text-gray-500 hover:text-gray-400 p-0.5"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        const val = f.key === 'underlying_entry' ? entry.underlying_entry
-                          : f.key === 'strategy' ? entry.strategy
-                          : entry.bias
-                        startEditing(f.key, val)
-                      }}
-                      className="text-gray-300 font-semibold hover:text-violet-400 transition-colors cursor-text"
-                    >
-                      {f.value}
-                    </button>
-                  )}
-                </div>
-              ))}
+            {/* Summary chips — key info at a glance */}
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {entry.strategy && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5">
+                  <span className="text-gray-500">Strategy: </span>
+                  <span className="text-gray-200 font-semibold">{entry.strategy}</span>
+                </span>
+              )}
+              {entry.bias && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5">
+                  <span className="text-gray-500">Bias: </span>
+                  <span className={`font-semibold ${biasColor}`}>{entry.bias}</span>
+                </span>
+              )}
+              {entry.underlying_entry > 0 && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5 font-mono">
+                  <span className="text-gray-500">Entry: </span>
+                  <span className="text-gray-200">${entry.underlying_entry.toFixed(2)}</span>
+                </span>
+              )}
+              {entry.net_credit !== 0 && (
+                <span className="bg-gray-800 rounded-lg px-2.5 py-1.5 font-mono">
+                  <span className="text-gray-500">Premium: </span>
+                  <span className="text-gray-200">${(Math.abs(entry.net_credit) * 100).toFixed(2)}/contract</span>
+                </span>
+              )}
             </div>
 
             {/* Engine signal at creation */}
@@ -678,6 +791,16 @@ function EntryCard({
                   <CheckSquare size={16} />
                 </button>
               )}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setShowEdit(true) }}
+                title="Edit entry"
+                aria-label="Edit journal entry"
+                className="inline-flex h-10 items-center gap-1.5 px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                           text-gray-400 hover:text-violet-300 hover:border-violet-700/50 rounded-xl transition-colors touch-manipulation shrink-0 text-xs font-semibold"
+              >
+                <Pencil size={13} /> Edit
+              </button>
               {userRole === 'admin' && entry.legs.length > 0 && (
                 <button
                   type="button"
