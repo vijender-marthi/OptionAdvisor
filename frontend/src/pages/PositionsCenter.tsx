@@ -292,19 +292,27 @@ function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
     if (pos.target2 != null) rules.push({ trigger: 'Target 2 reached', price: pos.target2, action: isCredit ? 'Close full position' : 'Sell to close rest', note: 'Full exit — trade complete' })
     if (pos.stopLoss != null) rules.push({ trigger: 'Stop loss', price: pos.stopLoss, action: 'Close full position', note: 'Capital preservation' })
   } else {
+    // For debit spreads, use net_credit magnitude as the entry premium reference.
+    // Fall back to entryPrice when net_credit is missing or effectively zero.
+    const entryPremium = Math.abs(pos.net_credit) > 0.01
+      ? Math.abs(pos.net_credit)
+      : (pos.entryPrice || 0)
+
     const profitAmt = isCredit
-      ? round2(pos.net_credit * 0.5)
-      : round2(Math.abs(pos.net_credit) * 2)
+      ? round2(pos.net_credit * 0.5)          // buy back at 50¢ on the dollar
+      : round2(entryPremium * 2)              // close when option doubles in value
     const stopAmt = isCredit
-      ? round2(pos.net_credit * 2)
-      : round2(Math.abs(pos.net_credit) * 0.5)
+      ? round2(pos.net_credit * 2)            // stop when loss = 2× credit received
+      : round2(entryPremium * 0.5)            // stop when option loses 50% of entry value
     const closeDte = Math.max(7, Math.round(dte * 0.4))
 
     rules.push({
       trigger: isCredit ? '50% of credit captured' : '100% gain on premium',
       price: profitAmt,
       action: isCredit ? 'Buy back / close spread' : 'Sell to close',
-      note: isCredit ? `Credit remaining ≈ $${profitAmt.toFixed(2)}/share` : `Target gain ≈ $${profitAmt.toFixed(2)}/share`,
+      note: isCredit
+        ? `Credit remaining ≈ $${profitAmt.toFixed(2)}/share`
+        : `Close when option reaches $${profitAmt.toFixed(2)} (2× your $${entryPremium.toFixed(2)} entry premium)`,
     })
     rules.push({
       trigger: `${closeDte} DTE remaining`,
@@ -316,7 +324,9 @@ function deriveExitRules(pos: PortfolioPosition): ExitRule[] {
       trigger: isCredit ? 'Loss reaches 2× credit' : '50% loss on premium',
       price: stopAmt,
       action: 'Close position — stop loss',
-      note: `Max acceptable loss ≈ $${stopAmt.toFixed(2)}/share`,
+      note: isCredit
+        ? `Max loss ≈ $${stopAmt.toFixed(2)}/share — cut and move on`
+        : `Close when option falls to $${stopAmt.toFixed(2)} (50% below your $${entryPremium.toFixed(2)} entry premium)`,
     })
   }
 
