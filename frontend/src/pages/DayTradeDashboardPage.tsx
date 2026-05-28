@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, ShieldAlert } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2 } from '../api/client'
 import type { DayTradeScanResult, UnifiedAnalysis } from '../api/client'
-import DayTradeIntradayChart, { parseChartBars } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 
@@ -55,12 +55,12 @@ function VerdictBadge({ verdict, status_color }: { verdict: string; status_color
 }
 
 // ─── Compact summary row above the chart ──────────────────────────────────
-function TileHeader({ tile, isDark, dt, onRemove, onNavigate }: {
+function TileHeader({ tile, isDark, dt, onRemove, detailHref }: {
   tile: TileData
   isDark: boolean
   dt: Record<string, string>
   onRemove: () => void
-  onNavigate: () => void
+  detailHref: string
 }) {
   const { unified, result } = tile
 
@@ -98,15 +98,17 @@ function TileHeader({ tile, isDark, dt, onRemove, onNavigate }: {
         )}
       </div>
 
-      {/* Right: detail link + remove */}
+      {/* Right: detail link (native <a> so browser right-click menu works) + remove */}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-        <button
-          onClick={onNavigate}
-          title="Full analysis"
-          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: dt.accent, background: 'none', border: `1px solid ${dt.accent}40`, borderRadius: 6, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        <a
+          href={detailHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Full analysis — opens in new tab"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: dt.accent, background: 'none', border: `1px solid ${dt.accent}40`, borderRadius: 6, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap', textDecoration: 'none' }}
         >
           <ExternalLink size={11} /> Details
-        </button>
+        </a>
         <button
           onClick={onRemove}
           title="Remove ticker"
@@ -126,17 +128,38 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
   dt: Record<string, string>
   onRemove: () => void
 }) {
-  const navigate = useNavigate()
   const { result } = tile
 
-  const metrics    = result?.metrics as Record<string, unknown> | undefined
-  const chartBars  = metrics ? parseChartBars(metrics.chart_bars) : null
-  const orHigh     = metrics?.or_high as number | undefined
-  const orLow      = metrics?.or_low as number | undefined
-  const orMin      = (metrics?.or_minutes as number | undefined) ?? 15
+  const metrics     = result?.metrics as Record<string, unknown> | undefined
+  const chartBars   = metrics ? parseChartBars(metrics.chart_bars) : null
+  const orHigh      = metrics?.or_high as number | undefined
+  const orLow       = metrics?.or_low as number | undefined
+  const orMin       = (metrics?.or_minutes as number | undefined) ?? 15
   const sessionDate = String(metrics?.session_date ?? '')
 
-  const goToDetail = () => navigate(`${ROUTES.dayTrade}?ticker=${encodeURIComponent(tile.ticker)}`)
+  // Build E1/E2/E3 entry points — same logic as DayTradePage
+  const entryPoints: ChartEntryPoint[] = (() => {
+    if (!result || !metrics) return []
+    const eg  = result.entry_guidance
+    const ac  = result.ai_coach
+    const mVwap     = typeof metrics.vwap === 'number' && isFinite(metrics.vwap) ? metrics.vwap as number : null
+    const isShort   = result.bias === 'short'
+    const stopFall  = isShort ? orHigh : orLow
+    const seen      = new Set<number>()
+    const pts: ChartEntryPoint[] = []
+    const add = (price: number | null | undefined, trigger: string, stop?: number) => {
+      if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
+      seen.add(price)
+      pts.push({ label: `E${pts.length + 1}`, price, trigger, stop })
+    }
+    add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFall)
+    add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFall)
+    add((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
+    add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? stopFall)
+    return pts
+  })()
+
+  const detailHref = `${ROUTES.dayTrade}?ticker=${encodeURIComponent(tile.ticker)}`
 
   return (
     <div style={{
@@ -170,7 +193,7 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
             isDark={isDark}
             dt={dt}
             onRemove={onRemove}
-            onNavigate={goToDetail}
+            detailHref={detailHref}
           />
 
           {/* Compact verdict reason */}
@@ -216,7 +239,7 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
             </div>
           )}
 
-          {/* Session chart */}
+          {/* Session chart with E1/E2/E3 markers */}
           {chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflow: 'hidden', borderRadius: 8, flex: 1 }}>
               <DayTradeIntradayChart
@@ -225,6 +248,7 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
                 orLow={orLow}
                 orMinutes={orMin}
                 sessionDate={sessionDate}
+                entryPoints={entryPoints.length > 0 ? entryPoints : undefined}
               />
             </div>
           ) : (
@@ -246,8 +270,26 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
 
 // ─── Main dashboard page ───────────────────────────────────────────────────
 export default function DayTradeDashboardPage() {
-  const { theme } = useApp()
+  const navigate = useNavigate()
+  const { theme, user } = useApp()
   const isDark = theme !== 'light'
+
+  // Restrict access to admin and super_user roles
+  const allowed = user?.role === 'admin' || user?.role === 'super_user'
+  useEffect(() => {
+    if (user !== undefined && !allowed) {
+      navigate(ROUTES.tradeCommandCenter, { replace: true })
+    }
+  }, [user, allowed, navigate])
+
+  if (!allowed) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: isDark ? '#0A0C10' : '#F3F4F6', color: isDark ? '#5A6478' : '#6B7280' }}>
+        <ShieldAlert size={36} />
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Access restricted</div>
+      </div>
+    )
+  }
   const dt = {
     bg:      isDark ? '#111318' : '#FFFFFF',
     bgDeep:  isDark ? '#0A0C10' : '#F3F4F6',
