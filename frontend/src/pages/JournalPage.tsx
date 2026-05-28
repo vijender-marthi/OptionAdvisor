@@ -972,10 +972,21 @@ export default function JournalPage() {
     }
   }
 
+  const _reloadFromDb = useCallback(async (triggerPriceRefresh = false) => {
+    if (!email) return
+    try {
+      const fn = triggerPriceRefresh ? refreshJournal : getJournal
+      const data = await fn(email)
+      const list = (data.entries as JournalEntry[]) ?? []
+      setEntries(list)
+      syncJournalEntryCount(list.length)
+    } catch { /* non-fatal — stale state is preferable to an error banner */ }
+  }, [email, syncJournalEntryCount])
+
   const handleClose = async (id: string, reason: string, notes: string) => {
     if (!email) return
     await closeJournalEntry(email, id, reason, notes)
-    await load()
+    await _reloadFromDb()
   }
 
   const handleDeleteConfirm = (id: string) => { setDeleteTarget(id); setDeleteError(null) }
@@ -986,25 +997,12 @@ export default function JournalPage() {
     if (!deleteTarget || !email) return
     setDeleting(true)
     setDeleteError(null)
-    const prevEntries = entries
-    // Optimistic: remove immediately so UI feels instant
-    const next = entries.filter(e => e.id !== deleteTarget)
-    setEntries(next)
-    syncJournalEntryCount(next.length)
+    const targetId = deleteTarget
     setDeleteTarget(null)
     try {
-      await deleteJournalEntry(email, deleteTarget)
-      // Confirm with backend re-fetch
-      try {
-        const data = await getJournal(email)
-        const list = (data.entries as JournalEntry[]) ?? []
-        setEntries(list)
-        syncJournalEntryCount(list.length)
-      } catch { /* re-fetch failed; optimistic state is still correct */ }
+      await deleteJournalEntry(email, targetId)
+      await _reloadFromDb()
     } catch (e: unknown) {
-      // Delete failed — restore previous list and show error in a toast-like banner
-      setEntries(prevEntries)
-      syncJournalEntryCount(prevEntries.length)
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? (e instanceof Error ? e.message : 'Delete failed')
       setError(msg)
@@ -1016,23 +1014,14 @@ export default function JournalPage() {
   const handleNotesSave = async (id: string, notes: string) => {
     if (!email) return
     await updateJournalNotes(email, id, notes)
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, notes } : e))
+    await _reloadFromDb()
   }
 
   const handleUpdate = async (id: string, fields: Record<string, unknown>) => {
     if (!email) return
     await updateJournalEntry(email, id, fields)
-    // If legs were updated, re-fetch so MTM P&L is recomputed server-side
-    if ('legs' in fields) {
-      try {
-        const data = await refreshJournal(email)
-        const list = (data.entries as JournalEntry[]) ?? []
-        setEntries(list)
-        syncJournalEntryCount(list.length)
-      } catch { /* fall through to optimistic update */ }
-    } else {
-      setEntries(prev => prev.map(e => e.id === id ? { ...e, ...fields } as JournalEntry : e))
-    }
+    // legs update → trigger price refresh so MTM is recomputed server-side
+    await _reloadFromDb('legs' in fields)
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
