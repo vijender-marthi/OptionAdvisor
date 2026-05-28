@@ -773,48 +773,60 @@ export default function DayTradeEnginePanel({
     const ac = result.ai_coach
     const isShort = result.bias === 'short'
 
+    // Fallback values directly from metrics (always present)
+    const mVwap      = asFiniteNum(m.vwap)
+    const mOrHigh    = orChartHigh
+    const mOrLow     = orChartLow
+    const stopFallback = isShort
+      ? (mOrHigh != null ? mOrHigh : undefined)
+      : (mOrLow  != null ? mOrLow  : undefined)
+
+    const seen = new Set<number>()
+    const add = (pt: ChartEntryPoint) => {
+      if (!Number.isFinite(pt.price) || pt.price <= 0) return
+      if (seen.has(pt.price)) return
+      seen.add(pt.price)
+      pts.push({ ...pt, label: `E${pts.length + 1}` })
+    }
+
+    // E1: AI Coach entry gate trigger (most specific)
     const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
-    if (gatePrice != null && gatePrice > 0) {
-      pts.push({
-        label: 'E1',
-        price: gatePrice,
-        trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
-        stop: asFiniteNum(eg?.risk_below) ?? undefined,
-      })
-    }
+    add({
+      label: '',
+      price: gatePrice ?? 0,
+      trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
+      stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+    })
 
+    // E2: AI Coach trade entry price with R/R
     const aiPrice = asFiniteNum(ac?.trade?.entry_price)
-    if (aiPrice != null && aiPrice > 0 && aiPrice !== gatePrice) {
-      pts.push({
-        label: `E${pts.length + 1}`,
-        price: aiPrice,
-        trigger: ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach',
-        stop: asFiniteNum(ac?.trade?.stop) ?? undefined,
-      })
-    }
+    add({
+      label: '',
+      price: aiPrice ?? 0,
+      trigger: ac?.trade
+        ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)`
+        : 'AI Coach',
+      stop: asFiniteNum(ac?.trade?.stop) ?? stopFallback,
+    })
 
+    // E3: OR breakout level — use entry_guidance first, fall back to OR high/low
     const breakoutLevel = asFiniteNum(eg?.breakout_level)
-    if (breakoutLevel != null && breakoutLevel > 0 && breakoutLevel !== gatePrice && breakoutLevel !== aiPrice) {
-      pts.push({
-        label: `E${pts.length + 1}`,
-        price: breakoutLevel,
-        trigger: 'OR breakout level',
-        stop: isShort ? asFiniteNum(orChartHigh) ?? undefined : asFiniteNum(orChartLow) ?? undefined,
-      })
-    }
+      ?? (isShort ? mOrLow : mOrHigh)
+    add({
+      label: '',
+      price: breakoutLevel ?? 0,
+      trigger: isShort ? 'OR low breakout' : 'OR high breakout',
+      stop: isShort ? (mOrHigh ?? undefined) : (mOrLow ?? undefined),
+    })
 
-    const vwapPrice = asFiniteNum(eg?.vwap)
-    if (vwapPrice != null && vwapPrice > 0) {
-      const seen = pts.map(p => p.price)
-      if (!seen.includes(vwapPrice)) {
-        pts.push({
-          label: `E${pts.length + 1}`,
-          price: vwapPrice,
-          trigger: 'VWAP re-test',
-          stop: asFiniteNum(eg?.risk_below) ?? undefined,
-        })
-      }
-    }
+    // E4: VWAP re-test — use entry_guidance.vwap first, fall back to metrics vwap
+    const vwapPrice = asFiniteNum(eg?.vwap) ?? mVwap
+    add({
+      label: '',
+      price: vwapPrice ?? 0,
+      trigger: 'VWAP re-test',
+      stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+    })
 
     return pts.length > 0 ? pts : undefined
   })()
