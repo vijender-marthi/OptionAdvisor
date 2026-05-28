@@ -147,6 +147,15 @@ export default function DayTradePage() {
     runScan(sym)
   }, []) // eslint-disable-line
 
+  // Re-scan when TCC navigates here with a different ?ticker= (page already mounted)
+  useEffect(() => {
+    const t = searchParams.get('ticker')?.trim().toUpperCase()
+    if (t && t.length <= 12 && didMountRef.current) {
+      setUi(cur => ({ ...cur, ticker: t }))
+      runScan(t)
+    }
+  }, [searchParams, setUi, runScan])
+
   useEffect(() => {
     if (!notice) return
     const t = setTimeout(() => setNotice(null), 2800)

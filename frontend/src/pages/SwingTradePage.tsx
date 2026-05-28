@@ -88,15 +88,17 @@ export default function SwingTradePage() {
     }
   }, [ticker, setUi])
 
+  // Reload on mount: use URL ticker, or default to SPY if none
+  const didMountRef = useRef(false)
+
   useEffect(() => {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (t && t.length <= 12) {
       setUi(cur => ({ ...cur, ticker: t }))
+      // After mount the guard is set; re-navigate from TCC triggers a real reload
+      if (didMountRef.current) runScan(t)
     }
-  }, [searchParams, setUi])
-
-  // Reload on mount: use URL ticker, or default to SPY if none
-  const didMountRef = useRef(false)
+  }, [searchParams, setUi, runScan])
   useEffect(() => {
     if (didMountRef.current) return
     didMountRef.current = true

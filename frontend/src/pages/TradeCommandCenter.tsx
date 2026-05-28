@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   RefreshCw,
@@ -18,6 +18,42 @@ import type {
   TradeCommandCenterPayload,
   TccRec,
 } from '../types/commandCenter'
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+type Palette = {
+  page: string; card: string; cardHover: string
+  border: string; borderSubtle: string; borderFaint: string
+  text: string; textSub: string; textMuted: string; textFaint: string
+  dot: string
+}
+
+const C_DARK: Palette = {
+  page:        '#0A0C10',
+  card:        '#111318',
+  cardHover:   'rgba(255,255,255,0.03)',
+  border:      '#1E2330',
+  borderSubtle:'#252C3A',
+  borderFaint: 'rgba(255,255,255,0.06)',
+  text:        '#E8EBF0',
+  textSub:     '#94A3B8',
+  textMuted:   '#64748B',
+  textFaint:   '#374151',
+  dot:         '#1E2330',
+}
+
+const C_LIGHT: Palette = {
+  page:        '#F0F2F5',
+  card:        '#FFFFFF',
+  cardHover:   'rgba(0,0,0,0.02)',
+  border:      '#E5E7EB',
+  borderSubtle:'#D1D5DB',
+  borderFaint: '#E5E7EB',
+  text:        '#111827',
+  textSub:     '#4B5563',
+  textMuted:   '#6B7280',
+  textFaint:   '#9CA3AF',
+  dot:         '#E5E7EB',
+}
 
 // ── Error formatting ──────────────────────────────────────────────────────────
 function axiosErrorMessage(err: unknown): string {
@@ -40,55 +76,63 @@ function fmtTimestamp(value?: string): string {
   return new Date(ts).toLocaleString()
 }
 
-// ── Pure CSS class helpers ────────────────────────────────────────────────────
-function verdictBadgeClass(tone: string): string {
-  if (tone === 'bullish') return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-  if (tone === 'warning') return 'bg-amber-400/15 text-amber-300 border border-amber-500/40'
-  if (tone === 'bearish') return 'bg-rose-500/15 text-rose-300 border border-rose-600/40'
-  return 'bg-slate-700/60 text-slate-400 border border-slate-600/40'
+// ── Semantic color helpers (tone-based, work on both themes) ─────────────────
+function verdictBadgeStyle(tone: string, isDark: boolean): React.CSSProperties {
+  if (tone === 'bullish') return { background: isDark ? 'rgba(16,185,129,0.18)' : 'rgba(16,185,129,0.12)', color: isDark ? '#6EE7B7' : '#065F46', border: '1px solid rgba(16,185,129,0.35)' }
+  if (tone === 'warning') return { background: isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.1)', color: isDark ? '#FCD34D' : '#92400E', border: '1px solid rgba(245,158,11,0.35)' }
+  if (tone === 'bearish') return { background: isDark ? 'rgba(239,68,68,0.13)' : 'rgba(239,68,68,0.09)', color: isDark ? '#FCA5A5' : '#991B1B', border: '1px solid rgba(239,68,68,0.3)' }
+  return { background: isDark ? 'rgba(71,85,105,0.5)' : 'rgba(107,114,128,0.12)', color: isDark ? '#94A3B8' : '#4B5563', border: isDark ? '1px solid rgba(71,85,105,0.4)' : '1px solid #D1D5DB' }
 }
 
-function borderAccentClass(tone: string): string {
-  if (tone === 'bullish') return 'border-l-emerald-500'
-  if (tone === 'warning') return 'border-l-amber-400'
-  if (tone === 'bearish') return 'border-l-rose-500'
-  return 'border-l-slate-600'
+function engineChipStyle(eng: string, isDark: boolean): React.CSSProperties {
+  if (eng === 'day')   return { borderColor: isDark ? 'rgba(249,115,22,0.3)' : 'rgba(249,115,22,0.4)', color: isDark ? '#FB923C' : '#C2410C', background: isDark ? 'rgba(124,45,18,0.18)' : 'rgba(255,237,213,0.7)' }
+  if (eng === 'swing') return { borderColor: isDark ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.4)', color: isDark ? '#C4B5FD' : '#6D28D9', background: isDark ? 'rgba(76,29,149,0.18)' : 'rgba(237,233,254,0.7)' }
+  return                      { borderColor: isDark ? 'rgba(20,184,166,0.3)' : 'rgba(20,184,166,0.4)', color: isDark ? '#5EEAD4' : '#0F766E', background: isDark ? 'rgba(19,78,74,0.18)' : 'rgba(204,251,241,0.7)' }
 }
 
-function subIndicatorClass(tone: string): string {
-  if (tone === 'bullish') return 'text-emerald-400'
-  if (tone === 'bearish') return 'text-rose-400'
-  if (tone === 'warning') return 'text-amber-400'
-  return 'text-slate-400'
+function engineBorderAccent(eng: string): string {
+  if (eng === 'day')   return '#F97316'
+  if (eng === 'swing') return '#8B5CF6'
+  return '#14B8A6'
 }
 
-function engineChipClass(eng: string): string {
-  if (eng === 'day')   return 'border-orange-500/30 text-orange-400 bg-orange-950/20'
-  if (eng === 'swing') return 'border-violet-500/30 text-violet-400 bg-violet-950/20'
-  return                      'border-teal-500/30 text-teal-400 bg-teal-950/20'
+function verdictAccentColor(tone: string): string {
+  if (tone === 'bullish') return '#10B981'
+  if (tone === 'warning') return '#F59E0B'
+  if (tone === 'bearish') return '#EF4444'
+  return '#6B7280'
 }
 
-function engineBorderClass(eng: string): string {
-  if (eng === 'day')   return 'border-orange-500/20 hover:border-orange-500/40'
-  if (eng === 'swing') return 'border-violet-500/20 hover:border-violet-500/40'
-  return                      'border-teal-500/20 hover:border-teal-500/40'
-}
-
-// ── Navigation (UI concern — uses pre-computed detail_route_key) ──────────────
+// ── Navigation ────────────────────────────────────────────────────────────────
 function navForRec(rec: TccRec): string {
-  const key = rec.detail_route_key  // 'day' | 'swing' | 'regular' — set by backend
-  return getDetailsRoute(key, rec.ticker)
+  return getDetailsRoute(rec.detail_route_key, rec.ticker)
 }
 
-// ── Sub-indicators (pure render) ─────────────────────────────────────────────
-function SubIndicators({ indicators }: { indicators: TccRec['sub_indicators'] }) {
+function useRecNavigate() {
+  const navigate = useNavigate()
+  const { requestAnalysis } = useApp()
+  return (rec: TccRec) => {
+    if (rec.detail_route_key === 'regular') {
+      requestAnalysis(rec.ticker)
+      navigate(navForRec(rec))
+    } else {
+      navigate(navForRec(rec))
+    }
+  }
+}
+
+// ── Sub-indicators ────────────────────────────────────────────────────────────
+function SubIndicators({ indicators, C }: { indicators: TccRec['sub_indicators']; C: Palette }) {
   if (!indicators || indicators.length === 0) return null
   return (
-    <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/[0.06] pt-2.5">
+    <div style={{ borderTop: `1px solid ${C.borderFaint}`, marginTop: 10, paddingTop: 10, display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
       {indicators.map((ind, i) => (
-        <div key={i} className="flex items-center gap-1 min-w-0">
-          <span className="text-[9px] uppercase tracking-wide text-slate-600 shrink-0">{ind.label}</span>
-          <span className={`text-[10px] font-semibold uppercase truncate ${subIndicatorClass(ind.tone)}`}>{ind.value}</span>
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textMuted }}>{ind.label}</span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+            color: ind.tone === 'bullish' ? '#10B981' : ind.tone === 'bearish' ? '#EF4444' : ind.tone === 'warning' ? '#F59E0B' : C.textMuted,
+          }}>{ind.value}</span>
         </div>
       ))}
     </div>
@@ -96,20 +140,7 @@ function SubIndicators({ indicators }: { indicators: TccRec['sub_indicators'] })
 }
 
 // ── Market Position Widget ────────────────────────────────────────────────────
-const MP_TONE_SIGNAL: Record<string, string> = {
-  green: 'bg-emerald-500/15 text-emerald-300 border border-emerald-600/40',
-  red: 'bg-rose-500/15 text-rose-300 border border-rose-700/40',
-  orange: 'bg-amber-500/15 text-amber-300 border border-amber-600/40',
-  gray: 'bg-gray-700/40 text-gray-400 border border-gray-600/40',
-}
-const MP_TONE_DOT: Record<string, string> = {
-  green: 'bg-emerald-400',
-  red: 'bg-rose-400',
-  orange: 'bg-amber-400',
-  gray: 'bg-gray-500',
-}
-
-function MarketPositionWidget() {
+function MarketPositionWidget({ C, isDark }: { C: Palette; isDark: boolean }) {
   const [mpData, setMpData] = useState<MarketPositionData | null>(null)
   const [mpLoading, setMpLoading] = useState(true)
   const [mpError, setMpError] = useState<string | null>(null)
@@ -127,73 +158,149 @@ function MarketPositionWidget() {
 
   if (mpLoading) {
     return (
-      <div className="mt-4 flex items-center gap-2 border-t border-slate-100 dark:border-white/[0.05] pt-4 text-xs text-slate-500">
+      <div style={{ marginTop: 16, borderTop: `1px solid ${C.borderFaint}`, paddingTop: 16, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.textMuted }}>
         <RefreshCw size={11} className="animate-spin" /> Loading market position…
       </div>
     )
   }
   if (mpError || !mpData) {
-    return <div className="mt-4 border-t border-slate-100 dark:border-white/[0.05] pt-4 text-xs text-slate-500">Market position unavailable</div>
+    return <div style={{ marginTop: 16, borderTop: `1px solid ${C.borderFaint}`, paddingTop: 16, fontSize: 12, color: C.textMuted }}>Market position unavailable</div>
   }
 
   const tone = mpData.signal_tone
-  const signalCls = MP_TONE_SIGNAL[tone] ?? MP_TONE_SIGNAL.gray
-  const dotCls = MP_TONE_DOT[tone] ?? MP_TONE_DOT.gray
+  const signalStyle: React.CSSProperties =
+    tone === 'green'  ? { background: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.1)', color: isDark ? '#6EE7B7' : '#065F46', border: '1px solid rgba(16,185,129,0.35)' } :
+    tone === 'red'    ? { background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.09)', color: isDark ? '#FCA5A5' : '#991B1B', border: '1px solid rgba(239,68,68,0.3)' } :
+    tone === 'orange' ? { background: isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.1)', color: isDark ? '#FCD34D' : '#92400E', border: '1px solid rgba(245,158,11,0.35)' } :
+                        { background: isDark ? 'rgba(71,85,105,0.4)' : 'rgba(107,114,128,0.1)', color: C.textMuted, border: `1px solid ${C.border}` }
+  const dotColor = tone === 'green' ? '#10B981' : tone === 'red' ? '#EF4444' : tone === 'orange' ? '#F59E0B' : C.textMuted
   const maBarPct = Math.min(100, Math.max(2, ((mpData.dist_200ma_pct + 5) / 20) * 100))
   const ddBarPct = Math.min(100, Math.max(2, (mpData.drawdown_pct / 25) * 100))
-  const maBarColor =
-    mpData.dist_200ma_pct >= 10 ? 'bg-rose-500' : mpData.dist_200ma_pct < 0 ? 'bg-amber-500' : 'bg-sky-500'
-  const ddBarColor = mpData.drawdown_pct >= 8 ? 'bg-emerald-500' : 'bg-gray-600'
+  const maBarColor = mpData.dist_200ma_pct >= 10 ? '#EF4444' : mpData.dist_200ma_pct < 0 ? '#F59E0B' : '#38BDF8'
+  const ddBarColor = mpData.drawdown_pct >= 8 ? '#10B981' : C.textFaint
 
   return (
-    <div className="mt-4 border-t border-slate-100 dark:border-white/[0.05] pt-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-          <TrendingUp size={11} className="text-violet-400" aria-hidden />
+    <div style={{ marginTop: 16, borderTop: `1px solid ${C.borderFaint}`, paddingTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>
+          <TrendingUp size={11} color="#8B5CF6" aria-hidden />
           Portfolio Reserve Signal
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-mono">
-          <span className="text-slate-500 dark:text-slate-400">SPY</span>
-          <span className="font-bold text-slate-900 dark:text-white">${mpData.spy_price.toFixed(2)}</span>
-          <span className="text-[10px] text-slate-300 dark:text-slate-600">|</span>
-          <span className="text-[10px] text-slate-500">200-MA ${mpData.ma200.toFixed(0)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'monospace' }}>
+          <span style={{ color: C.textMuted }}>SPY</span>
+          <span style={{ fontWeight: 700, color: C.text }}>${mpData.spy_price.toFixed(2)}</span>
+          <span style={{ fontSize: 10, color: C.textFaint }}>|</span>
+          <span style={{ fontSize: 10, color: C.textMuted }}>200-MA ${mpData.ma200.toFixed(0)}</span>
         </div>
       </div>
 
-      <div className="mb-3 space-y-2">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 shrink-0 font-semibold text-slate-500 dark:text-slate-400">vs 200-day MA</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/30">
-            <div className={`h-full rounded-full ${maBarColor}`} style={{ width: `${maBarPct}%` }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+        {[
+          { label: 'vs 200-day MA', pct: maBarPct, barColor: maBarColor, val: `${mpData.dist_200ma_pct >= 0 ? '+' : ''}${mpData.dist_200ma_pct.toFixed(1)}%`, valColor: '#38BDF8' },
+          { label: 'Off 52w High',  pct: ddBarPct, barColor: ddBarColor, val: `-${mpData.drawdown_pct.toFixed(1)}%`, valColor: '#10B981' },
+        ].map(row => (
+          <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <span style={{ width: 96, flexShrink: 0, fontWeight: 600, color: C.textMuted }}>{row.label}</span>
+            <div style={{ flex: 1, height: 6, borderRadius: 9999, overflow: 'hidden', background: isDark ? 'rgba(71,85,105,0.3)' : '#E5E7EB' }}>
+              <div style={{ height: '100%', borderRadius: 9999, background: row.barColor, width: `${row.pct}%` }} />
+            </div>
+            <span style={{ width: 56, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: row.valColor }}>{row.val}</span>
           </div>
-          <span className="w-14 text-right font-mono text-xs font-bold text-sky-600 dark:text-sky-300">
-            {mpData.dist_200ma_pct >= 0 ? '+' : ''}{mpData.dist_200ma_pct.toFixed(1)}%
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 shrink-0 font-semibold text-slate-500 dark:text-slate-400">Off 52w High</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700/30">
-            <div className={`h-full rounded-full ${ddBarColor}`} style={{ width: `${ddBarPct}%` }} />
-          </div>
-          <span className="w-14 text-right font-mono text-xs font-bold text-emerald-600 dark:text-emerald-300">
-            -{mpData.drawdown_pct.toFixed(1)}%
-          </span>
-        </div>
+        ))}
       </div>
 
-      <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${signalCls}`}>
-        <span className={`h-2 w-2 flex-none rounded-full ${dotCls}`} aria-hidden />
-        <span className="flex-1 text-xs font-semibold leading-snug">{mpData.signal_label}</span>
-        <span className="whitespace-nowrap font-mono text-[10px] text-slate-500">25% reserve rule</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 8, padding: '8px 12px', ...signalStyle }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: dotColor }} aria-hidden />
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>{mpData.signal_label}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap' }}>25% reserve rule</span>
       </div>
     </div>
   )
 }
 
+// ── Rec Card (shared between Ready + Watch sections) ──────────────────────────
+function RecCard({ rec, C, isDark, onPress }: { rec: TccRec; C: Palette; isDark: boolean; onPress: () => void }) {
+  const eng  = rec.detail_route_key
+  const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
+  const chgPct = rec.price_change_pct
+  const chgColor = chgPct != null ? (chgPct >= 0 ? '#10B981' : '#EF4444') : C.textMuted
+  const accentColor = verdictAccentColor(rec.verdict_tone)
+  const chipStyle = engineChipStyle(eng, isDark)
+
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderLeft: `4px solid ${accentColor}`,
+        borderRadius: 12,
+        padding: '14px',
+        textAlign: 'left',
+        cursor: 'pointer',
+        transition: 'box-shadow 0.15s, transform 0.15s',
+        width: '100%',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; (e.currentTarget as HTMLElement).style.transform = 'none' }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700, color: C.text }}>{rec.ticker}</span>
+          <span style={{ border: '1px solid', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle }}>{eng.toUpperCase()}</span>
+        </div>
+        <span style={{ borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', ...verdictBadgeStyle(rec.verdict_tone, isDark) }}>{rec.verdict_label}</span>
+      </div>
+
+      {/* Price row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        {chgPct != null && (
+          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: chgColor }}>
+            {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
+          </span>
+        )}
+        {rec.last_price != null && (
+          <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.textMuted }}>${rec.last_price.toFixed(2)}</span>
+        )}
+        <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 'auto', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.strategy || rec.direction || ''}</span>
+      </div>
+
+      {/* Entry / Target / Stop */}
+      {(rec.entry_zone || rec.target || rec.stop_loss) && (
+        <>
+          <div style={{ borderTop: `1px solid ${C.borderFaint}`, marginBottom: 8 }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, fontSize: 11, marginBottom: 8 }}>
+            {[
+              { label: 'Entry',  val: rec.entry_zone || '—', color: C.textSub },
+              { label: 'Target', val: rec.target || '—',     color: '#10B981' },
+              { label: 'Stop',   val: rec.stop_loss || '—',  color: '#EF4444' },
+            ].map(col => (
+              <div key={col.label}>
+                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textMuted, marginBottom: 2 }}>{col.label}</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: col.color }}>{col.val}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Confidence */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: conf >= 70 ? '#10B981' : '#38BDF8' }}>{conf}%</span>
+      </div>
+      <SubIndicators indicators={rec.sub_indicators} C={C} />
+    </button>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TradeCommandCenter() {
-  const navigate = useNavigate()
-  const { canAccessPage } = useApp()
+  const { canAccessPage, theme } = useApp()
+  const isDark = theme !== 'light'
+  const C = isDark ? C_DARK : C_LIGHT
+  const goToRec = useRecNavigate()
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<TradeCommandCenterPayload> | null>(null)
@@ -201,9 +308,6 @@ export default function TradeCommandCenter() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [actionNotice, setActionNotice] = useState<{ tone: 'success' | 'warning' | 'info'; text: string } | null>(null)
 
-  // Stale-load guard: React StrictMode double-fires effects in dev; without this the page
-  // makes two identical backend calls on mount. The counter lets us discard the response
-  // from any load that was superseded by a newer one before it completed.
   const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -212,7 +316,7 @@ export default function TradeCommandCenter() {
     setFetchError(null)
     try {
       const nextEnv = await fetchTradeCommandCenter({})
-      if (seq !== loadSeqRef.current) return   // stale — a newer load already fired
+      if (seq !== loadSeqRef.current) return
       setEnv(nextEnv)
     } catch (err) {
       if (seq !== loadSeqRef.current) return
@@ -223,183 +327,183 @@ export default function TradeCommandCenter() {
     }
   }, [])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  useEffect(() => { void load() }, [load])
 
   const payload = env?.data ?? null
-  const market = payload?.market_summary ?? {}
+  const market  = payload?.market_summary ?? {}
 
-  // Read pre-computed sections from backend
-  const sections = payload?.tcc_sections
-  const topByEngine = sections?.top_by_engine ?? { day: null, swing: null, regular: null }
-  const readyNow = sections?.ready_now ?? []
+  const sections     = payload?.tcc_sections
+  const topByEngine  = sections?.top_by_engine ?? { day: null, swing: null, regular: null }
+  const readyNow     = sections?.ready_now ?? []
   const highConfWatch = sections?.high_conf_watch ?? []
-  const lowSignals = sections?.low_signals ?? []
+  const lowSignals   = sections?.low_signals ?? []
 
-  // Filter to engines the current role can access
   const engineOrder = (['day', 'swing', 'regular'] as const).filter(e => {
     if (e === 'day')   return canDay
     if (e === 'swing') return canSwing
     return true
   })
 
-  const noticeClass =
+  const noticeStyle: React.CSSProperties =
     actionNotice?.tone === 'success'
-      ? 'border-emerald-700/40 bg-emerald-950/30 text-emerald-200'
+      ? { borderColor: 'rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.08)', color: isDark ? '#6EE7B7' : '#065F46' }
       : actionNotice?.tone === 'warning'
-        ? 'border-amber-700/40 bg-amber-950/30 text-amber-200'
-        : 'border-sky-700/40 bg-sky-950/30 text-sky-200'
+        ? { borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: isDark ? '#FCD34D' : '#92400E' }
+        : { borderColor: 'rgba(56,189,248,0.4)', background: 'rgba(56,189,248,0.08)', color: isDark ? '#7DD3FC' : '#0369A1' }
 
   return (
-    <div className="mx-auto min-h-screen max-w-4xl space-y-5 px-4 pt-4 pb-28 md:px-6 md:pt-6">
+    <div style={{ background: C.page, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 112px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-700 flex items-center justify-center shrink-0">
-            <Zap size={15} className="text-violet-400" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-base font-bold tracking-tight text-white leading-tight">Trade Command Center</h1>
-            <p className="text-[11px] text-slate-500 leading-tight">What to trade today</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="btn btn-outline h-8 w-8 rounded-lg shrink-0"
-          aria-label="Refresh"
-          title={loading ? 'Loading…' : 'Refresh'}
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
-
-      {/* ── Notice ── */}
-      {actionNotice ? (
-        <div className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${noticeClass}`}>
-          <div className="flex items-start justify-between gap-3">
-            <span className="font-medium">{actionNotice.text}</span>
-            <button type="button" className="text-xs font-semibold opacity-80 hover:opacity-100" onClick={() => setActionNotice(null)}>
-              Dismiss
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Loading / Errors ── */}
-      {loading && !env ? (
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-slate-900 px-4 py-6 text-sm text-slate-500">
-          <RefreshCw size={16} className="animate-spin text-violet-400" />
-          Loading…
-        </div>
-      ) : null}
-      {fetchError ? <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{fetchError}</div> : null}
-      {env?.error ? <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{(env.error as { message?: string }).message ?? 'Error'}</div> : null}
-
-      {payload ? (
-        <>
-          {/* ── Market Pulse Strip ── */}
-          <section className="rounded-xl border border-white/[0.08] bg-slate-900 px-3 py-2">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span className="font-semibold text-slate-500">SPY</span>
-              <span className={`font-bold ${String(market.spy_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.spy_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>
-                {String(market.spy_trend ?? '—').toUpperCase()}
-              </span>
-              <span className="text-slate-700">·</span>
-              <span className="font-semibold text-slate-500">QQQ</span>
-              <span className={`font-bold ${String(market.qqq_trend ?? '').toLowerCase().includes('bull') ? 'text-emerald-400' : String(market.qqq_trend ?? '').toLowerCase().includes('bear') ? 'text-red-400' : 'text-slate-300'}`}>
-                {String(market.qqq_trend ?? '—').toUpperCase()}
-              </span>
-              <span className="text-slate-700">·</span>
-              <span className="font-semibold text-slate-500">VIX</span>
-              <span className={`font-bold ${String(market.vix_risk ?? '').toLowerCase().includes('high') ? 'text-red-400' : 'text-emerald-400'}`}>
-                {String(market.vix_risk ?? '—').toUpperCase()}
-              </span>
-              <span className="text-slate-700">·</span>
-              <span className="font-semibold text-slate-500">Regime</span>
-              <span className="font-bold text-violet-400">{String(market.market_mode ?? '—').toUpperCase()}</span>
-              <span className="text-slate-700">·</span>
-              <span className="font-semibold text-slate-500">Best</span>
-              <span className="font-bold text-slate-200">{String(market.best_style_today ?? '—')}</span>
-              <span className="text-slate-700">·</span>
-              <span className="font-semibold text-emerald-500">{readyNow.length} ready</span>
-              <span className="font-semibold text-amber-500">{highConfWatch.length} watching</span>
-              {env?.fetched_at ? (
-                <span className="ml-auto font-mono text-[10px] text-slate-600 flex items-center gap-1">
-                  <Clock size={9} />
-                  {new Date(env.fetched_at).toLocaleTimeString()}
-                </span>
-              ) : null}
+        {/* ── Header ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: isDark ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Zap size={15} color="#8B5CF6" />
             </div>
-          </section>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.2, margin: 0 }}>Trade Command Center</h1>
+              <p style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.2, margin: 0 }}>What to trade today</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="btn btn-outline"
+            style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            aria-label="Refresh"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
 
-          {/* ── Today's Overall Verdict ── */}
-          {payload.overall_decision && (() => {
-            const od = payload.overall_decision as OverallDecision
-            const v = String(od.verdict || '').toUpperCase().replace(/ /g, '_')
-            // Map verdict to tone for badge
-            const tone =
-              v === 'STRONG_GO' ? 'bullish' :
-              v === 'GO'        ? 'bullish' :
-              v === 'WATCH'     ? 'warning' :
-              v === 'AVOID'     ? 'bearish' : 'neutral'
-            const bannerBg =
-              tone === 'bullish' ? 'border-emerald-500/40 bg-emerald-950/20' :
-              tone === 'warning' ? 'border-amber-500/30 bg-amber-950/15' :
-              tone === 'bearish' ? 'border-rose-500/30 bg-rose-950/15' :
-                                   'border-slate-700/40 bg-slate-900/40'
-            const reasonDot =
-              tone === 'bullish' ? 'bg-emerald-400' :
-              tone === 'warning' ? 'bg-amber-400' :
-              tone === 'bearish' ? 'bg-rose-400' : 'bg-slate-500'
+        {/* ── Notice ── */}
+        {actionNotice ? (
+          <div style={{ borderRadius: 12, border: '1px solid', padding: '12px 16px', fontSize: 14, ...noticeStyle }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontWeight: 500 }}>{actionNotice.text}</span>
+              <button type="button" style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }} onClick={() => setActionNotice(null)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
 
-            return (
-              <section className={`rounded-2xl border p-4 ${bannerBg}`}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className={`rounded-lg px-3 py-1 text-sm font-black uppercase tracking-wide ${verdictBadgeClass(tone)}`}>{v.replace(/_/g, ' ')}</span>
-                  <span className="text-sm font-semibold text-slate-200">{od.label}</span>
-                  <span className="font-mono text-xs text-slate-500">{od.confidence}% conf.</span>
-                  {od.engines_agreeing.length > 0 && (
-                    <div className="flex items-center gap-1 ml-auto">
-                      <span className="text-[10px] text-slate-600 uppercase tracking-wide">Aligned:</span>
-                      {od.engines_agreeing.map(e => (
-                        <span key={e} className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${engineChipClass(e)}`}>{e}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-2.5 flex items-start gap-2">
-                  <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${reasonDot}`} />
-                  <p className="text-xs leading-relaxed text-slate-400">{od.reason}</p>
-                </div>
-              </section>
-            )
-          })()}
+        {/* ── Loading / Errors ── */}
+        {loading && !env ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, padding: '24px 16px', fontSize: 14, color: C.textMuted }}>
+            <RefreshCw size={16} className="animate-spin" color="#8B5CF6" />
+            Loading…
+          </div>
+        ) : null}
+        {fetchError ? (
+          <div style={{ borderRadius: 12, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', padding: '12px 16px', fontSize: 14, color: isDark ? '#FCA5A5' : '#991B1B' }}>{fetchError}</div>
+        ) : null}
+        {env?.error ? (
+          <div style={{ borderRadius: 12, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', padding: '12px 16px', fontSize: 14, color: isDark ? '#FCA5A5' : '#991B1B' }}>{(env.error as { message?: string }).message ?? 'Error'}</div>
+        ) : null}
 
-          {/* ── Engine Overview: Best Pick Per Engine ── */}
-          {engineOrder.length > 0 && (() => {
-            const gridCols = engineOrder.length === 3 ? 'grid-cols-3' : engineOrder.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
-            return (
-              <div className={`grid gap-3 ${gridCols}`}>
+        {payload ? (
+          <>
+            {/* ── Market Pulse Strip ── */}
+            <section style={{ borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, padding: '10px 14px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px', fontSize: 12 }}>
+                {[
+                  { label: 'SPY', val: String(market.spy_trend ?? '—').toUpperCase(), bullish: String(market.spy_trend ?? '').toLowerCase().includes('bull'), bearish: String(market.spy_trend ?? '').toLowerCase().includes('bear') },
+                  { label: 'QQQ', val: String(market.qqq_trend ?? '—').toUpperCase(), bullish: String(market.qqq_trend ?? '').toLowerCase().includes('bull'), bearish: String(market.qqq_trend ?? '').toLowerCase().includes('bear') },
+                ].map(item => (
+                  <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 600, color: C.textMuted }}>{item.label}</span>
+                    <span style={{ fontWeight: 700, color: item.bullish ? '#10B981' : item.bearish ? '#EF4444' : C.textSub }}>{item.val}</span>
+                  </span>
+                ))}
+                <span style={{ color: C.textFaint }}>·</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 600, color: C.textMuted }}>VIX</span>
+                  <span style={{ fontWeight: 700, color: String(market.vix_risk ?? '').toLowerCase().includes('high') ? '#EF4444' : '#10B981' }}>{String(market.vix_risk ?? '—').toUpperCase()}</span>
+                </span>
+                <span style={{ color: C.textFaint }}>·</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 600, color: C.textMuted }}>Regime</span>
+                  <span style={{ fontWeight: 700, color: '#8B5CF6' }}>{String(market.market_mode ?? '—').toUpperCase()}</span>
+                </span>
+                <span style={{ color: C.textFaint }}>·</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 600, color: C.textMuted }}>Best</span>
+                  <span style={{ fontWeight: 700, color: C.textSub }}>{String(market.best_style_today ?? '—')}</span>
+                </span>
+                <span style={{ color: C.textFaint }}>·</span>
+                <span style={{ fontWeight: 600, color: '#10B981' }}>{readyNow.length} ready</span>
+                <span style={{ fontWeight: 600, color: '#F59E0B' }}>{highConfWatch.length} watching</span>
+                {env?.fetched_at ? (
+                  <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: 10, color: C.textMuted, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Clock size={9} />
+                    {new Date(env.fetched_at).toLocaleTimeString()}
+                  </span>
+                ) : null}
+              </div>
+            </section>
+
+            {/* ── Today's Overall Verdict ── */}
+            {payload.overall_decision && (() => {
+              const od = payload.overall_decision as OverallDecision
+              const v = String(od.verdict || '').toUpperCase().replace(/ /g, '_')
+              const tone =
+                v === 'STRONG_GO' ? 'bullish' :
+                v === 'GO'        ? 'bullish' :
+                v === 'WATCH'     ? 'warning' :
+                v === 'AVOID'     ? 'bearish' : 'neutral'
+              const bannerStyle: React.CSSProperties =
+                tone === 'bullish' ? { border: '1px solid rgba(16,185,129,0.35)', background: isDark ? 'rgba(16,185,129,0.07)' : 'rgba(16,185,129,0.06)' } :
+                tone === 'warning' ? { border: '1px solid rgba(245,158,11,0.3)', background: isDark ? 'rgba(245,158,11,0.06)' : 'rgba(245,158,11,0.05)' } :
+                tone === 'bearish' ? { border: '1px solid rgba(239,68,68,0.3)', background: isDark ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.05)' } :
+                                     { border: `1px solid ${C.border}`, background: C.card }
+              const reasonDot = verdictAccentColor(tone)
+
+              return (
+                <section style={{ borderRadius: 16, padding: 16, ...bannerStyle }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                    <span style={{ borderRadius: 8, padding: '4px 12px', fontSize: 14, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em', ...verdictBadgeStyle(tone, isDark) }}>{v.replace(/_/g, ' ')}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{od.label}</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 12, color: C.textMuted }}>{od.confidence}% conf.</span>
+                    {od.engines_agreeing.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                        <span style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aligned:</span>
+                        {od.engines_agreeing.map(e => (
+                          <span key={e} style={{ border: '1px solid', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...engineChipStyle(e, isDark) }}>{e}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ marginTop: 5, width: 6, height: 6, flexShrink: 0, borderRadius: '50%', background: reasonDot }} />
+                    <p style={{ fontSize: 12, lineHeight: 1.6, color: C.textSub, margin: 0 }}>{od.reason}</p>
+                  </div>
+                </section>
+              )
+            })()}
+
+            {/* ── Engine Overview: Best Pick Per Engine ── */}
+            {engineOrder.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(engineOrder.length, 3)}, 1fr)`, gap: 12 }}
+                className="tcc-engine-grid">
                 {engineOrder.map(engKey => {
-                  const top = topByEngine[engKey]
-                  const label = engKey === 'day' ? 'Day Trade' : engKey === 'swing' ? 'Swing Trade' : 'Options'
+                  const top       = topByEngine[engKey]
+                  const label     = engKey === 'day' ? 'Day Trade' : engKey === 'swing' ? 'Swing Trade' : 'Options'
                   const timeframe = engKey === 'day' ? 'Intraday' : engKey === 'swing' ? '5–21 days' : 'Multi-leg'
-                  const chipCls = engineChipClass(engKey)
-                  const borderCls = engineBorderClass(engKey)
+                  const chipStyle = engineChipStyle(engKey, isDark)
+                  const accent    = engineBorderAccent(engKey)
 
                   if (!top) {
                     return (
-                      <div key={engKey} className={`rounded-xl border border-l-4 ${borderCls} border-l-slate-700 bg-slate-900 p-4`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${chipCls}`}>{engKey.toUpperCase()}</span>
-                          <span className="text-[10px] text-slate-600">{timeframe}</span>
+                      <div key={engKey} style={{ borderRadius: 12, border: `1px solid ${C.border}`, borderLeft: `4px solid ${C.textFaint}`, background: C.card, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span style={{ border: '1px solid', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle }}>{engKey.toUpperCase()}</span>
+                          <span style={{ fontSize: 10, color: C.textMuted }}>{timeframe}</span>
                         </div>
-                        <div className="text-sm font-semibold text-slate-600">No setup</div>
-                        <div className="text-[10px] text-slate-700 mt-1">{label} has no actionable signals</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.textMuted }}>No setup</div>
+                        <div style={{ fontSize: 10, color: C.textFaint, marginTop: 4 }}>{label} has no actionable signals</div>
                       </div>
                     )
                   }
@@ -410,198 +514,124 @@ export default function TradeCommandCenter() {
                     <button
                       key={engKey}
                       type="button"
-                      onClick={() => navigate(navForRec(top))}
-                      className={`rounded-xl border border-l-4 ${borderCls} ${borderAccentClass(top.verdict_tone)} bg-slate-900 p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
+                      onClick={() => goToRec(top)}
+                      style={{
+                        borderRadius: 12, border: `1px solid ${C.border}`, borderLeft: `4px solid ${accent}`,
+                        background: C.card, padding: 16, textAlign: 'left', cursor: 'pointer',
+                        transition: 'box-shadow 0.15s, transform 0.15s', width: '100%',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; (e.currentTarget as HTMLElement).style.transform = 'none' }}
                     >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase ${chipCls}`}>{engKey.toUpperCase()}</span>
-                          <span className="text-[10px] text-slate-600">{timeframe}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ border: '1px solid', borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle }}>{engKey.toUpperCase()}</span>
+                          <span style={{ fontSize: 10, color: C.textMuted }}>{timeframe}</span>
                         </div>
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictBadgeClass(top.verdict_tone)}`}>{top.verdict_label}</span>
+                        <span style={{ borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', ...verdictBadgeStyle(top.verdict_tone, isDark) }}>{top.verdict_label}</span>
                       </div>
-                      <div className="font-mono text-xl font-bold text-white mb-1">{top.ticker}</div>
-                      <div className="text-[11px] text-slate-500 truncate mb-3">{top.strategy || top.direction || label}</div>
-                      <div className="flex items-center justify-between">
-                        <div className="text-[10px] text-slate-600 uppercase tracking-wide">Confidence</div>
-                        <div className={`font-mono text-sm font-bold ${conf >= 70 ? 'text-emerald-400' : conf >= 50 ? 'text-amber-400' : 'text-slate-500'}`}>{conf}%</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>{top.ticker}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 12 }}>{top.strategy || top.direction || label}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Confidence</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: conf >= 70 ? '#10B981' : conf >= 50 ? '#F59E0B' : C.textMuted }}>{conf}%</div>
                       </div>
-                      <SubIndicators indicators={top.sub_indicators} />
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })()}
-
-          {/* ── Ready to Act: STRONG_GO + GO ── */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Ready to Act</h2>
-              <span className="ml-2 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400">{readyNow.length}</span>
-              <span className="text-[10px] text-slate-600 ml-1">Strong Go + Go · sorted by confidence</span>
-            </div>
-
-            {readyNow.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/[0.08] px-4 py-8 text-center text-sm text-slate-600">
-                No strong setups right now — check Watch list below
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {readyNow.map(rec => {
-                  const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
-                  const eng = rec.detail_route_key
-                  const chgPct = rec.price_change_pct
-                  const chgColor = chgPct != null ? (chgPct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500'
-
-                  return (
-                    <button
-                      key={rec.id}
-                      type="button"
-                      onClick={() => navigate(navForRec(rec))}
-                      className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} ${borderAccentClass(rec.verdict_tone)} bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
-                    >
-                      {/* Header row */}
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-base font-bold text-white">{rec.ticker}</span>
-                          <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChipClass(eng)}`}>{eng.toUpperCase()}</span>
-                        </div>
-                        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictBadgeClass(rec.verdict_tone)}`}>{rec.verdict_label}</span>
-                      </div>
-
-                      {/* Price + strategy */}
-                      <div className="flex items-center gap-2 mb-2.5">
-                        {chgPct != null && (
-                          <span className={`text-xs font-bold font-mono ${chgColor}`}>
-                            {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
-                          </span>
-                        )}
-                        {rec.last_price != null && (
-                          <span className="font-mono text-[11px] text-slate-500">${rec.last_price.toFixed(2)}</span>
-                        )}
-                        <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
-                      </div>
-
-                      {/* Entry / Target / Stop */}
-                      {(rec.entry_zone || rec.target || rec.stop_loss) && (
-                        <>
-                          <div className="border-t border-white/[0.06] mb-2" />
-                          <div className="grid grid-cols-3 gap-1 text-[11px] mb-2">
-                            <div>
-                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Entry</div>
-                              <div className="font-mono font-semibold text-slate-200">{rec.entry_zone || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Target</div>
-                              <div className="font-mono font-semibold text-emerald-400">{rec.target || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-600 text-[9px] uppercase tracking-wide">Stop</div>
-                              <div className="font-mono font-semibold text-red-400">{rec.stop_loss || '—'}</div>
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Confidence score */}
-                      <div className="flex items-center justify-end mt-auto">
-                        <span className={`font-mono text-xs font-bold ${conf >= 70 ? 'text-emerald-400' : 'text-sky-400'}`}>{conf}%</span>
-                      </div>
-                      <SubIndicators indicators={rec.sub_indicators} />
+                      <SubIndicators indicators={top.sub_indicators} C={C} />
                     </button>
                   )
                 })}
               </div>
             )}
-          </section>
 
-          {/* ── Watch: high-confidence WATCH setups ── */}
-          {highConfWatch.length > 0 && (
-            <section className="space-y-3">
-              <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2">
-                <div className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Watch — Entry Developing</h2>
-                <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">{highConfWatch.length}</span>
-                <span className="text-[10px] text-slate-600 ml-1">not yet triggered</span>
+            {/* ── Ready to Act: STRONG_GO + GO ── */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${C.borderFaint}`, paddingBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} className="animate-pulse" />
+                <h2 style={{ fontSize: 13, fontWeight: 700, color: C.text, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Ready to Act</h2>
+                <span style={{ borderRadius: 9999, background: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', padding: '1px 8px', fontSize: 10, fontWeight: 700, color: '#10B981' }}>{readyNow.length}</span>
+                <span style={{ fontSize: 10, color: C.textMuted }}>Strong Go + Go · sorted by confidence</span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {highConfWatch.map(rec => {
-                  const conf = rec.display_confidence ?? (typeof rec.confidence === 'number' ? rec.confidence : 0)
-                  const eng = rec.detail_route_key
-                  const chgPct = rec.price_change_pct
-                  const chgColor = chgPct != null ? (chgPct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500'
 
-                  return (
-                    <button
-                      key={rec.id}
-                      type="button"
-                      onClick={() => navigate(navForRec(rec))}
-                      className={`rounded-xl border border-l-4 ${engineBorderClass(eng)} border-l-amber-500/60 bg-slate-900 p-3.5 text-left transition-all hover:shadow-md hover:-translate-y-0.5`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-base font-bold text-white">{rec.ticker}</span>
-                          <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChipClass(eng)}`}>{eng.toUpperCase()}</span>
-                        </div>
-                        <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-400/15 text-amber-300 border border-amber-500/40">Watch</span>
-                      </div>
-
-                      <div className="flex items-center gap-2 mb-2">
-                        {chgPct != null && (
-                          <span className={`text-xs font-bold font-mono ${chgColor}`}>
-                            {chgPct >= 0 ? '▲' : '▼'} {Math.abs(chgPct).toFixed(1)}%
-                          </span>
-                        )}
-                        {rec.last_price != null && (
-                          <span className="font-mono text-[11px] text-slate-500">${rec.last_price.toFixed(2)}</span>
-                        )}
-                        <span className="text-[10px] text-slate-600 ml-auto truncate max-w-[100px]">{rec.strategy || rec.direction || ''}</span>
-                      </div>
-
-                      <div className="flex items-center justify-end">
-                        <span className="font-mono text-xs font-bold text-amber-400">{conf}%</span>
-                      </div>
-                      <SubIndicators indicators={rec.sub_indicators} />
-                    </button>
-                  )
-                })}
-              </div>
+              {readyNow.length === 0 ? (
+                <div style={{ borderRadius: 12, border: `1px dashed ${C.border}`, padding: '32px 16px', textAlign: 'center', fontSize: 14, color: C.textMuted }}>
+                  No strong setups right now — check Watch list below
+                </div>
+              ) : (
+                <div className="tcc-card-grid">
+                  {readyNow.map(rec => (
+                    <RecCard key={rec.id} rec={rec} C={C} isDark={isDark} onPress={() => goToRec(rec)} />
+                  ))}
+                </div>
+              )}
             </section>
-          )}
 
-          {/* ── Monitoring: lower signals (collapsed) ── */}
-          {lowSignals.length > 0 && (
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/[0.07] bg-slate-900 px-4 py-2.5 text-xs text-slate-500 select-none hover:bg-slate-800/50 transition-colors">
-                <div className="h-2 w-2 rounded-full bg-slate-600" />
-                <span className="font-semibold text-slate-400">Monitoring — {lowSignals.length} lower signals</span>
-                <span className="text-slate-600 ml-1">Wait + lower-confidence Watch</span>
-                <ChevronDown size={12} className="ml-auto text-slate-600 group-open:rotate-180 transition-transform" />
-              </summary>
-              <div className="flex flex-wrap gap-2 rounded-b-xl border border-t-0 border-white/[0.07] bg-slate-900 px-4 py-3">
-                {lowSignals.map(rec => {
-                  const eng = rec.detail_route_key
-                  return (
-                    <button
-                      key={rec.id}
-                      type="button"
-                      onClick={() => navigate(navForRec(rec))}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-xs hover:bg-slate-800/40 transition-colors"
-                    >
-                      <span className="font-mono font-bold text-slate-300">{rec.ticker}</span>
-                      <span className={`rounded border px-1 py-0.5 text-[9px] font-bold uppercase ${engineChipClass(eng)}`}>{eng.toUpperCase()}</span>
-                      <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${verdictBadgeClass(rec.verdict_tone)}`}>{rec.verdict_label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </details>
-          )}
+            {/* ── Watch: high-confidence WATCH setups ── */}
+            {highConfWatch.length > 0 && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${C.borderFaint}`, paddingBottom: 8, flexWrap: 'wrap' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#F59E0B' }} />
+                  <h2 style={{ fontSize: 13, fontWeight: 700, color: C.text, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Watch — Entry Developing</h2>
+                  <span style={{ borderRadius: 9999, background: isDark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', padding: '1px 8px', fontSize: 10, fontWeight: 700, color: '#F59E0B' }}>{highConfWatch.length}</span>
+                  <span style={{ fontSize: 10, color: C.textMuted }}>not yet triggered</span>
+                </div>
+                <div className="tcc-card-grid">
+                  {highConfWatch.map(rec => (
+                    <RecCard key={rec.id} rec={rec} C={C} isDark={isDark} onPress={() => goToRec(rec)} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-        </>
-      ) : null}
+            {/* ── Monitoring: lower signals (collapsed) ── */}
+            {lowSignals.length > 0 && (
+              <details className="group" style={{ borderRadius: 12 }}>
+                <summary style={{
+                  display: 'flex', cursor: 'pointer', listStyle: 'none', alignItems: 'center', gap: 8,
+                  border: `1px solid ${C.border}`, background: C.card, borderRadius: 12,
+                  padding: '10px 16px', fontSize: 12, color: C.textSub, userSelect: 'none',
+                }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.textFaint }} />
+                  <span style={{ fontWeight: 600 }}>Monitoring — {lowSignals.length} lower signals</span>
+                  <span style={{ color: C.textMuted }}>Wait + lower-confidence Watch</span>
+                  <ChevronDown size={12} color={C.textMuted} style={{ marginLeft: 'auto' }} className="group-open:rotate-180 transition-transform" />
+                </summary>
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 8,
+                  border: `1px solid ${C.border}`, borderTop: 'none',
+                  borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+                  background: C.card, padding: '12px 16px',
+                }}>
+                  {lowSignals.map(rec => {
+                    const eng = rec.detail_route_key
+                    const chipStyle = engineChipStyle(eng, isDark)
+                    return (
+                      <button
+                        key={rec.id}
+                        type="button"
+                        onClick={() => goToRec(rec)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          borderRadius: 8, border: `1px solid ${C.border}`,
+                          padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                          background: 'transparent', color: C.textSub,
+                          transition: 'background 0.12s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.cardHover}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                      >
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.text }}>{rec.ticker}</span>
+                        <span style={{ border: '1px solid', borderRadius: 4, padding: '1px 4px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...chipStyle }}>{eng.toUpperCase()}</span>
+                        <span style={{ borderRadius: 4, padding: '1px 5px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', ...verdictBadgeStyle(rec.verdict_tone, isDark) }}>{rec.verdict_label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </details>
+            )}
+
+          </>
+        ) : null}
+      </div>
     </div>
   )
 }

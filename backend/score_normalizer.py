@@ -446,13 +446,11 @@ def _regular_score_to_state(top_candidate: Optional[dict], total_score: float) -
     if ev <= 0.0:
         return "NO-GO"
 
-    if total_score >= 70:
+    if total_score >= 60:
         return "GO"
-    if total_score >= 50:
-        return "READY"
-    if total_score >= 30:
+    if total_score >= 45:
         return "WATCH"
-    if total_score >= 15:
+    if total_score >= 30:
         return "WAIT"
     return "NO-GO"
 
