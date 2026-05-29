@@ -2,7 +2,7 @@ import axios from 'axios'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Activity,
+  Activity, SatelliteDish,
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
@@ -1025,7 +1025,7 @@ export default function SignalFeedPage() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-700 flex items-center justify-center shrink-0">
-              <Activity size={18} className="text-indigo-400" />
+              <SatelliteDish size={18} className="text-indigo-400" />
             </div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading sm:text-3xl">Signal Feed</h1>
             <span className="rounded-full border border-semantic-info-border bg-semantic-info-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-semantic-info">Unified Engine View</span>
