@@ -32,6 +32,7 @@ const UnifiedWatchlistPage = lazy(() => import('./pages/UnifiedWatchlistPage'))
 const SignalFeedPage = lazy(() => import('./pages/SignalFeedPage'))
 const MyTickersPage = lazy(() => import('./pages/MyTickersPage'))
 const ActiveTradesPage = lazy(() => import('./pages/ActiveTradesPage'))
+const DayTradeDashboardPage = lazy(() => import('./pages/DayTradeDashboardPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -167,6 +168,7 @@ function ShellRoutes() {
               <Route path="/active-trades" element={<Suspense fallback={<RouteFallback />}><ActiveTradesPage /></Suspense>} />
               <Route path="/swing-trade" element={<SwingTradePage />} />
               <Route path="/my-tickers" element={<MyTickersPage />} />
+              <Route path="/day-trade-dashboard" element={<DayTradeDashboardPage />} />
             </Route>
           </Route>
         </Route>

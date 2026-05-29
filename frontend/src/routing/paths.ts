@@ -67,6 +67,8 @@ export function locationToPage(pathname: string): Page {
       return 'my-tickers'
     case 'desk':
       return 'desk'
+    case 'day-trade-dashboard':
+      return 'day-trade-dashboard'
     default:
       return 'trade-command-center'
   }
@@ -132,6 +134,8 @@ export function pageToLocation(p: Page): string {
       return '/my-tickers'
     case 'desk':
       return '/desk'
+    case 'day-trade-dashboard':
+      return '/day-trade-dashboard'
     default:
       return '/trade-command-center'
   }
