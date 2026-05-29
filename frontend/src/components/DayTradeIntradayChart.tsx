@@ -190,7 +190,7 @@ export default function DayTradeIntradayChart({
   }
 
   return (
-    <div ref={wrapRef} className="day-trade-chart w-full">
+    <div ref={wrapRef} className="day-trade-chart w-full min-w-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Session chart (1m)
