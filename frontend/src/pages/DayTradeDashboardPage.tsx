@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, ShieldAlert } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, ShieldAlert, GripVertical } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2 } from '../api/client'
 import type { DayTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
@@ -122,11 +122,14 @@ function TileHeader({ tile, isDark, dt, onRemove, detailHref }: {
 }
 
 // ─── Single ticker tile ────────────────────────────────────────────────────
-function TickerTile({ tile, isDark, dt, onRemove }: {
+function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, isDropTarget }: {
   tile: TileData
   isDark: boolean
   dt: Record<string, string>
   onRemove: () => void
+  dragHandleProps: React.HTMLAttributes<HTMLDivElement>
+  isDragging: boolean
+  isDropTarget: boolean
 }) {
   const { result } = tile
 
@@ -164,14 +167,32 @@ function TickerTile({ tile, isDark, dt, onRemove }: {
   return (
     <div style={{
       background: dt.bg,
-      border: `1px solid ${dt.border}`,
+      border: `1px solid ${isDropTarget ? dt.accent : isDragging ? 'transparent' : dt.border}`,
       borderRadius: 14,
       padding: '14px 16px',
       display: 'flex',
       flexDirection: 'column',
       gap: 0,
       minWidth: 0,
+      opacity: isDragging ? 0.4 : 1,
+      outline: isDropTarget ? `2px solid ${dt.accent}` : 'none',
+      outlineOffset: 2,
+      transition: 'opacity 0.15s, outline 0.1s, border-color 0.1s',
     }}>
+      {/* Drag handle — top strip */}
+      <div
+        {...dragHandleProps}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          marginBottom: 8, cursor: 'grab', userSelect: 'none',
+          color: dt.muted, fontSize: 10, letterSpacing: '0.06em',
+          opacity: 0.5,
+        }}
+        title="Drag to reorder"
+      >
+        <GripVertical size={14} />
+      </div>
+
       {tile.loading && !tile.result && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, color: dt.muted, fontSize: 13 }}>
           <RefreshCw size={16} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
@@ -316,6 +337,25 @@ export default function DayTradeDashboardPage() {
   const [addInput, setAddInput] = useState('')
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  // ── Drag-and-drop state ──────────────────────────────────────────────────
+  const dragSrc = useRef<string | null>(null)
+  const [draggingTicker, setDraggingTicker] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  const makeDragHandleProps = useCallback((sym: string): React.HTMLAttributes<HTMLDivElement> => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      dragSrc.current = sym
+      setDraggingTicker(sym)
+      e.dataTransfer.effectAllowed = 'move'
+    },
+    onDragEnd: () => {
+      dragSrc.current = null
+      setDraggingTicker(null)
+      setDropTarget(null)
+    },
+  }), [])
 
   // Persist tickers to localStorage
   useEffect(() => {
@@ -498,13 +538,40 @@ export default function DayTradeDashboardPage() {
             gap: 16,
           }}>
             {tickers.map(sym => (
-              <TickerTile
+              <div
                 key={sym}
-                tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
-                isDark={isDark}
-                dt={dt}
-                onRemove={() => removeTicker(sym)}
-              />
+                onDragOver={e => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragSrc.current && dragSrc.current !== sym) setDropTarget(sym)
+                }}
+                onDragLeave={() => setDropTarget(prev => prev === sym ? null : prev)}
+                onDrop={e => {
+                  e.preventDefault()
+                  const src = dragSrc.current
+                  if (!src || src === sym) { setDropTarget(null); return }
+                  setTickers(prev => {
+                    const next = [...prev]
+                    const fromIdx = next.indexOf(src)
+                    const toIdx   = next.indexOf(sym)
+                    if (fromIdx < 0 || toIdx < 0) return prev
+                    next.splice(fromIdx, 1)
+                    next.splice(toIdx, 0, src)
+                    return next
+                  })
+                  setDropTarget(null)
+                }}
+              >
+                <TickerTile
+                  tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
+                  isDark={isDark}
+                  dt={dt}
+                  onRemove={() => removeTicker(sym)}
+                  dragHandleProps={makeDragHandleProps(sym)}
+                  isDragging={draggingTicker === sym}
+                  isDropTarget={dropTarget === sym}
+                />
+              </div>
             ))}
           </div>
         )}
