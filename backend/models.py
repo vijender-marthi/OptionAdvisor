@@ -268,6 +268,7 @@ class BacktestRequest(BaseModel):
 
 class DayTradeRequest(BaseModel):
     ticker: str
+    force_refresh: bool = False
 
 
 class DayTradeResponse(BaseModel):

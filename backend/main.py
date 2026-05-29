@@ -2628,7 +2628,7 @@ def day_trade_scan(
     verdicts: STRONG GO, GO, WATCH (weak volume), NO-GO, WAIT.
     """
     try:
-        r = run_day_trade_scan(req.ticker)
+        r = run_day_trade_scan(req.ticker, force_refresh=req.force_refresh)
         resolved = resolve_trade_decision(
             {
                 "engine_type": "day",

@@ -293,8 +293,8 @@ export interface DayTradeScanResult {
   is_chasing?: boolean
 }
 
-export const analyzeDayTrade = async (ticker: string): Promise<DayTradeScanResult> => {
-  const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim() })
+export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
+  const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
   return data
 }
 
