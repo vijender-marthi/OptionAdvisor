@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2 } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2 } from '../api/client'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
@@ -35,6 +35,95 @@ function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?:
     <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 20, border: `1.5px solid ${c}`, color: c, background: `${c}18`, whiteSpace: 'nowrap' }}>
       {verdict.replace('_', ' ')}
     </span>
+  )
+}
+
+// ─── Chart expand modal ────────────────────────────────────────────────────
+interface ExpandedChart {
+  ticker: string
+  tab: Tab
+  metrics: Record<string, unknown>
+  entryPoints?: ChartEntryPoint[]
+  unified: UnifiedAnalysis | null
+}
+
+function ChartModal({ data, isDark, dt, onClose }: {
+  data: ExpandedChart; isDark: boolean; dt: Record<string, string>; onClose: () => void
+}) {
+  const isSwing = data.tab === 'swing'
+  const chartBars   = !isSwing ? parseChartBars(data.metrics.chart_bars) : null
+  const orHigh      = data.metrics.or_high as number | undefined
+  const orLow       = data.metrics.or_low as number | undefined
+  const orMin       = (data.metrics.or_minutes as number | undefined) ?? 15
+  const sessionDate = String(data.metrics.session_date ?? '')
+  const verdict     = data.unified?.verdict ?? ''
+  const statusColor = data.unified?.verdict_presentation?.status_color
+  const price       = data.unified?.price
+  const changePct   = data.unified?.change_pct
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  // Prevent body scroll while open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: dt.bg, borderRadius: 16, width: '100%', maxWidth: 1100, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${dt.border}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+      >
+        {/* Modal header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${dt.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 20, color: dt.text }}>{data.ticker}</span>
+            {price != null && <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 16, color: dt.text }}>${price.toFixed(2)}</span>}
+            {changePct != null && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: changePct >= 0 ? dt.green : dt.red }}>
+                {changePct >= 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+              </span>
+            )}
+            {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}
+            <span style={{ fontSize: 11, color: dt.muted }}>
+              {isSwing ? 'Swing · Daily Chart' : 'Intraday · 6:30 AM – 1:00 PM PT'}
+            </span>
+          </div>
+          <button onClick={onClose}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: '50%', background: isDark ? '#1E2330' : '#F3F4F6', border: 'none', cursor: 'pointer', color: dt.muted, flexShrink: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Chart body — scrollable if needed */}
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px 20px' }}>
+          {isSwing ? (
+            <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
+          ) : chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
+            <DayTradeIntradayChart
+              bars={chartBars} orHigh={orHigh} orLow={orLow}
+              orMinutes={orMin} sessionDate={sessionDate}
+              entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: dt.muted }}>No chart data</div>
+          )}
+        </div>
+
+        <div style={{ padding: '8px 20px 12px', borderTop: `1px solid ${dt.border}`, fontSize: 11, color: dt.muted, flexShrink: 0 }}>
+          Press <kbd style={{ background: isDark ? '#1E2330' : '#F3F4F6', border: `1px solid ${dt.border}`, borderRadius: 4, padding: '1px 5px', fontSize: 10 }}>Esc</kbd> or click outside to close
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -87,9 +176,10 @@ function TileHeader({ tile, dt, detailHref, onRemove }: {
 }
 
 // ─── Tile ──────────────────────────────────────────────────────────────────
-function TickerTile({ tile, tab, dt, isDark, onRemove, dragHandleProps, isDragging, isDropTarget }: {
+function TickerTile({ tile, tab, dt, isDark, onRemove, onExpandChart, dragHandleProps, isDragging, isDropTarget }: {
   tile: TileData; tab: Tab; dt: Record<string, string>; isDark: boolean
   onRemove: () => void
+  onExpandChart: () => void
   dragHandleProps: React.HTMLAttributes<HTMLDivElement>
   isDragging: boolean; isDropTarget: boolean
 }) {
@@ -213,14 +303,24 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, dragHandleProps, isDraggi
             </div>
           )}
 
-          {/* Chart */}
-          {isSwing && metrics ? (
-            <div style={{ borderRadius: 8, overflow: 'hidden' }}>
-              <SwingTradeMetricCharts metrics={metrics} mode="price" />
-            </div>
-          ) : !isSwing && chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
-            <div style={{ overflow: 'hidden', borderRadius: 8 }}>
-              <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} />
+          {/* Chart — click to expand */}
+          {(isSwing && metrics) || (!isSwing && chartBars && chartBars.length > 0 && orHigh != null && orLow != null) ? (
+            <div
+              onClick={onExpandChart}
+              title="Click to expand chart"
+              style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', cursor: 'zoom-in' }}
+            >
+              {/* Expand hint overlay */}
+              <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.45)', borderRadius: 6, padding: '3px 7px', pointerEvents: 'none' }}>
+                <Maximize2 size={11} color="#fff" />
+                <span style={{ fontSize: 9, color: '#fff', fontWeight: 600, letterSpacing: '0.04em' }}>EXPAND</span>
+              </div>
+
+              {isSwing && metrics ? (
+                <SwingTradeMetricCharts metrics={metrics} mode="price" />
+              ) : (
+                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} />
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120, color: dt.muted, fontSize: 11, border: `1px dashed ${dt.border}`, borderRadius: 8 }}>
@@ -252,6 +352,36 @@ function TileGrid({ tickers, tiles, tab, dt, isDark, onRemove, onReorder }: {
   const dragSrc = useRef<string | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [expandedChart, setExpandedChart] = useState<ExpandedChart | null>(null)
+
+  const buildExpandedChart = (sym: string): ExpandedChart | null => {
+    const tile = tiles[sym]
+    if (!tile?.result) return null
+    const metrics = tile.result.metrics as Record<string, unknown> | undefined
+    if (!metrics) return null
+    const isSwing = tab === 'swing'
+    let entryPoints: ChartEntryPoint[] | undefined
+    if (!isSwing) {
+      const dr = tile.result as DayTradeScanResult
+      const eg = dr.entry_guidance, ac = dr.ai_coach
+      const orHigh = metrics.or_high as number | undefined
+      const orLow  = metrics.or_low  as number | undefined
+      const mVwap  = typeof metrics.vwap === 'number' && isFinite(metrics.vwap) ? metrics.vwap as number : null
+      const isShort = tile.result.bias === 'short'
+      const sf = isShort ? orHigh : orLow
+      const seen = new Set<number>(); const pts: ChartEntryPoint[] = []
+      const add = (price: number | null | undefined, trigger: string, stop?: number) => {
+        if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
+        seen.add(price); pts.push({ label: `E${pts.length + 1}`, price, trigger, stop })
+      }
+      add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? sf)
+      add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf)
+      add((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
+      add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? sf)
+      if (pts.length) entryPoints = pts
+    }
+    return { ticker: sym, tab, metrics, entryPoints, unified: tile.unified }
+  }
 
   const makeHandleProps = (sym: string): React.HTMLAttributes<HTMLDivElement> => ({
     draggable: true,
@@ -273,29 +403,41 @@ function TileGrid({ tickers, tiles, tab, dt, isDark, onRemove, onReorder }: {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 560px), 1fr))', gap: 16 }}>
-      {tickers.map(sym => (
-        <div key={sym}
-          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragSrc.current && dragSrc.current !== sym) setDropTarget(sym) }}
-          onDragLeave={() => setDropTarget(prev => prev === sym ? null : prev)}
-          onDrop={e => {
-            e.preventDefault()
-            const src = dragSrc.current
-            if (src && src !== sym) onReorder(src, sym)
-            setDropTarget(null)
-          }}
-        >
-          <TickerTile
-            tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
-            tab={tab} dt={dt} isDark={isDark}
-            onRemove={() => onRemove(sym)}
-            dragHandleProps={makeHandleProps(sym)}
-            isDragging={dragging === sym}
-            isDropTarget={dropTarget === sym}
-          />
-        </div>
-      ))}
-    </div>
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 560px), 1fr))', gap: 16 }}>
+        {tickers.map(sym => (
+          <div key={sym}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragSrc.current && dragSrc.current !== sym) setDropTarget(sym) }}
+            onDragLeave={() => setDropTarget(prev => prev === sym ? null : prev)}
+            onDrop={e => {
+              e.preventDefault()
+              const src = dragSrc.current
+              if (src && src !== sym) onReorder(src, sym)
+              setDropTarget(null)
+            }}
+          >
+            <TickerTile
+              tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
+              tab={tab} dt={dt} isDark={isDark}
+              onRemove={() => onRemove(sym)}
+              onExpandChart={() => { const d = buildExpandedChart(sym); if (d) setExpandedChart(d) }}
+              dragHandleProps={makeHandleProps(sym)}
+              isDragging={dragging === sym}
+              isDropTarget={dropTarget === sym}
+            />
+          </div>
+        ))}
+      </div>
+
+      {expandedChart && (
+        <ChartModal
+          data={expandedChart}
+          isDark={isDark}
+          dt={dt}
+          onClose={() => setExpandedChart(null)}
+        />
+      )}
+    </>
   )
 }
 

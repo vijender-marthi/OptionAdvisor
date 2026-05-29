@@ -139,7 +139,7 @@ def _last_session_rth(df_et: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     if df_et.empty:
         return df_et, ""
     df_et = df_et.sort_index()
-    rth = df_et.between_time("09:30", "15:59")
+    rth = df_et.between_time("09:30", "16:00")
     if rth.empty:
         return rth, ""
     days = rth.index.normalize().unique().sort_values()
@@ -152,7 +152,7 @@ def _last_session_rth(df_et: pd.DataFrame) -> tuple[pd.DataFrame, str]:
 
 def _rth_session_on_date(df_et: pd.DataFrame, session_date: str) -> pd.DataFrame:
     """RTH bars for a specific calendar date string (YYYY-MM-DD), ET."""
-    rth = df_et.between_time("09:30", "15:59")
+    rth = df_et.between_time("09:30", "16:00")
     if rth.empty:
         return rth
     day = pd.Timestamp(session_date).tz_localize(ET).normalize()
