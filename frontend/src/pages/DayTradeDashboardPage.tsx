@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, ShieldAlert, GripVertical, Zap, TrendingUp } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2 } from '../api/client'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
@@ -339,15 +338,8 @@ function TickerBar({ tickers, onAdd, onRemove, dt, accentColor, max = MAX_TICKER
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function DayTradeDashboardPage() {
-  const navigate = useNavigate()
-  const { theme, user } = useApp()
+  const { theme } = useApp()
   const isDark = theme !== 'light'
-
-  // Role guard
-  const allowed = user?.role === 'admin' || user?.role === 'super_user'
-  useEffect(() => {
-    if (user !== undefined && !allowed) navigate(ROUTES.tradeCommandCenter, { replace: true })
-  }, [user, allowed, navigate])
 
   const dt = {
     bg: isDark ? '#111318' : '#FFFFFF', bgDeep: isDark ? '#0A0C10' : '#F3F4F6',
@@ -447,14 +439,6 @@ export default function DayTradeDashboardPage() {
 
   const fmtTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   const tabAccent = activeTab === 'swing' ? dt.violet : dt.accent
-
-  if (!allowed) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: dt.bgDeep, color: dt.muted }}>
-        <ShieldAlert size={36} /><div style={{ fontSize: 15, fontWeight: 600 }}>Access restricted</div>
-      </div>
-    )
-  }
 
   return (
     <div style={{ minHeight: '100vh', background: dt.bgDeep, color: dt.text, padding: '20px 16px 40px' }}>
