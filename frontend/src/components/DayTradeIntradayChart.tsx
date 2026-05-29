@@ -486,7 +486,8 @@ export default function DayTradeIntradayChart({
               )
             } else {
               const ty = yAt(bar.l) + 14
-              const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
+              // ▲ tip points up (smaller y in SVG = higher on screen)
+              const pts = `${cx},${ty - arrowSize} ${cx - arrowSize},${ty + arrowSize} ${cx + arrowSize},${ty + arrowSize}`
               return (
                 <g key={`earrow-${idx}`} clipPath="url(#daytrade-plot-clip)">
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
