@@ -25,7 +25,7 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
-const PAD = { l: 56, r: 10, t: 18, b: 34 }
+const PAD = { l: 56, r: 56, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {
   if (!iso || typeof iso !== 'string') return ''
@@ -295,25 +295,21 @@ export default function DayTradeIntradayChart({
           ))}
 
           <line
-            x1={PAD.l} x2={PAD.l + innerW}
+            x1={PAD.l} x2={PAD.l + innerW + PAD.r - 4}
             y1={yAt(orHigh)} y2={yAt(orHigh)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
-            clipPath="url(#daytrade-plot-clip)"
           />
           <line
-            x1={PAD.l} x2={PAD.l + innerW}
+            x1={PAD.l} x2={PAD.l + innerW + PAD.r - 4}
             y1={yAt(orLow)} y2={yAt(orLow)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
-            clipPath="url(#daytrade-plot-clip)"
           />
-          <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 4} textAnchor="end"
-            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}
-            clipPath="url(#daytrade-plot-clip)">OR high</text>
-          <text x={PAD.l + innerW - 4} y={yAt(orLow) + 12} textAnchor="end"
-            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}
-            clipPath="url(#daytrade-plot-clip)">OR low</text>
+          <text x={PAD.l + innerW + PAD.r - 4} y={yAt(orHigh) - 4} textAnchor="end"
+            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR high</text>
+          <text x={PAD.l + innerW + PAD.r - 4} y={yAt(orLow) + 12} textAnchor="end"
+            fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR low</text>
 
           <g clipPath="url(#daytrade-plot-clip)">
             {bars.map((b, i) => {
@@ -392,12 +388,14 @@ export default function DayTradeIntradayChart({
           <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH}
             fill="none" stroke="var(--chart-grid)" strokeWidth={1} opacity={0.6} />
 
-          {xLabelIdx.map(i => {
-            const bar = bars[i]
+          {xLabelIdx.map((barIdx, labelPos) => {
+            const bar = bars[barIdx]
             if (!bar) return null
+            // anchor: first label left-aligned, last right-aligned, middle centered
+            const anchor = labelPos === 0 ? 'start' : labelPos === xLabelIdx.length - 1 ? 'end' : 'middle'
             return (
-              <text key={`xt-${i}`} x={xAt(times[i]!)} y={H - 10}
-                textAnchor="middle" fill="var(--chart-axis)" fontSize={10}>
+              <text key={`xt-${barIdx}`} x={xAt(times[barIdx]!)} y={H - 10}
+                textAnchor={anchor} fill="var(--chart-axis)" fontSize={10}>
                 {fmtEtShort(bar.t)}
               </text>
             )
