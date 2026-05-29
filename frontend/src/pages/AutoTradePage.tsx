@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Zap, RefreshCw, AlertTriangle, DollarSign,
+  Wallet, Zap, RefreshCw, AlertTriangle, DollarSign,
   TrendingUp, TrendingDown, Settings, ExternalLink, X,
   ShieldAlert, BarChart3, Clock,
 } from 'lucide-react'
@@ -380,7 +380,7 @@ export default function AutoTradePage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading flex items-center gap-2">
-              <Zap className="text-amber-400 shrink-0" size={22} />
+              <Wallet className="text-amber-400 shrink-0" size={22} />
               <span>Auto Trading</span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-300 border-amber-700">
                 PAPER MODE

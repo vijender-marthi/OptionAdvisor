@@ -136,7 +136,7 @@ export default function Sidebar() {
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
-        { id: 'auto-trade', label: 'Alpaca Trade', icon: <Wallet size={18} /> },
+        { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
       ],
     },
     {
@@ -186,7 +186,7 @@ export default function Sidebar() {
   const mobilePrimaryItems: NavItem[] = [
     { id: 'trade-command-center', label: 'Home',      icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
-    { id: 'day-trade',            label: 'Intraday',  icon: <Zap size={23} /> },
+    { id: 'day-trade',            label: 'Day Trade', icon: <Zap size={23} /> },
     { id: 'positions',            label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
     { id: 'ticker',               label: 'Trading',   icon: <Search size={23} /> },
   ]

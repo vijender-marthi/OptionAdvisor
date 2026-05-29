@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   RefreshCw,
-  Zap,
+  Command,
   TrendingUp,
   Clock,
 } from 'lucide-react'
@@ -359,7 +359,7 @@ export default function TradeCommandCenter() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, background: isDark ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Zap size={15} color="#8B5CF6" />
+              <Command size={15} color="#8B5CF6" />
             </div>
             <div style={{ minWidth: 0 }}>
               <h1 style={{ fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.2, margin: 0 }}>Trade Command Center</h1>
