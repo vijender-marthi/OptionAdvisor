@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState, useCallback } from 'react'
-import { Activity, Bell, Clock, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
+import { Activity, Bell, Clock, Database, Mail, Palette, RefreshCw, ShieldCheck, Info, Send, CheckCircle2, AlertTriangle, Wrench, Settings } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
@@ -168,7 +168,10 @@ export default function SettingsPage() {
       </div>
       {/* Header */}
       <div>
-        <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Settings</h1>
+        <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading flex items-center gap-2">
+          <Settings size={22} className="text-semantic-accent shrink-0" />
+          Settings
+        </h1>
         <p className="text-sm text-gray-500 mt-1">Configure how OptionAdvisor notifies you and manages alerts.</p>
       </div>
 

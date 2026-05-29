@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
-  Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge,
+  Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -133,9 +133,9 @@ export default function Sidebar() {
     {
       label: 'Trades',
       items: [
-        { id: 'day-trade', label: 'Intraday', icon: <Zap size={18} /> },
+        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-        { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
+        { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Wallet size={18} /> },
       ],
     },
@@ -149,20 +149,20 @@ export default function Sidebar() {
     {
       label: 'Notifications',
       items: [
-        { id: 'alert-center', label: 'Messages', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+        { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
       ],
     },
   {
     label: 'Discovery',
     items: [
-      { id: 'ai-stocks', label: 'AI Stocks', icon: <BrainCircuit size={18} /> },
-      { id: 'q-radar', label: 'Quantum', icon: <Radar size={18} /> },
+      { id: 'ai-stocks', label: 'AI Stocks', icon: <Bot size={18} /> },
+      { id: 'q-radar', label: 'Quantum Radar', icon: <Atom size={18} /> },
     ],
   },
   {
     label: 'Analyze',
     items: [
-      { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
+      { id: 'trade-signals', label: 'Trade Signals', icon: <BarChart2 size={18} /> },
     ],
   },
   {
@@ -193,9 +193,9 @@ export default function Sidebar() {
   const mobileMoreItems: NavItem[] = [
     { id: 'watchlist',      label: 'Signal Feed',    icon: <SatelliteDish size={18} /> },
     { id: 'swing-trade',    label: 'Swing Trade',    icon: <TrendingUp size={18} /> },
-    { id: 'trade-signals',  label: 'Trade Signals',  icon: <Radar size={18} /> },
+    { id: 'trade-signals',  label: 'Trade Signals',  icon: <BarChart2 size={18} /> },
     { id: 'my-tickers',     label: 'My Tickers',     icon: <ListTodo size={18} /> },
-    { id: 'alert-center',   label: 'Alerts',         icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+    { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
     { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
     { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },

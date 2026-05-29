@@ -201,7 +201,10 @@ export default function AlertCenter() {
     <div className="alerts-page oa-cc-page mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Alert Center</h1>
+          <h1 className="text-xl font-bold text-gray-100 flex items-center gap-2">
+            <Bell size={20} className="text-semantic-accent shrink-0" />
+            Alert Center
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
             One normalized stream for entry, exit, risk, and market alerts across all trading engines.
           </p>

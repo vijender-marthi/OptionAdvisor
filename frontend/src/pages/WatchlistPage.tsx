@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
   Star, Trash2, TrendingUp, RefreshCw, Plus, Search,
-  Database, Clock, AlertTriangle, CheckCircle, ChevronUp, ChevronDown, Layers,
+  Database, Clock, AlertTriangle, CheckCircle, ChevronUp, ChevronDown, Layers, SatelliteDish,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { useWatchlistHubBinding } from '../contexts/WatchlistHubContext'
@@ -404,13 +404,13 @@ export function OptionsWatchlistPanel({ embedded = false }: { embedded?: boolean
           <div>
             {!embedded ? (
               <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading flex items-center gap-2">
-                <Star className="text-amber-400" size={22} />
-                Watchlist
+                <SatelliteDish className="text-semantic-accent" size={22} />
+                Signal Feed
               </h1>
             ) : (
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Star className="text-amber-400" size={20} />
-                Regular watchlist
+                <SatelliteDish className="text-semantic-accent" size={20} />
+                Signal Feed
               </h2>
             )}
             <div className="flex items-center gap-3 mt-0.5">

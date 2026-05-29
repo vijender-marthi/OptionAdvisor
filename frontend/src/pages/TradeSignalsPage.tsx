@@ -708,7 +708,10 @@ export default function TradeSignalsPage() {
                   <ShieldCheck size={18} className="text-emerald-400" />
                 </div>
                 <div>
-                  <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Trade Signals</h1>
+                  <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading flex items-center gap-2">
+                    <BarChart2 size={22} className="text-semantic-accent shrink-0" />
+                    Trade Signals
+                  </h1>
                   <p className="text-[11px] text-gray-500 mt-0.5">Options signals · 3-week to 6-week holds · 21–42 DTE window</p>
                 </div>
                 <button type="button" onClick={() => setInfoOpen(o => !o)}
