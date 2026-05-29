@@ -126,6 +126,7 @@ export default function Sidebar() {
       label: 'Home',
       items: [
         { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
+        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
       ],
     },
@@ -133,7 +134,6 @@ export default function Sidebar() {
       label: 'Trades',
       items: [
         { id: 'day-trade', label: 'Intraday', icon: <Zap size={18} /> },
-        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Wallet size={18} /> },
