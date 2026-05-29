@@ -10,7 +10,7 @@ import { ROUTES } from '../routing/routes'
 const SK_DAY_TICKERS   = 'oa_dashboard_tickers_day'
 const SK_SWING_TICKERS = 'oa_dashboard_tickers_swing'
 const SK_ACTIVE_TAB    = 'oa_dashboard_active_tab'
-const AUTO_REFRESH_MS  = 5 * 60 * 1000
+const AUTO_REFRESH_MS  = 60 * 1000
 const MAX_TICKERS      = 8
 
 type Tab = 'day' | 'swing'
@@ -422,7 +422,11 @@ function TileGrid({ tickers, tiles, tab, dt, isDark, onRemove, onReorder }: {
               tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
               tab={tab} dt={dt} isDark={isDark}
               onRemove={() => onRemove(sym)}
-              onExpandChart={() => { const d = buildExpandedChart(sym); if (d) setExpandedChart(d) }}
+              onExpandChart={() => {
+                const d = buildExpandedChart(sym)
+                if (d) setExpandedChart(d)
+                void scanTicker(sym, tab)
+              }}
               dragHandleProps={makeHandleProps(sym)}
               isDragging={dragging === sym}
               isDropTarget={dropTarget === sym}
@@ -597,7 +601,7 @@ export default function DayTradeDashboardPage() {
               <Gauge size={20} style={{ color: dt.accent, flexShrink: 0 }} />
               Trade Dashboard
             </h1>
-            <p style={{ margin: '3px 0 0', fontSize: 12, color: dt.muted }}>Monitor up to {MAX_TICKERS} tickers · auto-refreshes every 5 min</p>
+            <p style={{ margin: '3px 0 0', fontSize: 12, color: dt.muted }}>Monitor up to {MAX_TICKERS} tickers · auto-refreshes every 60s</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {lastRefreshed[activeTab] && (
