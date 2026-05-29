@@ -25,7 +25,7 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
-const PAD = { l: 56, r: 12, t: 18, b: 34 }
+const PAD = { l: 56, r: 0, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {
   if (!iso || typeof iso !== 'string') return ''
@@ -145,9 +145,9 @@ export default function DayTradeIntradayChart({
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
 
-    // Bars fill the entire plotting area — last bar reaches the right clip edge.
+    // Bars span the full plotting area with no right gap.
     const plotW = innerW - slot * 0.5
-    const xAt = (tMs: number) => PAD.l + ((tMs - tMin) / span) * plotW
+    const xAt = (tMs: number) => PAD.l + slot * 0.5 + ((tMs - tMin) / span) * plotW
     const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
 
     const lastOrI = Math.max(0, Math.min(orMinutes, n) - 1)
