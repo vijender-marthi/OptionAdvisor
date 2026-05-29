@@ -789,6 +789,9 @@ export default function DayTradeEnginePanel({
       pts.push({ ...pt, label: `E${pts.length + 1}` })
     }
 
+    const direction = isShort ? 'short' : 'long'
+    const exitPrice = asFiniteNum(eg?.scalp_target) ?? undefined
+
     // E1: AI Coach entry gate trigger (most specific)
     const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
     add({
@@ -796,6 +799,8 @@ export default function DayTradeEnginePanel({
       price: gatePrice ?? 0,
       trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
       stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+      direction,
+      exitPrice,
     })
 
     // E2: AI Coach trade entry price with R/R
@@ -807,6 +812,8 @@ export default function DayTradeEnginePanel({
         ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)`
         : 'AI Coach',
       stop: asFiniteNum(ac?.trade?.stop) ?? stopFallback,
+      direction,
+      exitPrice,
     })
 
     // E3: OR breakout level — use entry_guidance first, fall back to OR high/low
@@ -817,6 +824,8 @@ export default function DayTradeEnginePanel({
       price: breakoutLevel ?? 0,
       trigger: isShort ? 'OR low breakout' : 'OR high breakout',
       stop: isShort ? (mOrHigh ?? undefined) : (mOrLow ?? undefined),
+      direction,
+      exitPrice,
     })
 
     // E4: VWAP re-test — use entry_guidance.vwap first, fall back to metrics vwap
@@ -826,6 +835,8 @@ export default function DayTradeEnginePanel({
       price: vwapPrice ?? 0,
       trigger: 'VWAP re-test',
       stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+      direction,
+      exitPrice,
     })
 
     return pts.length > 0 ? pts : undefined

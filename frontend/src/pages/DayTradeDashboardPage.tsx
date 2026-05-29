@@ -203,9 +203,11 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpandChart, dragHandle
     const sf      = isShort ? orHigh : orLow
     const seen    = new Set<number>()
     const pts: ChartEntryPoint[] = []
+    const direction = isShort ? 'short' : 'long' as const
+    const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
     const add = (price: number | null | undefined, trigger: string, stop?: number) => {
       if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
-      seen.add(price); pts.push({ label: `E${pts.length + 1}`, price, trigger, stop })
+      seen.add(price); pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice })
     }
     add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? sf)
     add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf)
