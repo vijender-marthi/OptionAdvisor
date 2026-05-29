@@ -452,7 +452,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Router sync (BrowserRouter paths; legacy `#segment` handled in App LegacyHashRedirect) ──
   useEffect(() => { save('oa_user', user) }, [user])
-  useEffect(() => { save('oa_cache', tickerCache) }, [tickerCache])
+  useEffect(() => {
+    // Prune stale entries before persisting to avoid filling localStorage quota.
+    // Keep only fresh entries; if still too large, keep the 20 most recent.
+    const fresh = Object.fromEntries(
+      Object.entries(tickerCache).filter(([, v]) => isCacheFresh(v))
+    )
+    const keys = Object.keys(fresh)
+    const pruned = keys.length <= 20
+      ? fresh
+      : Object.fromEntries(
+          keys
+            .sort((a, b) => (fresh[b]!.timestamp ?? 0) - (fresh[a]!.timestamp ?? 0))
+            .slice(0, 20)
+            .map(k => [k, fresh[k]!])
+        )
+    save('oa_cache', pruned)
+  }, [tickerCache])
   useEffect(() => { save('oa_alerts', activeAlertsOnly(alerts)) }, [alerts])
   useEffect(() => {
     save('oa_theme', theme)

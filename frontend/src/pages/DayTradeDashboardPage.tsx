@@ -353,7 +353,7 @@ export default function DayTradeDashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     try { return (localStorage.getItem(SK_ACTIVE_TAB) as Tab) ?? 'day' } catch { return 'day' }
   })
-  useEffect(() => { localStorage.setItem(SK_ACTIVE_TAB, activeTab) }, [activeTab])
+  useEffect(() => { try { localStorage.setItem(SK_ACTIVE_TAB, activeTab) } catch { /* quota */ } }, [activeTab])
 
   // ── Per-tab ticker lists ──────────────────────────────────────────────────
   const loadTickers = (key: string) => {
@@ -361,8 +361,8 @@ export default function DayTradeDashboardPage() {
   }
   const [dayTickers,   setDayTickers]   = useState<string[]>(() => loadTickers(SK_DAY_TICKERS))
   const [swingTickers, setSwingTickers] = useState<string[]>(() => loadTickers(SK_SWING_TICKERS))
-  useEffect(() => { localStorage.setItem(SK_DAY_TICKERS,   JSON.stringify(dayTickers))   }, [dayTickers])
-  useEffect(() => { localStorage.setItem(SK_SWING_TICKERS, JSON.stringify(swingTickers)) }, [swingTickers])
+  useEffect(() => { try { localStorage.setItem(SK_DAY_TICKERS,   JSON.stringify(dayTickers))   } catch { /* quota */ } }, [dayTickers])
+  useEffect(() => { try { localStorage.setItem(SK_SWING_TICKERS, JSON.stringify(swingTickers)) } catch { /* quota */ } }, [swingTickers])
 
   // ── Per-tab tile data ─────────────────────────────────────────────────────
   const [dayTiles,   setDayTiles]   = useState<Record<string, TileData>>({})
