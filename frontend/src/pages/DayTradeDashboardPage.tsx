@@ -105,7 +105,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
         </div>
 
         {/* Chart body — scrollable if needed */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 20px 20px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '16px 20px 20px' }}>
           {isSwing ? (
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
           ) : chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
