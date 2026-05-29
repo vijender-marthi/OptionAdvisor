@@ -23,6 +23,11 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set([
   'auto-trade',
 ])
 
+/** Pages available to admin and super_user only (not regular day/swing subscribers). */
+const SUPER_AND_ABOVE: ReadonlySet<Page> = new Set([
+  'day-trade-dashboard',
+])
+
 /** Pages available to admin and day-trade subscribers. */
 const DAY_AND_ABOVE: ReadonlySet<Page> = new Set([
   'day-trade',
@@ -61,6 +66,7 @@ export function canAccessPage(role: UserRole | undefined, page: Page): boolean {
   ) return true
 
   if (ADMIN_ONLY.has(page))      return r === 'admin'
+  if (SUPER_AND_ABOVE.has(page)) return r === 'admin' || r === 'super_user'
   if (DAY_AND_ABOVE.has(page))   return r === 'admin' || r === 'super_user' || r === 'day'
   if (SWING_AND_ABOVE.has(page)) return r === 'admin' || r === 'super_user' || r === 'swing'
   if (DAY_OR_SWING.has(page))    return r === 'admin' || r === 'super_user' || r === 'day' || r === 'swing'

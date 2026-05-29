@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -125,9 +125,9 @@ export default function Sidebar() {
     {
       label: 'Home',
       items: [
-        { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
+        { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
+        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
-        { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
       ],
     },
     {
@@ -182,24 +182,24 @@ export default function Sidebar() {
   ]
 
   const w = collapsed ? 'w-16' : 'w-56'
-  /** Bottom rail (< xl docked): fixed five tabs — order matches product priority. */
+  /** Bottom rail (< xl docked): TCC · TD · Intraday · Positions · Search */
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'trade-command-center', label: 'Home', icon: <LayoutDashboard size={23} /> },
-    { id: 'positions', label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'day-trade', label: 'Intraday', icon: <Zap size={23} /> },
-    { id: 'alert-center', label: 'Alerts', icon: <Bell size={23} />, badge: unreadAlertCount || undefined },
-    { id: 'ticker', label: 'Trading', icon: <Search size={23} /> },
+    { id: 'trade-command-center', label: 'Home',      icon: <Command size={23} /> },
+    { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
+    { id: 'day-trade',            label: 'Intraday',  icon: <Zap size={23} /> },
+    { id: 'positions',            label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
+    { id: 'ticker',               label: 'Trading',   icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
-    { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
-    { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
-    { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
-    { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
-    { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
-    { id: 'help', label: 'Help', icon: <HelpCircle size={18} /> },
-    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
+    { id: 'watchlist',      label: 'Signal Feed',    icon: <SatelliteDish size={18} /> },
+    { id: 'swing-trade',    label: 'Swing Trade',    icon: <TrendingUp size={18} /> },
+    { id: 'trade-signals',  label: 'Trade Signals',  icon: <Radar size={18} /> },
+    { id: 'my-tickers',     label: 'My Tickers',     icon: <ListTodo size={18} /> },
+    { id: 'alert-center',   label: 'Alerts',         icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+    { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
+    { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },
+    { id: 'settings',       label: 'Settings',       icon: <Settings size={18} /> },
   ]
 
   const visibleNavGroups = navGroups
