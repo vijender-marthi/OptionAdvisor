@@ -142,11 +142,14 @@ export default function DayTradeIntradayChart({
     const W = PAD.l + PAD.r + innerW
     const H = PAD.t + innerH + PAD.b
 
-    const xAt = (tMs: number) => PAD.l + ((tMs - tMin) / span) * innerW
-    const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
-
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
+
+    // Inset bars by half a slot so the first and last candle bodies
+    // are never placed at the clip boundary and never get cut off.
+    const plotW = innerW - slot
+    const xAt = (tMs: number) => PAD.l + slot * 0.5 + ((tMs - tMin) / span) * plotW
+    const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
 
     const lastOrI = Math.max(0, Math.min(orMinutes, n) - 1)
     const orStartX = xAt(times[0]!)
