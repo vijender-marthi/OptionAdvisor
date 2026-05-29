@@ -111,13 +111,13 @@ export default function DayTradeIntradayChart({
   const firstTouchData = useMemo(() => {
     if (!entryPoints) return []
     return entryPoints.map(ep => {
-      for (let i = 0; i < bars.length; i++) {
+      for (let i = orMinutes; i < bars.length; i++) {
         const b = bars[i]!
         if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }
       }
       return null
     })
-  }, [entryPoints, bars])
+  }, [entryPoints, bars, orMinutes])
 
   const firstTouchTimes = useMemo(
     () => firstTouchData.map(d => d?.time ?? null),
