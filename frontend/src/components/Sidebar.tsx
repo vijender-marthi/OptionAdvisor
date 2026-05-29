@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Radar,
-  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, LayoutGrid,
+  BrainCircuit, HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -125,16 +125,15 @@ export default function Sidebar() {
     {
       label: 'Home',
       items: [
-        { id: 'trade-command-center', label: 'Trade Command Center', icon: <LayoutDashboard size={18} /> },
+        { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
-        { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
       ],
     },
     {
       label: 'Trades',
       items: [
         { id: 'day-trade', label: 'Intraday', icon: <Zap size={18} /> },
-        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <LayoutGrid size={18} /> },
+        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Search size={18} /> },
         { id: 'auto-trade', label: 'Alpaca Trade', icon: <Wallet size={18} /> },
@@ -192,7 +191,6 @@ export default function Sidebar() {
     { id: 'ticker', label: 'Trading', icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
-    { id: 'desk', label: 'Trade Desk', icon: <Monitor size={18} /> },
     { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
     { id: 'trade-signals', label: 'Trade Signals', icon: <Radar size={18} /> },
     { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
