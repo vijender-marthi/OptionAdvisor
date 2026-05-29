@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, ShieldAlert, GripVertical } from 'lucide-react'
-import { analyzeDayTrade, analyzeV2 } from '../api/client'
-import type { DayTradeScanResult, UnifiedAnalysis } from '../api/client'
+import { analyzeDayTrade, analyzeSwingTrade, analyzeV2 } from '../api/client'
+import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 
-const STORAGE_KEY = 'oa_dt_dashboard_tickers'
+const STORAGE_KEY     = 'oa_dt_dashboard_tickers'
+const STORAGE_TYPES   = 'oa_dt_dashboard_types'   // { [sym]: 'day' | 'swing' }
 const AUTO_REFRESH_MS = 5 * 60 * 1000
+
+type TradeType = 'day' | 'swing'
 
 // ─── Per-tile state ────────────────────────────────────────────────────────
 interface TileData {
   ticker: string
-  result: DayTradeScanResult | null
+  result: DayTradeScanResult | SwingTradeScanResult | null
   unified: UnifiedAnalysis | null
   loading: boolean
   error: string | null
@@ -122,33 +126,38 @@ function TileHeader({ tile, isDark, dt, onRemove, detailHref }: {
 }
 
 // ─── Single ticker tile ────────────────────────────────────────────────────
-function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, isDropTarget }: {
+function TickerTile({ tile, tradeType, isDark, dt, onRemove, onToggleType, dragHandleProps, isDragging, isDropTarget }: {
   tile: TileData
+  tradeType: TradeType
   isDark: boolean
   dt: Record<string, string>
   onRemove: () => void
+  onToggleType: (t: TradeType) => void
   dragHandleProps: React.HTMLAttributes<HTMLDivElement>
   isDragging: boolean
   isDropTarget: boolean
 }) {
   const { result } = tile
+  const isSwing = tradeType === 'swing'
 
   const metrics     = result?.metrics as Record<string, unknown> | undefined
-  const chartBars   = metrics ? parseChartBars(metrics.chart_bars) : null
+
+  // ── Day trade chart data ───────────────────────────────────────────────
+  const chartBars   = !isSwing && metrics ? parseChartBars(metrics.chart_bars) : null
   const orHigh      = metrics?.or_high as number | undefined
   const orLow       = metrics?.or_low as number | undefined
   const orMin       = (metrics?.or_minutes as number | undefined) ?? 15
   const sessionDate = String(metrics?.session_date ?? '')
 
-  // Build E1/E2/E3 entry points — same logic as DayTradePage
   const entryPoints: ChartEntryPoint[] = (() => {
-    if (!result || !metrics) return []
-    const eg  = result.entry_guidance
-    const ac  = result.ai_coach
-    const mVwap     = typeof metrics.vwap === 'number' && isFinite(metrics.vwap) ? metrics.vwap as number : null
-    const isShort   = result.bias === 'short'
-    const stopFall  = isShort ? orHigh : orLow
-    const seen      = new Set<number>()
+    if (isSwing || !result || !metrics) return []
+    const dayResult = result as DayTradeScanResult
+    const eg  = dayResult.entry_guidance
+    const ac  = dayResult.ai_coach
+    const mVwap   = typeof metrics.vwap === 'number' && isFinite(metrics.vwap) ? metrics.vwap as number : null
+    const isShort = result.bias === 'short'
+    const stopFall = isShort ? orHigh : orLow
+    const seen = new Set<number>()
     const pts: ChartEntryPoint[] = []
     const add = (price: number | null | undefined, trigger: string, stop?: number) => {
       if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
@@ -162,7 +171,9 @@ function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, i
     return pts
   })()
 
-  const detailHref = `${ROUTES.dayTrade}?ticker=${encodeURIComponent(tile.ticker)}`
+  const detailHref = isSwing
+    ? `${ROUTES.swingTrade}?ticker=${encodeURIComponent(tile.ticker)}`
+    : `${ROUTES.dayTrade}?ticker=${encodeURIComponent(tile.ticker)}`
 
   return (
     <div style={{
@@ -179,18 +190,34 @@ function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, i
       outlineOffset: 2,
       transition: 'opacity 0.15s, outline 0.1s, border-color 0.1s',
     }}>
-      {/* Drag handle — top strip */}
-      <div
-        {...dragHandleProps}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          marginBottom: 8, cursor: 'grab', userSelect: 'none',
-          color: dt.muted, fontSize: 10, letterSpacing: '0.06em',
-          opacity: 0.5,
-        }}
-        title="Drag to reorder"
-      >
-        <GripVertical size={14} />
+      {/* ── Top bar: drag handle + Day/Swing toggle ─────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div
+          {...dragHandleProps}
+          style={{ display: 'flex', alignItems: 'center', cursor: 'grab', userSelect: 'none', color: dt.muted, opacity: 0.5 }}
+          title="Drag to reorder"
+        >
+          <GripVertical size={14} />
+        </div>
+
+        {/* Day / Swing pill toggle */}
+        <div style={{ display: 'flex', background: isDark ? '#0A0C10' : '#F3F4F6', borderRadius: 8, padding: 2, gap: 2 }}>
+          {(['day', 'swing'] as TradeType[]).map(t => (
+            <button
+              key={t}
+              onClick={() => onToggleType(t)}
+              style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+                padding: '2px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                background: tradeType === t ? (t === 'swing' ? dt.violet ?? '#6B7FD4' : dt.accent) : 'transparent',
+                color: tradeType === t ? '#fff' : dt.muted,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {t === 'day' ? 'Intraday' : 'Swing'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tile.loading && !tile.result && (
@@ -209,13 +236,7 @@ function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, i
 
       {(tile.result || tile.unified) && (
         <>
-          <TileHeader
-            tile={tile}
-            isDark={isDark}
-            dt={dt}
-            onRemove={onRemove}
-            detailHref={detailHref}
-          />
+          <TileHeader tile={tile} isDark={isDark} dt={dt} onRemove={onRemove} detailHref={detailHref} />
 
           {/* Compact verdict reason */}
           {tile.unified?.reason && (
@@ -251,17 +272,27 @@ function TickerTile({ tile, isDark, dt, onRemove, dragHandleProps, isDragging, i
                   <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: tile.unified.risk_level === 'LOW' ? dt.green : tile.unified.risk_level === 'HIGH' ? dt.red : dt.amber }}>{tile.unified.risk_level}</div>
                 </div>
               )}
-              {tile.result?.signal_quality && (
+              {!isSwing && (result as DayTradeScanResult)?.signal_quality && (
                 <div>
                   <div style={{ fontSize: 9, color: dt.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Signal</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: dt.text }}>{tile.result.signal_quality}</div>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: dt.text }}>{(result as DayTradeScanResult).signal_quality}</div>
+                </div>
+              )}
+              {isSwing && (result as SwingTradeScanResult)?.trade_quality_score != null && (
+                <div>
+                  <div style={{ fontSize: 9, color: dt.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quality</div>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: dt.text }}>{(result as SwingTradeScanResult).trade_quality_score}/10</div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Session chart with E1/E2/E3 markers */}
-          {chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
+          {/* ── Chart — intraday (day) or price/MA (swing) ─────── */}
+          {isSwing && metrics ? (
+            <div style={{ borderRadius: 8, overflow: 'hidden' }}>
+              <SwingTradeMetricCharts metrics={metrics} mode="price" />
+            </div>
+          ) : !isSwing && chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflow: 'hidden', borderRadius: 8, flex: 1 }}>
               <DayTradeIntradayChart
                 bars={chartBars}
@@ -322,6 +353,7 @@ export default function DayTradeDashboardPage() {
     red:     isDark ? '#FF4D6D' : '#DC2626',
     amber:   isDark ? '#F5A623' : '#D97706',
     accent:  '#4A7CFF',
+    violet:  '#6B7FD4',
   }
 
   const [tickers, setTickers] = useState<string[]>(() => {
@@ -333,10 +365,18 @@ export default function DayTradeDashboardPage() {
     }
   })
 
+  const [tradeTypes, setTradeTypes] = useState<Record<string, TradeType>>(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_TYPES) ?? '{}') } catch { return {} }
+  })
+
   const [tiles, setTiles] = useState<Record<string, TileData>>({})
   const [addInput, setAddInput] = useState('')
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_TYPES, JSON.stringify(tradeTypes))
+  }, [tradeTypes])
 
   // ── Drag-and-drop state ──────────────────────────────────────────────────
   const dragSrc = useRef<string | null>(null)
@@ -362,64 +402,61 @@ export default function DayTradeDashboardPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tickers))
   }, [tickers])
 
-  const scanTicker = useCallback(async (sym: string) => {
+  const scanTicker = useCallback(async (sym: string, type: TradeType = 'day') => {
     setTiles(prev => ({
       ...prev,
       [sym]: { ...(prev[sym] ?? { ticker: sym, result: null, unified: null, error: null }), loading: true, error: null },
     }))
     try {
-      const data = await analyzeDayTrade(sym)
-      setTiles(prev => ({
-        ...prev,
-        [sym]: { ...prev[sym], result: data, loading: false },
-      }))
+      const data = type === 'swing' ? await analyzeSwingTrade(sym) : await analyzeDayTrade(sym)
+      setTiles(prev => ({ ...prev, [sym]: { ...prev[sym], result: data, loading: false } }))
       try {
-        const v2 = await analyzeV2(sym, 'day')
-        setTiles(prev => ({
-          ...prev,
-          [sym]: { ...prev[sym], unified: v2.data },
-        }))
+        const v2 = await analyzeV2(sym, type)
+        setTiles(prev => ({ ...prev, [sym]: { ...prev[sym], unified: v2.data } }))
       } catch { /* non-fatal */ }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ?? (e as { message?: string })?.message ?? 'Scan failed'
-      setTiles(prev => ({
-        ...prev,
-        [sym]: { ...prev[sym], loading: false, error: String(msg) },
-      }))
+      setTiles(prev => ({ ...prev, [sym]: { ...prev[sym], loading: false, error: String(msg) } }))
     }
   }, [])
 
-  const scanAll = useCallback(async (syms: string[]) => {
+  const scanAll = useCallback(async (syms: string[], types: Record<string, TradeType>) => {
     if (!syms.length) return
     setRefreshing(true)
-    await Promise.allSettled(syms.map(s => scanTicker(s)))
+    await Promise.allSettled(syms.map(s => scanTicker(s, types[s] ?? 'day')))
     setLastRefreshed(new Date())
     setRefreshing(false)
   }, [scanTicker])
 
   // Initial scan
   useEffect(() => {
-    if (tickers.length > 0) void scanAll(tickers)
+    if (tickers.length > 0) void scanAll(tickers, tradeTypes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // only on mount
+  }, [])
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
     if (!tickers.length) return
-    const id = setInterval(() => void scanAll(tickers), AUTO_REFRESH_MS)
+    const id = setInterval(() => void scanAll(tickers, tradeTypes), AUTO_REFRESH_MS)
     return () => clearInterval(id)
-  }, [tickers, scanAll])
+  }, [tickers, tradeTypes, scanAll])
 
   const addTicker = () => {
     const sym = addInput.trim().toUpperCase()
     if (!sym || sym.length > 12) return
     if (tickers.includes(sym)) { setAddInput(''); return }
     if (tickers.length >= 8) return
-    const next = [...tickers, sym]
-    setTickers(next)
+    setTickers(prev => [...prev, sym])
     setAddInput('')
-    void scanTicker(sym)
+    void scanTicker(sym, 'day')
   }
+
+  const toggleType = useCallback((sym: string, t: TradeType) => {
+    setTradeTypes(prev => ({ ...prev, [sym]: t }))
+    // clear stale data and re-scan with new type
+    setTiles(prev => ({ ...prev, [sym]: { ticker: sym, result: null, unified: null, loading: true, error: null } }))
+    void scanTicker(sym, t)
+  }, [scanTicker])
 
   const removeTicker = (sym: string) => {
     setTickers(prev => prev.filter(t => t !== sym))
@@ -455,7 +492,7 @@ export default function DayTradeDashboardPage() {
               </div>
             )}
             <button
-              onClick={() => void scanAll(tickers)}
+              onClick={() => void scanAll(tickers, tradeTypes)}
               disabled={refreshing || !tickers.length}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600,
@@ -564,9 +601,11 @@ export default function DayTradeDashboardPage() {
               >
                 <TickerTile
                   tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
+                  tradeType={tradeTypes[sym] ?? 'day'}
                   isDark={isDark}
                   dt={dt}
                   onRemove={() => removeTicker(sym)}
+                  onToggleType={t => toggleType(sym, t)}
                   dragHandleProps={makeDragHandleProps(sym)}
                   isDragging={draggingTicker === sym}
                   isDropTarget={dropTarget === sym}
