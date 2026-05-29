@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DayTradeChartBar } from '../api/client'
 
 function isChartBar(x: unknown): x is DayTradeChartBar {
@@ -145,10 +145,9 @@ export default function DayTradeIntradayChart({
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
 
-    // Inset bars by half a slot so the first and last candle bodies
-    // are never placed at the clip boundary and never get cut off.
-    const plotW = innerW - slot
-    const xAt = (tMs: number) => PAD.l + slot * 0.5 + ((tMs - tMin) / span) * plotW
+    // Bars fill the entire plotting area — last bar reaches the right clip edge.
+    const plotW = innerW - slot * 0.5
+    const xAt = (tMs: number) => PAD.l + ((tMs - tMin) / span) * plotW
     const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
 
     const lastOrI = Math.max(0, Math.min(orMinutes, n) - 1)
