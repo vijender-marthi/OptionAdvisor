@@ -25,7 +25,7 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
-const PAD = { l: 56, r: 0, t: 18, b: 34 }
+const PAD = { l: 56, r: 12, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {
   if (!iso || typeof iso !== 'string') return ''
@@ -82,7 +82,7 @@ export default function DayTradeIntradayChart({
   entryPoints?: ChartEntryPoint[]
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [cw, setCw] = useState(720)
+  const [cw, setCw] = useState(0)
   // Set of entry indices that are hidden (empty = all visible)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
 
@@ -91,7 +91,10 @@ export default function DayTradeIntradayChart({
     setHidden(new Set())
   }, [entryPoints])
 
-  useEffect(() => {
+  // useLayoutEffect so cw is measured before the first paint — prevents
+  // rendering with cw=0 (fallback) which causes the chart to be narrower
+  // than its container and leave a large empty gap on the right.
+  useLayoutEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
@@ -160,13 +163,24 @@ export default function DayTradeIntradayChart({
       yTicks.push(yMin + ((yMax - yMin) * i) / (ticks - 1))
     }
 
-    const xLabelIdx = [0, Math.floor(n / 2), n - 1]
+    // 15-minute x-axis grid lines and labels
+    const FIFTEEN_MIN = 15 * 60 * 1000
+    const firstLabel = Math.ceil(tMin / FIFTEEN_MIN) * FIFTEEN_MIN
+    const xTicks: { tMs: number; label: string }[] = []
+    for (let tm = firstLabel; tm <= tMin + span; tm += FIFTEEN_MIN) {
+      xTicks.push({ tMs: tm, label: fmtEtShort(new Date(tm).toISOString()) })
+    }
 
     return {
       W, H, innerW, innerH, xAt, yAt, bodyW, slot,
-      yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xLabelIdx, times,
+      yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xTicks, times,
     }
   }, [bars, cw, orHigh, orLow, orMinutes])
+
+  // Don't render until container width is known — avoids the wrong-width flash
+  if (cw === 0) {
+    return <div ref={wrapRef} className="day-trade-chart w-full min-w-0" style={{ minHeight: 270 }} />
+  }
 
   if (!layout) {
     return (
@@ -177,7 +191,7 @@ export default function DayTradeIntradayChart({
   }
 
   const { W, H, innerW, innerH, xAt, yAt, bodyW, yMin, yMax, yTicks,
-          orStartX, orEndX, tMin, times, xLabelIdx } = layout
+          orStartX, orEndX, tMin, times, xTicks } = layout
 
   const vwapPts = bars
     .map((b, i) => `${xAt(times[i]!)},${yAt(b.vwap)}`)
@@ -392,16 +406,18 @@ export default function DayTradeIntradayChart({
           <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH}
             fill="none" stroke="var(--chart-grid)" strokeWidth={1} opacity={0.6} />
 
-          {xLabelIdx.map((barIdx, labelPos) => {
-            const bar = bars[barIdx]
-            if (!bar) return null
-            // anchor: first label left-aligned, last right-aligned, middle centered
-            const anchor = labelPos === 0 ? 'start' : labelPos === xLabelIdx.length - 1 ? 'end' : 'middle'
+          {/* 15-minute vertical grid lines */}
+          {xTicks.map((xt, i) => {
+            const x = xAt(xt.tMs)
+            if (x < PAD.l || x > PAD.l + innerW) return null
             return (
-              <text key={`xt-${barIdx}`} x={xAt(times[barIdx]!)} y={H - 10}
-                textAnchor={anchor} fill="var(--chart-axis)" fontSize={10}>
-                {fmtEtShort(bar.t)}
-              </text>
+              <g key={`xt-${i}`}>
+                <line x1={x} y1={PAD.t} x2={x} y2={PAD.t + innerH}
+                  stroke="var(--chart-grid)" strokeOpacity={0.2} strokeWidth={1} />
+                <text x={x} y={H - 10} textAnchor="middle" fill="var(--chart-axis)" fontSize={10}>
+                  {xt.label}
+                </text>
+              </g>
             )
           })}
 
