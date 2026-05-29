@@ -842,10 +842,12 @@ export default function DayTradePage() {
         const stopFallback = isShort ? orHigh : orLow
         const seen = new Set<number>()
         const pageEntryPoints: ChartEntryPoint[] = []
+        const direction = isShort ? 'short' : 'long' as const
+        const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
         const addEntry = (price: number | null | undefined, trigger: string, stop?: number) => {
           if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
           seen.add(price)
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop })
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice })
         }
         addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
         addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)

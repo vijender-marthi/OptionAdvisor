@@ -57,6 +57,8 @@ export interface ChartEntryPoint {
   trigger: string // short description for table
   stop?: number
   color?: string  // CSS color — defaults to per-index color
+  direction?: 'long' | 'short'  // arrow direction; default 'long'
+  exitPrice?: number             // optional take-profit line
 }
 
 const ENTRY_COLORS = [
@@ -106,16 +108,21 @@ export default function DayTradeIntradayChart({
   }, [])
 
   // First bar where price was touched, excluding the opening range window (first orMinutes bars)
-  const firstTouchTimes = useMemo(() => {
+  const firstTouchData = useMemo(() => {
     if (!entryPoints) return []
-    const postOrBars = bars.slice(orMinutes)
     return entryPoints.map(ep => {
-      for (const b of postOrBars) {
-        if (b.l <= ep.price && ep.price <= b.h) return fmtEtShort(b.t)
+      for (let i = 0; i < bars.length; i++) {
+        const b = bars[i]!
+        if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }
       }
       return null
     })
-  }, [entryPoints, bars, orMinutes])
+  }, [entryPoints, bars])
+
+  const firstTouchTimes = useMemo(
+    () => firstTouchData.map(d => d?.time ?? null),
+    [firstTouchData]
+  )
 
   const layout = useMemo(() => {
     const n = bars.length
@@ -351,9 +358,9 @@ export default function DayTradeIntradayChart({
             strokeLinejoin="round" strokeLinecap="round"
             points={vwapPts} clipPath="url(#daytrade-plot-clip)" />
 
-          {/* ── VWAP bias-flip markers (skip first orMinutes bars) ── */}
+          {/* ── VWAP bias-flip markers (full session) ── */}
           {bars.map((b, i) => {
-            if (i < orMinutes || i === 0) return null
+            if (i === 0) return null
             const prev = bars[i - 1]!
             const prevAbove = prev.c >= prev.vwap
             const currAbove = b.c >= b.vwap
@@ -406,7 +413,10 @@ export default function DayTradeIntradayChart({
           <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH}
             fill="none" stroke="var(--chart-grid)" strokeWidth={1} opacity={0.6} />
 
-          {/* 15-minute vertical grid lines */}
+          {/* Session open label + 2-hour grid lines */}
+          <text x={PAD.l} y={H - 10} textAnchor="start" fill="var(--chart-axis)" fontSize={10}>
+            {fmtEtShort(new Date(tMin).toISOString())}
+          </text>
           {xTicks.map((xt, i) => {
             const x = xAt(xt.tMs)
             if (x < PAD.l || x > PAD.l + innerW) return null
@@ -447,6 +457,68 @@ export default function DayTradeIntradayChart({
                   textAnchor="start" fill={color} fontSize={9} fontWeight={600}
                 >
                   {ep.label} · ${fmtPrice(ep.price)}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* ── Entry arrow markers on the trigger candle ── */}
+          {entryPoints?.map((ep, idx) => {
+            if (hidden.has(idx)) return null
+            const touch = firstTouchData[idx]
+            if (!touch) return null
+            const bar = bars[touch.barIndex]!
+            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const isShort = ep.direction === 'short'
+            const cx = xAt(times[touch.barIndex]!)
+            const arrowSize = 6
+            // Short: arrow above candle high pointing down; Long: arrow below candle low pointing up
+            if (isShort) {
+              const ty = yAt(bar.h) - 14
+              const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
+              return (
+                <g key={`earrow-${idx}`} clipPath="url(#daytrade-plot-clip)">
+                  <polygon points={pts} fill={color} fillOpacity={0.95} />
+                  <text x={cx} y={ty - arrowSize - 3} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
+                    {ep.label}
+                  </text>
+                </g>
+              )
+            } else {
+              const ty = yAt(bar.l) + 14
+              const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
+              return (
+                <g key={`earrow-${idx}`} clipPath="url(#daytrade-plot-clip)">
+                  <polygon points={pts} fill={color} fillOpacity={0.95} />
+                  <text x={cx} y={ty + arrowSize + 9} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
+                    {ep.label}
+                  </text>
+                </g>
+              )
+            }
+          })}
+
+          {/* ── Exit / take-profit lines ── */}
+          {entryPoints?.map((ep, idx) => {
+            if (hidden.has(idx)) return null
+            if (!ep.exitPrice || !Number.isFinite(ep.exitPrice)) return null
+            if (ep.exitPrice < yMin || ep.exitPrice > yMax) return null
+            const ey = yAt(ep.exitPrice)
+            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            return (
+              <g key={`exit-${idx}`} clipPath="url(#daytrade-plot-clip)">
+                <line
+                  x1={PAD.l} x2={PAD.l + innerW}
+                  y1={ey} y2={ey}
+                  stroke={color} strokeWidth={1}
+                  strokeDasharray="2 5" strokeOpacity={0.6}
+                />
+                <text
+                  x={PAD.l + innerW - 4}
+                  y={ey - 4}
+                  textAnchor="end" fill={color} fontSize={8} fontWeight={600} fillOpacity={0.8}
+                >
+                  {ep.label} exit · ${fmtPrice(ep.exitPrice)}
                 </text>
               </g>
             )
