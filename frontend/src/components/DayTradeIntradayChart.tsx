@@ -163,11 +163,11 @@ export default function DayTradeIntradayChart({
       yTicks.push(yMin + ((yMax - yMin) * i) / (ticks - 1))
     }
 
-    // 15-minute x-axis grid lines and labels
-    const FIFTEEN_MIN = 15 * 60 * 1000
-    const firstLabel = Math.ceil(tMin / FIFTEEN_MIN) * FIFTEEN_MIN
+    // 2-hour vertical grid lines and labels
+    const TWO_HOUR = 2 * 60 * 60 * 1000
+    const firstLabel = Math.ceil(tMin / TWO_HOUR) * TWO_HOUR
     const xTicks: { tMs: number; label: string }[] = []
-    for (let tm = firstLabel; tm <= tMin + span; tm += FIFTEEN_MIN) {
+    for (let tm = firstLabel; tm <= tMin + span; tm += TWO_HOUR) {
       xTicks.push({ tMs: tm, label: fmtEtShort(new Date(tm).toISOString()) })
     }
 
