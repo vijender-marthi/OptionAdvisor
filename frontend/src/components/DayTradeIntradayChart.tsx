@@ -25,7 +25,7 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
-const PAD = { l: 56, r: 56, t: 18, b: 34 }
+const PAD = { l: 56, r: 12, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {
   if (!iso || typeof iso !== 'string') return ''
@@ -298,20 +298,22 @@ export default function DayTradeIntradayChart({
           ))}
 
           <line
-            x1={PAD.l} x2={PAD.l + innerW + PAD.r - 4}
+            x1={PAD.l} x2={PAD.l + innerW}
             y1={yAt(orHigh)} y2={yAt(orHigh)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
+            clipPath="url(#daytrade-plot-clip)"
           />
           <line
-            x1={PAD.l} x2={PAD.l + innerW + PAD.r - 4}
+            x1={PAD.l} x2={PAD.l + innerW}
             y1={yAt(orLow)} y2={yAt(orLow)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
+            clipPath="url(#daytrade-plot-clip)"
           />
-          <text x={PAD.l + innerW + PAD.r - 4} y={yAt(orHigh) - 4} textAnchor="end"
+          <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 4} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR high</text>
-          <text x={PAD.l + innerW + PAD.r - 4} y={yAt(orLow) + 12} textAnchor="end"
+          <text x={PAD.l + innerW - 4} y={yAt(orLow) + 12} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR low</text>
 
           <g clipPath="url(#daytrade-plot-clip)">
