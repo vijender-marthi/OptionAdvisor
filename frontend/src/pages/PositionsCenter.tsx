@@ -1430,8 +1430,26 @@ export default function PositionsCenter() {
   const utilPct = capitalUsed > 0 && buyingPower > 0
     ? (capitalUsed / (capitalUsed + buyingPower)) * 100
     : num(summary.capital_utilization_pct)
-  const alertCenterN = num(summary.alert_center_count, num(summary.alerts_count))
-  const criticalN = num(summary.critical_alerts)
+  // Contract-level win/loss stats from closed positions
+  const contractStats = useMemo(() => {
+    let winContracts = 0, lossContracts = 0, totalRealizedPnl = 0, totalCapitalDeployed = 0
+    for (const pos of closedPortfolio) {
+      const pnl = pos.realized_pnl ?? computePnlDollar(pos) ?? 0
+      const contracts = pos.contracts ?? 1
+      if (pnl > 0) winContracts += contracts
+      else if (pnl < 0) lossContracts += contracts
+      totalRealizedPnl += pnl
+      // Capital deployed = max_loss per contract × 100 shares × contracts (options), or entryPrice × contracts (stocks)
+      const capitalPerContract = pos.strategy === 'Stock'
+        ? (pos.entryPrice ?? 0)
+        : (pos.max_loss ?? Math.abs(pos.net_credit ?? 0)) * 100
+      totalCapitalDeployed += capitalPerContract * contracts
+    }
+    const totalContracts = winContracts + lossContracts
+    const winRate = totalContracts > 0 ? (winContracts / totalContracts) * 100 : null
+    const returnOnCapital = totalCapitalDeployed > 0 ? (totalRealizedPnl / totalCapitalDeployed) * 100 : null
+    return { winContracts, lossContracts, totalContracts, winRate, returnOnCapital, totalRealizedPnl }
+  }, [closedPortfolio])
 
   const regime = String(market.regime ?? '').toLowerCase()
   const marketMood =
@@ -1648,7 +1666,32 @@ export default function PositionsCenter() {
         <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
-        <KpiCard label="Alert Center" value={String(alertCenterN)} sub={criticalN > 0 ? <span className="inline-flex items-center gap-1 text-semantic-bearish"><AlertTriangle size={12} />{criticalN} Critical</span> : <span className="text-tertiary">—</span>} />
+        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Contract Results</div>
+          {contractStats.totalContracts === 0 ? (
+            <div className="text-sm font-semibold text-muted">No closed trades</div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 text-sm font-bold tabular-nums">
+                <span className="text-emerald-400">{contractStats.winContracts}W</span>
+                <span className="text-muted text-xs">/</span>
+                <span className="text-rose-400">{contractStats.lossContracts}L</span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                {contractStats.winRate != null && (
+                  <span className={`text-[11px] font-semibold tabular-nums ${contractStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {contractStats.winRate.toFixed(0)}% win
+                  </span>
+                )}
+                {contractStats.returnOnCapital != null && (
+                  <span className={`text-[11px] font-semibold tabular-nums ${contractStats.returnOnCapital >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    · {contractStats.returnOnCapital >= 0 ? '+' : ''}{contractStats.returnOnCapital.toFixed(1)}% ROC
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </section>
 
       {notice && (
