@@ -98,7 +98,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: dt.bg, borderRadius: 16, width: '100%', maxWidth: 1100, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${dt.border}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: dt.bg, borderRadius: 16, width: '100%', maxWidth: 1100, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'clip', border: `1px solid ${dt.border}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${dt.border}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
