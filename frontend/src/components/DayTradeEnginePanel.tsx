@@ -814,6 +814,7 @@ export default function DayTradeEnginePanel({
       stop: asFiniteNum(ac?.trade?.stop) ?? stopFallback,
       direction,
       exitPrice,
+      rr: ac?.trade?.risk_reward,
     })
 
     // E3: OR breakout level — use entry_guidance first, fall back to OR high/low
@@ -904,6 +905,10 @@ export default function DayTradeEnginePanel({
     return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID'
   })()
 
+  const isFriday = new Date().getDay() === 5
+  const lastBar = chartBars?.[chartBars.length - 1] ?? null
+  const belowOneSigma = lastBar != null && lastBar.vwap_lower1 != null && lastBar.c < lastBar.vwap_lower1
+
   // Which step is the trader's primary action point right now?
   const focusStep = ((): number => {
     const state = eg?.state || ''
@@ -981,6 +986,24 @@ export default function DayTradeEnginePanel({
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent">Trade Action Summary</div>
         <div className="text-[10px] text-gray-500 mt-0.5">Entry plan, risk profile, and pre-committed exit levels</div>
       </div>
+
+      {/* ── Fundamental guard-rail warnings ── */}
+      {(isFriday || belowOneSigma) && (
+        <div className="px-4 py-2 space-y-1.5 border-b border-gray-800 bg-black/20">
+          {isFriday && (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/8 px-3 py-2 text-[11px]">
+              <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-rose-600 text-white">FRIDAY</span>
+              <span className="text-rose-300 leading-snug">Never trade 0DTE options on Friday — time decay is maximum and weekend gap risk is unhedgeable. Use 3–4 DTE minimum, or check the Swing engine instead.</span>
+            </div>
+          )}
+          {belowOneSigma && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-[11px]">
+              <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-amber-600 text-white">−1σ</span>
+              <span className="text-amber-300 leading-snug">Price is below VWAP −1σ band. Rule: exit or reduce long exposure when price crosses below −1σ. Do not add to a losing position here.</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Verdict section */}
       <div className="px-4 py-3 border-b border-gray-800">

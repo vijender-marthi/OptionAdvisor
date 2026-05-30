@@ -48,13 +48,13 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
   const seen = new Set<number>()
   const pts: ChartEntryPoint[] = []
-  const add = (price: number | null | undefined, trigger: string, stop?: number) => {
+  const add = (price: number | null | undefined, trigger: string, stop?: number, rr?: number) => {
     if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
     seen.add(price)
-    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice })
+    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr })
   }
   add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? sf)
-  add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf)
+  add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf, ac?.trade?.risk_reward)
   add((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
   add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? sf)
   return pts
@@ -239,6 +239,14 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               </button>
             </div>
           </div>
+
+          {/* Friday 0DTE warning */}
+          {!isSwing && new Date().getDay() === 5 && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '6px 10px', marginBottom: 8, fontSize: 10 }}>
+              <span style={{ background: '#dc2626', color: '#fff', fontWeight: 900, fontSize: 8, padding: '1px 5px', borderRadius: 4, letterSpacing: '0.08em', flexShrink: 0, marginTop: 1 }}>FRIDAY</span>
+              <span style={{ color: '#fca5a5', lineHeight: 1.4 }}>No 0DTE day trades today. Use 3–4 DTE minimum or switch to Swing.</span>
+            </div>
+          )}
 
           {/* Reason */}
           {unified?.reason && (
