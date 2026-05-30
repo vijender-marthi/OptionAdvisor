@@ -83,8 +83,8 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const verdict    = data.unified?.verdict ?? ''
   const statusColor = data.unified?.verdict_presentation?.status_color
   const dimEntries = (() => {
-    const fd = String(data.unified?.final_decision || verdict || '').toUpperCase()
-    return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID'
+    const fd = String(verdict || '').toUpperCase()
+    return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID' || fd === 'NO_EDGE'
   })()
   const price      = data.unified?.price
   const changePct  = data.unified?.change_pct
@@ -164,6 +164,11 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
   const entryPoints = !isSwing && result && metrics
     ? buildEntryPoints(result as DayTradeScanResult, metrics)
     : []
+
+  const dimEntries = (() => {
+    const v = String(unified?.verdict || '').toUpperCase()
+    return v === 'WAIT' || v === 'CONFLICT' || v === 'AVOID' || v === 'NO_EDGE'
+  })()
 
   const detailHref = isSwing
     ? `${ROUTES.swingTrade}?ticker=${encodeURIComponent(tile.ticker)}`
@@ -296,7 +301,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               {isSwing && metrics ? (
                 <SwingTradeMetricCharts metrics={metrics} mode="price" />
               ) : (
-                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} />
+                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} />
               )}
             </div>
           ) : (
