@@ -899,6 +899,10 @@ export default function DayTradeEnginePanel({
   const entryGated = result.final_decision === 'READY' && eg?.should_enter_now === 'YES'
   const activePendingConfirmations = entryGated ? [] : (eg?.pending_confirmations ?? [])
   const confirmationState = activePendingConfirmations.length ? 'PENDING' : 'CLEAR'
+  const dimEntries = (() => {
+    const fd = String(result.final_decision || '').toUpperCase()
+    return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID'
+  })()
 
   // Which step is the trader's primary action point right now?
   const focusStep = ((): number => {
@@ -1131,6 +1135,7 @@ export default function DayTradeEnginePanel({
               orMinutes={orMinN}
               sessionDate={String(m.session_date ?? '')}
               entryPoints={chartEntryPoints}
+              dimEntries={dimEntries}
             />
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
               {eg?.vwap != null && <span>VWAP: <span className="font-mono text-gray-200">${eg.vwap.toFixed(2)}</span></span>}
@@ -1721,6 +1726,7 @@ export default function DayTradeEnginePanel({
                     orMinutes={orMinN}
                     sessionDate={String(m.session_date ?? '')}
                     entryPoints={chartEntryPoints}
+                    dimEntries={dimEntries}
                   />
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
