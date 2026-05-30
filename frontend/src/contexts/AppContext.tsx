@@ -525,10 +525,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let dt: string[] = Array.isArray(data.day_trade_watchlist)
           ? data.day_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
           : []
-        if (dt.length === 0) {
-          const migrated = loadStoredDayTradeTickers()
-          if (migrated.length) dt = migrated
-        }
         setDayTradeWatchlist(dt.slice(0, 10))
         let sw: string[] = Array.isArray(data.swing_trade_watchlist)
           ? data.swing_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
