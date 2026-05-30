@@ -1646,26 +1646,7 @@ export default function PositionsCenter() {
       </header>
 
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        {[
-          { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
-          { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
-          { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
-        ].map(m => (
-          <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
-            className={`rounded-lg border px-3 py-2 text-left transition-all ${
-              plFilter === m.key
-                ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
-                : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
-            }`}
-          >
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
-            <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
-            {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
-          </button>
-        ))}
-        <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
-        <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
-        <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
+        {/* 1. Contract Results */}
         <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Contract Results</div>
           {contractStats.totalContracts === 0 ? (
@@ -1692,6 +1673,29 @@ export default function PositionsCenter() {
             </>
           )}
         </div>
+        {/* 2. Open Positions */}
+        <KpiCard label="Open Positions" value={String(openN || '—')} sub={<span className="text-tertiary">{optionsN} Options / {stockN} Stocks</span>} />
+        {/* 3–5. Day / Week / Total P&L */}
+        {[
+          { key: 'day', label: 'Day P&L', value: dayPl, pct: dayPlPct },
+          { key: 'week', label: 'Week P&L', value: weekPl, pct: weekPlPct },
+          { key: 'total', label: 'Total Net P&L', value: totalPl, pct: totalPlPct },
+        ].map(m => (
+          <button key={m.key} type="button" onClick={() => setPlFilter(plFilter === m.key ? null : m.key as 'total' | 'week' | 'day')}
+            className={`rounded-lg border px-3 py-2 text-left transition-all ${
+              plFilter === m.key
+                ? 'border-violet-500 ring-2 ring-violet-500/30 bg-white dark:bg-slate-900'
+                : 'border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900'
+            }`}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{m.label}</div>
+            <div className={`text-base font-bold tabular-nums mt-0.5 ${getProfitLossTextClass(num(m.value))}`}>{fmtUsd(m.value)}</div>
+            {m.pct != null && <div className={`text-[11px] mt-0.5 tabular-nums ${getProfitLossTextClass(num(m.pct))}`}>{fmtPct(m.pct)}</div>}
+          </button>
+        ))}
+        {/* 6–7. Buying Power / Capital in Use */}
+        <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
+        <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
       </section>
 
       {notice && (
