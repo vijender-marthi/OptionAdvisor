@@ -165,6 +165,11 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
     ? buildEntryPoints(result as DayTradeScanResult, metrics)
     : []
 
+  const dimEntries = (() => {
+    const v = String(unified?.verdict || '').toUpperCase()
+    return v === 'WAIT' || v === 'CONFLICT' || v === 'AVOID' || v === 'NO_EDGE'
+  })()
+
   const detailHref = isSwing
     ? `${ROUTES.swingTrade}?ticker=${encodeURIComponent(tile.ticker)}`
     : `${ROUTES.dayTrade}?ticker=${encodeURIComponent(tile.ticker)}`
@@ -296,7 +301,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               {isSwing && metrics ? (
                 <SwingTradeMetricCharts metrics={metrics} mode="price" />
               ) : (
-                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} />
+                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} />
               )}
             </div>
           ) : (
