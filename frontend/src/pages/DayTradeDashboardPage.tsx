@@ -124,7 +124,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
           {isSwing ? (
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
           ) : chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} />
+            <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
+              <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} />
+            </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: dt.muted }}>No chart data</div>
           )}
