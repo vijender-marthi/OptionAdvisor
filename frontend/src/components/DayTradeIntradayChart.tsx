@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DayTradeChartBar } from '../api/client'
 
 function isChartBar(x: unknown): x is DayTradeChartBar {
@@ -85,6 +85,8 @@ export default function DayTradeIntradayChart({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
+  const uid = useId().replace(/:/g, '')
+  const clipId = `daytrade-plot-clip-${uid}`
   // Set of entry indices that are hidden (empty = all visible)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
 
@@ -275,7 +277,7 @@ export default function DayTradeIntradayChart({
           aria-label={`Intraday candlesticks for ${sessionDate} with VWAP and opening range levels`}
         >
           <defs>
-            <clipPath id="daytrade-plot-clip">
+            <clipPath id={clipId}>
               <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH} />
             </clipPath>
           </defs>
@@ -288,7 +290,7 @@ export default function DayTradeIntradayChart({
               height={innerH}
               fill="var(--accent)"
               fillOpacity={0.08}
-              clipPath="url(#daytrade-plot-clip)"
+              clipPath={`url(#${clipId})`}
             />
           )}
 
@@ -322,21 +324,21 @@ export default function DayTradeIntradayChart({
             y1={yAt(orHigh)} y2={yAt(orHigh)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
-            clipPath="url(#daytrade-plot-clip)"
+            clipPath={`url(#${clipId})`}
           />
           <line
             x1={PAD.l} x2={PAD.l + innerW}
             y1={yAt(orLow)} y2={yAt(orLow)}
             stroke="var(--chart-line-ma50)" strokeWidth={1.2}
             strokeDasharray="6 4" strokeOpacity={0.95}
-            clipPath="url(#daytrade-plot-clip)"
+            clipPath={`url(#${clipId})`}
           />
           <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 4} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR high</text>
           <text x={PAD.l + innerW - 4} y={yAt(orLow) + 12} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR low</text>
 
-          <g clipPath="url(#daytrade-plot-clip)">
+          <g clipPath={`url(#${clipId})`}>
             {bars.map((b, i) => {
               const cx = xAt(times[i]!)
               const yL = yAt(b.l), yH = yAt(b.h)
@@ -356,7 +358,7 @@ export default function DayTradeIntradayChart({
 
           <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={1.5}
             strokeLinejoin="round" strokeLinecap="round"
-            points={vwapPts} clipPath="url(#daytrade-plot-clip)" />
+            points={vwapPts} clipPath={`url(#${clipId})`} />
 
           {/* ── VWAP bias-flip markers (full session) ── */}
           {bars.map((b, i) => {
@@ -381,7 +383,7 @@ export default function DayTradeIntradayChart({
                 points={pts}
                 fill={color}
                 fillOpacity={0.9}
-                clipPath="url(#daytrade-plot-clip)"
+                clipPath={`url(#${clipId})`}
               />
             )
           })}
@@ -392,8 +394,8 @@ export default function DayTradeIntradayChart({
             const l1 = bars.map((b,i) => b.vwap_lower1 != null ? `${xAt(times[i]!)},${yAt(b.vwap_lower1)}` : '').filter(Boolean).join(' ')
             return (
               <>
-                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={u1} clipPath="url(#daytrade-plot-clip)" />
-                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={l1} clipPath="url(#daytrade-plot-clip)" />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={u1} clipPath={`url(#${clipId})`} />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5} strokeLinejoin="round" points={l1} clipPath={`url(#${clipId})`} />
               </>
             )
           })()}
@@ -404,8 +406,8 @@ export default function DayTradeIntradayChart({
             const l2 = bars.map((b,i) => b.vwap_lower2 != null ? `${xAt(times[i]!)},${yAt(b.vwap_lower2)}` : '').filter(Boolean).join(' ')
             return (
               <>
-                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={u2} clipPath="url(#daytrade-plot-clip)" />
-                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={l2} clipPath="url(#daytrade-plot-clip)" />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={u2} clipPath={`url(#${clipId})`} />
+                <polyline fill="none" stroke="var(--chart-line-rsi)" strokeWidth={0.8} strokeDasharray="2 4" strokeOpacity={0.25} strokeLinejoin="round" points={l2} clipPath={`url(#${clipId})`} />
               </>
             )
           })()}
@@ -449,7 +451,7 @@ export default function DayTradeIntradayChart({
                   y1={ey} y2={ey}
                   stroke={color} strokeWidth={1.2}
                   strokeDasharray="3 3" strokeOpacity={0.9}
-                  clipPath="url(#daytrade-plot-clip)"
+                  clipPath={`url(#${clipId})`}
                 />
                 <text
                   x={PAD.l + 4}
@@ -477,7 +479,7 @@ export default function DayTradeIntradayChart({
               const ty = yAt(bar.h) - 14
               const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath="url(#daytrade-plot-clip)">
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty - arrowSize - 3} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -489,7 +491,7 @@ export default function DayTradeIntradayChart({
               // ▲ tip points up (smaller y in SVG = higher on screen)
               const pts = `${cx},${ty - arrowSize} ${cx - arrowSize},${ty + arrowSize} ${cx + arrowSize},${ty + arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath="url(#daytrade-plot-clip)">
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty + arrowSize + 9} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -507,7 +509,7 @@ export default function DayTradeIntradayChart({
             const ey = yAt(ep.exitPrice)
             const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
             return (
-              <g key={`exit-${idx}`} clipPath="url(#daytrade-plot-clip)">
+              <g key={`exit-${idx}`} clipPath={`url(#${clipId})`}>
                 <line
                   x1={PAD.l} x2={PAD.l + innerW}
                   y1={ey} y2={ey}
