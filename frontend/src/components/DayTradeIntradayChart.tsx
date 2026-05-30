@@ -75,6 +75,7 @@ export default function DayTradeIntradayChart({
   orMinutes,
   sessionDate,
   entryPoints,
+  dimEntries,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
@@ -82,6 +83,8 @@ export default function DayTradeIntradayChart({
   orMinutes: number
   sessionDate: string
   entryPoints?: ChartEntryPoint[]
+  /** When true, entry lines/chips render dimmed — verdict is WAIT/CONFLICT */
+  dimEntries?: boolean
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
@@ -241,9 +244,15 @@ export default function DayTradeIntradayChart({
       {/* ── Entry toggle chips ── */}
       {entryPoints && entryPoints.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
+          {dimEntries && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-700/40 bg-amber-950/30 text-[10px] text-amber-500 font-medium">
+              ⚠ Signal present — verdict is WAIT
+            </span>
+          )}
           {entryPoints.map((ep, idx) => {
             const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
             const isHidden = hidden.has(idx)
+            const effectiveDim = dimEntries && !isHidden
             return (
               <button
                 key={`chip-${idx}`}
@@ -251,14 +260,14 @@ export default function DayTradeIntradayChart({
                 onClick={() => toggleEntry(idx)}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-opacity cursor-pointer select-none"
                 style={{
-                  borderColor: isHidden ? 'rgba(75,85,99,0.5)' : color,
-                  color: isHidden ? '#6b7280' : color,
-                  background: isHidden ? 'transparent' : `${color}18`,
-                  opacity: isHidden ? 0.55 : 1,
+                  borderColor: isHidden || effectiveDim ? 'rgba(75,85,99,0.5)' : color,
+                  color: isHidden || effectiveDim ? '#6b7280' : color,
+                  background: isHidden || effectiveDim ? 'transparent' : `${color}18`,
+                  opacity: isHidden ? 0.55 : effectiveDim ? 0.4 : 1,
                 }}
-                title={isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`}
+                title={isHidden ? `Show ${ep.label}` : dimEntries ? `${ep.label} — entry signal exists but verdict is WAIT` : `Hide ${ep.label}`}
               >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isHidden ? '#4b5563' : color, display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isHidden || effectiveDim ? '#4b5563' : color, display: 'inline-block', flexShrink: 0 }} />
                 {ep.label}
                 <span className="font-mono" style={{ opacity: 0.8 }}>${fmtPrice(ep.price)}</span>
               </button>
@@ -443,9 +452,9 @@ export default function DayTradeIntradayChart({
             if (!Number.isFinite(ep.price) || ep.price <= 0) return null
             if (ep.price < yMin || ep.price > yMax) return null
             const ey = yAt(ep.price)
-            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
             return (
-              <g key={`entry-${idx}`}>
+              <g key={`entry-${idx}`} opacity={dimEntries ? 0.4 : 1}>
                 <line
                   x1={PAD.l} x2={PAD.l + innerW}
                   y1={ey} y2={ey}
@@ -470,7 +479,7 @@ export default function DayTradeIntradayChart({
             const touch = firstTouchData[idx]
             if (!touch) return null
             const bar = bars[touch.barIndex]!
-            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
             const isShort = ep.direction === 'short'
             const cx = xAt(times[touch.barIndex]!)
             const arrowSize = 6
@@ -479,7 +488,7 @@ export default function DayTradeIntradayChart({
               const ty = yAt(bar.h) - 14
               const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`}>
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={dimEntries ? 0.35 : 1}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty - arrowSize - 3} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -491,7 +500,7 @@ export default function DayTradeIntradayChart({
               // ▲ tip points up (smaller y in SVG = higher on screen)
               const pts = `${cx},${ty - arrowSize} ${cx - arrowSize},${ty + arrowSize} ${cx + arrowSize},${ty + arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`}>
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={dimEntries ? 0.35 : 1}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty + arrowSize + 9} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -551,13 +560,13 @@ export default function DayTradeIntradayChart({
                   <tr
                     key={`erow-${idx}`}
                     className="border-b border-gray-800/40 last:border-0 cursor-pointer transition-opacity"
-                    style={{ opacity: isHidden ? 0.38 : 1 }}
+                    style={{ opacity: isHidden ? 0.38 : dimEntries ? 0.4 : 1 }}
                     onClick={() => toggleEntry(idx)}
-                    title={isHidden ? `Click to show ${ep.label} on chart` : `Click to hide ${ep.label} on chart`}
+                    title={isHidden ? `Click to show ${ep.label} on chart` : dimEntries ? `${ep.label} — signal exists but verdict is WAIT` : `Click to hide ${ep.label} on chart`}
                   >
-                    <td className="py-1 pr-3 font-semibold" style={{ color: isHidden ? '#6b7280' : color }}>
+                    <td className="py-1 pr-3 font-semibold" style={{ color: isHidden || dimEntries ? '#6b7280' : color }}>
                       <span className="inline-flex items-center gap-1">
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isHidden ? '#4b5563' : color, display: 'inline-block' }} />
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isHidden || dimEntries ? '#4b5563' : color, display: 'inline-block' }} />
                         {ep.label}
                       </span>
                     </td>

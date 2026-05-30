@@ -82,6 +82,10 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const sessionDate = String(data.metrics.session_date ?? '')
   const verdict    = data.unified?.verdict ?? ''
   const statusColor = data.unified?.verdict_presentation?.status_color
+  const dimEntries = (() => {
+    const fd = String(data.unified?.final_decision || verdict || '').toUpperCase()
+    return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID'
+  })()
   const price      = data.unified?.price
   const changePct  = data.unified?.change_pct
 
@@ -125,7 +129,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
           ) : chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-              <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} />
+              <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} />
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: dt.muted }}>No chart data</div>
