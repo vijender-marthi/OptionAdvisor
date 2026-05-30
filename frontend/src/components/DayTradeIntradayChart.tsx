@@ -270,7 +270,7 @@ export default function DayTradeIntradayChart({
           width={W}
           height={H}
           viewBox={`0 0 ${W} ${H}`}
-          className="block max-w-none"
+          className="block max-w-none min-w-max"
           role="img"
           aria-label={`Intraday candlesticks for ${sessionDate} with VWAP and opening range levels`}
         >
