@@ -123,16 +123,31 @@ export default function Sidebar() {
 
   const navGroups: NavGroup[] = [
     {
-      label: 'Home',
+      // Step 1: build your watchlist before doing anything else
+      label: 'My Watchlist',
       items: [
-        { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
+        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
+      ],
+    },
+    {
+      // Step 2: scan for setups and read live signals
+      label: 'Research',
+      items: [
         { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
-        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
         { id: 'watchlist', label: 'Signal Feed', icon: <SatelliteDish size={18} /> },
       ],
     },
     {
-      label: 'Trades',
+      // Step 3: assess and plan trades
+      label: 'Command',
+      items: [
+        { id: 'trade-command-center', label: 'Trade Command Center', icon: <Command size={18} /> },
+        { id: 'day-trade-dashboard', label: 'Trade Dashboard', icon: <Gauge size={18} /> },
+      ],
+    },
+    {
+      // Step 4: execute trades by strategy type
+      label: 'Trade',
       items: [
         { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
@@ -141,33 +156,25 @@ export default function Sidebar() {
       ],
     },
     {
-      label: 'Portfolio',
+      // Step 5: explore AI-driven ideas and new opportunities
+      label: 'Discover',
       items: [
-        { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
-        { id: 'my-tickers', label: 'My Tickers', icon: <ListTodo size={18} /> },
+        { id: 'ai-stocks', label: 'AI Stocks', icon: <Bot size={18} /> },
+        { id: 'q-radar', label: 'Quantum Radar', icon: <Atom size={18} /> },
+        { id: 'trade-signals', label: 'Trade Signals', icon: <BarChart2 size={18} /> },
       ],
     },
     {
-      label: 'Notifications',
+      // Step 6: manage open positions and alerts
+      label: 'Portfolio',
       items: [
+        { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
       ],
     },
-  {
-    label: 'Discovery',
-    items: [
-      { id: 'ai-stocks', label: 'AI Stocks', icon: <Bot size={18} /> },
-      { id: 'q-radar', label: 'Quantum Radar', icon: <Atom size={18} /> },
-    ],
-  },
-  {
-    label: 'Analyze',
-    items: [
-      { id: 'trade-signals', label: 'Trade Signals', icon: <BarChart2 size={18} /> },
-    ],
-  },
-  {
-    label: 'Tools',
+    {
+      // Step 7: review performance and validate strategies
+      label: 'Review',
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
@@ -183,23 +190,32 @@ export default function Sidebar() {
   ]
 
   const w = collapsed ? 'w-16' : 'w-56'
-  /** Bottom rail (< xl docked): TCC · TD · Intraday · Positions · Search */
+  /** Bottom rail (< xl): workflow-ordered primary 5 */
   const mobilePrimaryItems: NavItem[] = [
-    { id: 'trade-command-center', label: 'Home',      icon: <Command size={23} /> },
+    { id: 'my-tickers',           label: 'Tickers',   icon: <ListTodo size={23} /> },
+    { id: 'ticker-scanner',       label: 'Scanner',   icon: <ScanLine size={23} /> },
+    { id: 'trade-command-center', label: 'Command',   icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
-    { id: 'day-trade',            label: 'Day Trade', icon: <Zap size={23} /> },
     { id: 'positions',            label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
-    { id: 'ticker',               label: 'Trading',   icon: <Search size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
+    // Research
     { id: 'watchlist',      label: 'Signal Feed',    icon: <SatelliteDish size={18} /> },
+    // Trade
+    { id: 'day-trade',      label: 'Day Trade',      icon: <Zap size={18} /> },
     { id: 'swing-trade',    label: 'Swing Trade',    icon: <TrendingUp size={18} /> },
+    { id: 'ticker',         label: 'Position',       icon: <Layers size={18} /> },
+    { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
+    // Discover
+    { id: 'ai-stocks',      label: 'AI Stocks',      icon: <Bot size={18} /> },
+    { id: 'q-radar',        label: 'Quantum Radar',  icon: <Atom size={18} /> },
     { id: 'trade-signals',  label: 'Trade Signals',  icon: <BarChart2 size={18} /> },
-    { id: 'my-tickers',     label: 'My Tickers',     icon: <ListTodo size={18} /> },
+    // Portfolio
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+    // Review
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'backtest',        label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
-    { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
+    { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
+    // Support
     { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },
     { id: 'settings',       label: 'Settings',       icon: <Settings size={18} /> },
   ]
