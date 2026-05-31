@@ -448,12 +448,14 @@ export default function TickerScannerPage() {
                       <div className="hidden lg:flex gap-1 min-w-[80px] justify-end">
                         {entry.trade_types.map(t => {
                           const href =
-                            t === 'day'   ? `/day-trade?ticker=${entry.symbol}`
-                            : t === 'swing' ? `/swing-trade?ticker=${entry.symbol}`
+                            t === 'day'     ? `/day-trade?ticker=${entry.symbol}`
+                            : t === 'swing'   ? `/swing-trade?ticker=${entry.symbol}`
+                            : t === 'regular' ? `/position-trading?ticker=${entry.symbol}`
                             : null
                           const cls = `px-1.5 py-0.5 rounded text-[9px] font-semibold transition-opacity ${
-                            t === 'day'   ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
-                            : t === 'swing' ? 'bg-green-900/40 text-green-300 hover:bg-green-800/60'
+                            t === 'day'     ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                            : t === 'swing'   ? 'bg-green-900/40 text-green-300 hover:bg-green-800/60'
+                            : t === 'regular' ? 'bg-violet-900/40 text-violet-300 hover:bg-violet-800/60'
                             : 'bg-gray-800/50 text-gray-500'
                           }`
                           return href ? (
