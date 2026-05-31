@@ -272,12 +272,15 @@ function ExitDecisionTree({
         {rules.map((rule, i) => {
           const c = classifyRule(rule)
           const dteMatch = (rule.action + ' ' + rule.trigger).match(/(\d+)\s*DTE/i)
+          // Options contracts = 100 shares; show contract price
+          const contractPrice = rule.price > 0 ? rule.price * 100 : 0
           const priceDisplay =
-            rule.price > 0
-              ? `$${rule.price.toFixed(2)}`
+            contractPrice > 0
+              ? `$${contractPrice % 1 === 0 ? contractPrice.toFixed(0) : contractPrice.toFixed(2)}`
               : dteMatch
                 ? `${dteMatch[1]} DTE`
                 : '—'
+          const priceSubLabel = contractPrice > 0 ? 'per contract' : null
 
           return (
             <div key={i} className={`grid grid-cols-[80px_1fr_90px_1fr] gap-0 ${c.rowBg}`}>
@@ -300,10 +303,13 @@ function ExitDecisionTree({
               </div>
 
               {/* AT PRICE column */}
-              <div className="px-2 py-2.5 border-r border-gray-800/60 flex items-center justify-center">
+              <div className="px-2 py-2.5 border-r border-gray-800/60 flex flex-col items-center justify-center gap-0.5">
                 <span className={`font-mono font-bold text-xs tabular-nums rounded-md px-2 py-1 border ${c.priceCls}`}>
                   {priceDisplay}
                 </span>
+                {priceSubLabel && (
+                  <span className="text-[9px] text-gray-600">{priceSubLabel}</span>
+                )}
               </div>
 
               {/* THEN column */}
