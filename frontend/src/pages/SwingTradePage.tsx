@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
+import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
@@ -747,24 +748,34 @@ export default function SwingTradePage() {
         </div>
       )}
 
-      {/* Price chart */}
-      {result && result.metrics && (() => {
-        const m = result.metrics as Record<string, unknown>
-        const rawHistory = m.price_history as Record<string, unknown>[] | undefined
-        if (!rawHistory || !Array.isArray(rawHistory) || rawHistory.length < 2) return null
-        const history = rawHistory as unknown as import('../types').PricePoint[]
-        return (
-          <div className="dt-card" style={{ background: '#111318', border: '1px solid #1E2330', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5A6478', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Price Chart</div>
-            <PriceChart history={history} />
-          </div>
-        )
-      })()}
-
       {/* Step-by-step walkthrough */}
       {unified && result && (
         <SwingTradeWalkthrough unified={unified} result={result} />
       )}
+
+      {/* Metric chart — price + MA20/50 + RSI + HV between walkthrough and methodology */}
+      {result && result.metrics && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const hasSeries = m.chart_series != null
+        const rawHistory = m.price_history as Record<string, unknown>[] | undefined
+        const hasHistory = Array.isArray(rawHistory) && rawHistory.length >= 2
+        if (!hasSeries && !hasHistory) return null
+        return (
+          <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
+            <div className="px-4 py-2.5 border-b border-gray-800/60 flex items-center gap-2">
+              <BarChart2 size={14} className="text-violet-400" />
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Price chart · MA20/50 · RSI</span>
+            </div>
+            <div className="p-3">
+              {hasSeries ? (
+                <SwingTradeMetricCharts metrics={m} mode="all" />
+              ) : (
+                <PriceChart history={rawHistory as unknown as import('../types').PricePoint[]} />
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Methodology note */}
       <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">
