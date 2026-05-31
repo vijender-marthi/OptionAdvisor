@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react'
+import { RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle, ChevronDown } from 'lucide-react'
 import { fetchMyTickers } from '../api/commandCenter'
 import { analyzeV2 } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
@@ -392,94 +392,103 @@ export default function TickerScannerPage() {
                 const isSelected = selected === entry.symbol
 
                 return (
-                  <button
-                    key={entry.symbol}
-                    type="button"
-                    onClick={() => setSelected(entry.symbol)}
-                    className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
-                      isSelected ? 'bg-violet-900/20 border-l-2 border-violet-500' : 'hover:bg-gray-800/40 border-l-2 border-transparent'
-                    }`}
-                  >
-                    {/* Symbol */}
-                    <span className="font-mono font-semibold text-white min-w-[52px] text-sm">{entry.symbol}</span>
+                  <div key={entry.symbol}>
+                    {/* ── Row ── */}
+                    <button
+                      type="button"
+                      onClick={() => setSelected(isSelected ? null : entry.symbol)}
+                      className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
+                        isSelected ? 'bg-violet-900/20 border-l-2 border-violet-500' : 'hover:bg-gray-800/40 border-l-2 border-transparent'
+                      }`}
+                    >
+                      {/* Symbol */}
+                      <span className="font-mono font-semibold text-white min-w-[52px] text-sm">{entry.symbol}</span>
 
-                    {/* Strength bar */}
-                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${isUp ? 'bg-emerald-500' : 'bg-red-500'}`}
-                        style={{ width: `${barW}%` }}
+                      {/* Strength bar */}
+                      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${isUp ? 'bg-emerald-500' : 'bg-red-500'}`}
+                          style={{ width: `${barW}%` }}
+                        />
+                      </div>
+
+                      {/* Pct change */}
+                      <span className={`font-mono text-xs font-semibold min-w-[54px] text-right ${
+                        pct == null ? 'text-gray-600' : isUp ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {pct == null ? (
+                          r.state === 'loading' ? (
+                            <span className="inline-block w-4 h-1.5 bg-gray-700 rounded animate-pulse" />
+                          ) : '—'
+                        ) : fmtPct(pct)}
+                      </span>
+
+                      {/* Direction icon */}
+                      <span className="text-gray-600">
+                        {pct == null ? <Minus size={12} /> : isUp ? <TrendingUp size={12} className="text-emerald-500" /> : <TrendingDown size={12} className="text-red-500" />}
+                      </span>
+
+                      {/* Verdict chip */}
+                      {r.state === 'loading' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-gray-700/40 bg-gray-800/40 text-[10px] text-gray-600 min-w-[64px] justify-center">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-600 animate-pulse mr-1" />
+                          scanning
+                        </span>
+                      ) : best ? (
+                        <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold min-w-[64px] justify-center ${verdictChipClass(best)}`}>
+                          {verdictLabel(best)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-700/30 bg-gray-800/30 text-[10px] text-gray-600 min-w-[64px] justify-center">
+                          {r.state === 'error' ? 'Error' : '—'}
+                        </span>
+                      )}
+
+                      {/* Trade type badges — desktop only */}
+                      <div className="hidden lg:flex gap-1 min-w-[80px] justify-end">
+                        {entry.trade_types.map(t => {
+                          const href =
+                            t === 'day'   ? `/day-trade?ticker=${entry.symbol}`
+                            : t === 'swing' ? `/swing-trade?ticker=${entry.symbol}`
+                            : null
+                          const cls = `px-1.5 py-0.5 rounded text-[9px] font-semibold transition-opacity ${
+                            t === 'day'   ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                            : t === 'swing' ? 'bg-green-900/40 text-green-300 hover:bg-green-800/60'
+                            : 'bg-gray-800/50 text-gray-500'
+                          }`
+                          return href ? (
+                            <a key={t} href={href} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()} className={cls}
+                              title={`Open ${entry.symbol} in ${t} trade page`}>
+                              {t} ↗
+                            </a>
+                          ) : (
+                            <span key={t} className={cls}>{t}</span>
+                          )
+                        })}
+                      </div>
+
+                      {/* Expand chevron — mobile/tablet only */}
+                      <ChevronDown
+                        size={14}
+                        className={`lg:hidden text-gray-500 transition-transform shrink-0 ${isSelected ? 'rotate-180' : ''}`}
                       />
-                    </div>
+                    </button>
 
-                    {/* Pct change */}
-                    <span className={`font-mono text-xs font-semibold min-w-[54px] text-right ${
-                      pct == null ? 'text-gray-600' : isUp ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {pct == null ? (
-                        r.state === 'loading' ? (
-                          <span className="inline-block w-4 h-1.5 bg-gray-700 rounded animate-pulse" />
-                        ) : '—'
-                      ) : fmtPct(pct)}
-                    </span>
-
-                    {/* Direction icon */}
-                    <span className="text-gray-600">
-                      {pct == null ? <Minus size={12} /> : isUp ? <TrendingUp size={12} className="text-emerald-500" /> : <TrendingDown size={12} className="text-red-500" />}
-                    </span>
-
-                    {/* Verdict chip */}
-                    {r.state === 'loading' ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-gray-700/40 bg-gray-800/40 text-[10px] text-gray-600 min-w-[64px] justify-center">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-600 animate-pulse mr-1" />
-                        scanning
-                      </span>
-                    ) : best ? (
-                      <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold min-w-[64px] justify-center ${verdictChipClass(best)}`}>
-                        {verdictLabel(best)}
-                      </span>
-                    ) : (
-                      <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-700/30 bg-gray-800/30 text-[10px] text-gray-600 min-w-[64px] justify-center">
-                        {r.state === 'error' ? 'Error' : '—'}
-                      </span>
+                    {/* ── Inline detail panel — mobile/tablet only ── */}
+                    {isSelected && (
+                      <div className="lg:hidden px-3 pb-3">
+                        <SignalPanel result={r} />
+                      </div>
                     )}
-
-                    {/* Trade type badges — click opens page in new tab */}
-                    <div className="hidden sm:flex gap-1 min-w-[80px] justify-end">
-                      {entry.trade_types.map(t => {
-                        const href =
-                          t === 'day'   ? `/day-trade?ticker=${entry.symbol}`
-                          : t === 'swing' ? `/swing-trade?ticker=${entry.symbol}`
-                          : null
-                        const cls = `px-1.5 py-0.5 rounded text-[9px] font-semibold transition-opacity ${
-                          t === 'day'   ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
-                          : t === 'swing' ? 'bg-green-900/40 text-green-300 hover:bg-green-800/60'
-                          : 'bg-gray-800/50 text-gray-500'
-                        }`
-                        return href ? (
-                          <a
-                            key={t}
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className={cls}
-                            title={`Open ${entry.symbol} in ${t} trade page`}
-                          >
-                            {t} ↗
-                          </a>
-                        ) : (
-                          <span key={t} className={cls}>{t}</span>
-                        )
-                      })}
-                    </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>
           </div>
 
-          {/* ── Right: Signal breakdown panel ── */}
-          <div>
+          {/* ── Right: Signal breakdown panel — desktop only ── */}
+          <div className="hidden lg:block">
             {selectedResult ? (
               <SignalPanel result={selectedResult} />
             ) : (
