@@ -870,47 +870,60 @@ export default function RecommendationCard({
       <div className="px-4 pb-4">
         <button
           onClick={() => setExitOpen(o => !o)}
-          className="w-full flex items-center justify-between text-xs text-indigo-400 hover:text-indigo-300
-                     bg-indigo-950/40 border border-indigo-900 rounded-xl px-3 py-2 transition-colors"
+          className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-gray-200
+                     bg-gray-900/60 border border-gray-800 rounded-xl px-3 py-2 transition-colors mb-2"
         >
-          <span>🚪 Exit Plan</span>
+          <span className="flex items-center gap-1.5 font-semibold">🚪 Exit Plan</span>
           {exitOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
         {exitOpen && (
-          <div className="mt-2 p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl">
+          <div className="rounded-xl border border-gray-800 overflow-hidden">
             {rec.exit_rules && rec.exit_rules.length > 0 ? (
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400/60 border-b border-indigo-900/60">
-                    <th className="pb-1.5 text-left font-medium">When</th>
-                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">Value</th>
-                    <th className="pb-1.5 text-left font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-indigo-900/40">
+              <>
+                <div className="divide-y divide-gray-800/60">
                   {rec.exit_rules.map((rule, i) => {
-                    const isStop   = rule.trigger.toLowerCase().includes('loss')
-                    const isProfit = rule.trigger.toLowerCase().includes('profit') || rule.trigger.toLowerCase().includes('gain')
-                    const isTime   = rule.price === 0
-                    const priceCls = isStop ? 'text-red-400' : isProfit ? 'text-emerald-400' : 'text-amber-300'
-                    const actionCls = isStop ? 'text-red-300' : isProfit ? 'text-emerald-300' : 'text-indigo-200'
+                    const trig = rule.trigger.toLowerCase()
+                    const isStop   = trig.includes('loss') || trig.includes('stop')
+                    const isTime   = rule.price === 0 || trig.includes('dte') || trig.includes('expir')
+                    const isT2     = trig.includes('t2') || trig.includes('target 2') || trig.includes('extended')
+                    const icon     = isStop ? '🛑' : isTime ? '⏱' : isT2 ? '🚀' : '🎯'
+                    const bg       = isStop ? 'rgba(239,68,68,0.07)' : isTime ? 'rgba(245,158,11,0.07)' : 'rgba(16,185,129,0.07)'
+                    const border   = isStop ? 'rgba(239,68,68,0.2)'  : isTime ? 'rgba(245,158,11,0.2)'  : 'rgba(16,185,129,0.2)'
+                    const priceCls = isStop ? 'text-red-400 border-red-900' : isTime ? 'text-amber-400 border-amber-900' : isT2 ? 'text-emerald-300 border-emerald-900' : 'text-emerald-400 border-emerald-900'
+                    const typeLabel = isStop ? 'Stop' : isTime ? 'Time' : isT2 ? 'Target 2' : 'Target 1'
+                    const typeCls  = isStop ? 'text-red-500' : isTime ? 'text-amber-500' : 'text-emerald-500'
+                    const priceDisplay = isTime
+                      ? `${rule.trigger.match(/\d+/)?.[0] ?? '—'} DTE`
+                      : rule.price > 0 ? `$${rule.price.toFixed(2)}` : '—'
                     return (
-                      <tr key={i}>
-                        <td className="py-2 pr-2 text-indigo-300/70 leading-snug align-top w-[32%]">{rule.trigger}</td>
-                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
-                          {isTime ? `${rule.price === 0 ? rule.trigger.match(/\d+/)?.[0] ?? '—' : rule.price} DTE` : `$${rule.price.toFixed(2)}/sh`}
-                        </td>
-                        <td className="py-2 align-top">
-                          <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
-                          <div className="text-[10px] text-indigo-300/50 leading-snug mt-0.5">{rule.note}</div>
-                        </td>
-                      </tr>
+                      <div key={i} className="flex items-start gap-3 px-3 py-2.5" style={{ background: bg }}>
+                        <div className="flex flex-col items-center gap-0.5 min-w-[40px] pt-0.5">
+                          <span className="text-sm leading-none">{icon}</span>
+                          <span className={`text-[9px] font-bold uppercase tracking-wider ${typeCls}`}>{typeLabel}</span>
+                        </div>
+                        <div className="w-px self-stretch bg-gray-800/70 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-gray-200 font-medium leading-snug">{rule.trigger}</div>
+                          {rule.action && <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{rule.action}</div>}
+                          {rule.note && <div className="text-[10px] text-gray-600 mt-0.5 italic leading-snug">{rule.note}</div>}
+                        </div>
+                        <div className={`shrink-0 rounded-lg px-2 py-1 font-mono font-bold text-xs tabular-nums border bg-black/30 ${priceCls}`}
+                          style={{ borderColor: border }}>
+                          {priceDisplay}
+                        </div>
+                      </div>
                     )
                   })}
-                </tbody>
-              </table>
+                </div>
+                <div className="px-3 py-1.5 border-t border-gray-800 bg-gray-950/30 flex items-center gap-1.5">
+                  <span className="text-[10px]">⚠️</span>
+                  <span className="text-[10px] text-gray-600">Set orders before entry. Never move your stop against the position.</span>
+                </div>
+              </>
+            ) : rec.exit_plan ? (
+              <div className="px-3 py-3 text-xs text-gray-400 leading-relaxed">{rec.exit_plan}</div>
             ) : (
-              <p className="text-sm text-indigo-200 leading-relaxed">{rec.exit_plan}</p>
+              <div className="px-3 py-3 text-xs text-gray-600 text-center">No exit plan available</div>
             )}
           </div>
         )}
