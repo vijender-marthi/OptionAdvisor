@@ -443,6 +443,29 @@ function TickerCard({ result, openStrategies = new Set(), onAnalyze, onFetchAllW
               })}
             </div>
           )}
+          {(() => {
+            if (!result.earningsWithinDays || result.earningsWithinDays <= 0) return null
+            const activeBucket = result.buckets.find(b => b.dte === expandedWeek)
+            if (!activeBucket) return null
+            const earningsFallsInCurrent = result.earningsWithinDays <= activeBucket.dte
+            if (!earningsFallsInCurrent) return null
+            // Find a safer bucket where earnings don't fall within DTE
+            const safeBucket = result.buckets.find(b => b.dte < (result.earningsWithinDays ?? 0) && b.dte !== expandedWeek)
+            if (!safeBucket) return null
+            return (
+              <div className="flex items-center gap-2 text-[10px] text-amber-400 bg-amber-950/30 border border-amber-900/50 rounded-lg px-2 py-1.5">
+                <AlertCircle size={10} className="shrink-0" />
+                <span>Earnings in ~{result.earningsWithinDays}d falls within this window.</span>
+                <button
+                  type="button"
+                  onClick={() => setExpandedWeek(safeBucket.dte)}
+                  className="ml-auto shrink-0 font-semibold underline underline-offset-2 hover:text-amber-300 transition-colors"
+                >
+                  Try {safeBucket.weeksOut}w →
+                </button>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Right: Kelly + actions */}
@@ -927,6 +950,9 @@ export default function TradeSignalsPage() {
             {weeksTotal} DTE windows · {allGoTrades} Entry trades · 3w–6w (21–42 DTE) window · cache refreshes every 15 min
           </div>
         )}
+        <div className="text-[10px] text-gray-700 text-center py-1 border-t border-gray-800/30 mt-1">
+          Verdict key: <span className="text-emerald-700">GO</span> = all conditions aligned (enter now) · <span className="text-amber-700">CAUTION</span> = conditions forming (wait) · <span className="text-red-700">NO GO</span> = hard failure (skip) · corresponds to STRONG GO / WATCH / AVOID on other pages
+        </div>
       </div>
     </div>
   )

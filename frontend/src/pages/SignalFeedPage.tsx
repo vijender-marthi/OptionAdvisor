@@ -13,6 +13,7 @@ import {
   EyeOff,
   Filter,
   Info,
+  Monitor,
   RefreshCw,
   Search,
   Sparkles,
@@ -548,6 +549,7 @@ const SignalFeedCard = memo(function SignalFeedCard({
   onAddToPositions,
   onFavorite,
   onIgnore,
+  onMonitor,
 }: {
   row: SignalFeedRow
   isCompact: boolean
@@ -562,6 +564,7 @@ const SignalFeedCard = memo(function SignalFeedCard({
   onAddToPositions: () => void
   onFavorite: () => void
   onIgnore: () => void
+  onMonitor: () => void
   onToggleCompact: (id: string) => void
 }) {
   const metrics = row.metrics
@@ -670,6 +673,9 @@ const SignalFeedCard = memo(function SignalFeedCard({
         <button type="button" onClick={onCreateAlert} disabled={alertBusy} className={`${getActionButtonClass('alert')} px-2 py-0.5 text-[10px]`}>
           {alertBusy ? 'Creating\u2026' : 'Alert'}
         </button>
+        <button type="button" onClick={onMonitor} className={`${getActionButtonClass('surface')} inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px]`}>
+          <Monitor size={10} /> Monitor
+        </button>
         <div className="relative ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -702,6 +708,7 @@ function MobileActionTray({
   onFavorite,
   onRemove,
   onToggle,
+  onMonitor,
 }: {
   row: SignalFeedRow | null
   isFavorite: boolean
@@ -713,6 +720,7 @@ function MobileActionTray({
   onFavorite: () => void
   onRemove: () => void
   onToggle: () => void
+  onMonitor: () => void
 }) {
   if (!row) return null
   return (
@@ -731,6 +739,7 @@ function MobileActionTray({
         <button type="button" onClick={onFavorite} className={`${getActionButtonClass('surface')} gap-1 rounded-xl px-2 py-2 text-xs`}>{isFavorite ? 'Unfavorite' : 'Favorite'}</button>
         <button type="button" onClick={onRemove} className="btn btn-danger gap-1 rounded-xl px-2 py-2 text-xs">Remove</button>
         <button type="button" onClick={onToggle} className={`${getActionButtonClass('surface')} gap-1 rounded-xl px-2 py-2 text-xs`}>{isOpen ? 'Collapse' : 'Expand'}</button>
+        <button type="button" onClick={onMonitor} className={`${getActionButtonClass('surface')} gap-1 rounded-xl px-2 py-2 text-xs`}>Monitor</button>
       </div>
     </div>
   )
@@ -1012,6 +1021,16 @@ export default function SignalFeedPage() {
       setAlertBusy(cur => ({ ...cur, [row.id]: false }))
     }
   }, [])
+  const handleMonitor = useCallback((row: SignalFeedRow) => {
+    const sym = row.ticker.toUpperCase()
+    try {
+      const existing: string[] = JSON.parse(localStorage.getItem('oa_dashboard_tickers_day') ?? '[]')
+      if (!existing.includes(sym) && existing.length < 8) {
+        localStorage.setItem('oa_dashboard_tickers_day', JSON.stringify([...existing, sym]))
+      }
+    } catch { /* quota */ }
+    routerNavigate(ROUTES.dayTradeDashboard)
+  }, [routerNavigate])
   const handleRemove = useCallback((row: SignalFeedRow) => {
     removeFromAllWatchlists(row.ticker)
     setEnv(cur => cur && cur.data ? { ...cur, data: { ...cur.data, rows: cur.data.rows.filter(r => r.id !== row.id) } } : cur)
@@ -1291,6 +1310,7 @@ export default function SignalFeedPage() {
                   onCreateAlert={() => void handleCreateAlert(row)}
                   onAddToPositions={() => handleAddToPositions(row)}
                   onFavorite={() => toggleFavorite(row.ticker)} onIgnore={() => toggleIgnore(row.ticker)}
+                  onMonitor={() => handleMonitor(row)}
                 />
               )
             })}
@@ -1323,6 +1343,7 @@ export default function SignalFeedPage() {
         onFavorite={() => { if (activeRow) toggleFavorite(activeRow.ticker) }}
         onRemove={() => { if (activeRow) handleRemove(activeRow) }}
         onToggle={() => { if (activeRow) toggleExpanded(activeRow.id) }}
+        onMonitor={() => { if (activeRow) handleMonitor(activeRow) }}
       />
 
       {ignoredData.tickers.length > 0 && (
