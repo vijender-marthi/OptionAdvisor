@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './contexts/AppContext'
 import AppLayout from './layouts/AppLayout'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import ActivatePage from './pages/ActivatePage'
@@ -33,6 +34,7 @@ const SignalFeedPage = lazy(() => import('./pages/SignalFeedPage'))
 const MyTickersPage = lazy(() => import('./pages/MyTickersPage'))
 const ActiveTradesPage = lazy(() => import('./pages/ActiveTradesPage'))
 const DayTradeDashboardPage = lazy(() => import('./pages/DayTradeDashboardPage'))
+const TickerScannerPage = lazy(() => import('./pages/TickerScannerPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -130,6 +132,9 @@ function ShellRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/activate" element={<ActivatePage />} />
 
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
+
       <Route path="/day-trade-watchlist" element={<Navigate to="/signal-feed?source=day" replace />} />
       <Route path="/swing-trade-watchlist" element={<Navigate to="/signal-feed?source=swing" replace />} />
       <Route path="/watchlistx" element={<Navigate to="/signal-feed" replace />} />
@@ -145,7 +150,6 @@ function ShellRoutes() {
         <Route element={<RoleGuard />}>
           <Route element={<AppLayout />}>
             <Route element={<SuspensedOutlet />}>
-              <Route path="/" element={<Navigate to="/trade-command-center" replace />} />
               <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
               <Route path="/desk" element={<TradeDeskPage />} />
               <Route path="/ai-coach" element={<TradeCommandCenterPage />} />
@@ -169,6 +173,7 @@ function ShellRoutes() {
               <Route path="/swing-trade" element={<SwingTradePage />} />
               <Route path="/my-tickers" element={<MyTickersPage />} />
               <Route path="/day-trade-dashboard" element={<DayTradeDashboardPage />} />
+              <Route path="/ticker-scanner" element={<TickerScannerPage />} />
             </Route>
           </Route>
         </Route>

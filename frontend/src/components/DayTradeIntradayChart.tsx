@@ -114,20 +114,30 @@ export default function DayTradeIntradayChart({
   }, [])
 
   // First bar where price was touched, excluding the opening range window (first orMinutes bars)
-  const firstTouchData = useMemo(() => {
-    if (!entryPoints) return []
-    return entryPoints.map(ep => {
+  // Filter out entries that shouldn't be shown: bad R/R or price outside chart range
+  // These are omitted entirely rather than shown dimmed/disabled
+  const validEntryPoints = useMemo(() => {
+    if (!entryPoints) return undefined
+    return entryPoints.filter(ep => !(ep.rr != null && ep.rr < 1.0))
+  }, [entryPoints])
+
+  // displayEntryPoints = validEntryPoints (bad-R/R already filtered above)
+  const displayEntryPoints = validEntryPoints
+
+  const displayFirstTouchData = useMemo(() => {
+    if (!displayEntryPoints) return []
+    return displayEntryPoints.map(ep => {
       for (let i = orMinutes; i < bars.length; i++) {
         const b = bars[i]!
         if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }
       }
       return null
     })
-  }, [entryPoints, bars, orMinutes])
+  }, [displayEntryPoints, bars, orMinutes])
 
-  const firstTouchTimes = useMemo(
-    () => firstTouchData.map(d => d?.time ?? null),
-    [firstTouchData]
+  const displayFirstTouchTimes = useMemo(
+    () => displayFirstTouchData.map(d => d?.time ?? null),
+    [displayFirstTouchData]
   )
 
   const layout = useMemo(() => {
@@ -243,25 +253,18 @@ export default function DayTradeIntradayChart({
       </div>
 
       {/* ── Entry toggle chips ── */}
-      {entryPoints && entryPoints.length > 0 && (
+      {displayEntryPoints && displayEntryPoints.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {dimEntries && (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-700/40 bg-amber-950/30 text-[10px] text-amber-500 font-medium">
               ⚠ Signal present — verdict is WAIT
             </span>
           )}
-          {entryPoints.map((ep, idx) => {
+          {displayEntryPoints.map((ep, idx) => {
             const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
             const isHidden = hidden.has(idx)
-            const badRR = ep.rr != null && ep.rr < 1.0
-            const inORWindow = firstTouchData[idx] != null && firstTouchData[idx]!.barIndex < orMinutes
-            const effectiveDim = (dimEntries || badRR) && !isHidden
-            const chipColor = badRR ? '#ef4444' : (isHidden || effectiveDim ? '#6b7280' : color)
-            const warnings = [
-              badRR ? `R/R ${ep.rr!.toFixed(1)}× — below 1.0 minimum` : null,
-              inORWindow ? 'Entry triggered inside opening range window' : null,
-              dimEntries ? 'Verdict is WAIT' : null,
-            ].filter(Boolean).join(' · ')
+            const effectiveDim = dimEntries && !isHidden
+            const chipColor = isHidden || effectiveDim ? '#6b7280' : color
             return (
               <button
                 key={`chip-${idx}`}
@@ -269,18 +272,16 @@ export default function DayTradeIntradayChart({
                 onClick={() => toggleEntry(idx)}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition-opacity cursor-pointer select-none"
                 style={{
-                  borderColor: badRR ? 'rgba(239,68,68,0.5)' : isHidden || effectiveDim ? 'rgba(75,85,99,0.5)' : color,
+                  borderColor: isHidden || effectiveDim ? 'rgba(75,85,99,0.5)' : color,
                   color: chipColor,
-                  background: badRR ? 'rgba(239,68,68,0.08)' : isHidden || effectiveDim ? 'transparent' : `${color}18`,
+                  background: isHidden || effectiveDim ? 'transparent' : `${color}18`,
                   opacity: isHidden ? 0.55 : effectiveDim ? 0.4 : 1,
                 }}
-                title={warnings || (isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`)}
+                title={dimEntries ? `${ep.label} — signal exists but verdict is WAIT` : (isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`)}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: chipColor, display: 'inline-block', flexShrink: 0 }} />
                 {ep.label}
                 <span className="font-mono" style={{ opacity: 0.8 }}>${fmtPrice(ep.price)}</span>
-                {badRR && <span style={{ fontSize: 9, opacity: 0.9 }}>⚠ R/R {ep.rr!.toFixed(1)}×</span>}
-                {inORWindow && !badRR && <span style={{ fontSize: 9, opacity: 0.9 }}>⚠ OR</span>}
               </button>
             )
           })}
@@ -458,16 +459,14 @@ export default function DayTradeIntradayChart({
           </text>
 
           {/* ── Entry price lines (respects toggle) ── */}
-          {entryPoints?.map((ep, idx) => {
+          {displayEntryPoints?.map((ep, idx) => {
             if (hidden.has(idx)) return null
             if (!Number.isFinite(ep.price) || ep.price <= 0) return null
             if (ep.price < yMin || ep.price > yMax) return null
             const ey = yAt(ep.price)
-            const badRR = ep.rr != null && ep.rr < 1.0
-            const shouldDim = dimEntries || badRR
-            const color = shouldDim ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
+            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
             return (
-              <g key={`entry-${idx}`} opacity={shouldDim ? 0.4 : 1}>
+              <g key={`entry-${idx}`} opacity={dimEntries ? 0.4 : 1}>
                 <line
                   x1={PAD.l} x2={PAD.l + innerW}
                   y1={ey} y2={ey}
@@ -487,13 +486,12 @@ export default function DayTradeIntradayChart({
           })}
 
           {/* ── Entry arrow markers on the trigger candle ── */}
-          {entryPoints?.map((ep, idx) => {
+          {displayEntryPoints?.map((ep, idx) => {
             if (hidden.has(idx)) return null
-            const touch = firstTouchData[idx]
+            const touch = displayFirstTouchData[idx]
             if (!touch) return null
             const bar = bars[touch.barIndex]!
-            const badRR = ep.rr != null && ep.rr < 1.0
-            const color = (dimEntries || badRR) ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
+            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
             const isShort = ep.direction === 'short'
             const cx = xAt(times[touch.barIndex]!)
             const arrowSize = 6
@@ -502,7 +500,7 @@ export default function DayTradeIntradayChart({
               const ty = yAt(bar.h) - 14
               const pts = `${cx},${ty + arrowSize} ${cx - arrowSize},${ty - arrowSize} ${cx + arrowSize},${ty - arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={(dimEntries || badRR) ? 0.35 : 1}>
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={dimEntries ? 0.35 : 1}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty - arrowSize - 3} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -511,10 +509,9 @@ export default function DayTradeIntradayChart({
               )
             } else {
               const ty = yAt(bar.l) + 14
-              // ▲ tip points up (smaller y in SVG = higher on screen)
               const pts = `${cx},${ty - arrowSize} ${cx - arrowSize},${ty + arrowSize} ${cx + arrowSize},${ty + arrowSize}`
               return (
-                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={(dimEntries || badRR) ? 0.35 : 1}>
+                <g key={`earrow-${idx}`} clipPath={`url(#${clipId})`} opacity={dimEntries ? 0.35 : 1}>
                   <polygon points={pts} fill={color} fillOpacity={0.95} />
                   <text x={cx} y={ty + arrowSize + 9} textAnchor="middle" fill={color} fontSize={8} fontWeight={700}>
                     {ep.label}
@@ -525,7 +522,7 @@ export default function DayTradeIntradayChart({
           })}
 
           {/* ── Exit / take-profit lines ── */}
-          {entryPoints?.map((ep, idx) => {
+          {displayEntryPoints?.map((ep, idx) => {
             if (hidden.has(idx)) return null
             if (!ep.exitPrice || !Number.isFinite(ep.exitPrice)) return null
             if (ep.exitPrice < yMin || ep.exitPrice > yMax) return null
@@ -553,7 +550,7 @@ export default function DayTradeIntradayChart({
       </div>
 
       {/* ── Entry points table ── */}
-      {entryPoints && entryPoints.length > 0 && (
+      {displayEntryPoints && displayEntryPoints.length > 0 && (
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-[11px] border-collapse">
             <thead>
@@ -566,10 +563,10 @@ export default function DayTradeIntradayChart({
               </tr>
             </thead>
             <tbody>
-              {entryPoints.map((ep, idx) => {
+              {displayEntryPoints.map((ep, idx) => {
                 const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
                 const isHidden = hidden.has(idx)
-                const touchTime = firstTouchTimes[idx]
+                const touchTime = displayFirstTouchTimes[idx]
                 return (
                   <tr
                     key={`erow-${idx}`}

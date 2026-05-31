@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
-  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -137,6 +137,7 @@ export default function Sidebar() {
         { id: 'swing-trade', label: 'Swing Trade', icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
         { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
+        { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
       ],
     },
     {
@@ -197,7 +198,8 @@ export default function Sidebar() {
     { id: 'my-tickers',     label: 'My Tickers',     icon: <ListTodo size={18} /> },
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
+    { id: 'backtest',        label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
+    { id: 'ticker-scanner', label: 'Ticker Scanner', icon: <ScanLine size={18} /> },
     { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },
     { id: 'settings',       label: 'Settings',       icon: <Settings size={18} /> },
   ]
