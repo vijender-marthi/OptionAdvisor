@@ -60,6 +60,7 @@ export interface ChartEntryPoint {
   direction?: 'long' | 'short'  // arrow direction; default 'long'
   exitPrice?: number             // optional take-profit line
   rr?: number                   // risk/reward ratio — entries < 1.0 are flagged
+  stub?: boolean                 // table-only placeholder (no price/chart line)
 }
 
 const ENTRY_COLORS = [
@@ -113,20 +114,19 @@ export default function DayTradeIntradayChart({
     return () => ro.disconnect()
   }, [])
 
-  // First bar where price was touched, excluding the opening range window (first orMinutes bars)
-  // Filter out entries that shouldn't be shown: bad R/R or price outside chart range
-  // These are omitted entirely rather than shown dimmed/disabled
+  // Entries for the chart (exclude stubs and bad-R/R entries — no line to draw)
   const validEntryPoints = useMemo(() => {
     if (!entryPoints) return undefined
-    return entryPoints.filter(ep => !(ep.rr != null && ep.rr < 1.0))
+    return entryPoints.filter(ep => !ep.stub && !(ep.rr != null && ep.rr < 1.0))
   }, [entryPoints])
 
-  // displayEntryPoints = validEntryPoints (bad-R/R already filtered above)
-  const displayEntryPoints = validEntryPoints
+  // All entries for the table (stubs and bad-R/R still shown, grayed)
+  const displayEntryPoints = entryPoints
 
   const displayFirstTouchData = useMemo(() => {
     if (!displayEntryPoints) return []
     return displayEntryPoints.map(ep => {
+      if (ep.stub || !ep.price) return null
       for (let i = orMinutes; i < bars.length; i++) {
         const b = bars[i]!
         if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }
@@ -261,6 +261,7 @@ export default function DayTradeIntradayChart({
             </span>
           )}
           {displayEntryPoints.map((ep, idx) => {
+            if (ep.stub || (ep.rr != null && ep.rr < 1.0)) return null
             const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
             const isHidden = hidden.has(idx)
             const effectiveDim = dimEntries && !isHidden
@@ -564,26 +565,43 @@ export default function DayTradeIntradayChart({
             </thead>
             <tbody>
               {displayEntryPoints.map((ep, idx) => {
+                const isUnavailable = ep.stub || (ep.rr != null && ep.rr < 1.0)
                 const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
                 const isHidden = hidden.has(idx)
                 const touchTime = displayFirstTouchTimes[idx]
+                const rowOpacity = isUnavailable ? 0.45 : isHidden ? 0.38 : dimEntries ? 0.4 : 1
+                const rowTitle = isUnavailable
+                  ? `${ep.label} — AI Coach entry (not actionable${ep.rr != null ? `, R/R ${ep.rr.toFixed(1)}×` : ''})`
+                  : isHidden ? `Click to show ${ep.label} on chart`
+                  : dimEntries ? `${ep.label} — signal exists but verdict is WAIT`
+                  : `Click to hide ${ep.label} on chart`
                 return (
                   <tr
                     key={`erow-${idx}`}
-                    className="border-b border-gray-800/40 last:border-0 cursor-pointer transition-opacity"
-                    style={{ opacity: isHidden ? 0.38 : dimEntries ? 0.4 : 1 }}
-                    onClick={() => toggleEntry(idx)}
-                    title={isHidden ? `Click to show ${ep.label} on chart` : dimEntries ? `${ep.label} — signal exists but verdict is WAIT` : `Click to hide ${ep.label} on chart`}
+                    className={`border-b border-gray-800/40 last:border-0 transition-opacity ${isUnavailable ? 'cursor-default' : 'cursor-pointer'}`}
+                    style={{ opacity: rowOpacity }}
+                    onClick={isUnavailable ? undefined : () => toggleEntry(idx)}
+                    title={rowTitle}
                   >
-                    <td className="py-1 pr-3 font-semibold" style={{ color: isHidden || dimEntries ? '#6b7280' : color }}>
+                    <td className="py-1 pr-3 font-semibold" style={{ color: isUnavailable || isHidden || dimEntries ? '#6b7280' : color }}>
                       <span className="inline-flex items-center gap-1">
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isHidden || dimEntries ? '#4b5563' : color, display: 'inline-block' }} />
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isUnavailable || isHidden || dimEntries ? '#4b5563' : color, display: 'inline-block' }} />
                         {ep.label}
                       </span>
                     </td>
-                    <td className="py-1 pr-3 text-right font-mono text-gray-200">${fmtPrice(ep.price)}</td>
+                    <td className="py-1 pr-3 text-right font-mono text-gray-200">
+                      {ep.stub || !ep.price ? '—' : `$${fmtPrice(ep.price)}`}
+                    </td>
                     <td className="py-1 pr-3 text-right font-mono text-gray-400">{touchTime ?? '—'}</td>
-                    <td className="py-1 pr-3 text-gray-400">{ep.trigger}</td>
+                    <td className="py-1 pr-3 text-gray-400">
+                      {ep.stub ? (
+                        <span className="text-gray-600 italic">AI Coach</span>
+                      ) : ep.rr != null && ep.rr < 1.0 ? (
+                        <span>{ep.trigger} <span className="text-orange-500/70 text-[10px]">(low R/R)</span></span>
+                      ) : dimEntries ? (
+                        <span>{ep.trigger} <span className="text-yellow-500/60 text-[10px]">(WAIT)</span></span>
+                      ) : ep.trigger}
+                    </td>
                     <td className="py-1 text-right font-mono text-red-400">
                       {ep.stop && ep.stop > 0 ? `$${fmtPrice(ep.stop)}` : '—'}
                     </td>

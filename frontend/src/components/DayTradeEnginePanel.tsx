@@ -794,14 +794,27 @@ export default function DayTradeEnginePanel({
 
     // E1: AI Coach entry gate trigger (most specific)
     const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
-    add({
-      label: '',
-      price: gatePrice ?? 0,
-      trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
-      stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
-      direction,
-      exitPrice,
-    })
+    if (gatePrice != null && gatePrice > 0) {
+      add({
+        label: '',
+        price: gatePrice,
+        trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
+        stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+        direction,
+        exitPrice,
+      })
+    } else {
+      // No gate price — show placeholder so user knows AI Coach entry exists
+      pts.push({
+        label: `E${pts.length + 1}`,
+        price: 0,
+        trigger: ac?.entry_gate?.trigger_condition ?? '',
+        stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
+        direction,
+        exitPrice,
+        stub: true,
+      })
+    }
 
     // E2: AI Coach trade entry price with R/R
     const aiPrice = asFiniteNum(ac?.trade?.entry_price)
