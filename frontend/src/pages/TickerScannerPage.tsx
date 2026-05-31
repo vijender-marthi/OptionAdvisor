@@ -248,33 +248,15 @@ export default function TickerScannerPage() {
   const [loadError, setLoadError] = useState('')
   const abortRef = useRef(false)
 
-  // Load tickers once on mount
-  const runScanRef = useRef<((list: MyTickerEntry[]) => Promise<void>) | null>(null)
-
-  useEffect(() => {
-    fetchMyTickers()
-      .then(res => {
-        const list = res.data?.tickers ?? []
-        setTickers(list)
-        setResults(new Map(list.map(e => [e.symbol, { entry: e, day: null, swing: null, state: 'idle' }])))
-        // Auto-run scan immediately after tickers load
-        runScanRef.current?.(list)
-      })
-      .catch(() => setLoadError('Failed to load your tickers.'))
-  }, [])
-
-  const runScan = useCallback(async (initialList?: MyTickerEntry[]) => {
-    const list = initialList ?? tickers
+  const scan = useCallback(async (list: MyTickerEntry[]) => {
     if (!list.length) return
     abortRef.current = false
     setScanState('running')
-
-    // Reset all to loading
     setResults(new Map(list.map(e => [e.symbol, { entry: e, day: null, swing: null, state: 'loading' }])))
 
     let firstResult: UnifiedAnalysis | null = null
+    let firstSym: string | null = null
 
-    // Scan each ticker sequentially to avoid hammering the backend
     for (const entry of list) {
       if (abortRef.current) break
       const sym = entry.symbol
@@ -286,7 +268,7 @@ export default function TickerScannerPage() {
         const day   = dayRes.status   === 'fulfilled' ? dayRes.value.data   : null
         const swing = swingRes.status === 'fulfilled' ? swingRes.value.data : null
 
-        if (!firstResult) firstResult = day ?? swing
+        if (!firstResult) { firstResult = day ?? swing; firstSym = sym }
 
         setResults(prev => {
           const next = new Map(prev)
@@ -294,14 +276,13 @@ export default function TickerScannerPage() {
           return next
         })
 
-        // Capture market context from first successful result
-        if (firstResult && !mktCtx) {
-          setMktCtx({
-            spyPct:   firstResult.spy_change_pct,
-            vix:      firstResult.vix,
-            vixLabel: firstResult.vix_label ?? '',
-            regime:   firstResult.regime ?? '',
-            session:  firstResult.session ?? '',
+        if (firstResult) {
+          setMktCtx(prev => prev ?? {
+            spyPct:   firstResult!.spy_change_pct,
+            vix:      firstResult!.vix,
+            vixLabel: firstResult!.vix_label ?? '',
+            regime:   firstResult!.regime ?? '',
+            session:  firstResult!.session ?? '',
           })
         }
       } catch {
@@ -315,14 +296,19 @@ export default function TickerScannerPage() {
     }
 
     setScanState('done')
-    // Auto-select first ticker when done
-    if (!selected && tickers.length > 0) setSelected(tickers[0]!.symbol)
-  }, [tickers, mktCtx, selected])
+    if (firstSym) setSelected(s => s ?? firstSym)
+  }, [])  // stable — only uses setters and analyzeV2
 
-  // Keep ref in sync so the auto-call on mount can reach the latest runScan
+  // Fetch tickers on mount then immediately scan
   useEffect(() => {
-    runScanRef.current = runScan
-  }, [runScan])
+    fetchMyTickers()
+      .then(res => {
+        const list = res.data?.tickers ?? []
+        setTickers(list)
+        scan(list)
+      })
+      .catch(() => setLoadError('Failed to load your tickers.'))
+  }, [scan])
 
   // Sort: by best verdict then by price change desc
   const sortedResults = [...results.values()].sort((a, b) => {
@@ -362,7 +348,7 @@ export default function TickerScannerPage() {
             <span className="text-xs text-emerald-400 font-medium">Scan complete</span>
           )}
           <button
-            onClick={runScan}
+            onClick={() => scan(tickers)}
             disabled={scanState === 'running' || !tickers.length}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
