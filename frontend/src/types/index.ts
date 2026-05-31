@@ -216,6 +216,7 @@ export type Page =
   | 'my-watchlist'
   | 'desk'
   | 'day-trade-dashboard'
+  | 'ticker-scanner'
 
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'

@@ -26,6 +26,7 @@ const ADMIN_ONLY: ReadonlySet<Page> = new Set([
 /** Pages available to admin and super_user only (not regular day/swing subscribers). */
 const SUPER_AND_ABOVE: ReadonlySet<Page> = new Set([
   'day-trade-dashboard',
+  'ticker-scanner',
 ])
 
 /** Pages available to admin and day-trade subscribers. */
