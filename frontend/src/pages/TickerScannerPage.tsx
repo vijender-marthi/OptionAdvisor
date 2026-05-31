@@ -249,33 +249,33 @@ export default function TickerScannerPage() {
   const abortRef = useRef(false)
 
   // Load tickers once on mount
+  const runScanRef = useRef<((list: MyTickerEntry[]) => Promise<void>) | null>(null)
+
   useEffect(() => {
     fetchMyTickers()
       .then(res => {
         const list = res.data?.tickers ?? []
         setTickers(list)
-        // Seed results map with entries, no scan data yet
         setResults(new Map(list.map(e => [e.symbol, { entry: e, day: null, swing: null, state: 'idle' }])))
+        // Auto-run scan immediately after tickers load
+        runScanRef.current?.(list)
       })
       .catch(() => setLoadError('Failed to load your tickers.'))
   }, [])
 
-  const runScan = useCallback(async () => {
-    if (!tickers.length) return
+  const runScan = useCallback(async (initialList?: MyTickerEntry[]) => {
+    const list = initialList ?? tickers
+    if (!list.length) return
     abortRef.current = false
     setScanState('running')
 
     // Reset all to loading
-    setResults(prev => {
-      const next = new Map(prev)
-      for (const [sym, r] of next) next.set(sym, { ...r, day: null, swing: null, state: 'loading' })
-      return next
-    })
+    setResults(new Map(list.map(e => [e.symbol, { entry: e, day: null, swing: null, state: 'loading' }])))
 
     let firstResult: UnifiedAnalysis | null = null
 
     // Scan each ticker sequentially to avoid hammering the backend
-    for (const entry of tickers) {
+    for (const entry of list) {
       if (abortRef.current) break
       const sym = entry.symbol
       try {
@@ -318,6 +318,11 @@ export default function TickerScannerPage() {
     // Auto-select first ticker when done
     if (!selected && tickers.length > 0) setSelected(tickers[0]!.symbol)
   }, [tickers, mktCtx, selected])
+
+  // Keep ref in sync so the auto-call on mount can reach the latest runScan
+  useEffect(() => {
+    runScanRef.current = runScan
+  }, [runScan])
 
   // Sort: by best verdict then by price change desc
   const sortedResults = [...results.values()].sort((a, b) => {
