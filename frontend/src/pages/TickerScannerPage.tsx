@@ -443,15 +443,34 @@ export default function TickerScannerPage() {
                       </span>
                     )}
 
-                    {/* Trade type badges */}
+                    {/* Trade type badges — click opens page in new tab */}
                     <div className="hidden sm:flex gap-1 min-w-[80px] justify-end">
-                      {entry.trade_types.map(t => (
-                        <span key={t} className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                          t === 'day'   ? 'bg-blue-900/40 text-blue-300'
-                          : t === 'swing' ? 'bg-green-900/40 text-green-300'
+                      {entry.trade_types.map(t => {
+                        const href =
+                          t === 'day'   ? `/day-trade?ticker=${entry.symbol}`
+                          : t === 'swing' ? `/swing-trade?ticker=${entry.symbol}`
+                          : null
+                        const cls = `px-1.5 py-0.5 rounded text-[9px] font-semibold transition-opacity ${
+                          t === 'day'   ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                          : t === 'swing' ? 'bg-green-900/40 text-green-300 hover:bg-green-800/60'
                           : 'bg-gray-800/50 text-gray-500'
-                        }`}>{t}</span>
-                      ))}
+                        }`
+                        return href ? (
+                          <a
+                            key={t}
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className={cls}
+                            title={`Open ${entry.symbol} in ${t} trade page`}
+                          >
+                            {t} ↗
+                          </a>
+                        ) : (
+                          <span key={t} className={cls}>{t}</span>
+                        )
+                      })}
                     </div>
                   </button>
                 )
