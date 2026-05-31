@@ -413,11 +413,12 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-all ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 border-violet-500/50 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 rounded-xl border px-4 py-3 transition-all ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 border-violet-500/50 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
-      <div className="flex min-w-0 items-center gap-3 flex-[2]">
+      {/* Top row on mobile: avatar + symbol/name + delete */}
+      <div className="flex items-center gap-3 min-w-0 sm:flex-[2]">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-white">{ticker.symbol}</span>
             <div className="flex flex-col gap-0.5">
@@ -434,65 +435,71 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
             </div>
           )}
         </div>
+        {/* Delete button visible on mobile inline with avatar row */}
+        <button type="button" onClick={onRemove} className="sm:hidden shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
       </div>
 
-      {/* Middle: Price & Change */}
-      <div className="flex flex-col items-end gap-0.5 flex-1 min-w-0">
-        {ticker.last_price != null && (
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold font-mono text-white">${ticker.last_price.toFixed(2)}</span>
-            {ticker.price_change != null && (
-              <span className={`text-sm font-mono font-semibold ${ticker.price_change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {ticker.price_change >= 0 ? '+' : ''}{ticker.price_change.toFixed(2)}
-              </span>
-            )}
-            {ticker.price_change_pct != null && (
-              <span className={`text-xs font-mono font-semibold ${ticker.price_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                ({ticker.price_change_pct >= 0 ? '+' : ''}{ticker.price_change_pct.toFixed(2)}%)
-              </span>
-            )}
-          </div>
-        )}
-        {ticker.pre_market_price != null && (
-          <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">Pre</span>
-            ${ticker.pre_market_price.toFixed(2)}
-            {ticker.pre_market_change_pct != null && (
-              <span className={ticker.pre_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                {ticker.pre_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.pre_market_change_pct).toFixed(2)}%
-              </span>
-            )}
-          </span>
-        )}
-        {ticker.post_market_price != null && (
-          <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">AH</span>
-            ${ticker.post_market_price.toFixed(2)}
-            {ticker.post_market_change_pct != null && (
-              <span className={ticker.post_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                {ticker.post_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.post_market_change_pct).toFixed(2)}%
-              </span>
-            )}
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="flex gap-1">
-          {types.map(tt => (
-            <button
-              key={tt}
-              type="button"
-              onClick={() => navigate(getEngineRoute(tt, ticker.symbol))}
-              title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
-              className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
-            >
-              {TRADE_TYPE_META[tt]?.label || tt}
-              <ArrowUpRight size={9} className="opacity-70" />
-            </button>
-          ))}
+      {/* Bottom row on mobile: price + badges */}
+      <div className="flex items-center justify-between gap-3 sm:contents">
+        {/* Price & Change */}
+        <div className="flex flex-col items-start sm:items-end gap-0.5 sm:flex-1 min-w-0">
+          {ticker.last_price != null && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-sm font-bold font-mono text-white">${ticker.last_price.toFixed(2)}</span>
+              {ticker.price_change != null && (
+                <span className={`text-xs font-mono font-semibold ${ticker.price_change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {ticker.price_change >= 0 ? '+' : ''}{ticker.price_change.toFixed(2)}
+                </span>
+              )}
+              {ticker.price_change_pct != null && (
+                <span className={`text-xs font-mono font-semibold ${ticker.price_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  ({ticker.price_change_pct >= 0 ? '+' : ''}{ticker.price_change_pct.toFixed(2)}%)
+                </span>
+              )}
+            </div>
+          )}
+          {ticker.pre_market_price != null && (
+            <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">Pre</span>
+              ${ticker.pre_market_price.toFixed(2)}
+              {ticker.pre_market_change_pct != null && (
+                <span className={ticker.pre_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                  {ticker.pre_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.pre_market_change_pct).toFixed(2)}%
+                </span>
+              )}
+            </span>
+          )}
+          {ticker.post_market_price != null && (
+            <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">AH</span>
+              ${ticker.post_market_price.toFixed(2)}
+              {ticker.post_market_change_pct != null && (
+                <span className={ticker.post_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                  {ticker.post_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.post_market_change_pct).toFixed(2)}%
+                </span>
+              )}
+            </span>
+          )}
         </div>
-        <button type="button" onClick={onRemove} className="ml-2 shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
+
+        {/* Trade type badges + delete */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap gap-1">
+            {types.map(tt => (
+              <button
+                key={tt}
+                type="button"
+                onClick={() => navigate(getEngineRoute(tt, ticker.symbol))}
+                title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
+                className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
+              >
+                {TRADE_TYPE_META[tt]?.label || tt}
+                <ArrowUpRight size={9} className="opacity-70" />
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={onRemove} className="hidden sm:block shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
+        </div>
       </div>
     </div>
   )
