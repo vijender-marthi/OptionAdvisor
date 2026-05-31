@@ -69,6 +69,8 @@ export function locationToPage(pathname: string): Page {
       return 'desk'
     case 'day-trade-dashboard':
       return 'day-trade-dashboard'
+    case 'ticker-scanner':
+      return 'ticker-scanner'
     default:
       return 'trade-command-center'
   }
@@ -136,6 +138,8 @@ export function pageToLocation(p: Page): string {
       return '/desk'
     case 'day-trade-dashboard':
       return '/day-trade-dashboard'
+    case 'ticker-scanner':
+      return '/ticker-scanner'
     default:
       return '/trade-command-center'
   }

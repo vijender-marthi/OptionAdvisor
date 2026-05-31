@@ -121,7 +121,10 @@ export default function SettingsPage() {
   }, [accent])
 
   useEffect(() => {
-    try { localStorage.setItem('oa_timezone', timezone) } catch {}
+    try {
+      localStorage.setItem('oa_timezone', timezone)
+      window.dispatchEvent(new CustomEvent('oa-timezone-changed', { detail: timezone }))
+    } catch {}
   }, [timezone])
 
   const handleBuyingPowerSave = () => {

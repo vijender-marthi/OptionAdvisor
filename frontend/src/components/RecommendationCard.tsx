@@ -159,6 +159,181 @@ function ScoreBar({ label, value, max, color }: { label: string; value: number; 
 
 const RATIONALE_PREVIEW_LEN = 120
 
+// ─── Exit Decision Tree ────────────────────────────────────────────────────
+
+type ExitRule = { trigger: string; price: number; action: string; note: string }
+
+function classifyRule(rule: ExitRule): {
+  icon: string; typeLabel: string; kind: 'profit' | 'stop' | 'time'
+  rowBg: string; badgeCls: string; labelCls: string; priceCls: string
+} {
+  const t = rule.trigger.toLowerCase()
+  const body = (rule.action ?? '').toLowerCase()
+  const combined = t + ' ' + body
+  const isStop = t.includes('loss') || t.includes('stop') || t.includes('max loss')
+  const isTime = t.includes('time') || t.includes('dte') || t.includes('expir') || t.includes('roll') || t.includes('gamma')
+                 || (rule.price === 0 && combined.includes('dte'))
+  const isT2   = t.includes('t2') || t.includes('target 2') || t.includes('extend') || t.includes('assignment')
+  if (isStop) return {
+    icon: '🛑', typeLabel: 'Stop Loss', kind: 'stop',
+    rowBg: 'bg-red-950/20', badgeCls: 'bg-red-900/40 text-red-300 border-red-800',
+    labelCls: 'text-red-400', priceCls: 'bg-red-950/60 text-red-300 border-red-800/60',
+  }
+  if (isTime) return {
+    icon: '⏱', typeLabel: 'Time', kind: 'time',
+    rowBg: 'bg-amber-950/20', badgeCls: 'bg-amber-900/40 text-amber-300 border-amber-800',
+    labelCls: 'text-amber-400', priceCls: 'bg-amber-950/60 text-amber-300 border-amber-800/60',
+  }
+  if (isT2) return {
+    icon: '🚀', typeLabel: 'Target 2', kind: 'profit',
+    rowBg: 'bg-emerald-950/10', badgeCls: 'bg-emerald-900/30 text-emerald-300 border-emerald-800',
+    labelCls: 'text-emerald-500', priceCls: 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60',
+  }
+  return {
+    icon: '🎯', typeLabel: 'Target 1', kind: 'profit',
+    rowBg: 'bg-emerald-950/20', badgeCls: 'bg-emerald-900/40 text-emerald-400 border-emerald-700',
+    labelCls: 'text-emerald-400', priceCls: 'bg-emerald-950/60 text-emerald-400 border-emerald-700/60',
+  }
+}
+
+// Splits a plain-text exit plan string into structured rows by detecting
+// labelled sections like "Take profit:", "Stop loss:", "Time exit:", etc.
+function parseExitPlanText(text: string): ExitRule[] {
+  if (!text?.trim()) return []
+
+  // Patterns that mark the start of a new section (case-insensitive)
+  const SECTION_RE = /\b(take\s+profit|profit\s+target|target\s+[12]|stop\s+loss|max\s+loss|time\s+exit|time\s+stop|roll|expir|assignment|gamma)\s*:/gi
+
+  const matches: Array<{ index: number; label: string }> = []
+  let m: RegExpExecArray | null
+  while ((m = SECTION_RE.exec(text)) !== null) {
+    matches.push({ index: m.index, label: m[0].replace(':', '').trim() })
+  }
+
+  // No section markers — treat the whole string as a single "plan" entry
+  if (matches.length === 0) {
+    return [{ trigger: 'Exit plan', price: 0, action: text.trim(), note: '' }]
+  }
+
+  const rows: ExitRule[] = []
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i]!.index + matches[i]!.label.length + 1 // skip the colon
+    const end   = matches[i + 1]?.index ?? text.length
+    const body  = text.slice(start, end).replace(/^[\s:]+/, '').trim()
+
+    // Extract first price-like token ($123.45) if present
+    const priceMatch = body.match(/\$[\d,]+(?:\.\d+)?/)
+    const price = priceMatch ? parseFloat(priceMatch[0].replace(/[$,]/g, '')) : 0
+
+    rows.push({
+      trigger: matches[i]!.label,
+      price,
+      action: body,
+      note: '',
+    })
+  }
+  return rows
+}
+
+function ExitDecisionTree({
+  exitRules,
+  exitPlan,
+}: {
+  exitRules?: ExitRule[]
+  exitPlan?: string
+}) {
+  // Use structured rules when available; fall back to parsing the text plan
+  const rules: ExitRule[] =
+    exitRules && exitRules.length > 0
+      ? exitRules
+      : parseExitPlanText(exitPlan ?? '')
+
+  if (rules.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3 text-xs text-gray-600 text-center">
+        No exit plan available
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-800 overflow-hidden">
+      {/* Column headers */}
+      <div className="grid grid-cols-[80px_1fr_90px_1fr] gap-0 border-b border-gray-800 bg-gray-900/80">
+        {['SCENARIO', 'IF THIS HAPPENS', 'AT PRICE', 'THEN DO THIS'].map(h => (
+          <div key={h} className="px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-600 border-r border-gray-800/60 last:border-r-0">
+            {h}
+          </div>
+        ))}
+      </div>
+
+      {/* Decision rows */}
+      <div className="divide-y divide-gray-800/60">
+        {rules.map((rule, i) => {
+          const c = classifyRule(rule)
+          const dteMatch = (rule.action + ' ' + rule.trigger).match(/(\d+)\s*DTE/i)
+          // Options contracts = 100 shares; show contract price
+          const contractPrice = rule.price > 0 ? rule.price * 100 : 0
+          const priceDisplay =
+            contractPrice > 0
+              ? `$${contractPrice % 1 === 0 ? contractPrice.toFixed(0) : contractPrice.toFixed(2)}`
+              : dteMatch
+                ? `${dteMatch[1]} DTE`
+                : '—'
+          const priceSubLabel = contractPrice > 0 ? 'per contract' : null
+
+          return (
+            <div key={i} className={`grid grid-cols-[80px_1fr_90px_1fr] gap-0 ${c.rowBg}`}>
+              {/* Scenario badge */}
+              <div className="px-2 py-2.5 border-r border-gray-800/60 flex flex-col items-center justify-center gap-0.5">
+                <span className="text-base leading-none">{c.icon}</span>
+                <span className={`text-[9px] font-bold uppercase tracking-wider text-center ${c.labelCls}`}>
+                  {c.typeLabel}
+                </span>
+              </div>
+
+              {/* IF column */}
+              <div className="px-2.5 py-2.5 border-r border-gray-800/60 flex items-start">
+                <div>
+                  <div className="text-[11px] text-gray-200 font-medium leading-snug">{rule.trigger}</div>
+                  {rule.note && (
+                    <div className="text-[10px] text-gray-600 mt-0.5 italic leading-snug">{rule.note}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* AT PRICE column */}
+              <div className="px-2 py-2.5 border-r border-gray-800/60 flex flex-col items-center justify-center gap-0.5">
+                <span className={`font-mono font-bold text-xs tabular-nums rounded-md px-2 py-1 border ${c.priceCls}`}>
+                  {priceDisplay}
+                </span>
+                {priceSubLabel && (
+                  <span className="text-[9px] text-gray-600">{priceSubLabel}</span>
+                )}
+              </div>
+
+              {/* THEN column */}
+              <div className="px-2.5 py-2.5 flex items-start">
+                <div className="text-[11px] text-gray-300 font-medium leading-snug">{rule.action}</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-gray-800 bg-gray-950/40 flex items-center gap-1.5">
+        <span className="text-[10px]">⚠️</span>
+        <span className="text-[10px] text-gray-600">
+          Set limit/stop orders before entry. Never move your stop against the position.
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Rationale ──────────────────────────────────────────────────────────────
+
 function RationaleBlock({ rationale }: { rationale: string }) {
   const [expanded, setExpanded] = useState(false)
   const needsTrunc = rationale.length > RATIONALE_PREVIEW_LEN
@@ -866,53 +1041,18 @@ export default function RecommendationCard({
       {/* Pre-Trade Checklist */}
       <PreTradeChecklist rec={rec} signals={signals} />
 
-      {/* Exit plan (collapsible) */}
+      {/* Exit plan — decision tree table */}
       <div className="px-4 pb-4">
         <button
           onClick={() => setExitOpen(o => !o)}
-          className="w-full flex items-center justify-between text-xs text-indigo-400 hover:text-indigo-300
-                     bg-indigo-950/40 border border-indigo-900 rounded-xl px-3 py-2 transition-colors"
+          className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-gray-200
+                     bg-gray-900/60 border border-gray-800 rounded-xl px-3 py-2 transition-colors mb-2"
         >
-          <span>🚪 Exit Plan</span>
+          <span className="flex items-center gap-1.5 font-semibold">🚪 Exit Plan</span>
           {exitOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
         {exitOpen && (
-          <div className="mt-2 p-3 bg-indigo-950/30 border border-indigo-900 rounded-xl">
-            {rec.exit_rules && rec.exit_rules.length > 0 ? (
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400/60 border-b border-indigo-900/60">
-                    <th className="pb-1.5 text-left font-medium">When</th>
-                    <th className="pb-1.5 text-right font-medium tabular-nums pr-3">Value</th>
-                    <th className="pb-1.5 text-left font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-indigo-900/40">
-                  {rec.exit_rules.map((rule, i) => {
-                    const isStop   = rule.trigger.toLowerCase().includes('loss')
-                    const isProfit = rule.trigger.toLowerCase().includes('profit') || rule.trigger.toLowerCase().includes('gain')
-                    const isTime   = rule.price === 0
-                    const priceCls = isStop ? 'text-red-400' : isProfit ? 'text-emerald-400' : 'text-amber-300'
-                    const actionCls = isStop ? 'text-red-300' : isProfit ? 'text-emerald-300' : 'text-indigo-200'
-                    return (
-                      <tr key={i}>
-                        <td className="py-2 pr-2 text-indigo-300/70 leading-snug align-top w-[32%]">{rule.trigger}</td>
-                        <td className={`py-2 pr-3 text-right font-mono font-bold tabular-nums align-top ${priceCls}`}>
-                          {isTime ? `${rule.price === 0 ? rule.trigger.match(/\d+/)?.[0] ?? '—' : rule.price} DTE` : `$${rule.price.toFixed(2)}/sh`}
-                        </td>
-                        <td className="py-2 align-top">
-                          <div className={`font-semibold leading-snug ${actionCls}`}>{rule.action}</div>
-                          <div className="text-[10px] text-indigo-300/50 leading-snug mt-0.5">{rule.note}</div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-sm text-indigo-200 leading-relaxed">{rec.exit_plan}</p>
-            )}
-          </div>
+          <ExitDecisionTree exitRules={rec.exit_rules} exitPlan={rec.exit_plan} />
         )}
       </div>
         </div>

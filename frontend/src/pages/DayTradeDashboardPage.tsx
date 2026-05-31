@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2 } from '../api/client'
+import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
@@ -61,10 +63,19 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
 }
 
 // ─── Verdict badge ─────────────────────────────────────────────────────────
+const VERDICT_TITLES: Record<string, string> = {
+  STRONG_GO: 'Strong Go — all signals aligned, high confidence. Enter now.',
+  GO: 'Go — conditions met. Ready to trade.',
+  WATCH: 'Watch — setup forming but not yet triggered. Monitor.',
+  WAIT: 'Wait — signal exists but conditions not aligned. Stand by.',
+  AVOID: 'Avoid — hard failures present. Do not trade.',
+  NO_EDGE: 'No Edge — insufficient signal. Skip.',
+}
+
 function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?: string }) {
   const c = statusColor ?? VERDICT_COLORS[verdict] ?? '#6B7280'
   return (
-    <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 20, border: `1.5px solid ${c}`, color: c, background: `${c}18`, whiteSpace: 'nowrap' }}>
+    <span title={VERDICT_TITLES[verdict] ?? verdict} style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 20, border: `1.5px solid ${c}`, color: c, background: `${c}18`, whiteSpace: 'nowrap' }}>
       {verdict.replace('_', ' ')}
     </span>
   )
@@ -145,12 +156,13 @@ function ChartModal({ data, isDark, dt, onClose }: {
 }
 
 // ─── Single ticker tile ────────────────────────────────────────────────────
-function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps, isDragging, isDropTarget }: {
+function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps, isDragging, isDropTarget, agreementBadge }: {
   tile: TileData; tab: Tab; dt: Record<string, string>; isDark: boolean
   onRemove: () => void
   onExpand: () => void
   dragHandleProps: React.HTMLAttributes<HTMLDivElement>
   isDragging: boolean; isDropTarget: boolean
+  agreementBadge?: string
 }) {
   const { result, unified } = tile
   const isSwing  = tab === 'swing'
@@ -223,6 +235,18 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
                 </span>
               )}
               {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}
+              {agreementBadge && (
+                <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '1px 6px', borderRadius: 10, border: `1px solid ${
+                  agreementBadge.includes('STRONG') ? 'rgba(16,185,129,0.4)' :
+                  agreementBadge === 'CONFLICT' ? 'rgba(239,68,68,0.35)' :
+                  agreementBadge === 'PARTIAL_AGREEMENT' ? 'rgba(56,189,248,0.35)' :
+                  'rgba(107,114,128,0.3)'
+                }`, color: agreementBadge.includes('STRONG') ? '#6EE7B7' : agreementBadge === 'CONFLICT' ? '#FCA5A5' : agreementBadge === 'PARTIAL_AGREEMENT' ? '#7DD3FC' : dt.muted,
+                background: 'transparent',
+                }} title="Cross-engine agreement from Signal Feed">
+                  {agreementBadge.replace(/_/g, ' ')}
+                </span>
+              )}
               {confidence != null && (
                 <span style={{ fontSize: 11, color: dt.muted, fontFamily: 'monospace' }}>
                   <span style={{ color: statusColor ?? dt.green, fontWeight: 700 }}>{confidence}</span>
@@ -402,6 +426,7 @@ export default function DayTradeDashboardPage() {
 
   const [lastRefreshed, setLastRefreshed] = useState<Record<Tab, Date | null>>({ day: null, swing: null })
   const [refreshing,    setRefreshing]    = useState(false)
+  const [agreementMap,  setAgreementMap]  = useState<Record<string, string>>({})
 
   // Scan a single ticker — force_refresh bypasses all caches
   const scanTicker = useCallback(async (sym: string, tab: Tab, forceRefresh = false) => {
@@ -433,6 +458,20 @@ export default function DayTradeDashboardPage() {
     if (dayTickers.length)   void scanAll(dayTickers,   'day')
     if (swingTickers.length) void scanAll(swingTickers, 'swing')
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fetch Signal Feed once for cross-engine agreement badges
+  useEffect(() => {
+    fetchSignalFeed({ page: 1, page_size: 100 })
+      .then(env => {
+        const map: Record<string, string> = {}
+        for (const row of env.data?.rows ?? []) {
+          const badge = String(row.agreement_badge || row.agreement_state || '').toUpperCase()
+          if (badge) map[row.ticker.toUpperCase()] = badge
+        }
+        setAgreementMap(map)
+      })
+      .catch(() => {/* non-fatal */})
   }, [])
 
   // Auto-refresh every 60s — also refresh when tab becomes visible again
@@ -510,6 +549,9 @@ export default function DayTradeDashboardPage() {
               Trade Dashboard
             </h1>
             <p style={{ margin: '3px 0 0', fontSize: 12, color: dt.muted }}>Monitor up to {MAX_TICKERS} tickers · auto-refreshes every 60s</p>
+            <Link to={ROUTES.tradeCommandCenter} style={{ fontSize: 11, color: dt.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              ← Trade Command Center
+            </Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {lastRefreshed[activeTab] && (
@@ -568,6 +610,7 @@ export default function DayTradeDashboardPage() {
                   dragHandleProps={makeHandleProps(sym)}
                   isDragging={dragging === sym}
                   isDropTarget={dropTarget === sym}
+                  agreementBadge={agreementMap[sym.toUpperCase()]}
                 />
               </div>
             ))}

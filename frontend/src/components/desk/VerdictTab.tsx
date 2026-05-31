@@ -126,6 +126,85 @@ function exitRowColor(type: string): string {
   return C.muted
 }
 
+type ExitRow = { when: string; price: string; action: string; note?: string; type: string }
+
+const EXIT_META: Record<string, { icon: string; label: string; bg: string; border: string; priceCls: string; labelCls: string }> = {
+  t1:   { icon: '🎯', label: 'Target 1',  bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.25)', priceCls: 'text-emerald-400', labelCls: 'text-emerald-500' },
+  t2:   { icon: '🚀', label: 'Target 2',  bg: 'rgba(16,185,129,0.05)', border: 'rgba(16,185,129,0.15)', priceCls: 'text-emerald-300', labelCls: 'text-emerald-600' },
+  stop: { icon: '🛑', label: 'Stop Loss', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)',  priceCls: 'text-red-400',     labelCls: 'text-red-500' },
+  time: { icon: '⏱',  label: 'Time Exit', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)', priceCls: 'text-amber-400',   labelCls: 'text-amber-500' },
+  none: { icon: '📋', label: 'Note',      bg: 'rgba(99,102,241,0.06)', border: 'rgba(99,102,241,0.15)', priceCls: 'text-indigo-300',  labelCls: 'text-indigo-400' },
+}
+
+function ExitPlanCard({ exitRows }: { exitRows: ExitRow[] }) {
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-2.5 border-b border-gray-800 flex items-center gap-2">
+        <span className="text-sm">🚪</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Exit Plan — Pre-Committed</span>
+      </div>
+
+      {exitRows.length === 0 ? (
+        <div className="px-4 py-5 text-center text-xs text-gray-600">
+          Run analysis for exit levels
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-800/60">
+          {exitRows.map((row, i) => {
+            const meta = EXIT_META[row.type] ?? EXIT_META.none!
+            return (
+              <div
+                key={i}
+                className="flex items-start gap-3 px-4 py-3"
+                style={{ background: meta.bg }}
+              >
+                {/* Left: icon + type label */}
+                <div className="flex flex-col items-center gap-1 pt-0.5 min-w-[44px]">
+                  <span className="text-base leading-none">{meta.icon}</span>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider ${meta.labelCls}`}>{meta.label}</span>
+                </div>
+
+                {/* Divider */}
+                <div className="w-px self-stretch bg-gray-800/80 shrink-0" />
+
+                {/* Middle: when + note */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gray-200 font-medium leading-snug">{row.when}</div>
+                  {row.action && (
+                    <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{row.action}</div>
+                  )}
+                  {row.note && (
+                    <div className="text-[10px] text-gray-600 mt-1 leading-snug italic">{row.note}</div>
+                  )}
+                </div>
+
+                {/* Right: price pill */}
+                <div
+                  className={`shrink-0 rounded-lg px-2.5 py-1 font-mono font-bold text-sm tabular-nums border ${meta.priceCls}`}
+                  style={{ borderColor: meta.border, background: 'rgba(0,0,0,0.3)' }}
+                >
+                  {row.price || '—'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Footer risk reminder */}
+      {exitRows.length > 0 && (
+        <div className="px-4 py-2 border-t border-gray-800 flex items-center gap-1.5 bg-gray-950/30">
+          <span className="text-[10px]">⚠️</span>
+          <span className="text-[10px] text-gray-600 leading-snug">
+            Set orders before entry. Never move your stop against the position.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VerdictTab({
   analysis, loading, openTrade, tradeType, compact = false,
   onLogTrade, onSetAlert, onRefresh, refreshing,
@@ -337,39 +416,7 @@ export default function VerdictTab({
       </div>
 
       {/* 3. Exit Plan card */}
-      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
-        <style>{`
-          .desk-exit-row { border-bottom: 1px solid #1E2330; }
-          .desk-exit-row:last-child { border-bottom: none; }
-        `}</style>
-        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-          Exit Plan — Pre-Committed
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-          <thead>
-            <tr>
-              {['WHEN', 'PRICE', 'ACTION'].map(h => (
-                <th key={h} style={{ textAlign: 'left', color: C.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {exitRows.length > 0 ? exitRows.map((row, i) => (
-              <tr key={i} className="desk-exit-row">
-                <td style={{ paddingTop: 8, paddingBottom: 8, color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.when}</td>
-                <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: exitRowColor(row.type) }}>{row.price}</td>
-                <td style={{ paddingTop: 8, paddingBottom: 8, color: C.muted, fontSize: '0.75rem' }}>{row.action}</td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={3} style={{ color: C.muted, textAlign: 'center', padding: '8px 0', fontSize: '0.8rem' }}>
-                  Run analysis for exit levels
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ExitPlanCard exitRows={exitRows} />
 
       {/* 4. AI Coach card */}
       {analysis.coach && (

@@ -123,6 +123,16 @@ export default function MarketStrip() {
     return () => clearInterval(id)
   }, [])
 
+  // Pick up timezone changes made in Settings without a page reload
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tz = (e as CustomEvent<string>).detail
+      if (tz) setUserTz(tz)
+    }
+    window.addEventListener('oa-timezone-changed', handler)
+    return () => window.removeEventListener('oa-timezone-changed', handler)
+  }, [])
+
   const toneColor: Record<string, string> = { green: C.green, red: C.red, orange: C.amber, gray: C.muted }
   const toneBg: Record<string, string> = {
     green: 'rgba(0,229,160,0.08)', red: 'rgba(255,77,109,0.08)', orange: 'rgba(245,166,35,0.08)', gray: 'transparent',
