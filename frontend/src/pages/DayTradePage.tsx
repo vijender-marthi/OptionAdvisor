@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
   Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
-  PlusCircle, Activity, Check,
+  PlusCircle, Activity, Check, Gauge,
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
@@ -581,6 +581,23 @@ export default function DayTradePage() {
             >
               <Bell size={14} />
               Add Alert
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sym = result.ticker.toUpperCase()
+                try {
+                  const existing: string[] = JSON.parse(localStorage.getItem('oa_dashboard_tickers_day') ?? '[]')
+                  if (!existing.includes(sym) && existing.length < 8) {
+                    localStorage.setItem('oa_dashboard_tickers_day', JSON.stringify([...existing, sym]))
+                  }
+                } catch { /* ignore quota */ }
+                routerNavigate(ROUTES.dayTradeDashboard)
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-700/50 hover:bg-orange-900/30 text-orange-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              <Gauge size={13} />
+              Add to Dashboard
             </button>
             <button
               type="button"
