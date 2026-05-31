@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
@@ -488,6 +488,23 @@ export default function SwingTradePage() {
             >
               <Bell size={14} />
               Add Alert
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sym = result.ticker.toUpperCase()
+                try {
+                  const existing: string[] = JSON.parse(localStorage.getItem('oa_dashboard_tickers_swing') ?? '[]')
+                  if (!existing.includes(sym) && existing.length < 8) {
+                    localStorage.setItem('oa_dashboard_tickers_swing', JSON.stringify([...existing, sym]))
+                  }
+                } catch { /* ignore quota */ }
+                navigate(ROUTES.dayTradeDashboard)
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-700/50 hover:bg-orange-900/30 text-orange-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              <Gauge size={13} />
+              Add to Dashboard
             </button>
             <button
               type="button"
