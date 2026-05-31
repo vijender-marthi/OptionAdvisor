@@ -168,9 +168,12 @@ function classifyRule(rule: ExitRule): {
   rowBg: string; badgeCls: string; labelCls: string; priceCls: string
 } {
   const t = rule.trigger.toLowerCase()
-  const isStop = t.includes('loss') || t.includes('stop')
-  const isTime = rule.price === 0 || t.includes('dte') || t.includes('expir') || t.includes('day')
-  const isT2   = t.includes('t2') || t.includes('target 2') || t.includes('extend')
+  const body = (rule.action ?? '').toLowerCase()
+  const combined = t + ' ' + body
+  const isStop = t.includes('loss') || t.includes('stop') || t.includes('max loss')
+  const isTime = t.includes('time') || t.includes('dte') || t.includes('expir') || t.includes('roll') || t.includes('gamma')
+                 || (rule.price === 0 && combined.includes('dte'))
+  const isT2   = t.includes('t2') || t.includes('target 2') || t.includes('extend') || t.includes('assignment')
   if (isStop) return {
     icon: '🛑', typeLabel: 'Stop Loss', kind: 'stop',
     rowBg: 'bg-red-950/20', badgeCls: 'bg-red-900/40 text-red-300 border-red-800',
@@ -193,6 +196,45 @@ function classifyRule(rule: ExitRule): {
   }
 }
 
+// Splits a plain-text exit plan string into structured rows by detecting
+// labelled sections like "Take profit:", "Stop loss:", "Time exit:", etc.
+function parseExitPlanText(text: string): ExitRule[] {
+  if (!text?.trim()) return []
+
+  // Patterns that mark the start of a new section (case-insensitive)
+  const SECTION_RE = /\b(take\s+profit|profit\s+target|target\s+[12]|stop\s+loss|max\s+loss|time\s+exit|time\s+stop|roll|expir|assignment|gamma)\s*:/gi
+
+  const matches: Array<{ index: number; label: string }> = []
+  let m: RegExpExecArray | null
+  while ((m = SECTION_RE.exec(text)) !== null) {
+    matches.push({ index: m.index, label: m[0].replace(':', '').trim() })
+  }
+
+  // No section markers — treat the whole string as a single "plan" entry
+  if (matches.length === 0) {
+    return [{ trigger: 'Exit plan', price: 0, action: text.trim(), note: '' }]
+  }
+
+  const rows: ExitRule[] = []
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i]!.index + matches[i]!.label.length + 1 // skip the colon
+    const end   = matches[i + 1]?.index ?? text.length
+    const body  = text.slice(start, end).replace(/^[\s:]+/, '').trim()
+
+    // Extract first price-like token ($123.45) if present
+    const priceMatch = body.match(/\$[\d,]+(?:\.\d+)?/)
+    const price = priceMatch ? parseFloat(priceMatch[0].replace(/[$,]/g, '')) : 0
+
+    rows.push({
+      trigger: matches[i]!.label,
+      price,
+      action: body,
+      note: '',
+    })
+  }
+  return rows
+}
+
 function ExitDecisionTree({
   exitRules,
   exitPlan,
@@ -200,12 +242,14 @@ function ExitDecisionTree({
   exitRules?: ExitRule[]
   exitPlan?: string
 }) {
-  if (!exitRules || exitRules.length === 0) {
-    return exitPlan ? (
-      <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3 text-xs text-gray-400 leading-relaxed">
-        {exitPlan}
-      </div>
-    ) : (
+  // Use structured rules when available; fall back to parsing the text plan
+  const rules: ExitRule[] =
+    exitRules && exitRules.length > 0
+      ? exitRules
+      : parseExitPlanText(exitPlan ?? '')
+
+  if (rules.length === 0) {
+    return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3 text-xs text-gray-600 text-center">
         No exit plan available
       </div>
@@ -225,13 +269,14 @@ function ExitDecisionTree({
 
       {/* Decision rows */}
       <div className="divide-y divide-gray-800/60">
-        {exitRules.map((rule, i) => {
+        {rules.map((rule, i) => {
           const c = classifyRule(rule)
+          const dteMatch = (rule.action + ' ' + rule.trigger).match(/(\d+)\s*DTE/i)
           const priceDisplay =
-            c.kind === 'time'
-              ? (rule.trigger.match(/\d+/)?.[0] ? `${rule.trigger.match(/\d+/)![0]} DTE` : '—')
-              : rule.price > 0
-                ? `$${rule.price.toFixed(2)}`
+            rule.price > 0
+              ? `$${rule.price.toFixed(2)}`
+              : dteMatch
+                ? `${dteMatch[1]} DTE`
                 : '—'
 
           return (
