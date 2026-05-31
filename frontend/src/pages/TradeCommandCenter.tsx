@@ -7,7 +7,7 @@ import {
   TrendingUp,
   Clock,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { fetchMarketPosition, fetchTradeCommandCenter } from '../api/commandCenter'
 import type { MarketPositionData } from '../api/commandCenter'
 import { useApp } from '../contexts/AppContext'
@@ -480,6 +480,9 @@ export default function TradeCommandCenter() {
                     <span style={{ marginTop: 5, width: 6, height: 6, flexShrink: 0, borderRadius: '50%', background: reasonDot }} />
                     <p style={{ fontSize: 12, lineHeight: 1.6, color: C.textSub, margin: 0 }}>{od.reason}</p>
                   </div>
+                  <p style={{ fontSize: 10, color: C.textFaint, margin: '6px 0 0', fontStyle: 'italic' }}>
+                    GO = ready to trade · WATCH = setup forming, not yet triggered · AVOID = hard failure, stand aside
+                  </p>
                 </section>
               )
             })()}
@@ -760,6 +763,11 @@ export default function TradeCommandCenter() {
                         </div>
                       )
                     })}
+                  </div>
+                  <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.borderFaint}`, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Link to="/signal-feed" style={{ fontSize: 11, fontWeight: 600, color: '#8B5CF6', textDecoration: 'none' }}>
+                      View all in Signal Feed →
+                    </Link>
                   </div>
                 </details>
               )
