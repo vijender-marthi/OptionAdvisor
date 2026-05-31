@@ -486,16 +486,17 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex flex-wrap gap-1">
             {types.map(tt => (
-              <button
+              <a
                 key={tt}
-                type="button"
-                onClick={() => navigate(getEngineRoute(tt, ticker.symbol))}
+                href={getEngineRoute(tt, ticker.symbol)}
+                target="_blank"
+                rel="noopener noreferrer"
                 title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
                 className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
               >
                 {TRADE_TYPE_META[tt]?.label || tt}
                 <ArrowUpRight size={9} className="opacity-70" />
-              </button>
+              </a>
             ))}
           </div>
           <button type="button" onClick={onRemove} className="hidden sm:block shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
