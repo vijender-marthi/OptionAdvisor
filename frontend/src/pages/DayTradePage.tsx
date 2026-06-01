@@ -136,6 +136,8 @@ export default function DayTradePage() {
 
   // Reload on mount: use URL ticker, or default to SPY if none
   const didMountRef = useRef(false)
+  const runScanRef = useRef(runScan)
+  useEffect(() => { runScanRef.current = runScan }, [runScan])
   useEffect(() => {
     if (didMountRef.current) return
     didMountRef.current = true
@@ -152,9 +154,11 @@ export default function DayTradePage() {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (t && t.length <= 12 && didMountRef.current) {
       setUi(cur => ({ ...cur, ticker: t }))
-      runScan(t)
+      runScanRef.current(t)
     }
-  }, [searchParams, setUi, runScan])
+  // runScan intentionally excluded — use ref to avoid resetting ticker on each keystroke
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setUi])
 
   useEffect(() => {
     if (!notice) return
