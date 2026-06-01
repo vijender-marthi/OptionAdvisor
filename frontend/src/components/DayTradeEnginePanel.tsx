@@ -1485,17 +1485,21 @@ export default function DayTradeEnginePanel({
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               text={
+                dimEntries ? 'AVOID' :
                 eg?.should_enter_now === 'HOLD' ? 'HOLD — MANAGE POSITION' :
                 confirmationState === 'CLEAR' ? (eg?.should_enter_now === 'YES' ? 'ENTER NOW' : 'READY') :
                 'PENDING'
               }
               tone={
+                dimEntries ? 'red' :
                 eg?.should_enter_now === 'HOLD' ? 'orange' :
                 confirmationState === 'CLEAR' ? 'green' : 'orange'
               }
             />
             <span className="text-[10px] text-gray-500">
-              {eg?.should_enter_now === 'HOLD'
+              {dimEntries
+                ? 'Engine verdict is AVOID — do not enter. Wait for conditions to reset.'
+                : eg?.should_enter_now === 'HOLD'
                 ? 'Price pulling back from peak — hold existing position, no new entries.'
                 : confirmationState === 'CLEAR' ? 'All entry conditions are satisfied.' : 'Waiting for conditions below.'}
             </span>

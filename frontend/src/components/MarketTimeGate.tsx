@@ -38,11 +38,23 @@ function fmtCountdown(min: number): string {
 
 const PT = {
   MARKET_OPEN:      6 * 60 + 30,   // 6:30 AM PT  (9:30 AM ET)
+  OR_DATA_READY:    6 * 60 + 45,   // 6:45 AM PT — first 15×1m candles complete, OR/VWAP reliable
   OPEN_RANGE_END:   7 * 60,         // 7:00 AM PT — first 30 min settles
   MIDDAY_START:     9 * 60,         // 9:00 AM PT  (12:00 PM ET)
   MIDDAY_END:       10 * 60 + 30,   // 10:30 AM PT (1:30 PM ET) — lunch lull
   CLOSE_WARN:       12 * 60 + 45,   // 12:45 PM PT — last 15 min
   MARKET_CLOSE:     13 * 60,        // 1:00 PM PT  (4:00 PM ET)
+}
+
+// True during the first 15 minutes when OR/VWAP data is still forming
+export function isOpeningRangeWindow(): boolean {
+  const now = pacificMinutes(new Date())
+  return now >= PT.MARKET_OPEN && now < PT.OR_DATA_READY
+}
+
+export function openingRangeMinutesRemaining(): number {
+  const now = pacificMinutes(new Date())
+  return Math.max(0, PT.OR_DATA_READY - now)
 }
 
 // ─── Core gate logic ─────────────────────────────────────────────────

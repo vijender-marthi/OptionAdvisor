@@ -96,6 +96,16 @@ export function deriveRegularTradeState(
   if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
   if (score < 70) missing.push(`score ≥70 (now ${score})`)
 
+  // AVOID — checked FIRST. Verdict is final — score and filters are irrelevant.
+  if (verdict === 'NO GO' || verdict === 'AVOID') {
+    return {
+      state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
+      sublabel: `Score ${score} · Critical conditions not met`,
+      action: 'Do not enter. Key conditions are not met for this setup.',
+      missing,
+    }
+  }
+
   // STATE 2: ENTRY — everything aligned, pull the trigger
   if (verdict === 'GO' && score >= 70 && allFilters && ivFit) {
     return {
@@ -118,8 +128,8 @@ export function deriveRegularTradeState(
     }
   }
 
-  // AVOID — hard failure (NO GO verdict or very low score)
-  if (verdict === 'NO GO' || score < 40) {
+  // Low score hard block
+  if (score < 40) {
     return {
       state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
       sublabel: `Score ${score} · Critical conditions not met`,
