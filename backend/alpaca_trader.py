@@ -252,7 +252,7 @@ def place_multileg_order(
         order_legs.append({
             "symbol":           occ,
             "side":             "buy" if leg["action"].upper() == "BUY" else "sell",
-            "ratio_qty":        "1",
+            "ratio_qty":        1,
             "position_intent":  _position_intent(leg["action"]),
         })
 
@@ -275,7 +275,7 @@ def place_multileg_order(
     # Root-level `symbol` must NOT be set for mleg (underlying ticker is rejected — see Alpaca API).
     # Root-level `side` is also omitted for mleg; each leg carries side + position_intent.
     payload: dict = {
-        "qty":              str(contracts),
+        "qty":              contracts,
         "type":             "limit",
         "limit_price":      str(limit_price),
         "time_in_force":    "day",
@@ -303,14 +303,20 @@ def place_multileg_order(
         r.raise_for_status()
         resp = r.json()
 
+        order_status = resp.get("status", "")
+        if order_status in ("rejected", "expired", "canceled"):
+            reason = resp.get("failed_at") or resp.get("replaced_at") or "Order was immediately rejected by Alpaca"
+            return {"error": f"Order {order_status}: {reason}. Check options approval level and market hours."}
+
         return {
             "ok":             True,
             "order_id":       resp.get("id"),
             "client_order_id": resp.get("client_order_id"),
-            "status":         resp.get("status"),
+            "status":         order_status,
             "symbol":         resp.get("symbol"),
             "qty":            resp.get("qty"),
             "submitted_at":   resp.get("submitted_at"),
+            "limit_price":    str(limit_price),
             "legs":           [
                 {
                     "symbol": lg.get("symbol"),
@@ -362,7 +368,7 @@ def place_single_leg_order(
 
     payload = {
         "symbol":          occ,
-        "qty":             str(contracts),
+        "qty":             contracts,
         "side":            side,
         "type":            "limit",
         "limit_price":     str(limit_px),
@@ -381,10 +387,13 @@ def place_single_leg_order(
             return {"error": f"Order rejected: {r.json().get('message', r.text)}"}
         r.raise_for_status()
         resp = r.json()
+        order_status = resp.get("status", "")
+        if order_status in ("rejected", "expired", "canceled"):
+            return {"error": f"Order {order_status}. Check options approval level and market hours."}
         return {
             "ok":           True,
             "order_id":     resp.get("id"),
-            "status":       resp.get("status"),
+            "status":       order_status,
             "symbol":       resp.get("symbol"),
             "qty":          resp.get("qty"),
             "submitted_at": resp.get("submitted_at"),
