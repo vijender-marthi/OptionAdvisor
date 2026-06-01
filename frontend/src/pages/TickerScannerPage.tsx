@@ -158,44 +158,62 @@ function SignalBreakdown({ row }: { row: SignalFeedRow }) {
   const navigate = useNavigate()
   const { requestAnalysis } = useApp()
 
+  // Top-level SignalFeedMetrics (RSI, RS, IV, vol)
   const rvol       = metricVal(row.metrics, 'volume_ratio')
   const rsi        = metricVal(row.metrics, 'rsi')
   const ivRank     = metricVal(row.metrics, 'iv_rank')
   const rs         = metricVal(row.metrics, 'relative_strength')
 
-  const aboveVwap  = dm(row, 'above_vwap') ?? dm(row, 'vwap_position')
-  const atrUsed    = dm(row, 'atr_range_used') ?? dm(row, 'atr_pct_used') ?? dm(row, 'daily_range_pct')
-  const fiveMin    = dm(row, 'five_min_structure') ?? dm(row, 'intraday_structure') ?? dm(row, 'structure_label')
-  const dailyTrend = dm(row, 'daily_trend') ?? dm(row, 'trend_label') ?? sm(row, 'daily_trend')
-  const weeklyTrend = sm(row, 'weekly_trend') ?? sm(row, 'trend_label') ?? dm(row, 'weekly_trend')
-  const floatVal   = dm(row, 'float') ?? sm(row, 'float') ?? dm(row, 'float_category')
-  const earningsRisk = dm(row, 'earnings_risk') ?? sm(row, 'earnings_risk') ?? dm(row, 'earnings_date_label') ?? sm(row, 'earnings_date_label')
+  // day.metrics field names (from day_trade.py)
+  const vwapPosition = dm(row, 'vwap_position')                  // "above" | "below" | "at" | "unknown"
+  const atrUsed      = dm(row, 'daily_range_used_pct')           // 0–100 float
+  const priceStruct  = dm(row, 'price_structure')                // "HH_HL" | "LL_LH" | "MIXED" | "FLAT"
+  const rvolDay      = dm(row, 'rvol') ?? rvol                   // prefer day rvol, fall back to feed vol_ratio
+  const vixVal       = dm(row, 'vix') ?? sm(row, 'vix')         // numeric
 
-  // Derived tones
-  const rvolStr = rvol != null ? `${rvol.toFixed(1)}×` : '—'
-  const rvolTone: 'green' | 'amber' | 'gray' = rvol == null ? 'gray' : rvol >= 2 ? 'green' : rvol >= 1.2 ? 'amber' : 'gray'
+  // swing.metrics field names (from swing_trade.py)
+  const spyBias      = sm(row, 'spy_bias') ?? dm(row, 'spy_bias')          // "bullish" | "bearish" | "neutral"
+  const weeklyPhase  = sm(row, 'weekly_range_phase')                        // "early" | "mid" | "extended" | etc.
+  const earnDays     = sm(row, 'earnings_calendar_days_until')              // integer days until earnings
+  const marketCtx    = sm(row, 'market_context') ?? dm(row, 'market_context')
 
-  const atrStr = atrUsed != null ? `${Math.round(Number(atrUsed))}%` : '—'
-  const atrNum = atrUsed != null ? Number(atrUsed) : null
+  // Derived display strings & tones
+  const rvolNum  = rvolDay != null ? Number(rvolDay) : null
+  const rvolStr  = rvolNum != null ? `${rvolNum.toFixed(1)}×` : '—'
+  const rvolTone: 'green' | 'amber' | 'gray' = rvolNum == null ? 'gray' : rvolNum >= 2 ? 'green' : rvolNum >= 1.2 ? 'amber' : 'gray'
+
+  const atrNum   = atrUsed != null ? Number(atrUsed) : null
+  const atrStr   = atrNum  != null ? `${Math.round(atrNum)}%` : '—'
   const atrTone: 'green' | 'amber' | 'red' | 'gray' = atrNum == null ? 'gray' : atrNum <= 60 ? 'green' : atrNum <= 80 ? 'amber' : 'red'
 
-  const vwapStr = aboveVwap == null ? '—' : (aboveVwap === true || aboveVwap === 'above' || aboveVwap === 'Yes') ? 'Yes ↑' : 'No ↓'
-  const vwapTone: 'green' | 'red' | 'gray' = aboveVwap == null ? 'gray' : (aboveVwap === true || aboveVwap === 'above' || aboveVwap === 'Yes') ? 'green' : 'red'
+  const vwapPos  = vwapPosition != null ? String(vwapPosition).toLowerCase() : null
+  const vwapStr  = vwapPos == null ? '—' : vwapPos === 'above' ? 'Yes ↑' : vwapPos === 'below' ? 'No ↓' : 'At VWAP'
+  const vwapTone: 'green' | 'red' | 'amber' | 'gray' = vwapPos == null ? 'gray' : vwapPos === 'above' ? 'green' : vwapPos === 'below' ? 'red' : 'amber'
 
-  const dailyStr = dailyTrend ? String(dailyTrend) : '—'
-  const dailyLower = dailyStr.toLowerCase()
-  const dailyTone: 'green' | 'amber' | 'gray' = dailyLower.includes('up') ? 'green' : dailyLower.includes('consol') || dailyLower.includes('range') || dailyLower.includes('flat') ? 'amber' : 'gray'
+  // price_structure: "HH_HL" = bullish, "LL_LH" = bearish, "MIXED"/"FLAT" = neutral
+  const structStr  = priceStruct ? String(priceStruct).replace(/_/g, '/') : '—'
+  const structLow  = structStr.toLowerCase()
+  const structTone: 'green' | 'red' | 'gray' = structLow.includes('hh') ? 'green' : structLow.includes('ll') ? 'red' : 'gray'
 
-  const fiveStr = fiveMin ? String(fiveMin) : '—'
-  const fiveTone: 'green' | 'red' | 'gray' = fiveStr.toLowerCase().includes('hh') || fiveStr.toLowerCase().includes('bull') ? 'green' : fiveStr.toLowerCase().includes('ll') || fiveStr.toLowerCase().includes('bear') ? 'red' : 'gray'
+  // spy_bias from swing metrics as daily trend proxy
+  const spyBiasStr  = spyBias ? String(spyBias) : (marketCtx ? String(marketCtx) : '—')
+  const spyBiasLow  = spyBiasStr.toLowerCase()
+  const dailyTone: 'green' | 'amber' | 'gray' = spyBiasLow.includes('bull') ? 'green' : spyBiasLow.includes('bear') ? 'gray' : 'amber'
 
-  const weeklyStr = weeklyTrend ? String(weeklyTrend) : '—'
-  const weeklyLower = weeklyStr.toLowerCase()
-  const weeklyTone: 'green' | 'amber' | 'gray' = weeklyLower.includes('up') ? 'green' : weeklyLower.includes('down') ? 'gray' : 'amber'
+  // weekly_range_phase: "early" = room to run (green), "extended" = caution (amber/red)
+  const weeklyStr  = weeklyPhase ? String(weeklyPhase) : '—'
+  const weeklyLow  = weeklyStr.toLowerCase()
+  const weeklyTone: 'green' | 'amber' | 'gray' = weeklyLow.includes('early') ? 'green' : weeklyLow.includes('extended') || weeklyLow.includes('late') ? 'gray' : 'amber'
 
-  const floatStr = floatVal ? String(floatVal) : '—'
-  const earningsStr = earningsRisk ? String(earningsRisk) : '—'
-  const earningsTone: 'red' | 'amber' | 'green' | 'gray' = earningsStr.toLowerCase().includes('this week') || earningsStr.toLowerCase().includes('tomorrow') ? 'red' : earningsStr.toLowerCase().includes('next week') ? 'red' : earningsStr.toLowerCase().includes('month') ? 'amber' : 'green'
+  // Earnings: days until → human label
+  const earnNum    = earnDays != null ? Number(earnDays) : null
+  const earningsStr = earnNum == null ? '—' : earnNum <= 3 ? `In ${earnNum}d ⚠` : earnNum <= 7 ? `This week (${earnNum}d)` : earnNum <= 14 ? `Next week (${earnNum}d)` : `${earnNum}d away`
+  const earningsTone: 'red' | 'amber' | 'green' | 'gray' = earnNum == null ? 'gray' : earnNum <= 7 ? 'red' : earnNum <= 14 ? 'amber' : 'green'
+
+  // VIX
+  const vixNum    = vixVal != null ? Number(vixVal) : null
+  const vixStr    = vixNum != null ? vixNum.toFixed(1) : '—'
+  const vixToneLocal: 'green' | 'amber' | 'red' | 'gray' = vixNum == null ? 'gray' : vixNum < 20 ? 'green' : vixNum < 30 ? 'amber' : 'red'
 
   const dayOut   = outcomeBox(row.day_decision)
   const swingOut = outcomeBox(row.swing_decision)
@@ -244,12 +262,12 @@ function SignalBreakdown({ row }: { row: SignalFeedRow }) {
         <div className="grid grid-cols-2 gap-2">
           <SigCell label="Rel. vol (RVOL)"    value={rvolStr}   tone={rvolTone} />
           <SigCell label="ATR range used"     value={atrStr}    tone={atrTone} />
-          <SigCell label="Above VWAP"         value={vwapStr}   tone={vwapTone} />
-          <SigCell label="Daily trend"        value={dailyStr}  tone={dailyTone} />
-          <SigCell label="5-min structure"    value={fiveStr}   tone={fiveTone} />
-          <SigCell label="Weekly trend"       value={weeklyStr} tone={weeklyTone} />
-          <SigCell label="Float"              value={floatStr}  tone="gray" />
-          <SigCell label="Earnings risk"      value={earningsStr} tone={earningsTone} />
+          <SigCell label="Above VWAP"         value={vwapStr}     tone={vwapTone} />
+          <SigCell label="SPY bias"           value={spyBiasStr}  tone={dailyTone} />
+          <SigCell label="5-min structure"    value={structStr}   tone={structTone} />
+          <SigCell label="Weekly phase"       value={weeklyStr}   tone={weeklyTone} />
+          <SigCell label="VIX"                value={vixStr}      tone={vixToneLocal} />
+          <SigCell label="Earnings"           value={earningsStr} tone={earningsTone} />
         </div>
 
         {/* Extra chips row for RSI / IV / RS */}
@@ -386,17 +404,17 @@ export default function TickerScannerPage() {
   const selectedRow = selected ? rows.find(r => r.ticker === selected) ?? null : null
 
   // Market snapshot values from first row's day.metrics
-  const snap = useMemo(() => {
+  const snap = useMemo((): { spyPct: number | null; vix: number | null; tickAvg: number | null; pcRatio: number | null; ctxStr: string } | null => {
     const r = rows[0]
     if (!r) return null
-    const d = r.day.metrics as Record<string, unknown> | undefined
-    const spyPct  = typeof d?.spy_change_pct  === 'number' ? d.spy_change_pct  : typeof d?.spy_pct === 'number' ? d.spy_pct : null
-    const vix     = typeof d?.vix             === 'number' ? d.vix             : null
-    const tickAvg = typeof d?.tick_avg        === 'number' ? d.tick_avg        : typeof d?.tick === 'number' ? d.tick : null
-    const pcRatio = typeof d?.put_call_ratio  === 'number' ? d.put_call_ratio  : typeof d?.put_call === 'number' ? d.put_call : null
-    // Fallbacks from market_context
+    const d  = r.day.metrics   as Record<string, unknown> | undefined
+    const sw = r.swing.metrics as Record<string, unknown> | undefined
+    const spyPct:  number | null = typeof d?.spy_change_pct === 'number' ? d.spy_change_pct as number : null
+    const vix:     number | null = typeof d?.vix  === 'number' ? d.vix  as number : typeof sw?.vix === 'number' ? sw.vix as number : null
+    const tickAvg: number | null = null  // not yet in signal feed metrics
+    const pcRatio: number | null = null  // not yet in signal feed metrics
     const ctxStr = String(r.metrics?.market_context ?? '')
-    return { spyPct: spyPct as number | null, vix: vix as number | null, tickAvg: tickAvg as number | null, pcRatio: pcRatio as number | null, ctxStr }
+    return { spyPct, vix, tickAvg, pcRatio, ctxStr }
   }, [rows])
 
   return (
@@ -446,14 +464,14 @@ export default function TickerScannerPage() {
             />
             <MarketCard
               label="TICK avg"
-              value={snap.tickAvg != null ? (snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))) : '—'}
-              sub={tickSub(snap.tickAvg)}
+              value={snap.tickAvg != null ? (snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))) : 'N/A'}
+              sub={snap.tickAvg != null ? tickSub(snap.tickAvg) : 'Not tracked in signal feed yet'}
               tone={tickTone(snap.tickAvg)}
             />
             <MarketCard
               label="Put/Call"
-              value={snap.pcRatio != null ? snap.pcRatio.toFixed(2) : '—'}
-              sub={pcSub(snap.pcRatio)}
+              value={snap.pcRatio != null ? snap.pcRatio.toFixed(2) : 'N/A'}
+              sub={snap.pcRatio != null ? pcSub(snap.pcRatio) : 'Not tracked in signal feed yet'}
               tone={pcTone(snap.pcRatio)}
             />
           </div>
