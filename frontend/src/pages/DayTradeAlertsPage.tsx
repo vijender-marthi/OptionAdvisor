@@ -3,6 +3,7 @@ import { BellRing, ExternalLink, LayoutList, Loader2, RefreshCw, Zap } from 'luc
 import { useApp } from '../contexts/AppContext'
 import { getDayTradeAlerts } from '../api/client'
 import type { DayTradeAlertEvent } from '../types'
+import { isOpeningRangeWindow, openingRangeMinutesRemaining } from '../components/MarketTimeGate'
 
 function relativeTime(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60_000)
@@ -23,6 +24,16 @@ export default function DayTradeAlertsPage() {
   const [items, setItems] = useState<DayTradeAlertEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [inORWindow, setInORWindow] = useState(isOpeningRangeWindow)
+  const [orMinsLeft, setOrMinsLeft] = useState(openingRangeMinutesRemaining)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setInORWindow(isOpeningRangeWindow())
+      setOrMinsLeft(openingRangeMinutesRemaining())
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const load = useCallback(async () => {
     if (!user?.email) return
@@ -96,6 +107,21 @@ export default function DayTradeAlertsPage() {
           <Zap size={14} /> Day trade scanner
         </button>
       </div>
+
+      {inORWindow && (
+        <div className="rounded-xl border border-amber-500/35 bg-amber-950/20 px-4 py-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-300">Opening Range Window</span>
+            <span className="ml-auto text-[10px] font-semibold text-amber-400 border border-amber-500/40 bg-amber-500/15 rounded-full px-2 py-0.5">
+              6:30–6:45 AM PT
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-200/80 leading-snug">
+            OR high/low and VWAP data are still forming — alerts based on OR Break and VWAP Retest are suppressed until 6:45 AM PT.
+            {orMinsLeft > 0 ? ` Clears in ${orMinsLeft}m.` : ''}
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-rose-800/60 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
