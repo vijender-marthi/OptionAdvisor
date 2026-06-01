@@ -50,20 +50,26 @@ export default function LandingPage() {
   const [ticker, setTicker] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<UnifiedAnalysis | null>(null)
+  const [weeksOut, setWeeksOut] = useState(4)
   const [error, setError] = useState('')
 
   // Logged-in users see the landing page too (with dashboard link in nav)
 
-  const handleAnalyze = async (e: FormEvent) => {
-    e.preventDefault()
-    const sym = ticker.trim().toUpperCase()
-    if (!sym) return
+  const runAnalyze = async (sym: string, weeks: number) => {
     setError('')
     setResult(null)
     setLoading(true)
+    setWeeksOut(weeks)
     try {
-      const res = await analyzeV2(sym, 'regular', { weeksOut: 4 })
-      setResult(res.data)
+      const res = await analyzeV2(sym, 'regular', { weeksOut: weeks, strategyMode: 'all' })
+      // Auto-retry with wider window if no recs returned
+      if ((res.data.regular_recommendations ?? []).length === 0 && weeks === 4) {
+        const res2 = await analyzeV2(sym, 'regular', { weeksOut: 8, strategyMode: 'all' })
+        setWeeksOut(8)
+        setResult(res2.data)
+      } else {
+        setResult(res.data)
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 401 || status === 403) {
@@ -74,6 +80,13 @@ export default function LandingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleAnalyze = async (e: FormEvent) => {
+    e.preventDefault()
+    const sym = ticker.trim().toUpperCase()
+    if (!sym) return
+    runAnalyze(sym, 4)
   }
 
   const recs: Rec[] = result?.regular_recommendations ?? []
@@ -257,10 +270,101 @@ export default function LandingPage() {
               </p>
             </>
           ) : (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              No options recommendations returned for this ticker.
+            <div className="py-8 px-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center">
+              <p className="text-gray-400 text-sm font-medium mb-1">No setups passed filters for this ticker</p>
+              <p className="text-gray-600 text-xs mb-5">
+                {weeksOut >= 8
+                  ? 'Even with an 8-week window, no setups cleared the risk/reward filters. The market may be pricing in too much uncertainty.'
+                  : 'Filters were applied across 4- and 8-week windows. No setups cleared the risk/reward thresholds.'}
+              </p>
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                <button
+                  onClick={() => runAnalyze(ticker.trim().toUpperCase(), 12)}
+                  disabled={loading}
+                  className="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-300 text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-40"
+                >
+                  Try 12-week window
+                </button>
+                <button
+                  onClick={() => navigate('login')}
+                  className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors"
+                >
+                  Sign in for advanced filters →
+                </button>
+              </div>
             </div>
           )}
+        </section>
+      )}
+
+      {/* Preview teaser — shown when no result yet */}
+      {!result && !error && (
+        <section className="max-w-5xl mx-auto px-6 pb-10">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+              Sample output · AAPL · 6 setups · Long &amp; Short
+            </h2>
+            <span className="text-[11px] text-violet-400 font-medium">← Enter a ticker above to run live analysis</span>
+          </div>
+          <div className="relative rounded-xl border border-gray-800 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 bg-gray-900/60">
+                    {['#','Strategy','Bias','Expiry','DTE','Max Profit','Max Loss','Prob Profit','Exp. Value','Score','Decision'].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { rank:1, strategy:'Bull Call Spread',  bias:'Bullish', expiry:'Jun 20', dte:19, profit:'$320', loss:'-$180', prob:'62%', ev:'$56',  score:'84 Strong', rationale:'Strong momentum with support at 20-day MA. IV rank at 28 favours debit spreads.' },
+                    { rank:2, strategy:'Bear Put Spread',   bias:'Bearish', expiry:'Jun 20', dte:19, profit:'$290', loss:'-$210', prob:'54%', ev:'$33',  score:'72 Good',   rationale:'Overhead resistance at 200-day MA. Negative divergence on RSI. Defined risk bearish play.' },
+                    { rank:3, strategy:'Iron Condor',       bias:'Neutral', expiry:'Jul 18', dte:47, profit:'$145', loss:'-$355', prob:'68%', ev:'$24',  score:'61 Good',   rationale:'Range-bound price action. IV contraction expected post-FOMC. Wide wings reduce assignment risk.' },
+                    { rank:4, strategy:'Bear Call Spread',  bias:'Bearish', expiry:'Jun 27', dte:26, profit:'$180', loss:'-$320', prob:'58%', ev:'$14',  score:'55 Fair',   rationale:'Call premium elevated near resistance. Credit spread captures decay while capping upside risk.' },
+                    { rank:5, strategy:'Cash-Secured Put',  bias:'Neutral', expiry:'Jun 27', dte:26, profit:'$210', loss:'-$790', prob:'71%', ev:'$41',  score:'50 Fair',   rationale:'High put premium relative to delta. Earnings risk cleared. Suitable for accumulation below support.' },
+                    { rank:6, strategy:'Long Call',         bias:'Bullish', expiry:'Jun 20', dte:19, profit:'∞',   loss:'-$230', prob:'44%', ev:'-$8',  score:'39 Weak',   rationale:'Breakout potential but low probability. Only suitable for high-conviction directional plays.' },
+                  ].map(row => (
+                    <tr key={row.rank} className="border-b border-gray-800/50 last:border-0 bg-gray-900/20">
+                      <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{row.rank}</td>
+                      <td className="px-3 py-2.5 font-medium text-white text-xs whitespace-nowrap">{row.strategy}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${row.bias === 'Bullish' ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40' : row.bias === 'Bearish' ? 'bg-red-900/40 text-red-400 border-red-700/40' : 'bg-gray-800/60 text-gray-400 border-gray-700/40'}`}>{row.bias}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{row.expiry}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-400">{row.dte}d</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs text-emerald-400">{row.profit}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs text-red-400">{row.loss}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{row.prob}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs">
+                        <span className={row.ev.startsWith('-') ? 'text-red-400' : 'text-emerald-400'}>{row.ev}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={`font-bold text-xs ${row.score.includes('Strong') ? 'text-emerald-400' : row.score.includes('Good') ? 'text-green-400' : row.score.includes('Fair') ? 'text-amber-400' : 'text-gray-500'}`}>{row.score}</span>
+                      </td>
+                      <td className="px-3 py-2.5 max-w-[220px]">
+                        <p className="text-[11px] text-gray-400 leading-snug line-clamp-2">{row.rationale}</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* bottom fade + CTA strip */}
+            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-gray-950 via-gray-950/80 to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3">
+              <p className="text-xs text-gray-500">Sample data · enter a ticker above for live results</p>
+              <button
+                onClick={() => navigate('login')}
+                className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors pointer-events-auto"
+              >
+                Sign in for real-time analysis →
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-gray-600">
+            Ranked by expected value and probability of profit · Sample data shown for illustration only
+          </p>
         </section>
       )}
 

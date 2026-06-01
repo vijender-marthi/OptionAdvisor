@@ -61,6 +61,7 @@ export interface ChartEntryPoint {
   exitPrice?: number             // optional take-profit line
   rr?: number                   // risk/reward ratio — entries < 1.0 are flagged
   stub?: boolean                 // table-only placeholder (no price/chart line)
+  pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
 }
 
 const ENTRY_COLORS = [
@@ -466,13 +467,14 @@ export default function DayTradeIntradayChart({
             if (ep.price < yMin || ep.price > yMax) return null
             const ey = yAt(ep.price)
             const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
+            const isPending = ep.pending === true
             return (
-              <g key={`entry-${idx}`} opacity={dimEntries ? 0.4 : 1}>
+              <g key={`entry-${idx}`} opacity={dimEntries ? 0.4 : isPending ? 0.45 : 1}>
                 <line
                   x1={PAD.l} x2={PAD.l + innerW}
                   y1={ey} y2={ey}
-                  stroke={color} strokeWidth={1.2}
-                  strokeDasharray="3 3" strokeOpacity={0.9}
+                  stroke={color} strokeWidth={isPending ? 1 : 1.2}
+                  strokeDasharray={isPending ? '2 6' : '3 3'} strokeOpacity={0.9}
                   clipPath={`url(#${clipId})`}
                 />
                 <text
@@ -480,7 +482,7 @@ export default function DayTradeIntradayChart({
                   y={Math.max(PAD.t + 9, ey - 4)}
                   textAnchor="start" fill={color} fontSize={9} fontWeight={600}
                 >
-                  {ep.label} · ${fmtPrice(ep.price)}
+                  {ep.label} · ${fmtPrice(ep.price)}{isPending ? ' (watching)' : ''}
                 </text>
               </g>
             )
@@ -489,6 +491,7 @@ export default function DayTradeIntradayChart({
           {/* ── Entry arrow markers on the trigger candle ── */}
           {displayEntryPoints?.map((ep, idx) => {
             if (hidden.has(idx)) return null
+            if (ep.pending) return null  // pending entries have no confirmed trigger yet
             const touch = displayFirstTouchData[idx]
             if (!touch) return null
             const bar = bars[touch.barIndex]!
@@ -592,7 +595,11 @@ export default function DayTradeIntradayChart({
                     <td className="py-1 pr-3 text-right font-mono text-gray-200">
                       {ep.stub || !ep.price ? '—' : `$${fmtPrice(ep.price)}`}
                     </td>
-                    <td className="py-1 pr-3 text-right font-mono text-gray-400">{touchTime ?? '—'}</td>
+                    <td className="py-1 pr-3 text-right font-mono text-gray-400">
+                      {ep.pending ? (
+                        <span className="text-amber-500/70 text-[10px] font-medium">Watching</span>
+                      ) : (touchTime ?? '—')}
+                    </td>
                     <td className="py-1 pr-3 text-gray-400">
                       {ep.stub ? (
                         <span className="text-gray-600 italic">AI Coach</span>
@@ -600,6 +607,8 @@ export default function DayTradeIntradayChart({
                         <span>{ep.trigger} <span className="text-orange-500/70 text-[10px]">(low R/R)</span></span>
                       ) : dimEntries ? (
                         <span>{ep.trigger} <span className="text-yellow-500/60 text-[10px]">(WAIT)</span></span>
+                      ) : ep.pending ? (
+                        <span>{ep.trigger} <span className="text-amber-500/60 text-[10px]">(no confirmation yet)</span></span>
                       ) : ep.trigger}
                     </td>
                     <td className="py-1 text-right font-mono text-red-400">
