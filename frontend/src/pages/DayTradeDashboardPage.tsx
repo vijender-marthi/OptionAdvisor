@@ -50,15 +50,15 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
   const seen = new Set<number>()
   const pts: ChartEntryPoint[] = []
-  const add = (price: number | null | undefined, trigger: string, stop?: number, rr?: number) => {
+  const add = (price: number | null | undefined, trigger: string, stop?: number, rr?: number, pending?: boolean) => {
     if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
     seen.add(price)
-    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr })
+    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending })
   }
   add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? sf)
   add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf, ac?.trade?.risk_reward)
   add((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
-  add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? sf)
+  add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? sf, undefined, true)
   return pts
 }
 

@@ -851,6 +851,7 @@ export default function DayTradeEnginePanel({
       stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
       direction,
       exitPrice,
+      pending: true,
     })
 
     return pts.length > 0 ? pts : undefined

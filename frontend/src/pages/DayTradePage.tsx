@@ -861,15 +861,15 @@ export default function DayTradePage() {
         const pageEntryPoints: ChartEntryPoint[] = []
         const direction = isShort ? 'short' : 'long' as const
         const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
-        const addEntry = (price: number | null | undefined, trigger: string, stop?: number) => {
+        const addEntry = (price: number | null | undefined, trigger: string, stop?: number, pending?: boolean) => {
           if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
           seen.add(price)
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice })
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, pending })
         }
         addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
         addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)
         addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
-        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback)
+        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback, true)
 
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
