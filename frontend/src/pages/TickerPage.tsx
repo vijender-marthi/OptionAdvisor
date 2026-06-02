@@ -861,8 +861,12 @@ export default function TickerPage() {
 
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        const recVerdict = deriveVerdict(buildChecklist(rec, selectedData.signals))
-                        const isAvoid = recVerdict === 'NO GO' || score < 40
+                        // Only hard fails (EV ≤ 0, DTE too short, liquidity failure) trigger AVOID.
+                        // Soft fails (MACD, low confidence) = SETUP — conditions still forming.
+                        // Using softFails >= 2 as AVOID would make GO stocks show all-AVOID, contradicting the overall verdict.
+                        const checkItems = buildChecklist(rec, selectedData.signals)
+                        const hasHardFail = checkItems.some(i => i.status === 'fail' && i.hard)
+                        const isAvoid = hasHardFail || score < 40
                         const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WATCH'
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank

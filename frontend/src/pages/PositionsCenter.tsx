@@ -2563,21 +2563,25 @@ function EditPositionModal({
 
     const strikesNum = form.legStrikes.map(s => parseFloat(s) || 0)
     const premiumsNum = form.legPremiums.map(p => parseFloat(p) || 0)
+    // Only recompute metrics if the user actually filled in premiums.
+    // If all premiums are 0 (blank), preserve the original values to avoid wiping
+    // max_profit / max_loss / spread_width that were set when the position was added.
+    const userEnteredPremiums = premiumsNum.some(p => p > 0)
     const metrics = computeMetrics(form.strategy, strikesNum, premiumsNum, entryPrice)
 
     const legs: OptionLeg[] = def.legs.map((tmpl, i) => ({
       action: tmpl.action,
       option_type: tmpl.option_type,
-      strike: strikesNum[i],
-      expiry: form.expiry,
-      delta: 0,
-      mid_price: premiumsNum[i],
-      bid: premiumsNum[i] * 0.95,
-      ask: premiumsNum[i] * 1.05,
-      iv: 0,
-      oi: 0,
-      volume: 0,
-      bid_ask_spread_pct: 0,
+      strike: strikesNum[i] > 0 ? strikesNum[i] : (pos.legs[i]?.strike ?? 0),
+      expiry: form.expiry || pos.legs[i]?.expiry || '',
+      delta: pos.legs[i]?.delta ?? 0,
+      mid_price: premiumsNum[i] > 0 ? premiumsNum[i] : (pos.legs[i]?.mid_price ?? 0),
+      bid: premiumsNum[i] > 0 ? premiumsNum[i] * 0.95 : (pos.legs[i]?.bid ?? 0),
+      ask: premiumsNum[i] > 0 ? premiumsNum[i] * 1.05 : (pos.legs[i]?.ask ?? 0),
+      iv: pos.legs[i]?.iv ?? 0,
+      oi: pos.legs[i]?.oi ?? 0,
+      volume: pos.legs[i]?.volume ?? 0,
+      bid_ask_spread_pct: pos.legs[i]?.bid_ask_spread_pct ?? 0,
     }))
 
     onSave(pos.id, {
@@ -2588,19 +2592,19 @@ function EditPositionModal({
       legs,
       expiry: form.expiry || pos.expiry,
       dte: dteVal,
-      net_credit: metrics.netCredit,
-      spread_width: metrics.spreadWidth,
-      max_profit: metrics.maxProfit,
-      max_loss: metrics.maxLoss,
+      net_credit: userEnteredPremiums ? metrics.netCredit : pos.net_credit,
+      spread_width: userEnteredPremiums ? metrics.spreadWidth : pos.spread_width,
+      max_profit: userEnteredPremiums ? metrics.maxProfit : pos.max_profit,
+      max_loss: userEnteredPremiums ? metrics.maxLoss : pos.max_loss,
       prob_of_profit: pos.prob_of_profit,
       expected_value: pos.expected_value,
       scores_total: pos.scores_total,
       contracts: cc,
-      breakeven_lower: metrics.beLower,
-      breakeven_upper: metrics.beUpper,
+      breakeven_lower: userEnteredPremiums ? metrics.beLower : pos.breakeven_lower,
+      breakeven_upper: userEnteredPremiums ? metrics.beUpper : pos.breakeven_upper,
       entryPrice,
       source: form.tradeSource,
-      capital_at_risk: Math.round(metrics.maxLoss * SHARES_PER_OPTION_CONTRACT * cc),
+      capital_at_risk: userEnteredPremiums ? Math.round(metrics.maxLoss * SHARES_PER_OPTION_CONTRACT * cc) : pos.capital_at_risk,
       kelly_fraction: pos.kelly_fraction,
       half_kelly_fraction: pos.half_kelly_fraction,
       edge_ratio: pos.edge_ratio,
