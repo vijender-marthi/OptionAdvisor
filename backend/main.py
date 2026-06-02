@@ -1321,7 +1321,7 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
         saved = save_user_state(
             normalized_email,
             payload.watchlist,
-            current_portfolio,
+            payload.portfolio if payload.portfolio else (eff.get("portfolio") or []),
             advisory_terms_version=payload.advisory_terms_version,
             advisory_accepted_at=payload.advisory_accepted_at,
             day_trade_watchlist=dt_wl,

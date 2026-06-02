@@ -519,8 +519,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await getUserData(user.email)
         if (cancelled) return
         setWatchlist(data.watchlist)
-        // Warm the local cache so we have a fallback if the server is unreachable later.
-        save(portfolioCacheKey(user.email), data.portfolio)
         setPortfolio(data.portfolio)
         let dt: string[] = Array.isArray(data.day_trade_watchlist)
           ? data.day_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
@@ -549,16 +547,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn('[user-data] load failed:', e)
         if (!cancelled) {
-          // Fall back to the last-known-good portfolio from localStorage so positions
-          // don't vanish when the backend is temporarily unreachable.
-          const cached = load<PortfolioPosition[]>(portfolioCacheKey(user.email), [])
-          setPortfolio(cached)
+          setPortfolio([])
           setWatchlist([])
           setWatchlistMax(15)
           setDayTradeWatchlist([])
           setSwingTradeWatchlist([])
-          // Allow saves to run if we have cached data so positions sync when server recovers.
-          setUserDataLoaded(cached.length > 0)
+          setUserDataLoaded(false)
           setAdvisoryAcceptedAt(null)
           setAdvisoryTermsVersion(null)
         }
@@ -568,13 +562,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadUserData()
     return () => { cancelled = true }
   }, [user?.email])
-
-  // Write-through cache: keep localStorage in sync with every portfolio change.
-  // Gated on userDataLoaded so the initial empty state doesn't wipe a valid cache.
-  useEffect(() => {
-    if (!user?.email || !userDataLoaded) return
-    save(portfolioCacheKey(user.email), portfolio)
-  }, [portfolio, user?.email, userDataLoaded])
 
   // Save per-email watchlist and portfolio changes to SQLite.
   // RAF-debounced: batches rapid successive state changes into a single save call,
