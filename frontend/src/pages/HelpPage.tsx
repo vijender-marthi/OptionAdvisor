@@ -13,6 +13,34 @@ import { normalizeUserRole } from '../permissions'
 
 // ─── Nav structure ──────────────────────────────────────────────────
 
+// ─── Search index — section id → searchable keywords and snippets ───────────
+const SEARCH_INDEX: { id: string; label: string; keywords: string[] }[] = [
+  { id: 'access-roles',      label: 'Access Roles',           keywords: ['role', 'admin', 'user', 'superuser', 'permission', 'finance', 'access', 'login', 'account'] },
+  { id: 'overview',          label: 'Platform Overview',      keywords: ['overview', 'platform', 'what is', 'introduction', 'how it works', 'dashboard', 'tcc', 'command center'] },
+  { id: 'engine-arch',       label: 'Engine Architecture',    keywords: ['engine', 'architecture', 'signal', 'pipeline', 'how engine works', 'backend', 'scoring pipeline'] },
+  { id: 'trade-lifecycle',   label: 'Trade Lifecycle',        keywords: ['lifecycle', 'workflow', 'setup', 'watch', 'entry', 'manage', 'exit', 'close', 'trade flow'] },
+  { id: 'engine-states',     label: 'Engine States',          keywords: ['state', 'ready', 'watch', 'wait', 'avoid', 'no edge', 'verdict', 'state 2', 'state 1', 'entry state'] },
+  { id: 'execution-states',  label: 'Execution States',       keywords: ['execution', 'enter now', 'pending', 'hold', 'manage position', 'entry gate', 'confirmation'] },
+  { id: 'day-trade',         label: 'Day Trade Engine',       keywords: ['day trade', 'intraday', 'rvol', 'vwap', 'or high', 'or low', 'opening range', 'breakout', 'scalp', 'momentum', 'extension', 'chasing', 'spy', 'qqq', 'nvda', 'large cap', 'volume', 'day trade setup', '0dte', '1dte'] },
+  { id: 'swing-trade',       label: 'Swing Trade Engine',     keywords: ['swing', 'trend', 'ema', 'ma20', 'pullback', 'breakout swing', 'daily chart', 'multi day', 'swing verdict', 'swing setup', 'relative strength'] },
+  { id: 'vix-reference',     label: 'VIX Reference',          keywords: ['vix', 'volatility index', 'fear index', 'market fear', 'vix spike', 'vix 35', 'avoid vix'] },
+  { id: 'regular-engine',    label: 'Regular Engine',         keywords: ['regular', 'options engine', 'spread', 'iron condor', 'credit spread', 'debit spread', 'covered call', 'put spread', 'call spread', 'score', 'checklist', 'pop', 'ev', 'monthly', 'income'] },
+  { id: 'entry-guide',       label: 'Trade Entry Guide',      keywords: ['entry', 'when to enter', 'limit order', 'fill', 'entry price', 'how to enter', 'entry guide', 'atm', 'otm'] },
+  { id: 'options-funda',     label: 'Options Fundamentals',   keywords: ['options', 'call', 'put', 'strike', 'expiry', 'dte', 'premium', 'intrinsic', 'extrinsic', 'theta', 'delta', 'gamma', 'vega', 'iv', 'implied volatility', 'in the money', 'out of the money'] },
+  { id: 'strategy-glossary', label: 'Strategy Glossary',      keywords: ['glossary', 'long call', 'long put', 'bull call spread', 'bear put spread', 'straddle', 'strangle', 'iron condor', 'covered call', 'cash secured put', 'strategy list', 'definitions'] },
+  { id: 'validation',        label: 'Validation System',      keywords: ['validation', 'checklist', 'pre trade', 'hard fail', 'soft fail', 'filter', 'rr filter', 'liquidity filter', 'credit filter', 'iv fit'] },
+  { id: 'hard-soft-fail',    label: 'Hard Fail vs Soft Fail', keywords: ['hard fail', 'soft fail', 'fail', 'block', 'warning', 'critical', 'checklist fail', 'required condition'] },
+  { id: 'ev-pop-kelly',      label: 'EV / PoP / Kelly',       keywords: ['ev', 'expected value', 'pop', 'probability of profit', 'kelly', 'kelly criterion', 'half kelly', 'position sizing', 'edge', 'edge ratio'] },
+  { id: 'alerts',            label: 'Alert System',           keywords: ['alert', 'notification', 'email', 'watchlist alert', 'price alert', 'vwap alert', 'or break alert', 'set alert'] },
+  { id: 'range-analysis',    label: 'Range & R/R Analysis',   keywords: ['range', 'risk reward', 'rr', 'reward', 'risk', 'atr', 'daily range', 'r:r', 'stop loss', 'target', 'profit target'] },
+  { id: 'position-mgmt',     label: 'Position Management',    keywords: ['position', 'manage', 'portfolio', 'open position', 'close position', 'partial close', 'trail stop', 'exit plan', 'position center'] },
+  { id: 'market-summary',    label: 'Market Command Summary', keywords: ['market', 'summary', 'command center', 'market overview', 'spy trend', 'qqq trend', 'vix', 'market context', 'tcc'] },
+  { id: 'portfolio',         label: 'Portfolio Philosophy',   keywords: ['portfolio', 'philosophy', 'diversification', 'sizing', 'risk management', 'drawdown', 'capital', 'allocation'] },
+  { id: 'ui-ux-rules',       label: 'UI/UX Design Rules',     keywords: ['ui', 'ux', 'design', 'color', 'badge', 'card', 'layout', 'interface', 'dark mode', 'theme'] },
+  { id: 'verdict-card',      label: 'Verdict Card Scoring',   keywords: ['verdict', 'score', 'card', 'recommendation card', 'entry button', 'avoid button', 'state badge', 'scoring', 'total score'] },
+  { id: 'faq',               label: 'FAQ',                    keywords: ['faq', 'frequently asked', 'question', 'why', 'how', 'common question', 'troubleshoot'] },
+]
+
 const NAV_SECTIONS = [
   { id: 'access-roles',     label: 'Access Roles',              icon: Users },
   { id: 'overview',         label: 'Platform Overview',         icon: LayoutDashboard },
@@ -510,11 +538,35 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [embedded])
 
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    const q = searchQuery.toLowerCase().trim()
+    const scored = SEARCH_INDEX
+      .filter(entry => {
+        // Only show sections visible to this user
+        if (!visibleNavSections.find(s => s.id === entry.id)) return false
+        const labelMatch = entry.label.toLowerCase().includes(q)
+        const kwMatch = entry.keywords.some(k => k.toLowerCase().includes(q))
+        return labelMatch || kwMatch
+      })
+      .map(entry => {
+        const labelMatch = entry.label.toLowerCase().includes(q)
+        const kwMatches = entry.keywords.filter(k => k.toLowerCase().includes(q))
+        // Score: label match = high priority, keyword match = lower
+        const score = labelMatch ? 2 : kwMatches.length
+        const snippet = kwMatches.slice(0, 3).join(', ')
+        return { ...entry, score, snippet }
+      })
+      .sort((a, b) => b.score - a.score)
+    return scored
+  }, [searchQuery, visibleNavSections])
+
   const filteredNav = useMemo(() => {
     if (!searchQuery) return visibleNavSections
-    const q = searchQuery.toLowerCase()
-    return visibleNavSections.filter(s => s.label.toLowerCase().includes(q))
-  }, [searchQuery, visibleNavSections])
+    // When searching, show only sections that appear in results
+    const matchIds = new Set(searchResults.map(r => r.id))
+    return visibleNavSections.filter(s => matchIds.has(s.id))
+  }, [searchQuery, visibleNavSections, searchResults])
 
   // Preserve the role check (keep ai-radar section hidden for finance accounts)
   const showAiRadar = true // Help is open-docs
@@ -536,7 +588,47 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
           onChange={e => setSearchQuery(e.target.value)}
           className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-8 pr-3 py-1.5 text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50"
         />
+        {searchQuery.trim() && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+          >
+            <X size={11} />
+          </button>
+        )}
       </div>
+      {searchResults.length > 0 && (
+        <div className="mt-2 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
+          <div className="px-2.5 py-1.5 border-b border-gray-800 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {searchResults.map(r => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  document.getElementById(r.id)?.scrollIntoView({ behavior: 'smooth' })
+                  setActiveSection(r.id)
+                  setSidebarOpen(false)
+                }}
+                className="w-full text-left px-2.5 py-2 hover:bg-gray-900 border-b border-gray-800/50 last:border-0 transition-colors"
+              >
+                <div className="text-xs font-semibold text-violet-300">{r.label}</div>
+                {r.snippet && (
+                  <div className="text-[10px] text-gray-500 mt-0.5 truncate">{r.snippet}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {searchQuery.trim() && searchResults.length === 0 && (
+        <div className="mt-2 rounded-lg border border-gray-800 bg-gray-950 px-3 py-3 text-[11px] text-gray-600 text-center">
+          No results for "{searchQuery}"
+        </div>
+      )}
     </div>
   )
 
