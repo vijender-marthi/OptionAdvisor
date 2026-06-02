@@ -21,7 +21,7 @@ import pandas as pd
 from zoneinfo import ZoneInfo
 
 import bar_cache
-from day_option_risk import build_day_option_risk_context
+from day_option_risk import build_day_option_risk_context, build_premium_targets
 from trader_decision import build_trader_decision
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
@@ -2038,6 +2038,25 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
         },
         "contextual_alerts": day_alerts,
     }
+
+    # ── Premium conversion layer ──────────────────────────────────────────
+    # Converts stop/T1/T2 stock price targets → estimated option premiums
+    # using ATM delta from the nearest expiry chain. Delta = 0.5 fallback.
+    try:
+        _is_put = bias == "short"
+        _prem = build_premium_targets(
+            ticker=ticker,
+            current_stock_price=last_price,
+            stop_price=risk_below,
+            target1_price=scalp_target,
+            target2_price=scalp_target_2,
+            is_put=_is_put,
+        )
+        entry_guidance["premium_targets"] = _prem
+    except Exception:
+        entry_guidance["premium_targets"] = {}
+
+    return entry_guidance
 
 
 def run_day_trade_scan(ticker: str, force_refresh: bool = False,

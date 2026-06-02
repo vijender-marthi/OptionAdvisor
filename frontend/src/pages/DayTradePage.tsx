@@ -267,10 +267,12 @@ export default function DayTradePage() {
     nextFri.setDate(nextFri.getDate() + ((5 + 7 - nextFri.getDay()) % 7 || 7))
     const dfltExpiry = nextFri.toISOString().slice(0, 10)
     const dfltDte = Math.ceil((nextFri.getTime() - Date.now()) / 86400000)
+    const pt = eg?.premium_targets as Record<string, unknown> | undefined
+    const atmPremium = pt?.atm_premium != null && typeof pt.atm_premium === 'number' ? pt.atm_premium : null
     setPortfolioContracts('1')
     setPortfolioStockPrice(lastU > 0 ? lastU.toFixed(2) : '')
     setPortfolioStrike(lastU > 0 ? lastU.toFixed(2) : '')
-    setPortfolioEntryPrice('1.00')
+    setPortfolioEntryPrice(atmPremium != null && atmPremium > 0 ? atmPremium.toFixed(2) : '1.00')
     setPortfolioExpiry(dfltExpiry)
     setPortfolioNotes('')
     setPortfolioErr(null)
@@ -1046,6 +1048,44 @@ export default function DayTradePage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Premium paid (per share)</label>
+                {/* Estimated premium targets from delta conversion */}
+                {(() => {
+                  const pt = (result?.entry_guidance as Record<string, unknown> | null | undefined)?.premium_targets as Record<string, unknown> | undefined
+                  if (!pt) return null
+                  const _n = (k: string) => typeof pt[k] === 'number' ? pt[k] as number : null
+                  const items = [
+                    { label: 'Stop', val: _n('stop_premium'), cls: 'text-rose-400 border-rose-800/60 bg-rose-950/30' },
+                    { label: 'T1',   val: _n('t1_premium'),   cls: 'text-emerald-400 border-emerald-800/60 bg-emerald-950/30' },
+                    { label: 'T2',   val: _n('t2_premium'),   cls: 'text-emerald-300 border-emerald-700/60 bg-emerald-950/20' },
+                  ].filter(i => i.val != null)
+                  if (items.length === 0) return null
+                  return (
+                    <div className="mt-1 mb-2 flex flex-wrap gap-1.5">
+                      {_n('atm_premium') != null && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-violet-700/60 bg-violet-950/30 text-violet-300 font-mono">
+                          ATM ${(_n('atm_premium') as number).toFixed(2)}
+                        </span>
+                      )}
+                      {items.map(i => (
+                        <button
+                          key={i.label}
+                          type="button"
+                          onClick={() => setPortfolioEntryPrice(String(i.val))}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border font-mono font-semibold cursor-pointer hover:opacity-80 ${i.cls}`}
+                          title={`Use ${i.label} premium`}
+                        >
+                          {i.label} ${(i.val as number).toFixed(2)}
+                        </button>
+                      ))}
+                      {pt.source === 'atm_approx' && (
+                        <span className="text-[10px] text-gray-600">δ≈0.5 est.</span>
+                      )}
+                      {_n('delta_used') != null && pt.source === 'chain' && (
+                        <span className="text-[10px] text-gray-600">δ={_n('delta_used')}</span>
+                      )}
+                    </div>
+                  )
+                })()}
                 <input
                   className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
                   inputMode="decimal"
@@ -1053,7 +1093,7 @@ export default function DayTradePage() {
                   value={portfolioEntryPrice}
                   onChange={e => setPortfolioEntryPrice(e.target.value)}
                 />
-                <p className="mt-1 text-[10px] text-gray-600">Cost per share · 1 contract = 100 shares</p>
+                <p className="mt-1 text-[10px] text-gray-600">Cost per share · 1 contract = 100 shares · click a pill to use estimated value</p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Expiry (optional, YYYY-MM-DD)</label>
