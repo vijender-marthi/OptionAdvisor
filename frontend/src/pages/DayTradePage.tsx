@@ -50,7 +50,7 @@ export default function DayTradePage() {
     accent:  '#4A7CFF',
     violet:  '#6B7FD4',
   }
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const { ticker, loading, refreshing, error, result, glossaryOpen } = ui
 
@@ -106,6 +106,8 @@ export default function DayTradePage() {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
     }
+    // Write ticker to URL so sharing, refresh, and other tabs/browsers pick it up
+    setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('ticker', sym); return p }, { replace: true })
     // If a result already exists this is a background refresh — keep the stale
     // result visible so the panel doesn't collapse and rebuild during the fetch.
     setUi(cur => cur.result
@@ -151,10 +153,14 @@ export default function DayTradePage() {
     runScan(sym)
   }, []) // eslint-disable-line
 
-  // Re-scan when TCC navigates here with a different ?ticker= (page already mounted)
+  // Re-scan when URL ticker changes (navigation from TCC, or another tab/browser pushes a new URL)
+  // Guard: only fire when the URL ticker differs from the currently loaded result to avoid
+  // an infinite loop with the setSearchParams call inside runScan.
   useEffect(() => {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
-    if (t && t.length <= 12 && didMountRef.current) {
+    if (!t || t.length > 12 || !didMountRef.current) return
+    const loaded = ui.result?.ticker?.toUpperCase()
+    if (t !== loaded) {
       setUi(cur => ({ ...cur, ticker: t }))
       runScanRef.current(t)
     }
