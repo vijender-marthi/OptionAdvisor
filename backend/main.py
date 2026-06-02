@@ -1310,10 +1310,18 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
     dt_wl = payload.day_trade_watchlist if role == "admin" else None
     sw_wl = payload.swing_trade_watchlist if role == "admin" else None
     try:
+        # Portfolio is intentionally preserved from the existing DB state.
+        # Every portfolio mutation goes through dedicated endpoints:
+        #   POST /portfolio/add, /portfolio/update, /portfolio/close
+        # Those are the only paths that write portfolio to the DB.
+        # Accepting portfolio here caused a race: a debounced bulk save
+        # with a stale client snapshot would silently overwrite positions
+        # that were just saved by a dedicated call.
+        current_portfolio = eff.get("portfolio") or []
         saved = save_user_state(
             normalized_email,
             payload.watchlist,
-            payload.portfolio,
+            current_portfolio,
             advisory_terms_version=payload.advisory_terms_version,
             advisory_accepted_at=payload.advisory_accepted_at,
             day_trade_watchlist=dt_wl,
@@ -2153,7 +2161,14 @@ def get_signal_feed(
                 {"engine_type": "regular", "signals": regular_data.signals, "recommendations": regular_data.recommendations}
             )
             regular_reason = regular_data.reason
-            regular_raw = regular_data.verdict
+            # Use score-based verdict matching the serializer (unified_analysis.py)
+            score = regular_data.recommendations[0].total_score if regular_data.recommendations else 0
+            if score >= 70:
+                regular_raw = "STRONG GO" if score >= 85 else "GO"
+            elif score >= 50:
+                regular_raw = "WATCH"
+            else:
+                regular_raw = "WAIT"
         except Exception as exc:  # noqa: BLE001
             regular_reason = f"Regular evaluation unavailable: {exc}"
 

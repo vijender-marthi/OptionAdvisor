@@ -591,11 +591,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         advisoryAcceptedAt && advisoryTermsVersion
           ? { advisoryTermsVersion, advisoryAcceptedAt }
           : undefined
-      // Portfolio is excluded here — add/update/close each use their own dedicated
-      // endpoint (/portfolio/add, /portfolio/update, /portfolio/close) which return
-      // the authoritative server state. Including portfolio in this bulk PUT caused
-      // a race where a stale React closure snapshot would overwrite freshly saved positions.
-      saveUserData(user.email, watchlist, portfolioRef.current, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
+      // Portfolio is intentionally excluded — each portfolio operation uses its own
+      // dedicated endpoint (/portfolio/add, /portfolio/update, /portfolio/close).
+      // Those endpoints return the authoritative DB state and update React state directly.
+      // Sending portfolioRef.current here caused a race: the 300ms debounce could fire
+      // with a stale snapshot and overwrite positions that were just saved by a dedicated call.
+      saveUserData(user.email, watchlist, [], advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
         .then(() => {
           if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
           setPortfolioRefreshKey(k => k + 1)
