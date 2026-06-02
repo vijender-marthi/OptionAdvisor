@@ -83,6 +83,12 @@ GAP_FILL_PROXIMITY  = 0.20  # within 0.20% of prior close = gap filling
 # RVOL: cumulative session volume vs expected (time-adjusted average daily volume)
 RVOL_HIGH  = 2.5
 RVOL_ELEV  = 1.5
+# Large-cap liquid tickers: SPY/QQQ trade hundreds of millions of shares daily so
+# 3× RVOL is structurally impossible. Use lower thresholds and weight VWAP + market
+# structure heavier than raw volume. NVDA included — ADV >50M shares.
+LARGE_CAP_LIQUID: frozenset[str] = frozenset({"SPY", "QQQ", "NVDA", "AAPL", "MSFT", "AMZN", "META", "GOOGL", "GOOG", "TSLA"})
+RVOL_HIGH_LC  = 1.5   # large-cap "high" — replaces 2.5×
+RVOL_ELEV_LC  = 1.3   # large-cap "elevated" — replaces 1.5×
 # Macro VWAP slope window (bars) — longer than the micro 15-bar window
 VWAP_MACRO_BARS = 60
 # Session time buckets (minutes from 9:30 open)
@@ -1011,6 +1017,7 @@ def _confidence_block(
         vix_level: Optional[float],
         verdict: str,
         rvol: Optional[float] = None,
+        ticker: str = "",
 ) -> dict[str, str]:
     # Trend strength
     m = abs(momentum_pct)
@@ -1028,12 +1035,14 @@ def _confidence_block(
         breakout_quality = "WEAK"
 
     # 4-tier volume label.
-    # vol_spike (last bar ≥ 1.55× median) is the strongest local signal.
-    # RVOL (cumulative session vs time-adjusted average) fills the middle tiers
-    # so that 1.1–1.4× participation shows ELEVATED rather than WEAK.
-    if vol_spike or (rvol is not None and rvol >= 2.0):
+    # Large-cap liquid names use lower RVOL thresholds — 3× is structurally
+    # impossible for SPY/QQQ/NVDA. 1.3–1.5× is the meaningful signal range.
+    _is_lc = ticker.upper() in LARGE_CAP_LIQUID
+    _rvol_strong = RVOL_HIGH_LC  if _is_lc else 2.0
+    _rvol_elev   = RVOL_ELEV_LC  if _is_lc else 1.25
+    if vol_spike or (rvol is not None and rvol >= _rvol_strong):
         volume_confirmation = "STRONG"
-    elif rvol is not None and rvol >= 1.25:
+    elif rvol is not None and rvol >= _rvol_elev:
         volume_confirmation = "ELEVATED"
     elif rvol is not None and rvol >= 0.75:
         volume_confirmation = "NORMAL"
@@ -2057,6 +2066,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     # sites below without needing a module-level sentinel (which would be
     # unsafe under concurrent requests).
     _fr = force_refresh
+    is_large_cap = t in LARGE_CAP_LIQUID
 
     body: list[str] = []
 
@@ -2481,7 +2491,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
         if _at_upper2:
             # Differentiate between strong momentum (rideable) and exhaustion
-            _strong_momentum = (vol_spike and rvol is not None and rvol >= 2.0
+            _rvol_strong_thresh = RVOL_HIGH_LC if is_large_cap else 2.0
+            _strong_momentum = (vol_spike and rvol is not None and rvol >= _rvol_strong_thresh
                                 and momentum_pct is not None and momentum_pct > 0.5)
             if _strong_momentum:
                 bull_scores.add("vwap", 0.5)
@@ -2516,7 +2527,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 )
 
         if _at_lower2:
-            _strong_momentum = (vol_spike and rvol is not None and rvol >= 2.0
+            _strong_momentum = (vol_spike and rvol is not None and rvol >= _rvol_strong_thresh
                                 and momentum_pct is not None and momentum_pct < -0.5)
             if _strong_momentum:
                 bear_scores.add("vwap", 0.5)
@@ -2697,15 +2708,48 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             body.append("Elevated VIX — wider swings; size down.")
 
     # ── RVOL (volume group) ──────────────────────────────────────────────────
+    # Large-cap liquid tickers (SPY, QQQ, NVDA, etc.) trade hundreds of millions
+    # of shares daily — 3× RVOL is structurally impossible. Use lower thresholds
+    # and weight VWAP position + market structure heavier than raw volume.
     if rvol is not None:
-        if rvol >= RVOL_HIGH:
+        rvol_high = RVOL_HIGH_LC if is_large_cap else RVOL_HIGH
+        rvol_elev = RVOL_ELEV_LC if is_large_cap else RVOL_ELEV
+        if rvol >= rvol_high:
             _g_side("volume", 1.0, bull_scores.total(), bear_scores.total())
-            body.append(f"RVOL {rvol:.1f}x expected — unusually high participation; conviction elevated.")
-        elif rvol >= RVOL_ELEV:
+            if is_large_cap:
+                body.append(
+                    f"RVOL {rvol:.1f}x — elevated for a large-cap liquid name; institutional participation confirmed. "
+                    "Weight VWAP position and market structure over raw volume for this ticker."
+                )
+            else:
+                body.append(f"RVOL {rvol:.1f}x expected — unusually high participation; conviction elevated.")
+        elif rvol >= rvol_elev:
             _g_side("volume", 0.5, bull_scores.total(), bear_scores.total())
-            body.append(f"RVOL {rvol:.1f}x expected — above-average volume for this time of day.")
+            if is_large_cap:
+                body.append(
+                    f"RVOL {rvol:.1f}x — above average for {t}. For large-cap names, confirm with "
+                    "VWAP hold/rejection and RS vs SPY rather than volume alone."
+                )
+            else:
+                body.append(f"RVOL {rvol:.1f}x expected — above-average volume for this time of day.")
         else:
-            body.append(f"RVOL {rvol:.1f}x expected — volume tracking below average; lower conviction.")
+            if is_large_cap:
+                body.append(
+                    f"RVOL {rvol:.1f}x — normal for {t} (large-cap ADV is high by definition). "
+                    "Focus on price vs VWAP, market structure (HH/HL on 5-min), and RS vs SPY."
+                )
+            else:
+                body.append(f"RVOL {rvol:.1f}x expected — volume tracking below average; lower conviction.")
+
+    # ── Large-cap structure note (VWAP + RS weighted heavier) ───────────────
+    if is_large_cap:
+        _g("vwap", bull_delta=0.5 if vwap_position == "above" else 0.0,
+           bear_delta=0.5 if vwap_position == "below" else 0.0)
+        body.append(
+            f"{t} is a large-cap liquid name — VWAP position and RS vs SPY/QQQ carry more weight "
+            "than RVOL. Entry signal requires VWAP hold (long) or VWAP rejection (short) plus "
+            "confirming market structure."
+        )
 
     # ── Pre-market gap (gap group) ──────────────────────────────────────────
     if gap_pct is not None and abs(gap_pct) >= GAP_SIGNIFICANT_PCT:
@@ -2963,6 +3007,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         vix_level=vix_level,
         verdict=_internal_verdict,
         rvol=rvol,
+        ticker=t,
     )
 
     # ── New analysis layers ────────────────────────────────────────────
