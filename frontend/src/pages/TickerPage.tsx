@@ -865,7 +865,8 @@ export default function TickerPage() {
                         // buildChecklist runs complex EV/drift math that can flag AVOID on
                         // valid trades (e.g. 28% confidence → near-zero EV triggers hard fail).
                         // The expanded card already shows the full checklist detail.
-                        const isAvoid = !rec.passes_liquidity_filter || score < 40
+                        // Never show AVOID when score >= 70 — the engine's GO verdict must be respected.
+                        const isAvoid = (!rec.passes_liquidity_filter && score < 70) || score < 40
                         const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WATCH'
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
