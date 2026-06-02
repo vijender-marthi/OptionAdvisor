@@ -242,17 +242,25 @@ function SignalBreakdown({ row }: { row: SignalFeedRow }) {
         <div className="flex gap-1 shrink-0">
           {(['day', 'swing'] as const).map(eng => {
             const route = getEngineRoute(eng, row.ticker)
-            const handleNav = () => { navigate(route) }
             return (
-              <button key={eng} onClick={handleNav} className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-violet-400 underline-offset-2 hover:underline transition-colors">
+              <a
+                key={eng}
+                href={route}
+                onClick={e => { e.preventDefault(); navigate(route) }}
+                className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-violet-400 underline-offset-2 hover:underline transition-colors"
+              >
                 {eng === 'day' ? '⚡' : '📈'} {eng}
                 <ArrowUpRight size={9} />
-              </button>
+              </a>
             )
           })}
-          <button onClick={() => { requestAnalysis(row.ticker); navigate(getEngineRoute('regular', row.ticker)) }} className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-violet-400 hover:underline underline-offset-2 transition-colors">
+          <a
+            href={getEngineRoute('regular', row.ticker)}
+            onClick={e => { e.preventDefault(); requestAnalysis(row.ticker); navigate(getEngineRoute('regular', row.ticker)) }}
+            className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-violet-400 hover:underline underline-offset-2 transition-colors"
+          >
             🏛 options <ArrowUpRight size={9} />
-          </button>
+          </a>
         </div>
       </div>
 
