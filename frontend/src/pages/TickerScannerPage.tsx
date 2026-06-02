@@ -94,6 +94,34 @@ function vixSub(v: number | null): string {
   if (v < 30) return 'Elevated — tighter stops'
   return 'High — reduce size'
 }
+function tickTone(t: number | null): 'green' | 'red' | 'gray' {
+  if (t == null) return 'gray'
+  return t > 0 ? 'green' : t < 0 ? 'red' : 'gray'
+}
+function tickSub(t: number | null): string {
+  if (t == null) return '—'
+  if (t > 600) return 'Intraday breadth: very positive'
+  if (t > 200) return 'Intraday breadth: positive'
+  if (t > -200) return 'Intraday breadth: neutral'
+  if (t > -600) return 'Intraday breadth: negative'
+  return 'Intraday breadth: very negative'
+}
+function pcTone(pc: number | null): 'green' | 'amber' | 'red' | 'gray' {
+  if (pc == null) return 'gray'
+  if (pc < 0.7) return 'green'
+  if (pc < 0.9) return 'green'
+  if (pc < 1.1) return 'amber'
+  return 'red'
+}
+function pcSub(pc: number | null): string {
+  if (pc == null) return '—'
+  if (pc < 0.7) return 'Bullish sentiment'
+  if (pc < 0.9) return 'Slightly bullish sentiment'
+  if (pc < 1.0) return 'Neutral — balanced flow'
+  if (pc < 1.2) return 'Slightly bearish sentiment'
+  return 'Bearish — hedging elevated'
+}
+
 // ─── Signal Breakdown cell ────────────────────────────────────────────────────
 
 function SigCell({ label, value, tone, wide }: {
@@ -384,15 +412,17 @@ export default function TickerScannerPage() {
   const selectedRow = selected ? rows.find(r => r.ticker === selected) ?? null : null
 
   // Market snapshot values from first row's day.metrics
-   const snap = useMemo((): { spyPct: number | null; vix: number | null; ctxStr: string } | null => {
+  const snap = useMemo((): { spyPct: number | null; vix: number | null; tickAvg: number | null; pcRatio: number | null; ctxStr: string } | null => {
     const r = rows[0]
     if (!r) return null
     const d  = r.day.metrics   as Record<string, unknown> | undefined
     const sw = r.swing.metrics as Record<string, unknown> | undefined
     const spyPct:  number | null = typeof d?.spy_change_pct === 'number' ? d.spy_change_pct as number : null
     const vix:     number | null = typeof d?.vix  === 'number' ? d.vix  as number : typeof sw?.vix === 'number' ? sw.vix as number : null
+    const tickAvg: number | null = null  // not yet in signal feed metrics
+    const pcRatio: number | null = null  // not yet in signal feed metrics
     const ctxStr = String(r.metrics?.market_context ?? '')
-    return { spyPct, vix, ctxStr }
+    return { spyPct, vix, tickAvg, pcRatio, ctxStr }
   }, [rows])
 
   return (
@@ -439,6 +469,18 @@ export default function TickerScannerPage() {
               value={snap.vix != null ? fmtNum(snap.vix) : '—'}
               sub={vixSub(snap.vix)}
               tone={vixTone(snap.vix)}
+            />
+            <MarketCard
+              label="TICK avg"
+              value={snap.tickAvg != null ? (snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))) : 'N/A'}
+              sub={snap.tickAvg != null ? tickSub(snap.tickAvg) : 'Not tracked in signal feed yet'}
+              tone={tickTone(snap.tickAvg)}
+            />
+            <MarketCard
+              label="Put/Call"
+              value={snap.pcRatio != null ? snap.pcRatio.toFixed(2) : 'N/A'}
+              sub={snap.pcRatio != null ? pcSub(snap.pcRatio) : 'Not tracked in signal feed yet'}
+              tone={pcTone(snap.pcRatio)}
             />
           </div>
         </div>
