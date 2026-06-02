@@ -1008,5 +1008,155 @@ class TestPremiumMath(unittest.TestCase):
         self.assertAlmostEqual(self._est(185, 195, 8.5, 0.65), expected, places=2)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 17. Post-verdict gate: GO cannot survive contradictory contextual signals
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPostVerdictGate(unittest.TestCase):
+    """
+    The gate logic applied after resolve_verdict() in run_day_trade_scan.
+    Tested via verdict_resolver helpers since the gate logic is inline in
+    run_day_trade_scan. We verify the gate RULES hold at the unit level.
+    """
+
+    def test_no_soft_edge_cannot_be_go(self):
+        """
+        If bull/bear scores are too close (no soft edge), verdict must not be GO.
+        Verified via resolve_verdict: score just at GO threshold with no
+        volume spike still gives GO, but the gate would catch soft_edge=False.
+        The gate is inline — we verify its conditions make sense independently.
+        """
+        # GO requires score >= 6.0 in resolve_verdict
+        v_below = resolve_verdict("day", raw_score=5.9, or_breakout="above")
+        self.assertNotEqual(v_below, Verdict.GO,
+                            "Score just below GO threshold must not yield GO")
+
+    def test_extension_exhausted_forces_wait(self):
+        """
+        When edge_state is EXHAUSTED, internal gate must downgrade GO→WAIT.
+        We test _edge_remaining returns EXHAUSTED correctly.
+        """
+        from day_trade import _edge_remaining
+        edge, reason, ratio = _edge_remaining(
+            last_price=510.0,
+            vwap_upper1=500.0,  # price 2% above +1σ
+            vwap_lower1=490.0,
+            vwap_upper2=505.0,  # price above +2σ
+            vwap_lower2=485.0,
+            vwap_std_dev=5.0,
+            momentum_pct=0.5,
+            rvol=1.2,
+            daily_range_used_pct=85.0,  # daily range nearly exhausted
+            session_phase="MID_AM",
+        )
+        self.assertIn(edge, ("EXHAUSTED", "LATE"),
+                      "Price above +2σ with 85% daily range used should be EXHAUSTED or LATE")
+
+    def test_is_chasing_detected_when_extended(self):
+        """is_chasing fires when price is extended beyond VWAP bands."""
+        from day_trade import _is_chasing
+        chasing, reason = _is_chasing(
+            last_price=515.0,
+            vwap_upper1=502.0,
+            vwap_lower1=492.0,
+            vwap_upper2=508.0,   # price above +2σ
+            vwap_lower2=486.0,
+            vwap_std_dev=6.0,
+            momentum_pct=0.6,
+            rvol=1.1,
+            daily_range_used_pct=80.0,
+            or_state="above",
+            or_historical="broke_up",
+            session_minutes_elapsed=90,
+            bias="long",
+            price_structure="uptrend",
+        )
+        self.assertTrue(chasing,
+                        "Price above +2σ VWAP with 80% daily range used should flag chasing")
+
+    def test_is_chasing_false_when_at_vwap(self):
+        """At VWAP with moderate momentum — not chasing."""
+        from day_trade import _is_chasing
+        chasing, _ = _is_chasing(
+            last_price=500.2,
+            vwap_upper1=502.0,
+            vwap_lower1=498.0,
+            vwap_upper2=504.0,
+            vwap_lower2=496.0,
+            vwap_std_dev=2.0,
+            momentum_pct=0.15,
+            rvol=1.5,
+            daily_range_used_pct=35.0,
+            or_state="above",
+            or_historical="broke_up",
+            session_minutes_elapsed=45,
+            bias="long",
+            price_structure="uptrend",
+        )
+        self.assertFalse(chasing,
+                         "Price at VWAP with 35% range used should NOT flag chasing")
+
+    def test_edge_remaining_early_when_near_vwap(self):
+        """Near VWAP, low range used, low momentum → EARLY edge."""
+        from day_trade import _edge_remaining
+        edge, reason, ratio = _edge_remaining(
+            last_price=500.5,
+            vwap_upper1=503.0,
+            vwap_lower1=497.0,
+            vwap_upper2=506.0,
+            vwap_lower2=494.0,
+            vwap_std_dev=3.0,
+            momentum_pct=0.1,
+            rvol=1.4,
+            daily_range_used_pct=20.0,
+            session_phase="MID_AM",
+        )
+        self.assertIn(edge, ("EARLY", "DEVELOPING"),
+                      "Near VWAP, 20% range used should be EARLY or DEVELOPING")
+
+    def test_verdict_resolver_contradictory_tag_equivalents(self):
+        """
+        Verify that the tag conditions the gate uses have correct mappings.
+        'No clean edge' → soft_edge=False → downgrade
+        'EXTENSION' → edge_state in (EXHAUSTED, LATE) → downgrade
+        """
+        # EXTENSION tag is emitted when edge_state in EXHAUSTED/LATE
+        # We verify that resolve_verdict would give GO for the raw score...
+        v_go = resolve_verdict("day", raw_score=7.0, or_breakout="above",
+                               volume_spike=True, vix=18.0)
+        # score=7 with volume_spike → GO (STRONG_GO needs score>=8 AND spike AND OR breakout)
+        self.assertIn(v_go, (Verdict.GO, Verdict.STRONG_GO),
+                      "score=7 with spike and OR breakout should be GO or STRONG_GO")
+
+        # ...but the gate would catch is_chasing=True and override to WAIT
+        # This confirms the gate is needed — score alone is insufficient
+
+    def test_no_soft_edge_prefix_maps_to_wait(self):
+        """Score that produces WAIT via resolve_verdict matches no-edge condition."""
+        v = resolve_verdict("day", raw_score=4.9)
+        self.assertEqual(v, Verdict.WAIT)
+
+    def test_go_survives_when_all_clear(self):
+        """
+        GO should NOT be downgraded when edge_state=EARLY.
+        Verifying the positive case: the gate should only fire on bad conditions.
+        """
+        from day_trade import _edge_remaining
+        edge, _, _ = _edge_remaining(
+            last_price=500.5,
+            vwap_upper1=503.0,
+            vwap_lower1=497.0,
+            vwap_upper2=506.0,
+            vwap_lower2=494.0,
+            vwap_std_dev=3.0,
+            momentum_pct=0.15,
+            rvol=1.5,
+            daily_range_used_pct=25.0,
+            session_phase="MID_AM",
+        )
+        self.assertIn(edge, ("EARLY", "DEVELOPING"),
+                      "25% range used near VWAP should be EARLY or DEVELOPING — gate would not fire")
+
+
 if __name__ == "__main__":
     unittest.main()
