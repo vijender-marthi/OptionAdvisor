@@ -97,7 +97,7 @@ export function deriveRegularTradeState(
   if (score < 70) missing.push(`score ≥70 (now ${score})`)
 
   // AVOID — checked FIRST. Verdict is final — score and filters are irrelevant.
-  if (verdict === 'NO GO' || verdict === 'AVOID') {
+  if (verdict === 'NO GO') {
     return {
       state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
       sublabel: `Score ${score} · Critical conditions not met`,

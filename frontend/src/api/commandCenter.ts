@@ -271,6 +271,7 @@ export interface MyTickerEntry {
   is_active: boolean
   next_earnings_date?: string
   next_earnings_days?: number | null
+  last_earnings_date?: string
   last_price?: number | null
   price_change?: number | null
   price_change_pct?: number | null

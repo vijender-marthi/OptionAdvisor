@@ -1649,6 +1649,9 @@ def get_my_tickers(auth_email: str = Depends(require_access_email)):
                     if isinstance(d0, date):
                         t["next_earnings_date"] = d0.isoformat()
                         t["next_earnings_days"] = (d0 - today).days
+                last_ed = cal.get("Last Earnings Date")
+                if last_ed and isinstance(last_ed, str):
+                    t["last_earnings_date"] = last_ed
         except Exception:
             pass
 
