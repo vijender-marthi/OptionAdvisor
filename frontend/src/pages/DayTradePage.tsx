@@ -63,7 +63,9 @@ export default function DayTradePage() {
   const [alertOpen, setAlertOpen] = useState(false)
   const [portfolioOpen, setPortfolioOpen] = useState(false)
   const [portfolioContracts, setPortfolioContracts] = useState('')
-  const [portfolioEntryPrice, setPortfolioEntryPrice] = useState('')
+  const [portfolioStockPrice, setPortfolioStockPrice] = useState('')
+  const [portfolioStrike, setPortfolioStrike] = useState('')
+  const [portfolioEntryPrice, setPortfolioEntryPrice] = useState('1.00')
   const [portfolioExpiry, setPortfolioExpiry] = useState('')
   const [portfolioNotes, setPortfolioNotes] = useState('')
   const [portfolioErr, setPortfolioErr] = useState<string | null>(null)
@@ -136,6 +138,8 @@ export default function DayTradePage() {
 
   // Reload on mount: use URL ticker, or default to SPY if none
   const didMountRef = useRef(false)
+  const runScanRef = useRef(runScan)
+  useEffect(() => { runScanRef.current = runScan }, [runScan])
   useEffect(() => {
     if (didMountRef.current) return
     didMountRef.current = true
@@ -152,9 +156,11 @@ export default function DayTradePage() {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (t && t.length <= 12 && didMountRef.current) {
       setUi(cur => ({ ...cur, ticker: t }))
-      runScan(t)
+      runScanRef.current(t)
     }
-  }, [searchParams, setUi, runScan])
+  // runScan intentionally excluded — use ref to avoid resetting ticker on each keystroke
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setUi])
 
   useEffect(() => {
     if (!notice) return
@@ -261,8 +267,12 @@ export default function DayTradePage() {
     nextFri.setDate(nextFri.getDate() + ((5 + 7 - nextFri.getDay()) % 7 || 7))
     const dfltExpiry = nextFri.toISOString().slice(0, 10)
     const dfltDte = Math.ceil((nextFri.getTime() - Date.now()) / 86400000)
+    const pt = eg?.premium_targets as Record<string, unknown> | undefined
+    const atmPremium = pt?.atm_premium != null && typeof pt.atm_premium === 'number' ? pt.atm_premium : null
     setPortfolioContracts('1')
-    setPortfolioEntryPrice(eg?.entry_zone ? String(eg.entry_zone) : lastU > 0 ? String(lastU) : '')
+    setPortfolioStockPrice(lastU > 0 ? lastU.toFixed(2) : '')
+    setPortfolioStrike(lastU > 0 ? lastU.toFixed(2) : '')
+    setPortfolioEntryPrice(atmPremium != null && atmPremium > 0 ? atmPremium.toFixed(2) : '1.00')
     setPortfolioExpiry(dfltExpiry)
     setPortfolioNotes('')
     setPortfolioErr(null)
@@ -279,14 +289,16 @@ export default function DayTradePage() {
       setPortfolioErr('Contracts must be a positive whole number.')
       return
     }
-    let ep = 0
+    let ep = 1.00
     if (portfolioEntryPrice.trim()) {
       ep = parseFloat(portfolioEntryPrice)
       if (!Number.isFinite(ep) || ep < 0) {
-        setPortfolioErr('Entry price must be a positive number.')
+        setPortfolioErr('Premium paid must be a positive number.')
         return
       }
     }
+    const strikeVal = parseFloat(portfolioStrike)
+    const stockPriceVal = parseFloat(portfolioStockPrice)
     let expiryOut = ''
     if (portfolioExpiry.trim()) {
       const ex = portfolioExpiry.trim().slice(0, 10)
@@ -313,7 +325,7 @@ export default function DayTradePage() {
       legs: [{
         action: 'BUY' as const,
         option_type: isPut ? 'PUT' as const : 'CALL' as const,
-        strike: 0,
+        strike: Number.isFinite(strikeVal) && strikeVal > 0 ? strikeVal : 0,
         expiry: expiryOut,
         mid_price: ep,
         delta: 0,
@@ -338,7 +350,7 @@ export default function DayTradePage() {
       contracts: c,
       breakeven_lower: 0,
       breakeven_upper: 0,
-      entryPrice: lastU,
+      entryPrice: Number.isFinite(stockPriceVal) && stockPriceVal > 0 ? stockPriceVal : lastU,
       target1: result.entry_guidance?.scalp_target ?? undefined,
       stopLoss: result.entry_guidance?.risk_below ?? undefined,
       source: 'day',
@@ -861,15 +873,15 @@ export default function DayTradePage() {
         const pageEntryPoints: ChartEntryPoint[] = []
         const direction = isShort ? 'short' : 'long' as const
         const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
-        const addEntry = (price: number | null | undefined, trigger: string, stop?: number) => {
+        const addEntry = (price: number | null | undefined, trigger: string, stop?: number, pending?: boolean) => {
           if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
           seen.add(price)
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice })
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, pending })
         }
         addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
         addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)
         addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
-        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback)
+        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback, true)
 
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
@@ -1012,8 +1024,68 @@ export default function DayTradePage() {
                   onChange={e => setPortfolioContracts(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Stock price</label>
+                  <input
+                    className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                    inputMode="decimal"
+                    placeholder="e.g. 185.00"
+                    value={portfolioStockPrice}
+                    onChange={e => setPortfolioStockPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Strike price</label>
+                  <input
+                    className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                    inputMode="decimal"
+                    placeholder="e.g. 185.00"
+                    value={portfolioStrike}
+                    onChange={e => setPortfolioStrike(e.target.value)}
+                  />
+                </div>
+              </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Option premium paid (optional)</label>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Premium paid (per share)</label>
+                {/* Estimated premium targets from delta conversion */}
+                {(() => {
+                  const pt = (result?.entry_guidance as Record<string, unknown> | null | undefined)?.premium_targets as Record<string, unknown> | undefined
+                  if (!pt) return null
+                  const _n = (k: string) => typeof pt[k] === 'number' ? pt[k] as number : null
+                  const items = [
+                    { label: 'Stop', val: _n('stop_premium'), cls: 'text-rose-400 border-rose-800/60 bg-rose-950/30' },
+                    { label: 'T1',   val: _n('t1_premium'),   cls: 'text-emerald-400 border-emerald-800/60 bg-emerald-950/30' },
+                    { label: 'T2',   val: _n('t2_premium'),   cls: 'text-emerald-300 border-emerald-700/60 bg-emerald-950/20' },
+                  ].filter(i => i.val != null)
+                  if (items.length === 0) return null
+                  return (
+                    <div className="mt-1 mb-2 flex flex-wrap gap-1.5">
+                      {_n('atm_premium') != null && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-violet-700/60 bg-violet-950/30 text-violet-300 font-mono">
+                          ATM ${(_n('atm_premium') as number).toFixed(2)}
+                        </span>
+                      )}
+                      {items.map(i => (
+                        <button
+                          key={i.label}
+                          type="button"
+                          onClick={() => setPortfolioEntryPrice(String(i.val))}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border font-mono font-semibold cursor-pointer hover:opacity-80 ${i.cls}`}
+                          title={`Use ${i.label} premium`}
+                        >
+                          {i.label} ${(i.val as number).toFixed(2)}
+                        </button>
+                      ))}
+                      {pt.source === 'atm_approx' && (
+                        <span className="text-[10px] text-gray-600">δ≈0.5 est.</span>
+                      )}
+                      {_n('delta_used') != null && pt.source === 'chain' && (
+                        <span className="text-[10px] text-gray-600">δ={_n('delta_used')}</span>
+                      )}
+                    </div>
+                  )
+                })()}
                 <input
                   className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
                   inputMode="decimal"
@@ -1021,6 +1093,7 @@ export default function DayTradePage() {
                   value={portfolioEntryPrice}
                   onChange={e => setPortfolioEntryPrice(e.target.value)}
                 />
+                <p className="mt-1 text-[10px] text-gray-600">Cost per share · 1 contract = 100 shares · click a pill to use estimated value</p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Expiry (optional, YYYY-MM-DD)</label>

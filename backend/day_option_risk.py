@@ -248,6 +248,150 @@ def build_day_option_risk_context(
 
 
 # ---------------------------------------------------------------------------
+# Premium conversion layer: stock price target → estimated option premium
+# ---------------------------------------------------------------------------
+
+def estimate_premium_at_price(
+    ticker: str,
+    current_stock_price: float,
+    target_stock_price: float,
+    is_put: bool = False,
+) -> Optional[float]:
+    """
+    Estimate the option premium when the stock reaches *target_stock_price*,
+    using the ATM delta from the nearest expiry chain.
+
+    Formula:  ΔPremium ≈ delta × (target_price - current_price)
+              Estimated premium = current_ATM_mid + ΔPremium
+
+    Falls back to delta = 0.5 (ATM approximation) when chain delta is unavailable.
+    Returns None if options data is completely unavailable.
+    """
+    if current_stock_price <= 0:
+        return None
+
+    try:
+        today = _today_str()
+        dates = bar_cache.get_option_dates(ticker)
+        if not dates:
+            return None
+        nearest_expiry = dates[0]
+
+        calls_df, puts_df = bar_cache.get_option_chain(ticker, nearest_expiry)
+        df = puts_df if is_put else calls_df
+        if df is None or df.empty:
+            return None
+
+        df = df.copy()
+        df["dist"] = (df["strike"] - current_stock_price).abs()
+        atm = df.loc[df["dist"].idxmin()]
+
+        mid = (_safe_float(atm.get("bid")) + _safe_float(atm.get("ask"))) / 2.0
+        if mid <= 0:
+            mid = _safe_float(atm.get("lastPrice", 0))
+
+        # Delta from chain if available, otherwise use 0.5 ATM approximation
+        raw_delta = atm.get("delta", None)
+        if raw_delta is not None:
+            delta = abs(_safe_float(raw_delta))
+        else:
+            delta = 0.5  # ATM approximation
+
+        price_move = target_stock_price - current_stock_price
+        if is_put:
+            price_move = -price_move  # put gains when stock falls
+
+        estimated = mid + delta * price_move
+        return round(max(0.01, estimated), 2)
+
+    except Exception:
+        return None
+
+
+def build_premium_targets(
+    ticker: str,
+    current_stock_price: float,
+    stop_price: Optional[float],
+    target1_price: Optional[float],
+    target2_price: Optional[float],
+    is_put: bool = False,
+) -> dict:
+    """
+    Build estimated premium values at stop, T1, and T2 price levels.
+
+    Returns a dict with keys:
+        atm_premium     float | None   current ATM mid price
+        stop_premium    float | None   estimated premium if stop is hit
+        t1_premium      float | None   estimated premium at Target 1
+        t2_premium      float | None   estimated premium at Target 2
+        delta_used      float | None   delta used for the calculation
+        expiry_used     str | None     expiry date the chain came from
+        source          "chain" | "atm_approx" | "unavailable"
+    """
+    result: dict = {
+        "atm_premium": None,
+        "stop_premium": None,
+        "t1_premium": None,
+        "t2_premium": None,
+        "delta_used": None,
+        "expiry_used": None,
+        "source": "unavailable",
+    }
+
+    if current_stock_price <= 0:
+        return result
+
+    try:
+        dates = bar_cache.get_option_dates(ticker)
+        if not dates:
+            return result
+        nearest_expiry = dates[0]
+        result["expiry_used"] = nearest_expiry
+
+        calls_df, puts_df = bar_cache.get_option_chain(ticker, nearest_expiry)
+        df = puts_df if is_put else calls_df
+        if df is None or df.empty:
+            return result
+
+        df = df.copy()
+        df["dist"] = (df["strike"] - current_stock_price).abs()
+        atm = df.loc[df["dist"].idxmin()]
+
+        bid = _safe_float(atm.get("bid"))
+        ask = _safe_float(atm.get("ask"))
+        mid = (bid + ask) / 2.0 if bid > 0 or ask > 0 else _safe_float(atm.get("lastPrice", 0))
+
+        raw_delta = atm.get("delta", None)
+        if raw_delta is not None and _safe_float(raw_delta) != 0.0:
+            delta = abs(_safe_float(raw_delta))
+            result["source"] = "chain"
+        else:
+            delta = 0.5
+            result["source"] = "atm_approx"
+
+        result["atm_premium"] = round(mid, 2) if mid > 0 else None
+        result["delta_used"] = round(delta, 3)
+
+        def _est(target: Optional[float]) -> Optional[float]:
+            if target is None or mid <= 0:
+                return None
+            move = target - current_stock_price
+            if is_put:
+                move = -move
+            val = mid + delta * move
+            return round(max(0.01, val), 2)
+
+        result["stop_premium"] = _est(stop_price)
+        result["t1_premium"] = _est(target1_price)
+        result["t2_premium"] = _est(target2_price)
+
+    except Exception:
+        pass
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 

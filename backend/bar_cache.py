@@ -338,8 +338,25 @@ def get_calendar(ticker: str, force_refresh: bool = False) -> dict:
 
     log.debug("bar_cache.get_calendar MISS %s — fetching Yahoo", t)
     try:
-        cal = yf.Ticker(t).calendar
+        tk = yf.Ticker(t)
+        cal = tk.calendar
         result = cal if isinstance(cal, dict) else {}
+        # Attach last (most recent past) earnings date from earnings_dates history
+        try:
+            import pandas as _pd
+            from datetime import date as _date
+            ed_df = tk.earnings_dates
+            if ed_df is not None and not ed_df.empty:
+                today = _date.today()
+                past = [
+                    idx.date() if hasattr(idx, "date") else _pd.Timestamp(idx).date()
+                    for idx in ed_df.index
+                    if (idx.date() if hasattr(idx, "date") else _pd.Timestamp(idx).date()) < today
+                ]
+                if past:
+                    result["Last Earnings Date"] = max(past).isoformat()
+        except Exception:
+            pass
     except Exception as exc:
         log.warning("bar_cache.get_calendar failed %s: %s", t, exc)
         result = {}

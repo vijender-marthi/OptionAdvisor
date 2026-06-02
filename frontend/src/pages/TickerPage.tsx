@@ -858,7 +858,12 @@ export default function TickerPage() {
                         const score = rec.scores?.total_score ?? 0
                         const rr = rec.risk_reward_ratio ?? 0
                         const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
-                        const status = score >= 70 && allFilters ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : score >= 40 ? 'WATCH' : 'AVOID'
+
+                        const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
+                        const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
+                        const recVerdict = deriveVerdict(buildChecklist(rec, selectedData.signals))
+                        const isAvoid = recVerdict === 'NO GO' || score < 40
+                        const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WATCH'
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (

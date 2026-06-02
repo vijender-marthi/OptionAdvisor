@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import type { DeskAlertCreate } from '../../api/client'
+import { isOpeningRangeWindow, openingRangeMinutesRemaining } from '../MarketTimeGate'
 
 const C = {
   bgPage:    '#0A0C10',
@@ -15,6 +16,8 @@ const C = {
 }
 
 type AlertTypeOption = { value: string; label: string; hint: string; needsThreshold?: boolean }
+
+const OR_WINDOW_ALERT_TYPES = new Set(['OR_BREAK', 'VWAP_RETEST'])
 
 const ALERT_TYPES_BY_TRADE: Record<string, AlertTypeOption[]> = {
   day: [
@@ -72,6 +75,8 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
 
   const selectedOption = alertOptions.find(o => o.value === alertType) ?? alertOptions[0]
   const needsThreshold = !!selectedOption.needsThreshold
+  const showORWarning = OR_WINDOW_ALERT_TYPES.has(alertType) && isOpeningRangeWindow()
+  const orMinsLeft = openingRangeMinutesRemaining()
 
   const handleSubmit = async () => {
     setError(null)
@@ -225,6 +230,19 @@ export default function SetAlertDrawer({ ticker, tradeType, onClose, onSubmit }:
               ))}
             </div>
           </div>
+
+          {showORWarning && (
+            <div style={{ background: 'rgba(245,166,35,0.08)', border: `1px solid rgba(245,166,35,0.35)`, borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: C.amber, marginBottom: 4 }}>
+                Opening Range Window
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'rgba(245,166,35,0.75)', margin: 0, lineHeight: 1.5 }}>
+                OR high/low and VWAP are still forming — this alert will be suppressed until 6:45 AM PT
+                {orMinsLeft > 0 ? ` (${orMinsLeft}m remaining)` : ''}.
+                It will activate automatically once the opening range is established.
+              </p>
+            </div>
+          )}
 
           {error && <p style={{ color: C.red, fontSize: '0.78rem' }}>{error}</p>}
 

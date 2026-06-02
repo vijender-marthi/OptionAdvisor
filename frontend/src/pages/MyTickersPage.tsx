@@ -399,6 +399,7 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
   const ed = ticker.next_earnings_date
   const edDays = ticker.next_earnings_days
   const earningsThisWeek = edDays != null && edDays >= 0 && edDays <= 7
+  const lastEd = ticker.last_earnings_date
 
   const ENGINE_LABEL: Record<string, string> = {
     day: 'Day Trade',
@@ -431,7 +432,13 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
           {ed && (
             <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-yellow-400' : 'text-gray-600'}`}>
               <Calendar size={10} />
-              <span>Earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
+              <span>Next earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
+            </div>
+          )}
+          {lastEd && (
+            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
+              <Calendar size={10} />
+              <span>Last earnings {lastEd}</span>
             </div>
           )}
         </div>

@@ -91,15 +91,19 @@ export default function SwingTradePage() {
 
   // Reload on mount: use URL ticker, or default to SPY if none
   const didMountRef = useRef(false)
+  const runScanRef = useRef(runScan)
+  useEffect(() => { runScanRef.current = runScan }, [runScan])
 
   useEffect(() => {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (t && t.length <= 12) {
       setUi(cur => ({ ...cur, ticker: t }))
       // After mount the guard is set; re-navigate from TCC triggers a real reload
-      if (didMountRef.current) runScan(t)
+      if (didMountRef.current) runScanRef.current(t)
     }
-  }, [searchParams, setUi, runScan])
+  // runScan intentionally excluded — use ref to avoid resetting ticker on each keystroke
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setUi])
   useEffect(() => {
     if (didMountRef.current) return
     didMountRef.current = true

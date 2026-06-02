@@ -96,6 +96,16 @@ export function deriveRegularTradeState(
   if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
   if (score < 70) missing.push(`score ≥70 (now ${score})`)
 
+  // AVOID — checked FIRST. Verdict is final — score and filters are irrelevant.
+  if (verdict === 'NO GO') {
+    return {
+      state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
+      sublabel: `Score ${score} · Critical conditions not met`,
+      action: 'Do not enter. Key conditions are not met for this setup.',
+      missing,
+    }
+  }
+
   // STATE 2: ENTRY — everything aligned, pull the trigger
   if (verdict === 'GO' && score >= 70 && allFilters && ivFit) {
     return {
@@ -118,8 +128,8 @@ export function deriveRegularTradeState(
     }
   }
 
-  // AVOID — hard failure (NO GO verdict or very low score)
-  if (verdict === 'NO GO' || score < 40) {
+  // Low score hard block
+  if (score < 40) {
     return {
       state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
       sublabel: `Score ${score} · Critical conditions not met`,
@@ -363,7 +373,7 @@ export default function RecommendationCard({
   const [addedWatch, setAddedWatch]           = useState(false)
   const [savedJournal, setSavedJournal]       = useState(false)
   const [savingJournal, setSavingJournal]     = useState(false)
-  const [executedTrade, setExecutedTrade]     = useState(false)
+  const [executedTrade, setExecutedTrade]     = useState<{ orderId: string; status: string } | null>(null)
   const [executingTrade, setExecutingTrade]   = useState(false)
   const [tradeError, setTradeError]           = useState<string | null>(null)
   const [contractPickerOpen, setContractPickerOpen] = useState(false)
@@ -423,15 +433,15 @@ export default function RecommendationCard({
     setExecutingTrade(true)
     setTradeError(null)
     try {
-      await executeTrade({
+      const result = await executeTrade({
         email:     user.email,
         ticker,
         strategy:  rec.strategy,
         legs:      rec.legs as object[],
         contracts: selectedContracts,
       })
-      setExecutedTrade(true)
-      setTimeout(() => setExecutedTrade(false), 8000)
+      setExecutedTrade({ orderId: result.order_id ?? '—', status: result.status ?? 'pending' })
+      setTimeout(() => setExecutedTrade(null), 20000)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Trade execution failed'
       setTradeError(msg)
@@ -687,9 +697,11 @@ export default function RecommendationCard({
                     <XCircle size={11} /> Failed
                   </span>
                 ) : executedTrade ? (
-                  <span className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border
-                                   bg-amber-900/20 border-amber-800 text-amber-400">
-                    <Check size={11} /> Sent to Alpaca
+                  <span
+                    className="justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border bg-amber-900/20 border-amber-800 text-amber-400 cursor-default"
+                    title={`Order ID: ${executedTrade.orderId} · Status: ${executedTrade.status}`}
+                  >
+                    <Check size={11} /> Order #{executedTrade.orderId.slice(-6)} · {executedTrade.status}
                   </span>
                 ) : (
                   <button
