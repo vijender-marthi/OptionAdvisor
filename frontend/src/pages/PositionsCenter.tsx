@@ -1238,9 +1238,28 @@ function TradingPositionCard({
           {pos.status === 'open' && (() => {
             const rules = deriveExitRules(pos)
             if (rules.length === 0) return null
+            // Premium conversion: entryPremium + delta × (exitStockPrice - entryStockPrice)
+            const _leg       = pos.legs?.[0]
+            const _entryPrem = _leg?.mid_price != null && _leg.mid_price > 0 ? _leg.mid_price : Math.abs(pos.net_credit)
+            const _delta     = _leg?.delta != null && Math.abs(_leg.delta) > 0 ? Math.abs(_leg.delta) : 0.5
+            const _entryStock = pos.entryPrice > 0 ? pos.entryPrice : 0
+            const _isPut     = _leg?.option_type === 'PUT'
+            const estPremium = (targetStockPrice: number | null): number | null => {
+              if (targetStockPrice == null || _entryStock <= 0 || _entryPrem <= 0) return null
+              const move = _isPut ? (_entryStock - targetStockPrice) : (targetStockPrice - _entryStock)
+              return Math.max(0.01, parseFloat((_entryPrem + _delta * move).toFixed(2)))
+            }
             return (
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">Exit Plan</div>
+                {_entryPrem > 0 && _entryStock > 0 && (
+                  <div className="mb-2 flex items-center gap-2 text-[10px] text-gray-500">
+                    <span>Entry premium</span>
+                    <span className="font-mono font-semibold text-violet-400">${_entryPrem.toFixed(2)}</span>
+                    <span className="text-gray-600">δ={_delta.toFixed(2)}{_entryPrem > 0 && _leg?.delta == null ? ' est.' : ''}</span>
+                    <span className="text-gray-600">→ target premium shown per row</span>
+                  </div>
+                )}
                 <div className="space-y-1">
                   {rules.map((rule, i) => {
                     const isStop    = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
@@ -1270,6 +1289,14 @@ function TradingPositionCard({
                       }
                       return `$${rule.price.toFixed(2)}`
                     })()
+                    const estPrem = isTime ? null : estPremium(rule.price)
+                    const estPremCls = isStop
+                      ? 'text-rose-400 border-rose-800/50 bg-rose-950/30'
+                      : isTarget2
+                      ? 'text-orange-300 border-orange-800/50 bg-orange-950/30'
+                      : isTarget1
+                      ? 'text-emerald-400 border-emerald-800/50 bg-emerald-950/30'
+                      : 'text-amber-400 border-amber-800/50 bg-amber-950/30'
                     return (
                       <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] px-2.5 py-1.5">
                         <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
@@ -1277,6 +1304,11 @@ function TradingPositionCard({
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span className={`font-mono text-[11px] font-bold tabular-nums ${priceCls}`}>{priceLabel}</span>
                             <span className={`text-[11px] font-semibold ${actionCls}`}>→ {rule.action}</span>
+                            {estPrem != null && (
+                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${estPremCls}`}>
+                                prem ~${estPrem.toFixed(2)}
+                              </span>
+                            )}
                           </div>
                           <div className="text-[10px] text-muted leading-snug">{rule.note}</div>
                         </div>
