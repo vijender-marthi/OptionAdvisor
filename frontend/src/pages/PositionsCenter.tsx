@@ -721,6 +721,7 @@ function TradingPositionCard({
   onManage: () => void
   onAlert: () => void
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const aiStatus = deriveAiStatus(pos)
   const sourceKind = deriveEngineSource(pos)
   const guidance = deriveAiGuidance(pos)
@@ -910,6 +911,140 @@ function TradingPositionCard({
       {/* ── Expanded details ── */}
       {expanded && (
         <div className="border-t border-slate-100 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
+
+          {/* ── SECTION 1: Premium Tracker (always visible when expanded) ── */}
+          {pos.status === 'open' && pnlData?.entry_premium_per_share != null && pnlData?.current_mark_per_share != null && (() => {
+            const entry  = pnlData.entry_premium_per_share!
+            const curr   = pnlData.current_mark_per_share!
+            const isCredit = pos.net_credit >= 0
+            const changePct  = pnlData.pnl_pct
+            const changeAmt  = curr - entry
+            const isProfiting = pnlData.pnl > 0
+            const changeColor = isProfiting ? 'text-emerald-600 dark:text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted'
+            const arrowChar   = isProfiting ? '▲' : pnlData.pnl < 0 ? '▼' : '—'
+            const src = pnlData.mark_source
+            const srcLabel = src === 'live' ? 'Live' : src === 'bs_theoretical' ? 'Est.' : 'Stale'
+            const srcDot   = src === 'live' ? 'bg-emerald-400' : src === 'bs_theoretical' ? 'bg-amber-400' : 'bg-gray-500'
+            return (
+              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] px-3 py-2.5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Premium</div>
+                  <div className="flex items-center gap-1">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${srcDot}`} />
+                    <span className="text-[10px] text-muted">{srcLabel}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <div className="text-[10px] text-muted mb-0.5">{isCredit ? 'Credit received' : 'Paid'}</div>
+                    <div className="font-mono font-bold text-primary tabular-nums">${Math.abs(entry).toFixed(2)}<span className="text-[10px] text-muted font-normal">/sh</span></div>
+                    <div className="text-[10px] text-muted">${(Math.abs(entry) * 100 * pos.contracts).toFixed(0)} total</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted mb-0.5">{isCredit ? 'Cost to close' : 'Current'}</div>
+                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}>${Math.abs(curr).toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span></div>
+                    <div className="text-[10px] text-muted">${(Math.abs(curr) * 100 * pos.contracts).toFixed(0)} total</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted mb-0.5">Change</div>
+                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}><span className="mr-0.5 text-[10px]">{arrowChar}</span>{changeAmt >= 0 ? '+' : ''}${changeAmt.toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span></div>
+                    <div className={`text-[10px] font-semibold tabular-nums ${changeColor}`}>{changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* ── SECTION 2: Exit Plan (always visible when expanded) ── */}
+          {pos.status === 'open' && (() => {
+            const rules = deriveExitRules(pos)
+            if (rules.length === 0) return null
+            const _leg       = pos.legs?.[0]
+            const _entryPrem = _leg?.mid_price != null && _leg.mid_price > 0 ? _leg.mid_price : Math.abs(pos.net_credit)
+            const _delta     = _leg?.delta != null && Math.abs(_leg.delta) > 0 ? Math.abs(_leg.delta) : 0.5
+            const _entryStock = pos.entryPrice > 0 ? pos.entryPrice : 0
+            const _isPut     = _leg?.option_type === 'PUT'
+            const estPremium = (targetStockPrice: number | null): number | null => {
+              if (targetStockPrice == null || _entryStock <= 0 || _entryPrem <= 0) return null
+              const move = _isPut ? (_entryStock - targetStockPrice) : (targetStockPrice - _entryStock)
+              return Math.max(0.01, parseFloat((_entryPrem + _delta * move).toFixed(2)))
+            }
+            return (
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-1.5">Exit Plan</div>
+                {_entryPrem > 0 && _entryStock > 0 && (
+                  <div className="mb-2 flex items-center gap-2 text-[10px] text-gray-500">
+                    <span>Entry premium</span>
+                    <span className="font-mono font-semibold text-violet-400">${_entryPrem.toFixed(2)}</span>
+                    <span className="text-gray-600">δ={_delta.toFixed(2)}{_leg?.delta == null ? ' est.' : ''}</span>
+                    <span className="text-gray-600">→ target premium shown per row</span>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  {rules.map((rule, i) => {
+                    const isStop    = rule.trigger.toLowerCase().includes('stop') || rule.trigger.toLowerCase().includes('loss')
+                    const isTarget2 = rule.trigger.toLowerCase().includes('target 2') || rule.trigger.toLowerCase().includes('100%')
+                    const isTarget1 = rule.trigger.toLowerCase().includes('target 1') || rule.trigger.toLowerCase().includes('50%') || rule.trigger.toLowerCase().includes('captured')
+                    const isTime    = rule.price == null
+                    const isEOD     = rule.trigger.toLowerCase().includes('close') && isTime
+                    const dotCls    = isStop ? 'bg-red-400' : isTarget2 ? 'bg-orange-400' : isTarget1 ? 'bg-emerald-400' : isTime ? 'bg-amber-400' : 'bg-sky-400'
+                    const priceCls  = isStop ? 'text-red-400' : isTarget2 ? 'text-orange-300' : isTarget1 ? 'text-emerald-400' : 'text-amber-400'
+                    const actionCls = isStop ? 'text-red-700 dark:text-red-300' : isTarget2 ? 'text-orange-700 dark:text-orange-200' : isTarget1 ? 'text-emerald-700 dark:text-emerald-300' : isTime ? 'text-amber-700 dark:text-amber-300' : 'text-secondary'
+                    const priceLabel = (() => {
+                      if (isEOD) return 'EOD'
+                      if (isTime) return 'time-based'
+                      if (rule.price == null) return '—'
+                      const isDerived = (rule.trigger.includes('50%') || rule.trigger.includes('Loss reaches') || rule.trigger.includes('max profit'))
+                      if (isDerived && pos.strategy === 'Stock' && pos.entryPrice > 0) {
+                        const isProfit = rule.trigger.includes('50%') || rule.trigger.includes('profit')
+                        const targetPx = isProfit ? pos.entryPrice + rule.price / pos.contracts : pos.entryPrice - rule.price / pos.contracts
+                        return `$${targetPx.toFixed(2)}`
+                      }
+                      if (isDerived) {
+                        const perShare = rule.price / 100 / (pos.contracts || 1)
+                        return `$${perShare.toFixed(2)}`
+                      }
+                      return `$${rule.price.toFixed(2)}`
+                    })()
+                    const estPrem = isTime ? null : estPremium(rule.price)
+                    const estPremCls = isStop
+                      ? 'text-rose-400 border-rose-800/50 bg-rose-950/30'
+                      : isTarget2 ? 'text-orange-300 border-orange-800/50 bg-orange-950/30'
+                      : isTarget1 ? 'text-emerald-400 border-emerald-800/50 bg-emerald-950/30'
+                      : 'text-amber-400 border-amber-800/50 bg-amber-950/30'
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] px-2.5 py-1.5">
+                        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className={`font-mono text-[11px] font-bold tabular-nums ${priceCls}`}>{priceLabel}</span>
+                            <span className={`text-[11px] font-semibold ${actionCls}`}>→ {rule.action}</span>
+                            {estPrem != null && (
+                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${estPremCls}`}>prem ~${estPrem.toFixed(2)}</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted leading-snug">{rule.note}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* ── SECTION 3: Details (folded) ── */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(o => !o)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted hover:text-secondary transition-colors"
+            >
+              {detailsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              {detailsOpen ? 'Hide details' : 'Show details'}
+            </button>
+            {detailsOpen && (
+              <div className="mt-3 space-y-3">
 
           {aiAnalysis ? (
             /* ── AI Coach ── */
@@ -1166,76 +1301,8 @@ function TradingPositionCard({
             )}
           </div>
 
-          {/* Premium Tracker */}
-          {pos.status === 'open' && pnlData?.entry_premium_per_share != null && pnlData?.current_mark_per_share != null && (() => {
-            const entry  = pnlData.entry_premium_per_share!
-            const curr   = pnlData.current_mark_per_share!
-            const isCredit = pos.net_credit >= 0
-            // For credit trades: lower current mark = cheaper to close = profit
-            // For debit trades:  higher current mark = option gained value = profit
-            const changePct  = pnlData.pnl_pct                          // already sign-correct from backend
-            const changeAmt  = curr - entry                              // raw per-share delta
-            const isProfiting = pnlData.pnl > 0
-            const changeColor = isProfiting ? 'text-emerald-600 dark:text-emerald-400' : pnlData.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted'
-            const arrowChar   = isProfiting ? '▲' : pnlData.pnl < 0 ? '▼' : '—'
-            const src = pnlData.mark_source
-            const srcLabel = src === 'live' ? 'Live' : src === 'bs_theoretical' ? 'Est.' : 'Stale'
-            const srcDot   = src === 'live' ? 'bg-emerald-400' : src === 'bs_theoretical' ? 'bg-amber-400' : 'bg-gray-500'
-
-            return (
-              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] px-3 py-2.5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Premium Tracker</div>
-                  <div className="flex items-center gap-1">
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${srcDot}`} />
-                    <span className="text-[10px] text-muted">{srcLabel}</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-xs">
-                  {/* Entry premium */}
-                  <div>
-                    <div className="text-[10px] text-muted mb-0.5">
-                      {isCredit ? 'Credit received' : 'Premium paid'}
-                    </div>
-                    <div className="font-mono font-bold text-primary tabular-nums">
-                      ${Math.abs(entry).toFixed(2)}<span className="text-[10px] text-muted font-normal">/sh</span>
-                    </div>
-                    <div className="text-[10px] text-muted">
-                      ${(Math.abs(entry) * 100 * pos.contracts).toFixed(0)} total
-                    </div>
-                  </div>
-
-                  {/* Current mark */}
-                  <div>
-                    <div className="text-[10px] text-muted mb-0.5">
-                      {isCredit ? 'Cost to close' : 'Current value'}
-                    </div>
-                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
-                      ${Math.abs(curr).toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
-                    </div>
-                    <div className="text-[10px] text-muted">
-                      ${(Math.abs(curr) * 100 * pos.contracts).toFixed(0)} total
-                    </div>
-                  </div>
-
-                  {/* Change */}
-                  <div>
-                    <div className="text-[10px] text-muted mb-0.5">Change</div>
-                    <div className={`font-mono font-bold tabular-nums ${changeColor}`}>
-                      <span className="mr-0.5 text-[10px]">{arrowChar}</span>
-                      {changeAmt >= 0 ? '+' : ''}${changeAmt.toFixed(2)}<span className="text-[10px] font-normal opacity-60">/sh</span>
-                    </div>
-                    <div className={`text-[10px] font-semibold tabular-nums ${changeColor}`}>
-                      {changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* Exit Plan */}
-          {pos.status === 'open' && (() => {
+          {/* (old Premium Tracker and Exit Plan removed — now in sections 1 & 2 above) */}
+          {pos.status === 'open' && false && (() => {
             const rules = deriveExitRules(pos)
             if (rules.length === 0) return null
             // Premium conversion: entryPremium + delta × (exitStockPrice - entryStockPrice)
@@ -1336,7 +1403,11 @@ function TradingPositionCard({
             </div>
           )}
 
-          {pos.notes && <p className="text-sm text-secondary italic">{pos.notes}</p>}
+              {pos.notes && <p className="text-sm text-secondary italic">{pos.notes}</p>}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
     </article>
