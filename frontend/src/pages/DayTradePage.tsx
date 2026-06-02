@@ -63,7 +63,9 @@ export default function DayTradePage() {
   const [alertOpen, setAlertOpen] = useState(false)
   const [portfolioOpen, setPortfolioOpen] = useState(false)
   const [portfolioContracts, setPortfolioContracts] = useState('')
-  const [portfolioEntryPrice, setPortfolioEntryPrice] = useState('')
+  const [portfolioStockPrice, setPortfolioStockPrice] = useState('')
+  const [portfolioStrike, setPortfolioStrike] = useState('')
+  const [portfolioEntryPrice, setPortfolioEntryPrice] = useState('1.00')
   const [portfolioExpiry, setPortfolioExpiry] = useState('')
   const [portfolioNotes, setPortfolioNotes] = useState('')
   const [portfolioErr, setPortfolioErr] = useState<string | null>(null)
@@ -266,7 +268,9 @@ export default function DayTradePage() {
     const dfltExpiry = nextFri.toISOString().slice(0, 10)
     const dfltDte = Math.ceil((nextFri.getTime() - Date.now()) / 86400000)
     setPortfolioContracts('1')
-    setPortfolioEntryPrice(eg?.entry_zone ? String(eg.entry_zone) : lastU > 0 ? String(lastU) : '')
+    setPortfolioStockPrice(lastU > 0 ? lastU.toFixed(2) : '')
+    setPortfolioStrike(lastU > 0 ? lastU.toFixed(2) : '')
+    setPortfolioEntryPrice('1.00')
     setPortfolioExpiry(dfltExpiry)
     setPortfolioNotes('')
     setPortfolioErr(null)
@@ -283,14 +287,16 @@ export default function DayTradePage() {
       setPortfolioErr('Contracts must be a positive whole number.')
       return
     }
-    let ep = 0
+    let ep = 1.00
     if (portfolioEntryPrice.trim()) {
       ep = parseFloat(portfolioEntryPrice)
       if (!Number.isFinite(ep) || ep < 0) {
-        setPortfolioErr('Entry price must be a positive number.')
+        setPortfolioErr('Premium paid must be a positive number.')
         return
       }
     }
+    const strikeVal = parseFloat(portfolioStrike)
+    const stockPriceVal = parseFloat(portfolioStockPrice)
     let expiryOut = ''
     if (portfolioExpiry.trim()) {
       const ex = portfolioExpiry.trim().slice(0, 10)
@@ -317,7 +323,7 @@ export default function DayTradePage() {
       legs: [{
         action: 'BUY' as const,
         option_type: isPut ? 'PUT' as const : 'CALL' as const,
-        strike: 0,
+        strike: Number.isFinite(strikeVal) && strikeVal > 0 ? strikeVal : 0,
         expiry: expiryOut,
         mid_price: ep,
         delta: 0,
@@ -342,7 +348,7 @@ export default function DayTradePage() {
       contracts: c,
       breakeven_lower: 0,
       breakeven_upper: 0,
-      entryPrice: lastU,
+      entryPrice: Number.isFinite(stockPriceVal) && stockPriceVal > 0 ? stockPriceVal : lastU,
       target1: result.entry_guidance?.scalp_target ?? undefined,
       stopLoss: result.entry_guidance?.risk_below ?? undefined,
       source: 'day',
@@ -1016,8 +1022,30 @@ export default function DayTradePage() {
                   onChange={e => setPortfolioContracts(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Stock price</label>
+                  <input
+                    className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                    inputMode="decimal"
+                    placeholder="e.g. 185.00"
+                    value={portfolioStockPrice}
+                    onChange={e => setPortfolioStockPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Strike price</label>
+                  <input
+                    className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
+                    inputMode="decimal"
+                    placeholder="e.g. 185.00"
+                    value={portfolioStrike}
+                    onChange={e => setPortfolioStrike(e.target.value)}
+                  />
+                </div>
+              </div>
               <div>
-                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Option premium paid (optional)</label>
+                <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Premium paid (per share)</label>
                 <input
                   className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono"
                   inputMode="decimal"
@@ -1025,6 +1053,7 @@ export default function DayTradePage() {
                   value={portfolioEntryPrice}
                   onChange={e => setPortfolioEntryPrice(e.target.value)}
                 />
+                <p className="mt-1 text-[10px] text-gray-600">Cost per share · 1 contract = 100 shares</p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Expiry (optional, YYYY-MM-DD)</label>
