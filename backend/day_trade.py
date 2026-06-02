@@ -3358,9 +3358,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     option_risk_context = build_day_option_risk_context(t, info)
 
-    _verdict_val = resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value
     entry_window = _compute_entry_window(
-        verdict=_verdict_val,
+        verdict=_internal_verdict,
         bias=bias,
         last=last,
         vwap=metrics.get("vwap") or 0.0,
@@ -3377,7 +3376,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     scan = DayTradeScan(
         ticker=t,
         company_name=company,
-        verdict=_verdict_val,
+        verdict=_internal_verdict,
         bias=bias,
         bull_score=round(bull, 2),
         bear_score=round(bear, 2),

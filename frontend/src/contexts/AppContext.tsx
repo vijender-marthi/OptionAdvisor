@@ -593,10 +593,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : undefined
       // Portfolio is intentionally excluded — each portfolio operation uses its own
       // dedicated endpoint (/portfolio/add, /portfolio/update, /portfolio/close).
-      // Those endpoints return the authoritative DB state and update React state directly.
-      // Sending portfolioRef.current here caused a race: the 300ms debounce could fire
-      // with a stale snapshot and overwrite positions that were just saved by a dedicated call.
-      saveUserData(user.email, watchlist, [], advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
+      // Use the actual portfolio state so fallback positions (created when a dedicated
+      // API call fails) are also persisted. The saveGenRef prevents stale overwrites.
+      saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
         .then(() => {
           if (gen !== saveGenRef.current) return // stale — a newer save already superseded this
           setPortfolioRefreshKey(k => k + 1)
@@ -608,7 +607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
     }, 300)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, user?.email, userDataLoaded, watchlist])
+  }, [advisoryAcceptedAt, advisoryTermsVersion, alertEmailEnabled, dayTradeWatchlist, swingTradeWatchlist, portfolio, user?.email, userDataLoaded, watchlist])
 
   const needsAdvisoryAcknowledgement = Boolean(
     user &&

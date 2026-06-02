@@ -333,7 +333,7 @@ def _compute_ticker_engines(ticker: str) -> dict:
             "avoid_reason":        swing_scan.avoid_reason,
         })
         swing_reason = swing_decision.reason
-        swing_raw    = str(swing_scan.final_action or "")
+        swing_raw    = str(swing_scan.verdict or "")
     except Exception as exc:
         swing_reason = f"Swing evaluation unavailable: {exc}"
 
