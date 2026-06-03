@@ -859,8 +859,6 @@ export default function TickerPage() {
                         const rr = rec.risk_reward_ratio ?? 0
                         const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
 
-                        const score = rec.scores?.total_score ?? 0
-                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
                         // Single trade state — used for BOTH the table badge AND the expanded card.
