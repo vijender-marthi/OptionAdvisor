@@ -502,7 +502,7 @@ export default function DayTradeDashboardPage() {
   }, [scanTicker])
 
   const addTicker = (sym: string) => {
-    setTickers(prev => [...prev, sym])
+    setTickers(prev => [sym, ...prev])
     void scanTicker(sym, activeTab, true)
   }
 
