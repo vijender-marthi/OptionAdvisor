@@ -470,18 +470,22 @@ export default function TickerScannerPage() {
               sub={vixSub(snap.vix)}
               tone={vixTone(snap.vix)}
             />
-            <MarketCard
-              label="TICK avg"
-              value={snap.tickAvg != null ? (snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))) : 'N/A'}
-               sub={snap.tickAvg != null ? tickSub(snap.tickAvg) : 'Requires NYSE TICK data source'}
-               tone={tickTone(snap.tickAvg)}
-             />
-             <MarketCard
-               label="Put/Call"
-               value={snap.pcRatio != null ? snap.pcRatio.toFixed(2) : 'N/A'}
-               sub={snap.pcRatio != null ? pcSub(snap.pcRatio) : 'Requires CBOE Put/Call data source'}
-              tone={pcTone(snap.pcRatio)}
-            />
+            {snap.tickAvg != null && (
+              <MarketCard
+                label="TICK avg"
+                value={snap.tickAvg > 0 ? `+${Math.round(snap.tickAvg)}` : String(Math.round(snap.tickAvg))}
+                sub={tickSub(snap.tickAvg)}
+                tone={tickTone(snap.tickAvg)}
+              />
+            )}
+            {snap.pcRatio != null && (
+              <MarketCard
+                label="Put/Call"
+                value={snap.pcRatio.toFixed(2)}
+                sub={pcSub(snap.pcRatio)}
+                tone={pcTone(snap.pcRatio)}
+              />
+            )}
           </div>
         </div>
       )}

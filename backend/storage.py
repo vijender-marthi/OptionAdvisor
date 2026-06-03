@@ -171,6 +171,21 @@ def _migrate_user_state_clear_old_watchlist(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE user_state SET swing_trade_watchlist_json = '[]'")
 
 
+def _seed_known_super_users(conn: sqlite3.Connection) -> None:
+    """Ensure known non-admin super_user accounts have the right role in the DB."""
+    _KNOWN_SUPER_USERS = {"vijayandarmarthi@gmail.com"}
+    for email in _KNOWN_SUPER_USERS:
+        conn.execute(
+            """
+            INSERT INTO user_state (email, role)
+            VALUES (?, 'super_user')
+            ON CONFLICT(email) DO UPDATE SET role = 'super_user'
+            WHERE role = 'user'
+            """,
+            (email,),
+        )
+
+
 def _migrate_active_trades_option_columns(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(active_trades)").fetchall()}
     if "strike" not in cols:
@@ -383,6 +398,7 @@ def init_db() -> None:
         _migrate_user_state_dashboard_tickers(conn)
         _migrate_user_state_backfill_my_tickers(conn)
         _migrate_user_state_clear_old_watchlist(conn)
+        _seed_known_super_users(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS ticker_state_last (
