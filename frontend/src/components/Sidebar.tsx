@@ -196,7 +196,7 @@ export default function Sidebar() {
     { id: 'ticker-scanner',       label: 'Scanner',   icon: <ScanLine size={23} /> },
     { id: 'trade-command-center', label: 'Command',   icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
-    { id: 'positions',            label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
+    { id: 'ticker',               label: 'Position',  icon: <Layers size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
     // Research
