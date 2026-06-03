@@ -256,11 +256,6 @@ _SUPERADMIN_EMAILS: frozenset[str] = frozenset({
     "vijender.marthi@gmail.com",
 })
 
-# Super-user emails — full Day/Swing/Scanner/Dashboard access but NO Alpaca or admin tools.
-_SUPER_USER_EMAILS: frozenset[str] = frozenset({
-    "vijayandarmarthi@gmail.com",
-})
-
 
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
@@ -284,8 +279,6 @@ def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     n = normalize_email(email)
     if n in _SUPERADMIN_EMAILS:
         return "admin"
-    if n in _SUPER_USER_EMAILS:
-        return "super_user"
     r = (stored_role or "user").strip().lower()
     if r == "admin":
         return "admin"

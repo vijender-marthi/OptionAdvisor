@@ -4498,6 +4498,30 @@ def admin_flush_cache(auth_email: str = Depends(require_access_email)):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/admin/set-role")
+def admin_set_role(payload: dict, auth_email: str = Depends(require_access_email)):
+    """Set a user's role in the database. Admin only."""
+    _require_admin(auth_email)
+    target_email = str(payload.get("email", "")).strip().lower()
+    role = str(payload.get("role", "")).strip().lower()
+    valid_roles = {"admin", "super_user", "day", "swing", "finance", "user"}
+    if not target_email:
+        raise HTTPException(status_code=400, detail="email is required")
+    if role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"role must be one of: {', '.join(sorted(valid_roles))}")
+    from storage import _connect, normalize_email as _ne
+    n = _ne(target_email)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE user_state SET role = ? WHERE email = ?",
+            (role, n),
+        )
+        rows = conn.execute("SELECT role FROM user_state WHERE email = ?", (n,)).fetchone()
+    if rows is None:
+        raise HTTPException(status_code=404, detail=f"No account found for {target_email}")
+    return {"ok": True, "email": n, "role": rows[0]}
+
+
 # ─── User accent preference ───────────────────────────────────────────────
 
 @app.get("/api/user/accent")
