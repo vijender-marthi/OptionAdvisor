@@ -3,7 +3,7 @@ import { Search, Database, Layers, AlertTriangle } from 'lucide-react'
 import { analyzeOptions, analyzeV2 } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
-import RecommendationCard from '../components/RecommendationCard'
+import RecommendationCard, { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
@@ -863,8 +863,10 @@ export default function TickerPage() {
                         const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        const isAvoid = (!rec.passes_liquidity_filter && score < 70) || score < 40
-                        const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WAIT'
+                        // Single trade state — used for BOTH the table badge AND the expanded card.
+                        const _v = deriveVerdict(buildChecklist(rec, displayData.signals))
+                        const tradeState = deriveRegularTradeState(rec, displayData.signals, _v)
+                        const status = tradeState.num === 'STATE 2' ? 'ENTER' : tradeState.num === 'STATE 1' ? 'SETUP' : tradeState.num
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WAIT' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (
