@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart2, Bell, Briefcase, ChevronLeft, ChevronRight, HelpCircle, Star, X } from 'lucide-react'
+import { BarChart2, Bell, Briefcase, ChevronLeft, ChevronRight, Command, HelpCircle, ListTodo, ScanLine, X } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import type { Page } from '../types'
 
@@ -22,21 +22,28 @@ export default function FirstLoginHelpModal() {
     page: Page
   }> = [
     {
+      icon: <ListTodo size={22} />,
+      title: 'Start with My Tickers',
+      body: 'Add tickers you want to follow. My Tickers is your starting point — every other feature pulls from this list.',
+      action: 'Open My Tickers',
+      page: 'my-tickers',
+    },
+    {
       icon: <BarChart2 size={22} />,
       title: 'Analyze a Stock for Options',
-      body: 'Enter any ticker to see market signals, option chain data, scored recommendations with entry/exit guidance, and the AI Coach verdict card.',
+      body: 'Select a ticker to see market signals, option chain data, scored recommendations with entry/exit guidance, and the AI Coach verdict card.',
       action: 'Open Position Trading',
       page: 'ticker',
     },
     {
-      icon: <Star size={22} />,
+      icon: <ScanLine size={22} />,
       title: 'Scan for Setups',
       body: 'Use Ticker Scanner to find trading opportunities sorted by relative strength. Add tickers to your watchlist for continuous monitoring.',
       action: 'Open Scanner',
       page: 'ticker-scanner',
     },
     {
-      icon: <Bell size={22} />,
+      icon: <Command size={22} />,
       title: 'Monitor the Trade Command Center',
       body: 'The Command Center shows your overall market view, ready-to-act trades, and monitoring signals across all engines in one place.',
       action: 'Open Command Center',
