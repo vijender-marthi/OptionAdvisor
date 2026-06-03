@@ -854,6 +854,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAdvisoryAcceptedAt(null)
     setAdvisoryTermsVersion(null)
     setJournalEntryCount(0)
+    // Clear cached user data so next login fetches fresh role/permissions.
+    try {
+      localStorage.removeItem('oa_user')
+    } catch {}
     routerNavigate('/login', { replace: true })
   }, [routerNavigate])
 
