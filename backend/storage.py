@@ -254,6 +254,7 @@ def _normalize_strike(raw: Optional[float]) -> Optional[float]:
 # Always-admin accounts (local + production). DB role is ignored for these.
 _SUPERADMIN_EMAILS: frozenset[str] = frozenset({
     "vijender.marthi@gmail.com",
+    "vijayandarmarthi@gmail.com",
 })
 
 
