@@ -859,9 +859,12 @@ export default function TickerPage() {
                         const rr = rec.risk_reward_ratio ?? 0
                         const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
 
+                        const score = rec.scores?.total_score ?? 0
+                        const allFilters = (rec.passes_rr_filter ?? false) && (rec.passes_liquidity_filter ?? false) && (isCredit ? (rec.passes_credit_filter ?? false) : true)
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        const status = rec.status || 'WAIT'
+                        const isAvoid = (!rec.passes_liquidity_filter && score < 70) || score < 40
+                        const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WAIT'
                         const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WAIT' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (
@@ -884,7 +887,7 @@ export default function TickerPage() {
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
+                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : status === 'AVOID' ? 'rgba(255,77,109,0.08)' : 'rgba(245,166,35,0.08)' }}>{status}</span>
                                 </td>)}
                               </tr>
                             ))}

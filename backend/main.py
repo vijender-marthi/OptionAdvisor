@@ -1472,22 +1472,7 @@ def _analyze_ticker(
 
     # Build recommendations output
     recs_out = []
-    is_credit_rec = lambda t: (t.net_credit or 0) > 0
-    iv_rank = getattr(signals, 'iv_rank', 0) or 0
     for rank, trade in enumerate(trades, 1):
-        # Compute status — single source of truth, no UI-side logic.
-        _score = trade.total_score or 0
-        _is_credit = is_credit_rec(trade)
-        _allFilters = trade.passes_rr_filter and trade.passes_liquidity_filter and (trade.passes_credit_filter if _is_credit else True)
-        _ivFit = iv_rank >= 30 if _is_credit else iv_rank < 50
-        if _score < 40 or (not trade.passes_liquidity_filter and _score < 70):
-            _status = "AVOID"
-        elif _score >= 70 and _allFilters and _ivFit:
-            _status = "ENTER"
-        elif _score >= 55 and trade.passes_liquidity_filter:
-            _status = "SETUP"
-        else:
-            _status = "WAIT"
         legs_out = [
             OptionLegOut(
                 action=leg.action,
@@ -1542,7 +1527,6 @@ def _analyze_ticker(
             kelly_fraction=round(trade.kelly_fraction, 4),
             half_kelly_fraction=round(trade.half_kelly_fraction, 4),
             edge_ratio=round(trade.edge_ratio, 4),
-            status=_status,
         ))
 
     # Signals output
