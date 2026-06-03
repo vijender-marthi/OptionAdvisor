@@ -318,6 +318,47 @@ def _state_with_watchlist_max(state: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _migrate_user_state_dashboard_tickers(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(user_state)").fetchall()}
+    if "dashboard_tickers_json" not in cols:
+        conn.execute(
+            "ALTER TABLE user_state ADD COLUMN dashboard_tickers_json TEXT NOT NULL DEFAULT '{}'"
+        )
+
+
+def get_dashboard_tickers(email: str) -> dict[str, list[str]]:
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT dashboard_tickers_json FROM user_state WHERE email = ?",
+            (normalized,),
+        ).fetchone()
+    if row is None:
+        return {"day": [], "swing": []}
+    try:
+        val = json.loads(row["dashboard_tickers_json"] or "{}")
+        if isinstance(val, dict):
+            return {
+                "day": [s for s in val.get("day", []) if isinstance(s, str)],
+                "swing": [s for s in val.get("swing", []) if isinstance(s, str)],
+            }
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return {"day": [], "swing": []}
+
+
+def save_dashboard_tickers(email: str, day: list[str], swing: list[str]) -> dict[str, list[str]]:
+    normalized = normalize_email(email)
+    data = json.dumps({"day": day[:8], "swing": swing[:8]})
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO user_state (email, dashboard_tickers_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(email) DO UPDATE SET dashboard_tickers_json = ?, updated_at = CURRENT_TIMESTAMP",
+            (normalized, data, data),
+        )
+    return {"day": day[:8], "swing": swing[:8]}
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.execute(
@@ -339,6 +380,7 @@ def init_db() -> None:
         _migrate_user_state_alert_email_enabled(conn)
         _migrate_user_state_my_tickers(conn)
         _migrate_user_state_theme_accent(conn)
+        _migrate_user_state_dashboard_tickers(conn)
         _migrate_user_state_backfill_my_tickers(conn)
         _migrate_user_state_clear_old_watchlist(conn)
         conn.execute(

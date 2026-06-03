@@ -507,6 +507,20 @@ export const setUserAccent = async (accent: string): Promise<void> => {
   await api.put('/user/accent', { accent })
 }
 
+export interface DashboardTickers {
+  day: string[]
+  swing: string[]
+}
+
+export const getDashboardTickers = async (): Promise<DashboardTickers> => {
+  const { data } = await api.get<DashboardTickers>('/dashboard-tickers')
+  return { day: data.day ?? [], swing: data.swing ?? [] }
+}
+
+export const saveDashboardTickers = async (payload: DashboardTickers): Promise<void> => {
+  await api.post('/dashboard-tickers', { day: payload.day, swing: payload.swing })
+}
+
 export const sendTestEmail = async (
   email: string,
   userName?: string,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge } from 'lucide-react'
-import { analyzeDayTrade, analyzeSwingTrade, analyzeV2 } from '../api/client'
+import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
@@ -415,6 +415,30 @@ export default function DayTradeDashboardPage() {
   const [swingTickers, setSwingTickers] = useState<string[]>(() => loadTickers(SK_SWING_TICKERS))
   useEffect(() => { try { localStorage.setItem(SK_DAY_TICKERS,   JSON.stringify(dayTickers))   } catch { /* quota */ } }, [dayTickers])
   useEffect(() => { try { localStorage.setItem(SK_SWING_TICKERS, JSON.stringify(swingTickers)) } catch { /* quota */ } }, [swingTickers])
+
+  // Load dashboard tickers from backend on mount (cross-browser sync).
+  // Falls back to localStorage if the API call fails.
+  const [tickersLoadedFromApi, setTickersLoadedFromApi] = useState(false)
+  useEffect(() => {
+    getDashboardTickers()
+      .then(resp => {
+        setDayTickers(resp.day.slice(0, MAX_TICKERS))
+        setSwingTickers(resp.swing.slice(0, MAX_TICKERS))
+        setTickersLoadedFromApi(true)
+      })
+      .catch(() => { /* use localStorage fallback */ })
+  }, [])
+
+  // Debounced save to backend whenever tickers change (after initial API load).
+  const dashboardSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!tickersLoadedFromApi) return
+    if (dashboardSaveTimer.current) clearTimeout(dashboardSaveTimer.current)
+    dashboardSaveTimer.current = setTimeout(() => {
+      saveDashboardTickers({ day: dayTickers, swing: swingTickers }).catch(() => {})
+    }, 500)
+    return () => { if (dashboardSaveTimer.current) clearTimeout(dashboardSaveTimer.current) }
+  }, [dayTickers, swingTickers, tickersLoadedFromApi])
 
   const [dayTiles,   setDayTiles]   = useState<Record<string, TileData>>({})
   const [swingTiles, setSwingTiles] = useState<Record<string, TileData>>({})

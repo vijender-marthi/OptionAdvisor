@@ -67,12 +67,14 @@ from storage import (
     add_user_alert,
     add_day_trade_alert_event,
     DAY_TRADE_ALERT_RETENTION_MS,
+    get_dashboard_tickers,
     get_day_trade_watchlist_last,
     get_user_state,
     init_db,
     list_day_trade_alert_events,
     list_user_states,
     normalize_email,
+    save_dashboard_tickers,
     save_user_state,
     update_user_alert_email,
     upsert_day_trade_watchlist_last,
@@ -4543,6 +4545,20 @@ def set_user_accent(auth_email: str = Depends(require_access_email), body: dict 
             (accent, normalize_email(email)),
         )
     return {"ok": True, "accent": accent}
+
+
+@app.get("/api/dashboard-tickers")
+def api_get_dashboard_tickers(auth_email: str = Depends(require_access_email)):
+    """Get dashboard tickers (day + swing) for the current user."""
+    return get_dashboard_tickers(auth_email)
+
+
+@app.post("/api/dashboard-tickers")
+def api_save_dashboard_tickers(body: dict, auth_email: str = Depends(require_access_email)):
+    """Save dashboard tickers (day + swing) for the current user."""
+    day = [s.upper().strip() for s in body.get("day", []) if isinstance(s, str) and s.strip()]
+    swing = [s.upper().strip() for s in body.get("swing", []) if isinstance(s, str) and s.strip()]
+    return save_dashboard_tickers(auth_email, day, swing)
 
 
 # ─── Swing trade alert scanner ────────────────────────────────────────────────
