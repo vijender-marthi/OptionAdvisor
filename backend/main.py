@@ -4619,24 +4619,21 @@ def _scan_my_tickers_for_swing_alerts(user_state: dict) -> None:
                 "score":        getattr(sr, "trade_quality_score", None),
             }
 
-            # Always mirror to in-app alert center
-            severity = "CRITICAL" if verdict in _SWING_GO_VERDICTS else "INFO"
-            try:
-                alert_center_create(
-                    email,
-                    alert_group="swing-trade",
-                    severity=severity,
-                    engine="SWING_TRADE",
-                    signal=verdict or final_action,
-                    title=f"⚡ {ticker} — Swing: {direction}",
-                    body=alert_payload["summary"],
-                    meta={"ticker": ticker, "alertType": "STATE_CHANGE", "sessionDate": sd, "verdict": verdict},
-                )
-            except Exception:
-                pass
-
-            # Only escalate to email for GO / STRONG GO verdicts
+            # Only create in-app alert + escalate for GO / STRONG GO verdicts
             if verdict in _SWING_GO_VERDICTS:
+                try:
+                    alert_center_create(
+                        email,
+                        alert_group="swing-trade",
+                        severity="CRITICAL",
+                        engine="SWING_TRADE",
+                        signal=verdict or final_action,
+                        title=f"⚡ {ticker} — Swing: {direction}",
+                        body=alert_payload["summary"],
+                        meta={"ticker": ticker, "alertType": "STATE_CHANGE", "sessionDate": sd, "verdict": verdict},
+                    )
+                except Exception:
+                    pass
                 swing_escalations.append(alert_payload)
 
             upsert_ticker_state_last(email, ticker, "SWING", now_state, final_action, sd)
