@@ -186,11 +186,12 @@ function EarningsWarning({ daysUntil, dte }: { daysUntil: number; dte: number })
 
 const normStrategy = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, ' ').trim()
 
-const TRADE_STATE_CLS: Record<TradeStateInfo['color'], string> = {
+const TRADE_STATE_CLS: Record<string, string> = {
   emerald: 'bg-emerald-900/50 text-emerald-300 border-emerald-700 ring-1 ring-emerald-500/30',
   amber:   'bg-amber-900/50 text-amber-300 border-amber-700',
   sky:     'bg-sky-900/40 text-sky-300 border-sky-700',
   red:     'bg-red-900/40 text-red-300 border-red-800',
+  blue:    'bg-blue-900/40 text-blue-300 border-blue-700',
 }
 
 // ─── Rec row ─────────────────────────────────────────────────────────────────
