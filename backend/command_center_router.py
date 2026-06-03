@@ -1417,7 +1417,7 @@ def post_portfolio_add(body: PortfolioAddBody, auth_email: str = Depends(require
     pos = dict(body.position)
     pos.setdefault("id", str(uuid.uuid4()))
     pos.setdefault("status", "open")
-    port.append(pos)
+    port.insert(0, pos)
     saved = save_user_state(email, state.get("watchlist") or [], port)
     try:
         _sync_position_to_journal(email, pos)
