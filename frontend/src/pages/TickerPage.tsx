@@ -861,14 +861,8 @@ export default function TickerPage() {
 
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        // Status badge uses backend-computed filter flags only.
-                        // buildChecklist runs complex EV/drift math that can flag AVOID on
-                        // valid trades (e.g. 28% confidence → near-zero EV triggers hard fail).
-                        // The expanded card already shows the full checklist detail.
-                        // Never show AVOID when score >= 70 — the engine's GO verdict must be respected.
-                        const isAvoid = (!rec.passes_liquidity_filter && score < 70) || score < 40
-                        const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WATCH'
-                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
+                        const status = rec.status || 'WATCH'
+                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (
                           <React.Fragment key={rec.rank}>
@@ -890,7 +884,7 @@ export default function TickerPage() {
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
+                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
                                 </td>)}
                               </tr>
                             ))}

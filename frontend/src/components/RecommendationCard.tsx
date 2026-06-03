@@ -64,7 +64,7 @@ export interface TradeStateInfo {
   num:      string        // "STATE 2" | "STATE 1" | "WATCH" | "AVOID"
   label:    string        // "ENTRY" | "SETUP" | "WAIT" | "AVOID"
   sublabel: string        // one-line context
-  color:    'emerald' | 'amber' | 'sky' | 'red'
+  color:    'emerald' | 'blue' | 'amber' | 'sky' | 'red'
   action:   string        // what to do right now
   missing:  string[]      // what's not yet aligned
 }
@@ -131,7 +131,7 @@ export function deriveRegularTradeState(
   // STATE 1: SETUP — conditions mostly there, one or two things to wait on
   if ((verdict === 'GO' || verdict === 'CAUTION') && score >= 55 && rec.passes_liquidity_filter) {
     return {
-      state: 1, num: 'STATE 1', label: 'SETUP', color: 'amber',
+      state: 1, num: 'STATE 1', label: 'SETUP', color: 'blue',
       sublabel: `Score ${score} · Conditions forming`,
       action: 'Setup in progress. Wait for remaining conditions to align before entry.',
       missing,
@@ -481,6 +481,7 @@ export default function RecommendationCard({
 
   const statusStyle = (() => {
     if (tradeState.color === 'emerald') return { bg: C.greenDim, color: C.green, border: 'rgba(0,229,160,0.3)' }
+    if (tradeState.color === 'blue')    return { bg: '#1E3A5F', color: '#3B82F6', border: 'rgba(59,130,246,0.3)' }
     if (tradeState.color === 'amber')   return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
     if (tradeState.color === 'sky')     return { bg: C.purpleDim, color: C.purple, border: 'rgba(107,127,212,0.3)' }
     return { bg: C.redDim, color: C.red, border: 'rgba(255,77,109,0.3)' }
