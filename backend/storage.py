@@ -259,14 +259,15 @@ _SUPERADMIN_EMAILS: frozenset[str] = frozenset({
 
 def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     """
-    Resolve role from SQLite user_state.role (admin | day | swing | finance | user).
+    Resolve role from SQLite user_state.role (admin | super_user | day | swing | finance | user).
 
     Access tiers:
-      admin  — Day Trade + Swing Trade + Regular + all admin tools
-      day    — Day Trade + Regular (no Swing Trade)
-      swing  — Swing Trade + Regular (no Day Trade)
-      user   — Regular (Strategy Finder) only
-      finance — Regular only, minus stock-discovery radars
+      admin      — Day Trade + Swing Trade + Regular + all admin tools
+      super_user — Day Trade + Swing Trade + Regular + Scanner + Dashboard (no admin tools)
+      day        — Day Trade + Regular (no Swing Trade)
+      swing      — Swing Trade + Regular (no Day Trade)
+      user       — Regular (Strategy Finder) only
+      finance    — Regular only, minus stock-discovery radars
 
     Superadmin emails (_SUPERADMIN_EMAILS) are always resolved to admin
     regardless of the DB value.
@@ -281,6 +282,8 @@ def effective_user_role(email: str, stored_role: Optional[str]) -> str:
     r = (stored_role or "user").strip().lower()
     if r == "admin":
         return "admin"
+    if r in ("super_user", "superuser", "super"):
+        return "super_user"
     if r == "day":
         return "day"
     if r == "swing":
