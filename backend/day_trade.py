@@ -3063,6 +3063,55 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         price_structure=price_structure,
     )
 
+    # ── Post-verdict gate ─────────────────────────────────────────────────
+    # resolve_verdict() runs before edge_state and is_chasing are computed.
+    # Apply a second-pass override so GO/STRONG_GO cannot survive contradictory
+    # contextual signals that postdate the raw score calculation.
+    #
+    # GO only survives if the evidence actually supports it.
+    # Every override downgrades, never upgrades.
+    _pre_gate_verdict = _internal_verdict
+    if _internal_verdict in ("GO", "STRONG_GO", "WATCH"):
+        # Extension: move already happened — chasing is dangerous
+        if is_chasing or edge_state in ("EXHAUSTED", "LATE"):
+            if _internal_verdict in ("GO", "STRONG_GO"):
+                _internal_verdict = "WAIT"
+                body.append(
+                    f"Verdict downgraded GO→WAIT: extension/chasing detected "
+                    f"({edge_state}, {chase_reason[:80] if is_chasing else edge_reason[:80]}). "
+                    "Entry here means buying/selling the move after it has already happened."
+                )
+        # Pending confirmations on an entry-critical state → not GO yet
+        if _internal_verdict in ("GO", "STRONG_GO"):
+            _eg_state = eg_state if 'eg_state' in dir() else None  # type: ignore[name-defined]
+            _pending = entry_guidance.get("pending_confirmations", []) if 'entry_guidance' in dir() else []  # type: ignore[name-defined]
+            if len(_pending) > 0 and not soft_edge:
+                _internal_verdict = "WATCH"
+                body.append(
+                    "Verdict downgraded GO→WATCH: confirmation conditions not yet met. "
+                    "Wait for pending signals before treating this as an entry."
+                )
+        # No soft edge (bull/bear scores too close) → cannot be GO
+        if not soft_edge and _internal_verdict in ("GO", "STRONG_GO"):
+            _internal_verdict = "WAIT"
+            body.append(
+                "Verdict downgraded GO→WAIT: bull/bear scores too close for a directional GO. "
+                "No clean edge is present."
+            )
+        # Price below VWAP on a GO-long or above VWAP on a GO-short → structural mismatch
+        if bias == "long" and vwap_position == "below" and _internal_verdict in ("GO", "STRONG_GO"):
+            _internal_verdict = "WATCH"
+            body.append(
+                "Verdict downgraded GO→WATCH: long bias but price is below VWAP. "
+                "Wait for VWAP reclaim before treating as a long entry."
+            )
+        if bias == "short" and vwap_position == "above" and _internal_verdict in ("GO", "STRONG_GO"):
+            _internal_verdict = "WATCH"
+            body.append(
+                "Verdict downgraded GO→WATCH: short bias but price is above VWAP. "
+                "Wait for VWAP rejection before treating as a short entry."
+            )
+
     risk_profile = _classify_risks(
         last_price=last,
         vwap=vwap_last,
@@ -3309,9 +3358,8 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     option_risk_context = build_day_option_risk_context(t, info)
 
-    _verdict_val = resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value
     entry_window = _compute_entry_window(
-        verdict=_verdict_val,
+        verdict=_internal_verdict,
         bias=bias,
         last=last,
         vwap=metrics.get("vwap") or 0.0,
@@ -3328,7 +3376,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     scan = DayTradeScan(
         ticker=t,
         company_name=company,
-        verdict=_verdict_val,
+        verdict=_internal_verdict,
         bias=bias,
         bull_score=round(bull, 2),
         bear_score=round(bear, 2),

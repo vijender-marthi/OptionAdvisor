@@ -196,7 +196,7 @@ export default function Sidebar() {
     { id: 'ticker-scanner',       label: 'Scanner',   icon: <ScanLine size={23} /> },
     { id: 'trade-command-center', label: 'Command',   icon: <Command size={23} /> },
     { id: 'day-trade-dashboard',  label: 'Dashboard', icon: <Gauge size={23} /> },
-    { id: 'positions',            label: 'Positions', icon: <Briefcase size={23} />, badge: openPositions || undefined },
+    { id: 'ticker',               label: 'Regular',   icon: <Layers size={23} /> },
   ]
   const mobileMoreItems: NavItem[] = [
     // Research
@@ -204,7 +204,7 @@ export default function Sidebar() {
     // Trade
     { id: 'day-trade',      label: 'Day Trade',      icon: <Zap size={18} /> },
     { id: 'swing-trade',    label: 'Swing Trade',    icon: <TrendingUp size={18} /> },
-    { id: 'ticker',         label: 'Position',       icon: <Layers size={18} /> },
+    { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
     // Discover
     { id: 'ai-stocks',      label: 'AI Stocks',      icon: <Bot size={18} /> },

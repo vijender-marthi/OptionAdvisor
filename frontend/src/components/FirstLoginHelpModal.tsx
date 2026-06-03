@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart2, Bell, Briefcase, ChevronLeft, ChevronRight, HelpCircle, Star, X } from 'lucide-react'
+import { BarChart2, Bell, Briefcase, ChevronLeft, ChevronRight, Command, HelpCircle, ListTodo, ScanLine, X } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import type { Page } from '../types'
 
@@ -22,37 +22,44 @@ export default function FirstLoginHelpModal() {
     page: Page
   }> = [
     {
+      icon: <ListTodo size={22} />,
+      title: 'Start with My Tickers',
+      body: 'Add tickers you want to follow. My Tickers is your starting point — every other feature pulls from this list.',
+      action: 'Open My Tickers',
+      page: 'my-tickers',
+    },
+    {
       icon: <BarChart2 size={22} />,
-      title: 'Start with Option Trade',
-      body: 'Enter a ticker to see market signals, option chain data, scored recommendations, and entry or exit guidance.',
-      action: 'Analyze a ticker',
+      title: 'Analyze a Stock for Options',
+      body: 'Select a ticker to see market signals, option chain data, scored recommendations with entry/exit guidance, and the AI Coach verdict card.',
+      action: 'Open Position Trading',
       page: 'ticker',
     },
     {
-      icon: <Star size={22} />,
-      title: 'Create your watchlist',
-      body: 'Add tickers you want to follow. OptionAdvisor refreshes watched tickers and uses cached data for alerts.',
-      action: 'Open Watchlist',
-      page: 'watchlist',
+      icon: <ScanLine size={22} />,
+      title: 'Scan for Setups',
+      body: 'Use Ticker Scanner to find trading opportunities sorted by relative strength. Add tickers to your watchlist for continuous monitoring.',
+      action: 'Open Scanner',
+      page: 'ticker-scanner',
     },
     {
-      icon: <Bell size={22} />,
-      title: 'Review GO alerts',
-      body: 'The Alerts page shows trades that pass the pre-trade checklist. Email alerts can be enabled with SendGrid or SMTP in server settings.',
-      action: 'View Alerts',
-      page: 'alert-center',
+      icon: <Command size={22} />,
+      title: 'Monitor the Trade Command Center',
+      body: 'The Command Center shows your overall market view, ready-to-act trades, and monitoring signals across all engines in one place.',
+      action: 'Open Command Center',
+      page: 'trade-command-center',
     },
     {
       icon: <Briefcase size={22} />,
-      title: 'Track portfolio positions',
-      body: 'Save recommendations to Portfolio so you can track open positions, strategy, expiry, contracts, and close status.',
+      title: 'Track Positions & Portfolio',
+      body: 'Add trades to your Portfolio to track open positions, P&L, exit plans, and close status. Day/week P&L filters show realized performance.',
       action: 'Open Portfolio',
-      page: 'portfolio',
+      page: 'positions',
     },
     {
       icon: <HelpCircle size={22} />,
-      title: 'Learn the trading logic',
-      body: 'The Help page explains strategy selection, scoring, filters, and what makes a trade pass or fail.',
+      title: 'Learn the Trading Logic',
+      body: 'The Help page explains every engine, strategy selection rules, scoring criteria, verdict thresholds, and what makes a trade pass or fail.',
       action: 'Open Help',
       page: 'help',
     },

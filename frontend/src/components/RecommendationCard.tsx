@@ -64,7 +64,7 @@ export interface TradeStateInfo {
   num:      string        // "STATE 2" | "STATE 1" | "WATCH" | "AVOID"
   label:    string        // "ENTRY" | "SETUP" | "WAIT" | "AVOID"
   sublabel: string        // one-line context
-  color:    'emerald' | 'amber' | 'sky' | 'red'
+  color:    'emerald' | 'blue' | 'amber' | 'sky' | 'red'
   action:   string        // what to do right now
   missing:  string[]      // what's not yet aligned
 }
@@ -96,12 +96,22 @@ export function deriveRegularTradeState(
   if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
   if (score < 70) missing.push(`score ≥70 (now ${score})`)
 
-  // AVOID — checked FIRST. Verdict is final — score and filters are irrelevant.
-  if (verdict === 'NO GO') {
+  // AVOID only when score is too low to support the trade and the checklist
+  // says NO GO. If the engine score is high (≥70), downgrade to WATCH instead
+  // of showing AVOID — avoids contradicting the overall GO verdict.
+  if (verdict === 'NO GO' && score < 70) {
     return {
       state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
       sublabel: `Score ${score} · Critical conditions not met`,
       action: 'Do not enter. Key conditions are not met for this setup.',
+      missing,
+    }
+  }
+  if (verdict === 'NO GO' && score >= 70) {
+    return {
+      state: 0, num: 'WATCH', label: 'WATCH', color: 'amber',
+      sublabel: `Score ${score} — checklist flagged but score supports GO`,
+      action: 'Monitor — conditions are borderline for this strategy.',
       missing,
     }
   }
@@ -121,7 +131,7 @@ export function deriveRegularTradeState(
   // STATE 1: SETUP — conditions mostly there, one or two things to wait on
   if ((verdict === 'GO' || verdict === 'CAUTION') && score >= 55 && rec.passes_liquidity_filter) {
     return {
-      state: 1, num: 'STATE 1', label: 'SETUP', color: 'amber',
+      state: 1, num: 'STATE 1', label: 'SETUP', color: 'blue',
       sublabel: `Score ${score} · Conditions forming`,
       action: 'Setup in progress. Wait for remaining conditions to align before entry.',
       missing,
@@ -471,6 +481,7 @@ export default function RecommendationCard({
 
   const statusStyle = (() => {
     if (tradeState.color === 'emerald') return { bg: C.greenDim, color: C.green, border: 'rgba(0,229,160,0.3)' }
+    if (tradeState.color === 'blue')    return { bg: '#1E3A5F', color: '#3B82F6', border: 'rgba(59,130,246,0.3)' }
     if (tradeState.color === 'amber')   return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
     if (tradeState.color === 'sky')     return { bg: C.purpleDim, color: C.purple, border: 'rgba(107,127,212,0.3)' }
     return { bg: C.redDim, color: C.red, border: 'rgba(255,77,109,0.3)' }

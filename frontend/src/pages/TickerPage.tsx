@@ -3,7 +3,7 @@ import { Search, Database, Layers, AlertTriangle } from 'lucide-react'
 import { analyzeOptions, analyzeV2 } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
-import RecommendationCard from '../components/RecommendationCard'
+import RecommendationCard, { deriveRegularTradeState } from '../components/RecommendationCard'
 import { isCacheFresh, cacheAge } from '../types'
 import TickerInput from '../components/TickerInput'
 import MarketOverview from '../components/MarketOverview'
@@ -861,10 +861,11 @@ export default function TickerPage() {
 
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        const recVerdict = deriveVerdict(buildChecklist(rec, selectedData.signals))
-                        const isAvoid = recVerdict === 'NO GO' || score < 40
-                        const status = isAvoid ? 'AVOID' : score >= 70 && allFilters && ivFit ? 'ENTER' : score >= 55 && rec.passes_liquidity_filter ? 'SETUP' : 'WATCH'
-                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? C.amber : status === 'WATCH' ? C.purple : C.red
+                        // Single trade state — used for BOTH the table badge AND the expanded card.
+                        const _v = deriveVerdict(buildChecklist(rec, displayData.signals))
+                        const tradeState = deriveRegularTradeState(rec, displayData.signals, _v)
+                        const status = tradeState.num === 'STATE 2' ? 'ENTER' : tradeState.num === 'STATE 1' ? 'SETUP' : tradeState.num
+                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WAIT' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (
                           <React.Fragment key={rec.rank}>
@@ -886,7 +887,7 @@ export default function TickerPage() {
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(245,166,35,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : 'rgba(255,77,109,0.08)' }}>{status}</span>
+                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : status === 'AVOID' ? 'rgba(255,77,109,0.08)' : 'rgba(245,166,35,0.08)' }}>{status}</span>
                                 </td>)}
                               </tr>
                             ))}

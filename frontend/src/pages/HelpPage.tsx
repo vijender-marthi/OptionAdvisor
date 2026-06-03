@@ -13,6 +13,34 @@ import { normalizeUserRole } from '../permissions'
 
 // ─── Nav structure ──────────────────────────────────────────────────
 
+// ─── Search index — section id → searchable keywords and snippets ───────────
+const SEARCH_INDEX: { id: string; label: string; keywords: string[] }[] = [
+  { id: 'access-roles',      label: 'Access Roles',           keywords: ['role', 'admin', 'user', 'superuser', 'permission', 'finance', 'access', 'login', 'account'] },
+  { id: 'overview',          label: 'Platform Overview',      keywords: ['overview', 'platform', 'what is', 'introduction', 'how it works', 'dashboard', 'tcc', 'command center'] },
+  { id: 'engine-arch',       label: 'Engine Architecture',    keywords: ['engine', 'architecture', 'signal', 'pipeline', 'how engine works', 'backend', 'scoring pipeline'] },
+  { id: 'trade-lifecycle',   label: 'Trade Lifecycle',        keywords: ['lifecycle', 'workflow', 'setup', 'watch', 'entry', 'manage', 'exit', 'close', 'trade flow'] },
+  { id: 'engine-states',     label: 'Engine States',          keywords: ['state', 'ready', 'watch', 'wait', 'avoid', 'no edge', 'verdict', 'state 2', 'state 1', 'entry state'] },
+  { id: 'execution-states',  label: 'Execution States',       keywords: ['execution', 'enter now', 'pending', 'hold', 'manage position', 'entry gate', 'confirmation'] },
+  { id: 'day-trade',         label: 'Day Trade Engine',       keywords: ['day trade', 'intraday', 'rvol', 'vwap', 'or high', 'or low', 'opening range', 'breakout', 'scalp', 'momentum', 'extension', 'chasing', 'spy', 'qqq', 'nvda', 'large cap', 'volume', 'day trade setup', '0dte', '1dte'] },
+  { id: 'swing-trade',       label: 'Swing Trade Engine',     keywords: ['swing', 'trend', 'ema', 'ma20', 'pullback', 'breakout swing', 'daily chart', 'multi day', 'swing verdict', 'swing setup', 'relative strength'] },
+  { id: 'vix-reference',     label: 'VIX Reference',          keywords: ['vix', 'volatility index', 'fear index', 'market fear', 'vix spike', 'vix 35', 'avoid vix'] },
+  { id: 'regular-engine',    label: 'Regular Engine',         keywords: ['regular', 'options engine', 'spread', 'iron condor', 'credit spread', 'debit spread', 'covered call', 'put spread', 'call spread', 'score', 'checklist', 'pop', 'ev', 'monthly', 'income'] },
+  { id: 'entry-guide',       label: 'Trade Entry Guide',      keywords: ['entry', 'when to enter', 'limit order', 'fill', 'entry price', 'how to enter', 'entry guide', 'atm', 'otm'] },
+  { id: 'options-funda',     label: 'Options Fundamentals',   keywords: ['options', 'call', 'put', 'strike', 'expiry', 'dte', 'premium', 'intrinsic', 'extrinsic', 'theta', 'delta', 'gamma', 'vega', 'iv', 'implied volatility', 'in the money', 'out of the money'] },
+  { id: 'strategy-glossary', label: 'Strategy Glossary',      keywords: ['glossary', 'long call', 'long put', 'bull call spread', 'bear put spread', 'straddle', 'strangle', 'iron condor', 'covered call', 'cash secured put', 'strategy list', 'definitions'] },
+  { id: 'validation',        label: 'Validation System',      keywords: ['validation', 'checklist', 'pre trade', 'hard fail', 'soft fail', 'filter', 'rr filter', 'liquidity filter', 'credit filter', 'iv fit'] },
+  { id: 'hard-soft-fail',    label: 'Hard Fail vs Soft Fail', keywords: ['hard fail', 'soft fail', 'fail', 'block', 'warning', 'critical', 'checklist fail', 'required condition'] },
+  { id: 'ev-pop-kelly',      label: 'EV / PoP / Kelly',       keywords: ['ev', 'expected value', 'pop', 'probability of profit', 'kelly', 'kelly criterion', 'half kelly', 'position sizing', 'edge', 'edge ratio'] },
+  { id: 'alerts',            label: 'Alert System',           keywords: ['alert', 'notification', 'email', 'watchlist alert', 'price alert', 'vwap alert', 'or break alert', 'set alert'] },
+  { id: 'range-analysis',    label: 'Range & R/R Analysis',   keywords: ['range', 'risk reward', 'rr', 'reward', 'risk', 'atr', 'daily range', 'r:r', 'stop loss', 'target', 'profit target'] },
+  { id: 'position-mgmt',     label: 'Position Management',    keywords: ['position', 'manage', 'portfolio', 'open position', 'close position', 'partial close', 'trail stop', 'exit plan', 'position center'] },
+  { id: 'market-summary',    label: 'Market Command Summary', keywords: ['market', 'summary', 'command center', 'market overview', 'spy trend', 'qqq trend', 'vix', 'market context', 'tcc'] },
+  { id: 'portfolio',         label: 'Portfolio Philosophy',   keywords: ['portfolio', 'philosophy', 'diversification', 'sizing', 'risk management', 'drawdown', 'capital', 'allocation'] },
+  { id: 'ui-ux-rules',       label: 'UI/UX Design Rules',     keywords: ['ui', 'ux', 'design', 'color', 'badge', 'card', 'layout', 'interface', 'dark mode', 'theme'] },
+  { id: 'verdict-card',      label: 'Verdict Card Scoring',   keywords: ['verdict', 'score', 'card', 'recommendation card', 'entry button', 'avoid button', 'state badge', 'scoring', 'total score'] },
+  { id: 'faq',               label: 'FAQ',                    keywords: ['faq', 'frequently asked', 'question', 'why', 'how', 'common question', 'troubleshoot'] },
+]
+
 const NAV_SECTIONS = [
   { id: 'access-roles',     label: 'Access Roles',              icon: Users },
   { id: 'overview',         label: 'Platform Overview',         icon: LayoutDashboard },
@@ -510,11 +538,35 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [embedded])
 
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    const q = searchQuery.toLowerCase().trim()
+    const scored = SEARCH_INDEX
+      .filter(entry => {
+        // Only show sections visible to this user
+        if (!visibleNavSections.find(s => s.id === entry.id)) return false
+        const labelMatch = entry.label.toLowerCase().includes(q)
+        const kwMatch = entry.keywords.some(k => k.toLowerCase().includes(q))
+        return labelMatch || kwMatch
+      })
+      .map(entry => {
+        const labelMatch = entry.label.toLowerCase().includes(q)
+        const kwMatches = entry.keywords.filter(k => k.toLowerCase().includes(q))
+        // Score: label match = high priority, keyword match = lower
+        const score = labelMatch ? 2 : kwMatches.length
+        const snippet = kwMatches.slice(0, 3).join(', ')
+        return { ...entry, score, snippet }
+      })
+      .sort((a, b) => b.score - a.score)
+    return scored
+  }, [searchQuery, visibleNavSections])
+
   const filteredNav = useMemo(() => {
     if (!searchQuery) return visibleNavSections
-    const q = searchQuery.toLowerCase()
-    return visibleNavSections.filter(s => s.label.toLowerCase().includes(q))
-  }, [searchQuery, visibleNavSections])
+    // When searching, show only sections that appear in results
+    const matchIds = new Set(searchResults.map(r => r.id))
+    return visibleNavSections.filter(s => matchIds.has(s.id))
+  }, [searchQuery, visibleNavSections, searchResults])
 
   // Preserve the role check (keep ai-radar section hidden for finance accounts)
   const showAiRadar = true // Help is open-docs
@@ -536,7 +588,47 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
           onChange={e => setSearchQuery(e.target.value)}
           className="w-full rounded-lg bg-gray-900 border border-gray-800 pl-8 pr-3 py-1.5 text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50"
         />
+        {searchQuery.trim() && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+          >
+            <X size={11} />
+          </button>
+        )}
       </div>
+      {searchResults.length > 0 && (
+        <div className="mt-2 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
+          <div className="px-2.5 py-1.5 border-b border-gray-800 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {searchResults.map(r => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  document.getElementById(r.id)?.scrollIntoView({ behavior: 'smooth' })
+                  setActiveSection(r.id)
+                  setSidebarOpen(false)
+                }}
+                className="w-full text-left px-2.5 py-2 hover:bg-gray-900 border-b border-gray-800/50 last:border-0 transition-colors"
+              >
+                <div className="text-xs font-semibold text-violet-300">{r.label}</div>
+                {r.snippet && (
+                  <div className="text-[10px] text-gray-500 mt-0.5 truncate">{r.snippet}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {searchQuery.trim() && searchResults.length === 0 && (
+        <div className="mt-2 rounded-lg border border-gray-800 bg-gray-950 px-3 py-3 text-[11px] text-gray-600 text-center">
+          No results for "{searchQuery}"
+        </div>
+      )}
     </div>
   )
 
@@ -930,85 +1022,55 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
 
               <DocCard icon={<Zap size={15} />} title="Overview & Verdict Scale">
                 <p className="text-xs text-gray-400 leading-relaxed mb-3">
-                  Intraday scoring engine using 1-minute RTH bars (9:30–16:00 ET). Produces a <strong className="text-gray-200">bull score</strong> and
-                  <strong className="text-gray-200"> bear score</strong>. Net edge + margin determines the verdict.
+                  Intraday scoring engine using 1-minute RTH bars (9:30–16:00 ET). Produces a <strong className="text-gray-200">bull score</strong> and <strong className="text-gray-200">bear score</strong>. Net edge + margin + post-verdict gate determines the final verdict.
                 </p>
-                <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'NO-GO'].map((v, i, a) => (
+                <div className="flex flex-wrap items-center gap-2 text-[11px] mb-3">
+                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'AVOID'].map((v, i, a) => (
                     <div key={v} className="flex items-center gap-2">
                       <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 font-mono font-bold text-gray-200">{v}</span>
                       {i < a.length - 1 && <ChevronRight size={11} className="text-gray-700" />}
                     </div>
                   ))}
                 </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">Two-stage verdict:</strong> resolve_verdict() computes a raw verdict from scores, then a post-verdict gate overrides it if contextual signals contradict — extension, no soft edge, or VWAP structural mismatch all force a downgrade.
+                </div>
               </DocCard>
 
               <DocCard icon={<Activity size={15} />} title="Step 1: Data Fetch">
                 <div className="space-y-2 text-xs text-gray-400">
-                  <div className="space-y-1">
-                    <p><strong className="text-gray-300">Source:</strong> Yahoo Finance 1-minute bars, last 5 days, auto-adjusted</p>
-                    <p><strong className="text-gray-300">Minimum bars:</strong> 25 (MIN_BARS)</p>
-                    <p><strong className="text-gray-300">Session:</strong> Most recent calendar day with RTH bars</p>
-                  </div>
+                  <p><strong className="text-gray-300">Source:</strong> Yahoo Finance 1-minute bars, last 5 days, auto-adjusted</p>
+                  <p><strong className="text-gray-300">Minimum bars:</strong> 25 (MIN_BARS)</p>
+                  <p><strong className="text-gray-300">Session:</strong> Most recent calendar day with RTH bars (9:30–16:00 ET)</p>
+                  <p><strong className="text-gray-300">Index context:</strong> SPY and QQQ daily % change fetched separately for market bias</p>
                 </div>
               </DocCard>
 
               <DocCard icon={<Layers size={15} />} title="Step 2: Indicators Computed">
-                <div className="space-y-4 text-xs text-gray-400">
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2a. VWAP</div>
-                    <p>Cumulative volume-weighted average price from session open:</p>
-                    <ul className="space-y-0.5 pl-3 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>TP = (High + Low + Close) / 3</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>VWAP[bar i] = Σ(TP × Volume)[0..i] / Σ(Volume)[0..i]</span></li>
-                    </ul>
-                    <p className="text-gray-500">Zero-volume bars contribute 0. If all volume is zero → VWAP signals suppressed.</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2b. VWAP Slope</div>
-                    <p>Linear regression over last 15 bars of the VWAP series:</p>
-                    <FormulaBlock formula="x = [0, 1, 2, ..., 14]\nslope = polyfit(x, VWAP[-15:], degree=1)[0]\nvwap_slope_pct = slope / VWAP_last × 100" />
-                    <p className="text-gray-500">Thresholds: <span className="font-mono text-gray-300">&gt;+0.001%/bar</span> = rising, <span className="font-mono text-gray-300">&lt;-0.001%/bar</span> = declining, else flat.</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2c. Opening Range (OR)</div>
-                    <p>OR window: first 15 bars (OR_MINUTES) of the session</p>
-                    <ul className="space-y-0.5 pl-3 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR High = max(High) over bars 0..14</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>OR Low = min(Low) over bars 0..14</span></li>
-                    </ul>
-                    <p className="text-gray-400 mt-1"><strong className="text-gray-300">or_state:</strong> "above" if last &gt; OR High, "below" if last &lt; OR Low, "inside" otherwise. Re-evaluated every bar.</p>
-                    <p className="text-gray-400"><strong className="text-gray-300">or_historical:</strong> permanent flag — set only when a post-OR bar <em>closes</em> beyond the OR level AND prints a volume spike (≥1.55× avg_vol) on that same bar. A wick or low-volume poke does not qualify. Once set, it never resets during the session — this is the one-time volume gate.</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2d. Momentum (30-bar window)</div>
-                    <p><span className="font-mono text-gray-300">mom_bars = min(30, len(session) - 1)</span></p>
-                    <p><span className="font-mono text-gray-300">momentum_pct = (last / close[-mom_bars] − 1) × 100</span></p>
-                    <p className="text-gray-500">At 1 bar/minute this covers the last ~30 minutes of price movement.</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2e. Volume Spike</div>
-                    <p>Baseline: mean volume of mid-session bars (after OR, excluding final bar):</p>
-                    <ul className="space-y-0.5 pl-3 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>avg_vol = mean(Volume[15 : -1])</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>vol_spike = (last_bar_volume &ge; 1.55 × avg_vol)</span></li>
-                    </ul>
-                  </div>
-
+                <div className="space-y-3 text-xs text-gray-400">
+                  {[
+                    { title: '2a. VWAP + Standard Deviation Bands', body: 'Cumulative session VWAP using volume-weighted typical price. Bands at ±1σ and ±2σ computed from volume-weighted variance. Used for position classification, extension detection, and chasing guard.' },
+                    { title: '2b. Opening Range (first 15×1m candles)', body: 'OR High = max(High, first 15 bars). OR Low = min(Low, first 15 bars). OR state: "above" | "below" | "inside". OR historical: "broke_up" | "broke_down" | "contained". Data not available during first 15 minutes of session.' },
+                    { title: '2c. Volume', body: 'Cumulative session volume vs time-adjusted expected volume (based on 20-day ADV profile). RVOL = cumulative / expected. vol_spike = last bar volume ≥ 1.55× median.' },
+                    { title: '2d. Momentum', body: 'momentum_pct = (last − open) / open × 100. Measures intraday directional force from session open.' },
+                    { title: '2e. Macro VWAP Slope', body: 'VWAP slope over last 60 bars (macro) and 15 bars (micro). Rising slope = institutional accumulation. Falling slope = distribution.' },
+                    { title: '2f. RS vs QQQ', body: 'rs_vs_qqq_pct = (stock % change) − (QQQ % change). Positive = outperforming tech benchmark. Key signal for large-cap names.' },
+                  ].map(s => (
+                    <div key={s.title} className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5">
+                      <div className="font-semibold text-gray-200 text-[11px] mb-1">{s.title}</div>
+                      <p className="text-gray-500">{s.body}</p>
+                    </div>
+                  ))}
                 </div>
               </DocCard>
 
-              <DocCard icon={<Sigma size={15} />} title="Step 3: Scoring">
+              <DocCard icon={<Sigma size={15} />} title="Step 3: Scoring — Correlation-Aware Groups">
+                <p className="text-xs text-gray-500 mb-3">Signals are grouped by statistical correlation. Each group contributes at most 3.0 to the final score. Correlated signals (e.g. OR breakout + secondary breakout) can't inflate the total.</p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                        <th className="px-2 py-1.5 font-semibold">#</th>
+                        <th className="px-2 py-1.5 font-semibold">Group</th>
                         <th className="px-2 py-1.5 font-semibold">Signal</th>
                         <th className="px-2 py-1.5 font-semibold">Condition</th>
                         <th className="px-2 py-1.5 font-semibold">Points</th>
@@ -1016,21 +1078,25 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     </thead>
                     <tbody>
                       {[
-                        ['1', 'VWAP position', 'price > VWAP', 'bull += 2.0'],
-                        ['1a', 'VWAP slope up', 'rising (&gt;+0.001%/bar)', 'bull += 0.5'],
-                        ['1b', 'VWAP slope down', 'declining (&lt;-0.001%/bar)', 'bull −= 0.5'],
-                        ['2', 'OR breakout (confirmed)', 'or_state=above + vol_spike', 'bull += 3.0'],
-                        ['2', 'OR breakout (unconfirmed)', 'or_state=above, no spike', 'bull += 1.0'],
-                        ['3', 'Momentum', 'mom_pct &gt; +0.12%', 'bull += 1.5'],
-                        ['4', 'Volume spike', 'vol &gt; 1.55× avg', 'bull += 1.5'],
-                        ['5', 'RS vs QQQ', 'outperforms QQQ &ge;+0.5%', 'bull += 1.0'],
-                        ['5a', 'RS squeeze guard', 'RS&ge;+0.5% but SPY+QQQ down &ge;0.5%', 'bull += 0.5'],
-                        ['6', 'SPY session', 'SPY &ge; +0.25%', 'bull += 0.5'],
-                        ['7', 'VIX caution', 'VIX &ge; 30.0', 'bull −= 0.5 (floor 0)'],
-                        ['8', 'Daily trend aligns', 'swing GO aligns with bias', 'bull += 0.5'],
-                        ['8a', 'Daily trend conflict', 'swing GO opposes bias', 'bull −= 0.5'],
-                      ].map(r => (
-                        <tr key={r[0] + r[1]} className="border-b border-gray-800/40 text-[11px]">
+                        ['vwap', 'VWAP position', 'price > VWAP (above band)', 'bull += 2.0'],
+                        ['vwap', 'VWAP slope up', 'rising macro slope', 'bull += 0.5'],
+                        ['vwap', 'VWAP slope down', 'declining macro slope', 'bull −= 0.5'],
+                        ['vwap', 'At +2σ, strong momentum', 'vol_spike + RVOL ≥ thresh + mom > 0.5%', 'bull += 0.5'],
+                        ['vwap', 'At +2σ, low volume', 'no vol_spike', 'bear += 1.0 (fade risk)'],
+                        ['breakout', 'OR breakout confirmed', 'or_state=above + vol_spike', 'bull += 3.0'],
+                        ['breakout', 'OR breakout unconfirmed', 'or_state=above, no spike', 'bull += 1.0'],
+                        ['momentum', 'Momentum strong', 'mom_pct > +0.12%', 'bull += 1.5'],
+                        ['volume', 'RVOL high', 'RVOL ≥ HIGH_THRESH', 'side += 1.0'],
+                        ['volume', 'RVOL elevated', 'RVOL ≥ ELEV_THRESH', 'side += 0.5'],
+                        ['rs', 'RS vs QQQ', 'outperforms ≥ +0.5%', 'bull += 1.0'],
+                        ['rs', 'RS squeeze guard', 'RS ≥ +0.5% but mkt down', 'bull += 0.5'],
+                        ['market', 'SPY session', 'SPY ≥ +0.25%', 'bull += 0.5'],
+                        ['market', 'VIX caution', 'VIX ≥ 30.0', '−= 0.5 both sides'],
+                        ['market', 'VIX elevated', 'VIX ≥ 40.0 → veto', 'bull = 0, AVOID'],
+                        ['swing_context', 'Daily trend aligns', 'swing GO = same bias', 'bias side += 0.5'],
+                        ['swing_context', 'Daily trend conflicts', 'swing GO = opposite', 'bias side −= 0.5'],
+                      ].map((r, i) => (
+                        <tr key={i} className="border-b border-gray-800/40 text-[11px]">
                           <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
                           <td className="px-2 py-1.5 font-semibold text-gray-200">{r[1]}</td>
                           <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
@@ -1040,18 +1106,65 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors: same rules flipped (price below VWAP, below OR Low, negative momentum, etc.)</p>
+                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors the bull rules. Max group score = 3.0.</p>
               </DocCard>
 
-              <DocCard icon={<Gauge size={15} />} title="Step 4: Verdict Logic">
+              <DocCard icon={<AlertTriangle size={15} />} title="SPY / QQQ / Large-Cap RVOL Rules">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <p>SPY, QQQ, NVDA, AAPL, MSFT, AMZN, META, GOOGL, TSLA trade 50M–500M shares daily. A 3× RVOL is structurally impossible. The engine uses differentiated thresholds.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-3 py-2">Tier</th>
+                          <th className="px-3 py-2">HIGH threshold</th>
+                          <th className="px-3 py-2">ELEVATED threshold</th>
+                          <th className="px-3 py-2">Primary signal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Small / Mid cap (AMD, AVGO, ARM…)', '2.5×', '1.5×', 'RVOL alone'],
+                          ['Large-cap liquid (SPY, QQQ, NVDA…)', '1.5×', '1.3×', 'VWAP + RS vs SPY + structure'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-3 py-2 text-gray-200 font-semibold">{r[0]}</td>
+                            <td className="px-3 py-2 font-mono text-emerald-400">{r[1]}</td>
+                            <td className="px-3 py-2 font-mono text-amber-400">{r[2]}</td>
+                            <td className="px-3 py-2 text-gray-400">{r[3]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="rounded-lg border border-sky-800/40 bg-sky-950/20 px-3 py-2 space-y-1">
+                    <p className="text-[11px] font-semibold text-sky-300">What replaces RVOL for large caps:</p>
+                    <ul className="space-y-1 text-gray-400">
+                      {[
+                        ['Price vs VWAP', 'above and holding = long bias; below and rejected = short bias'],
+                        ['RS vs SPY/QQQ', 'NVDA holding green while SPY dips = institutional support'],
+                        ['Market structure', 'higher highs / higher lows on 5-min chart confirms momentum'],
+                        ['VWAP extra weight', '+0.5 added to VWAP group score for large-cap names'],
+                      ].map(([k, v]) => (
+                        <li key={k} className="flex gap-2 text-[10px]">
+                          <span className="font-semibold text-gray-300 shrink-0">{k}:</span>
+                          <span>{v}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Gauge size={15} />} title="Step 4: Verdict Logic — Two-Stage">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="grid gap-2 sm:grid-cols-3">
                     {[
                       { label: 'GO_THRESHOLD', value: '4.5' },
                       { label: 'MARGIN_GO', value: '2.75' },
-                      { label: 'STRONG_BULL', value: '7.0' },
-                      { label: 'STRONG_DIFF', value: '4.0' },
                       { label: 'VIX_NO_GO', value: '40.0' },
+                      { label: 'RVOL_HIGH', value: '2.5× (small)' },
+                      { label: 'RVOL_HIGH_LC', value: '1.5× (large)' },
                       { label: 'VIX_CAUTION', value: '30.0' },
                     ].map(t => (
                       <div key={t.label} className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
@@ -1060,23 +1173,29 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </div>
                     ))}
                   </div>
-                  <p className="text-gray-400"><strong className="text-gray-200">soft_edge</strong> = max(bull, bear) &ge; 4.5 AND |bull − bear| &ge; 2.75</p>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Vetoes (checked first):</p>
-                    <ul className="space-y-0.5 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX &ge; 40 → NO-GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />bull&gt;bear + SPY &le; −1.2% → NO-GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />bear&gt;bull + SPY &ge; +1.2% → NO-GO</li>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1.5">
+                    <p className="font-semibold text-gray-200 text-[11px]">Stage 1 — resolve_verdict() (score-based):</p>
+                    <ul className="space-y-0.5 text-gray-500 text-[11px]">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX ≥ 35 → AVOID (any engine)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />score &lt; 3.0 → NO_EDGE</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />score &lt; 5.0 → WAIT</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />score ≥ 8.0 + vol_spike + OR breakout → STRONG_GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />score ≥ 6.0 → GO</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />score ≥ 4.5 → WATCH</li>
                     </ul>
                   </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">If soft_edge + long bias:</p>
-                    <ul className="space-y-0.5 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />vol_spike + bull &ge; 7.0 + diff &ge; 4.0 → STRONG GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />vol_spike + below STRONG threshold → GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />no vol_spike → WATCH</li>
+
+                  <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 space-y-1.5">
+                    <p className="font-semibold text-amber-300 text-[11px]">Stage 2 — Post-verdict gate (override when signals contradict):</p>
+                    <p className="text-[10px] text-gray-500 mb-1">GO only survives if contextual evidence supports it. Every rule here downgrades, never upgrades.</p>
+                    <ul className="space-y-0.5 text-gray-400 text-[11px]">
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" /><strong className="text-gray-300">is_chasing OR edge_state EXHAUSTED/LATE</strong> → GO→WAIT (extension detected)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" /><strong className="text-gray-300">soft_edge = False</strong> → GO→WAIT (bull/bear scores too close)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" /><strong className="text-gray-300">long bias + price below VWAP</strong> → GO→WATCH (wait for VWAP reclaim)</li>
+                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" /><strong className="text-gray-300">short bias + price above VWAP</strong> → GO→WATCH (wait for VWAP rejection)</li>
                     </ul>
-                    <p className="text-gray-500 mt-1">If not soft_edge → WAIT</p>
+                    <p className="text-[10px] text-amber-200/60 mt-1">Each downgrade appends a body message explaining the reason. Tags like "EXTENSION" and "No clean edge" are the visual output of these gate conditions.</p>
                   </div>
                 </div>
               </DocCard>
@@ -1085,16 +1204,16 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <div className="space-y-3 text-xs text-gray-400">
                   <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
                     <p className="font-semibold text-gray-200 text-[11px]">Inputs</p>
-                    <p className="text-gray-500 font-mono">Last: $152.40 | VWAP: $150.80 (rising +0.0213%/bar) | OR High: $151.20 | OR Low: $149.80</p>
-                    <p className="text-gray-500 font-mono">or_state: "above" | vol_spike: True (2.02×) | momentum_pct: +1.465%</p>
-                    <p className="text-gray-500 font-mono">SPY: +0.45% | QQQ: +0.60% | rs_vs_qqq: +1.45% | VIX: 18.5</p>
-                    <p className="text-gray-500 font-mono">daily_trend_context: bias=long, verdict=GO</p>
+                    <p className="text-gray-500 font-mono text-[10px]">Last: $152.40 | VWAP: $150.80 (rising) | OR High: $151.20 | OR Low: $149.80</p>
+                    <p className="text-gray-500 font-mono text-[10px]">or_state: "above" | vol_spike: True | momentum_pct: +1.47%</p>
+                    <p className="text-gray-500 font-mono text-[10px]">RVOL: 1.6× (large-cap HIGH ≥ 1.5×) | SPY: +0.45% | RS vs QQQ: +1.45% | VIX: 18.5</p>
+                    <p className="text-gray-500 font-mono text-[10px]">daily_trend: GO long | is_chasing: False | edge_state: EARLY</p>
                   </div>
-
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1 font-semibold">Group</th>
                           <th className="px-2 py-1 font-semibold">Signal</th>
                           <th className="px-2 py-1 font-semibold">Points</th>
                           <th className="px-2 py-1 font-semibold">Running</th>
@@ -1102,604 +1221,120 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </thead>
                       <tbody>
                         {[
-                          ['VWAP + slope', '2.0 + 0.5 = 2.5', 'bul 2.5'],
-                          ['OR breakout (confirmed)', '3.0', 'bul 5.5'],
-                          ['Momentum', '1.5', 'bul 7.0'],
-                          ['Volume spike', '1.5', 'bul 8.5'],
-                          ['RS vs QQQ', '1.0', 'bul 9.5'],
-                          ['SPY daily', '0.5', 'bul 10.0'],
-                          ['Daily trend aligns', '0.5', 'bul 10.5'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
-                            <td className="px-2 py-1.5 font-mono text-emerald-300">{r[1]}</td>
-                            <td className="px-2 py-1.5 font-mono text-gray-400">{r[2]}</td>
+                          ['vwap', 'VWAP above + slope + LC extra', '2.0 + 0.5 + 0.5', 'bull 3.0'],
+                          ['breakout', 'OR breakout confirmed', '3.0 (capped)', 'bull 6.0'],
+                          ['momentum', 'Momentum strong', '1.5', 'bull 7.5'],
+                          ['volume', 'RVOL 1.6× (LC HIGH ≥ 1.5×)', '1.0', 'bull 8.5'],
+                          ['rs', 'RS vs QQQ +1.45%', '1.0', 'bull 9.5'],
+                          ['market', 'SPY +0.45%', '0.5', 'bull 10.0'],
+                          ['swing_context', 'Daily trend aligns', '0.5', 'bull 10.5'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
+                            <td className="px-2 py-1.5 text-gray-200">{r[1]}</td>
+                            <td className="px-2 py-1.5 font-mono text-emerald-300">{r[2]}</td>
+                            <td className="px-2 py-1.5 font-mono text-gray-400">{r[3]}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-emerald-950/20 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px]">Result</p>
-                    <p className="text-gray-400">bull = 10.5, bear = 0.0, diff = 10.5</p>
-                    <p className="text-gray-400">soft_edge = True, long_edge = True, vol_spike = True</p>
-                    <p className="text-gray-400">strong_ok: bull(10.5) &ge; 7.0 ✓ AND diff(10.5) &ge; 4.0 ✓</p>
-                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Verdict: STRONG GO, bias: long</p>
+                  <div className="rounded-lg border border-gray-800 bg-emerald-950/20 px-3 py-2 space-y-0.5">
+                    <p className="font-semibold text-emerald-300 text-[11px]">Stage 1: STRONG GO (score 10.5, vol_spike, OR above)</p>
+                    <p className="text-gray-400 text-[11px]">Stage 2 gate: is_chasing=False, edge_state=EARLY, price above VWAP ✓</p>
+                    <p className="text-emerald-400 font-bold text-[11px]">→ Final verdict: STRONG GO (gate did not fire)</p>
                   </div>
+                </div>
+              </DocCard>
 
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Normalized Score</p>
-                    <p className="text-gray-500 font-mono">raw = 10.5, GO_THRESHOLD = 4.5, STRONG_BULL = 7.0</p>
-                    <p className="text-gray-500 font-mono">raw &ge; 7.0 → norm = 85 + (10.5 − 7.0) / 2.5 × 15 = 100</p>
-                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Normalized score: 100</p>
+              <DocCard icon={<FlaskConical size={15} />} title="Step 5b: Gate Fired Example (NVDA, Extension)">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">Same inputs but: price above +2σ, daily range 82% used</p>
+                    <p className="text-gray-500 font-mono text-[10px]">Last: $162.40 (+6.5% on day) | VWAP: $150.80 | price above +2σ ($158.00)</p>
+                    <p className="text-gray-500 font-mono text-[10px]">is_chasing: True | edge_state: EXHAUSTED | daily_range_used: 82%</p>
                   </div>
+                  <div className="rounded-lg border border-red-800/40 bg-red-950/20 px-3 py-2 space-y-0.5">
+                    <p className="font-semibold text-red-300 text-[11px]">Stage 1: STRONG GO (score still 10.5 — raw score unchanged)</p>
+                    <p className="text-gray-400 text-[11px]">Stage 2 gate: is_chasing=True → override fires</p>
+                    <p className="text-red-400 font-bold text-[11px]">→ Final verdict: WAIT</p>
+                    <p className="text-gray-500 text-[11px]">Body: "Verdict downgraded GO→WAIT: extension/chasing detected (EXHAUSTED)…"</p>
+                  </div>
+                  <p className="text-[11px] text-gray-500">This is the NVDA pattern the engine now correctly catches. Tags "EXTENSION" and "No clean edge" are the visible output of gate conditions firing.</p>
                 </div>
               </DocCard>
 
               <DocCard icon={<Layers size={15} />} title="4-State Trading System & Entry Authorization">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <p>The Day Trade engine organizes the trade lifecycle into four deterministic states. State 3 has two sub-states depending on whether price is at the peak or pulling back from it.</p>
+                  <p>The Day Trade engine organizes the trade lifecycle into four deterministic states. State transitions are one-way within a session.</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
-                      { state: '🟡 State 1 — SETUP', desc: 'Watch / Prepare. Price has not yet broken above ORH (or below ORL). No entry allowed. Includes: WAIT_FOR_BREAKOUT, WAIT_FOR_VWAP_HOLD, MONITORING.' },
-                      { state: '🟢 State 2 — ENTRY', desc: 'Execution Gate. Price has crossed the OR but volume is not yet confirmed, or price pulled back inside the OR after a confirmed breakout. Includes: WAIT_FOR_VOLUME, VWAP_TEST.' },
-                      { state: '🔵 State 3 — IN-PLAY', desc: 'Management Mode. ENTRY_ACTIVE: all gates clear, entry open. ENTRY_PULLBACK: price has retreated ≥0.30% from session high/low — hold existing position, no new entries, Entry Gate shows amber HOLD badge.' },
-                      { state: '🔴 State 4 — EXIT', desc: 'Completion / Reset. Stop hit, target reached, structure broken, or EOD_CLOSING (last 10 min — 15:50–16:00 ET). No new entries under any condition.' },
-                    ].map(c => (
-                      <div key={c.state} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.state}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      { state: 'State 1 — MONITORING', color: 'text-sky-400', badge: 'bg-sky-900/30 border-sky-700', desc: 'Opening range forming or no clear edge yet. VWAP direction not confirmed. Wait — no entries.', cond: 'session_minutes < 15 OR no soft_edge OR price inside OR' },
+                      { state: 'State 2 — WAIT_FOR_VOLUME', color: 'text-amber-400', badge: 'bg-amber-900/30 border-amber-700', desc: 'Soft edge present. Direction is leaning. Waiting for volume expansion to confirm breakout.', cond: 'soft_edge=True but vol_spike=False' },
+                      { state: 'State 3 — ENTRY_ACTIVE', color: 'text-emerald-400', badge: 'bg-emerald-900/30 border-emerald-700', desc: 'All conditions met. Volume confirmed. Enter now. Stop at VWAP or OR Low/High.', cond: 'soft_edge=True AND vol_spike=True AND or_state=above/below' },
+                      { state: 'State 3b — ENTRY_PULLBACK', color: 'text-violet-400', badge: 'bg-violet-900/30 border-violet-700', desc: 'Price pulled back from peak after State 3. Hold existing positions. No new entries until price recovers within 0.30% of peak.', cond: 'was ENTRY_ACTIVE, price dropped from peak' },
+                      { state: 'State 4 — EOD_CLOSING', color: 'text-red-400', badge: 'bg-red-900/30 border-red-800', desc: 'Last 10 minutes (≥ 15:50 ET). Exit all intraday positions. No new entries regardless of signal quality.', cond: 'session_minutes ≥ 380' },
+                    ].map(s => (
+                      <div key={s.state} className={`rounded-lg border px-3 py-2.5 space-y-1 ${s.badge}`}>
+                        <div className={`text-[11px] font-bold ${s.color}`}>{s.state}</div>
+                        <p className="text-[11px] text-gray-300">{s.desc}</p>
+                        <p className="text-[10px] text-gray-600 font-mono">{s.cond}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="rounded-lg border border-sky-800/30 bg-sky-950/10 px-3 py-2 space-y-1.5">
-                    <p className="font-semibold text-sky-300 text-[11px]">Volume One-Time Gate</p>
-                    <p className="text-[10px] text-gray-400">or_historical is set once when a post-OR bar closes beyond ORH/ORL with a volume spike. After that, quiet bars do not revert you from State 3 to State 2 — the gate already fired. Only three things drop you out of State 3: price falls back through ORH/ORL (State 2), price loses VWAP (State 1), or you hit TP/SL.</p>
-                  </div>
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2 space-y-1.5">
-                    <p className="font-semibold text-amber-300 text-[11px]">Confirmed Breakout Retrace — State 2, Not State 1</p>
-                    <p className="text-[10px] text-gray-400">If or_historical = "broke_up" (volume confirmed) but price closes back inside the OR, the state is WAIT_FOR_VOLUME (State 2) — not WAIT_FOR_BREAKOUT (State 1). The stock already proved itself once. It needs to reclaim ORH again, not wait for a first breakout.</p>
-                  </div>
-                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
-                    <p className="font-semibold text-emerald-300 text-[11px]">Entry Authorization Rule</p>
-                    <p className="text-gray-400 text-[10px] mt-1">Entry Gate shows ENTER NOW only when: state = ENTRY_ACTIVE, all confirmations cleared, and session phase is not EOD_CLOSING. ENTRY_PULLBACK shows HOLD — MANAGE POSITION (amber). EOD_CLOSING shows no entry regardless of setup quality.</p>
-                  </div>
                 </div>
               </DocCard>
 
-              <DocCard icon={<Activity size={15} />} title="Action Badge Reference — What Each State Shows">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>The single <strong className="text-gray-200">Action</strong> badge at the top of the Day Trade engine panel tells you exactly what to do at each stage. It is driven by the 4-state system, not the raw engine verdict.</p>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[10px] border-collapse">
-                      <thead>
-                        <tr className="border-b border-gray-700">
-                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">State</th>
-                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">Volume?</th>
-                          <th className="text-left py-1.5 pr-3 text-gray-500 font-semibold">ACTION badge</th>
-                          <th className="text-left py-1.5 text-gray-500 font-semibold">What to do</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-800">
-                        {[
-                          { state: '1 · SETUP',   vol: '—',             action: 'Watch',         actionCls: 'text-sky-400',     todo: 'Monitor. No entry allowed.' },
-                          { state: '2 · ENTRY',   vol: 'Pending',       action: 'AWAIT VOLUME',  actionCls: 'text-amber-400',   todo: 'Setup formed — wait for volume spike to confirm.' },
-                          { state: '2 · ENTRY',   vol: '✅ Confirmed',  action: '⚡ ENTER NOW',  actionCls: 'text-emerald-400 font-black', todo: 'Pull the trigger. This is the entry window.' },
-                          { state: '3 · IN-PLAY', vol: '✅ Confirmed',  action: 'MANAGE STOP',   actionCls: 'text-amber-400',   todo: 'Trade active. Manage stop. No new entries.' },
-                          { state: '4 · EXIT',    vol: '✅ Confirmed',  action: 'SCALE OUT',     actionCls: 'text-red-400',     todo: 'Close or scale out. EOD or stop triggered.' },
-                        ].map((r, i) => (
-                          <tr key={i} className={r.action.includes('ENTER NOW') ? 'bg-emerald-950/20' : ''}>
-                            <td className="py-1.5 pr-3 text-gray-300 font-semibold">{r.state}</td>
-                            <td className="py-1.5 pr-3 text-gray-400">{r.vol}</td>
-                            <td className={`py-1.5 pr-3 font-bold ${r.actionCls}`}>{r.action}</td>
-                            <td className="py-1.5 text-gray-400">{r.todo}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800/50 bg-gray-900/30 px-3 py-2 space-y-1">
-                    <p className="font-semibold text-gray-200 text-[11px]">All ACTION values</p>
-                    {[
-                      { label: 'Watch',        color: 'text-sky-400',     when: 'State 1 — setup forming, no entry' },
-                      { label: 'AWAIT VOLUME', color: 'text-amber-400',   when: 'State 2 — entry gate open, waiting for volume spike' },
-                      { label: '⚡ ENTER NOW', color: 'text-emerald-400', when: 'State 2 + volume confirmed — enter immediately' },
-                      { label: 'MANAGE STOP',  color: 'text-amber-400',   when: 'State 3 — trade active, trail stop, no new entries' },
-                      { label: 'SCALE OUT',    color: 'text-red-400',     when: 'State 4 — close or reduce at EOD' },
-                      { label: 'Avoid',        color: 'text-red-400',     when: 'Any state — hard fail or no edge' },
-                    ].map(v => (
-                      <div key={v.label} className="flex items-baseline gap-2">
-                        <span className={`font-bold text-[10px] w-36 shrink-0 ${v.color}`}>{v.label}</span>
-                        <span className="text-[10px] text-gray-500">{v.when}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2">
-                    <p className="font-semibold text-emerald-300 text-[11px]">Alert system — when you get notified</p>
-                    <div className="mt-1 space-y-1 text-[10px] text-gray-400">
-                      <p><strong className="text-gray-300">1 → 2 (State change):</strong> Setup advancing — entry gate is now open. Prepare to enter on volume.</p>
-                      <p><strong className="text-gray-300">2 → 3 (State change):</strong> Breakout confirmed — if you're not in, this is your last chance on the move.</p>
-                      <p><strong className="text-emerald-300">⚡ ENTER NOW:</strong> Fired once when State 2 + volume confirmed simultaneously. This is the primary entry alert — act immediately.</p>
-                    </div>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<FlaskConical size={15} />} title="STATE 3 Walkthrough — AMD Long Breakout Example">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>When the engine advances to STATE 3 (IN-PLAY) on a long setup, the panel shows three execution instructions. Here is how to read each one using a real AMD setup.</p>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
-                    <p className="font-semibold text-gray-200 text-[11px]">Setup snapshot</p>
-                    <p className="font-mono text-gray-500">Bias: LONG · VWAP $446.18 · ORH $447.58</p>
-                    <p className="font-mono text-gray-500">Action at trigger: break &amp; hold above ORH $447.58</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    {[
-                      {
-                        label: 'HOLD LONG',
-                        color: 'text-emerald-400',
-                        desc: 'Bias is long. The confirmed trade direction is long — not short. This field flips to HOLD SHORT on bearish setups.',
-                      },
-                      {
-                        label: 'TP $459.19',
-                        color: 'text-emerald-400',
-                        desc: 'Measured-move target — calculated from the opening range size projected above ORH. Scale out or fully exit here. In this case ~$11.61 above the ORH trigger.',
-                      },
-                      {
-                        label: 'trail ORH $447.58',
-                        color: 'text-sky-400',
-                        desc: 'Your trailing stop is the opening range high. Once you enter above $447.58, that level becomes support. If AMD closes back below $447.58, the breakout has failed — exit. You trail the structural level, not a fixed pip stop.',
-                      },
-                      {
-                        label: 'add on strength above $446.18',
-                        color: 'text-amber-400',
-                        desc: '$446.18 is VWAP. If AMD pulls back toward VWAP after the breakout and then bounces with a confirmation candle, that retest is your lower-risk add-on entry. You are adding at a tighter level while the ORH confirms as support above.',
-                      },
-                    ].map(r => (
-                      <div key={r.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className={`font-mono font-bold text-[11px] ${r.color}`}>{r.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{r.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1 font-mono text-[10px] text-gray-500">
-                    <p className="font-semibold text-gray-200 text-[11px] font-sans">Full trade sequence</p>
-                    <p>VWAP &nbsp; $446.18 &nbsp; ← secondary add-on level (pullback + bounce)</p>
-                    <p>ORH &nbsp;&nbsp; $447.58 &nbsp; ← primary entry trigger / trailing stop</p>
-                    <p>TP &nbsp;&nbsp;&nbsp; $459.19 &nbsp; ← measured-move target, scale out here</p>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
-                    <p className="font-semibold text-amber-300 text-[11px]">Key rule</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">The $1.40 gap between VWAP and ORH is your risk window. If AMD closes back below ORH after entry, stop out immediately — do not wait for it to reach VWAP. The trail is ORH, not VWAP.</p>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<AlertTriangle size={15} />} title="ENTRY_PULLBACK — Peak Detection & Pullback Guard">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>When State 3 (IN-PLAY) is active but price has retreated ≥0.30% from the session extreme, the engine shifts to <strong className="text-amber-300">ENTRY_PULLBACK</strong>. Structure is still intact — but entering here means buying the peak, not the breakout.</p>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: 'Trigger (Long)', desc: '(session_high − last_price) / session_high × 100 ≥ 0.30%. Session high already exceeded ORH with volume.' },
-                      { label: 'Trigger (Short)', desc: '(last_price − session_low) / session_low × 100 ≥ 0.30%. Session low already broke ORL with volume.' },
-                      { label: 'State chip', desc: 'Stays State 3 IN-PLAY (sky/blue) — structure is still above ORH / below ORL. Only the inner card and Entry Gate change.' },
-                      { label: 'Entry Gate', desc: 'Amber "HOLD — MANAGE POSITION" badge. should_now = HOLD (not YES). "No new entries" message shown.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1 font-mono text-[10px] text-gray-500">
-                    <p className="font-semibold text-gray-200 text-[11px] font-sans">Example — Long, ORH $150, session high $155</p>
-                    <p>$155.00 → ENTRY_ACTIVE &nbsp;&nbsp; Entry Gate: 🟢 ENTER NOW</p>
-                    <p>$154.54 → ENTRY_ACTIVE &nbsp;&nbsp; Entry Gate: 🟢 ENTER NOW  (0.29% retreat)</p>
-                    <p>$154.53 → ENTRY_PULLBACK  Entry Gate: 🟠 HOLD — MANAGE POSITION</p>
-                    <p>$149.99 → WAIT_FOR_VOLUME  (fell back inside OR, still above VWAP → State 2)</p>
-                    <p>$149.10 → WAIT_FOR_VWAP_HOLD  (lost VWAP → State 1)</p>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
-                    <p className="font-semibold text-amber-300 text-[11px]">What resets ENTRY_PULLBACK back to ENTRY_ACTIVE</p>
-                    <p className="text-[10px] text-gray-400 mt-1">Price must recover to within 0.30% of the session high (long) or session low (short). As soon as the retreat shrinks below the threshold, the full ENTRY_ACTIVE state and green ENTER NOW badge return automatically.</p>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Clock size={15} />} title="Session Phases & EOD Closing Block">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>The engine divides the RTH session (9:30–16:00 ET) into five phases. Each phase affects scoring and entry eligibility.</p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1.5 font-semibold">Phase</th>
-                          <th className="px-2 py-1.5 font-semibold">Time (ET)</th>
-                          <th className="px-2 py-1.5 font-semibold">Score effect</th>
-                          <th className="px-2 py-1.5 font-semibold">Entry allowed?</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-800/50">
-                        {[
-                          ['Opening', '9:30–10:00', 'None (OR still forming)', 'Yes — after OR establishes'],
-                          ['Mid-Morning', '10:00–11:30', 'None', 'Yes — prime breakout window'],
-                          ['Midday', '11:30–15:00', '−0.25 bull & bear', 'Yes — lower liquidity caution'],
-                          ['Power Hour', '15:00–15:50', '−0.5 bull & bear', 'Yes — must exit by 15:50'],
-                          ['EOD Closing', '15:50–16:00', '−1.0 bull & bear', '🚫 No — hard block, State 4 EXIT forced'],
-                        ].map(([phase, time, score, entry]) => (
-                          <tr key={phase} className={`text-[11px] ${phase === 'EOD Closing' ? 'bg-red-950/10' : ''}`}>
-                            <td className={`px-2 py-1.5 font-semibold ${phase === 'EOD Closing' ? 'text-red-300' : 'text-gray-300'}`}>{phase}</td>
-                            <td className="px-2 py-1.5 font-mono text-gray-500">{time}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{score}</td>
-                            <td className={`px-2 py-1.5 ${phase === 'EOD Closing' ? 'text-red-300 font-semibold' : 'text-gray-400'}`}>{entry}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="rounded-lg border border-red-800/30 bg-red-950/10 px-3 py-2">
-                    <p className="font-semibold text-red-300 text-[11px]">EOD Closing hard block (15:50–16:00)</p>
-                    <p className="text-[10px] text-gray-400 mt-1">Regardless of setup quality, score, or state — no new entries are permitted in the last 10 minutes. State is overridden to EOD_CLOSING, Entry Gate shows red State 4 EXIT chip. Exit rule changes from "close by 15:50" to "close NOW before 16:00." Spreads widen, reversals accelerate, and there is no time to manage a bad fill.</p>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Activity size={15} />} title="Signal Improvements (13 Additions)">
+              <DocCard icon={<Clock size={15} />} title="Session Phases & Time Rules">
                 <div className="space-y-2 text-xs text-gray-400">
-                  <p>Engine updates added the following signals and scoring improvements:</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-3 py-2">Phase</th>
+                          <th className="px-3 py-2">ET Time</th>
+                          <th className="px-3 py-2">PT Time</th>
+                          <th className="px-3 py-2">Rule</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Opening Range', '9:30–9:45', '6:30–6:45', 'OR forming — alerts suppressed for OR_BREAK/VWAP_RETEST'],
+                          ['OPENING', '9:30–10:00', '6:30–7:00', 'High volatility, setups still forming'],
+                          ['MID_AM', '10:00–11:30', '7:00–8:30', 'Prime entry window'],
+                          ['MIDDAY', '11:30–15:00', '8:30–12:00', '−0.25 score penalty, lower follow-through'],
+                          ['POWER_HOUR', '15:00–15:50', '12:00–12:50', '−0.5 score penalty, size down'],
+                          ['EOD_CLOSING', '15:50–16:00', '12:50–13:00', '−1.0 score penalty, no new entries'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-3 py-2 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-3 py-2 font-mono text-gray-400">{r[1]}</td>
+                            <td className="px-3 py-2 font-mono text-gray-500">{r[2]}</td>
+                            <td className="px-3 py-2 text-gray-400">{r[3]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Bell size={15} />} title="Price Alerts — OR Window Guard">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>Alerts for <strong className="text-gray-300">OR_BREAK</strong> and <strong className="text-gray-300">VWAP_RETEST</strong> are suppressed during the first 15 minutes (6:30–6:45 AM PT / 9:30–9:45 AM ET) because OR high/low and VWAP are not yet reliable. The alert activates automatically at 6:45 AM PT.</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
-                      { label: 'VWAP Band', desc: '±0.15% band around VWAP. Inside band = "testing," not "above/below." Distance-proportional scoring replaces binary check. VWAP_TEST state added.' },
-                      { label: 'OR Re-test', desc: 'Pullback holding ORH after breakout detected. +0.75 bull bonus. New ENTRY_RETEST state bypasses WAIT_FOR_VOLUME.' },
-                      { label: 'HH/HL Structure', desc: '5-bar swing point scan for higher highs/lows (bull) or lower lows/highs (bear). +0.75 bonus for confirmed structure.' },
-                      { label: 'Volume Median', desc: 'Baseline switched from mean to np.median. Single anomalous burst no longer inflates baseline and suppresses spike detection.' },
-                      { label: 'Pre-market Gap', desc: 'Uses previousClose and session open. Gap ≥1% directional bonus (+0.5). Gap fill proximity detected and reverses bonus.' },
-                      { label: 'OR Width', desc: '(or_high − or_low) / price × 100. Narrow (&lt;0.4%) = coiling +0.5 breakout bonus. Wide (&gt;1.5%) = −0.25 both sides.' },
-                      { label: 'RVOL', desc: 'Cumulative session volume vs time-adjusted avg daily volume. ≥2.5× → +1.0, ≥1.5× → +0.5, below → noted.' },
-                      { label: 'Dual VWAP Slope', desc: 'Micro 15-bar + macro 60-bar slopes. Macro aligned with bias → +0.5. Against bias → −0.5 structural caution.' },
-                      { label: 'Time-of-Day', desc: 'Five session phases. Opening (9:30–10:00): OR forming. Mid-Morning (10:00–11:30): prime breakout window. Midday (11:30–15:00): −0.25 both sides. Power Hour (15:00–15:50): −0.5 + EOD exit note. EOD Closing (15:50–16:00): hard block — no new entries, State 4 EXIT forced.' },
-                      { label: 'Adaptive Momentum', desc: 'Window adapts: 15 bars (&lt;60 in session), 30 bars (60–180), 45 bars (&gt;180). Avoids open-to-now noise early.' },
-                      { label: 'Secondary Breakout', desc: 'Counts distinct OR crossings. Second crossing with vol spike → +1.0. Higher conviction than first breakout.' },
-                      { label: 'False-Positive NO-GO Veto', desc: 'Compound veto fires when: OR never broken (contained) + RVOL < 0.75× + market bearish (SPY & QQQ both ≤ −0.25%). Prevents bullish CALL signal when the actual breakout trigger has never fired.' },
-                      { label: 'Bounce-Rejection Tiers', desc: 'After ORL breakdown, the engine detects WHERE a bounce gets rejected. VWAP rejection scores bear +1.2 (more bearish than ORL retest). See "Bounce-Rejection Entry Tiers" card below.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
+                      { type: 'OR_BREAK', desc: 'Fires once when price breaks the opening range high or low. Suppressed during first 15 min.' },
+                      { type: 'VWAP_RETEST', desc: 'Fires when price touches VWAP intraday. Suppressed during first 15 min.' },
+                      { type: 'RVOL', desc: 'Fires when RVOL crosses your threshold. Not suppressed — volume is reliable from bar 1.' },
+                      { type: 'PRICE_CROSS', desc: 'Fires when price crosses your level. Not suppressed — price is always reliable.' },
+                    ].map(a => (
+                      <div key={a.type} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+                        <code className="text-[10px] font-mono text-violet-300">{a.type}</code>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{a.desc}</p>
                       </div>
                     ))}
                   </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Layers size={15} />} title="Bounce-Rejection Entry Tiers (After ORL Breakdown)">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>
-                    After a breakdown below ORL, price often bounces. <strong className="text-gray-200">Where</strong> the bounce gets rejected
-                    determines the entry tier, stop placement, and target size. The engine detects four states via{' '}
-                    <code className="font-mono text-violet-300 text-[10px]">bounce_scenario</code>:
-                  </p>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1.5 font-semibold">Scenario</th>
-                          <th className="px-2 py-1.5 font-semibold">Meaning</th>
-                          <th className="px-2 py-1.5 font-semibold">Bear</th>
-                          <th className="px-2 py-1.5 font-semibold">Entry</th>
-                          <th className="px-2 py-1.5 font-semibold">Stop</th>
-                          <th className="px-2 py-1.5 font-semibold">Target</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['vwap_rejection', 'Bounce capped at VWAP (sellers stepped in early)', '+1.2', 'Near VWAP', 'Just above VWAP +0.2%', 'ORL'],
-                          ['orl_rejection_retest', 'Bounce reached ORL, now rejected', '+0.8', 'Near ORL', 'Just above ORL +0.2%', 'Below day low'],
-                          ['no_mans_land', 'Churning between VWAP and ORL', '—', 'WAIT', 'No clean stop', '—'],
-                          ['vwap_test', 'Approaching VWAP, volume unconfirmed', '—', 'WAIT', '—', '—'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
-                            <td className="px-2 py-1.5 font-mono text-rose-300">{r[2]}</td>
-                            <td className="px-2 py-1.5 text-gray-300">{r[3]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[4]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[5]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 space-y-1.5">
-                    <p className="font-semibold text-amber-300 text-[11px]">Key insight — VWAP rejection is MORE bearish, not less</p>
-                    <p className="text-[10px] text-gray-400 leading-relaxed">
-                      When sellers are so aggressive that they reject a bounce <em>before</em> it even reaches ORL, that's a sign of heavy
-                      selling pressure — stronger than a bounce that gets all the way to ORL. The engine scores <code className="font-mono text-violet-300">vwap_rejection</code> at
-                      bear +1.2 vs <code className="font-mono text-violet-300">orl_rejection_retest</code> at +0.8 to reflect this.
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1">
-                    <p className="font-semibold text-gray-200 text-[11px]">Detection thresholds</p>
-                    <ul className="space-y-0.5 pl-3 text-gray-500 text-[10px]">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">VWAP rejection:</strong> or_historical = broke_down, or_state = below, price within ±0.45% of VWAP, price &gt;0.55% below ORL, vol_spike = true</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">ORL retest:</strong> same breakdown conditions, price within 0.55% of ORL from below, price &gt;0.3% below VWAP</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><strong className="text-gray-300">No-man's land:</strong> price more than 0.55% below ORL AND more than 0.45% below VWAP — stuck in between, no clean level</span></li>
-                    </ul>
-                  </div>
-
-                  <p className="text-[10px] text-gray-500">
-                    AI Coach summary, entry condition, decision tree, and best_next_step all adapt to the active bounce scenario tier.
-                    Long-side mirror logic also applies: after ORH breakout, VWAP support hold is scored bull +1.2.
-                  </p>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Bell size={15} />} title="Key-Level Price Alerts">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>
-                    Beyond WATCH→GO verdict escalation, the scanner fires <strong className="text-gray-200">level-retest alerts</strong> when
-                    price approaches a key structural level with volume. These fire for both watchlist tickers and tickers
-                    tracked in <strong className="text-gray-200">Track Intraday</strong>.
-                  </p>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1.5 font-semibold">Alert type</th>
-                          <th className="px-2 py-1.5 font-semibold">Trigger condition</th>
-                          <th className="px-2 py-1.5 font-semibold">Example title</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['ORL Retest', 'or_historical = broke_down, or_state = below, price within 0.4% of ORL from below', '⚡ AMD — OR Low Retest (Short Re-entry)'],
-                          ['ORH Retest', 'or_historical = broke_up, or_state = above, price within 0.4% of ORH from above', '⚡ NVDA — OR High Retest (Long Re-entry)'],
-                          ['VWAP Test', 'Price within 0.2% of VWAP in either direction, RVOL ≥ 1.2×', '⚡ TSLA — VWAP Test (Vol 1.4×)'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-semibold text-gray-200 whitespace-nowrap">{r[0]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
-                            <td className="px-2 py-1.5 font-mono text-amber-300 text-[10px]">{r[2]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: 'Deduplication', desc: 'Each alert type fires at most once per session per ticker. The level_alert_key is persisted in the database and compared before firing. A new trading day resets all keys.' },
-                      { label: 'Active Trades Coverage', desc: 'The scanner loops over open active-trade tickers (Track Intraday, opened today) after finishing the main watchlist. Tickers not on the watchlist still get level alerts.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Gauge size={15} />} title="Volume Chart — avg vol for time of day">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>
-                    The volume tab shows each 1-minute bar colour-coded against a yellow dashed reference line labelled
-                    <strong className="text-gray-200"> avg vol for time of day</strong>.
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: '🟦 Cyan bar', desc: 'That bar\'s volume was at or above the historical average for this time slot (bar ≥ avg line).' },
-                      { label: '⬛ Gray bar', desc: 'That bar\'s volume was below average. Most bars will be gray on low-RVOL days.' },
-                      { label: '— Yellow line', desc: 'Derived from the last bar\'s RVOL: avg = last_bar_volume / rvol. Represents what "normal" volume looks like for this time of day.' },
-                      { label: 'All bars below line', desc: 'Normal for low-RVOL sessions. The line near the top means the entire session ran below historical average — useful context for entry decisions.' },
-                    ].map(c => (
-                      <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-                        <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Reading the chart</p>
-                    <ul className="space-y-0.5 text-gray-500 text-[10px]">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-cyan-400 shrink-0" /><span>RVOL 1.5×+: several cyan spikes visible, bars reaching or exceeding the avg line. Volume is confirming moves.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-500 shrink-0" /><span>RVOL 0.3×: all bars gray, avg line near the top. Session volume is light — breakouts without volume spike are suspect.</span></li>
-                    </ul>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Target size={15} />} title="Confluence Zone Trading — AI Coach Strategy">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>
-                    The AI Coach uses <strong className="text-gray-200">Confluence Zone Trading</strong> as its core strategy.
-                    A confluence zone forms when two or more key levels stack within <strong className="text-gray-200">$0.10</strong> of each other.
-                  </p>
-
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2.5 space-y-1.5">
-                    <p className="font-semibold text-amber-300 text-[11px]">Confluence strength tiers</p>
-                    <div className="grid gap-1.5 text-[10px]">
-                      {[
-                        { badge: 'EXTREME', color: 'bg-amber-500/20 text-amber-300', desc: '3+ levels within $0.10, OR specifically VWAP + ORL within $0.10 (highest conviction)' },
-                        { badge: 'STRONG', color: 'bg-amber-500/10 text-amber-400/80', desc: 'Any 2 levels (VWAP, ORL, ORH) within $0.10 of each other' },
-                        { badge: 'NONE', color: 'bg-gray-800/40 text-gray-500', desc: 'Levels spread apart — no zone, no structured entry' },
-                      ].map(t => (
-                        <div key={t.badge} className="flex items-start gap-2">
-                          <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${t.color}`}>{t.badge}</span>
-                          <span className="text-gray-400">{t.desc}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <p className="font-semibold text-gray-200 text-[11px]">Zone role — determined by price position</p>
-                    <ul className="space-y-0.5 text-[10px] text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-rose-500 shrink-0" /><span><strong className="text-gray-300">RESISTANCE</strong> — price is below the zone. Zone acts as ceiling. Look for bounce → rejection → PUT entry.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" /><span><strong className="text-gray-300">SUPPORT</strong> — price is above the zone. Zone acts as floor. Look for pullback → bounce → CALL entry.</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" /><span><strong className="text-gray-300">CHOP</strong> — price is at the zone. No trade — wait for directional resolution with volume.</span></li>
-                    </ul>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <p className="font-semibold text-gray-200 text-[11px]">Entry gate — all three required</p>
-                    <ul className="space-y-0.5 text-[10px] text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span>Price within <strong className="text-gray-300">$0.50</strong> of the confluence zone</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span><strong className="text-gray-300">Rejection candle</strong> (for PUT) or <strong className="text-gray-300">Bounce candle</strong> (for CALL) forms at the zone</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-violet-400 shrink-0" /><span><strong className="text-gray-300">RVOL &gt; 1.2×</strong> at the moment of the candle</span></li>
-                    </ul>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1.5 font-semibold">RVOL</th>
-                          <th className="px-2 py-1.5 font-semibold">Meaning</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['< 0.8×', 'No trade — wait', 'text-rose-400'],
-                          ['0.8–1.2×', 'Watch closely — not yet confirmed', 'text-amber-400'],
-                          ['> 1.2×', 'Valid entry', 'text-emerald-400'],
-                          ['> 1.5×', 'High conviction entry', 'text-emerald-300'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className={`px-2 py-1.5 font-mono font-bold ${r[2]}`}>{r[0]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <p className="font-semibold text-gray-200 text-[11px]">No-trade conditions (any one blocks entry)</p>
-                    <ul className="space-y-0.5 text-[10px] text-gray-500">
-                      {[
-                        'Daily range already > 60% used',
-                        'RVOL < 0.8× at entry zone',
-                        'Price in chop zone (at confluence)',
-                        'No confluence zone detected',
-                        'R/R ratio < 1:2',
-                        'Entry missed — price already moved past zone',
-                      ].map(r => (
-                        <li key={r} className="flex gap-2">
-                          <span className="mt-1.5 h-1 w-1 rounded-full bg-rose-500 shrink-0" />
-                          <span>{r}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">AI Coach output fields (new)</p>
-                    <div className="grid gap-1.5 text-[10px]">
-                      {[
-                        { field: 'confluence', desc: 'Detected zone: price, converging levels, strength, zone role' },
-                        { field: 'entry_gate', desc: 'Valid (true/false), trigger price, trigger condition, RVOL required, candle type' },
-                        { field: 'trade', desc: 'Direction, entry price, target, stop, R/R ratio, r_r_valid flag' },
-                        { field: 'no_trade_reason', desc: 'Human-readable explanation of why entry is blocked (null when entry is valid)' },
-                        { field: 'confluence_note', desc: '≤20-word description of the active zone, shown in the amber banner' },
-                      ].map(f => (
-                        <div key={f.field} className="flex gap-2">
-                          <code className="shrink-0 font-mono text-[9px] text-violet-300 bg-violet-950/30 px-1.5 py-0.5 rounded">{f.field}</code>
-                          <span className="text-gray-400">{f.desc}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-gray-500">
-                    Options tier: confidence &gt; 80 = naked option acceptable; 60–80 = debit spread preferred; &lt; 60 = watch only, no trade.
-                    SPY alignment adds +10 confidence; SPY conflict deducts −15.
-                  </p>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Clock size={15} />} title="Best Exit Windows for Day Trades (Pacific Time)">
-                <div className="space-y-3 text-xs text-gray-400">
-
-                  <div className="rounded-lg border border-emerald-800/30 bg-emerald-950/10 px-3 py-2.5">
-                    <p className="font-semibold text-emerald-300 text-[11px]">Power Hour — 12:00–1:00 PM PT (3:00–4:00 PM ET)</p>
-                    <p className="text-gray-400 text-[10px] mt-1 leading-relaxed">
-                      The best exit window of the day. Volume surges in the final hour as institutions close or rebalance positions.
-                      Moves that started midday often accelerate or reverse hard here. If you're in a profitable trade, the last 30
-                      minutes (12:30–1:00 PM PT) is where you want to be out or scaling out aggressively.
-                    </p>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1.5 font-semibold">Time (PT)</th>
-                          <th className="px-2 py-1.5 font-semibold">Market Phase</th>
-                          <th className="px-2 py-1.5 font-semibold">What to do</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['6:30–7:00 AM', 'Opening Range', 'No entry. Let the range form.'],
-                          ['7:00–9:00 AM', 'Mid-Morning', 'Best entry window. Trends establish here.'],
-                          ['9:00–10:30 AM', 'Midday Lull', 'Manage existing positions. Volume dries up, moves fade.'],
-                          ['10:30–12:00 PM', 'Afternoon', 'Momentum can resume. Second entries possible.'],
-                          ['12:00–12:45 PM', 'Power Hour', 'Start scaling out. Take partial profits.'],
-                          ['12:45–1:00 PM', 'Last 15 min', 'Close everything. No new positions.'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-mono text-violet-300 whitespace-nowrap">{r[0]}</td>
-                            <td className="px-2 py-1.5 font-semibold text-gray-200 whitespace-nowrap">{r[1]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-800/30 bg-amber-950/10 px-3 py-2">
-                    <p className="font-semibold text-amber-300 text-[11px]">The rules</p>
-                    <ul className="space-y-1 mt-1.5">
-                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
-                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                        <span><strong className="text-gray-200">Never hold a day trade into close</strong> (after 12:45 PM PT). There isn't enough time for a new move to develop. You're just holding risk with no reward runway.</span>
-                      </li>
-                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
-                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                        <span><strong className="text-gray-200">Scale out, don't dump all at once.</strong> At TP level → take half off. Trail the rest with ORH/ORL stop. Force-close remainder by 12:45 PM PT.</span>
-                      </li>
-                      <li className="flex items-start gap-2 text-[10px] text-gray-400">
-                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                        <span><strong className="text-gray-200">If midday (9:00–10:30 AM PT) and you're flat or small profit</strong> — consider closing. The lull kills momentum. A trade that hasn't moved by midday usually won't. The risk of giving back gains is higher than the reward of waiting.</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="rounded-lg border border-red-800/30 bg-red-950/10 px-3 py-2">
-                    <p className="font-semibold text-red-300 text-[11px]">The one rule that matters most</p>
-                    <p className="text-gray-400 text-[10px] mt-1 leading-relaxed">
-                      The market close is not your stop — it's your deadline. If your stop hasn't been hit but the clock hits
-                      12:45 PM PT, you exit anyway. Day trades don't carry overnight. The MarketTimeGate banners in the app
-                      enforce this logic — they flag the caution and no-trade windows automatically.
-                    </p>
-                  </div>
-
                 </div>
               </DocCard>
 
@@ -1718,10 +1353,10 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
 
               <DocCard icon={<TrendingUp size={15} />} title="Overview & Verdict Scale">
                 <p className="text-xs text-gray-400 leading-relaxed mb-3">
-                  Multi-day signal engine using daily candles (6 months history). Targets 1–5 session holds. Scores 7 technical signals + market context + VIX.
+                  Multi-day signal engine using daily candles (6 months history). Targets 1–5 session holds. Scores 7 technical signals + market context + VIX. Weak RVOL (&lt; 0.7×) downgrades GO to WATCH.
                 </p>
                 <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'NO-GO'].map((v, i, a) => (
+                  {['STRONG GO', 'GO', 'WATCH', 'WAIT', 'AVOID'].map((v, i, a) => (
                     <div key={v} className="flex items-center gap-2">
                       <span className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-2 py-1 font-mono font-bold text-gray-200">{v}</span>
                       {i < a.length - 1 && <ChevronRight size={11} className="text-gray-700" />}
@@ -1734,49 +1369,26 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 <div className="space-y-2 text-xs text-gray-400">
                   <p><strong className="text-gray-300">Source:</strong> Yahoo Finance daily bars, 6-month period, auto-adjusted</p>
                   <p><strong className="text-gray-300">Minimum bars:</strong> 60 (MIN_BARS) — needed for MA50 stability</p>
+                  <p><strong className="text-gray-300">Index context:</strong> SPY daily trend and YTD performance fetched for market bias</p>
+                  <p><strong className="text-gray-300">Earnings calendar:</strong> Next earnings date fetched — within 5 days forces debit spread override</p>
                 </div>
               </DocCard>
 
-              <DocCard icon={<Layers size={15} />} title="Step 2: Indicators">
-                <div className="space-y-4 text-xs text-gray-400">
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2a. MA20 / MA50 (Simple Moving Average)</div>
-                    <p><span className="font-mono text-gray-300">MA20 = SMA(Close, 20)</span> &nbsp; <span className="font-mono text-gray-300">MA50 = SMA(Close, 50)</span></p>
-                    <p><span className="font-mono text-gray-300">dist_ma20_pct = (last / MA20 − 1) × 100</span></p>
-                    <p className="text-gray-500">Guard: if MA20 or MA50 is NaN (insufficient history) → ValueError raised.</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2b. RSI (14-day Wilder's)</div>
-                    <p>Average gain / average loss over 14 periods using exponential smoothing (com = 13):</p>
-                    <p><span className="font-mono text-gray-300">RSI = 100 − 100 / (1 + avg_gain / avg_loss)</span></p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2c. MACD (12, 26, 9)</div>
-                    <p><span className="font-mono text-gray-300">MACD_line = EMA(Close, 12) − EMA(Close, 26)</span></p>
-                    <p><span className="font-mono text-gray-300">Signal = EMA(MACD_line, 9)</span></p>
-                    <p><span className="font-mono text-gray-300">Histogram = MACD_line − Signal</span></p>
-                    <p className="text-gray-500">Histogram direction matters: expanding = momentum acceleration</p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2d. 5-Day Momentum</div>
-                    <p><span className="font-mono text-gray-300">mom_pct = (last / close[−5] − 1) × 100</span></p>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
-                    <div className="font-semibold text-gray-200 text-[11px]">2e. Volume Trend</div>
-                    <p>Classifies last 5 sessions vs 20-day average:</p>
-                    <ul className="space-y-0.5 pl-3 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>bull_expanding: up-day vol &gt; 1.2× avg AND &gt; down-day vol</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>bear_expanding: down-day vol &gt; 1.2× avg AND &gt; up-day vol</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>mixed: no dominant side</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span>low: recent volume &lt; 0.7× avg</span></li>
-                    </ul>
-                  </div>
-
+              <DocCard icon={<Layers size={15} />} title="Step 2: Indicators Computed">
+                <div className="space-y-3 text-xs text-gray-400">
+                  {[
+                    { title: '2a. MA20 / MA50', body: 'MA20 = SMA(Close, 20) · MA50 = SMA(Close, 50) · dist_ma20_pct = (last / MA20 − 1) × 100. Guard: NaN raises ValueError.' },
+                    { title: '2b. RSI 14-day (Wilder\'s)', body: 'RSI = 100 − 100 / (1 + avg_gain / avg_loss) using EWM with com=13. Overbought > 73 caps momentum score.' },
+                    { title: '2c. MACD (12, 26, 9)', body: 'MACD_line = EMA12 − EMA26. Signal = EMA9(MACD). Histogram = MACD − Signal. Expanding histogram = acceleration.' },
+                    { title: '2d. 5-Day Momentum', body: 'mom_pct = (last / close[−5] − 1) × 100. Measures 1-week directional force.' },
+                    { title: '2e. Volume Trend', body: 'bull_expanding: up-day vol > 1.2× avg AND > down-day vol. bear_expanding: reverse. low: recent < 0.7× avg. RVOL < 0.7 → GO downgraded to WATCH.' },
+                    { title: '2f. Earnings Calendar', body: 'days_to_earnings fetched from yfinance calendar. ≤ 5 days → forced debit spread strategy override. Earnings within DTE window triggers warning.' },
+                  ].map(s => (
+                    <div key={s.title} className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5">
+                      <div className="font-semibold text-gray-200 text-[11px] mb-1">{s.title}</div>
+                      <p className="text-gray-500 text-[10px]">{s.body}</p>
+                    </div>
+                  ))}
                 </div>
               </DocCard>
 
@@ -1793,19 +1405,21 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     </thead>
                     <tbody>
                       {[
-                        ['1', 'Price vs MA20', 'price &gt; MA20', 'bull += 2.0'],
-                        ['2', 'MA trend structure', 'MA20 &gt; MA50 by X%', 'bull += min(3, max(0.5, X×0.15))'],
-                        ['2a', 'Convergence penalty', 'spread narrowing &gt;5%', 'score × 0.5'],
+                        ['1', 'Price vs MA20', 'price > MA20', 'bull += 2.0'],
+                        ['2', 'MA trend structure', 'MA20 > MA50 by X%', 'bull += min(3, max(0.5, X×0.15))'],
+                        ['2a', 'MA convergence penalty', 'spread narrowing > 5%', 'score × 0.5'],
                         ['3', 'RSI bullish zone', '55–73', 'bull += 1.5'],
-                        ['3a', 'RSI overbought', '&gt;73', '0 pts + caps → WATCH'],
-                        ['4', 'MACD crossover', 'MACD &gt; Signal', 'bull += 2.0'],
-                        ['4a', 'MACD histogram', 'hist &gt; 0 AND expanding', 'bull += 0.5'],
-                        ['5', '5-day momentum', 'mom &gt; +1.5%', 'bull += 1.0'],
+                        ['3a', 'RSI overbought', '> 73', '0 pts; caps verdict → WATCH'],
+                        ['4', 'MACD crossover', 'MACD > Signal', 'bull += 2.0'],
+                        ['4a', 'MACD histogram', 'hist > 0 AND expanding', 'bull += 0.5'],
+                        ['5', '5-day momentum', 'mom > +1.5%', 'bull += 1.0'],
                         ['6', 'Volume participation', 'bull_expanding', 'bull += 1.5'],
                         ['7', 'SPY market context', 'SPY BULLISH', 'bull += 0.5'],
-                        ['8', 'VIX caution', 'VIX &ge; 25', 'bull −= 0.5 (floor 0)'],
-                      ].map(r => (
-                        <tr key={r[0] + r[1]} className="border-b border-gray-800/40 text-[11px]">
+                        ['8', 'VIX caution', 'VIX ≥ 25', 'bull −= 0.5 (floor 0)'],
+                        ['9', 'Weak RVOL', 'RVOL < 0.7', 'GO → WATCH downgrade'],
+                        ['10', 'VIX ≥ 35 hard veto', 'any score', '→ AVOID'],
+                      ].map((r, i) => (
+                        <tr key={i} className="border-b border-gray-800/40 text-[11px]">
                           <td className="px-2 py-1.5 font-mono text-violet-300">{r[0]}</td>
                           <td className="px-2 py-1.5 font-semibold text-gray-200">{r[1]}</td>
                           <td className="px-2 py-1.5 text-gray-400">{r[2]}</td>
@@ -1815,103 +1429,33 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors all rules (price below MA20, MA20 &lt; MA50, RSI &le; 45, etc.)</p>
+                <p className="text-[11px] text-gray-500 mt-2">Bear side mirrors bull rules. STRONG setup_quality upgrades GO → STRONG_GO via resolve_verdict_swing().</p>
               </DocCard>
 
-              <DocCard icon={<LineChart size={15} />} title="Step 4: MA Structure — Proportional Scoring Detail">
+              <DocCard icon={<Gauge size={15} />} title="Step 4: Verdict Logic">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <p>The key fix: score scales with how far apart MA20 and MA50 are.</p>
-                  <FormulaBlock formula="ma_spread_pct = (MA20 - MA50) / MA50 × 100\nscore = min(3.0, max(0.5, ma_spread_pct × 0.15))" />
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1 font-semibold">MA20 above MA50 by</th>
-                          <th className="px-2 py-1 font-semibold">Raw</th>
-                          <th className="px-2 py-1 font-semibold">After floor</th>
-                          <th className="px-2 py-1 font-semibold">Final (capped)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['1%', '0.15', '0.50', '0.50'],
-                          ['3%', '0.45', '0.50', '0.50'],
-                          ['5%', '0.75', '0.75', '0.75'],
-                          ['10%', '1.50', '1.50', '1.50'],
-                          ['15%', '2.25', '2.25', '2.25'],
-                          ['20%+', '3.00+', '—', '3.00'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1 font-semibold text-gray-200">{r[0]}</td>
-                            <td className="px-2 py-1 font-mono text-gray-400">{r[1]}</td>
-                            <td className="px-2 py-1 font-mono text-gray-400">{r[2]}</td>
-                            <td className="px-2 py-1 font-mono text-emerald-300">{r[3]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Convergence Detection</p>
-                    <p><span className="font-mono text-gray-300">prev_spread = (MA20[-2] − MA50[-2]) / MA50[-2] × 100</span></p>
-                    <p><span className="font-mono text-gray-300">converging = prev_spread &gt; ma_spread_pct × 1.05</span></p>
-                    <p className="text-gray-500 mt-1">If converging → score halved. Reason appended: "MA20 &gt; MA50 but converging (gap X% from Y%) — trend fading."</p>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<Gauge size={15} />} title="Step 5: Verdict Logic & Extension Checks">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: 'GO_THRESHOLD', value: '5.5' },
-                      { label: 'MARGIN_GO', value: '3.0' },
-                      { label: 'STRONG_THRESHOLD', value: '8.0' },
-                      { label: 'STRONG_DIFF', value: '4.0' },
-                      { label: 'VIX_NO_GO', value: '35.0' },
-                      { label: 'VIX_CAUTION', value: '25.0' },
-                      { label: 'EXT_5D_WARN', value: '8.0' },
-                      { label: 'EXT_5D_HARD', value: '12.0' },
-                      { label: 'EXT_MA20_WARN', value: '8.0' },
-                      { label: 'RSI_OVERBOUGHT', value: '73.0' },
-                    ].map(t => (
-                      <div key={t.label} className="flex items-center justify-between rounded-lg bg-gray-800/40 px-3 py-1.5">
-                        <code className="text-[10px] font-mono text-violet-300">{t.label}</code>
-                        <span className="text-[11px] font-bold text-gray-200 font-mono">{t.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-gray-400"><strong className="text-gray-200">soft_edge</strong> = max(bull, bear) &ge; 5.5 AND |bull − bear| &ge; 3.0</p>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1.5">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Extension Checks (run before verdict)</p>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
+                    <p className="font-semibold text-gray-200 text-[11px]">resolve_verdict("swing", raw_score, rvol, vix):</p>
                     <ul className="space-y-0.5 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><span className="font-mono text-gray-300">_is_very_extended</span> = mom_5d &gt; 12% (for long bias)</span></li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-600 shrink-0" /><span><span className="font-mono text-gray-300">_is_extended</span> = mom_5d &gt; 8% OR dist_ma20 &gt; 8% OR RSI &gt; 73</span></li>
-                    </ul>
-                  </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Verdict Rules</p>
-                    <ul className="space-y-0.5 text-gray-500">
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX &ge; 35 → NO-GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-500 shrink-0" />not soft_edge → WAIT</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />long + (RSI&gt;73 OR extended) → WATCH</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />long + bull &ge; 8.0 + diff &ge; 4.0 → STRONG GO</li>
-                      <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />long + below strong → GO</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-500 shrink-0" />VIX ≥ 35 → AVOID</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-gray-500 shrink-0" />score &lt; 3.0 → NO_EDGE</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />score &lt; 5.0 → WAIT</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />score ≥ 8.0 + vol_spike → STRONG_GO</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-emerald-500 shrink-0" />score ≥ 6.0 → GO (but RVOL &lt; 0.7 → WATCH)</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />score ≥ 4.5 → WATCH</li>
+                      <li className="flex gap-2 text-[11px]"><span className="mt-1.5 h-1 w-1 rounded-full bg-sky-500 shrink-0" />setup_quality=STRONG + score=GO → upgrade to STRONG_GO</li>
                     </ul>
                   </div>
                 </div>
               </DocCard>
 
-              <DocCard icon={<FlaskConical size={15} />} title="Step 6: Full Worked Example (AAPL, Strong Bull)">
+              <DocCard icon={<FlaskConical size={15} />} title="Step 5: Worked Example (AVGO, Bullish Swing)">
                 <div className="space-y-3 text-xs text-gray-400">
                   <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 space-y-1">
                     <p className="font-semibold text-gray-200 text-[11px]">Inputs</p>
-                    <p className="text-gray-500 font-mono">Last: $198.50 | MA20: $190.00 | MA50: $175.00 | dist_ma20: +4.47%</p>
-                    <p className="text-gray-500 font-mono">MA20_prev: $189.20 | MA50_prev: $174.80 | RSI: 65.2</p>
-                    <p className="text-gray-500 font-mono">MACD: +1.245 | Signal: +0.980 | Hist: +0.265 (prev +0.190)</p>
-                    <p className="text-gray-500 font-mono">5d mom: +3.49% | Volume: bull_expanding (1.35×) | SPY: BULLISH | VIX: 14.2</p>
+                    <p className="text-gray-500 font-mono text-[10px]">Price: $458 | MA20: $442 | MA50: $420 | RSI: 62 | MACD hist: expanding</p>
+                    <p className="text-gray-500 font-mono text-[10px]">5d mom: +2.1% | vol: bull_expanding | SPY: BULLISH | VIX: 18.0 | RVOL: 1.1×</p>
                   </div>
-
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
@@ -1923,16 +1467,16 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </thead>
                       <tbody>
                         {[
-                          ['Price vs MA20', '2.0', '2.0'],
-                          ['MA structure (8.6% spread)', '1.286', '3.286'],
-                          ['RSI 65.2 (55–73)', '1.5', '4.786'],
-                          ['MACD crossover + hist', '2.0 + 0.5 = 2.5', '7.286'],
-                          ['5d momentum +3.49%', '1.0', '8.286'],
-                          ['Volume bull_expanding', '1.5', '9.786'],
-                          ['SPY BULLISH', '0.5', '10.286'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
+                          ['Price > MA20 (+3.6%)', '2.0', 'bull 2.0'],
+                          ['MA20 > MA50 (5.2%)', '2.5 (capped)', 'bull 4.5'],
+                          ['RSI 62 (55–73)', '1.5', 'bull 6.0'],
+                          ['MACD > Signal + expanding', '2.0 + 0.5', 'bull 8.5'],
+                          ['5d momentum +2.1%', '1.0', 'bull 9.5'],
+                          ['bull_expanding volume', '1.5', 'bull 11.0'],
+                          ['SPY BULLISH', '0.5', 'bull 11.5'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-1.5 text-gray-200">{r[0]}</td>
                             <td className="px-2 py-1.5 font-mono text-emerald-300">{r[1]}</td>
                             <td className="px-2 py-1.5 font-mono text-gray-400">{r[2]}</td>
                           </tr>
@@ -1940,58 +1484,10 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                       </tbody>
                     </table>
                   </div>
-
                   <div className="rounded-lg border border-gray-800 bg-emerald-950/20 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px]">Result</p>
-                    <p className="text-gray-400">bull = 10.29, bear = 0.0, diff = 10.29</p>
-                    <p className="text-gray-400">soft_edge = True, not extended, strong_ok = True</p>
-                    <p className="text-emerald-400 font-bold text-[11px] mt-1">→ Verdict: STRONG GO, bias: long</p>
-                    <p className="text-gray-500 font-mono mt-1">Normalized: 85 + (10.29 − 8.0) / 2.0 × 15 = 100</p>
+                    <p className="text-gray-400 text-[11px]">RVOL 1.1× &gt; 0.7 ✓ (no downgrade) | VIX 18 &lt; 35 ✓</p>
+                    <p className="text-emerald-400 font-bold text-[11px] mt-0.5">→ Verdict: STRONG GO (score 11.5 ≥ 8.0 + vol_spike)</p>
                   </div>
-
-                  <div className="rounded-lg border border-gray-800 bg-amber-950/20 px-3 py-2">
-                    <p className="font-semibold text-gray-200 text-[11px] mb-1">Convergence Example (Same Stock, Later)</p>
-                    <p className="text-gray-500 font-mono">MA20=$192, MA50=$180 → spread=6.7%</p>
-                    <p className="text-gray-500 font-mono">Prev: MA20=$194, MA50=$179.50 → prev_spread=8.1%</p>
-                    <p className="text-gray-500 font-mono">converging = 8.1 &gt; 6.7×1.05 = 7.0? → YES</p>
-                    <p className="text-gray-500 font-mono">score = min(3, max(0.5, 6.7×0.15)) = 1.0 → ×0.5 = 0.50</p>
-                    <p className="text-amber-400 font-bold text-[11px] mt-1">→ Downgraded from STRONG GO to GO or WATCH</p>
-                  </div>
-                </div>
-              </DocCard>
-
-              <DocCard icon={<ShieldCheck size={15} />} title="Step 7: Entry Quality (Decision Layer)">
-                <div className="space-y-2 text-xs text-gray-400">
-                  <p>After scoring, <span className="font-mono text-gray-300">build_swing_trade_decision()</span> applies additional trade quality gates based on risk flags and extension checks.</p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
-                          <th className="px-2 py-1 font-semibold">Entry Quality</th>
-                          <th className="px-2 py-1 font-semibold">Condition</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['GOOD_ENTRY', 'Clean setup, no extension flags, trade_quality_score &ge; 6.5'],
-                          ['CAUTION_ENTRY', 'GOOD_ENTRY but risk_level = HIGH (elevated IV, VIX, earnings)'],
-                          ['WAIT_PULLBACK', 'Price extended from MA20 &gt; 8% or RSI &gt; 73 or 5d momentum &gt; 8%'],
-                          ['WAIT_BREAKOUT_CONFIRMATION', 'Near resistance (52W high / prior swing high)'],
-                          ['LATE_ENTRY', 'Price gapped &gt; 3% today, or 5d momentum &gt; 12% (AVOID_CHASE)'],
-                          ['BAD_ENTRY', 'Very extended (12%+ in 5d), low option liquidity, earnings imminent'],
-                          ['NO_CLEAN_ENTRY', 'Conflicting signals, trade_quality_score &lt; 5.0, or bias is NEUTRAL'],
-                        ].map(r => (
-                          <tr key={r[0]} className="border-b border-gray-800/40 text-[11px]">
-                            <td className="px-2 py-1.5 font-semibold text-gray-200">{r[0]}</td>
-                            <td className="px-2 py-1.5 text-gray-400">{r[1]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="text-gray-500 mt-1">
-                    The <span className="font-mono text-gray-300">trade_quality_score</span> is a post-penalty float (0–10) used for final action. Trend direction (verdict) and entry timing (entry_quality) are separate — a GO verdict can coexist with WAIT_PULLBACK when the trend is there but entry price is stretched.
-                  </p>
                 </div>
               </DocCard>
 
@@ -2218,15 +1714,16 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               Regular Engine
             </h2>
             <div className="space-y-3">
-              <DocCard icon={<Briefcase size={15} />} title="Strategic Options Structures">
-                <div className="space-y-3 text-xs text-gray-400">
-                  <p>The Regular (strategic) engine builds and validates complete option structures — spreads, covered positions, and multi-leg strategies. It applies the full pre-trade checklist, EV calculation, and Kelly sizing to every candidate.</p>
+
+              <DocCard icon={<Briefcase size={15} />} title="Overview — Strategic Options Structures">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p>Builds and validates complete multi-leg option structures against a full pre-trade checklist. Applies EV calculation, Kelly sizing, IV rank gate, and the 4-state entry system to every candidate.</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
-                      { label: 'Strategy Mode Overrides', desc: 'All, Long Options, Credit Spreads, or Straddles mode restricts which strategies the engine considers.' },
-                      { label: 'Spread Construction', desc: 'Credit spreads target ~25 delta short legs. Iron condors target ~20 delta. Debit spreads adjust based on expected move.' },
-                      { label: 'Portfolio-Aware', desc: 'Cross-ticker exposure checks prevent over-concentration in correlated positions.' },
-                      { label: 'Income Trades', desc: 'Covered Calls and Covered Puts use Income Yield instead of EV as the primary quality metric.' },
+                      { label: 'Verdict scale', desc: 'STRONG GO / GO / WATCH / WAIT / AVOID — driven by resolve_verdict_regular(score, candidates).' },
+                      { label: 'AVOID is absolute', desc: 'Verdict = NO GO or score < 40 → AVOID state shown on card. Score 89 + AVOID = AVOID. Score never overrides verdict.' },
+                      { label: 'IV Rank gate', desc: 'Credit strategies need IV Rank ≥ 30. Debit strategies need IV Rank < 50. Mismatch = missing condition on card.' },
+                      { label: 'Earnings guard', desc: '≤ 5 days to earnings → strategy forced to debit spread. Earnings within DTE shows warning badge.' },
                     ].map(c => (
                       <div key={c.label} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
                         <div className="font-semibold text-gray-200 text-[11px]">{c.label}</div>
@@ -2237,54 +1734,71 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<Gauge size={15} />} title="Verdict Scoring — resolve_verdict_regular()">
+                <div className="space-y-2 text-xs text-gray-400">
+                  <p className="text-gray-500">Score comes from the pre-trade checklist. 0 candidates → NO_EDGE regardless of score.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-3 py-2">Score range</th>
+                          <th className="px-3 py-2">Verdict</th>
+                          <th className="px-3 py-2">Entry state</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['≥ 80', 'STRONG GO', 'STATE 2: ENTRY'],
+                          ['60–79', 'GO', 'STATE 2: ENTRY (all filters must pass)'],
+                          ['45–59', 'WATCH', 'STATE 1: SETUP'],
+                          ['30–44', 'WAIT', 'WATCH'],
+                          ['< 30', 'AVOID', 'AVOID (blocked)'],
+                          ['0 candidates', 'NO_EDGE', '— (no structures built)'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-3 py-2 font-mono text-violet-300">{r[0]}</td>
+                            <td className="px-3 py-2 font-semibold text-gray-200">{r[1]}</td>
+                            <td className="px-3 py-2 text-gray-400">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </DocCard>
+
               <DocCard icon={<Layers size={15} />} title="4-State Entry System">
                 <div className="space-y-3 text-xs text-gray-400">
-                  <p>Every recommendation card and the Trade Signals page shows one of four entry states. The state is derived from the internal pre-trade checklist verdict combined with score, IV fit, and filter results.</p>
+                  <p>Every recommendation card shows one of four states derived from verdict + score + IV fit + filters. <strong className="text-amber-300">AVOID verdict always wins — score is never sufficient to override it.</strong></p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       {
-                        num: 'STATE 2', label: 'ENTRY', color: 'emerald',
-                        badgeCls: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
-                        conditions: 'Internal verdict = GO · Score ≥ 70 · IV fits strategy · All filters pass (R:R, liquidity, credit ≥ 25%)',
-                        action: 'Enter now. Sell credit spreads: stop at 2× credit, target 50% profit. Buy debit: stop at 50% of premium, target 100%.',
+                        num: 'STATE 2', label: 'ENTRY', badgeCls: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+                        when: 'Verdict = GO · Score ≥ 70 · IV fits · All filters pass (R:R, liquidity, credit ≥ 25%)',
+                        action: 'Enter now. Credit: stop at 2× credit, target 50% profit. Debit: stop at 50% premium, target 100%.',
                       },
                       {
-                        num: 'STATE 1', label: 'SETUP', color: 'amber',
-                        badgeCls: 'bg-amber-900/50 text-amber-300 border-amber-700',
-                        conditions: 'Verdict = GO or CAUTION · Score ≥ 55 · Liquidity passes · One soft fail, thin edge, or IV mismatch remains',
-                        action: 'Setup in progress. Monitor the missing conditions listed on the card. Do not enter — one or more gates are not yet cleared.',
+                        num: 'STATE 1', label: 'SETUP', badgeCls: 'bg-amber-900/50 text-amber-300 border-amber-700',
+                        when: 'Verdict = GO or CAUTION · Score ≥ 55 · Liquidity passes · One condition still missing',
+                        action: 'Monitor missing conditions. Do not enter — one or more gates not cleared.',
                       },
                       {
-                        num: 'WATCH', label: 'WATCH', color: 'sky',
-                        badgeCls: 'bg-sky-900/40 text-sky-300 border-sky-700',
-                        conditions: 'No hard fails · Score 40–55 · Multiple filters failing or IV not yet aligned',
-                        action: 'Set an alert and re-analyze when conditions improve. The directional bias may be forming but the structure is not ready.',
+                        num: 'WATCH', label: 'WATCH', badgeCls: 'bg-sky-900/40 text-sky-300 border-sky-700',
+                        when: 'Score 40–55 · Multiple filters failing or IV not aligned',
+                        action: 'Set an alert. Re-analyze when score reaches 70 and IV fits.',
                       },
                       {
-                        num: 'AVOID', label: 'AVOID', color: 'red',
-                        badgeCls: 'bg-red-900/40 text-red-300 border-red-800',
-                        conditions: 'Verdict = NO GO OR score < 40. Hard fail present (EV ≤ 0, DTE too short, liquidity failure, IV mismatch)',
-                        action: 'Skip entirely. The trade fails minimum quality thresholds. Re-evaluate after conditions change.',
+                        num: 'AVOID', label: 'AVOID', badgeCls: 'bg-red-900/40 text-red-300 border-red-800',
+                        when: 'Verdict = NO GO OR score < 40. Hard fail: EV ≤ 0, DTE too short, liquidity fail, IV mismatch.',
+                        action: 'Skip. Fails minimum quality thresholds. ENTER button does not appear.',
                       },
                     ].map(s => (
                       <div key={s.num} className="rounded-lg border border-gray-700/50 bg-gray-800/30 px-3 py-2.5 space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${s.badgeCls}`}>{s.num}: {s.label}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-semibold text-gray-300">When: </span>
-                          <span className="text-[10px]">{s.conditions}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-semibold text-gray-300">Action: </span>
-                          <span className="text-[10px]">{s.action}</span>
-                        </div>
+                        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${s.badgeCls}`}>{s.num}: {s.label}</span>
+                        <div><span className="text-[10px] font-semibold text-gray-300">When: </span><span className="text-[10px]">{s.when}</span></div>
+                        <div><span className="text-[10px] font-semibold text-gray-300">Action: </span><span className="text-[10px]">{s.action}</span></div>
                       </div>
                     ))}
-                  </div>
-                  <div className="rounded-lg border border-violet-800/30 bg-violet-950/10 px-3 py-2">
-                    <p className="text-[10px] text-violet-300 font-semibold mb-0.5">Reading the state badge tooltip</p>
-                    <p className="text-[10px]">Hover the state badge on any recommendation card to see the exact score, IV Rank, and which conditions are still missing. The tooltip lists each unmet condition so you know precisely what to watch for.</p>
                   </div>
                 </div>
               </DocCard>
@@ -2295,7 +1809,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
                         <th className="px-3 py-2">Condition</th>
-                        <th className="px-3 py-2">Strategies</th>
+                        <th className="px-3 py-2">Strategies built</th>
                         <th className="px-3 py-2">Why</th>
                       </tr>
                     </thead>
@@ -2311,6 +1825,7 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   </table>
                 </div>
               </DocCard>
+
             </div>
           </section>
 

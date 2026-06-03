@@ -144,6 +144,9 @@ class RecommendationOut(BaseModel):
     half_kelly_fraction: float = 0.0   # Half-Kelly (recommended), capped at 20%
     edge_ratio:          float = 0.0   # EV / max_loss — diagnostic edge quality
 
+    # Computed status string — single source of truth for UI display. No UI-side logic.
+    status: str = "WAIT"
+
 
 class OptionRowOut(BaseModel):
     strike: float
