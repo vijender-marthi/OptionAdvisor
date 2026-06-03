@@ -1487,7 +1487,7 @@ def _analyze_ticker(
         elif _score >= 55 and trade.passes_liquidity_filter:
             _status = "SETUP"
         else:
-            _status = "WATCH"
+            _status = "WAIT"
         legs_out = [
             OptionLegOut(
                 action=leg.action,

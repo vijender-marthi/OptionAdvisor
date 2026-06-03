@@ -861,8 +861,8 @@ export default function TickerPage() {
 
                         const ivRank = (selectedData as unknown as { signals?: { iv_rank?: number } })?.signals?.iv_rank ?? 0
                         const ivFit = isCredit ? ivRank >= 30 : ivRank < 50
-                        const status = rec.status || 'WATCH'
-                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WATCH' ? C.purple : C.red
+                        const status = rec.status || 'WAIT'
+                        const statusColor = status === 'ENTER' ? C.green : status === 'SETUP' ? '#3B82F6' : status === 'WAIT' ? C.amber : status === 'WATCH' ? C.purple : C.red
                         const isExpanded = selectedRank === rec.rank
                         return (
                           <React.Fragment key={rec.rank}>

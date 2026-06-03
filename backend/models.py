@@ -145,7 +145,7 @@ class RecommendationOut(BaseModel):
     edge_ratio:          float = 0.0   # EV / max_loss — diagnostic edge quality
 
     # Computed status string — single source of truth for UI display. No UI-side logic.
-    status: str = "WATCH"
+    status: str = "WAIT"
 
 
 class OptionRowOut(BaseModel):
