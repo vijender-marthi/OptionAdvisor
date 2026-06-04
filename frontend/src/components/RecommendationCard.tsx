@@ -479,7 +479,14 @@ export default function RecommendationCard({
   const fmt = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   const rrRatio = rec.risk_reward_ratio
 
+  // Checklist veto wins: if the pre-trade checklist says NO GO, the header badge
+  // and left border must always reflect that — regardless of the score-based state.
+  const checklistIsVeto  = verdict === 'NO GO'
+  const checklistIsCaution = verdict === 'CAUTION'
+
   const statusStyle = (() => {
+    if (checklistIsVeto)    return { bg: C.redDim,    color: C.red,   border: 'rgba(255,77,109,0.3)' }
+    if (checklistIsCaution) return { bg: C.amberDim,  color: C.amber, border: 'rgba(245,166,35,0.3)' }
     if (tradeState.color === 'emerald') return { bg: C.greenDim, color: C.green, border: 'rgba(0,229,160,0.3)' }
     if (tradeState.color === 'blue')    return { bg: '#1E3A5F', color: '#3B82F6', border: 'rgba(59,130,246,0.3)' }
     if (tradeState.color === 'amber')   return { bg: C.amberDim, color: C.amber, border: 'rgba(245,166,35,0.3)' }
@@ -496,7 +503,15 @@ export default function RecommendationCard({
     ? { label: 'Credit', value: `$${c(rec.net_credit).toFixed(2)}`, color: C.green }
     : { label: 'Expiry', value: rec.expiry.slice(5), color: C.text }
 
-  const statusBorderColor = tradeState.state === 2 ? '#00E5A0' : tradeState.state === 1 ? '#6B7FD4' : tradeState.state === 0 ? '#F5A623' : '#FF4D6D'
+  // Checklist veto overrides the left border colour too
+  const statusBorderColor = checklistIsVeto
+    ? '#FF4D6D'
+    : checklistIsCaution
+    ? '#F5A623'
+    : tradeState.state === 2 ? '#00E5A0'
+    : tradeState.state === 1 ? '#6B7FD4'
+    : tradeState.state === 0 ? '#F5A623'
+    : '#FF4D6D'
 
   const rrColor = rrRatio >= 2 ? 'text-emerald-400' : rrRatio >= 1.5 ? 'text-lime-400' : rrRatio >= 1 ? 'text-yellow-400' : 'text-red-400'
   const evColor = rec.expected_value > 0 ? 'text-emerald-400' : rec.expected_value < 0 ? 'text-red-400' : 'text-gray-300'
@@ -531,7 +546,9 @@ export default function RecommendationCard({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 500, color: rec.scores.total_score >= 75 ? C.green : rec.scores.total_score >= 55 ? C.amber : C.red }}>{rec.scores.total_score}</span>
-          <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 4, fontWeight: 500, border: `1px solid ${statusStyle.border}`, color: statusStyle.color, background: statusStyle.bg }}>{LABEL_DISPLAY[tradeState.label] || tradeState.label}</span>
+          <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 4, fontWeight: 500, border: `1px solid ${statusStyle.border}`, color: statusStyle.color, background: statusStyle.bg }}>
+            {checklistIsVeto ? '🚫 NO TRADE' : checklistIsCaution ? '⚠ CAUTION' : (LABEL_DISPLAY[tradeState.label] || tradeState.label)}
+          </span>
           {open ? <ChevronUp size={14} style={{ color: C.muted }} /> : <ChevronDown size={14} style={{ color: C.muted }} />}
         </div>
       </button>
@@ -589,8 +606,39 @@ export default function RecommendationCard({
 
   function renderDetail() { return (
         <div>
-          {/* ── Entry state guidance strip ── */}
-          {(() => {
+          {/* ── Checklist veto banner (ALWAYS first when NO GO or CAUTION) ── */}
+          {checklistIsVeto && (
+            <div className="mx-3 sm:mx-4 mt-3 mb-1 rounded-xl border border-red-700 bg-red-950/60 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🚫</span>
+                <span className="text-xs font-bold text-red-300 tracking-wide">DO NOT TRADE</span>
+                {hardFailReasons.length > 0 && (
+                  <span className="text-[10px] text-red-400/80 ml-1">— {hardFailReasons.join(' · ')}</span>
+                )}
+              </div>
+              <p className="text-xs text-red-400/70 mt-1 leading-relaxed">
+                One or more critical checklist conditions failed. The probability-weighted edge is not present.
+                Review the Pre-Trade Checklist below for details.
+              </p>
+            </div>
+          )}
+          {checklistIsCaution && !checklistIsVeto && (
+            <div className="mx-3 sm:mx-4 mt-3 mb-1 rounded-xl border border-amber-700 bg-amber-950/50 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">⚠️</span>
+                <span className="text-xs font-bold text-amber-300 tracking-wide">PROCEED WITH CAUTION</span>
+                {softFailReasons.length > 0 && (
+                  <span className="text-[10px] text-amber-400/80 ml-1">— {softFailReasons.join(' · ')}</span>
+                )}
+              </div>
+              <p className="text-xs text-amber-400/70 mt-1 leading-relaxed">
+                Some checklist signals are mixed. Consider reducing size or waiting for better conditions.
+              </p>
+            </div>
+          )}
+
+          {/* ── Entry state guidance strip (suppressed when checklist is NO GO) ── */}
+          {!checklistIsVeto && (() => {
             const s = tradeState
             const stripBg =
               s.color === 'emerald' ? 'bg-emerald-950/60 border-emerald-800' :
