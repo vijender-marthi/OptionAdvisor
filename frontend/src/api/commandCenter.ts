@@ -167,6 +167,29 @@ export async function addPortfolioPosition(payload: {
   return data
 }
 
+export interface StockTargetData {
+  ticker:               string
+  current_price:        number
+  ma20:                 number
+  ma50:                 number
+  rsi:                  number
+  mom_5d:               number
+  suggested_target1:    number
+  suggested_target2:    number
+  suggested_stop_loss:  number
+}
+
+export async function fetchStockTargets(
+  ticker: string,
+  entryPrice?: number,
+): Promise<StockTargetData> {
+  const params = new URLSearchParams({ ticker })
+  if (entryPrice && entryPrice > 0) params.set('entry_price', String(entryPrice))
+  const { data } = await api.get<ApiEnvelope<StockTargetData>>(`/stock-targets?${params}`)
+  if (!data.data) throw new Error('No data returned')
+  return data.data
+}
+
 export async function updatePortfolioPositionApi(payload: {
   id: string
   data: Record<string, unknown>

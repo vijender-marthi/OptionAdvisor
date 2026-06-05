@@ -396,6 +396,50 @@ export interface AiPositionAnalysis {
   strategy_family: string
 }
 
+export interface StockPositionAnalysis {
+  decision:           'HOLD' | 'WATCH' | 'TRIM' | 'SELL' | 'STOP_HIT'
+  decision_label:     string
+  reasoning:          string
+  position_type:      'stock'
+  // Pricing
+  current_price:      number
+  entry_price:        number
+  shares:             number
+  cost_basis:         number
+  market_value:       number
+  // P&L
+  pnl_dollar:         number
+  pnl_pct:            number
+  day_pl_dollar:      number
+  day_pl_pct:         number
+  is_profitable:      boolean
+  // Risk levels
+  trailing_stop:      number
+  stop_loss:          number
+  trailing_stop_pct:  number
+  high_water_mark:    number
+  // Targets
+  target1:            number
+  target2:            number
+  // Technicals
+  ma20:               number
+  ma50:               number
+  rsi:                number
+  mom_5d:             number
+  // Distances
+  price_vs_ma20_pct:  number
+  price_vs_ma50_pct:  number
+  dist_to_stop_pct:   number
+  dist_to_t1_pct:     number
+  dist_to_t2_pct:     number
+  // Health
+  health_score:       number
+  health_label:       string
+  // Actions
+  smart_alerts:       Array<{ type: string; label: string; message: string; severity: string }>
+  management_actions: string[]
+}
+
 export interface SignalFeedPayload {
   summary: {
     total: number

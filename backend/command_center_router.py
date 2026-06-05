@@ -50,6 +50,7 @@ from storage import (
 )
 from trade_aggregator import build_command_center_payload
 from position_analyzer import analyze_active_position
+from stock_decision_engine import analyze_stock_position
 
 command_center_router = APIRouter(tags=["command-center"])
 
@@ -714,6 +715,28 @@ def calculate_position_pnl(
     }
 
 
+def _is_stock_position(p: dict) -> bool:
+    """
+    True when a portfolio position is a direct stock holding (not options).
+
+    Primary: strategy == 'Stock'
+    Fallback: no option legs AND a 'shares' field is present and > 0
+    """
+    strategy = str(p.get("strategy") or "").strip().lower()
+    if strategy == "stock":
+        return True
+    legs = p.get("legs")
+    if isinstance(legs, list) and len(legs) > 0:
+        return False
+    shares_raw = p.get("shares")
+    if shares_raw is not None:
+        try:
+            return int(float(shares_raw)) > 0
+        except (TypeError, ValueError):
+            pass
+    return False
+
+
 def _cost_basis_ref_per_share(p: dict) -> float:
     """Cost-basis reference per share for P&L math.
 
@@ -789,18 +812,24 @@ def _compute_positions_pnl(
                     dollar = (float(pp) / 100.0) * cost_ref * SHARES * cc
                     per_position_pnl[pid] = {"pnl": round(dollar, 2), "pnl_pct": float(pp)}
 
+    # Separate stock positions from options positions
+    stock_open = [p for p in open_pos if isinstance(p, dict) and _is_stock_position(p)]
     open_with_legs = [
         p for p in open_pos
-        if isinstance(p, dict) and isinstance(p.get("legs"), list) and p.get("legs")
+        if isinstance(p, dict) and not _is_stock_position(p)
+        and isinstance(p.get("legs"), list) and p.get("legs")
     ]
     open_no_legs = [
         p for p in open_pos
-        if isinstance(p, dict) and (not isinstance(p.get("legs"), list) or not p.get("legs"))
+        if isinstance(p, dict) and not _is_stock_position(p)
+        and (not isinstance(p.get("legs"), list) or not p.get("legs"))
     ]
 
     all_open_for_pnl = open_with_legs + open_no_legs
+    # all tickers for price fetch — options + stocks
+    all_open_all_types = all_open_for_pnl + stock_open
 
-    if not all_open_for_pnl:
+    if not all_open_all_types:
         total_pl = round(realized_pnl, 2) if realized_count > 0 else 0.0
         return {"total_pl": total_pl, "day_pl": round(today_closed_pnl, 2), "day_pl_pct": round((today_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "week_pl": round(week_closed_pnl, 2), "week_pl_pct": round((week_closed_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2), "per_position": per_position_pnl}
 
@@ -808,7 +837,7 @@ def _compute_positions_pnl(
     try:
         tickers = list({
             str(p.get("ticker", "")).upper()
-            for p in all_open_for_pnl
+            for p in all_open_all_types
             if p.get("ticker")
         })
         price_map: dict[str, tuple[float, float, float]] = {}
@@ -892,16 +921,73 @@ def _compute_positions_pnl(
             week_total += bs_today["pnl"] - bs_monday["pnl"]
             has_mtm = True
 
-        total_pl = round(realized_pnl + mtm_total, 2) if (realized_count > 0 or has_mtm) else None
-        day_pl = round(day_total + today_closed_pnl, 2) if (has_mtm or today_closed_pnl != 0) else None
-        day_pl_pct = round(((day_total + today_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or today_closed_pnl != 0) and total_cost_basis > 0 else None
-        week_pl = round(week_total + week_closed_pnl, 2) if (has_mtm or week_closed_pnl != 0) else None
-        week_pl_pct = round(((week_total + week_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or week_closed_pnl != 0) and total_cost_basis > 0 else None
-        return {"total_pl": total_pl, "day_pl": day_pl, "day_pl_pct": day_pl_pct, "week_pl": week_pl, "week_pl_pct": week_pl_pct, "per_position": per_position_pnl}
+        # ── Stock P&L (simple: price delta × shares) ──────────────────────────
+        stock_mtm_total  = 0.0
+        stock_day_total  = 0.0
+        stock_week_total = 0.0
+        for p in stock_open:
+            sym = str(p.get("ticker", "")).upper()
+            if sym not in price_map:
+                continue
+            S_now, S_prev, S_mon = price_map[sym]
+            entry_px = _float_or(p.get("entryPrice") or p.get("entry_price"), 0.0)
+            sh = max(1, int(_float_or(p.get("shares"), 1.0)))
+            if entry_px <= 0:
+                continue
+            pnl   = round((S_now  - entry_px) * sh, 2)
+            d_pnl = round((S_now  - S_prev)   * sh, 2)
+            w_pnl = round((S_now  - S_mon)    * sh, 2)
+            pid = str(p.get("id", ""))
+            if pid:
+                per_position_pnl[pid] = {
+                    "pnl":                    pnl,
+                    "pnl_pct":               round((pnl / (entry_px * sh)) * 100.0, 2) if entry_px * sh > 0 else 0.0,
+                    "entry_premium_per_share": round(entry_px, 2),
+                    "current_mark_per_share":  round(S_now, 2),
+                    "mark_source":             "live",
+                }
+            stock_mtm_total  += pnl
+            stock_day_total  += d_pnl
+            stock_week_total += w_pnl
+            has_mtm = True
+
+        combined_mtm  = mtm_total  + stock_mtm_total
+        combined_day  = day_total  + stock_day_total
+        combined_week = week_total + stock_week_total
+
+        total_pl    = round(realized_pnl + combined_mtm, 2) if (realized_count > 0 or has_mtm) else None
+        day_pl      = round(combined_day  + today_closed_pnl, 2) if (has_mtm or today_closed_pnl != 0) else None
+        day_pl_pct  = round(((combined_day + today_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or today_closed_pnl != 0) and total_cost_basis > 0 else None
+        week_pl     = round(combined_week + week_closed_pnl, 2) if (has_mtm or week_closed_pnl != 0) else None
+        week_pl_pct = round(((combined_week + week_closed_pnl) / total_cost_basis * 100), 2) if (has_mtm or week_closed_pnl != 0) and total_cost_basis > 0 else None
+
+        # Separate per-type metrics for the Stocks tab summary banner
+        options_day_pl  = round(day_total  + today_closed_pnl, 2) if (day_total  != 0 or today_closed_pnl != 0) else None
+        options_week_pl = round(week_total + week_closed_pnl,  2) if (week_total != 0 or week_closed_pnl != 0) else None
+        stocks_day_pl   = round(stock_day_total,  2) if stock_day_total  != 0 else None
+        stocks_week_pl  = round(stock_week_total, 2) if stock_week_total != 0 else None
+        stocks_unrealized_pl = round(stock_mtm_total, 2) if stock_open else None
+
+        return {
+            "total_pl": total_pl,
+            "day_pl": day_pl, "day_pl_pct": day_pl_pct,
+            "week_pl": week_pl, "week_pl_pct": week_pl_pct,
+            "options_day_pl": options_day_pl, "options_week_pl": options_week_pl,
+            "stocks_day_pl": stocks_day_pl, "stocks_week_pl": stocks_week_pl,
+            "stocks_unrealized_pl": stocks_unrealized_pl,
+            "per_position": per_position_pnl,
+        }
 
     except Exception:  # noqa: BLE001
         total_pl = round(realized_pnl, 2) if realized_count > 0 else None
-        return {"total_pl": total_pl, "day_pl": None, "day_pl_pct": None, "per_position": per_position_pnl}
+        return {
+            "total_pl": total_pl, "day_pl": None, "day_pl_pct": None,
+            "week_pl": None, "week_pl_pct": None,
+            "options_day_pl": None, "options_week_pl": None,
+            "stocks_day_pl": None, "stocks_week_pl": None,
+            "stocks_unrealized_pl": None,
+            "per_position": per_position_pnl,
+        }
 
 
 def _fetch_market_snapshot() -> dict[str, Any]:
@@ -1054,8 +1140,9 @@ def _float_or(x: Any, default: float = 0.0) -> float:
 
 
 def _portfolio_position_row(p: dict[str, Any], *, closed: bool) -> dict[str, Any]:
+    is_stock = _is_stock_position(p)
     contracts = _float_or(p.get("contracts"), 0.0)
-    if contracts <= 0:
+    if not is_stock and contracts <= 0:
         contracts = 1.0
     entry = _float_or(p.get("entryPrice"), 0.0)
     cap = p.get("capital_at_risk")
@@ -1081,14 +1168,17 @@ def _portfolio_position_row(p: dict[str, Any], *, closed: bool) -> dict[str, Any
         "engine_source": engine_guess,
         "entry_date": str(p.get("addedAt") or "")[:10],
         "expiry": str(p.get("expiry") or ""),
-        "contracts": round(contracts, 4) if not closed else round(contracts, 4),
-        "shares": None,
+        "contracts": None if is_stock else round(contracts, 4),
+        "shares": max(1, int(_float_or(p.get("shares"), 1.0))) if is_stock else None,
         "entry_price": entry,
         "current_price": None,
         "pnl_amount": None,
         "pnl_percent": None,
-        "target": None,
-        "stop_loss": None,
+        "target": _float_or(p.get("target1"), 0.0) or None,
+        "target2": _float_or(p.get("target2"), 0.0) or None,
+        "stop_loss": _float_or(p.get("stopLoss") or p.get("stop_loss"), 0.0) or None,
+        "trailing_stop_pct": _float_or(p.get("trailing_stop_pct"), 0.0) or None,
+        "position_type": "stock" if is_stock else "options",
         "risk_status": risk_status,
         "recommended_action": "Review position" if not closed else "Closed",
     }
@@ -1130,18 +1220,26 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
     capital_by_strategy: dict[str, float] = {}
     capital_by_engine: dict[str, float] = {}
     options_cap = 0.0
+    stock_cap   = 0.0
     for p in open_pos:
         if not isinstance(p, dict):
             continue
         t = str(p.get("ticker", "")).upper()
         strat = str(p.get("strategy", "")) or "Unknown"
-        cx = p.get("capital_at_risk")
-        cap_v = _float_or(cx, 0.0)
-        if cap_v <= 0 and p.get("max_loss") is not None:
-            ml = _float_or(p.get("max_loss"), 0.0)
-            cc = _float_or(p.get("contracts"), 1.0)
-            cap_v = abs(ml) * max(cc, 1.0) * 100.0
-        options_cap += cap_v
+        if _is_stock_position(p):
+            # Stock capital = entry_price × shares (no 100× multiplier)
+            ep = _float_or(p.get("entryPrice"), 0.0)
+            sh = max(1, int(_float_or(p.get("shares"), 1.0)))
+            cap_v = ep * sh
+            stock_cap += cap_v
+        else:
+            cx = p.get("capital_at_risk")
+            cap_v = _float_or(cx, 0.0)
+            if cap_v <= 0 and p.get("max_loss") is not None:
+                ml = _float_or(p.get("max_loss"), 0.0)
+                cc = _float_or(p.get("contracts"), 1.0)
+                cap_v = abs(ml) * max(cc, 1.0) * 100.0
+            options_cap += cap_v
         if t:
             exposure[t] = exposure.get(t, 0.0) + cap_v
         capital_by_strategy[strat] = capital_by_strategy.get(strat, 0.0) + cap_v
@@ -1175,20 +1273,19 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
     alerts_n   = alert_center_active_count(email)
     critical_n = alert_center_critical_count(email)
 
-    # Options vs stock position counts (mirrors frontend derivedOpt logic)
-    options_pos_count = sum(
-        1 for p in open_pos
-        if isinstance(p, dict) and isinstance(p.get("legs"), list) and len(p["legs"]) > 0
-    )
-    stock_pos_count = max(0, len(open_pos) - options_pos_count)
+    # Options vs stock position counts
+    stock_pos_count   = sum(1 for p in open_pos if isinstance(p, dict) and _is_stock_position(p))
+    options_pos_count = max(0, len(open_pos) - stock_pos_count)
 
     # P&L: realized (closed) + MTM (open via Black-Scholes + live yfinance prices)
     pnl_data = _compute_positions_pnl(open_pos, closed)
 
-    # AI position analysis for every open position
+    # AI position analysis — options only
     ai_analyses: dict[str, dict[str, Any]] = {}
     ppnl = pnl_data.get("per_position", {})
     for p in open_pos:
+        if _is_stock_position(p):
+            continue
         pid = str(p.get("id", ""))
         if not pid:
             continue
@@ -1214,6 +1311,40 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
                 "is_profitable": False, "strategy_family": "UNKNOWN",
             }
 
+    # Stock decision engine analysis
+    stock_analyses: dict[str, dict[str, Any]] = {}
+    for p in open_pos:
+        if not _is_stock_position(p):
+            continue
+        pid = str(p.get("id", ""))
+        if not pid:
+            continue
+        try:
+            stock_analyses[pid] = analyze_stock_position(p, pnl_data=ppnl.get(pid))
+        except Exception as exc:
+            log.warning("Stock analysis failed for position %s (%s): %s", pid, p.get("ticker", "?"), exc)
+
+    # Lazily persist high_water_mark updates (when a new high is hit since last save)
+    port = list(state.get("portfolio") or [])
+    portfolio_mutated = False
+    for i, p in enumerate(port):
+        if not isinstance(p, dict) or p.get("status") != "open":
+            continue
+        pid = str(p.get("id", ""))
+        if not pid or pid not in stock_analyses:
+            continue
+        new_hwm = stock_analyses[pid].get("high_water_mark")
+        old_hwm = _float_or(p.get("high_water_mark") or p.get("highWaterMark"), 0.0)
+        if new_hwm and new_hwm > old_hwm + 0.001:
+            port[i] = {**p, "high_water_mark": new_hwm}
+            portfolio_mutated = True
+    if portfolio_mutated:
+        try:
+            save_user_state(email, state.get("watchlist") or [], port)
+        except Exception:
+            pass
+
+    total_capital = round(options_cap + stock_cap, 2)
     summary = {
         "total_open_positions":   len(open_pos),
         "options_positions":      options_pos_count,
@@ -1222,9 +1353,9 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "watchlist_alerts":       alerts_n,
         "alert_center_count":     alerts_n,
         "critical_alerts":        critical_n,
-        "total_capital_used":     round(options_cap, 2),
+        "total_capital_used":     total_capital,
         "options_capital":        round(options_cap, 2),
-        "stock_capital":          0.0,
+        "stock_capital":          round(stock_cap, 2),
         "total_pl":               pnl_data["total_pl"],
         "day_pl":                 pnl_data["day_pl"],
         "day_pl_pct":             pnl_data.get("day_pl_pct"),
@@ -1234,6 +1365,20 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "alerts_count":           alerts_n,
         "open_risk_notional":     round(options_cap, 2),
         "closed_trades_count":    len(closed),
+        # Separate per-type summaries for the Stocks tab
+        "options": {
+            "count":    options_pos_count,
+            "capital":  round(options_cap, 2),
+            "day_pl":   pnl_data.get("options_day_pl"),
+            "week_pl":  pnl_data.get("options_week_pl"),
+        },
+        "stocks": {
+            "count":           stock_pos_count,
+            "cost_basis":      round(stock_cap, 2),
+            "unrealized_pl":   pnl_data.get("stocks_unrealized_pl"),
+            "day_pl":          pnl_data.get("stocks_day_pl"),
+            "week_pl":         pnl_data.get("stocks_week_pl"),
+        },
     }
 
     cap_strat = [{"label": k, "value": round(v, 2)} for k, v in sorted(capital_by_strategy.items())]
@@ -1266,7 +1411,7 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "bullish_exposure": round(bullish, 2),
         "bearish_exposure": round(bearish, 2),
         "options_exposure": round(options_cap, 2),
-        "stock_exposure": 0.0,
+        "stock_exposure":   round(stock_cap, 2),
         "expiry_risk": {
             "positions_within_7dte": near_expiry_count,
             "note": "Stub — wire full expiry ladder from backend.",
@@ -1297,6 +1442,7 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "risk":                  risk,
         "per_position_pnl":      pnl_data.get("per_position", {}),
         "ai_analyses":           ai_analyses,
+        "stock_analyses":        stock_analyses,
     }
 
 
@@ -1306,6 +1452,43 @@ def get_positions_center(auth_email: str = Depends(require_access_email)):
     state = get_user_state(email)
     ensure_demo_alert_center_rows(email)
     return api_envelope(_positions_center_payload(state, email=email), stale=False)
+
+
+@command_center_router.get("/stock-targets")
+def get_stock_targets(
+    ticker: str = Query(..., min_length=1, max_length=12),
+    entry_price: Optional[float] = Query(None, gt=0),
+    auth_email: str = Depends(require_access_email),
+) -> dict[str, Any]:
+    """
+    Return live MA context and MA-based target / stop suggestions for a stock ticker.
+    Called by the Add Position form when the user clicks "Auto-Fill Targets".
+    """
+    from stock_decision_engine import _get_ma_data, _calc_targets
+
+    t = ticker.strip().upper()
+    mkt = _get_ma_data(t)
+    if not mkt or not mkt.get("current_price"):
+        raise HTTPException(status_code=404, detail=f"No price data available for {t}.")
+
+    current = float(mkt["current_price"])
+    ma20 = float(mkt.get("ma20") or current)
+    ma50 = float(mkt.get("ma50") or current)
+    ep = float(entry_price) if entry_price else current
+    t1, t2 = _calc_targets(ep, ma20, ma50, current)
+    stop = round(ep * 0.92, 2)  # 8% hard-stop default
+
+    return api_envelope({
+        "ticker":             t,
+        "current_price":      round(current, 4),
+        "ma20":               round(ma20, 4),
+        "ma50":               round(ma50, 4),
+        "rsi":                mkt.get("rsi", 50.0),
+        "mom_5d":             mkt.get("mom_5d", 0.0),
+        "suggested_target1":  t1,
+        "suggested_target2":  t2,
+        "suggested_stop_loss": stop,
+    })
 
 
 class WatchlistTickerBody(BaseModel):
@@ -1417,6 +1600,13 @@ def post_portfolio_add(body: PortfolioAddBody, auth_email: str = Depends(require
     pos = dict(body.position)
     pos.setdefault("id", str(uuid.uuid4()))
     pos.setdefault("status", "open")
+    # Stock-specific field initialisation
+    if _is_stock_position(pos):
+        entry_px = _float_or(pos.get("entryPrice") or pos.get("entry_price"), 0.0)
+        if not pos.get("high_water_mark") and entry_px > 0:
+            pos["high_water_mark"] = entry_px
+        if not pos.get("trailing_stop_pct"):
+            pos["trailing_stop_pct"] = 0.08  # 8% default trailing stop
     port.append(pos)
     saved = save_user_state(email, state.get("watchlist") or [], port)
     try:

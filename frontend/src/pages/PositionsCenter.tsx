@@ -19,10 +19,11 @@ import {
   TrendingDown,
   X,
 } from 'lucide-react'
-import { fetchPositionsCenter } from '../api/commandCenter'
+import { fetchPositionsCenter, fetchStockTargets } from '../api/commandCenter'
+import type { StockTargetData } from '../api/commandCenter'
 import { ROUTES } from '../routing/routes'
 import { useApp } from '../contexts/AppContext'
-import type { AiPositionAnalysis, ApiEnvelope } from '../types/commandCenter'
+import type { AiPositionAnalysis, ApiEnvelope, StockPositionAnalysis } from '../types/commandCenter'
 import type { PortfolioPosition, OptionLeg, ClosePositionPayload } from '../types/index'
 import { EXIT_REASON_OPTIONS } from '../types/index'
 import {
@@ -36,9 +37,10 @@ import {
 import * as XLSX from 'xlsx'
 
 const TABS = [
-  { id: 'all', label: 'All Positions' },
-  { id: 'open', label: 'Open Positions' },
+  { id: 'all',    label: 'All Positions' },
+  { id: 'open',   label: 'Open Positions' },
   { id: 'closed', label: 'Closed Positions' },
+  { id: 'stocks', label: 'Stocks' },
 ] as const
 
 type MainTabId = (typeof TABS)[number]['id']
@@ -430,6 +432,7 @@ interface FormState {
   target2: string
   breakout: string
   stopLoss: string
+  trailingStopPct: string
 }
 
 function emptyForm(): FormState {
@@ -447,7 +450,73 @@ function emptyForm(): FormState {
     target2: '',
     breakout: '',
     stopLoss: '',
+    trailingStopPct: '8',
   }
+}
+
+function StockTargetsFetcher({
+  ticker,
+  entryPrice,
+  onFill,
+}: {
+  ticker: string
+  entryPrice?: number
+  onFill: (targets: { target1: string; target2: string; stopLoss: string }) => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [info, setInfo] = useState<StockTargetData | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const run = async () => {
+    const t = ticker.trim().toUpperCase()
+    if (!t) return
+    setLoading(true)
+    setErr(null)
+    try {
+      const result = await fetchStockTargets(t, entryPrice)
+      setInfo(result)
+      onFill({
+        target1: result.suggested_target1.toFixed(2),
+        target2: result.suggested_target2.toFixed(2),
+        stopLoss: result.suggested_stop_loss.toFixed(2),
+      })
+    } catch {
+      setErr('Could not fetch market data — enter targets manually.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={run}
+        disabled={!ticker.trim() || loading}
+        className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors border ${
+          ticker.trim() && !loading
+            ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-700 hover:bg-violet-100 dark:hover:bg-violet-900/30'
+            : 'bg-slate-100 dark:bg-slate-800 text-muted border-transparent cursor-not-allowed'
+        }`}
+      >
+        {loading ? 'Fetching MA data…' : 'Auto-Fill Targets from MA20 / MA50'}
+      </button>
+      {info && (
+        <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 p-3 text-xs font-mono space-y-1">
+          <div className="text-slate-500 dark:text-slate-400 font-sans font-semibold text-[10px] uppercase tracking-wide mb-1.5">
+            Live Context — {info.ticker}
+          </div>
+          <div className="flex gap-4 flex-wrap">
+            <span className="text-primary">Price: <span className="font-bold">${info.current_price.toFixed(2)}</span></span>
+            <span className="text-sky-400">MA20: ${info.ma20.toFixed(2)}</span>
+            <span className="text-amber-400">MA50: ${info.ma50.toFixed(2)}</span>
+            <span className="text-slate-400">RSI: {info.rsi.toFixed(0)}</span>
+          </div>
+        </div>
+      )}
+      {err && <p className="text-xs text-semantic-bearish">{err}</p>}
+    </div>
+  )
 }
 
 function PositionFormFields({
@@ -507,16 +576,62 @@ function PositionFormFields({
       </div>
 
       {isStock ? (
-        <div className="grid grid-cols-2 gap-3">
-          <label className={labelCls}>Shares *
-            <input type="number" min={1} value={form.contractCount}
-              onChange={e => onChange({ contractCount: e.target.value })} className={inputCls} />
-          </label>
-          <label className={labelCls}>Entry Price ($) *
-            <input type="number" step="any" value={form.entryStockPrice}
-              onChange={e => onChange({ entryStockPrice: e.target.value })} className={inputCls} />
-          </label>
-        </div>
+        <>
+          {/* Shares + Entry Price */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className={labelCls}>Shares *
+              <input type="number" min={1} value={form.contractCount}
+                onChange={e => onChange({ contractCount: e.target.value })} className={inputCls} />
+            </label>
+            <label className={labelCls}>Entry Price ($) *
+              <input type="number" step="any" value={form.entryStockPrice}
+                onChange={e => onChange({ entryStockPrice: e.target.value })} className={inputCls} />
+            </label>
+          </div>
+
+          {/* Trailing Stop % */}
+          <div>
+            <label className={labelCls}>Trailing Stop %
+              <div className="relative mt-1">
+                <input type="number" min={1} max={30} step={0.5}
+                  value={form.trailingStopPct}
+                  onChange={e => onChange({ trailingStopPct: e.target.value })}
+                  className={`${inputCls} !mt-0 pr-8`} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-tertiary pointer-events-none">%</span>
+              </div>
+            </label>
+            <p className="text-[10px] text-tertiary mt-0.5">Trailing stop follows the highest price down by this %</p>
+          </div>
+
+          {/* Auto-fill targets from live MA data */}
+          <StockTargetsFetcher
+            ticker={form.ticker}
+            entryPrice={parseFloat(form.entryStockPrice) || undefined}
+            onFill={targets => onChange(targets)}
+          />
+
+          {/* Targets + Hard Stop */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Target 1
+                <input value={form.target1} onChange={e => onChange({ target1: e.target.value })}
+                  placeholder="MA20 zone" className={inputCls} />
+              </label>
+            </div>
+            <div>
+              <label className={labelCls}>Target 2
+                <input value={form.target2} onChange={e => onChange({ target2: e.target.value })}
+                  placeholder="MA50 zone" className={inputCls} />
+              </label>
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Hard Stop Loss
+                <input value={form.stopLoss} onChange={e => onChange({ stopLoss: e.target.value })}
+                  placeholder="e.g. 195" className={inputCls} />
+              </label>
+            </div>
+          </div>
+        </>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -585,35 +700,37 @@ function PositionFormFields({
               )}
             </div>
           )}
+
+          {/* Options execution map — includes Breakout */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Target 1
+                <input value={form.target1} onChange={e => onChange({ target1: e.target.value })} placeholder="e.g. 225"
+                  className={inputCls} />
+              </label>
+            </div>
+            <div>
+              <label className={labelCls}>Target 2
+                <input value={form.target2} onChange={e => onChange({ target2: e.target.value })} placeholder="e.g. 240"
+                  className={inputCls} />
+              </label>
+            </div>
+            <div>
+              <label className={labelCls}>Breakout
+                <input value={form.breakout} onChange={e => onChange({ breakout: e.target.value })} placeholder="e.g. 215"
+                  className={inputCls} />
+              </label>
+            </div>
+            <div>
+              <label className={labelCls}>Stop Loss
+                <input value={form.stopLoss} onChange={e => onChange({ stopLoss: e.target.value })} placeholder="e.g. 195"
+                  className={inputCls} />
+              </label>
+            </div>
+          </div>
         </>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className={labelCls}>Target 1
-            <input value={form.target1} onChange={e => onChange({ target1: e.target.value })} placeholder="e.g. 225"
-              className={inputCls} />
-          </label>
-        </div>
-        <div>
-          <label className={labelCls}>Target 2
-            <input value={form.target2} onChange={e => onChange({ target2: e.target.value })} placeholder="e.g. 240"
-              className={inputCls} />
-          </label>
-        </div>
-        <div>
-          <label className={labelCls}>Breakout
-            <input value={form.breakout} onChange={e => onChange({ breakout: e.target.value })} placeholder="e.g. 215"
-              className={inputCls} />
-          </label>
-        </div>
-        <div>
-          <label className={labelCls}>Stop Loss
-            <input value={form.stopLoss} onChange={e => onChange({ stopLoss: e.target.value })} placeholder="e.g. 195"
-              className={inputCls} />
-          </label>
-        </div>
-      </div>
       <div>
         <label className={labelCls}>Notes
           <textarea value={form.notes} onChange={e => onChange({ notes: e.target.value })} rows={2}
@@ -1509,14 +1626,16 @@ export default function PositionsCenter() {
     current_mark_per_share?: number
     mark_source?: 'live' | 'bs_theoretical' | 'stale'
   }>
-  const aiAnalyses = (d.ai_analyses ?? {}) as Record<string, AiPositionAnalysis>
+  const aiAnalyses    = (d.ai_analyses    ?? {}) as Record<string, AiPositionAnalysis>
+  const stockAnalyses = (d.stock_analyses ?? {}) as Record<string, StockPositionAnalysis>
   const rawTab = positionsTab as string
   const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'open'
 
-  const openPortfolio = useMemo(() => portfolio.filter(p => p.status === 'open'), [portfolio])
+  const openPortfolio   = useMemo(() => portfolio.filter(p => p.status === 'open'), [portfolio])
   const closedPortfolio = useMemo(() => portfolio.filter(p => p.status === 'closed'), [portfolio])
-  const derivedOpt = openPortfolio.filter(p => (p.legs?.length ?? 0) > 0).length
-  const derivedStock = Math.max(0, openPortfolio.length - derivedOpt)
+  const stockPortfolio  = useMemo(() => openPortfolio.filter(isStockPos), [openPortfolio])
+  const derivedOpt   = openPortfolio.filter(p => !isStockPos(p) && (p.legs?.length ?? 0) > 0).length
+  const derivedStock = openPortfolio.filter(isStockPos).length
 
   const optionsN = num(summary.options_positions, derivedOpt)
   const stockN = num(summary.stock_positions, derivedStock)
@@ -1560,7 +1679,7 @@ export default function PositionsCenter() {
     : regime === 'bearish' ? { label: 'Bearish', cls: getDecisionBadgeClass('AVOID') }
     : { label: 'Mixed', cls: getDecisionBadgeClass('WATCH') }
 
-  const positions = tab === 'open' ? openPortfolio : tab === 'closed' ? closedPortfolio : portfolio
+  const positions = tab === 'stocks' ? [] : tab === 'open' ? openPortfolio : tab === 'closed' ? closedPortfolio : portfolio
 
   const filtered = useMemo(() => {
     let list = [...positions]
@@ -1817,7 +1936,12 @@ export default function PositionsCenter() {
                   tab === t.id ? 'bg-violet-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
                 }`}
               >
-                {t.label} <span className="text-[11px] opacity-70">({t.id === 'open' ? openPortfolio.length : t.id === 'closed' ? closedPortfolio.length : portfolio.length})</span>
+                {t.label} <span className="text-[11px] opacity-70">({
+                  t.id === 'stocks' ? stockPortfolio.length
+                  : t.id === 'open' ? openPortfolio.length
+                  : t.id === 'closed' ? closedPortfolio.length
+                  : portfolio.length
+                })</span>
               </button>
             ))}
           </div>
@@ -1900,7 +2024,19 @@ export default function PositionsCenter() {
         )}
       </div>
 
-      {loading && positions.length === 0 ? (
+      {tab === 'stocks' ? (
+        <StocksTabContent
+          positions={openPortfolio}
+          stockAnalyses={stockAnalyses}
+          summary={summary}
+          expandedId={expandedId}
+          onToggle={toggleExpanded}
+          onClose={handleClose}
+          onManage={handleManage}
+          loading={loading}
+          onAdd={() => setShowAddModal(true)}
+        />
+      ) : loading && positions.length === 0 ? (
         <div className="flex items-center justify-center py-24 text-sm text-muted">
           <RefreshCw size={16} className="mr-2 animate-spin" /> Loading positions...
         </div>
@@ -2054,6 +2190,333 @@ function ClosedPositionReviewModal({
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Stocks Tab — components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isStockPos(p: PortfolioPosition): boolean {
+  if ((p.strategy || '').toLowerCase() === 'stock') return true
+  const hasLegs = Array.isArray(p.legs) && p.legs.length > 0
+  if (hasLegs) return false
+  return typeof p.shares === 'number' && p.shares > 0
+}
+
+function getStockDecisionCls(decision: string): string {
+  switch (decision) {
+    case 'STOP_HIT': return 'bg-rose-900/30 border-rose-500 text-rose-300'
+    case 'SELL':     return 'bg-rose-800/20 border-rose-400 text-rose-300'
+    case 'TRIM':     return 'bg-amber-800/20 border-amber-400 text-amber-300'
+    case 'WATCH':    return 'bg-sky-800/20 border-sky-400 text-sky-300'
+    case 'HOLD':     return 'bg-emerald-800/20 border-emerald-400 text-emerald-300'
+    default:         return 'bg-slate-800/20 border-slate-400 text-slate-300'
+  }
+}
+
+function StockPriceLevels({ a }: { a: StockPositionAnalysis }) {
+  const eff = a.trailing_stop > 0 ? a.trailing_stop : a.stop_loss
+  const entry = a.entry_price
+
+  const pctVsEntry = (p: number) =>
+    entry > 0 ? ((p / entry - 1) * 100).toFixed(1) : '0'
+
+  const levels = [
+    { key: 'stop',    label: 'Stop',    price: eff,             cls: 'text-rose-400 border-rose-600/50 bg-rose-900/20' },
+    { key: 'entry',   label: 'Entry',   price: entry,           cls: 'text-slate-300 border-slate-600/50 bg-slate-800/50' },
+    { key: 'ma20',    label: 'MA20',    price: a.ma20,          cls: 'text-sky-400 border-sky-600/50 bg-sky-900/20' },
+    { key: 'current', label: 'Current', price: a.current_price, cls: 'text-emerald-400 border-emerald-600/50 bg-emerald-900/30 ring-1 ring-emerald-500/40' },
+    { key: 't1',      label: 'T1',      price: a.target1,       cls: 'text-amber-400 border-amber-600/50 bg-amber-900/20' },
+    { key: 't2',      label: 'T2',      price: a.target2,       cls: 'text-violet-400 border-violet-600/50 bg-violet-900/20' },
+  ].filter(l => l.price > 0)
+
+  return (
+    <div className="flex items-start gap-1.5 overflow-x-auto pb-1">
+      {levels.map(l => (
+        <div key={l.key} className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-center ${l.cls}`}>
+          <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70 mb-0.5">{l.label}</div>
+          <div className="text-xs font-mono font-bold">${l.price.toFixed(2)}</div>
+          <div className="text-[9px] opacity-60 mt-0.5">
+            {l.price === entry
+              ? 'base'
+              : `${Number(pctVsEntry(l.price)) >= 0 ? '+' : ''}${pctVsEntry(l.price)}%`}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StockPositionCard({
+  pos,
+  analysis,
+  expanded,
+  onToggle,
+  onClose,
+  onManage,
+}: {
+  pos: PortfolioPosition
+  analysis: StockPositionAnalysis | null
+  expanded: boolean
+  onToggle: () => void
+  onClose: () => void
+  onManage: () => void
+}) {
+  const shares = num(pos.shares ?? pos.contracts, 0)
+  const entry  = num(pos.entryPrice, 0)
+  const costBasis = entry * shares
+
+  const pnlDollar = analysis?.pnl_dollar ?? 0
+  const pnlPct    = analysis?.pnl_pct    ?? 0
+  const currentPx = analysis?.current_price ?? entry
+  const decision  = analysis?.decision ?? 'HOLD'
+
+  return (
+    <div className={`rounded-xl border transition-all ${
+      decision === 'STOP_HIT'
+        ? 'border-rose-600/60 bg-rose-900/10 shadow-rose-900/30 shadow-md'
+        : 'border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900'
+    }`}>
+      {/* Collapsed header */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full text-left px-4 py-3 flex items-center gap-3 flex-wrap"
+      >
+        {/* Ticker */}
+        <div className="flex items-center gap-2 min-w-[90px]">
+          <span className="font-mono text-base font-bold text-heading">{pos.ticker}</span>
+          <span className="text-[10px] text-tertiary bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Stock</span>
+        </div>
+
+        {/* Size + cost */}
+        <div className="text-xs text-secondary tabular-nums">
+          {shares.toLocaleString()} sh <span className="text-tertiary">× ${entry.toFixed(2)}</span>
+          {costBasis > 0 && (
+            <span className="text-tertiary ml-1">= ${costBasis.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Current price */}
+        {currentPx > 0 && (
+          <span className="text-sm font-mono font-semibold text-heading tabular-nums">
+            ${currentPx.toFixed(2)}
+          </span>
+        )}
+
+        {/* P&L */}
+        <span className={`text-xs font-semibold tabular-nums ${pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
+          {pnlDollar !== 0 && (
+            <span className="opacity-70 ml-1">({pnlDollar >= 0 ? '+' : ''}{fmtUsd(pnlDollar)})</span>
+          )}
+        </span>
+
+        {/* Decision badge */}
+        {analysis && (
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${getStockDecisionCls(decision)}`}>
+            {analysis.decision_label}
+          </span>
+        )}
+
+        <ChevronDown size={16} className={`shrink-0 text-muted transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && analysis && (
+        <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 py-4 space-y-4">
+
+          {/* Decision + Reasoning */}
+          <div className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 p-3 space-y-1">
+            <div className={`text-xs font-bold uppercase tracking-wide ${getStockDecisionCls(decision).split(' ').find(c => c.startsWith('text-')) ?? 'text-primary'}`}>
+              {analysis.decision_label}
+            </div>
+            <p className="text-sm text-secondary">{analysis.reasoning}</p>
+          </div>
+
+          {/* Price levels */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Price Levels</div>
+            <StockPriceLevels a={analysis} />
+          </div>
+
+          {/* Technical context */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            {[
+              { label: 'MA20', value: `$${analysis.ma20.toFixed(2)}` },
+              { label: 'MA50', value: `$${analysis.ma50.toFixed(2)}` },
+              { label: 'RSI', value: analysis.rsi.toFixed(0) },
+              { label: '5d Mom', value: `${analysis.mom_5d >= 0 ? '+' : ''}${analysis.mom_5d.toFixed(1)}%` },
+            ].map(m => (
+              <div key={m.label} className="rounded-lg border border-slate-100 dark:border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1.5">
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-muted">{m.label}</div>
+                <div className="font-mono font-semibold text-primary mt-0.5">{m.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Trailing stop detail */}
+          {analysis.trailing_stop > 0 && (
+            <div className="text-xs text-secondary">
+              <span className="font-semibold text-rose-400">Trailing Stop: ${analysis.trailing_stop.toFixed(2)}</span>
+              {' · '}
+              {(analysis.trailing_stop_pct * 100).toFixed(0)}% trail from HWM ${analysis.high_water_mark.toFixed(2)}
+              {analysis.stop_loss > 0 && ` · Hard stop $${analysis.stop_loss.toFixed(2)}`}
+            </div>
+          )}
+
+          {/* Day P&L */}
+          {analysis.day_pl_dollar !== 0 && (
+            <div className="text-xs text-secondary">
+              Day P&L:{' '}
+              <span className={analysis.day_pl_dollar >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                {analysis.day_pl_dollar >= 0 ? '+' : ''}{fmtUsd(analysis.day_pl_dollar)} ({analysis.day_pl_pct >= 0 ? '+' : ''}{analysis.day_pl_pct.toFixed(2)}%)
+              </span>
+            </div>
+          )}
+
+          {/* Smart alerts */}
+          {analysis.smart_alerts.length > 0 && (
+            <div className="space-y-1.5">
+              {analysis.smart_alerts.map((a, i) => (
+                <div key={i} className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs border ${
+                  a.severity === 'CRITICAL' ? 'bg-rose-900/20 border-rose-600/40 text-rose-300'
+                  : a.severity === 'WARNING' ? 'bg-amber-900/20 border-amber-600/40 text-amber-300'
+                  : 'bg-sky-900/20 border-sky-600/40 text-sky-300'
+                }`}>
+                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                  <span>{a.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Management actions */}
+          {analysis.management_actions.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-1.5">Actions</div>
+              <ul className="space-y-1">
+                {analysis.management_actions.map((action, i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs text-secondary">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
+                    {action}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onManage}
+              className={`${getActionButtonClass('surface')} rounded-lg px-3 py-1.5 text-xs font-semibold`}>
+              <Edit3 size={12} className="mr-1.5" />Edit
+            </button>
+            <button type="button" onClick={onClose}
+              className={`${getActionButtonClass('alert')} rounded-lg px-3 py-1.5 text-xs font-semibold`}>
+              Close Position
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* No analysis fallback */}
+      {expanded && !analysis && (
+        <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 py-4 text-xs text-muted">
+          Analysis loading — refresh to get the latest decision data.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StocksBanner({ summary }: { summary: Record<string, unknown> }) {
+  const s = (summary.stocks ?? {}) as Record<string, unknown>
+  const costBasis    = num(s.cost_basis)
+  const unrealizedPl = s.unrealized_pl as number | null | undefined
+  const dayPl        = s.day_pl        as number | null | undefined
+  const weekPl       = s.week_pl       as number | null | undefined
+  const count        = num(s.count)
+
+  if (costBasis === 0 && count === 0) return null
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {[
+        { label: 'Cost Basis', value: fmtUsd(costBasis), sub: `${count} position${count !== 1 ? 's' : ''}`, color: '' },
+        { label: 'Unrealized P&L', value: fmtUsd(unrealizedPl), sub: null, color: unrealizedPl != null ? (unrealizedPl >= 0 ? 'text-emerald-400' : 'text-rose-400') : '' },
+        { label: 'Day P&L', value: fmtUsd(dayPl), sub: null, color: dayPl != null ? (dayPl >= 0 ? 'text-emerald-400' : 'text-rose-400') : '' },
+        { label: 'Week P&L', value: fmtUsd(weekPl), sub: null, color: weekPl != null ? (weekPl >= 0 ? 'text-emerald-400' : 'text-rose-400') : '' },
+      ].map(m => (
+        <div key={m.label} className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">{m.label}</div>
+          <div className={`text-base font-bold tabular-nums ${m.color || 'text-primary'}`}>{m.value}</div>
+          {m.sub && <div className="text-[11px] text-tertiary mt-0.5">{m.sub}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StocksTabContent({
+  positions,
+  stockAnalyses,
+  summary,
+  expandedId,
+  onToggle,
+  onClose,
+  onManage,
+  loading,
+  onAdd,
+}: {
+  positions: PortfolioPosition[]
+  stockAnalyses: Record<string, StockPositionAnalysis>
+  summary: Record<string, unknown>
+  expandedId: string | null
+  onToggle: (id: string) => void
+  onClose: (pos: PortfolioPosition) => void
+  onManage: (pos: PortfolioPosition) => void
+  loading: boolean
+  onAdd: () => void
+}) {
+  const stocks = useMemo(() => positions.filter(isStockPos), [positions])
+
+  return (
+    <div className="space-y-4">
+      <StocksBanner summary={summary} />
+
+      {loading && stocks.length === 0 ? (
+        <div className="flex items-center justify-center py-24 text-sm text-muted">
+          <RefreshCw size={16} className="mr-2 animate-spin" /> Loading stock positions…
+        </div>
+      ) : stocks.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-20 text-center">
+          <div className="text-lg font-semibold text-heading">No stock positions</div>
+          <p className="mt-1 text-sm text-tertiary">Add a position with Strategy = Stock to track it here.</p>
+          <button type="button" onClick={onAdd}
+            className={`mt-4 inline-flex items-center gap-2 ${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold`}>
+            <Plus size={16} /> Add Stock Position
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {stocks.map(pos => (
+            <StockPositionCard
+              key={pos.id}
+              pos={pos}
+              analysis={stockAnalyses[pos.id] ?? null}
+              expanded={expandedId === pos.id}
+              onToggle={() => onToggle(pos.id)}
+              onClose={() => onClose(pos)}
+              onManage={() => onManage(pos)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AddPositionModal({
   onSave,
   onClose,
@@ -2089,6 +2552,10 @@ function AddPositionModal({
       : 45
 
     if (isStock) {
+      const t1 = parseFloat(form.target1) || undefined
+      const t2 = parseFloat(form.target2) || undefined
+      const sl = parseFloat(form.stopLoss) || undefined
+      const trailingPct = (parseFloat(form.trailingStopPct) || 8) / 100
       onSave({
         ticker: form.ticker.trim().toUpperCase(),
         companyName: form.ticker.trim().toUpperCase(),
@@ -2105,11 +2572,16 @@ function AddPositionModal({
         expected_value: 0,
         scores_total: 0,
         contracts: cc,
+        shares: cc,
         breakeven_lower: entryPrice,
         breakeven_upper: entryPrice,
         entryPrice,
         source: form.tradeSource,
         capital_at_risk: Math.round(entryPrice * cc),
+        trailing_stop_pct: trailingPct,
+        target1: t1,
+        target2: t2,
+        stopLoss: sl,
         notes: form.notes.trim() || undefined,
       })
       return
@@ -2474,6 +2946,7 @@ function EditPositionModal({
       target2: pos.target2 != null ? String(pos.target2) : '',
       breakout: pos.breakout != null ? String(pos.breakout) : '',
       stopLoss: pos.stopLoss != null ? String(pos.stopLoss) : '',
+      trailingStopPct: pos.trailing_stop_pct != null ? String(Math.round(pos.trailing_stop_pct * 100)) : '8',
     }
   })
 
