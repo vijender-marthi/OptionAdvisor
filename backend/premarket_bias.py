@@ -27,6 +27,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import bar_cache
+import backup_data
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -51,37 +52,43 @@ def _from_cache() -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 def _premarket_pct(ticker: str) -> Optional[float]:
-    """% change between preMarketPrice and previousClose via yfinance .info."""
+    """
+    % change between pre-market price and previous close.
+    Tries Yahoo Finance first; falls back to api.massive.com.
+    """
+    # Yahoo Finance
     try:
-        info = bar_cache.get_info(ticker)
+        info  = bar_cache.get_info(ticker)
         pre   = info.get("preMarketPrice") or info.get("currentPrice")
         close = info.get("previousClose") or info.get("regularMarketPreviousClose")
         if pre and close and float(close) > 0:
             return round((float(pre) / float(close) - 1.0) * 100.0, 3)
     except Exception:
         pass
-    return None
+    # Fallback: api.massive.com
+    return backup_data.get_premarket_pct(ticker)
 
 
 def _prev_close_range_position(ticker: str) -> Optional[float]:
     """
-    Position of yesterday's close within the day's H-L range.
-    Returns 0.0 (low) … 1.0 (high). Returns None on failure.
+    Position of yesterday's close within the day's H-L range (0.0–1.0).
+    Tries Yahoo Finance first; falls back to api.massive.com snapshot.
     """
+    # Yahoo Finance
     try:
         h = bar_cache.get_history(ticker, period="5d", interval="1d", auto_adjust=True)
-        if h is None or len(h) < 2:
-            return None
-        yesterday = h.iloc[-2]
-        hi  = float(yesterday["High"])
-        lo  = float(yesterday["Low"])
-        cl  = float(yesterday["Close"])
-        rng = hi - lo
-        if rng <= 0:
-            return None
-        return round((cl - lo) / rng, 4)
+        if h is not None and len(h) >= 2:
+            yesterday = h.iloc[-2]
+            hi  = float(yesterday["High"])
+            lo  = float(yesterday["Low"])
+            cl  = float(yesterday["Close"])
+            rng = hi - lo
+            if rng > 0:
+                return round((cl - lo) / rng, 4)
     except Exception:
-        return None
+        pass
+    # Fallback: api.massive.com
+    return backup_data.get_prev_close_range_position(ticker)
 
 
 def _avg_premarket(*tickers: str) -> Optional[float]:

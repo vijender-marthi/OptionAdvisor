@@ -37,6 +37,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import bar_cache
+import backup_data
 
 PT  = ZoneInfo("America/Los_Angeles")
 
@@ -101,15 +102,21 @@ def check_early_entry_trigger(
 
     now_pt = datetime.now(PT)
 
-    # ── Fetch 1M premarket bars ──────────────────────────────────────
+    # ── Fetch 1M bars — Yahoo first, massive.com as fallback ────────────
     try:
         raw = bar_cache.get_history(t, period="1d", interval="1m", auto_adjust=True)
     except Exception:
         raw = None
 
     if raw is None or raw.empty:
+        # Fallback: api.massive.com
+        results = backup_data.get_1min_bars(t, now_pt.date(), now_pt.date())
+        if results:
+            raw = backup_data.bars_to_dataframe(results)
+
+    if raw is None or raw.empty:
         return {"status": "NO_DATA", "ticker": t,
-                "message": "1-minute bars not available."}
+                "message": "1-minute bars not available (Yahoo + massive.com both failed)."}
 
     # Convert to PT
     df = raw.copy()
