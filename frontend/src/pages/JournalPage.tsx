@@ -620,8 +620,19 @@ function EntryCard({
               )}
             </div>
 
-            <div className="col-span-2 flex justify-end sm:justify-center sm:w-10 sm:shrink-0">
-              <span className="p-1.5 text-gray-400 rounded-xl border border-transparent">
+            {/* Delete — always visible on the row */}
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onDeleteConfirm(entry.id) }}
+              title="Delete entry"
+              aria-label="Delete journal entry"
+              className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-gray-600 hover:border-red-800 hover:bg-red-900/30 hover:text-red-400 transition-colors touch-manipulation"
+            >
+              <Trash2 size={14} />
+            </button>
+
+            <div className="flex justify-center w-6 shrink-0">
+              <span className="text-gray-400">
                 {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </span>
             </div>
@@ -913,16 +924,6 @@ function EntryCard({
               {tradeError && (
                 <span className="text-xs text-red-400 ml-1">{tradeError}</span>
               )}
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); onDeleteConfirm(entry.id) }}
-                title="Delete entry"
-                aria-label="Delete journal entry"
-                className="inline-flex h-10 w-10 items-center justify-center bg-gray-800 hover:bg-red-900/30 border border-gray-700
-                           text-gray-500 hover:text-red-400 rounded-xl transition-colors touch-manipulation shrink-0"
-              >
-                <Trash2 size={16} />
-              </button>
             </div>
           </div>
         )}
