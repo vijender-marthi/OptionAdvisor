@@ -433,6 +433,8 @@ interface FormState {
   breakout: string
   stopLoss: string
   trailingStopPct: string
+  accountType: '401K' | 'TAXABLE' | ''
+  purchaseDate: string
 }
 
 function emptyForm(): FormState {
@@ -451,6 +453,8 @@ function emptyForm(): FormState {
     breakout: '',
     stopLoss: '',
     trailingStopPct: '8',
+    accountType: '',
+    purchaseDate: '',
   }
 }
 
@@ -601,6 +605,24 @@ function PositionFormFields({
               </div>
             </label>
             <p className="text-[10px] text-tertiary mt-0.5">Trailing stop follows the highest price down by this %</p>
+          </div>
+
+          {/* Account type + purchase date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Account Type
+                <select value={form.accountType} onChange={e => onChange({ accountType: e.target.value as FormState['accountType'] })} className={inputCls}>
+                  <option value="">— Select —</option>
+                  <option value="TAXABLE">Taxable</option>
+                  <option value="401K">401K</option>
+                </select>
+              </label>
+            </div>
+            <div>
+              <label className={labelCls}>Purchase Date
+                <input type="date" value={form.purchaseDate} onChange={e => onChange({ purchaseDate: e.target.value })} className={inputCls} />
+              </label>
+            </div>
           </div>
 
           {/* Auto-fill targets from live MA data */}
@@ -2355,13 +2377,40 @@ function StockPositionCard({
             ))}
           </div>
 
-          {/* Trailing stop detail */}
-          {analysis.trailing_stop > 0 && (
+          {/* Deviation from MA20 */}
+          {analysis.deviation_from_ma20 != null && (
             <div className="text-xs text-secondary">
-              <span className="font-semibold text-rose-400">Trailing Stop: ${analysis.trailing_stop.toFixed(2)}</span>
-              {' · '}
-              {(analysis.trailing_stop_pct * 100).toFixed(0)}% trail from HWM ${analysis.high_water_mark.toFixed(2)}
-              {analysis.stop_loss > 0 && ` · Hard stop $${analysis.stop_loss.toFixed(2)}`}
+              Dev from MA20:{' '}
+              <span className={`font-semibold ${analysis.deviation_from_ma20 >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {analysis.deviation_from_ma20 >= 0 ? '+' : ''}{analysis.deviation_from_ma20.toFixed(1)}%
+              </span>
+              {Math.abs(analysis.deviation_from_ma20) > 10 && (
+                <span className="ml-1.5 text-amber-400 font-semibold">— Overextended</span>
+              )}
+            </div>
+          )}
+
+          {/* Dual trailing stops */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {analysis.trailing_stop_8pct > 0 && (
+              <div className="rounded-lg border border-rose-600/30 bg-rose-900/10 px-2.5 py-1.5">
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-muted mb-0.5">Trail Stop 8%</div>
+                <div className="font-mono font-bold text-rose-400">${analysis.trailing_stop_8pct.toFixed(2)}</div>
+              </div>
+            )}
+            {analysis.trailing_stop_10pct > 0 && (
+              <div className="rounded-lg border border-amber-600/30 bg-amber-900/10 px-2.5 py-1.5">
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-muted mb-0.5">Trail Stop 10%</div>
+                <div className="font-mono font-bold text-amber-400">${analysis.trailing_stop_10pct.toFixed(2)}</div>
+              </div>
+            )}
+          </div>
+          {analysis.stop_loss > 0 && (
+            <div className="text-xs text-muted">
+              Hard stop: <span className="font-mono text-rose-400">${analysis.stop_loss.toFixed(2)}</span>
+              {analysis.high_water_mark > 0 && (
+                <span className="ml-2">HWM: <span className="font-mono">${analysis.high_water_mark.toFixed(2)}</span></span>
+              )}
             </div>
           )}
 
@@ -2372,6 +2421,44 @@ function StockPositionCard({
               <span className={analysis.day_pl_dollar >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
                 {analysis.day_pl_dollar >= 0 ? '+' : ''}{fmtUsd(analysis.day_pl_dollar)} ({analysis.day_pl_pct >= 0 ? '+' : ''}{analysis.day_pl_pct.toFixed(2)}%)
               </span>
+            </div>
+          )}
+
+          {/* Earnings */}
+          {analysis.earnings_date && (
+            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+              (analysis.days_to_earnings ?? 999) <= 14
+                ? 'bg-rose-900/20 border-rose-600/40 text-rose-300'
+                : 'bg-amber-900/20 border-amber-600/40 text-amber-300'
+            }`}>
+              <AlertTriangle size={12} className="shrink-0" />
+              <span>
+                Earnings:{' '}
+                <span className="font-semibold">
+                  {new Date(analysis.earnings_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+                {analysis.days_to_earnings != null && ` (${analysis.days_to_earnings} days)`}
+                {(analysis.days_to_earnings ?? 999) <= 14 && ' — Trim or set tight stop'}
+              </span>
+            </div>
+          )}
+
+          {/* Days held + account */}
+          {(analysis.days_held != null || analysis.account_type) && (
+            <div className="text-xs text-muted flex gap-4 flex-wrap">
+              {analysis.days_held != null && <span>Held: <span className="text-primary font-semibold">{analysis.days_held}d</span></span>}
+              {analysis.account_type && <span>Account: <span className="text-primary font-semibold">{analysis.account_type}</span></span>}
+            </div>
+          )}
+
+          {/* Tax overlay */}
+          {analysis.tax_overlay && (
+            <div className={`rounded-lg border px-3 py-2 text-xs ${
+              analysis.tax_overlay.startsWith('✅')
+                ? 'bg-emerald-900/20 border-emerald-700/40 text-emerald-300'
+                : 'bg-amber-900/20 border-amber-700/40 text-amber-300'
+            }`}>
+              {analysis.tax_overlay}
             </div>
           )}
 
@@ -2582,6 +2669,8 @@ function AddPositionModal({
         target1: t1,
         target2: t2,
         stopLoss: sl,
+        account_type: form.accountType || undefined,
+        purchase_date: form.purchaseDate || undefined,
         notes: form.notes.trim() || undefined,
       })
       return
@@ -2947,6 +3036,8 @@ function EditPositionModal({
       breakout: pos.breakout != null ? String(pos.breakout) : '',
       stopLoss: pos.stopLoss != null ? String(pos.stopLoss) : '',
       trailingStopPct: pos.trailing_stop_pct != null ? String(Math.round(pos.trailing_stop_pct * 100)) : '8',
+      accountType: (pos.account_type as FormState['accountType']) || '',
+      purchaseDate: pos.purchase_date ?? '',
     }
   })
 

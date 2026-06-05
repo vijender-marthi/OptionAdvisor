@@ -12,9 +12,14 @@ Entry point: analyze_stock_position(position_dict, pnl_data=None) → dict
 """
 from __future__ import annotations
 
+import math
+from datetime import date as _date, datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import bar_cache
+
+_ET = ZoneInfo("America/New_York")
 
 
 def _float_or(x: Any, default: float = 0.0) -> float:
@@ -197,6 +202,59 @@ def _stock_decision(
 
 
 # ---------------------------------------------------------------------------
+# Earnings & tax helpers
+# ---------------------------------------------------------------------------
+
+def _get_earnings_info(ticker: str) -> dict[str, Any]:
+    """
+    Return next earnings date and days until it via yfinance calendar.
+    Returns empty dict on failure (non-blocking).
+    """
+    try:
+        cal = bar_cache.get_calendar(ticker)
+        raw = cal.get("Earnings Date") or cal.get("earningsDate") or cal.get("earnings_date")
+        if not raw:
+            return {}
+        # may be list or single value
+        dates = raw if isinstance(raw, (list, tuple)) else [raw]
+        today = _date.today()
+        future = []
+        for d in dates:
+            try:
+                dt = _date.fromisoformat(str(d)[:10]) if isinstance(d, str) else d.date() if hasattr(d, "date") else None
+                if dt and dt >= today:
+                    future.append(dt)
+            except Exception:
+                pass
+        if not future:
+            return {}
+        next_dt = min(future)
+        return {
+            "date":            next_dt.isoformat(),
+            "days_to_earnings": (next_dt - today).days,
+        }
+    except Exception:
+        return {}
+
+
+def _tax_overlay(account_type: str, days_held: Optional[int]) -> Optional[str]:
+    """Return a plain-text tax guidance string based on account and holding period."""
+    if account_type == "401K":
+        return "✅ 401K — No tax impact. Trim freely."
+    if account_type == "TAXABLE":
+        if days_held is None:
+            return None
+        if days_held < 365:
+            remaining = 365 - days_held
+            return (
+                f"⚠️ Short-term gains ({days_held} days held) — "
+                f"consider waiting {remaining} more day(s) for long-term rate."
+            )
+        return "✅ Long-term gains rate applies."
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -374,46 +432,100 @@ def analyze_stock_position(
     # ── Updated high_water_mark for caller to persist ──────────────────────
     new_hwm = round(max(high_water_mark, current_price), 4)
 
+    # ── Dual trailing stops (8% and 10%) ────────────────────────────────────
+    trail_8pct  = round(new_hwm * 0.92, 2)
+    trail_10pct = round(new_hwm * 0.90, 2)
+
+    # ── Deviation from MA20 ─────────────────────────────────────────────────
+    deviation_from_ma20 = price_vs_ma20_pct  # alias for readability
+
+    # ── Earnings context ─────────────────────────────────────────────────────
+    earnings_info   = _get_earnings_info(ticker)
+    earnings_date   = earnings_info.get("date")
+    days_to_earnings: Optional[int] = earnings_info.get("days_to_earnings")
+
+    # ── Days held ────────────────────────────────────────────────────────────
+    purchase_date_raw = position.get("purchase_date") or position.get("purchaseDate") or position.get("addedAt")
+    days_held: Optional[int] = None
+    if purchase_date_raw:
+        try:
+            pd_str = str(purchase_date_raw)[:10]
+            pd_dt  = _date.fromisoformat(pd_str)
+            days_held = (_date.today() - pd_dt).days
+        except (ValueError, TypeError):
+            pass
+
+    # ── Account type and tax overlay ─────────────────────────────────────────
+    account_type = str(position.get("account_type") or position.get("accountType") or "").upper()
+    tax_overlay  = _tax_overlay(account_type, days_held)
+
+    # ── Earnings-aware alerts ────────────────────────────────────────────────
+    if days_to_earnings is not None:
+        if days_to_earnings <= 14:
+            smart_alerts.insert(0, {
+                "type":     "EARNINGS_RISK",
+                "label":    "Earnings Risk",
+                "message":  f"{ticker} reports in {days_to_earnings} day(s) ({earnings_date}). Trim or set tight stop.",
+                "severity": "CRITICAL",
+            })
+        elif days_to_earnings <= 60:
+            smart_alerts.append({
+                "type":     "EARNINGS_WATCH",
+                "label":    "Earnings Watch",
+                "message":  f"{ticker} earnings on {earnings_date} ({days_to_earnings} days). Monitor carefully.",
+                "severity": "WARNING",
+            })
+
     return {
-        "decision":           decision,
-        "decision_label":     decision_label,
-        "reasoning":          reasoning,
-        "position_type":      "stock",
+        "decision":             decision,
+        "decision_label":       decision_label,
+        "reasoning":            reasoning,
+        "position_type":        "stock",
         # Pricing
-        "current_price":      round(current_price, 4),
-        "entry_price":        round(entry_price, 4),
-        "shares":             shares,
-        "cost_basis":         round(cost_basis, 2),
-        "market_value":       round(market_value, 2),
+        "current_price":        round(current_price, 4),
+        "entry_price":          round(entry_price, 4),
+        "shares":               shares,
+        "cost_basis":           round(cost_basis, 2),
+        "market_value":         round(market_value, 2),
         # P&L
-        "pnl_dollar":         pnl_dollar,
-        "pnl_pct":            pnl_pct,
-        "day_pl_dollar":      day_pl_dollar,
-        "day_pl_pct":         day_pl_pct,
-        "is_profitable":      pnl_pct > 0,
+        "pnl_dollar":           pnl_dollar,
+        "pnl_pct":              pnl_pct,
+        "day_pl_dollar":        day_pl_dollar,
+        "day_pl_pct":           day_pl_pct,
+        "is_profitable":        pnl_pct > 0,
         # Risk levels
-        "trailing_stop":      round(trailing_stop, 4),
-        "stop_loss":          round(stop_loss, 4),
-        "trailing_stop_pct":  trailing_stop_pct,
-        "high_water_mark":    new_hwm,
+        "trailing_stop":        round(trailing_stop, 4),
+        "trailing_stop_8pct":   trail_8pct,
+        "trailing_stop_10pct":  trail_10pct,
+        "stop_loss":            round(stop_loss, 4),
+        "trailing_stop_pct":    trailing_stop_pct,
+        "high_water_mark":      new_hwm,
         # Targets
-        "target1":            target1,
-        "target2":            target2,
+        "target1":              target1,
+        "target2":              target2,
         # Technicals
-        "ma20":               round(ma20, 4),
-        "ma50":               round(ma50, 4),
-        "rsi":                rsi,
-        "mom_5d":             mom_5d,
+        "ma20":                 round(ma20, 4),
+        "ma50":                 round(ma50, 4),
+        "rsi":                  rsi,
+        "mom_5d":               mom_5d,
+        "deviation_from_ma20":  deviation_from_ma20,
         # Distance metrics
-        "price_vs_ma20_pct":  price_vs_ma20_pct,
-        "price_vs_ma50_pct":  price_vs_ma50_pct,
-        "dist_to_stop_pct":   dist_to_stop_pct,
-        "dist_to_t1_pct":     dist_to_t1_pct,
-        "dist_to_t2_pct":     dist_to_t2_pct,
+        "price_vs_ma20_pct":    price_vs_ma20_pct,
+        "price_vs_ma50_pct":    price_vs_ma50_pct,
+        "dist_to_stop_pct":     dist_to_stop_pct,
+        "dist_to_t1_pct":       dist_to_t1_pct,
+        "dist_to_t2_pct":       dist_to_t2_pct,
         # Health
-        "health_score":       score,
-        "health_label":       health_label,
+        "health_score":         score,
+        "health_label":         health_label,
+        # Earnings
+        "earnings_date":        earnings_date,
+        "days_to_earnings":     days_to_earnings,
+        # Account / tax
+        "account_type":         account_type or None,
+        "days_held":            days_held,
+        "tax_overlay":          tax_overlay,
         # Alerts & actions
-        "smart_alerts":       smart_alerts,
-        "management_actions": management_actions,
+        "smart_alerts":         smart_alerts,
+        "management_actions":   management_actions,
     }

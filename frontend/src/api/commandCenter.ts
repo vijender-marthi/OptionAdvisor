@@ -352,3 +352,68 @@ export async function reorderMyTickers(symbols: string[]): Promise<ApiEnvelope<{
   const { data } = await api.put<ApiEnvelope<{ ok: boolean; tickers: MyTickerEntry[] }>>('/my-tickers/reorder', { symbols })
   return data
 }
+
+// ─── Pre-Market Bias (Feature 1) ─────────────────────────────────────────────
+
+export interface PremarketCondition {
+  label:  string
+  value:  string
+  signal: 'bull' | 'bear' | 'neutral'
+  score:  number
+}
+
+export interface PremarketBiasData {
+  bias:           'BULLISH' | 'NEUTRAL' | 'BEARISH'
+  score:          number
+  confidence:     number   // 1–5
+  action:         string
+  conditions:     PremarketCondition[]
+  is_friday:      boolean
+  friday_warning: string | null
+  computed_at:    string
+}
+
+export async function fetchPremarketBias(
+  forceRefresh = false,
+): Promise<PremarketBiasData> {
+  const params = forceRefresh ? '?force_refresh=true' : ''
+  const { data } = await api.get<ApiEnvelope<PremarketBiasData>>(`/premarket-bias${params}`)
+  if (!data.data) throw new Error('No premarket bias data')
+  return data.data
+}
+
+// ─── Early Entry Trigger (Feature 2) ─────────────────────────────────────────
+
+export interface EarlyEntryResult {
+  status:              'WAIT' | 'NO_SETUP' | 'SKIP' | 'ENTRY' | 'TIMEOUT' | 'NO_DATA'
+  ticker:              string
+  message:             string
+  direction?:          'CALL' | 'PUT'
+  entry?:              number
+  stop?:               number
+  target_1?:           number
+  target_2?:           number
+  rr_ratio?:           number
+  atr14?:              number
+  vwap?:               number
+  condition_a?:        'bull' | 'bear' | 'neutral' | 'pending'
+  condition_a_detail?: string
+  condition_b?:        'bull' | 'bear' | 'pending'
+  condition_b_detail?: string
+  condition_c?:        'bull' | 'bear' | 'mixed' | 'pending'
+  condition_c_detail?: string
+  trigger?:            string
+  computed_at:         string
+}
+
+export async function fetchEarlyEntryTrigger(
+  ticker = 'QQQ',
+  forceRefresh = false,
+): Promise<EarlyEntryResult> {
+  const params = new URLSearchParams({ ticker })
+  if (forceRefresh) params.set('force_refresh', 'true')
+  const { data } = await api.get<ApiEnvelope<EarlyEntryResult>>(`/early-entry-trigger?${params}`)
+  if (!data.data) throw new Error('No early entry data')
+  return data.data
+}
+

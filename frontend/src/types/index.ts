@@ -217,6 +217,7 @@ export type Page =
   | 'desk'
   | 'day-trade-dashboard'
   | 'ticker-scanner'
+  | 'day-trade-hub'
 
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
@@ -351,9 +352,11 @@ export interface PortfolioPosition {
   stopLoss?: number       // stop loss level
 
   // Stock-specific fields (populated when strategy === 'Stock')
-  shares?: number             // explicit share count (mirrors contractCount for stocks)
-  trailing_stop_pct?: number  // trailing stop fraction — e.g. 0.08 = 8%
-  high_water_mark?: number    // highest price reached since entry (backend-managed)
+  shares?: number                // explicit share count (mirrors contractCount for stocks)
+  trailing_stop_pct?: number     // user-set trailing stop fraction — e.g. 0.08 = 8%
+  high_water_mark?: number       // highest price reached since entry (backend-managed)
+  account_type?: 'TAXABLE' | '401K' | string   // 401K = no tax; TAXABLE = short/long-term rules
+  purchase_date?: string         // ISO date of purchase (for days_held + tax overlay)
 
   partial_closed?: boolean   // true when this lot is the remainder after a partial close
   original_contracts?: number // contract count before any partial close
