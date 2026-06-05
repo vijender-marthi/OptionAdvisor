@@ -108,15 +108,16 @@ def check_early_entry_trigger(
     except Exception:
         raw = None
 
-    if raw is None or raw.empty:
-        # Fallback: api.massive.com
+    # Fallback to api.massive.com ONLY during the critical 6:30–7:00 AM PT window
+    _in_early_window = (now_pt.hour == 6 and now_pt.minute >= 30) or (now_pt.hour == 7 and now_pt.minute == 0)
+    if (raw is None or raw.empty) and _in_early_window:
         results = backup_data.get_1min_bars(t, now_pt.date(), now_pt.date())
         if results:
             raw = backup_data.bars_to_dataframe(results)
 
     if raw is None or raw.empty:
         return {"status": "NO_DATA", "ticker": t,
-                "message": "1-minute bars not available (Yahoo + massive.com both failed)."}
+                "message": "1-minute bars not available."}
 
     # Convert to PT
     df = raw.copy()
