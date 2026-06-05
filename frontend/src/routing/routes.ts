@@ -17,6 +17,7 @@ export const ROUTES = {
   myTickers: '/my-tickers',
   dayTradeDashboard: '/day-trade-dashboard',
   dayTradeHub: '/day-trade-hub',
+  tools: '/tools',
 } as const
 
 export type EngineType = 'DAY' | 'SWING' | 'REGULAR'

@@ -36,6 +36,7 @@ const ActiveTradesPage = lazy(() => import('./pages/ActiveTradesPage'))
 const DayTradeDashboardPage = lazy(() => import('./pages/DayTradeDashboardPage'))
 const TickerScannerPage  = lazy(() => import('./pages/TickerScannerPage'))
 const DayTradeHubPage    = lazy(() => import('./pages/DayTradeHubPage'))
+const ToolsPage          = lazy(() => import('./pages/ToolsPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -176,6 +177,7 @@ function ShellRoutes() {
               <Route path="/day-trade-dashboard" element={<DayTradeDashboardPage />} />
               <Route path="/ticker-scanner" element={<TickerScannerPage />} />
               <Route path="/day-trade-hub" element={<DayTradeHubPage />} />
+              <Route path="/tools" element={<ToolsPage />} />
             </Route>
           </Route>
         </Route>

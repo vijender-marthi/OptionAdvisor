@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
-  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -171,6 +171,7 @@ export default function Sidebar() {
       items: [
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
+        { id: 'tools', label: 'Tools', icon: <Wrench size={18} /> },
       ],
     },
     {
