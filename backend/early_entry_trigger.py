@@ -1,20 +1,24 @@
 """
 Early Entry Trigger Engine (Feature 2).
 
-Runs 6:30–7:00 AM PT on 1-minute candles. Auto-refresh every 30 s.
+Runs 7:00–7:30 AM PT on 1-minute candles. Auto-refresh every 30 s.
+
+NOTE: Yahoo Finance 1m bars have a ~30-minute lag at session open.
+The first reliable bars are available from 7:00 AM PT (10:00 AM ET),
+not 6:30 AM PT (9:30 AM ET) as originally designed.
 
 Three conditions must ALL align before an entry signal fires:
 
-  Condition A — First 5-min candle (6:30–6:35 AM PT)
+  Condition A — First 5-min candle (7:00–7:05 AM PT / 10:00–10:05 AM ET)
     Green AND move > +0.15% → bullish
     Red   AND move > -0.15% → bearish
     < 0.15% either way      → neutral (no trade)
 
-  Condition B — VWAP position at 6:35 AM PT
+  Condition B — VWAP position at 7:05 AM PT (10:05 AM ET)
     price > VWAP → bullish
     price < VWAP → bearish
 
-  Condition C — 2 consecutive 1M candles post 6:35
+  Condition C — 2 consecutive 1M candles post 7:05 AM PT
     2 green → bullish confirmation
     2 red   → bearish confirmation
     mixed   → no confirmation
@@ -23,7 +27,7 @@ Entry signal:
   All 3 bull → CALL entry on next candle open
   All 3 bear → PUT entry on next candle open
   Mixed      → "WAIT — signals not aligned"
-  No trigger by 7:00 AM PT → "No setup today. Protect capital."
+  No trigger by 7:30 AM PT → "No setup today. Protect capital."
 
 R/R gate (ATR-based from Feature 4 formulas):
   R/R < 1.5 → "R/R insufficient. Skip setup."
@@ -120,15 +124,17 @@ def check_early_entry_trigger(
 
     today = now_pt.date()
 
-    # Filter today's premarket session (6:30–7:00 AM PT)
+    # Filter today's session window (7:00–7:30 AM PT = 10:00–10:30 AM ET)
+    # Yahoo Finance 1m bars have a ~30-min lag at session open, so
+    # the first reliable data is from 7:00 AM PT (10:00 AM ET).
     pm = df[
         (df.index.normalize().date == today)   # type: ignore[attr-defined]
-        & (df.index.hour == 6)
-        & (df.index.minute >= 30)
+        & (df.index.hour == 7)
+        & (df.index.minute < 30)
     ]
 
-    # Timeout: past 7:00 AM PT with no prior signal
-    if now_pt.hour >= 7 and pm.empty:
+    # Timeout: past 7:30 AM PT with no prior signal
+    if (now_pt.hour > 7 or (now_pt.hour == 7 and now_pt.minute >= 30)) and pm.empty:
         result = {
             "status": "TIMEOUT", "ticker": t,
             "message": "No setup today. Protect capital.",
@@ -140,18 +146,18 @@ def check_early_entry_trigger(
     if pm.empty:
         result = {
             "status": "WAIT", "ticker": t,
-            "message": "Waiting for 6:30 AM PT open.",
+            "message": "Waiting for 7:00 AM PT data (Yahoo 30-min lag).",
             "computed_at": now_pt.isoformat(timespec="seconds"),
         }
         _CACHE[cache_key] = (time.time(), result)
         return result
 
-    # ── Condition A: first 5-min candle (6:30–6:34 inclusive) ────────
-    first5 = pm[pm.index.minute < 35]
+    # ── Condition A: first 5-min candle (7:00–7:04 AM PT) ────────────
+    first5 = pm[pm.index.minute < 5]
     if first5.empty:
         result = {
             "status": "WAIT", "ticker": t,
-            "message": "Waiting for 6:30 AM open.",
+            "message": "Waiting for 7:00 AM PT first candle.",
             "computed_at": now_pt.isoformat(timespec="seconds"),
         }
         _CACHE[cache_key] = (time.time(), result)
@@ -176,46 +182,46 @@ def check_early_entry_trigger(
     cond_a      = "bull" if a_green else "bear"
     cond_a_detail = f"{a_move:+.2f}% ({'green' if a_green else 'red'} candle)"
 
-    # ── Condition B: VWAP at 6:35 AM PT ─────────────────────────────
-    at635 = pm[pm.index.minute <= 35]
-    if at635.empty:
+    # ── Condition B: VWAP at 7:05 AM PT ─────────────────────────────
+    at705 = pm[pm.index.minute <= 5]
+    if at705.empty:
         result = {
             "status": "WAIT", "ticker": t,
-            "message": "Waiting for 6:35 AM VWAP check.",
+            "message": "Waiting for 7:05 AM PT VWAP check.",
             "condition_a": cond_a, "condition_a_detail": cond_a_detail,
             "computed_at": now_pt.isoformat(timespec="seconds"),
         }
         _CACHE[cache_key] = (time.time(), result)
         return result
 
-    tp   = (at635["High"] + at635["Low"] + at635["Close"]) / 3.0
-    vol  = at635["Volume"].astype(float).clip(lower=0)
+    tp    = (at705["High"] + at705["Low"] + at705["Close"]) / 3.0
+    vol   = at705["Volume"].astype(float).clip(lower=0)
     cum_v = float(vol.sum())
-    vwap_val = float((tp * vol).sum() / cum_v) if cum_v > 0 else float(at635["Close"].iloc[-1])
-    last_635 = float(at635["Close"].iloc[-1])
+    vwap_val = float((tp * vol).sum() / cum_v) if cum_v > 0 else float(at705["Close"].iloc[-1])
+    last_705 = float(at705["Close"].iloc[-1])
 
-    cond_b = "bull" if last_635 > vwap_val else "bear"
+    cond_b = "bull" if last_705 > vwap_val else "bear"
     cond_b_detail = (
-        f"Price ${last_635:.2f} {'>' if cond_b=='bull' else '<'} VWAP ${vwap_val:.2f}"
+        f"Price ${last_705:.2f} {'>' if cond_b=='bull' else '<'} VWAP ${vwap_val:.2f}"
     )
 
-    # ── Condition C: 2 consecutive 1M candles after 6:35 ─────────────
-    post635 = pm[pm.index.minute > 35]
+    # ── Condition C: 2 consecutive 1M candles after 7:05 AM PT ───────
+    post705 = pm[pm.index.minute > 5]
 
-    if len(post635) < 2:
+    if len(post705) < 2:
         result = {
             "status": "WAIT", "ticker": t,
             "message": "WAIT — waiting for 2 confirmation candles.",
             "condition_a": cond_a, "condition_a_detail": cond_a_detail,
             "condition_b": cond_b, "condition_b_detail": cond_b_detail,
-            "condition_c": "pending", "condition_c_detail": f"{len(post635)}/2 candles seen",
+            "condition_c": "pending", "condition_c_detail": f"{len(post705)}/2 candles seen",
             "vwap": round(vwap_val, 2),
             "computed_at": now_pt.isoformat(timespec="seconds"),
         }
         _CACHE[cache_key] = (time.time(), result)
         return result
 
-    last2 = post635.iloc[-2:]
+    last2 = post705.iloc[-2:]
     c1_green = float(last2["Close"].iloc[0]) > float(last2["Open"].iloc[0])
     c2_green = float(last2["Close"].iloc[1]) > float(last2["Open"].iloc[1])
 
@@ -254,7 +260,7 @@ def check_early_entry_trigger(
         return result
 
     direction    = "CALL" if all_bull else "PUT"
-    entry_price  = round(float(post635["Close"].iloc[-1]), 2)
+    entry_price  = round(float(post705["Close"].iloc[-1]), 2)
     atr          = _atr14(t)
 
     base: dict[str, Any] = {
@@ -266,7 +272,7 @@ def check_early_entry_trigger(
         "condition_b":      cond_b, "condition_b_detail": cond_b_detail,
         "condition_c":      cond_c, "condition_c_detail": cond_c_detail,
         "atr14":            atr,
-        "trigger":          "Early Entry Trigger — 6:30 AM Window",
+        "trigger":          "Early Entry Trigger — 7:00 AM Window",
         "computed_at":      now_pt.isoformat(timespec="seconds"),
     }
 
