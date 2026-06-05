@@ -3,7 +3,8 @@
  *
  * Tabs:
  *   Pre-Market Bias (F1) — runs before 6:30 AM PT, 60s refresh
- *   Early Entry (F2)     — 6:30–7:00 AM PT, 30s refresh, Trade Card (F4)
+ *   Early Entry (F2)     — 7:00–7:30 AM PT, 30s refresh, Trade Card (F4)
+ *                          (Yahoo 1m bars have ~30min lag; data reliable from 7:00 AM PT)
  *   OCO Explainer (F6)   — static calculator
  *
  * VWAP Zone Rejection (F3) signals surface inside the Day Trade page (existing).
@@ -342,7 +343,7 @@ function EarlyEntryTab() {
         <div className="flex items-start justify-between">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">
-              Early Entry — 6:30 AM Window
+              Early Entry — 7:00 AM Window
             </div>
             <div className={`text-xl font-black tracking-tight ${statusColor}`}>
               {loading && !data ? 'Loading...' : data?.status ?? '—'}
@@ -366,8 +367,8 @@ function EarlyEntryTab() {
         {data && (
           <div className="space-y-2.5">
             {[
-              { label: 'A — First 5-min candle (6:30–6:35)', cond: data.condition_a, detail: data.condition_a_detail },
-              { label: 'B — VWAP position at 6:35',          cond: data.condition_b, detail: data.condition_b_detail },
+              { label: 'A — First 5-min candle (7:00–7:05 AM PT)', cond: data.condition_a, detail: data.condition_a_detail },
+              { label: 'B — VWAP position at 7:05 AM PT',          cond: data.condition_b, detail: data.condition_b_detail },
               { label: 'C — 2 consecutive 1M candles',       cond: data.condition_c, detail: data.condition_c_detail },
             ].map(r => (
               <div key={r.label} className="rounded-lg border border-white/[0.05] bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
@@ -386,7 +387,7 @@ function EarlyEntryTab() {
         {/* VWAP */}
         {data?.vwap != null && (
           <div className="text-xs text-muted">
-            VWAP at 6:35: <span className="font-mono font-semibold text-sky-400">${data.vwap.toFixed(2)}</span>
+            VWAP at 7:05: <span className="font-mono font-semibold text-sky-400">${data.vwap.toFixed(2)}</span>
           </div>
         )}
 
