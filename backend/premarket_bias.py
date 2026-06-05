@@ -53,19 +53,43 @@ def _from_cache() -> Optional[dict]:
 
 def _premarket_pct(ticker: str) -> Optional[float]:
     """
-    % change between pre-market price and previous close.
-    Tries Yahoo Finance first; falls back to api.massive.com.
+    % change from previous close.
+
+    Priority order:
+      1. preMarketPrice          — real pre-market quote (available 4–9:30 AM ET)
+      2. regularMarketChangePercent — today's live session % (yfinance direct field)
+      3. currentPrice / regularMarketPrice vs previousClose — computed session %
+      4. api.massive.com snapshot fallback
     """
-    # Yahoo Finance
     try:
-        info  = bar_cache.get_info(ticker)
-        pre   = info.get("preMarketPrice") or info.get("currentPrice")
+        info = bar_cache.get_info(ticker)
+
+        # 1. True pre-market price
+        pre   = info.get("preMarketPrice")
         close = info.get("previousClose") or info.get("regularMarketPreviousClose")
         if pre and close and float(close) > 0:
             return round((float(pre) / float(close) - 1.0) * 100.0, 3)
+
+        # 2. Yahoo provides today's session % change directly
+        rmc = info.get("regularMarketChangePercent")
+        if rmc is not None:
+            try:
+                val = float(rmc)
+                if -50 < val < 50:   # sanity-guard against corrupt values
+                    return round(val, 3)
+            except (TypeError, ValueError):
+                pass
+
+        # 3. Compute from current price vs prev close
+        current = (info.get("currentPrice")
+                   or info.get("regularMarketPrice")
+                   or info.get("postMarketPrice"))
+        if current and close and float(close) > 0:
+            return round((float(current) / float(close) - 1.0) * 100.0, 3)
     except Exception:
         pass
-    # Fallback: api.massive.com
+
+    # 4. Fallback: api.massive.com
     return backup_data.get_premarket_pct(ticker)
 
 
