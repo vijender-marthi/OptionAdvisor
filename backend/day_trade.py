@@ -74,6 +74,8 @@ VOL_SPIKE_RATIO = 1.55
 # VWAP band: distance within this % of price is "at VWAP" — not a confirmed hold or rejection.
 # Scores inside the band are distance-proportional (0–1.0) rather than the full 2.0 bonus.
 VWAP_BAND_PCT = 0.15
+# VWAP re-test zone: ±$0.50 dollar zone around VWAP used by the near-VWAP rejection entry rule.
+_VWAP_RETEST_ZONE_DOLLARS: float = 0.50
 # OR width thresholds (or_high - or_low) / or_low × 100
 OR_NARROW_PCT  = 0.40   # below → coiling; breakout bonus amplified
 OR_WIDE_PCT    = 1.50   # above → chaotic open; caution flag
@@ -2059,6 +2061,165 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     return entry_guidance
 
 
+def _check_vwap_retest_entry(
+    session: "pd.DataFrame",
+    vwap_ser: "pd.Series",
+    or_high: float,
+    or_low: float,
+) -> Optional[dict]:
+    """
+    VWAP Zone Rejection — Near-VWAP Re-Test Entry Rule.
+
+    Examines the LAST COMPLETED 1-minute bar for a VWAP zone rejection.
+    Touch zone = VWAP ± _VWAP_RETEST_ZONE_DOLLARS (default ±$0.50).
+
+    PUT entry (all four bar conditions + R/R gate):
+      1. Bar high  >= vwap − 0.50   candle entered the zone from below
+      2. Close     < open            red candle
+      3. Bar high  > vwap            upper wick touched VWAP
+      4. Close     < vwap − 0.50    closed back below zone (rejected)
+      5. R/R       >= 1.5
+         stop    = candle high + 0.10
+         target1 = nearest pivot low below entry (session bars)
+         target2 = OR low
+
+    CALL entry (all four bar conditions + R/R gate):
+      1. Bar low   <= vwap + 0.50   candle entered the zone from above
+      2. Close     > open            green candle
+      3. Bar low   < vwap            lower wick touched VWAP
+      4. Close     > vwap + 0.50    closed back above zone (bounced)
+      5. R/R       >= 1.5
+         stop    = candle low − 0.10
+         target1 = nearest pivot high above entry (session bars)
+         target2 = OR high
+
+    Returns None when:
+      • Fewer than 2 session bars available
+      • VWAP not computable
+      • No condition set fully satisfied
+      • R/R < 1.5 (valid pattern but insufficient reward)
+
+    Returns dict when triggered:
+      triggered, direction, label, entry, stop, target_1, target_2,
+      rr_ratio, vwap, vwap_zone, candle_ohlc,
+      conditions_met, conditions_failed
+    """
+    if session is None or len(session) < 2:
+        return None
+    if vwap_ser is None or vwap_ser.empty:
+        return None
+
+    bar  = session.iloc[-1]
+    vwap = float(vwap_ser.iloc[-1])
+    if not math.isfinite(vwap) or vwap <= 0:
+        return None
+
+    o = float(bar["Open"])
+    h = float(bar["High"])
+    l = float(bar["Low"])
+    c = float(bar["Close"])
+
+    zone   = _VWAP_RETEST_ZONE_DOLLARS
+    lo_bnd = vwap - zone   # lower bound  (zone entry from below = PUT side)
+    hi_bnd = vwap + zone   # upper bound  (zone entry from above = CALL side)
+
+    # ── Condition sets ────────────────────────────────────────────────
+    put_conds: dict[str, bool] = {
+        "entered_zone_from_below": h >= lo_bnd,
+        "red_candle":              c < o,
+        "upper_wick_at_vwap":     h > vwap,
+        "closed_below_zone":       c < lo_bnd,
+    }
+    call_conds: dict[str, bool] = {
+        "entered_zone_from_above": l <= hi_bnd,
+        "green_candle":            c > o,
+        "lower_wick_at_vwap":     l < vwap,
+        "closed_above_zone":       c > hi_bnd,
+    }
+
+    put_ok  = all(put_conds.values())
+    call_ok = all(call_conds.values())
+    if not put_ok and not call_ok:
+        return None
+
+    # ── Pivot support/resistance for target_1 ────────────────────────
+    def _nearest_pivot(direction: str) -> Optional[float]:
+        """Return the nearest pivot low (PUT) or high (CALL) from the last 30 bars."""
+        n = min(30, len(session) - 1)
+        if n < 3:
+            return None
+        sub = session.iloc[-(n + 1):-1]   # exclude the signal bar itself
+        if direction == "put":
+            lows = sub["Low"].values
+            pivots = [
+                float(lows[i])
+                for i in range(1, len(lows) - 1)
+                if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] < c - 0.05
+            ]
+            return round(max(pivots), 2) if pivots else None   # nearest = highest pivot below
+        else:
+            highs = sub["High"].values
+            pivots = [
+                float(highs[i])
+                for i in range(1, len(highs) - 1)
+                if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] > c + 0.05
+            ]
+            return round(min(pivots), 2) if pivots else None   # nearest = lowest pivot above
+
+    # ── Build signal ─────────────────────────────────────────────────
+    if put_ok:
+        direction  = "PUT"
+        entry      = round(c, 2)
+        stop       = round(h + 0.10, 2)
+        target_2   = round(or_low, 2) if or_low > 0 else round(entry - (stop - entry) * 2.0, 2)
+        pivot      = _nearest_pivot("put")
+        target_1   = (
+            pivot
+            if pivot is not None and pivot > target_2
+            else round((entry + target_2) / 2.0, 2)
+        )
+        conds_met  = [k for k, v in put_conds.items() if v]
+        conds_fail = [k for k, v in put_conds.items() if not v]
+
+    else:   # call_ok
+        direction  = "CALL"
+        entry      = round(c, 2)
+        stop       = round(l - 0.10, 2)
+        target_2   = round(or_high, 2) if or_high > 0 else round(entry + (entry - stop) * 2.0, 2)
+        pivot      = _nearest_pivot("call")
+        target_1   = (
+            pivot
+            if pivot is not None and pivot < target_2
+            else round((entry + target_2) / 2.0, 2)
+        )
+        conds_met  = [k for k, v in call_conds.items() if v]
+        conds_fail = [k for k, v in call_conds.items() if not v]
+
+    # ── R/R gate ─────────────────────────────────────────────────────
+    risk     = abs(entry - stop)
+    reward   = abs(target_1 - entry)
+    rr_ratio = round(reward / risk, 2) if risk > 0 else 0.0
+    if rr_ratio < 1.5:
+        return None   # valid pattern but reward is insufficient
+
+    return {
+        "triggered":         True,
+        "direction":         direction,
+        "label":             f"VWAP Zone Rejection — {direction} Entry",
+        "entry":             entry,
+        "stop":              stop,
+        "target_1":          target_1,
+        "target_2":          target_2,
+        "rr_ratio":          rr_ratio,
+        "vwap":              round(vwap, 2),
+        "vwap_zone":         [round(lo_bnd, 2), round(hi_bnd, 2)],
+        "candle_ohlc":       {"open": round(o, 2), "high": round(h, 2),
+                              "low": round(l, 2),  "close": round(c, 2)},
+        "conditions_met":    conds_met,
+        "conditions_failed": conds_fail,
+    }
+
+
 def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                        daily_trend_context: Optional[Dict[str, str]] = None) -> DayTradeScan:
     """
@@ -3355,6 +3516,39 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         )
     else:
         metrics["range_warning"] = None
+
+    # ── VWAP re-test entry check ─────────────────────────────────────────────
+    # Runs AFTER all scoring so it has access to the fully-computed vwap_ser and OR levels.
+    # Independent of the main verdict — fires on candle-level rejection regardless of score.
+    vwap_retest_signal: Optional[dict] = None
+    try:
+        vwap_retest_signal = _check_vwap_retest_entry(
+            session, vwap_ser, or_high, or_low
+        )
+    except Exception:
+        pass   # best-effort; a failure here must never abort the full scan
+    metrics["vwap_retest_entry"] = vwap_retest_signal
+
+    # Inject VWAP retest alert into entry_guidance when the signal fires
+    if vwap_retest_signal is not None:
+        _sig = vwap_retest_signal
+        _alert_body = (
+            f"{_sig['label']}: enter {_sig['direction']} near ${_sig['entry']:.2f} · "
+            f"stop ${_sig['stop']:.2f} · T1 ${_sig['target_1']:.2f} · "
+            f"T2 ${_sig['target_2']:.2f} · R/R {_sig['rr_ratio']:.1f}x"
+        )
+        _ca = list(entry_guidance.get("contextual_alerts") or [])
+        _ca.insert(0, {
+            "type":      "VWAP_RETEST_ENTRY",
+            "message":   _alert_body,
+            "condition": (
+                f"All {len(_sig['conditions_met'])} conditions met — "
+                f"{_sig['direction']} setup is active on the current 1m bar."
+            ),
+            "priority": "HIGH",
+        })
+        entry_guidance["contextual_alerts"] = _ca
+        entry_guidance["vwap_retest_entry"] = _sig   # shortcut for frontend
 
     option_risk_context = build_day_option_risk_context(t, info)
 

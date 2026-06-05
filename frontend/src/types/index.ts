@@ -350,6 +350,11 @@ export interface PortfolioPosition {
   breakout?: number       // breakout trigger level
   stopLoss?: number       // stop loss level
 
+  // Stock-specific fields (populated when strategy === 'Stock')
+  shares?: number             // explicit share count (mirrors contractCount for stocks)
+  trailing_stop_pct?: number  // trailing stop fraction — e.g. 0.08 = 8%
+  high_water_mark?: number    // highest price reached since entry (backend-managed)
+
   partial_closed?: boolean   // true when this lot is the remainder after a partial close
   original_contracts?: number // contract count before any partial close
 }
