@@ -397,47 +397,57 @@ export interface AiPositionAnalysis {
 }
 
 export interface StockPositionAnalysis {
-  decision:           'HOLD' | 'WATCH' | 'TRIM' | 'SELL' | 'STOP_HIT'
-  decision_label:     string
-  reasoning:          string
-  position_type:      'stock'
+  decision:              'HOLD' | 'WATCH' | 'TRIM' | 'SELL' | 'STOP_HIT'
+  decision_label:        string
+  reasoning:             string
+  position_type:         'stock'
   // Pricing
-  current_price:      number
-  entry_price:        number
-  shares:             number
-  cost_basis:         number
-  market_value:       number
+  current_price:         number
+  entry_price:           number
+  shares:                number
+  cost_basis:            number
+  market_value:          number
   // P&L
-  pnl_dollar:         number
-  pnl_pct:            number
-  day_pl_dollar:      number
-  day_pl_pct:         number
-  is_profitable:      boolean
+  pnl_dollar:            number
+  pnl_pct:               number
+  day_pl_dollar:         number
+  day_pl_pct:            number
+  is_profitable:         boolean
   // Risk levels
-  trailing_stop:      number
-  stop_loss:          number
-  trailing_stop_pct:  number
-  high_water_mark:    number
+  trailing_stop:         number
+  trailing_stop_8pct:    number    // HWM × 0.92
+  trailing_stop_10pct:   number    // HWM × 0.90
+  stop_loss:             number
+  trailing_stop_pct:     number
+  high_water_mark:       number
   // Targets
-  target1:            number
-  target2:            number
+  target1:               number
+  target2:               number
   // Technicals
-  ma20:               number
-  ma50:               number
-  rsi:                number
-  mom_5d:             number
+  ma20:                  number
+  ma50:                  number
+  rsi:                   number
+  mom_5d:                number
+  deviation_from_ma20:   number    // (price - MA20) / MA20 × 100
   // Distances
-  price_vs_ma20_pct:  number
-  price_vs_ma50_pct:  number
-  dist_to_stop_pct:   number
-  dist_to_t1_pct:     number
-  dist_to_t2_pct:     number
+  price_vs_ma20_pct:     number
+  price_vs_ma50_pct:     number
+  dist_to_stop_pct:      number
+  dist_to_t1_pct:        number
+  dist_to_t2_pct:        number
   // Health
-  health_score:       number
-  health_label:       string
+  health_score:          number
+  health_label:          string
+  // Earnings
+  earnings_date:         string | null
+  days_to_earnings:      number | null
+  // Account / tax
+  account_type:          string | null
+  days_held:             number | null
+  tax_overlay:           string | null
   // Actions
-  smart_alerts:       Array<{ type: string; label: string; message: string; severity: string }>
-  management_actions: string[]
+  smart_alerts:          Array<{ type: string; label: string; message: string; severity: string }>
+  management_actions:    string[]
 }
 
 export interface SignalFeedPayload {

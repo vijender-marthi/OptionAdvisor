@@ -1454,6 +1454,30 @@ def get_positions_center(auth_email: str = Depends(require_access_email)):
     return api_envelope(_positions_center_payload(state, email=email), stale=False)
 
 
+@command_center_router.get("/premarket-bias")
+def get_premarket_bias(
+    force_refresh: bool = Query(False),
+    auth_email: str = Depends(require_access_email),
+) -> dict[str, Any]:
+    """Pre-market bias engine — 5-condition score → BULLISH/NEUTRAL/BEARISH."""
+    from premarket_bias import build_premarket_bias
+    return api_envelope(build_premarket_bias(force_refresh=force_refresh), stale=False)
+
+
+@command_center_router.get("/early-entry-trigger")
+def get_early_entry_trigger(
+    ticker: str = Query("QQQ", min_length=1, max_length=12),
+    force_refresh: bool = Query(False),
+    auth_email: str = Depends(require_access_email),
+) -> dict[str, Any]:
+    """Early entry trigger engine — 3-condition 6:30–7:00 AM PT window."""
+    from early_entry_trigger import check_early_entry_trigger
+    return api_envelope(
+        check_early_entry_trigger(ticker.strip().upper(), force_refresh=force_refresh),
+        stale=False,
+    )
+
+
 @command_center_router.get("/stock-targets")
 def get_stock_targets(
     ticker: str = Query(..., min_length=1, max_length=12),
