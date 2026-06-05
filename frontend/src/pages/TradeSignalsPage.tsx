@@ -15,6 +15,8 @@ import { cacheAge } from '../types'
 import { TICKER_CATEGORY_MAP, CATEGORY_BADGE, MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { fetchMyTickers } from '../api/commandCenter'
 import type { MyTickerEntry } from '../api/commandCenter'
+import PreMarketBiasSection from '../components/PreMarketBiasSection'
+import EarlyEntrySection from '../components/EarlyEntrySection'
 
 // ─── Verdict config ──────────────────────────────────────────────────────────
 type VerdictOrNone = Verdict | 'NONE'
@@ -953,6 +955,16 @@ export default function TradeSignalsPage() {
         )}
         <div className="text-[10px] text-gray-700 text-center py-1 border-t border-gray-800/30 mt-1">
           Verdict key: <span className="text-emerald-700">GO</span> = all conditions aligned (enter now) · <span className="text-amber-700">CAUTION</span> = conditions forming (wait) · <span className="text-red-700">NO GO</span> = hard failure (skip) · corresponds to STRONG GO / WATCH / AVOID on other pages
+        </div>
+
+        {/* Pre-Market Bias */}
+        <div className="mt-6">
+          <PreMarketBiasSection />
+        </div>
+
+        {/* Early Entry */}
+        <div className="mt-4">
+          <EarlyEntrySection />
         </div>
       </div>
     </div>

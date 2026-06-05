@@ -149,8 +149,7 @@ export default function Sidebar() {
       // Step 4: execute trades by strategy type
       label: 'Trade',
       items: [
-        { id: 'day-trade',     label: 'Day Trade',     icon: <Zap size={18} /> },
-        { id: 'day-trade-hub', label: 'Day Trade Hub', icon: <Activity size={18} /> },
+        { id: 'day-trade', label: 'Day Trade', icon: <Zap size={18} /> },
         { id: 'swing-trade',   label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
         { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
@@ -204,8 +203,7 @@ export default function Sidebar() {
     // Research
     { id: 'watchlist',      label: 'Signal Feed',    icon: <SatelliteDish size={18} /> },
     // Trade
-    { id: 'day-trade',      label: 'Day Trade',     icon: <Zap size={18} /> },
-    { id: 'day-trade-hub',  label: 'Trade Hub',     icon: <Activity size={18} /> },
+    { id: 'day-trade',      label: 'Day Trade',   icon: <Zap size={18} /> },
     { id: 'swing-trade',    label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
     { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },

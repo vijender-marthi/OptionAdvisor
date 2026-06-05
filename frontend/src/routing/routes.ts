@@ -16,7 +16,6 @@ export const ROUTES = {
   dayTradeAlerts: '/day-trade-alerts',
   myTickers: '/my-tickers',
   dayTradeDashboard: '/day-trade-dashboard',
-  dayTradeHub: '/day-trade-hub',
   tools: '/tools',
 } as const
 
