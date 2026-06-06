@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
+import type { DayTradeAlertEvent } from '../types'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
@@ -906,6 +907,29 @@ export default function DayTradePage() {
         const orLow2  = m.or_low  as number | undefined
         const orMin2  = m.or_minutes as number | undefined
         if (!chartBars2 || orHigh2 == null || orLow2 == null) return null
+
+        // Build a synthetic alert from the current scan so the marker always shows,
+        // even when the ticker is not on the user's day-trade watchlist.
+        const actionableVerdicts = ['STRONG GO', 'GO', 'WATCH'] as const
+        const lastBar = chartBars2[chartBars2.length - 1]
+        const scanAlert: DayTradeAlertEvent | null =
+          lastBar && (actionableVerdicts as readonly string[]).includes(result.verdict)
+            ? {
+                id: `scan-${result.ticker}-${lastBar.t}`,
+                ticker: result.ticker,
+                companyName: result.company_name,
+                previousVerdict: '',
+                verdict: result.verdict,
+                bias: result.bias,
+                bullScore: result.bull_score,
+                bearScore: result.bear_score,
+                reasons: result.reasons ?? [],
+                metrics: result.metrics,
+                detectedAt: new Date(lastBar.t).getTime(),
+                emailSent: false,
+              }
+            : null
+
         return (
           <DayTradeAlertOverlay
             bars={chartBars2}
@@ -913,6 +937,7 @@ export default function DayTradePage() {
             orLow={orLow2}
             orMinutes={orMin2 ?? 15}
             ticker={result.ticker}
+            scanAlerts={scanAlert ? [scanAlert] : []}
           />
         )
       })()}

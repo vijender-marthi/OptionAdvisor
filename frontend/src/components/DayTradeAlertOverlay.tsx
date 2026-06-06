@@ -420,12 +420,15 @@ export default function DayTradeAlertOverlay({
   orLow,
   orMinutes,
   ticker,
+  scanAlerts = [],
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
   orLow: number
   orMinutes: number
   ticker: string
+  /** Synthetic alerts derived from the current scan result (always shown even if ticker is not on watchlist). */
+  scanAlerts?: DayTradeAlertEvent[]
 }) {
   const { user, theme } = useApp()
   const isDark = theme !== 'light'
@@ -461,11 +464,15 @@ export default function DayTradeAlertOverlay({
     return () => ro.disconnect()
   }, [])
 
-  // Filter to only this ticker's alerts
-  const tickerAlerts = useMemo(
-    () => allAlerts.filter(a => a.ticker.toUpperCase() === ticker.toUpperCase()),
-    [allAlerts, ticker]
-  )
+  // Merge scan-derived alerts with watchlist alerts, deduplicating by id
+  const tickerAlerts = useMemo(() => {
+    const t = ticker.toUpperCase()
+    const scanForTicker = scanAlerts.filter(a => a.ticker.toUpperCase() === t)
+    const watchlistForTicker = allAlerts.filter(a => a.ticker.toUpperCase() === t)
+    const scanIds = new Set(scanForTicker.map(a => a.id))
+    const merged = [...scanForTicker, ...watchlistForTicker.filter(a => !scanIds.has(a.id))]
+    return merged.sort((a, b) => a.detectedAt - b.detectedAt)
+  }, [allAlerts, scanAlerts, ticker])
 
   // Build alert positions (idx + price) relative to bars
   const alertPositions: AlertPos[] = useMemo(() => {
