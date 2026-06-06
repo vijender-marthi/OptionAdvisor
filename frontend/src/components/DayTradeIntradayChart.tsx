@@ -1,6 +1,27 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DayTradeChartBar } from '../api/client'
 
+export interface ZoneAnnotation {
+  key: string
+  /** Start bar index (inclusive) */
+  from: number
+  /** End bar index (inclusive) */
+  to: number
+  fill: string
+  label: string
+  sublabel: string
+  markerColor: string | null
+  cardBg: string
+  cardBorder: string
+  textColor: string
+  badgeText?: string | null
+  badgeBg?: string
+  /** e.g. "$356 · SHORT" — shown on annotation card */
+  price?: string
+  /** Full explanation text — card is only rendered when this is present */
+  detail?: string
+}
+
 function isChartBar(x: unknown): x is DayTradeChartBar {
   if (!x || typeof x !== 'object') return false
   const o = x as Record<string, unknown>
@@ -71,6 +92,8 @@ const ENTRY_COLORS = [
   '#fbbf24', // amber (4th if needed)
 ]
 
+const TL_H = 60 // timeline SVG height (px)
+
 export default function DayTradeIntradayChart({
   bars,
   orHigh,
@@ -79,6 +102,7 @@ export default function DayTradeIntradayChart({
   sessionDate,
   entryPoints,
   dimEntries,
+  zones,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
@@ -88,6 +112,7 @@ export default function DayTradeIntradayChart({
   entryPoints?: ChartEntryPoint[]
   /** When true, entry lines/chips render dimmed — verdict is WAIT/CONFLICT */
   dimEntries?: boolean
+  zones?: ZoneAnnotation[]
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
@@ -95,6 +120,22 @@ export default function DayTradeIntradayChart({
   const clipId = `daytrade-plot-clip-${uid}`
   // Set of entry indices that are hidden (empty = all visible)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
+
+  // Zone selection state — auto-selects 'entry' zone on first render
+  const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const zoneAutoSelectedRef = useRef(false)
+  useEffect(() => {
+    if (!zones || zones.length === 0 || zoneAutoSelectedRef.current) return
+    zoneAutoSelectedRef.current = true
+    setSelectedZone(zones.find(z => z.key === 'entry') ? 'entry' : zones[0]!.key)
+  }, [zones])
+
+  // Scroll active annotation card into view
+  useEffect(() => {
+    if (!selectedZone) return
+    const card = document.querySelector(`[data-zone-key="${selectedZone}"]`)
+    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedZone])
 
   // Reset toggles when entry points change (new scan result)
   useEffect(() => {
@@ -214,7 +255,7 @@ export default function DayTradeIntradayChart({
     )
   }
 
-  const { W, H, innerW, innerH, xAt, yAt, bodyW, yMin, yMax, yTicks,
+  const { W, H, innerW, innerH, xAt, yAt, bodyW, slot, yMin, yMax, yTicks,
           orStartX, orEndX, tMin, times, xTicks } = layout
 
   const vwapPts = bars
@@ -304,6 +345,33 @@ export default function DayTradeIntradayChart({
               <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH} />
             </clipPath>
           </defs>
+
+          {/* ── Zone strips (behind OR shading and candles) ── */}
+          {zones?.map(z => {
+            const from = Math.min(z.from, bars.length - 1)
+            const to   = Math.min(z.to,   bars.length - 1)
+            if (from > to || !times[from] || !times[to]) return null
+            const x1 = xAt(times[from]!) - slot / 2
+            const x2 = xAt(times[to]!) + slot / 2
+            const w  = x2 - x1
+            if (w <= 0) return null
+            const sel = selectedZone === z.key
+            return (
+              <g key={`zone-${z.key}`} clipPath={`url(#${clipId})`}
+                style={{ cursor: 'pointer' }} onClick={() => setSelectedZone(z.key)}>
+                <rect x={x1} y={PAD.t} width={w} height={innerH} fill={z.fill} />
+                {sel && <rect x={x1} y={PAD.t} width={w} height={innerH} fill={z.fill} fillOpacity={0.6} />}
+                {sel && z.markerColor && (
+                  <>
+                    <line x1={x1} y1={PAD.t} x2={x1} y2={PAD.t + innerH}
+                      stroke={z.markerColor} strokeWidth={1.5} strokeOpacity={0.55} />
+                    <line x1={x2} y1={PAD.t} x2={x2} y2={PAD.t + innerH}
+                      stroke={z.markerColor} strokeWidth={1.5} strokeOpacity={0.55} />
+                  </>
+                )}
+              </g>
+            )
+          })}
 
           {orEndX > orStartX && (
             <rect
@@ -550,8 +618,131 @@ export default function DayTradeIntradayChart({
               </g>
             )
           })}
+
+          {/* ── Zone labels (topmost layer — after candles/lines) ── */}
+          {zones?.map(z => {
+            const from = Math.min(z.from, bars.length - 1)
+            const to   = Math.min(z.to,   bars.length - 1)
+            if (from > to || !times[from] || !times[to]) return null
+            const x1 = xAt(times[from]!) - slot / 2
+            const x2 = xAt(times[to]!) + slot / 2
+            const w  = x2 - x1
+            if (w < 20) return null
+            return (
+              <g key={`zone-lbl-${z.key}`} clipPath={`url(#${clipId})`}
+                style={{ pointerEvents: 'none' }}>
+                <text x={x1 + 4} y={PAD.t + 11}
+                  fill={z.textColor} fontSize={9} fontWeight={500}
+                  style={{ userSelect: 'none' }}>
+                  {z.label}
+                </text>
+                {w > 80 && (
+                  <text x={x1 + 4} y={PAD.t + 21}
+                    fill={z.textColor} fontSize={8} opacity={0.7}
+                    style={{ userSelect: 'none' }}>
+                    {z.sublabel}
+                  </text>
+                )}
+              </g>
+            )
+          })}
         </svg>
+
+        {/* ── Timeline bar panel (PART 2) ── */}
+        {zones && zones.length > 0 && (
+          <svg
+            width={W}
+            height={TL_H}
+            viewBox={`0 0 ${W} ${TL_H}`}
+            className="block max-w-none min-w-max"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <rect x={PAD.l} y={0} width={innerW} height={TL_H - 20}
+              fill="rgba(0,0,0,0.25)" />
+            {zones.filter(z => z.markerColor).map(z => {
+              const from = Math.min(z.from, bars.length - 1)
+              const to   = Math.min(z.to,   bars.length - 1)
+              const midIdx = Math.min(Math.floor((from + to) / 2), bars.length - 1)
+              if (!times[midIdx]) return null
+              const cx  = xAt(times[midIdx]!)
+              const bw  = Math.max(8, slot * 0.8)
+              const sel = selectedZone === z.key
+              return (
+                <g key={`tl-${z.key}`} style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedZone(z.key)}>
+                  <title>{z.label}</title>
+                  <rect x={cx - bw / 2} y={4} width={bw} height={TL_H - 28}
+                    fill={z.markerColor + '33'} stroke={z.markerColor!}
+                    strokeWidth={sel ? 2 : 1.5} rx={3} opacity={sel ? 1 : 0.75} />
+                  <text x={cx} y={TL_H - 6} textAnchor="middle"
+                    fill={z.textColor} fontSize={7.5} fontWeight={sel ? 700 : 400}
+                    style={{ userSelect: 'none' }}>
+                    {z.label.split(' ').slice(0, 2).join(' ')}
+                  </text>
+                </g>
+              )
+            })}
+            <rect x={PAD.l} y={0} width={innerW} height={TL_H - 20}
+              fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+          </svg>
+        )}
       </div>
+
+      {/* ── Annotation cards (PART 3) — only zones with detail text ── */}
+      {zones && zones.some(z => z.detail) && (
+        <div className="mt-3 flex flex-col gap-2">
+          {zones.filter(z => z.detail).map(z => {
+            const from = Math.min(z.from, bars.length - 1)
+            const to   = Math.min(z.to,   bars.length - 1)
+            const midIdx = Math.min(Math.floor((from + to) / 2), bars.length - 1)
+            const midTime = times[midIdx] ? fmtEtShort(new Date(times[midIdx]!).toISOString()) : ''
+            const sel = selectedZone === z.key
+            return (
+              <div
+                key={`card-${z.key}`}
+                data-zone-key={z.key}
+                onClick={() => setSelectedZone(z.key)}
+                className="rounded-lg px-3 py-2.5 cursor-pointer transition-all"
+                style={{
+                  background: z.cardBg,
+                  border: `1px solid ${sel ? z.cardBorder : 'rgba(255,255,255,0.06)'}`,
+                  boxShadow: sel ? `0 0 0 1px ${z.cardBorder}40` : 'none',
+                  opacity: sel ? 1 : 0.75,
+                }}
+              >
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  {z.markerColor && (
+                    <span style={{
+                      width: 8, height: 8, borderRadius: 2,
+                      background: z.markerColor, display: 'inline-block', flexShrink: 0,
+                    }} />
+                  )}
+                  <span className="text-[11px] font-semibold" style={{ color: z.textColor }}>
+                    {z.label}
+                  </span>
+                  {z.badgeText && (
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide"
+                      style={{ background: z.badgeBg ?? 'rgba(255,255,255,0.1)', color: z.textColor }}
+                    >
+                      {z.badgeText}
+                    </span>
+                  )}
+                  {z.price && (
+                    <span className="font-mono text-[11px]" style={{ color: z.textColor, opacity: 0.85 }}>
+                      {z.price}
+                    </span>
+                  )}
+                  {midTime && (
+                    <span className="ml-auto font-mono text-[10px] text-gray-500">{midTime}</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 leading-relaxed m-0">{z.detail}</p>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── Entry points table ── */}
       {displayEntryPoints && displayEntryPoints.length > 0 && (
