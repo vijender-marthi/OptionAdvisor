@@ -154,8 +154,8 @@ function DualPanelChart({
   const PA_SVG_H = PAD.t + PA_H + PAD.b
   const PB_SVG_H = 4 + PB_H + PAD.b
 
-  const gridColor = isDark ? 'rgba(55,65,81,0.35)' : 'rgba(200,210,220,0.5)'
-  const axisColor = isDark ? '#4b5563' : '#9ca3af'
+  const gridColor = isDark ? 'rgba(55,65,81,0.35)' : 'rgba(156,163,175,0.3)'
+  const axisColor = isDark ? '#9ca3af' : '#6b7280'
   const borderColor = isDark ? 'rgba(55,65,81,0.35)' : 'rgba(200,210,220,0.7)'
 
   const vwapPts = bars.map((b, i) => `${xAt(i).toFixed(1)},${yAt(b.vwap).toFixed(1)}`).join(' ')
@@ -507,12 +507,17 @@ export default function DayTradeAlertOverlay({
   }, [])
 
   // allAlerts is already filtered by ticker (API-side). Merge with scan-derived alerts,
-  // deduplicating by id and sorting chronologically.
+  // deduplicating by id and sorting chronologically. Filter out noise alerts.
   const tickerAlerts = useMemo(() => {
+    const noiseVerdicts = new Set(['NO_EDGE', 'NO GO', 'NO-GO', 'AVOID', 'SKIP', 'WAIT'])
     const scanIds = new Set(scanAlerts.map(a => a.id))
     const merged = [
-      ...scanAlerts,
-      ...allAlerts.filter(a => !scanIds.has(a.id)),
+      ...scanAlerts.filter(a => !noiseVerdicts.has(a.verdict.toUpperCase().replace(/\s+/g, ' '))),
+      ...allAlerts.filter(a => {
+        if (scanIds.has(a.id)) return false
+        const v = a.verdict.toUpperCase().replace(/[\s_-]+/g, ' ')
+        return !noiseVerdicts.has(v)
+      }),
     ]
     return merged.sort((a, b) => a.detectedAt - b.detectedAt)
   }, [allAlerts, scanAlerts])
