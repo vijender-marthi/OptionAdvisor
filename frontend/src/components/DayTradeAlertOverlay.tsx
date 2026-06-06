@@ -1,10 +1,41 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Bell, ChevronDown, Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import type { DayTradeChartBar } from '../api/client'
-import { getDayTradeAlerts } from '../api/client'
 import { fetchAlertCenterPage } from '../api/commandCenter'
+import type { UnifiedAlert } from '../types/commandCenter'
 import type { DayTradeAlertEvent } from '../types'
 import { useApp } from '../contexts/AppContext'
+
+/* ── Alert center → chart event mapper ─────────────────────────────────── */
+
+function unifiedToAlertEvent(ua: UnifiedAlert): DayTradeAlertEvent {
+  const msg = ua.message || ''
+  // Extract price: "⚡ CIEN @ $491.98 — ..."
+  const priceMatch = msg.match(/@ \$(\d+(?:\.\d+)?)/)
+  const lastPrice = priceMatch ? parseFloat(priceMatch[1]) : undefined
+  // Extract verdict between the two dashes: "— CIEN GO —" or "— CIEN STRONG GO —"
+  const verdictMatch = msg.match(/—\s+\S+\s+(STRONG\s+GO|GO|WATCH|NO.GO|WAIT)\s+—/i)
+  const rawSignal = ua.signal as string
+  const verdict = verdictMatch
+    ? verdictMatch[1].replace(/\s+/g, ' ').toUpperCase()
+    : rawSignal === 'ENTER_NOW' ? 'GO' : 'WATCH'
+  // Bias from direction keyword in title
+  const bias: string | null = / SHORT /i.test(msg) ? 'short' : / LONG /i.test(msg) ? 'long' : null
+  return {
+    id:              ua.id,
+    ticker:          ua.ticker,
+    companyName:     ua.ticker,
+    previousVerdict: '',
+    verdict,
+    bias,
+    bullScore:  0,
+    bearScore:  0,
+    reasons:    ua.reason ? [ua.reason] : [],
+    metrics:    lastPrice != null ? { last_price: lastPrice } : undefined,
+    detectedAt: new Date(ua.created_at).getTime(),
+    emailSent:  false,
+  }
+}
 
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
@@ -456,36 +487,13 @@ export default function DayTradeAlertOverlay({
     if (!user?.email) return
     setLoading(true)
     try {
-      const [legacy, center] = await Promise.all([
-        getDayTradeAlerts(user.email),
-        fetchAlertCenterPage({ engine_type: 'DAY', active_only: false, today_only: false }).catch(() => null),
-      ])
-      const merged = [...legacy]
-      if (center?.data?.alerts) {
-        for (const a of center.data.alerts) {
-          const ts = new Date(a.created_at).getTime()
-          merged.push({
-            id: `ac-${a.id}`,
-            ticker: (a.ticker || '').toUpperCase(),
-            companyName: undefined,
-            previousVerdict: '',
-            verdict: a.alert_type === 'ENTER_NOW' ? 'STRONG GO' : a.alert_type === 'STATE_CHANGE' ? 'GO' : 'WATCH',
-            sessionDate: undefined,
-            bias: null,
-            bullScore: 0,
-            bearScore: 0,
-            reasons: [a.message || a.reason || a.alert_type || ''].filter(Boolean),
-            metrics: undefined,
-            detectedAt: Number.isFinite(ts) ? ts : Date.now(),
-            emailSent: false,
-          })
-        }
-      }
-      setAllAlerts(merged)
+      const env = await fetchAlertCenterPage({ engine_type: 'DAY', ticker })
+      const raw: UnifiedAlert[] = env?.data?.alerts ?? []
+      setAllAlerts(raw.map(unifiedToAlertEvent))
     } catch { /* non-fatal */ } finally {
       setLoading(false)
     }
-  }, [user?.email])
+  }, [user?.email, ticker])
 
   useEffect(() => { void load() }, [load])
 
@@ -498,15 +506,16 @@ export default function DayTradeAlertOverlay({
     return () => ro.disconnect()
   }, [])
 
-  // Merge scan-derived alerts with watchlist alerts, deduplicating by id
+  // allAlerts is already filtered by ticker (API-side). Merge with scan-derived alerts,
+  // deduplicating by id and sorting chronologically.
   const tickerAlerts = useMemo(() => {
-    const t = ticker.toUpperCase()
-    const scanForTicker = scanAlerts.filter(a => a.ticker.toUpperCase() === t)
-    const watchlistForTicker = allAlerts.filter(a => a.ticker.toUpperCase() === t)
-    const scanIds = new Set(scanForTicker.map(a => a.id))
-    const merged = [...scanForTicker, ...watchlistForTicker.filter(a => !scanIds.has(a.id))]
+    const scanIds = new Set(scanAlerts.map(a => a.id))
+    const merged = [
+      ...scanAlerts,
+      ...allAlerts.filter(a => !scanIds.has(a.id)),
+    ]
     return merged.sort((a, b) => a.detectedAt - b.detectedAt)
-  }, [allAlerts, scanAlerts, ticker])
+  }, [allAlerts, scanAlerts])
 
   // Build alert positions (idx + price) relative to bars
   const alertPositions: AlertPos[] = useMemo(() => {
