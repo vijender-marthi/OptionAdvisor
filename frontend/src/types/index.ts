@@ -219,6 +219,7 @@ export type Page =
   | 'ticker-scanner'
   | 'day-trade-hub'
   | 'tools'
+  | 'day-trade-session'
 
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'

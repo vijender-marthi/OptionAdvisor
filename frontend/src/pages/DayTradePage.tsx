@@ -11,6 +11,7 @@ import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
@@ -894,6 +895,25 @@ export default function DayTradePage() {
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} />
           </div>
+        )
+      })()}
+
+      {/* Alert Overlay Chart + Collapsible Alert List */}
+      {result && result.metrics && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const chartBars2 = parseChartBars(m.chart_bars)
+        const orHigh2 = m.or_high as number | undefined
+        const orLow2  = m.or_low  as number | undefined
+        const orMin2  = m.or_minutes as number | undefined
+        if (!chartBars2 || orHigh2 == null || orLow2 == null) return null
+        return (
+          <DayTradeAlertOverlay
+            bars={chartBars2}
+            orHigh={orHigh2}
+            orLow={orLow2}
+            orMinutes={orMin2 ?? 15}
+            ticker={result.ticker}
+          />
         )
       })()}
 
