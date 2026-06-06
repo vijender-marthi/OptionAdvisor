@@ -1284,6 +1284,7 @@ def alert_center_list(
     *,
     group: Optional[str] = None,
     engine: Optional[str] = None,
+    alert_type_filter: Optional[str] = None,
     signal: Optional[str] = None,
     severity: Optional[str] = None,
     status: Optional[str] = None,
@@ -1302,8 +1303,17 @@ def alert_center_list(
         clauses.append("alert_group = ?")
         params.append(group.strip().lower())
     if engine:
-        clauses.append("UPPER(engine) = ?")
-        params.append(engine.strip().upper())
+        norm = engine.strip().upper()
+        if norm in ("DAY", "DAY_TRADE"):
+            clauses.append("(UPPER(engine) IN ('DAY', 'DAY_TRADE') OR UPPER(JSON_EXTRACT(meta_json, '$.engine_type')) IN ('DAY', 'DAY_TRADE'))")
+        elif norm in ("SWING", "SWING_TRADE"):
+            clauses.append("(UPPER(engine) IN ('SWING', 'SWING_TRADE') OR UPPER(JSON_EXTRACT(meta_json, '$.engine_type')) IN ('SWING', 'SWING_TRADE'))")
+        else:
+            clauses.append("UPPER(engine) = ?")
+            params.append(norm)
+    if alert_type_filter:
+        clauses.append("UPPER(JSON_EXTRACT(meta_json, '$.alert_type')) = ?")
+        params.append(alert_type_filter.strip().upper())
     if signal:
         clauses.append("UPPER(signal) = ?")
         params.append(signal.strip().upper())
@@ -1357,7 +1367,7 @@ def alert_center_list(
                 "id": row["id"],
                 "ticker": str(meta.get("ticker") or "").upper(),
                 "alert_type": str(meta.get("alert_type") or "GENERAL").upper(),
-                "engine_type": str(meta.get("engine_type") or row["engine"] or "REGULAR").upper(),
+                "engine_type": str(meta.get("engine_type") or row["engine"] or "REGULAR").upper().replace("_TRADE", ""),
                 "severity": str(row["severity"] or "INFO").upper(),
                 "signal": str(row["signal"] or "WATCH").upper(),
                 "message": str(row["title"] or ""),

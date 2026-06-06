@@ -387,6 +387,7 @@ def list_alerts_center(
     auth_email: str = Depends(require_access_email),
     engine_type: Optional[str] = Query(None),
     engine: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     ticker: Optional[str] = Query(None),
@@ -401,6 +402,7 @@ def list_alerts_center(
     items, total = alert_center_list(
         email,
         engine=engine_filter,
+        alert_type_filter=alert_type,
         severity=severity,
         status=status,
         ticker=ticker,

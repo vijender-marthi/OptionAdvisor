@@ -45,8 +45,9 @@ function SignalBadge({ signal }: { signal: UnifiedAlert['signal'] }) {
   return <span className={cls}>{signal}</span>
 }
 
-function EngineBadge({ engine }: { engine: UnifiedAlert['engine_type'] }) {
-  return <span className="oa-engine-badge">{engine}</span>
+function EngineBadge({ engine }: { engine: string }) {
+  const label = engine.toUpperCase().replace(/_TRADE$/, '')
+  return <span className="oa-engine-badge">{label}</span>
 }
 
 function StatusBadge({ status }: { status: UnifiedAlert['status'] }) {
@@ -102,6 +103,7 @@ export default function AlertCenter() {
   const [payload, setPayload] = useState<AlertCenterPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [engineType, setEngineType] = useState('')
+  const [alertType, setAlertType] = useState('')
   const [severity, setSeverity] = useState('')
   const [status, setStatus] = useState('')
   const [ticker, setTicker] = useState('')
@@ -132,6 +134,7 @@ export default function AlertCenter() {
       const [env] = await Promise.all([
         fetchAlertCenterPage({
           engine_type: engineType || undefined,
+          alert_type: alertType || undefined,
           severity: severity || undefined,
           status: status || undefined,
           ticker: ticker.trim() || undefined,
@@ -145,7 +148,7 @@ export default function AlertCenter() {
     } finally {
       setLoading(false)
     }
-  }, [activeOnly, engineType, severity, status, ticker, todayOnly, loadArmedRules])
+  }, [activeOnly, engineType, alertType, severity, status, ticker, todayOnly, loadArmedRules])
 
   useEffect(() => {
     void load()
@@ -241,6 +244,31 @@ export default function AlertCenter() {
             <option value="REGULAR">Regular</option>
             <option value="PORTFOLIO">Portfolio</option>
             <option value="MARKET">Market</option>
+          </select>
+        </label>
+        <label className="text-[10px] sm:text-xs text-gray-500">
+          Alert Type
+          <select
+            value={alertType}
+            onChange={e => setAlertType(e.target.value)}
+            className="mt-1 block w-full min-w-[100px] sm:w-32 rounded-lg border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs sm:text-sm"
+          >
+            <option value="">All</option>
+            <option value="STATE_CHANGE">State Change</option>
+            <option value="ENTER_NOW">Enter Now</option>
+            <option value="TARGET_REACHED">Target Reached</option>
+            <option value="WEAK_BREAKOUT">Weak Breakout</option>
+            <option value="VERDICT_CHANGE">Verdict Change</option>
+            <option value="DAY_GO">Day GO</option>
+            <option value="DAY_WAIT">Day Wait</option>
+            <option value="SWING_GO">Swing GO</option>
+            <option value="SWING_WATCH">Swing Watch</option>
+            <option value="REGULAR_TRADE">Regular Trade</option>
+            <option value="VWAP_LOST">VWAP Lost</option>
+            <option value="OR_BREAKOUT">OR Breakout</option>
+            <option value="STOP_LOSS_HIT">Stop Loss Hit</option>
+            <option value="PROTECT_PROFITS">Protect Profits</option>
+            <option value="VIX_SPIKE">VIX Spike</option>
           </select>
         </label>
         <label className="text-[10px] sm:text-xs text-gray-500">

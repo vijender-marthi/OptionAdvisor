@@ -39,6 +39,7 @@ export async function fetchTradeCommandCenter(params: {
 
 export async function fetchAlertCenterPage(opts: {
   engine_type?: string
+  alert_type?: string
   severity?: string
   status?: string
   ticker?: string
@@ -52,6 +53,7 @@ export async function fetchAlertCenterPage(opts: {
   const { data } = await api.get<ApiEnvelope<AlertCenterPayload>>('/alerts', {
     params: {
       engine_type: opts.engine_type,
+      alert_type: opts.alert_type,
       severity: opts.severity,
       status: opts.status,
       ticker: opts.ticker,
