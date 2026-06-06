@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Bell, ChevronDown, Loader2, RefreshCw } from 'lucide-react'
+import { Bell, ChevronDown, Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react'
 import type { DayTradeChartBar } from '../api/client'
 import { getDayTradeAlerts } from '../api/client'
+import { fetchAlertCenterPage } from '../api/commandCenter'
 import type { DayTradeAlertEvent } from '../types'
 import { useApp } from '../contexts/AppContext'
 
@@ -75,6 +76,7 @@ interface AlertPos {
 
 function DualPanelChart({
   bars, orHigh, orLow, orMinutes, alertPositions, selectedId, onSelect, cw, isDark,
+  showVwap, showOr, showAlerts,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
@@ -85,6 +87,9 @@ function DualPanelChart({
   onSelect: (id: string | null) => void
   cw: number
   isDark: boolean
+  showVwap: boolean
+  showOr: boolean
+  showAlerts: boolean
 }) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; ap: AlertPos } | null>(null)
 
@@ -147,20 +152,22 @@ function DualPanelChart({
         ))}
 
         {/* OR shading */}
-        <rect x={PAD.l} y={PAD.t} width={slot * orMinutes} height={PA_H}
-          fill="rgba(251,191,36,0.055)" clipPath="url(#overlay-pa-clip)" />
+        {showOr && <rect x={PAD.l} y={PAD.t} width={slot * orMinutes} height={PA_H}
+          fill="rgba(251,191,36,0.055)" clipPath="url(#overlay-pa-clip)" />}
 
         {/* OR high / low */}
-        <line x1={PAD.l} x2={PAD.l + innerW} y1={yAt(orHigh)} y2={yAt(orHigh)}
-          stroke="#fbbf24" strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.7}
-          clipPath="url(#overlay-pa-clip)" />
-        <line x1={PAD.l} x2={PAD.l + innerW} y1={yAt(orLow)} y2={yAt(orLow)}
-          stroke="#fbbf24" strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.7}
-          clipPath="url(#overlay-pa-clip)" />
-        <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 3} textAnchor="end"
-          fill="#fbbf24" fontSize={7.5} fontWeight={600}>OR H</text>
-        <text x={PAD.l + innerW - 4} y={yAt(orLow) + 10} textAnchor="end"
-          fill="#fbbf24" fontSize={7.5} fontWeight={600}>OR L</text>
+        {showOr && <>
+          <line x1={PAD.l} x2={PAD.l + innerW} y1={yAt(orHigh)} y2={yAt(orHigh)}
+            stroke="#fbbf24" strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.7}
+            clipPath="url(#overlay-pa-clip)" />
+          <line x1={PAD.l} x2={PAD.l + innerW} y1={yAt(orLow)} y2={yAt(orLow)}
+            stroke="#fbbf24" strokeWidth={1} strokeDasharray="5 4" strokeOpacity={0.7}
+            clipPath="url(#overlay-pa-clip)" />
+          <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 3} textAnchor="end"
+            fill="#fbbf24" fontSize={7.5} fontWeight={600}>OR H</text>
+          <text x={PAD.l + innerW - 4} y={yAt(orLow) + 10} textAnchor="end"
+            fill="#fbbf24" fontSize={7.5} fontWeight={600}>OR L</text>
+        </>}
 
         {/* Candles */}
         <g clipPath="url(#overlay-pa-clip)">
@@ -183,12 +190,12 @@ function DualPanelChart({
         </g>
 
         {/* VWAP */}
-        <polyline fill="none" stroke="#f472b6" strokeWidth={1.4}
+        {showVwap && <polyline fill="none" stroke="#f472b6" strokeWidth={1.4}
           strokeLinejoin="round" strokeLinecap="round"
-          points={vwapPts} clipPath="url(#overlay-pa-clip)" />
+          points={vwapPts} clipPath="url(#overlay-pa-clip)" />}
 
         {/* Alert markers */}
-        {alertPositions.map(ap => {
+        {showAlerts && alertPositions.map(ap => {
           const { alert, idx, price } = ap
           const x   = xAt(idx)
           const y   = yAt(price)
@@ -259,7 +266,7 @@ function DualPanelChart({
         style={{ display: 'block', borderTop: `1px solid ${borderColor}` }}>
         <rect x={PAD.l} y={4} width={innerW} height={PB_H} fill="rgba(0,0,0,0.3)" />
 
-        {alertPositions.map(ap => {
+        {showAlerts && alertPositions.map(ap => {
           const { alert, idx } = ap
           const bx  = xAt(idx)
           const vc  = verdictColor(alert.verdict)
@@ -438,6 +445,9 @@ export default function DayTradeAlertOverlay({
   const [chartOpen, setChartOpen]   = useState(true)
   const [listOpen, setListOpen]     = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showVwap, setShowVwap]     = useState(true)
+  const [showOr, setShowOr]         = useState(true)
+  const [showAlerts, setShowAlerts] = useState(true)
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw]                 = useState(0)
@@ -446,8 +456,32 @@ export default function DayTradeAlertOverlay({
     if (!user?.email) return
     setLoading(true)
     try {
-      const data = await getDayTradeAlerts(user.email)
-      setAllAlerts(data)
+      const [legacy, center] = await Promise.all([
+        getDayTradeAlerts(user.email),
+        fetchAlertCenterPage({ engine_type: 'DAY', active_only: false, today_only: false }).catch(() => null),
+      ])
+      const merged = [...legacy]
+      if (center?.data?.alerts) {
+        for (const a of center.data.alerts) {
+          const ts = new Date(a.created_at).getTime()
+          merged.push({
+            id: `ac-${a.id}`,
+            ticker: (a.ticker || '').toUpperCase(),
+            companyName: undefined,
+            previousVerdict: '',
+            verdict: a.alert_type === 'ENTER_NOW' ? 'STRONG GO' : a.alert_type === 'STATE_CHANGE' ? 'GO' : 'WATCH',
+            sessionDate: undefined,
+            bias: null,
+            bullScore: 0,
+            bearScore: 0,
+            reasons: [a.message || a.reason || a.alert_type || ''].filter(Boolean),
+            metrics: undefined,
+            detectedAt: Number.isFinite(ts) ? ts : Date.now(),
+            emailSent: false,
+          })
+        }
+      }
+      setAllAlerts(merged)
     } catch { /* non-fatal */ } finally {
       setLoading(false)
     }
@@ -529,14 +563,27 @@ export default function DayTradeAlertOverlay({
 
       {chartOpen && (
         <>
-          {/* Legend */}
+          {/* Legend + toggles */}
           <div className="flex flex-wrap items-center gap-3 mb-2"
             style={{ fontSize: '0.65rem', color: muted }}>
             <span><span style={{ color: '#34d399' }}>●</span> Strong Go</span>
             <span><span style={{ color: '#fbbf24' }}>○</span> Go</span>
             <span><span style={{ color: '#38bdf8' }}>◆</span> Watch</span>
-            <span><span style={{ color: '#f472b6' }}>—</span> VWAP</span>
-            <span><span style={{ color: '#fbbf24' }}>- -</span> OR</span>
+            <button type="button" onClick={() => setShowVwap(p => !p)}
+              className="flex items-center gap-1 hover:text-white transition-colors">
+              {showVwap ? <Eye size={11} /> : <EyeOff size={11} />}
+              <span style={{ color: '#f472b6' }}>VWAP</span>
+            </button>
+            <button type="button" onClick={() => setShowOr(p => !p)}
+              className="flex items-center gap-1 hover:text-white transition-colors">
+              {showOr ? <Eye size={11} /> : <EyeOff size={11} />}
+              <span style={{ color: '#fbbf24' }}>OR</span>
+            </button>
+            <button type="button" onClick={() => setShowAlerts(p => !p)}
+              className="flex items-center gap-1 hover:text-white transition-colors">
+              {showAlerts ? <Eye size={11} /> : <EyeOff size={11} />}
+              <span style={{ color: '#fb923c' }}>Alerts</span>
+            </button>
           </div>
 
           {/* Dual-panel chart */}
@@ -551,6 +598,9 @@ export default function DayTradeAlertOverlay({
               onSelect={setSelectedId}
               cw={cw}
               isDark={isDark}
+              showVwap={showVwap}
+              showOr={showOr}
+              showAlerts={showAlerts}
             />
           ) : (
             <div style={{ color: muted, fontSize: '0.78rem', textAlign: 'center', padding: '12px 0' }}>
