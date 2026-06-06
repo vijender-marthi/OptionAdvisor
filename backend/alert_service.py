@@ -253,7 +253,7 @@ def _severity_for_alert(alert: dict[str, Any], current_value: str) -> str:
 
 
 def _engine_for_trade_type(trade_type: str) -> str:
-    return {"day": "DAY_TRADE", "swing": "SWING_TRADE", "regular": "REGULAR_TRADE"}.get(trade_type.lower(), "GENERAL")
+    return {"day": "DAY", "swing": "SWING", "regular": "REGULAR"}.get(trade_type.lower(), "GENERAL")
 
 
 def evaluate_alert(alert: dict[str, Any], scan_result: dict[str, Any]) -> bool:

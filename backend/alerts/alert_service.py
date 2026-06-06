@@ -32,7 +32,8 @@ TRADE_ENTRY_TYPES = {
 
 
 def _section_key(engine_type: str) -> str:
-    return SECTION_KEYS.get(str(engine_type or "").strip().upper(), "regular_trade")
+    raw = str(engine_type or "").strip().upper().replace("_TRADE", "")
+    return SECTION_KEYS.get(raw, "regular_trade")
 
 
 def _alert_dict(alert: Alert | dict[str, Any]) -> dict[str, Any]:
