@@ -514,7 +514,7 @@ export default function DayTradeAlertOverlay({
       ...scanAlerts,
       ...allAlerts.filter(a => !scanIds.has(a.id)),
     ]
-    return merged.sort((a, b) => b.detectedAt - a.detectedAt)
+    return merged.sort((a, b) => a.detectedAt - b.detectedAt)
   }, [allAlerts, scanAlerts])
 
   // Build alert positions (idx + price) relative to bars
