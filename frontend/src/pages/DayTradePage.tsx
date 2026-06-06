@@ -11,7 +11,7 @@ import type { DayTradeAlertEvent } from '../types'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
@@ -891,10 +891,85 @@ export default function DayTradePage() {
         addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
         addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback, true)
 
+        // ── Build zone annotations ──────────────────────────────────────────
+        const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
+        const isGo = /^(STRONG.?GO|GO)$/i.test(verdict)
+        const isWatch = /WATCH/i.test(verdict)
+        const biasLabel = isShort ? 'SHORT' : 'LONG'
+        const verdictColor = isGo ? '#34d399' : isWatch ? '#38bdf8' : '#6b7280'
+        const orN = orMin ?? 15
+        const t1 = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target as number : null
+        const egRaw = eg as Record<string, unknown> | undefined
+        const t2 = typeof egRaw?.scalp_target_2 === 'number' && isFinite(egRaw.scalp_target_2 as number) ? egRaw.scalp_target_2 as number : null
+        const sien = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
+        const entryReadiness = sien === 'YES' ? 'Execute within 1–2 candles.' : sien === 'CONDITIONAL' ? 'Wait for trigger candle confirmation.' : 'No confirmed trigger yet — monitor closely.'
+
+        const dayZones: ZoneAnnotation[] = []
+
+        // Zone 1 — Opening Range
+        dayZones.push({
+          key: 'opening-range',
+          from: 0,
+          to: Math.min(orN - 1, chartBars.length - 1),
+          fill: 'rgba(251,191,36,0.05)',
+          label: 'Opening Range',
+          sublabel: `First ${orN}m`,
+          markerColor: '#F59E0B',
+          cardBg: 'rgba(20,14,4,0.85)',
+          cardBorder: '#78350F',
+          textColor: '#FCD34D',
+          badgeText: `${orN}m`,
+          badgeBg: 'rgba(245,158,11,0.12)',
+          detail: `The first ${orN} minutes establish the opening range (ORH $${orHigh.toFixed(2)} / ORL $${orLow.toFixed(2)}). Wait for a confirmed break with volume expansion before entering.`,
+        })
+
+        // Zone 2 — Entry window (post-OR, up to 45 bars)
+        if (orN < chartBars.length) {
+          dayZones.push({
+            key: 'entry',
+            from: orN,
+            to: Math.min(orN + 44, chartBars.length - 1),
+            fill: isGo ? 'rgba(52,211,153,0.07)' : isWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
+            label: verdict,
+            sublabel: `${biasLabel} · post-OR`,
+            markerColor: verdictColor,
+            cardBg: isGo ? 'rgba(2,12,8,0.9)' : isWatch ? 'rgba(2,8,18,0.9)' : 'rgba(8,8,10,0.9)',
+            cardBorder: isGo ? '#065F46' : isWatch ? '#0C4A6E' : '#374151',
+            textColor: verdictColor,
+            badgeText: verdict,
+            badgeBg: isGo ? 'rgba(52,211,153,0.12)' : isWatch ? 'rgba(56,189,248,0.12)' : 'rgba(107,114,128,0.08)',
+            price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
+            detail: `${isGo ? 'Entry window active' : isWatch ? 'Setup developing' : `Verdict is ${verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+          })
+        }
+
+        // Zone 3 — Hold / Monitor (after entry window)
+        const holdFrom = orN + 45
+        if (holdFrom < chartBars.length) {
+          dayZones.push({
+            key: 'monitor',
+            from: holdFrom,
+            to: chartBars.length - 1,
+            fill: 'rgba(99,102,241,0.04)',
+            label: 'Hold / Monitor',
+            sublabel: t1 ? `T1 $${t1.toFixed(2)}` : 'Manage position',
+            markerColor: '#818CF8',
+            cardBg: 'rgba(4,4,16,0.9)',
+            cardBorder: '#312E81',
+            textColor: '#A5B4FC',
+            badgeText: 'MANAGE',
+            badgeBg: 'rgba(99,102,241,0.10)',
+            price: t1 ? `T1 $${t1.toFixed(2)}${t2 ? ` · T2 $${t2.toFixed(2)}` : ''}` : undefined,
+            detail: t1
+              ? `Manage your ${biasLabel} position. Take ½ off at T1 $${t1.toFixed(2)}${t2 ? `, trail the rest to T2 $${t2.toFixed(2)}` : ''}. Move stop to breakeven once T1 is hit.`
+              : `Manage your position. Hold your pre-planned stop. Exit at your target or stop — no early exits on noise.`,
+          })
+        }
+
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin ?? 15} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} />
+            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} />
           </div>
         )
       })()}
