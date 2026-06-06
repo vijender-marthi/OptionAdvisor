@@ -2668,10 +2668,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         _at_lower2 = last <= vwap_lower2 * 1.001
         _at_upper1 = (not _at_upper2) and last >= vwap_upper1 * 0.999
         _at_lower1 = (not _at_lower2) and last <= vwap_lower1 * 1.001
+        _rvol_strong_thresh = RVOL_HIGH_LC if is_large_cap else 2.0
 
         if _at_upper2:
             # Differentiate between strong momentum (rideable) and exhaustion
-            _rvol_strong_thresh = RVOL_HIGH_LC if is_large_cap else 2.0
             _strong_momentum = (vol_spike and rvol is not None and rvol >= _rvol_strong_thresh
                                 and momentum_pct is not None and momentum_pct > 0.5)
             if _strong_momentum:
