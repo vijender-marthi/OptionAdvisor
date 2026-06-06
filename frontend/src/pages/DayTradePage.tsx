@@ -910,7 +910,7 @@ export default function DayTradePage() {
 
         // Build a synthetic alert from the current scan so the marker always shows,
         // even when the ticker is not on the user's day-trade watchlist.
-        const actionableVerdicts = ['STRONG GO', 'GO', 'WATCH'] as const
+        const actionableVerdicts = ['STRONG_GO', 'GO', 'WATCH'] as const
         const lastBar = chartBars2[chartBars2.length - 1]
         const scanAlert: DayTradeAlertEvent | null =
           lastBar && (actionableVerdicts as readonly string[]).includes(result.verdict)
