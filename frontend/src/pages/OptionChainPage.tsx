@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchOptionChainLiquidity, type OptionChainLiquidityResponse, type OptionChainRow } from '../api/client'
 import { useApp } from '../contexts/AppContext'
@@ -240,10 +240,12 @@ function DetailCard({ row, direction, expiry, ticker, tradeType, T }: {
 
 const COL_WIDTHS = '70px 70px 70px 65px 70px 110px 55px'
 
-function ChainTable({ rows, tradeType, direction, selectedStrike, onSelect, T }: {
+function ChainTable({ rows, tradeType, direction, expiry, ticker, selectedStrike, onSelect, T }: {
   rows: OptionChainRow[]
   tradeType: TradeType
   direction: 'call' | 'put'
+  expiry: string
+  ticker: string
   selectedStrike: number | null
   onSelect: (s: number) => void
   T: ThemeTokens
@@ -265,7 +267,7 @@ function ChainTable({ rows, tradeType, direction, selectedStrike, onSelect, T }:
         const rowStyle: React.CSSProperties = {
           display: 'grid', gridTemplateColumns: COL_WIDTHS,
           alignItems: 'center', padding: '7px 12px',
-          borderBottom: `0.5px solid ${T.rowBorder}`,
+          borderBottom: isSelected ? 'none' : `0.5px solid ${T.rowBorder}`,
           fontSize: 12, cursor: 'pointer',
           color: T.text, transition: 'background .12s',
           background: isSelected
@@ -276,17 +278,24 @@ function ChainTable({ rows, tradeType, direction, selectedStrike, onSelect, T }:
           borderLeft: isSelected ? '2px solid #378ADD' : r.is_atm ? '2px solid #639922' : '2px solid transparent',
         }
         return (
-          <div key={r.strike} style={rowStyle} onClick={() => onSelect(r.strike)}>
-            <span style={{ fontWeight: r.is_atm ? 500 : 400, color: r.is_atm ? '#a3cc6a' : T.text }}>
-              ${r.strike.toFixed(2)}{r.is_atm ? ' ATM' : ''}
-            </span>
-            <span>${r.bid.toFixed(2)}</span>
-            <span>${r.ask.toFixed(2)}</span>
-            <span style={{ color: spColor }}>${r.spread.toFixed(2)}</span>
-            <span style={{ color: spColor }}>{r.spread_pct.toFixed(1)}%</span>
-            <span><Badge label={verdict.label} tier={verdict.tier} /></span>
-            <span style={{ color: T.muted }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
-          </div>
+          <Fragment key={r.strike}>
+            <div style={rowStyle} onClick={() => onSelect(r.strike)}>
+              <span style={{ fontWeight: r.is_atm ? 500 : 400, color: r.is_atm ? '#a3cc6a' : T.text }}>
+                ${r.strike.toFixed(2)}{r.is_atm ? ' ATM' : ''}
+              </span>
+              <span>${r.bid.toFixed(2)}</span>
+              <span>${r.ask.toFixed(2)}</span>
+              <span style={{ color: spColor }}>${r.spread.toFixed(2)}</span>
+              <span style={{ color: spColor }}>{r.spread_pct.toFixed(1)}%</span>
+              <span><Badge label={verdict.label} tier={verdict.tier} /></span>
+              <span style={{ color: T.muted }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
+            </div>
+            {isSelected && (
+              <div style={{ background: T.rowSelBg, borderBottom: `0.5px solid ${T.rowBorder}`, borderLeft: '2px solid #378ADD', padding: '0 12px 12px' }}>
+                <DetailCard row={r} direction={direction} expiry={expiry} ticker={ticker} tradeType={tradeType} T={T} />
+              </div>
+            )}
+          </Fragment>
         )
       })}
     </div>
@@ -364,7 +373,6 @@ export default function OptionChainPage() {
 
   const rows = data ? (direction === 'call' ? data.calls : data.puts) : []
   const atm = rows.find(r => r.is_atm) ?? null
-  const selectedRow = selectedStrike != null ? rows.find(r => r.strike === selectedStrike) ?? null : null
   const cfg = TT_CONFIG[tradeType]
   const currentPrice = data?.current_price ?? 0
   const highPrice = currentPrice > 500
@@ -508,26 +516,16 @@ export default function OptionChainPage() {
           </div>
         )}
 
-        {/* Chain table */}
+        {/* Chain table — detail card expands inline below selected row */}
         {data && (
           <ChainTable
             rows={visibleRows}
             tradeType={tradeType}
             direction={direction}
-            selectedStrike={selectedStrike}
-            onSelect={s => setSelectedStrike(prev => prev === s ? null : s)}
-            T={T}
-          />
-        )}
-
-        {/* Detail card */}
-        {selectedRow && (
-          <DetailCard
-            row={selectedRow}
-            direction={direction}
             expiry={selectedExpiry ?? ''}
             ticker={submittedTicker}
-            tradeType={tradeType}
+            selectedStrike={selectedStrike}
+            onSelect={s => setSelectedStrike(prev => prev === s ? null : s)}
             T={T}
           />
         )}
