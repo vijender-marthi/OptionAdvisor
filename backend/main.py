@@ -4,7 +4,7 @@ main.py — FastAPI Backend
 Run: uvicorn main:app --reload --port 9000
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import numpy as np
@@ -3970,6 +3970,113 @@ def _run_backtest_endpoint(request: BacktestRequest):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@app.get("/api/option-chain/{ticker}")
+def option_chain_liquidity(
+    ticker: str,
+    expiry: Optional[str] = Query(default=None),
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Return option chain rows for the liquidity checker page.
+    Expiry defaults to the nearest available date; pass ?expiry=YYYY-MM-DD to select.
+    """
+    t = ticker.upper().strip()
+    if not t:
+        raise HTTPException(status_code=400, detail="Ticker required")
+
+    opt_dates = _bc_opt_dates(t)
+    if not opt_dates:
+        raise HTTPException(status_code=404, detail=f"No options data for {t}")
+
+    # Current price
+    current_price = 0.0
+    try:
+        info = _bc_info(t)
+        current_price = float(
+            info.get("currentPrice") or info.get("regularMarketPrice") or
+            info.get("previousClose") or 0
+        )
+    except Exception:
+        pass
+
+    # Select expiry
+    exp = (expiry or "").strip()[:10]
+    target_expiry = exp if exp in opt_dates else opt_dates[0]
+
+    try:
+        calls_df, puts_df = _bc_chain(t, target_expiry)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch chain: {e}")
+
+    def _process(df: pd.DataFrame) -> list:
+        if df is None or df.empty:
+            return []
+        rows = []
+        for _, row in df.iterrows():
+            strike = float(row.get("strike", 0) or 0)
+            if strike <= 0:
+                continue
+            bid  = float(row.get("bid", 0) or 0)
+            ask  = float(row.get("ask", 0) or 0)
+            last = float(row.get("lastPrice", 0) or 0)
+            vol  = int(row.get("volume", 0) or 0)
+            oi   = int(row.get("openInterest", 0) or 0)
+            iv   = float(row.get("impliedVolatility", 0) or 0)
+            itm  = bool(row.get("inTheMoney", False))
+
+            if bid > 0 and ask > 0:
+                mid    = (bid + ask) / 2.0
+                spread = ask - bid
+            elif last > 0:
+                mid    = last
+                spread = last * 0.05
+                bid    = round(last * 0.975, 2)
+                ask    = round(last * 1.025, 2)
+            else:
+                continue
+
+            spread_pct = (spread / mid * 100) if mid > 0 else 999.0
+            rows.append({
+                "strike":       round(strike, 2),
+                "bid":          round(bid, 2),
+                "ask":          round(ask, 2),
+                "mid":          round(mid, 2),
+                "spread":       round(spread, 2),
+                "spread_pct":   round(spread_pct, 1),
+                "volume":       vol,
+                "open_interest": oi,
+                "iv":           round(iv * 100, 1),
+                "in_the_money": itm,
+                "is_atm":       False,
+            })
+
+        # Mark the single ATM strike
+        if rows and current_price > 0:
+            atm = min(rows, key=lambda r: abs(r["strike"] - current_price))
+            atm["is_atm"] = True
+
+        return rows
+
+    # DTE for selected expiry
+    dte_val: Optional[int] = None
+    try:
+        from datetime import date as _date
+        exp_dt  = datetime.strptime(target_expiry, "%Y-%m-%d").date()
+        dte_val = max(0, (exp_dt - _date.today()).days)
+    except Exception:
+        pass
+
+    return {
+        "ticker":          t,
+        "current_price":   round(current_price, 2),
+        "expiries":        list(opt_dates[:12]),
+        "selected_expiry": target_expiry,
+        "dte":             dte_val,
+        "calls":           _process(calls_df),
+        "puts":            _process(puts_df),
+    }
 
 
 @app.post("/api/backtest")
