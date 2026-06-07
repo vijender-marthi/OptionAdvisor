@@ -20,6 +20,8 @@ export interface ZoneAnnotation {
   price?: string
   /** Full explanation text — card is only rendered when this is present */
   detail?: string
+  /** WAIT cards only: the single "Flip to GO" trigger condition in plain English */
+  flipCondition?: string
 }
 
 function isChartBar(x: unknown): x is DayTradeChartBar {
@@ -753,6 +755,12 @@ export default function DayTradeIntradayChart({
                   )}
                 </div>
                 <p className={`text-[11px] leading-relaxed m-0 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{z.detail}</p>
+                {z.flipCondition && (
+                  <div style={{ background: 'rgba(255,255,255,0.05)', borderLeft: '3px solid #E8A020', borderRadius: '0 6px 6px 0', padding: '8px 12px', marginTop: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#E8A020' }}>⚡ Flip to GO if: </span>
+                    <span style={{ fontSize: 12, color: '#c2c0b6' }}>{z.flipCondition}</span>
+                  </div>
+                )}
               </div>
             )
           })}
