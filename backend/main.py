@@ -4015,15 +4015,15 @@ def option_chain_liquidity(
             return []
         rows = []
         for _, row in df.iterrows():
-            strike = float(row.get("strike", 0) or 0)
+            strike = safe_float(row.get("strike", 0))
             if strike <= 0:
                 continue
-            bid  = float(row.get("bid", 0) or 0)
-            ask  = float(row.get("ask", 0) or 0)
-            last = float(row.get("lastPrice", 0) or 0)
-            vol  = int(row.get("volume", 0) or 0)
-            oi   = int(row.get("openInterest", 0) or 0)
-            iv   = float(row.get("impliedVolatility", 0) or 0)
+            bid  = safe_float(row.get("bid", 0))
+            ask  = safe_float(row.get("ask", 0))
+            last = safe_float(row.get("lastPrice", 0))
+            vol  = safe_int(row.get("volume", 0))
+            oi   = safe_int(row.get("openInterest", 0))
+            iv   = safe_float(row.get("impliedVolatility", 0))
             itm  = bool(row.get("inTheMoney", False))
 
             if bid > 0 and ask > 0:
