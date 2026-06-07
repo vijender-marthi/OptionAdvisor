@@ -293,6 +293,39 @@ export interface DayTradeScanResult {
   is_chasing?: boolean
 }
 
+export interface OptionChainRow {
+  strike: number
+  bid: number
+  ask: number
+  mid: number
+  spread: number
+  spread_pct: number
+  volume: number
+  open_interest: number
+  iv: number
+  in_the_money: boolean
+  is_atm: boolean
+}
+
+export interface OptionChainLiquidityResponse {
+  ticker: string
+  current_price: number
+  expiries: string[]
+  selected_expiry: string
+  dte: number | null
+  calls: OptionChainRow[]
+  puts: OptionChainRow[]
+}
+
+export const fetchOptionChainLiquidity = async (
+  ticker: string,
+  expiry?: string,
+): Promise<OptionChainLiquidityResponse> => {
+  const params = expiry ? { expiry } : {}
+  const { data } = await api.get<OptionChainLiquidityResponse>(`/option-chain/${encodeURIComponent(ticker.trim().toUpperCase())}`, { params })
+  return data
+}
+
 export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
   const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
   return data

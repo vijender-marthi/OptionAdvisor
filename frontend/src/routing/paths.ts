@@ -75,6 +75,8 @@ export function locationToPage(pathname: string): Page {
       return 'tools'
     case 'day-trade-session':
       return 'day-trade-session'
+    case 'option-chain':
+      return 'option-chain'
     default:
       return 'trade-command-center'
   }

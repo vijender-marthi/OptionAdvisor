@@ -220,6 +220,7 @@ export type Page =
   | 'day-trade-hub'
   | 'tools'
   | 'day-trade-session'
+  | 'option-chain'
 
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
