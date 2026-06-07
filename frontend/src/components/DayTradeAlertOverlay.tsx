@@ -295,7 +295,8 @@ function DualPanelChart({
       {/* ─ Panel B: timeline bands ─ */}
       <svg width={cw} height={PB_SVG_H}
         style={{ display: 'block', borderTop: `1px solid ${borderColor}` }}>
-        <rect x={PAD.l} y={4} width={innerW} height={PB_H} fill="rgba(0,0,0,0.3)" />
+        <rect x={PAD.l} y={4} width={innerW} height={PB_H}
+          fill={isDark ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.05)'} />
 
         {showAlerts && alertPositions.map(ap => {
           const { alert, idx } = ap
@@ -303,21 +304,32 @@ function DualPanelChart({
           const vc  = verdictColor(alert.verdict)
           const sel = selectedId === alert.id
           const bw  = Math.max(slot * 0.8, 12)
+          // Only render text labels when bars are wide enough to avoid overlap
+          const showText = bw >= 18
+          const textFill = isDark ? vc : (
+            alert.verdict === 'STRONG GO' ? '#059669' :
+            alert.verdict === 'GO'        ? '#B45309' :
+            alert.verdict === 'WATCH'     ? '#0369A1' : '#4B5563'
+          )
           return (
             <g key={`band-${alert.id}`} style={{ cursor: 'pointer' }}
               onClick={() => onSelect(sel ? null : alert.id)}>
               <rect x={bx - bw / 2} y={4} width={bw} height={PB_H}
-                fill={vc} fillOpacity={sel ? 0.3 : 0.12} />
+                fill={vc} fillOpacity={sel ? 0.28 : 0.10} />
               <line x1={bx} x2={bx} y1={4} y2={4 + PB_H}
                 stroke={vc} strokeWidth={sel ? 2.5 : 1.5} strokeOpacity={0.9} />
-              <text x={bx} y={4 + PB_H * 0.42} textAnchor="middle"
-                fill={vc} fontSize={8} fontWeight={600}>
-                {ptTime(alert.detectedAt)}
-              </text>
-              <text x={bx} y={4 + PB_H * 0.78} textAnchor="middle"
-                fill={vc} fontSize={7.5} fontWeight={500}>
-                {alert.verdict === 'STRONG GO' ? 'S.GO' : alert.verdict}
-              </text>
+              {showText && (
+                <>
+                  <text x={bx} y={4 + PB_H * 0.42} textAnchor="middle"
+                    fill={textFill} fontSize={8} fontWeight={600}>
+                    {ptTime(alert.detectedAt)}
+                  </text>
+                  <text x={bx} y={4 + PB_H * 0.78} textAnchor="middle"
+                    fill={textFill} fontSize={7.5} fontWeight={500}>
+                    {alert.verdict === 'STRONG GO' ? 'S.GO' : alert.verdict}
+                  </text>
+                </>
+              )}
             </g>
           )
         })}

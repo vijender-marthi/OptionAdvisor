@@ -103,6 +103,7 @@ export default function DayTradeIntradayChart({
   entryPoints,
   dimEntries,
   zones,
+  isDark = false,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
@@ -113,6 +114,7 @@ export default function DayTradeIntradayChart({
   /** When true, entry lines/chips render dimmed — verdict is WAIT/CONFLICT */
   dimEntries?: boolean
   zones?: ZoneAnnotation[]
+  isDark?: boolean
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
@@ -628,20 +630,30 @@ export default function DayTradeIntradayChart({
             const x2 = xAt(times[to]!) + slot / 2
             const w  = x2 - x1
             if (w < 20) return null
+            const lblW = Math.min(w - 4, z.label.length * 5.8 + 10)
+            const subW = Math.min(w - 4, z.sublabel.length * 4.8 + 8)
+            const textFill = isDark ? z.textColor : 'rgba(0,0,0,0.78)'
+            const bgFill   = isDark ? 'rgba(0,0,0,0.48)' : 'rgba(255,255,255,0.78)'
             return (
               <g key={`zone-lbl-${z.key}`} clipPath={`url(#${clipId})`}
                 style={{ pointerEvents: 'none' }}>
-                <text x={x1 + 4} y={PAD.t + 11}
-                  fill={z.textColor} fontSize={9} fontWeight={500}
+                <rect x={x1 + 2} y={PAD.t + 2} width={lblW} height={12}
+                  fill={bgFill} rx={2} />
+                <text x={x1 + 5} y={PAD.t + 11}
+                  fill={textFill} fontSize={9} fontWeight={600}
                   style={{ userSelect: 'none' }}>
                   {z.label}
                 </text>
                 {w > 80 && (
-                  <text x={x1 + 4} y={PAD.t + 21}
-                    fill={z.textColor} fontSize={8} opacity={0.7}
-                    style={{ userSelect: 'none' }}>
-                    {z.sublabel}
-                  </text>
+                  <>
+                    <rect x={x1 + 2} y={PAD.t + 15} width={subW} height={11}
+                      fill={bgFill} rx={2} />
+                    <text x={x1 + 5} y={PAD.t + 23}
+                      fill={textFill} fontSize={8} opacity={0.8}
+                      style={{ userSelect: 'none' }}>
+                      {z.sublabel}
+                    </text>
+                  </>
                 )}
               </g>
             )
@@ -655,10 +667,10 @@ export default function DayTradeIntradayChart({
             height={TL_H}
             viewBox={`0 0 ${W} ${TL_H}`}
             className="block max-w-none min-w-max"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+            style={{ borderTop: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.08)' }}
           >
             <rect x={PAD.l} y={0} width={innerW} height={TL_H - 20}
-              fill="rgba(0,0,0,0.25)" />
+              fill={isDark ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.04)'} />
             {zones.filter(z => z.markerColor).map(z => {
               const from = Math.min(z.from, bars.length - 1)
               const to   = Math.min(z.to,   bars.length - 1)
@@ -667,15 +679,17 @@ export default function DayTradeIntradayChart({
               const cx  = xAt(times[midIdx]!)
               const bw  = Math.max(8, slot * 0.8)
               const sel = selectedZone === z.key
+              const tlTextFill = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.72)'
               return (
                 <g key={`tl-${z.key}`} style={{ cursor: 'pointer' }}
                   onClick={() => setSelectedZone(z.key)}>
                   <title>{z.label}</title>
                   <rect x={cx - bw / 2} y={4} width={bw} height={TL_H - 28}
-                    fill={z.markerColor + '33'} stroke={z.markerColor!}
+                    fill={z.markerColor + (isDark ? '33' : '28')} stroke={z.markerColor!}
                     strokeWidth={sel ? 2 : 1.5} rx={3} opacity={sel ? 1 : 0.75} />
                   <text x={cx} y={TL_H - 6} textAnchor="middle"
-                    fill={z.textColor} fontSize={7.5} fontWeight={sel ? 700 : 400}
+                    fill={sel ? (isDark ? z.textColor : z.markerColor!) : tlTextFill}
+                    fontSize={7.5} fontWeight={sel ? 700 : 500}
                     style={{ userSelect: 'none' }}>
                     {z.label.split(' ').slice(0, 2).join(' ')}
                   </text>
@@ -683,7 +697,8 @@ export default function DayTradeIntradayChart({
               )
             })}
             <rect x={PAD.l} y={0} width={innerW} height={TL_H - 20}
-              fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+              fill="none" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.10)'}
+              strokeWidth={1} />
           </svg>
         )}
       </div>
@@ -737,7 +752,7 @@ export default function DayTradeIntradayChart({
                     <span className="ml-auto font-mono text-[10px] text-gray-500">{midTime}</span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 leading-relaxed m-0">{z.detail}</p>
+                <p className={`text-[11px] leading-relaxed m-0 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{z.detail}</p>
               </div>
             )
           })}

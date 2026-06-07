@@ -904,6 +904,11 @@ export default function DayTradePage() {
         const sien = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
         const entryReadiness = sien === 'YES' ? 'Execute within 1–2 candles.' : sien === 'CONDITIONAL' ? 'Wait for trigger candle confirmation.' : 'No confirmed trigger yet — monitor closely.'
 
+        // Theme-adaptive card helpers
+        const cBg  = (d: string, l: string) => isDark ? d : l
+        const cBdr = (d: string, l: string) => isDark ? d : l
+        const cTxt = (d: string, l: string) => isDark ? d : l
+
         const dayZones: ZoneAnnotation[] = []
 
         // Zone 1 — Opening Range
@@ -911,15 +916,15 @@ export default function DayTradePage() {
           key: 'opening-range',
           from: 0,
           to: Math.min(orN - 1, chartBars.length - 1),
-          fill: 'rgba(251,191,36,0.05)',
+          fill: 'rgba(251,191,36,0.06)',
           label: 'Opening Range',
           sublabel: `First ${orN}m`,
           markerColor: '#F59E0B',
-          cardBg: 'rgba(20,14,4,0.85)',
-          cardBorder: '#78350F',
-          textColor: '#FCD34D',
+          cardBg:     cBg('rgba(20,14,4,0.88)',       'rgba(255,251,235,0.97)'),
+          cardBorder: cBdr('#78350F',                  '#D97706'),
+          textColor:  cTxt('#FCD34D',                  '#92400E'),
           badgeText: `${orN}m`,
-          badgeBg: 'rgba(245,158,11,0.12)',
+          badgeBg: isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.22)',
           detail: `The first ${orN} minutes establish the opening range (ORH $${orHigh.toFixed(2)} / ORL $${orLow.toFixed(2)}). Wait for a confirmed break with volume expansion before entering.`,
         })
 
@@ -933,11 +938,19 @@ export default function DayTradePage() {
             label: verdict,
             sublabel: `${biasLabel} · post-OR`,
             markerColor: verdictColor,
-            cardBg: isGo ? 'rgba(2,12,8,0.9)' : isWatch ? 'rgba(2,8,18,0.9)' : 'rgba(8,8,10,0.9)',
-            cardBorder: isGo ? '#065F46' : isWatch ? '#0C4A6E' : '#374151',
-            textColor: verdictColor,
+            cardBg:     cBg(
+              isGo ? 'rgba(2,12,8,0.92)'        : isWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
+              isGo ? 'rgba(240,253,244,0.97)'   : isWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
+            ),
+            cardBorder: cBdr(
+              isGo ? '#065F46' : isWatch ? '#0C4A6E' : '#374151',
+              isGo ? '#059669' : isWatch ? '#0284C7' : '#9CA3AF',
+            ),
+            textColor:  cTxt(verdictColor, isGo ? '#065F46' : isWatch ? '#0369A1' : '#374151'),
             badgeText: verdict,
-            badgeBg: isGo ? 'rgba(52,211,153,0.12)' : isWatch ? 'rgba(56,189,248,0.12)' : 'rgba(107,114,128,0.08)',
+            badgeBg: isDark
+              ? (isGo ? 'rgba(52,211,153,0.12)'  : isWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
+              : (isGo ? 'rgba(52,211,153,0.18)'  : isWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
             detail: `${isGo ? 'Entry window active' : isWatch ? 'Setup developing' : `Verdict is ${verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
           })
@@ -954,11 +967,11 @@ export default function DayTradePage() {
             label: 'Hold / Monitor',
             sublabel: t1 ? `T1 $${t1.toFixed(2)}` : 'Manage position',
             markerColor: '#818CF8',
-            cardBg: 'rgba(4,4,16,0.9)',
-            cardBorder: '#312E81',
-            textColor: '#A5B4FC',
+            cardBg:     cBg('rgba(4,4,18,0.92)',       'rgba(245,243,255,0.97)'),
+            cardBorder: cBdr('#312E81',                 '#7C3AED'),
+            textColor:  cTxt('#A5B4FC',                 '#4C1D95'),
             badgeText: 'MANAGE',
-            badgeBg: 'rgba(99,102,241,0.10)',
+            badgeBg: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.16)',
             price: t1 ? `T1 $${t1.toFixed(2)}${t2 ? ` · T2 $${t2.toFixed(2)}` : ''}` : undefined,
             detail: t1
               ? `Manage your ${biasLabel} position. Take ½ off at T1 $${t1.toFixed(2)}${t2 ? `, trail the rest to T2 $${t2.toFixed(2)}` : ''}. Move stop to breakeven once T1 is hit.`
@@ -969,7 +982,7 @@ export default function DayTradePage() {
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} />
+            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
         )
       })()}
