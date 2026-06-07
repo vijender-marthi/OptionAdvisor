@@ -14,6 +14,7 @@ import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
+import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -1243,6 +1244,66 @@ export default function DayTradePage() {
       {result && (
         <DayTradeWalkthrough result={result} />
       )}
+
+      {/* Options entry check — collapsed by default, expands inline */}
+      {result && (() => {
+        const m       = result.metrics as Record<string, unknown>
+        const eg      = result.entry_guidance
+        const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
+        const isGo    = /^(STRONG.?GO|GO)$/i.test(verdict)
+        const isWatch = /WATCH/i.test(verdict)
+        const isShort = result.bias === 'short'
+        const chartBars = parseChartBars(m.chart_bars)
+        const orHigh  = typeof m.or_high === 'number' ? m.or_high as number : undefined
+        const orLow   = typeof m.or_low  === 'number' ? m.or_low  as number : undefined
+        const mVwap   = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap as number : null
+        const mRvol   = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : null
+        const lastPrice = typeof m.last_price === 'number' ? m.last_price as number : 0
+
+        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' = isGo ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
+        const direction: 'SHORT' | 'LONG' = isShort ? 'SHORT' : 'LONG'
+        const stopPrice = (() => {
+          const rb = typeof eg?.risk_below === 'number' ? eg.risk_below as number : null
+          if (rb && rb > 0) return rb
+          return isShort ? (orHigh ?? lastPrice) : (orLow ?? lastPrice)
+        })()
+
+        const pcRatio = typeof m.put_call_ratio === 'number' ? m.put_call_ratio as number : null
+        const pcAlignment: 'aligned' | 'conflict' | 'neutral' =
+          pcRatio == null ? 'neutral'
+          : pcRatio > 1.1 ? (isShort ? 'aligned' : 'conflict')
+          : pcRatio < 0.9 ? (isShort ? 'conflict' : 'aligned')
+          : 'neutral'
+
+        let flipCondition = ''
+        if (!isGo && chartBars) {
+          const curPrice = chartBars[chartBars.length - 1]?.c ?? 0
+          if (chartBars.length > 210) {
+            flipCondition = "Move is exhausted. Next valid setup is tomorrow's open."
+          } else if (mRvol != null && mRvol < 0.75) {
+            const ref = isShort ? orLow ?? 0 : orHigh ?? 0
+            flipCondition = `Next breakdown candle volume exceeds 1.5× prior 5-candle average near $${ref.toFixed(2)}.`
+          } else if (mVwap && Math.abs(curPrice - mVwap) / mVwap > 0.015) {
+            const pullback = isShort ? mVwap * 1.005 : mVwap * 0.995
+            flipCondition = `Price pulls back to $${pullback.toFixed(2)} before continuing ${isShort ? 'down' : 'up'}.`
+          } else {
+            const breakLevel = isShort ? orLow ?? 0 : orHigh ?? 0
+            flipCondition = `Two consecutive ${isShort ? 'red' : 'green'} candles closing ${isShort ? 'below' : 'above'} $${breakLevel.toFixed(2)} with no wick recovery.`
+          }
+        }
+
+        return (
+          <OptionsEntryCheck
+            ticker={result.ticker}
+            direction={direction}
+            stopPrice={stopPrice}
+            chartTrigger={chartTrigger}
+            flipCondition={flipCondition}
+            pcAlignment={pcAlignment}
+            initialPrice={lastPrice}
+          />
+        )
+      })()}
 
       {/* Flow reference */}
       <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden">
