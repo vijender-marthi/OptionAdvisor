@@ -993,6 +993,7 @@ export default function DayTradePage() {
         const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
         const isGo = /^(STRONG.?GO|GO)$/i.test(verdict)
         const isWatch = /WATCH/i.test(verdict)
+        const isWait = !isGo && !isWatch
         const biasLabel = isShort ? 'SHORT' : 'LONG'
         const verdictColor = isGo ? '#34d399' : isWatch ? '#38bdf8' : '#6b7280'
         const orN = orMin ?? 15
@@ -1026,6 +1027,42 @@ export default function DayTradePage() {
           detail: `The first ${orN} minutes establish the opening range (ORH $${orHigh.toFixed(2)} / ORL $${orLow.toFixed(2)}). Wait for a confirmed break with volume expansion before entering.`,
         })
 
+        // ── Flip-to-GO condition (WAIT only) ────────────────────────────────
+        let flipCondition: string | undefined
+        if (isWait) {
+          const lastBar = chartBars[chartBars.length - 1]
+          const curPrice = lastBar?.c ?? 0
+          const mRvol = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : null
+
+          if (chartBars.length > 210) {
+            // CONDITION E — late / exhausted session
+            flipCondition = 'Do not enter. Move is exhausted. Next valid setup is tomorrow\'s open.'
+          } else if (mRvol != null && mRvol < 0.75) {
+            // CONDITION A — low relative volume
+            const refLevel = isShort ? orLow : orHigh
+            flipCondition = `Next breakdown candle volume exceeds 1.5× the prior 5-candle average near $${refLevel.toFixed(2)}. Watch the volume bar, not the price.`
+          } else if (mVwap != null && mVwap > 0 && Math.abs(curPrice - mVwap) / mVwap > 0.015) {
+            // CONDITION B — price extended from VWAP
+            const pullback = isShort ? mVwap * 1.005 : mVwap * 0.995
+            flipCondition = `Price pulls back to $${pullback.toFixed(2)} before continuing ${isShort ? 'down' : 'up'} — do not chase ${isShort ? 'below' : 'above'} $${curPrice.toFixed(2)}.`
+          } else if (chartBars.length >= 4 && mVwap != null && mVwap > 0) {
+            // CONDITION D — bouncing toward VWAP
+            const recent4 = chartBars.slice(-4)
+            const bouncing = isShort
+              ? recent4[recent4.length - 1].c > recent4[0].c && curPrice < mVwap
+              : recent4[recent4.length - 1].c < recent4[0].c && curPrice > mVwap
+            if (bouncing) {
+              flipCondition = `Bounce fails below $${mVwap.toFixed(2)}. Wait for the first ${isShort ? 'red' : 'green'} candle after the bounce stalls — that is the entry.`
+            }
+          }
+
+          if (!flipCondition) {
+            // CONDITION C — default: no confirmed break yet
+            const breakLevel = isShort ? orLow : orHigh
+            flipCondition = `Two consecutive ${isShort ? 'red' : 'green'} candles closing ${isShort ? 'below' : 'above'} $${breakLevel.toFixed(2)} with no wick recovery — that is your entry, not before.`
+          }
+        }
+
         // Zone 2 — Entry window (post-OR, up to 45 bars)
         if (orN < chartBars.length) {
           dayZones.push({
@@ -1051,6 +1088,7 @@ export default function DayTradePage() {
               : (isGo ? 'rgba(52,211,153,0.18)'  : isWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
             detail: `${isGo ? 'Entry window active' : isWatch ? 'Setup developing' : `Verdict is ${verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+            flipCondition,
           })
         }
 
