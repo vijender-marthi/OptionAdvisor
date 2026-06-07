@@ -52,10 +52,11 @@ export interface OptionsEntryCheckProps {
   flipCondition: string
   pcAlignment: 'aligned' | 'conflict' | 'neutral'
   initialPrice: number
+  isDark?: boolean
 }
 
 export default function OptionsEntryCheck({
-  ticker, direction, stopPrice, chartTrigger, flipCondition, pcAlignment, initialPrice,
+  ticker, direction, stopPrice, chartTrigger, flipCondition, pcAlignment, initialPrice, isDark = true,
 }: OptionsEntryCheckProps) {
   const [expanded, setExpanded]   = useState(false)
   const [targetDte, setTargetDte] = useState<5 | 7>(5)
@@ -65,6 +66,14 @@ export default function OptionsEntryCheck({
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const initRef                   = useRef(false)
+
+  // Reset when ticker changes
+  useEffect(() => {
+    initRef.current = false
+    setData(null)
+    setExpanded(false)
+    setError(null)
+  }, [ticker])
 
   const doFetch = useCallback(async (expiry?: string) => {
     setLoading(true); setError(null)
@@ -101,8 +110,28 @@ export default function OptionsEntryCheck({
     }
   }
 
-  // Recompute ATM from live price (no re-fetch needed)
   const side: 'put' | 'call' = direction === 'SHORT' ? 'put' : 'call'
+
+  // Theme-aware palette
+  const C = {
+    bg:      isDark ? '#0f0f0f' : '#FFFFFF',
+    panel:   isDark ? '#111318' : '#F8F9FB',
+    card:    isDark ? '#181C23' : '#FFFFFF',
+    border:  isDark ? '#1E2330' : '#E5E7EB',
+    borderL: isDark ? '#141820' : '#E5E7EB',
+    muted:   isDark ? '#5A6478' : '#6B7280',
+    text:    isDark ? '#E8EBF0' : '#111827',
+    textDim: isDark ? '#3A4355' : '#9CA3AF',
+    green:   isDark ? '#a3cc6a' : '#16A34A',
+    red:     isDark ? '#e07070' : '#DC2626',
+    amber:   isDark ? '#e8a06a' : '#D97706',
+    greenBg: isDark ? 'rgba(99,153,34,0.20)'  : 'rgba(22,163,74,0.10)',
+    greenBdr: isDark ? '#639922' : '#16A34A',
+    greenTxt: isDark ? '#a3cc6a' : '#15803D',
+  }
+  const cT  = (d: string, l: string) => isDark ? d : l
+
+  // Recompute ATM from live price (no re-fetch needed)
   const rows: OptionChainRow[] = data ? (side === 'call' ? data.calls : data.puts) : []
   const atmIdx = rows.length > 0
     ? rows.reduce((b, r, i) => Math.abs(r.strike - livePrice) < Math.abs(rows[b]!.strike - livePrice) ? i : b, 0)
@@ -131,48 +160,48 @@ export default function OptionsEntryCheck({
   const word    = (direction === 'SHORT' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
   const { tier, msg } = ocVerdictStrip(chartTrigger, pcAlignment, ss, flipCondition, word, atmRow?.strike ?? null, stopPrice)
 
-  const vtBg  = tier === 'green' ? 'rgba(99,153,34,0.15)'  : tier === 'amber' ? 'rgba(232,123,58,0.10)' : tier === 'red' ? 'rgba(226,75,74,0.10)' : 'rgba(136,135,128,0.10)'
-  const vtBdr = tier === 'green' ? '#639922'               : tier === 'amber' ? '#E87B3A'               : tier === 'red' ? '#E24B4A'              : '#888780'
-  const vtClr = tier === 'green' ? '#a3cc6a'               : tier === 'amber' ? '#e8a06a'               : tier === 'red' ? '#e07070'              : '#888780'
+  const vtBg  = tier === 'green' ? cT('rgba(99,153,34,0.15)', 'rgba(22,163,74,0.10)') : tier === 'amber' ? cT('rgba(232,123,58,0.10)', 'rgba(217,119,6,0.10)') : tier === 'red' ? cT('rgba(226,75,74,0.10)', 'rgba(220,38,38,0.10)') : 'rgba(136,135,128,0.10)'
+  const vtBdr = tier === 'green' ? C.greenBdr : tier === 'amber' ? '#E87B3A' : tier === 'red' ? '#E24B4A' : '#888780'
+  const vtClr = tier === 'green' ? C.green : tier === 'amber' ? C.amber : tier === 'red' ? C.red : '#888780'
 
-  const liqColor = ss === 'ok' ? '#a3cc6a' : ss === 'warn' ? '#e8a06a' : ss === 'bad' ? '#e07070' : '#5A6478'
+  const liqColor = ss === 'ok' ? C.green : ss === 'warn' ? C.amber : ss === 'bad' ? C.red : C.muted
   const liqLbl   = ss === 'ok' ? '✓ Good'  : ss === 'warn' ? '⚠ Moderate' : ss === 'bad' ? '✗ Poor' : '—'
   const rt       = atmRow ? atmRow.spread * 2 * 100 : null
-  const rtClr    = rt == null ? '#5A6478' : rt < 200 ? '#a3cc6a' : rt < 400 ? '#e8a06a' : '#e07070'
+  const rtClr    = rt == null ? C.muted : rt < 200 ? C.green : rt < 400 ? C.amber : C.red
   const selDte   = data ? Math.max(0, Math.ceil((new Date(data.selected_expiry + 'T00:00:00').getTime() - Date.now()) / 86_400_000)) : null
 
   return (
-    <section style={{ background: '#0f0f0f', borderTop: '1px solid rgba(255,255,255,0.04)', flexShrink: 0 }}>
+    <section style={{ background: C.bg, borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
 
       {/* ── Toggle row ── */}
       <div
         className="flex items-center justify-between px-4 py-2 cursor-pointer select-none"
-        style={{ borderBottom: expanded ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
+        style={{ borderBottom: expanded ? `1px solid ${C.border}` : 'none' }}
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-2.5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: C.muted }}>
             Options entry check
           </span>
-          <span className="font-mono text-[11px] font-bold text-gray-300">{ticker}</span>
+          <span className="font-mono text-[11px] font-bold" style={{ color: C.text }}>{ticker}</span>
           <span
             className="px-1.5 py-0.5 rounded text-[9px] font-bold"
             style={{
-              background: direction === 'SHORT' ? 'rgba(251,113,133,0.12)' : 'rgba(52,211,153,0.12)',
-              color:      direction === 'SHORT' ? '#fb7185' : '#34d399',
+              background: direction === 'SHORT' ? cT('rgba(251,113,133,0.12)', 'rgba(220,38,38,0.10)') : cT('rgba(52,211,153,0.12)', 'rgba(22,163,74,0.10)'),
+              color:      direction === 'SHORT' ? (isDark ? '#fb7185' : '#DC2626') : (isDark ? '#34d399' : '#16A34A'),
             }}
           >
             {direction === 'SHORT' ? '▼ SHORT' : '▲ LONG'}
           </span>
           {data && selDte !== null && (
-            <span className="text-[10px] text-gray-700">{selDte}DTE · {side}s</span>
+            <span style={{ fontSize: 10, color: C.muted }}>{selDte}DTE · {side}s</span>
           )}
         </div>
 
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
           {expanded && (
             <>
-              <span style={{ fontSize: 10, color: '#5A6478' }}>price</span>
+              <span style={{ fontSize: 10, color: C.muted }}>price</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -192,14 +221,14 @@ export default function OptionsEntryCheck({
                 }}
                 style={{
                   width: 64, fontSize: 11, fontFamily: 'ui-monospace, monospace',
-                  color: '#E8EBF0', background: 'transparent',
-                  border: 'none', borderBottom: '1px solid #252C3A',
+                  color: C.text, background: 'transparent',
+                  border: 'none', borderBottom: `1px solid ${C.border}`,
                   outline: 'none', textAlign: 'right', padding: '1px 0',
                 }}
               />
             </>
           )}
-          <span style={{ fontSize: 10, color: '#5A6478', marginLeft: 4 }}>
+          <span style={{ fontSize: 10, color: C.muted, marginLeft: 4 }}>
             {expanded ? '▲' : '▼'}
           </span>
         </div>
@@ -211,7 +240,7 @@ export default function OptionsEntryCheck({
 
           {/* DTE selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, color: '#5A6478' }}>DTE</span>
+            <span style={{ fontSize: 10, color: C.muted }}>DTE</span>
             {([5, 7] as const).map(dte => (
               <button
                 key={dte}
@@ -219,20 +248,20 @@ export default function OptionsEntryCheck({
                 style={{
                   fontSize: 11, padding: '3px 11px', borderRadius: 5, cursor: 'pointer',
                   border: '0.5px solid',
-                  borderColor: targetDte === dte ? '#639922' : '#1E2330',
-                  background:  targetDte === dte ? 'rgba(99,153,34,0.20)' : '#181C23',
-                  color:       targetDte === dte ? '#a3cc6a' : '#5A6478',
+                  borderColor: targetDte === dte ? C.greenBdr : C.border,
+                  background:  targetDte === dte ? C.greenBg : C.card,
+                  color:       targetDte === dte ? C.green : C.muted,
                 }}
               >
                 {dte}DTE
               </button>
             ))}
-            {loading && <span style={{ fontSize: 10, color: '#5A6478' }}>loading…</span>}
+            {loading && <span style={{ fontSize: 10, color: C.muted }}>loading…</span>}
           </div>
 
           {/* Error */}
           {error && (
-            <div style={{ fontSize: 11, color: '#e07070', padding: '6px 10px', borderRadius: 5, background: 'rgba(226,75,74,0.08)' }}>
+            <div style={{ fontSize: 11, color: C.red, padding: '6px 10px', borderRadius: 5, background: cT('rgba(226,75,74,0.08)', 'rgba(220,38,38,0.08)') }}>
               {error}
             </div>
           )}
@@ -241,16 +270,16 @@ export default function OptionsEntryCheck({
           {atmRow && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {([
-                { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: '#E8EBF0' },
-                { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: '#E8EBF0' },
+                { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: C.text },
+                { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: C.text },
                 { lbl: 'Spread cost',val: `$${(atmRow.spread * 100).toFixed(0)}`,       sub: `${atmRow.spread_pct.toFixed(1)}% of premium`,                     clr: liqColor  },
                 { lbl: 'Liquidity',  val: liqLbl,                                        sub: null,                                                              clr: liqColor  },
                 { lbl: 'Round trip', val: rt != null ? `$${rt.toFixed(0)}` : '—',       sub: rt != null ? `entry + exit · 2× = $${(rt * 2).toFixed(0)}` : null, clr: rtClr     },
               ] as const).map(({ lbl, val, sub, clr }) => (
-                <div key={lbl} style={{ flex: 1, minWidth: 90, background: '#111318', border: '0.5px solid #1E2330', borderRadius: 7, padding: '7px 11px' }}>
-                  <div style={{ fontSize: 9, color: '#5A6478', marginBottom: 2 }}>{lbl}</div>
+                <div key={lbl} style={{ flex: 1, minWidth: 90, background: C.panel, border: `0.5px solid ${C.border}`, borderRadius: 7, padding: '7px 11px' }}>
+                  <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>{lbl}</div>
                   <div style={{ fontSize: 15, fontWeight: 500, color: clr }}>{val}</div>
-                  {sub && <div style={{ fontSize: 9, color: '#5A6478', marginTop: 1 }}>{sub}</div>}
+                  {sub && <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{sub}</div>}
                 </div>
               ))}
             </div>
@@ -258,35 +287,35 @@ export default function OptionsEntryCheck({
 
           {/* 3-strike table */}
           {three.length > 0 && (
-            <div style={{ border: '0.5px solid #1E2330', borderRadius: 7, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: OC_COLS, padding: '5px 10px', fontSize: 9, fontWeight: 600, color: '#3A4355', borderBottom: '0.5px solid #1E2330', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 7, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: OC_COLS, padding: '5px 10px', fontSize: 9, fontWeight: 600, color: C.textDim, borderBottom: `0.5px solid ${C.border}`, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 <span>Strike</span><span>Bid</span><span>Ask</span>
                 <span>Spread</span><span>Spread%</span><span>Status</span><span>IV</span>
               </div>
               {three.map(({ r, lbl }) => {
-                const sp  = r.spread_pct <= 5 ? '#a3cc6a' : r.spread_pct <= 10 ? '#e8a06a' : '#e07070'
+                const sp  = r.spread_pct <= 5 ? C.green : r.spread_pct <= 10 ? C.amber : C.red
                 const isA = lbl === 'ATM'
                 const bs  = r.spread_pct <= 5
-                  ? { bg: 'rgba(99,153,34,0.20)',  c: '#a3cc6a', t: '✓ Enter'     }
+                  ? { bg: cT('rgba(99,153,34,0.20)', 'rgba(22,163,74,0.12)'),  c: C.green, t: '✓ Enter'     }
                   : r.spread_pct <= 10
-                  ? { bg: 'rgba(232,123,58,0.20)', c: '#e8a06a', t: '⚠ Size down' }
-                  : { bg: 'rgba(226,75,74,0.20)',  c: '#e07070', t: '✗ Skip'      }
+                  ? { bg: cT('rgba(232,123,58,0.20)', 'rgba(217,119,6,0.10)'), c: C.amber, t: '⚠ Size down' }
+                  : { bg: cT('rgba(226,75,74,0.20)',  'rgba(220,38,38,0.10)'),  c: C.red,   t: '✗ Skip'      }
                 return (
                   <div
                     key={r.strike}
                     style={{
                       display: 'grid', gridTemplateColumns: OC_COLS,
                       alignItems: 'center', padding: '6px 10px',
-                      borderBottom: '0.5px solid #141820',
-                      fontSize: 11, color: '#E8EBF0',
-                      borderLeft: `2px solid ${isA ? '#639922' : 'transparent'}`,
-                      background: isA ? 'rgba(99,153,34,0.07)' : 'transparent',
+                      borderBottom: `0.5px solid ${C.borderL}`,
+                      fontSize: 11, color: C.text,
+                      borderLeft: `2px solid ${isA ? C.greenBdr : 'transparent'}`,
+                      background: isA ? cT('rgba(99,153,34,0.07)', 'rgba(22,163,74,0.05)') : 'transparent',
                     }}
                   >
                     <span>
                       <span style={{ fontWeight: isA ? 600 : 400 }}>${r.strike.toFixed(2)}</span>
                       {' '}
-                      <span style={{ fontSize: 8, color: isA ? '#639922' : '#3A4355' }}>{lbl}</span>
+                      <span style={{ fontSize: 8, color: isA ? C.greenBdr : C.textDim }}>{lbl}</span>
                     </span>
                     <span>${r.bid.toFixed(2)}</span>
                     <span>${r.ask.toFixed(2)}</span>
@@ -295,7 +324,7 @@ export default function OptionsEntryCheck({
                     <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, fontWeight: 500, display: 'inline-block', background: bs.bg, color: bs.c }}>
                       {bs.t}
                     </span>
-                    <span style={{ color: '#3A4355' }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
+                    <span style={{ color: C.textDim }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
                   </div>
                 )
               })}

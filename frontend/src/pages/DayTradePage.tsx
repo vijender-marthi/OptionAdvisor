@@ -1301,6 +1301,7 @@ export default function DayTradePage() {
             flipCondition={flipCondition}
             pcAlignment={pcAlignment}
             initialPrice={lastPrice}
+            isDark={isDark}
           />
         )
       })()}

@@ -3552,6 +3552,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     option_risk_context = build_day_option_risk_context(t, info)
 
+    # ── P/C ratio — uses cached chain warmed by build_day_option_risk_context ──
+    try:
+        _opt_dates = bar_cache.get_option_dates(t)
+        if _opt_dates:
+            _calls_pcr, _puts_pcr = bar_cache.get_option_chain(t, _opt_dates[0])
+            if _calls_pcr is not None and _puts_pcr is not None:
+                _call_vol_sum = float(_calls_pcr["volume"].fillna(0).sum())
+                _put_vol_sum  = float(_puts_pcr["volume"].fillna(0).sum())
+                _total_ov     = _call_vol_sum + _put_vol_sum
+                metrics["put_call_ratio"]    = round(_put_vol_sum / _call_vol_sum, 2) if _call_vol_sum > 0 else None
+                metrics["total_options_vol"] = int(_total_ov) if _total_ov > 0 else None
+    except Exception:
+        pass
+
     entry_window = _compute_entry_window(
         verdict=_internal_verdict,
         bias=bias,
