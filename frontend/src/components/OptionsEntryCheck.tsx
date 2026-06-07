@@ -67,13 +67,13 @@ export default function OptionsEntryCheck({
   const [error, setError]         = useState<string | null>(null)
   const initRef                   = useRef(false)
 
-  // Reset when ticker changes
+  // Re-fetch when ticker changes (if already expanded)
   useEffect(() => {
     initRef.current = false
     setData(null)
-    setExpanded(false)
     setError(null)
-  }, [ticker])
+    if (expanded) doFetch()
+  }, [ticker]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const doFetch = useCallback(async (expiry?: string) => {
     setLoading(true); setError(null)
