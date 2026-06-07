@@ -221,7 +221,7 @@ function DetailCard({ row, direction, expiry, ticker, tradeType, T }: {
           { label: 'Bid / Ask', val: `$${row.bid.toFixed(2)} / $${row.ask.toFixed(2)}` },
           { label: '2 contracts cost', val: `$${cost2}` },
           { label: 'Max loss', val: `-$${cost2}`, color: '#e07070' },
-          { label: 'IV', val: `${row.iv.toFixed(0)}%` },
+          { label: 'IV', val: row.iv > 200 ? '—' : `${row.iv.toFixed(0)}%` },
           { label: '2× target price', val: `$${tgt}`, color: '#a3cc6a' },
           { label: 'Spread / contract', val: `$${(row.spread * 100).toFixed(0)}`, color: verdict.tier === 'ok' ? '#a3cc6a' : verdict.tier === 'warn' ? '#e8a06a' : '#e07070' },
         ].map(({ label, val, color }) => (
@@ -285,7 +285,7 @@ function ChainTable({ rows, tradeType, direction, selectedStrike, onSelect, T }:
             <span style={{ color: spColor }}>${r.spread.toFixed(2)}</span>
             <span style={{ color: spColor }}>{r.spread_pct.toFixed(1)}%</span>
             <span><Badge label={verdict.label} tier={verdict.tier} /></span>
-            <span style={{ color: T.muted }}>{r.iv.toFixed(0)}%</span>
+            <span style={{ color: T.muted }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
           </div>
         )
       })}
@@ -313,6 +313,7 @@ export default function OptionChainPage() {
   })
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null)
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null)
+  const [showAll, setShowAll] = useState(false)
   const [data, setData] = useState<OptionChainLiquidityResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -333,6 +334,7 @@ export default function OptionChainPage() {
       setSubmittedTicker(t)
       setSelectedExpiry(res.selected_expiry)
       setSelectedStrike(null)
+      setShowAll(false)
       setSearchParams(prev => { prev.set('ticker', t); return prev }, { replace: true })
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -366,6 +368,11 @@ export default function OptionChainPage() {
   const cfg = TT_CONFIG[tradeType]
   const currentPrice = data?.current_price ?? 0
   const highPrice = currentPrice > 500
+
+  const visibleRows = showAll || currentPrice <= 0
+    ? rows
+    : rows.filter(r => Math.abs(r.strike - currentPrice) / currentPrice <= 0.10)
+  const hiddenCount = rows.length - visibleRows.length
 
   const btnBase: React.CSSProperties = {
     fontSize: 12, padding: '5px 12px', borderRadius: 6,
@@ -485,14 +492,26 @@ export default function OptionChainPage() {
         )}
 
         {/* Stat cards */}
-        {data && rows.length > 0 && (
-          <StatCards rows={rows} atm={atm} tradeType={tradeType} T={T} />
+        {data && visibleRows.length > 0 && (
+          <StatCards rows={visibleRows} atm={atm} tradeType={tradeType} T={T} />
+        )}
+
+        {/* Show-all toggle */}
+        {data && hiddenCount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+            <button
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, cursor: 'pointer', border: `0.5px solid ${T.btnBorder}`, background: T.btnBg, color: T.muted }}
+              onClick={() => { setShowAll(v => !v); setSelectedStrike(null) }}
+            >
+              {showAll ? `Near ATM only (±10%)` : `Show all ${hiddenCount + visibleRows.length} strikes`}
+            </button>
+          </div>
         )}
 
         {/* Chain table */}
         {data && (
           <ChainTable
-            rows={rows}
+            rows={visibleRows}
             tradeType={tradeType}
             direction={direction}
             selectedStrike={selectedStrike}
