@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
-  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -153,6 +153,7 @@ export default function Sidebar() {
         { id: 'swing-trade',   label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
         { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
+        { id: 'option-chain', label: 'Option Chain', icon: <Link2 size={18} /> },
       ],
     },
     {
@@ -207,6 +208,7 @@ export default function Sidebar() {
     { id: 'swing-trade',    label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
     { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
+    { id: 'option-chain',  label: 'Option Chain',   icon: <Link2 size={18} /> },
     // Discover
     { id: 'ai-stocks',      label: 'AI Stocks',      icon: <Bot size={18} /> },
     { id: 'q-radar',        label: 'Quantum Radar',  icon: <Atom size={18} /> },
