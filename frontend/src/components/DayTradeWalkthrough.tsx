@@ -480,6 +480,29 @@ export default function DayTradeWalkthrough({ result }: { result: DayTradeScanRe
               </div>
             ) : null}
           </div>
+          {focusStep === 3 && (
+            <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3 space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">⚡ Flip to GO — condition selection logic (first match wins)</div>
+              <div className="space-y-1">
+                {([
+                  { tag: 'E', trigger: 'Session > 3.5 hours', result: 'Do not enter. Move is exhausted. Next setup is tomorrow\'s open.' },
+                  { tag: 'A', trigger: 'RVOL < 0.75×', result: 'Next breakdown candle must exceed 1.5× the prior 5-candle average volume.' },
+                  { tag: 'B', trigger: 'Price > 1.5% extended from VWAP', result: 'Wait for price to pull back to VWAP ± 0.5% before continuing.' },
+                  { tag: 'D', trigger: 'Last 4 bars bouncing toward VWAP', result: 'Wait for the bounce to fail at VWAP — first candle against the bounce is the entry.' },
+                  { tag: 'C', trigger: 'Default (none of the above)', result: 'Two consecutive candles must close past the OR level with no wick recovery.' },
+                ] as const).map(({ tag, trigger, result: res }) => (
+                  <div key={tag} className="grid grid-cols-[20px_1fr_1fr] gap-x-3 items-start text-[11px]">
+                    <span className="font-mono font-bold text-amber-400/80">{tag}</span>
+                    <span className="text-gray-500">{trigger}</span>
+                    <span className="text-gray-300 leading-snug">{res}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[10px] text-gray-600 leading-relaxed pt-1 border-t border-gray-800">
+                The session chart card shows which condition fired with the exact prices filled in. Only one condition is shown — the first one that matches.
+              </div>
+            </div>
+          )}
         </div>
 
         <div className={`px-4 py-4 border-b border-gray-800 space-y-3${focusStep === 4 ? ` ${focusBorderLeft}` : ''}`}>
