@@ -66,23 +66,19 @@ export default function OptionsEntryCheck({
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const initRef                   = useRef(false)
-
-  // Re-fetch when ticker changes (if already expanded)
-  useEffect(() => {
-    initRef.current = false
-    setData(null)
-    setError(null)
-    if (expanded) doFetch()
-  }, [ticker]) // eslint-disable-line react-hooks/exhaustive-deps
+  const tickerRef                 = useRef(ticker)
+  const expandedRef               = useRef(expanded)
+  expandedRef.current = expanded
 
   const doFetch = useCallback(async (expiry?: string) => {
     setLoading(true); setError(null)
+    const sym = tickerRef.current
     try {
-      const r1 = await fetchOptionChainLiquidity(ticker, expiry)
+      const r1 = await fetchOptionChainLiquidity(sym, expiry)
       if (!expiry) {
         const best5 = ocFindExpiry(r1.expiries, 5)
         if (best5 && best5 !== r1.selected_expiry) {
-          try { const r2 = await fetchOptionChainLiquidity(ticker, best5); setData(r2); return } catch { /* fall through */ }
+          try { const r2 = await fetchOptionChainLiquidity(sym, best5); setData(r2); return } catch { /* fall through */ }
         }
       }
       setData(r1)
@@ -93,7 +89,7 @@ export default function OptionsEntryCheck({
     } finally {
       setLoading(false)
     }
-  }, [ticker])
+  }, []) // stable — reads ticker from ref
 
   // Fetch once on first expand
   useEffect(() => {
@@ -101,6 +97,15 @@ export default function OptionsEntryCheck({
     initRef.current = true
     doFetch()
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when ticker changes (if already expanded)
+  useEffect(() => {
+    tickerRef.current = ticker
+    initRef.current = false
+    setData(null)
+    setError(null)
+    if (expandedRef.current) doFetch()
+  }, [ticker])
 
   const handleDte = (dte: 5 | 7) => {
     setTargetDte(dte)
