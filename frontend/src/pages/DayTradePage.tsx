@@ -19,6 +19,104 @@ import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
 
+/* ── PCRatioStrip ─────────────────────────────────────────────────────── */
+
+function fmtOptionsVol(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
+  return String(v)
+}
+
+function PCRatioStrip({
+  pcRatio,
+  totalOptionsVol,
+  bias,
+  isDark,
+}: {
+  pcRatio: number | null
+  totalOptionsVol: number | null
+  bias: string | null
+  isDark: boolean
+}) {
+  const [tip, setTip] = useState(false)
+
+  const borderB = isDark ? '0.5px solid rgba(255,255,255,0.08)' : '0.5px solid rgba(0,0,0,0.08)'
+
+  if (pcRatio == null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 44, padding: '0 4px', borderBottom: borderB, marginBottom: 12 }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#444', flexShrink: 0 }} />
+        <span style={{ fontSize: 10, color: '#888780', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Put/Call</span>
+        <span style={{ fontSize: 14, color: '#444', fontFamily: 'monospace' }}>—</span>
+        <span style={{ fontSize: 11, color: '#555' }}>No data</span>
+      </div>
+    )
+  }
+
+  let arrow: string, reading: string, dotColor: string, ratioColor: string
+  if (pcRatio >= 1.20) {
+    arrow = '▼'; reading = 'Bearish lean'; dotColor = '#E24B4A'; ratioColor = '#e07070'
+  } else if (pcRatio >= 1.00) {
+    arrow = '▼'; reading = 'Mild bearish'; dotColor = '#E87B3A'; ratioColor = '#e8a06a'
+  } else if (pcRatio >= 0.80) {
+    arrow = '→'; reading = 'Neutral'; dotColor = '#888780'; ratioColor = '#888780'
+  } else if (pcRatio >= 0.60) {
+    arrow = '▲'; reading = 'Mild bullish'; dotColor = '#E87B3A'; ratioColor = '#e8a06a'
+  } else {
+    arrow = '▲'; reading = 'Bullish lean'; dotColor = '#639922'; ratioColor = '#a3cc6a'
+  }
+
+  const isNeutral = pcRatio >= 0.80 && pcRatio < 1.00
+  const biasUp = (bias ?? '').toUpperCase()
+  const biasIsShort = biasUp === 'SHORT'
+  const aligned = !isNeutral && ((biasIsShort && pcRatio >= 1.00) || (!biasIsShort && pcRatio <= 0.80))
+  const conflict = !isNeutral && !aligned
+
+  let badgeBg: string, badgeColor: string, alignLabel: string
+  if (isNeutral) {
+    badgeBg = 'rgba(136,135,128,0.15)'; badgeColor = '#888780'
+    alignLabel = '— Neutral · no confirmation'
+  } else if (aligned) {
+    badgeBg = 'rgba(99,153,34,0.20)'; badgeColor = '#a3cc6a'
+    alignLabel = `✓ Aligns with ${biasUp}`
+  } else {
+    badgeBg = 'rgba(226,75,74,0.20)'; badgeColor = '#e07070'
+    alignLabel = `✗ Conflicts with ${biasUp} — size down`
+  }
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', height: 44, marginBottom: 12, position: 'relative', borderBottom: borderB, cursor: 'default' }}
+      onMouseEnter={() => setTip(true)}
+      onMouseLeave={() => setTip(false)}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+        <span style={{ fontSize: 10, color: '#888780', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Put/Call</span>
+        <span style={{ fontSize: 16, fontWeight: 500, color: ratioColor, fontFamily: 'monospace' }}>{pcRatio.toFixed(2)}</span>
+        <span style={{ color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', fontSize: 14 }}>|</span>
+        <span style={{ fontSize: 12, color: ratioColor }}>{arrow} {reading}</span>
+        {bias && (
+          <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4, background: badgeBg, color: badgeColor, whiteSpace: 'nowrap' }}>
+            {alignLabel}
+          </span>
+        )}
+      </div>
+      {totalOptionsVol != null && (
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: '#888780' }}>Total Vol</div>
+          <div style={{ fontSize: 13, color: '#c2c0b6', fontFamily: 'monospace' }}>{fmtOptionsVol(totalOptionsVol)}</div>
+        </div>
+      )}
+      {tip && (
+        <div style={{ position: 'absolute', top: 48, left: 0, background: 'rgba(30,30,30,0.95)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#c2c0b6', maxWidth: 280, zIndex: 10, pointerEvents: 'none', lineHeight: 1.6 }}>
+          P/C ratio above 1.0 = more puts traded than calls. Confirms bearish sentiment from prior session. Use as pre-market bias check — not a timing signal.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
   if (typeof d === 'string') return d
@@ -982,6 +1080,12 @@ export default function DayTradePage() {
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
+            <PCRatioStrip
+              pcRatio={typeof m.put_call_ratio === 'number' ? m.put_call_ratio as number : null}
+              totalOptionsVol={typeof m.total_options_vol === 'number' ? m.total_options_vol as number : null}
+              bias={result.bias ?? null}
+              isDark={isDark}
+            />
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
         )
