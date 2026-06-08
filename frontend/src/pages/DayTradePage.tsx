@@ -187,6 +187,7 @@ export default function DayTradePage() {
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
+  const [ocKey, setOcKey]     = useState(0)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -224,6 +225,7 @@ export default function DayTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      setOcKey(k => k + 1)
       try {
         const v2res = await analyzeV2(sym, 'day')
         setUnified(v2res.data)
@@ -1004,6 +1006,18 @@ export default function DayTradePage() {
         const sien = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
         const entryReadiness = sien === 'YES' ? 'Execute within 1–2 candles.' : sien === 'CONDITIONAL' ? 'Wait for trigger candle confirmation.' : 'No confirmed trigger yet — monitor closely.'
 
+        // Hard gate: GO badge is only allowed when the trigger is confirmed.
+        // If sien !== 'YES', the card detail says "no confirmed trigger" —
+        // showing GO simultaneously is a contradiction. Downgrade to WATCH.
+        const triggerConfirmed = sien === 'YES'
+        const rrRatio = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number)
+          ? m.entry_rr_ratio as number : null
+        // z2* = display values used only for Zone 2's card badge and colours
+        const z2IsGo    = isGo && triggerConfirmed && (rrRatio === null || rrRatio >= 1.0)
+        const z2IsWatch = !z2IsGo && (isWatch || isGo)   // downgraded GO → WATCH
+        const z2Verdict = z2IsGo ? verdict : (isGo ? 'WATCH' : verdict)
+        const z2VColor  = z2IsGo ? '#34d399' : z2IsWatch ? '#38bdf8' : '#6b7280'
+
         // Theme-adaptive card helpers
         const cBg  = (d: string, l: string) => isDark ? d : l
         const cBdr = (d: string, l: string) => isDark ? d : l
@@ -1070,25 +1084,25 @@ export default function DayTradePage() {
             key: 'entry',
             from: orN,
             to: Math.min(orN + 44, chartBars.length - 1),
-            fill: isGo ? 'rgba(52,211,153,0.07)' : isWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
-            label: verdict,
+            fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
+            label: z2Verdict,
             sublabel: `${biasLabel} · post-OR`,
-            markerColor: verdictColor,
+            markerColor: z2VColor,
             cardBg:     cBg(
-              isGo ? 'rgba(2,12,8,0.92)'        : isWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
-              isGo ? 'rgba(240,253,244,0.97)'   : isWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
+              z2IsGo ? 'rgba(2,12,8,0.92)'        : z2IsWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
+              z2IsGo ? 'rgba(240,253,244,0.97)'   : z2IsWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
             ),
             cardBorder: cBdr(
-              isGo ? '#065F46' : isWatch ? '#0C4A6E' : '#374151',
-              isGo ? '#059669' : isWatch ? '#0284C7' : '#9CA3AF',
+              z2IsGo ? '#065F46' : z2IsWatch ? '#0C4A6E' : '#374151',
+              z2IsGo ? '#059669' : z2IsWatch ? '#0284C7' : '#9CA3AF',
             ),
-            textColor:  cTxt(verdictColor, isGo ? '#065F46' : isWatch ? '#0369A1' : '#374151'),
-            badgeText: verdict,
+            textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsWatch ? '#0369A1' : '#374151'),
+            badgeText: z2Verdict,
             badgeBg: isDark
-              ? (isGo ? 'rgba(52,211,153,0.12)'  : isWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
-              : (isGo ? 'rgba(52,211,153,0.18)'  : isWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
+              ? (z2IsGo ? 'rgba(52,211,153,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
+              : (z2IsGo ? 'rgba(52,211,153,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
-            detail: `${isGo ? 'Entry window active' : isWatch ? 'Setup developing' : `Verdict is ${verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+            detail: `${z2IsGo ? 'Entry window active' : z2IsWatch ? 'Setup developing' : `Verdict is ${z2Verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
             flipCondition,
           })
         }
@@ -1294,6 +1308,7 @@ export default function DayTradePage() {
 
         return (
           <OptionsEntryCheck
+            key={ocKey}
             ticker={result.ticker}
             direction={direction}
             stopPrice={stopPrice}
