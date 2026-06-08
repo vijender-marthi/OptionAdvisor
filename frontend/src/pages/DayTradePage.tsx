@@ -1144,118 +1144,161 @@ export default function DayTradePage() {
           }
           const candle = isShort ? 'red' : 'green'
 
-          // ── A: VWAP pullback ─────────────────────────────────────────────────
-          // Fires each time price returns within 0.5% of VWAP after being >0.5% extended.
-          {
-            let rAextended = false
-            let rAinPullback = false
-            for (let i = 0; i < holdBars.length; i++) {
-              const bar = holdBars[i]!
-              const vwap = bar.vwap
-              if (vwap <= 0) continue
-              const distPct = (bar.c - vwap) / vwap
-              const extended = isShort ? distPct < -0.005 : distPct > 0.005
-              const nearVwap = Math.abs(distPct) <= 0.005
-              if (extended) { rAextended = true; rAinPullback = false }
-              if (rAextended && nearVwap && !rAinPullback) {
-                rAinPullback = true
-                const absIdx = holdFrom + i
-                const stopA = isShort ? vwap * 1.005 : vwap * 0.995
-                const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopA : b.l < stopA)
-                if (!invalidated) {
-                  const rrA = reTarget != null ? Math.abs(reTarget - vwap) / Math.abs(vwap - stopA) : null
-                  dayZones.push({
-                    key: `reentry-a-${absIdx}`,
-                    from: Math.max(absIdx - 1, holdFrom),
-                    to:   Math.min(absIdx + 3, chartBars.length - 1),
-                    ...reBlue,
-                    label:    'RE-ENTRY',
-                    sublabel: 'A — VWAP pullback',
-                    price:    `VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
-                    detail:   `Re-entry window · Price testing VWAP $${vwap.toFixed(2)} · Stop ${isShort ? 'above' : 'below'} VWAP $${stopA.toFixed(2)}`,
-                    reentryTrigger: `First ${candle} candle off VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
-                  })
-                }
-              }
-            }
-          }
+          // Fix 5: suppress entirely when the session is exhausted
+          const isExhausted = chartBars.length > 210 || !!(flipCondition?.includes('exhausted'))
 
-          // ── B: OR level retest ───────────────────────────────────────────────
-          // Fires when price pulls back to within 0.3% of ORH (longs) / ORL (shorts)
-          // after a confirmed breakout beyond that level.
-          {
-            const retestLevel = isShort ? orLow : orHigh
-            const stopB = isShort ? retestLevel * 1.003 : retestLevel * 0.997
-            const hadBreakout = chartBars.slice(0, holdFrom).some(b =>
-              isShort ? b.c < retestLevel * 0.997 : b.c > retestLevel * 1.003
-            )
-            if (hadBreakout) {
-              let rBaway = false
-              let rBinRetest = false
-              for (let i = 0; i < holdBars.length; i++) {
-                const bar = holdBars[i]!
-                const dist = Math.abs(bar.c - retestLevel) / retestLevel
-                const nearLevel  = dist <= 0.003
-                const awayFromLevel = dist > 0.003
-                if (awayFromLevel) { rBaway = true; rBinRetest = false }
-                if (rBaway && nearLevel && !rBinRetest) {
-                  rBinRetest = true
+          if (!isExhausted) {
+            // Shared throttle — all three types draw from one pool (max 3 / session)
+            let reEntryCount      = 0
+            let lastReEntryAbsIdx = -999   // absolute bar index of the last fired card
+            let lastReEntryPrice  = 0      // close price at the last fired card
+
+            // Returns true only when all quality gates pass.
+            const canFire = (absIdx: number, closePx: number, rr: number | null): boolean =>
+              reEntryCount < 3
+              && (absIdx - lastReEntryAbsIdx) >= 20              // Fix 1: 20-bar cooldown
+              && (lastReEntryPrice <= 0 || Math.abs(closePx - lastReEntryPrice) / lastReEntryPrice >= 0.005)  // Fix 2: 0.5% price movement
+              && rr != null && rr >= 1.5                         // Fix 4: R/R gate
+
+            const markFired = (absIdx: number, closePx: number) => {
+              reEntryCount++
+              lastReEntryAbsIdx = absIdx
+              lastReEntryPrice  = closePx
+            }
+
+            // ── A: VWAP pullback ─────────────────────────────────────────────
+            // Price must pull to within 0.3% of VWAP (tighter than before),
+            // confirmed by the prior candle closing in the trade direction.
+            {
+              let rAextended  = false
+              let rAinPullback = false
+              for (let i = 1; i < holdBars.length; i++) {
+                const bar  = holdBars[i]!
+                const prev = holdBars[i - 1]!
+                const vwap = bar.vwap
+                if (vwap <= 0) continue
+                const distPct  = (bar.c - vwap) / vwap
+                const extended = isShort ? distPct < -0.005 : distPct > 0.005
+                const nearVwap = Math.abs(distPct) <= 0.003      // Fix 4: tightened 0.5→0.3%
+                if (extended) { rAextended = true; rAinPullback = false }
+                if (rAextended && nearVwap && !rAinPullback) {
+                  rAinPullback = true
                   const absIdx = holdFrom + i
-                  const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopB : b.l < stopB)
-                  if (!invalidated) {
-                    const rrB = reTarget != null ? Math.abs(reTarget - retestLevel) / Math.abs(retestLevel - stopB) : null
-                    const orLabel = isShort ? 'OR low' : 'OR high'
-                    const supportLabel = isShort ? 'resistance' : 'support'
-                    dayZones.push({
-                      key: `reentry-b-${absIdx}`,
-                      from: Math.max(absIdx - 1, holdFrom),
-                      to:   Math.min(absIdx + 3, chartBars.length - 1),
-                      ...reBlue,
-                      label:    'RE-ENTRY',
-                      sublabel: `B — ${orLabel} retest`,
-                      price:    `${orLabel} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
-                      detail:   `Re-entry window · ${orLabel} $${retestLevel.toFixed(2)} acting as ${supportLabel} · Hold confirmed · Enter · Stop ${isShort ? 'above' : 'below'} $${stopB.toFixed(2)}`,
-                      reentryTrigger: `${candle.charAt(0).toUpperCase() + candle.slice(1)} candle holding ${isShort ? 'below' : 'above'} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
-                    })
+                  const stopA  = isShort ? vwap * 1.005 : vwap * 0.995
+                  const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopA : b.l < stopA)
+                  // Fix 4: prior candle must close in trade direction
+                  const prevConfirms = isShort ? prev.c < prev.o : prev.c > prev.o
+                  if (!invalidated && prevConfirms) {
+                    const rrA = reTarget != null ? Math.abs(reTarget - vwap) / Math.abs(vwap - stopA) : null
+                    if (canFire(absIdx, bar.c, rrA)) {
+                      markFired(absIdx, bar.c)
+                      dayZones.push({
+                        key: `reentry-a-${absIdx}`,
+                        from: Math.max(absIdx - 1, holdFrom),
+                        to:   Math.min(absIdx + 3, chartBars.length - 1),
+                        ...reBlue,
+                        label:    'RE-ENTRY',
+                        sublabel: 'A — VWAP pullback',
+                        price:    `VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
+                        detail:   `Re-entry window · Price testing VWAP $${vwap.toFixed(2)} · Stop ${isShort ? 'above' : 'below'} VWAP $${stopA.toFixed(2)}`,
+                        reentryTrigger: `First ${candle} candle off VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
+                      })
+                    }
                   }
                 }
               }
             }
-          }
 
-          // ── C: Higher low ────────────────────────────────────────────────────
-          // Fires when a swing low in the hold zone is higher than the prior swing low.
-          {
-            const swingLows: Array<{ absIdx: number; low: number }> = []
-            for (let i = 1; i < holdBars.length - 1; i++) {
-              const p = holdBars[i - 1]!, c = holdBars[i]!, n = holdBars[i + 1]!
-              if (c.l <= p.l && c.l <= n.l) swingLows.push({ absIdx: holdFrom + i, low: c.l })
-            }
-            for (let j = 1; j < swingLows.length; j++) {
-              const prev = swingLows[j - 1]!
-              const cur  = swingLows[j]!
-              if (cur.low > prev.low) {
-                const stopC = isShort ? cur.low * 1.003 : cur.low * 0.997
-                const afterI = cur.absIdx - holdFrom + 1
-                const invalidated = holdBars.slice(afterI).some(b => isShort ? b.h > cur.low : b.l < cur.low)
-                if (!invalidated) {
-                  const entryApprox = chartBars[cur.absIdx + 1]?.c ?? cur.low
-                  const rrC = reTarget != null ? Math.abs(reTarget - entryApprox) / Math.abs(entryApprox - stopC) : null
-                  dayZones.push({
-                    key: `reentry-c-${cur.absIdx}`,
-                    from: Math.max(cur.absIdx - 1, holdFrom),
-                    to:   Math.min(cur.absIdx + 3, chartBars.length - 1),
-                    ...reBlue,
-                    label:    'RE-ENTRY',
-                    sublabel: 'C — Higher low',
-                    price:    `Higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
-                    detail:   `Re-entry window · Higher low at $${cur.low.toFixed(2)} · Trend intact · Next ${candle} candle is entry · Stop ${isShort ? 'above' : 'below'} $${stopC.toFixed(2)}`,
-                    reentryTrigger: `Next ${candle} candle after higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
-                  })
+            // ── B: OR level retest ───────────────────────────────────────────
+            {
+              const retestLevel = isShort ? orLow : orHigh
+              const stopB = isShort ? retestLevel * 1.003 : retestLevel * 0.997
+              const hadBreakout = chartBars.slice(0, holdFrom).some(b =>
+                isShort ? b.c < retestLevel * 0.997 : b.c > retestLevel * 1.003
+              )
+              if (hadBreakout) {
+                let rBaway    = false
+                let rBinRetest = false
+                for (let i = 1; i < holdBars.length; i++) {
+                  const bar  = holdBars[i]!
+                  const prev = holdBars[i - 1]!
+                  const dist = Math.abs(bar.c - retestLevel) / retestLevel
+                  const nearLevel     = dist <= 0.003
+                  const awayFromLevel = dist > 0.003
+                  if (awayFromLevel) { rBaway = true; rBinRetest = false }
+                  if (rBaway && nearLevel && !rBinRetest) {
+                    rBinRetest = true
+                    const absIdx      = holdFrom + i
+                    const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopB : b.l < stopB)
+                    const prevConfirms = isShort ? prev.c < prev.o : prev.c > prev.o
+                    if (!invalidated && prevConfirms) {
+                      const rrB = reTarget != null ? Math.abs(reTarget - retestLevel) / Math.abs(retestLevel - stopB) : null
+                      if (canFire(absIdx, bar.c, rrB)) {
+                        markFired(absIdx, bar.c)
+                        const orLabel      = isShort ? 'OR low' : 'OR high'
+                        const supportLabel = isShort ? 'resistance' : 'support'
+                        dayZones.push({
+                          key: `reentry-b-${absIdx}`,
+                          from: Math.max(absIdx - 1, holdFrom),
+                          to:   Math.min(absIdx + 3, chartBars.length - 1),
+                          ...reBlue,
+                          label:    'RE-ENTRY',
+                          sublabel: `B — ${orLabel} retest`,
+                          price:    `${orLabel} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
+                          detail:   `Re-entry window · ${orLabel} $${retestLevel.toFixed(2)} acting as ${supportLabel} · Hold confirmed · Enter · Stop ${isShort ? 'above' : 'below'} $${stopB.toFixed(2)}`,
+                          reentryTrigger: `${candle.charAt(0).toUpperCase() + candle.slice(1)} candle holding ${isShort ? 'below' : 'above'} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
+                        })
+                      }
+                    }
+                  }
                 }
               }
             }
-          }
+
+            // ── C: Higher low ────────────────────────────────────────────────
+            // Confirmation candle = the bar after the swing low (the first bounce bar)
+            {
+              const swingLows: Array<{ absIdx: number; low: number }> = []
+              for (let i = 1; i < holdBars.length - 1; i++) {
+                const p = holdBars[i - 1]!, c = holdBars[i]!, n = holdBars[i + 1]!
+                if (c.l <= p.l && c.l <= n.l) swingLows.push({ absIdx: holdFrom + i, low: c.l })
+              }
+              for (let j = 1; j < swingLows.length; j++) {
+                const prevSL = swingLows[j - 1]!
+                const cur    = swingLows[j]!
+                if (cur.low > prevSL.low) {
+                  const localI   = cur.absIdx - holdFrom
+                  const nextBar  = holdBars[localI + 1]   // first bounce bar
+                  if (!nextBar) continue
+                  // Fix 4: confirmation bar must close in trade direction
+                  const nextConfirms = isShort ? nextBar.c < nextBar.o : nextBar.c > nextBar.o
+                  if (!nextConfirms) continue
+                  const stopC      = isShort ? cur.low * 1.003 : cur.low * 0.997
+                  const afterI     = localI + 1
+                  const invalidated = holdBars.slice(afterI).some(b => isShort ? b.h > cur.low : b.l < cur.low)
+                  if (!invalidated) {
+                    const entryApprox = nextBar.c
+                    const rrC = reTarget != null ? Math.abs(reTarget - entryApprox) / Math.abs(entryApprox - stopC) : null
+                    const absIdx = cur.absIdx + 1  // fire at the confirmation bar
+                    if (canFire(absIdx, entryApprox, rrC)) {
+                      markFired(absIdx, entryApprox)
+                      dayZones.push({
+                        key: `reentry-c-${absIdx}`,
+                        from: Math.max(absIdx - 1, holdFrom),
+                        to:   Math.min(absIdx + 3, chartBars.length - 1),
+                        ...reBlue,
+                        label:    'RE-ENTRY',
+                        sublabel: 'C — Higher low',
+                        price:    `Higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
+                        detail:   `Re-entry window · Higher low at $${cur.low.toFixed(2)} · Trend intact · Next ${candle} candle is entry · Stop ${isShort ? 'above' : 'below'} $${stopC.toFixed(2)}`,
+                        reentryTrigger: `First ${candle} candle off higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
+                      })
+                    }
+                  }
+                }
+              }
+            }
+          } // end !isExhausted
         }
 
         return (
