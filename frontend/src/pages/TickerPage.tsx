@@ -728,6 +728,30 @@ export default function TickerPage() {
             {unifiedAnalysis && (
               <UnifiedVerdictCard analysis={unifiedAnalysis} />
             )}
+            {/* Checklist veto override — shown when ALL recommendations fail the pre-trade checklist */}
+            {displayData.recommendations.length > 0 && displayData.recommendations.every(rec =>
+              deriveVerdict(buildChecklist(rec, displayData.signals)) === 'NO GO'
+            ) && (() => {
+              const hardFails = [...new Set(displayData.recommendations.flatMap(rec =>
+                buildChecklist(rec, displayData.signals)
+                  .filter(i => i.status === 'fail' && i.hard)
+                  .map(i => i.label)
+              ))]
+              return (
+                <div style={{ marginTop: unifiedAnalysis ? -4 : 0, marginBottom: 10, borderRadius: 10, border: '1px solid rgba(208,49,45,0.5)', background: 'rgba(208,49,45,0.07)', padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <span>🚫</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#D0312D', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                      Checklist Veto — Verdict Overridden to AVOID
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#EF4444', margin: 0, lineHeight: 1.5 }}>
+                    The engine sees a setup, but the pre-trade checklist blocks all {displayData.recommendations.length} recommendation{displayData.recommendations.length !== 1 ? 's' : ''}. Stand aside until the checklist clears.
+                    {hardFails.length > 0 && ` Blocking: ${hardFails.join(' · ')}.`}
+                  </p>
+                </div>
+              )
+            })()}
             {(() => {
               const s = displayData.signals
               const rsiColor = s.rsi >= 70 ? '#D0312D' : s.rsi <= 30 ? '#00A86B' : C.text
@@ -887,7 +911,10 @@ export default function TickerPage() {
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: scoreColor(score, C) }}>{score || '—'}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.amber }}>{(rec.prob_of_profit * 100).toFixed(0)}%</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : status === 'AVOID' ? 'rgba(255,77,109,0.08)' : 'rgba(245,166,35,0.08)' }}>{status}</span>
+                                  <span
+                                    title={tradeState.missing.length > 0 ? `${tradeState.sublabel} · Missing: ${tradeState.missing.join(', ')}` : tradeState.sublabel}
+                                    style={{ display: 'inline-block', borderRadius: 4, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'monospace', color: statusColor, border: `1px solid ${statusColor}`, background: status === 'ENTER' ? 'rgba(0,229,160,0.08)' : status === 'SETUP' ? 'rgba(59,130,246,0.08)' : status === 'WATCH' ? 'rgba(107,127,212,0.08)' : status === 'AVOID' ? 'rgba(255,77,109,0.08)' : 'rgba(245,166,35,0.08)', cursor: 'help' }}
+                                  >{status}</span>
                                 </td>)}
                               </tr>
                             ))}

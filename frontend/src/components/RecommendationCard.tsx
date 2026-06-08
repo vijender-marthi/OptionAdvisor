@@ -96,22 +96,13 @@ export function deriveRegularTradeState(
   if (!ivFit) missing.push(isCredit ? `IV Rank ≥30 (now ${ivRank.toFixed(0)})` : `IV Rank <50 (now ${ivRank.toFixed(0)})`)
   if (score < 70) missing.push(`score ≥70 (now ${score})`)
 
-  // AVOID only when score is too low to support the trade and the checklist
-  // says NO GO. If the engine score is high (≥70), downgrade to WATCH instead
-  // of showing AVOID — avoids contradicting the overall GO verdict.
-  if (verdict === 'NO GO' && score < 70) {
+  // Pre-trade checklist veto always wins — a high score does not soften a
+  // failed checklist. AVOID in the table badge must match the DO NOT TRADE banner.
+  if (verdict === 'NO GO') {
     return {
       state: -1, num: 'AVOID', label: 'AVOID', color: 'red',
-      sublabel: `Score ${score} · Critical conditions not met`,
-      action: 'Do not enter. Key conditions are not met for this setup.',
-      missing,
-    }
-  }
-  if (verdict === 'NO GO' && score >= 70) {
-    return {
-      state: 0, num: 'WATCH', label: 'WATCH', color: 'amber',
-      sublabel: `Score ${score} — checklist flagged but score supports GO`,
-      action: 'Monitor — conditions are borderline for this strategy.',
+      sublabel: `Score ${score} · Pre-trade checklist blocked`,
+      action: 'Do not enter. Pre-trade checklist conditions are not met for this setup.',
       missing,
     }
   }
