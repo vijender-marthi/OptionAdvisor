@@ -1131,6 +1131,8 @@ export default function DayTradePage() {
 
           // ── Re-entry detection (Hold/Monitor zone only) ─────────────────────
           const holdBars = chartBars.slice(holdFrom)
+          // Re-entries target T2 first (original extended target); fall back to T1
+          const reTarget = t2 ?? t1
           const reBlue = {
             fill:       'rgba(59,130,246,0.07)',
             markerColor:'#60a5fa',
@@ -1161,7 +1163,7 @@ export default function DayTradePage() {
                 const stopA = isShort ? vwap * 1.005 : vwap * 0.995
                 const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopA : b.l < stopA)
                 if (!invalidated) {
-                  const rrA = t1 != null ? Math.abs(t1 - vwap) / Math.abs(vwap - stopA) : null
+                  const rrA = reTarget != null ? Math.abs(reTarget - vwap) / Math.abs(vwap - stopA) : null
                   dayZones.push({
                     key: `reentry-a-${absIdx}`,
                     from: Math.max(absIdx - 1, holdFrom),
@@ -1201,7 +1203,7 @@ export default function DayTradePage() {
                   const absIdx = holdFrom + i
                   const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopB : b.l < stopB)
                   if (!invalidated) {
-                    const rrB = t1 != null ? Math.abs(t1 - retestLevel) / Math.abs(retestLevel - stopB) : null
+                    const rrB = reTarget != null ? Math.abs(reTarget - retestLevel) / Math.abs(retestLevel - stopB) : null
                     const orLabel = isShort ? 'OR low' : 'OR high'
                     const supportLabel = isShort ? 'resistance' : 'support'
                     dayZones.push({
@@ -1238,7 +1240,7 @@ export default function DayTradePage() {
                 const invalidated = holdBars.slice(afterI).some(b => isShort ? b.h > cur.low : b.l < cur.low)
                 if (!invalidated) {
                   const entryApprox = chartBars[cur.absIdx + 1]?.c ?? cur.low
-                  const rrC = t1 != null ? Math.abs(t1 - entryApprox) / Math.abs(entryApprox - stopC) : null
+                  const rrC = reTarget != null ? Math.abs(reTarget - entryApprox) / Math.abs(entryApprox - stopC) : null
                   dayZones.push({
                     key: `reentry-c-${cur.absIdx}`,
                     from: Math.max(cur.absIdx - 1, holdFrom),

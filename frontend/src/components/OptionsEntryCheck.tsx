@@ -197,8 +197,10 @@ export default function OptionsEntryCheck({
     }
   }
 
-  const atmRow  = three.find(x => x.lbl === 'ATM')?.r ?? null
-  const ss      = atmRow ? (atmRow.spread_pct <= 5 ? 'ok' : atmRow.spread_pct <= 10 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' : null
+  const atmRow     = three.find(x => x.lbl === 'ATM')?.r ?? null
+  // Strike is more than 5% from current price → chain is incomplete for this expiry
+  const atmTooFar  = atmRow != null && Math.abs(atmRow.strike - livePrice) / livePrice > 0.05
+  const ss         = (atmRow && !atmTooFar) ? (atmRow.spread_pct <= 5 ? 'ok' : atmRow.spread_pct <= 10 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' : null
   const word    = (direction === 'SHORT' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
   const { tier, msg } = ocVerdictStrip(chartTrigger, pcAlignment, ss, flipCondition, word, atmRow?.strike ?? null, stopPrice)
 
@@ -308,24 +310,34 @@ export default function OptionsEntryCheck({
             </div>
           )}
 
-          {/* Stat cards */}
-          {atmRow && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {([
-                { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: T.text      },
-                { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: T.text      },
-                { lbl: 'Spread cost',val: `$${(atmRow.spread * 100).toFixed(0)}`,       sub: `${atmRow.spread_pct.toFixed(1)}% of premium`,                     clr: liqColor    },
-                { lbl: 'Liquidity',  val: liqLbl,                                        sub: null,                                                              clr: liqColor    },
-                { lbl: 'Round trip', val: rt != null ? `$${rt.toFixed(0)}` : '—',       sub: rt != null ? `entry + exit · 2× = $${(rt * 2).toFixed(0)}` : null, clr: rtClr       },
-              ] as const).map(({ lbl, val, sub, clr }) => (
-                <div key={lbl} style={{ flex: 1, minWidth: 90, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 7, padding: '7px 11px' }}>
-                  <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{lbl}</div>
-                  <div style={{ fontSize: 15, fontWeight: 500, color: clr }}>{val}</div>
-                  {sub && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{sub}</div>}
-                </div>
-              ))}
+          {/* Chain incomplete warning */}
+          {atmTooFar && atmRow && (
+            <div style={{ fontSize: 11, color: T.amberTxt, padding: '6px 10px', borderRadius: 5, background: T.amberBg, border: `0.5px solid ${T.amberBdr}` }}>
+              ⚠ Chain tops out at ${atmRow.strike.toFixed(2)} — stock is at ${livePrice.toFixed(2)}. No near-money strikes available for this expiry. Try a later expiry date to find options closer to the current price.
             </div>
           )}
+
+          {/* Stat cards */}
+          {atmRow && !atmTooFar && (() => {
+            const spreadPct = atmRow.mid > 0 ? (atmRow.spread / atmRow.mid * 100) : atmRow.spread_pct
+            return (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {([
+                  { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: T.text      },
+                  { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: T.text      },
+                  { lbl: 'Spread cost',val: `$${(atmRow.spread * 100).toFixed(0)}`,       sub: `${spreadPct.toFixed(2)}% of premium`,                             clr: liqColor    },
+                  { lbl: 'Liquidity',  val: liqLbl,                                        sub: null,                                                              clr: liqColor    },
+                  { lbl: 'Round trip', val: rt != null ? `$${rt.toFixed(0)}` : '—',       sub: rt != null ? `entry + exit · 2× = $${(rt * 2).toFixed(0)}` : null, clr: rtClr       },
+                ] as const).map(({ lbl, val, sub, clr }) => (
+                  <div key={lbl} style={{ flex: 1, minWidth: 90, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 7, padding: '7px 11px' }}>
+                    <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{lbl}</div>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: clr }}>{val}</div>
+                    {sub && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{sub}</div>}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* 3-strike table */}
           {three.length > 0 && (
