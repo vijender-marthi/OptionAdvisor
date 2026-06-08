@@ -187,6 +187,7 @@ export default function DayTradePage() {
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
+  const [ocKey, setOcKey]     = useState(0)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -224,6 +225,7 @@ export default function DayTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      setOcKey(k => k + 1)
       try {
         const v2res = await analyzeV2(sym, 'day')
         setUnified(v2res.data)
@@ -1004,6 +1006,18 @@ export default function DayTradePage() {
         const sien = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
         const entryReadiness = sien === 'YES' ? 'Execute within 1–2 candles.' : sien === 'CONDITIONAL' ? 'Wait for trigger candle confirmation.' : 'No confirmed trigger yet — monitor closely.'
 
+        // Hard gate: GO badge is only allowed when the trigger is confirmed.
+        // If sien !== 'YES', the card detail says "no confirmed trigger" —
+        // showing GO simultaneously is a contradiction. Downgrade to WATCH.
+        const triggerConfirmed = sien === 'YES'
+        const rrRatio = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number)
+          ? m.entry_rr_ratio as number : null
+        // z2* = display values used only for Zone 2's card badge and colours
+        const z2IsGo    = isGo && triggerConfirmed && (rrRatio === null || rrRatio >= 1.0)
+        const z2IsWatch = !z2IsGo && (isWatch || isGo)   // downgraded GO → WATCH
+        const z2Verdict = z2IsGo ? verdict : (isGo ? 'WATCH' : verdict)
+        const z2VColor  = z2IsGo ? '#34d399' : z2IsWatch ? '#38bdf8' : '#6b7280'
+
         // Theme-adaptive card helpers
         const cBg  = (d: string, l: string) => isDark ? d : l
         const cBdr = (d: string, l: string) => isDark ? d : l
@@ -1070,25 +1084,25 @@ export default function DayTradePage() {
             key: 'entry',
             from: orN,
             to: Math.min(orN + 44, chartBars.length - 1),
-            fill: isGo ? 'rgba(52,211,153,0.07)' : isWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
-            label: verdict,
+            fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
+            label: z2Verdict,
             sublabel: `${biasLabel} · post-OR`,
-            markerColor: verdictColor,
+            markerColor: z2VColor,
             cardBg:     cBg(
-              isGo ? 'rgba(2,12,8,0.92)'        : isWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
-              isGo ? 'rgba(240,253,244,0.97)'   : isWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
+              z2IsGo ? 'rgba(2,12,8,0.92)'        : z2IsWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
+              z2IsGo ? 'rgba(240,253,244,0.97)'   : z2IsWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
             ),
             cardBorder: cBdr(
-              isGo ? '#065F46' : isWatch ? '#0C4A6E' : '#374151',
-              isGo ? '#059669' : isWatch ? '#0284C7' : '#9CA3AF',
+              z2IsGo ? '#065F46' : z2IsWatch ? '#0C4A6E' : '#374151',
+              z2IsGo ? '#059669' : z2IsWatch ? '#0284C7' : '#9CA3AF',
             ),
-            textColor:  cTxt(verdictColor, isGo ? '#065F46' : isWatch ? '#0369A1' : '#374151'),
-            badgeText: verdict,
+            textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsWatch ? '#0369A1' : '#374151'),
+            badgeText: z2Verdict,
             badgeBg: isDark
-              ? (isGo ? 'rgba(52,211,153,0.12)'  : isWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
-              : (isGo ? 'rgba(52,211,153,0.18)'  : isWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
+              ? (z2IsGo ? 'rgba(52,211,153,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
+              : (z2IsGo ? 'rgba(52,211,153,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
-            detail: `${isGo ? 'Entry window active' : isWatch ? 'Setup developing' : `Verdict is ${verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+            detail: `${z2IsGo ? 'Entry window active' : z2IsWatch ? 'Setup developing' : `Verdict is ${z2Verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
             flipCondition,
           })
         }
@@ -1114,6 +1128,132 @@ export default function DayTradePage() {
               ? `Manage your ${biasLabel} position. Take ½ off at T1 $${t1.toFixed(2)}${t2 ? `, trail the rest to T2 $${t2.toFixed(2)}` : ''}. Move stop to breakeven once T1 is hit.`
               : `Manage your position. Hold your pre-planned stop. Exit at your target or stop — no early exits on noise.`,
           })
+
+          // ── Re-entry detection (Hold/Monitor zone only) ─────────────────────
+          const holdBars = chartBars.slice(holdFrom)
+          const reBlue = {
+            fill:       'rgba(59,130,246,0.07)',
+            markerColor:'#60a5fa',
+            cardBg:     cBg('rgba(2,8,22,0.92)',       'rgba(239,246,255,0.97)'),
+            cardBorder: cBdr('#1e40af',                 '#3b82f6'),
+            textColor:  cTxt('#93c5fd',                 '#1d4ed8'),
+            badgeText:  'RE-ENTRY',
+            badgeBg:    isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.18)',
+          }
+          const candle = isShort ? 'red' : 'green'
+
+          // ── A: VWAP pullback ─────────────────────────────────────────────────
+          // Fires each time price returns within 0.5% of VWAP after being >0.5% extended.
+          {
+            let rAextended = false
+            let rAinPullback = false
+            for (let i = 0; i < holdBars.length; i++) {
+              const bar = holdBars[i]!
+              const vwap = bar.vwap
+              if (vwap <= 0) continue
+              const distPct = (bar.c - vwap) / vwap
+              const extended = isShort ? distPct < -0.005 : distPct > 0.005
+              const nearVwap = Math.abs(distPct) <= 0.005
+              if (extended) { rAextended = true; rAinPullback = false }
+              if (rAextended && nearVwap && !rAinPullback) {
+                rAinPullback = true
+                const absIdx = holdFrom + i
+                const stopA = isShort ? vwap * 1.005 : vwap * 0.995
+                const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopA : b.l < stopA)
+                if (!invalidated) {
+                  const rrA = t1 != null ? Math.abs(t1 - vwap) / Math.abs(vwap - stopA) : null
+                  dayZones.push({
+                    key: `reentry-a-${absIdx}`,
+                    from: Math.max(absIdx - 1, holdFrom),
+                    to:   Math.min(absIdx + 3, chartBars.length - 1),
+                    ...reBlue,
+                    label:    'RE-ENTRY',
+                    sublabel: 'A — VWAP pullback',
+                    price:    `VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
+                    detail:   `Re-entry window · Price testing VWAP $${vwap.toFixed(2)} · Stop ${isShort ? 'above' : 'below'} VWAP $${stopA.toFixed(2)}`,
+                    reentryTrigger: `First ${candle} candle off VWAP $${vwap.toFixed(2)}${rrA != null ? ` · R/R ${rrA.toFixed(1)}×` : ''}`,
+                  })
+                }
+              }
+            }
+          }
+
+          // ── B: OR level retest ───────────────────────────────────────────────
+          // Fires when price pulls back to within 0.3% of ORH (longs) / ORL (shorts)
+          // after a confirmed breakout beyond that level.
+          {
+            const retestLevel = isShort ? orLow : orHigh
+            const stopB = isShort ? retestLevel * 1.003 : retestLevel * 0.997
+            const hadBreakout = chartBars.slice(0, holdFrom).some(b =>
+              isShort ? b.c < retestLevel * 0.997 : b.c > retestLevel * 1.003
+            )
+            if (hadBreakout) {
+              let rBaway = false
+              let rBinRetest = false
+              for (let i = 0; i < holdBars.length; i++) {
+                const bar = holdBars[i]!
+                const dist = Math.abs(bar.c - retestLevel) / retestLevel
+                const nearLevel  = dist <= 0.003
+                const awayFromLevel = dist > 0.003
+                if (awayFromLevel) { rBaway = true; rBinRetest = false }
+                if (rBaway && nearLevel && !rBinRetest) {
+                  rBinRetest = true
+                  const absIdx = holdFrom + i
+                  const invalidated = holdBars.slice(i + 1).some(b => isShort ? b.h > stopB : b.l < stopB)
+                  if (!invalidated) {
+                    const rrB = t1 != null ? Math.abs(t1 - retestLevel) / Math.abs(retestLevel - stopB) : null
+                    const orLabel = isShort ? 'OR low' : 'OR high'
+                    const supportLabel = isShort ? 'resistance' : 'support'
+                    dayZones.push({
+                      key: `reentry-b-${absIdx}`,
+                      from: Math.max(absIdx - 1, holdFrom),
+                      to:   Math.min(absIdx + 3, chartBars.length - 1),
+                      ...reBlue,
+                      label:    'RE-ENTRY',
+                      sublabel: `B — ${orLabel} retest`,
+                      price:    `${orLabel} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
+                      detail:   `Re-entry window · ${orLabel} $${retestLevel.toFixed(2)} acting as ${supportLabel} · Hold confirmed · Enter · Stop ${isShort ? 'above' : 'below'} $${stopB.toFixed(2)}`,
+                      reentryTrigger: `${candle.charAt(0).toUpperCase() + candle.slice(1)} candle holding ${isShort ? 'below' : 'above'} $${retestLevel.toFixed(2)}${rrB != null ? ` · R/R ${rrB.toFixed(1)}×` : ''}`,
+                    })
+                  }
+                }
+              }
+            }
+          }
+
+          // ── C: Higher low ────────────────────────────────────────────────────
+          // Fires when a swing low in the hold zone is higher than the prior swing low.
+          {
+            const swingLows: Array<{ absIdx: number; low: number }> = []
+            for (let i = 1; i < holdBars.length - 1; i++) {
+              const p = holdBars[i - 1]!, c = holdBars[i]!, n = holdBars[i + 1]!
+              if (c.l <= p.l && c.l <= n.l) swingLows.push({ absIdx: holdFrom + i, low: c.l })
+            }
+            for (let j = 1; j < swingLows.length; j++) {
+              const prev = swingLows[j - 1]!
+              const cur  = swingLows[j]!
+              if (cur.low > prev.low) {
+                const stopC = isShort ? cur.low * 1.003 : cur.low * 0.997
+                const afterI = cur.absIdx - holdFrom + 1
+                const invalidated = holdBars.slice(afterI).some(b => isShort ? b.h > cur.low : b.l < cur.low)
+                if (!invalidated) {
+                  const entryApprox = chartBars[cur.absIdx + 1]?.c ?? cur.low
+                  const rrC = t1 != null ? Math.abs(t1 - entryApprox) / Math.abs(entryApprox - stopC) : null
+                  dayZones.push({
+                    key: `reentry-c-${cur.absIdx}`,
+                    from: Math.max(cur.absIdx - 1, holdFrom),
+                    to:   Math.min(cur.absIdx + 3, chartBars.length - 1),
+                    ...reBlue,
+                    label:    'RE-ENTRY',
+                    sublabel: 'C — Higher low',
+                    price:    `Higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
+                    detail:   `Re-entry window · Higher low at $${cur.low.toFixed(2)} · Trend intact · Next ${candle} candle is entry · Stop ${isShort ? 'above' : 'below'} $${stopC.toFixed(2)}`,
+                    reentryTrigger: `Next ${candle} candle after higher low $${cur.low.toFixed(2)}${rrC != null ? ` · R/R ${rrC.toFixed(1)}×` : ''}`,
+                  })
+                }
+              }
+            }
+          }
         }
 
         return (
@@ -1294,6 +1434,7 @@ export default function DayTradePage() {
 
         return (
           <OptionsEntryCheck
+            key={ocKey}
             ticker={result.ticker}
             direction={direction}
             stopPrice={stopPrice}
@@ -1301,6 +1442,7 @@ export default function DayTradePage() {
             flipCondition={flipCondition}
             pcAlignment={pcAlignment}
             initialPrice={lastPrice}
+            isDark={isDark}
           />
         )
       })()}
