@@ -10,6 +10,7 @@ import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import { computeExecLevels } from '../components/SwingTradeEnginePanel'
+import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { useApp } from '../contexts/AppContext'
 import type { OptionLeg } from '../types'
 import { ROUTES } from '../routing/routes'
@@ -53,6 +54,7 @@ export default function SwingTradePage() {
   const [alertOpen, setAlertOpen] = useState(false)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'info'; message: string } | null>(null)
+  const [ocKey, setOcKey]   = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -83,6 +85,7 @@ export default function SwingTradePage() {
         ticker: data.ticker,
         result: data,
       }))
+      setOcKey(k => k + 1)
       try { const v2 = await analyzeV2(sym, 'swing'); setUnified(v2.data) } catch { /* non-fatal */ }
     } catch (e) {
       setUi(cur => ({ ...cur, loading: false, error: axiosDetail(e) }))
@@ -773,6 +776,42 @@ export default function SwingTradePage() {
       {unified && result && (
         <SwingTradeWalkthrough unified={unified} result={result} />
       )}
+
+      {/* Options Entry Check — swing mode (7/14/21/28 DTE) */}
+      {result && result.metrics && ocKey > 0 && (() => {
+        const m    = result.metrics as Record<string, unknown>
+        const el   = computeExecLevels(result, m)
+        const parsePrice = (s: string | null | undefined) => {
+          if (!s) return 0
+          const n = parseFloat(String(s).replace(/[^0-9.-]/g, ''))
+          return Number.isFinite(n) ? n : 0
+        }
+        const lastPrice   = typeof m.last_price === 'number' ? m.last_price as number : 0
+        const stopPrice   = parsePrice(el.riskBelow) || lastPrice * (result.bias === 'short' ? 1.05 : 0.95)
+        const direction   = result.bias === 'short' ? 'SHORT' : 'LONG' as const
+        const fa          = String(result.final_action ?? result.decision_label ?? '').toUpperCase()
+        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' =
+          /^(STRONG_?GO|GO)$/.test(fa) ? 'GO' : /^(WATCH|READY)$/.test(fa) ? 'WATCHING' : 'WAIT'
+        const flipCondition = result.decision_message || (
+          direction === 'LONG'
+            ? 'Wait for price to close above the breakout trigger — do not enter before confirmation.'
+            : 'Wait for price to close below the breakdown trigger — do not enter before confirmation.'
+        )
+        return (
+          <OptionsEntryCheck
+            key={ocKey}
+            ticker={result.ticker}
+            direction={direction}
+            stopPrice={stopPrice}
+            chartTrigger={chartTrigger}
+            flipCondition={flipCondition}
+            pcAlignment="neutral"
+            initialPrice={lastPrice || 0}
+            isDark={isDark}
+            mode="swing"
+          />
+        )
+      })()}
 
       {/* Metric chart — price + MA20/50 + RSI + HV between walkthrough and methodology */}
       {result && result.metrics && (() => {

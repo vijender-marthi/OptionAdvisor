@@ -95,16 +95,21 @@ export interface OptionsEntryCheckProps {
   pcAlignment: 'aligned' | 'conflict' | 'neutral'
   initialPrice: number
   isDark?: boolean
+  /** 'day' shows 5/7 DTE; 'swing' shows 7/14/21/28 DTE */
+  mode?: 'day' | 'swing'
 }
 
 export default function OptionsEntryCheck({
   ticker, direction, stopPrice, chartTrigger, flipCondition, pcAlignment, initialPrice,
   isDark = true,
+  mode = 'day',
 }: OptionsEntryCheckProps) {
   const T = makeT(isDark)
+  const dteOptions = mode === 'swing' ? [7, 14, 21, 28] : [5, 7]
+  const defaultDte = dteOptions[0]!
 
   const [expanded, setExpanded]   = useState(false)
-  const [targetDte, setTargetDte] = useState<5 | 7>(5)
+  const [targetDte, setTargetDte] = useState<number>(defaultDte)
   const [livePrice, setLivePrice] = useState(initialPrice)
   const [draft, setDraft]         = useState(initialPrice.toFixed(2))
   const [data, setData]           = useState<OptionChainLiquidityResponse | null>(null)
@@ -135,7 +140,7 @@ export default function OptionsEntryCheck({
       try {
         const r1 = await fetchOptionChainLiquidity(ticker)
         if (cancelled) return
-        const best5 = ocFindExpiry(r1.expiries, 5)
+        const best5 = ocFindExpiry(r1.expiries, defaultDte)
         if (best5 && best5 !== r1.selected_expiry) {
           try {
             const r2 = await fetchOptionChainLiquidity(ticker, best5)
@@ -167,7 +172,7 @@ export default function OptionsEntryCheck({
     }
   }, [data])
 
-  const handleDte = (dte: 5 | 7) => {
+  const handleDte = (dte: number) => {
     setTargetDte(dte)
     if (data) {
       const best = ocFindExpiry(data.expiries, dte)
@@ -286,7 +291,7 @@ export default function OptionsEntryCheck({
           {/* DTE selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, color: T.muted }}>DTE</span>
-            {([5, 7] as const).map(dte => (
+            {dteOptions.map(dte => (
               <button
                 key={dte}
                 onClick={() => handleDte(dte)}
