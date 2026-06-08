@@ -180,7 +180,7 @@ function MarketPositionWidget({ C, isDark }: { C: Palette; isDark: boolean }) {
   const ddBarColor = mpData.drawdown_pct >= 8 ? '#10B981' : C.textFaint
 
   return (
-    <div style={{ marginTop: 16, borderTop: `1px solid ${C.borderFaint}`, paddingTop: 16 }}>
+    <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>
           <TrendingUp size={11} color="#8B5CF6" aria-hidden />
@@ -443,6 +443,11 @@ export default function TradeCommandCenter() {
                   </span>
                 ) : null}
               </div>
+            </section>
+
+            {/* ── Market Position · 25% Reserve Signal ── */}
+            <section style={{ borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, padding: '14px 16px' }}>
+              <MarketPositionWidget C={C} isDark={isDark} />
             </section>
 
             {/* ── Today's Overall Verdict ── */}
