@@ -1390,49 +1390,6 @@ export default function DayTradePage() {
         )
       })()}
 
-      {/* Alert Overlay Chart + Collapsible Alert List */}
-      {result && result.metrics && (() => {
-        const m = result.metrics as Record<string, unknown>
-        const chartBars2 = parseChartBars(m.chart_bars)
-        const orHigh2 = m.or_high as number | undefined
-        const orLow2  = m.or_low  as number | undefined
-        const orMin2  = m.or_minutes as number | undefined
-        if (!chartBars2 || orHigh2 == null || orLow2 == null) return null
-
-        // Build a synthetic alert from the current scan so the marker always shows,
-        // even when the ticker is not on the user's day-trade watchlist.
-        const actionableVerdicts = ['STRONG_GO', 'GO', 'WATCH'] as const
-        const lastBar = chartBars2[chartBars2.length - 1]
-        const scanAlert: DayTradeAlertEvent | null =
-          lastBar && (actionableVerdicts as readonly string[]).includes(result.verdict)
-            ? {
-                id: `scan-${result.ticker}-${lastBar.t}`,
-                ticker: result.ticker,
-                companyName: result.company_name,
-                previousVerdict: '',
-                verdict: result.verdict,
-                bias: result.bias,
-                bullScore: result.bull_score,
-                bearScore: result.bear_score,
-                reasons: result.reasons ?? [],
-                metrics: result.metrics,
-                detectedAt: new Date(lastBar.t).getTime(),
-                emailSent: false,
-              }
-            : null
-
-        return (
-          <DayTradeAlertOverlay
-            bars={chartBars2}
-            orHigh={orHigh2}
-            orLow={orLow2}
-            orMinutes={orMin2 ?? 15}
-            ticker={result.ticker}
-            scanAlerts={scanAlert ? [scanAlert] : []}
-          />
-        )
-      })()}
-
       {/* AI Coach Walkthrough */}
       {result && (() => {
         const raw = result as unknown as Record<string, unknown> | undefined
@@ -1497,6 +1454,49 @@ export default function DayTradePage() {
               ))}
             </div>
           </div>
+        )
+      })()}
+
+      {/* Alert Overlay Chart + Collapsible Alert List */}
+      {result && result.metrics && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const chartBars2 = parseChartBars(m.chart_bars)
+        const orHigh2 = m.or_high as number | undefined
+        const orLow2  = m.or_low  as number | undefined
+        const orMin2  = m.or_minutes as number | undefined
+        if (!chartBars2 || orHigh2 == null || orLow2 == null) return null
+
+        // Build a synthetic alert from the current scan so the marker always shows,
+        // even when the ticker is not on the user's day-trade watchlist.
+        const actionableVerdicts = ['STRONG_GO', 'GO', 'WATCH'] as const
+        const lastBar = chartBars2[chartBars2.length - 1]
+        const scanAlert: DayTradeAlertEvent | null =
+          lastBar && (actionableVerdicts as readonly string[]).includes(result.verdict)
+            ? {
+                id: `scan-${result.ticker}-${lastBar.t}`,
+                ticker: result.ticker,
+                companyName: result.company_name,
+                previousVerdict: '',
+                verdict: result.verdict,
+                bias: result.bias,
+                bullScore: result.bull_score,
+                bearScore: result.bear_score,
+                reasons: result.reasons ?? [],
+                metrics: result.metrics,
+                detectedAt: new Date(lastBar.t).getTime(),
+                emailSent: false,
+              }
+            : null
+
+        return (
+          <DayTradeAlertOverlay
+            bars={chartBars2}
+            orHigh={orHigh2}
+            orLow={orLow2}
+            orMinutes={orMin2 ?? 15}
+            ticker={result.ticker}
+            scanAlerts={scanAlert ? [scanAlert] : []}
+          />
         )
       })()}
 
