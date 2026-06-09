@@ -21,7 +21,7 @@ const SEARCH_INDEX: { id: string; label: string; keywords: string[] }[] = [
   { id: 'trade-lifecycle',   label: 'Trade Lifecycle',        keywords: ['lifecycle', 'workflow', 'setup', 'watch', 'entry', 'manage', 'exit', 'close', 'trade flow'] },
   { id: 'engine-states',     label: 'Engine States',          keywords: ['state', 'ready', 'watch', 'wait', 'avoid', 'no edge', 'verdict', 'state 2', 'state 1', 'entry state'] },
   { id: 'execution-states',  label: 'Execution States',       keywords: ['execution', 'enter now', 'pending', 'hold', 'manage position', 'entry gate', 'confirmation'] },
-  { id: 'day-trade',         label: 'Day Trade Engine',       keywords: ['day trade', 'intraday', 'rvol', 'vwap', 'or high', 'or low', 'opening range', 'breakout', 'scalp', 'momentum', 'extension', 'chasing', 'spy', 'qqq', 'nvda', 'large cap', 'volume', 'day trade setup', '0dte', '1dte'] },
+  { id: 'day-trade',         label: 'Day Trade Engine',       keywords: ['day trade', 'intraday', 'rvol', 'vwap', 'or high', 'or low', 'opening range', 'breakout', 'scalp', 'momentum', 'extension', 'chasing', 'spy', 'qqq', 'nvda', 'large cap', 'volume', 'day trade setup', '0dte', '1dte', 'trend day', 'bear trend', 'bull trend', 'vix', 'entry window', 'atr limit', 'exhausted', 'extension override'] },
   { id: 'swing-trade',       label: 'Swing Trade Engine',     keywords: ['swing', 'trend', 'ema', 'ma20', 'pullback', 'breakout swing', 'daily chart', 'multi day', 'swing verdict', 'swing setup', 'relative strength'] },
   { id: 'vix-reference',     label: 'VIX Reference',          keywords: ['vix', 'volatility index', 'fear index', 'market fear', 'vix spike', 'vix 35', 'avoid vix'] },
   { id: 'regular-engine',    label: 'Regular Engine',         keywords: ['regular', 'options engine', 'spread', 'iron condor', 'credit spread', 'debit spread', 'covered call', 'put spread', 'call spread', 'score', 'checklist', 'pop', 'ev', 'monthly', 'income'] },
@@ -1315,6 +1315,55 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Zap size={15} />} title="Trend Day Detection & Extension Override">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p>
+                    On most days, extension signals cap the entry window to 2 candles after the OR break. On a <strong className="text-gray-200">trend day</strong>, those rules are suspended and the entry window stays open all session — any OR retest failure is a valid entry.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      {
+                        label: '📉 Bear Trend Day', badge: 'bg-red-900/30 border-red-700/50 text-red-300',
+                        conditions: ['SPY < −0.8% on the day', 'VIX > 19.0', '3+ watchlist tickers down > 1.5%', 'QQQ moving same direction as SPY'],
+                      },
+                      {
+                        label: '📈 Bull Trend Day', badge: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300',
+                        conditions: ['SPY > +0.8% on the day', 'VIX < 18.0', '3+ watchlist tickers up > 1.5%', 'QQQ moving same direction as SPY'],
+                      },
+                    ].map(t => (
+                      <div key={t.label} className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${t.badge}`}>
+                        <div className="font-bold text-[11px]">{t.label}</div>
+                        {t.conditions.map(c => (
+                          <div key={c} className="flex items-start gap-1.5 text-[11px] text-gray-400">
+                            <span className="mt-0.5 shrink-0">□</span>{c}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                    <div className="font-semibold text-gray-200 text-[11px]">When trend day fires</div>
+                    <ul className="space-y-1">
+                      {[
+                        'Extension verdict overridden → "⚡ Trend day · Extension rules suspended"',
+                        'Entry window stays open all session (not limited to 2 candles)',
+                        'Stop widened by 50% (add 0.5% distance to OR level) for volatility room',
+                        'Re-entry zones remain active even when session bar count exceeds 210',
+                        'ATR usage tracked — entry suspended when session range > 150% of ATR',
+                      ].map((item, i) => (
+                        <li key={i} className="flex gap-2 text-[11px]">
+                          <span className="mt-0.5 h-1 w-1 rounded-full bg-violet-500 shrink-0 mt-1.5" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-800/20 px-3 py-2 text-[11px] text-gray-500">
+                    <strong className="text-gray-300">Choppy day (default):</strong> SPY between −0.8% and +0.8%, or mixed watchlist directions. Normal 2-candle entry window applies. Stick to the 2-candle window — do not extend on choppy days.
                   </div>
                 </div>
               </DocCard>

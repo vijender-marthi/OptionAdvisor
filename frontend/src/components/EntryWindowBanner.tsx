@@ -9,6 +9,8 @@ interface Props {
   stopPrice: number
   t1: number | null
   t2: number | null
+  /** When true (trend day mode) the window never expires — valid all session */
+  allSession?: boolean
 }
 
 type Phase = 'idle' | 'open' | 'expired' | 'entered'
@@ -104,7 +106,7 @@ function Bar({
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function EntryWindowBanner({
-  active, ticker, direction, entryPrice, stopPrice, t1, t2,
+  active, ticker, direction, entryPrice, stopPrice, t1, t2, allSession = false,
 }: Props) {
   const [phase, setPhase]   = useState<Phase>('idle')
   const [openTime, setOpenTime] = useState(0)
@@ -165,7 +167,7 @@ export default function EntryWindowBanner({
       const c1s = Math.floor(ot / 60000) * 60000
       const c2e = c1s + 120000  // c1End + 60s
 
-      if (n >= c2e && !expiredFiredRef.current) {
+      if (n >= c2e && !expiredFiredRef.current && !allSession) {
         expiredFiredRef.current = true
         clearInterval(id)
         setPhase('expired')
@@ -268,10 +270,10 @@ export default function EntryWindowBanner({
           ⚡ ENTRY WINDOW OPEN · ACT NOW
         </span>
         <span style={{
-          fontSize: 10, fontWeight: 700, color: onCandle2 ? '#a3cc6a' : '#639922',
+          fontSize: 10, fontWeight: 700, color: '#a3cc6a',
           background: 'rgba(99,153,34,0.2)', borderRadius: 4, padding: '2px 6px',
         }}>
-          {onCandle2 ? 'CANDLE 2' : 'CANDLE 1'}
+          {allSession ? 'TREND DAY' : onCandle2 ? 'CANDLE 2' : 'CANDLE 1'}
         </span>
       </div>
 
@@ -304,7 +306,9 @@ export default function EntryWindowBanner({
         justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
       }}>
         <span style={{ fontSize: 11, color: '#888780', lineHeight: 1.5 }}>
-          Enter within this candle or next one. After that — window closes.
+          {allSession
+            ? '⚡ Trend day · Entry valid all session · Any OR retest failure is valid'
+            : 'Enter within this candle or next one. After that — window closes.'}
         </span>
         <button
           type="button"

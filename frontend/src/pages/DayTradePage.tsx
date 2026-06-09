@@ -8,7 +8,7 @@ import {
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import type { DayTradeAlertEvent } from '../types'
-import { fetchMyTickers } from '../api/commandCenter'
+import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
@@ -17,6 +17,7 @@ import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import EntryWindowBanner from '../components/EntryWindowBanner'
+import TrendDayBanner from '../components/TrendDayBanner'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -186,6 +187,7 @@ export default function DayTradePage() {
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const [myTickers, setMyTickers] = useState<string[]>([])
+  const [myTickerFull, setMyTickerFull] = useState<MyTickerEntry[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [ocKey, setOcKey]     = useState(0)
@@ -193,10 +195,10 @@ export default function DayTradePage() {
 
   useEffect(() => {
     fetchMyTickers().then(res => {
-      const symbols = (res.data?.tickers ?? [])
+      const entries = (res.data?.tickers ?? [])
         .filter(t => (t.trade_types || []).includes('day'))
-        .map(t => t.symbol).filter(Boolean).slice(0, 10)
-      setMyTickers(symbols)
+      setMyTickerFull(entries)
+      setMyTickers(entries.map(t => t.symbol).filter(Boolean).slice(0, 10))
     }).catch(() => {})
   }, [])
 
@@ -533,6 +535,29 @@ export default function DayTradePage() {
   }, [result, entryPrice, side, contracts, strikeInput, expiryInput, notes, navigate])
 
   const [searchOpen, setSearchOpen] = useState(false)
+
+  // ── Trend day detection ────────────────────────────────────────────────────
+  const trendDayData = useMemo(() => {
+    if (!result) return null
+    const m        = result.metrics as Record<string, unknown>
+    const spyMove  = typeof m.spy_change_pct === 'number' && isFinite(m.spy_change_pct as number) ? m.spy_change_pct as number : null
+    const vixLevel = typeof m.vix            === 'number' && isFinite(m.vix as number)            ? m.vix as number            : null
+    const qqqMove  = typeof m.qqq_change_pct === 'number' && isFinite(m.qqq_change_pct as number) ? m.qqq_change_pct as number : null
+    if (spyMove == null || vixLevel == null || qqqMove == null) return null
+    const isShort = result.bias === 'short'
+    const movingWith = myTickerFull.filter(t => {
+      const chg = t.price_change_pct
+      if (chg == null) return false
+      return isShort ? chg <= -1.5 : chg >= 1.5
+    }).length
+    const isBear = spyMove < -0.8 && vixLevel > 19  && movingWith >= 3 && qqqMove < 0
+    const isBull = spyMove > 0.8  && vixLevel < 18  && movingWith >= 3 && qqqMove > 0
+    if (!isBear && !isBull) return null
+    return {
+      direction: isBear ? 'BEAR' as const : 'BULL' as const,
+      spyMove, vixLevel, tickerCount: movingWith,
+    }
+  }, [result, myTickerFull])
 
   return (
     <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'clip', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
@@ -966,6 +991,32 @@ export default function DayTradePage() {
       )}
 
 
+      {/* Trend day banner */}
+      {result && trendDayData && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const chartBarsForAtr = parseChartBars(m.chart_bars)
+        const atrUsedPct = (() => {
+          const drUp = typeof m.daily_range_used_pct === 'number' ? m.daily_range_used_pct as number : null
+          if (drUp != null) return drUp
+          if (!chartBarsForAtr || chartBarsForAtr.length === 0) return null
+          const h = Math.max(...chartBarsForAtr.map(b => b.h))
+          const l = Math.min(...chartBarsForAtr.map(b => b.l))
+          const atr = typeof m.atr14 === 'number' ? m.atr14 as number
+            : typeof m.atr === 'number' ? m.atr as number : null
+          return atr && atr > 0 ? ((h - l) / atr) * 100 : null
+        })()
+        return (
+          <TrendDayBanner
+            direction={trendDayData.direction}
+            spyMove={trendDayData.spyMove}
+            vixLevel={trendDayData.vixLevel}
+            tickerCount={trendDayData.tickerCount}
+            atrUsedPct={atrUsedPct}
+            isDark={isDark}
+          />
+        )
+      })()}
+
       {/* Options entry check */}
       {result && (() => {
         const m       = result.metrics as Record<string, unknown>
@@ -999,7 +1050,10 @@ export default function DayTradePage() {
         let flipCondition = ''
         if (!isGo && chartBars) {
           const curPrice = chartBars[chartBars.length - 1]?.c ?? 0
-          if (chartBars.length > 210) {
+          if (trendDayData && chartBars.length > 210) {
+            // Trend day overrides the exhausted verdict
+            flipCondition = `⚡ Trend day · Extension rules suspended · SPY ${trendDayData.spyMove >= 0 ? '+' : ''}${trendDayData.spyMove.toFixed(2)}% · VIX ${trendDayData.vixLevel.toFixed(1)} · ${trendDayData.tickerCount} tickers confirm · Entry valid · Widen stop by 50% · Target: next sigma band`
+          } else if (chartBars.length > 210) {
             flipCondition = "Move is exhausted. Next valid setup is tomorrow's open."
           } else if (mRvol != null && mRvol < 0.75) {
             const ref = isShort ? orLow ?? 0 : orHigh ?? 0
@@ -1013,12 +1067,17 @@ export default function DayTradePage() {
           }
         }
 
+        // Widen stop 0.5% on trend day (more room for volatility)
+        const trendAdjStop = trendDayData
+          ? (isShort ? stopPrice * 1.005 : stopPrice * 0.995)
+          : stopPrice
+
         return (
           <OptionsEntryCheck
             key={ocKey}
             ticker={result.ticker}
             direction={direction}
-            stopPrice={stopPrice}
+            stopPrice={trendAdjStop}
             chartTrigger={chartTrigger}
             flipCondition={flipCondition}
             pcAlignment={pcAlignment}
@@ -1114,7 +1173,10 @@ export default function DayTradePage() {
           const curPrice = lastBar?.c ?? 0
           const mRvol = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : null
 
-          if (chartBars.length > 210) {
+          if (trendDayData && chartBars.length > 210) {
+            // TREND DAY — extension rules suspended even in a late session
+            flipCondition = `⚡ Trend day · Extension rules suspended · SPY ${trendDayData.spyMove >= 0 ? '+' : ''}${trendDayData.spyMove.toFixed(2)}% · VIX ${trendDayData.vixLevel.toFixed(1)} · ${trendDayData.tickerCount} tickers confirm · Entry valid · Widen stop by 50% · Target: next sigma band`
+          } else if (chartBars.length > 210) {
             // CONDITION E — late / exhausted session
             flipCondition = 'Do not enter. Move is exhausted. Next valid setup is tomorrow\'s open.'
           } else if (mRvol != null && mRvol < 0.75) {
@@ -1209,8 +1271,8 @@ export default function DayTradePage() {
           }
           const candle = isShort ? 'red' : 'green'
 
-          // Fix 5: suppress entirely when the session is exhausted
-          const isExhausted = chartBars.length > 210 || !!(flipCondition?.includes('exhausted'))
+          // Trend day overrides exhaustion — re-entries stay open all session
+          const isExhausted = !trendDayData && (chartBars.length > 210 || !!(flipCondition?.includes('exhausted')))
 
           if (!isExhausted) {
             // Shared throttle — all three types draw from one pool (max 3 / session)
@@ -1377,13 +1439,17 @@ export default function DayTradePage() {
             />
             <EntryWindowBanner
               key={`${result.ticker}-${scanCount}`}
-              active={z2IsGo}
+              active={z2IsGo || !!trendDayData}
               ticker={result.ticker}
               direction={isShort ? 'PUT' : 'CALL'}
               entryPrice={pageEntryPoints[0]?.price ?? null}
-              stopPrice={(eg?.risk_below as number | undefined) ?? stopFallback}
+              stopPrice={(() => {
+                const base = (eg?.risk_below as number | undefined) ?? stopFallback
+                return trendDayData ? (isShort ? base * 1.005 : base * 0.995) : base
+              })()}
               t1={t1}
               t2={t2}
+              allSession={!!trendDayData}
             />
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
@@ -1530,6 +1596,7 @@ export default function DayTradePage() {
             <li className="flex gap-2"><Clock size={14} className="shrink-0 text-muted" /> Most recent trading day in the feed is analyzed if today has no session yet.</li>
             <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-muted" /> <span className="text-tertiary">Market bias</span> tells you whether the tape is supportive. <span className="text-tertiary">Execution readiness</span> tells you whether the trigger is actually there.</li>
             <li className="flex gap-2"><ArrowDown size={14} className="shrink-0 text-muted" /> The page now resolves everything into <span className="text-tertiary">READY / WAIT / WATCH / AVOID</span> so a bullish tape does not get mistaken for an immediate entry.</li>
+            <li className="flex gap-2"><Zap size={14} className="shrink-0 text-orange-400" /> <span><span className="text-tertiary">Trend day detection</span> fires when SPY moves {'>'} 0.8%, VIX confirms, and 3+ watchlist tickers move in the same direction. Extension rules are suspended and the entry window stays open all session. See Help → Day Trade Engine for full detection thresholds.</span></li>
           </ul>
         </div>
       </details>
