@@ -11,6 +11,8 @@ interface Props {
   t2: number | null
   /** When true (trend day mode) the window never expires — valid all session */
   allSession?: boolean
+  onEntered?: () => void
+  onExpire?: () => void
 }
 
 type Phase = 'idle' | 'open' | 'expired' | 'entered'
@@ -106,7 +108,7 @@ function Bar({
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function EntryWindowBanner({
-  active, ticker, direction, entryPrice, stopPrice, t1, t2, allSession = false,
+  active, ticker, direction, entryPrice, stopPrice, t1, t2, allSession = false, onEntered, onExpire,
 }: Props) {
   const [phase, setPhase]   = useState<Phase>('idle')
   const [openTime, setOpenTime] = useState(0)
@@ -119,6 +121,10 @@ export default function EntryWindowBanner({
   const expiredFiredRef = useRef(false)
   const fadeTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimer       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onEnteredRef    = useRef<(() => void) | undefined>(undefined)
+  const onExpireRef     = useRef<(() => void) | undefined>(undefined)
+  onEnteredRef.current  = onEntered
+  onExpireRef.current   = onExpire
 
   // ── Derived timing values (fresh on every render) ────────────────────────
   const now     = Date.now()
@@ -174,6 +180,7 @@ export default function EntryWindowBanner({
         setPulse(false)
         playExpiredTone()
         logWindow(ticker, 'expired', ot > 0 ? null : null, false)
+        onExpireRef.current?.()
         fadeTimer.current = setTimeout(() => setFading(true), 10000)
         idleTimer.current = setTimeout(() => {
           setPhase('idle')
@@ -198,6 +205,7 @@ export default function EntryWindowBanner({
     setPhase('entered')
     setPulse(false)
     logWindow(ticker, 'entered', entryPrice, true)
+    onEnteredRef.current?.()
   }
 
   // ── Render: idle ─────────────────────────────────────────────────────────

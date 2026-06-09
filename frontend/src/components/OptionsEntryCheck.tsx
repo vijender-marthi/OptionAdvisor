@@ -16,7 +16,7 @@ function ocFindExpiry(expiries: string[], targetDte: number): string | null {
 }
 
 function ocVerdictStrip(
-  trigger: 'GO' | 'WAIT' | 'WATCHING',
+  trigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD',
   pc: 'aligned' | 'conflict' | 'neutral',
   ss: 'ok' | 'warn' | 'bad' | null,
   flip: string,
@@ -24,6 +24,8 @@ function ocVerdictStrip(
   atmStrike: number | null,
   stop: number,
 ): { tier: 'green' | 'amber' | 'red' | 'gray'; msg: string } {
+  if (trigger === 'HOLD')
+    return { tier: 'green' as const, msg: '✓ Position active · Manage to T1/T2 · Move stop to breakeven at T1' }
   if (trigger === 'WATCHING')
     return { tier: 'gray', msg: `— Watching · No trigger yet · Wait for: ${flip}` }
   if (trigger === 'WAIT')
@@ -90,7 +92,7 @@ export interface OptionsEntryCheckProps {
   ticker: string
   direction: 'SHORT' | 'LONG'
   stopPrice: number
-  chartTrigger: 'GO' | 'WAIT' | 'WATCHING'
+  chartTrigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD'
   flipCondition: string
   pcAlignment: 'aligned' | 'conflict' | 'neutral'
   initialPrice: number

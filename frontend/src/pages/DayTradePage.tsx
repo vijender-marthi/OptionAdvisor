@@ -192,6 +192,8 @@ export default function DayTradePage() {
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [ocKey, setOcKey]     = useState(0)
   const [scanCount, setScanCount] = useState(0)
+  const [sessionState, setSessionState] = useState<'forming' | 'watch' | 'entry' | 'hold' | 'reentry' | 'exhausted'>('watch')
+  const prevScannedTickerRef = useRef('')
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -558,6 +560,38 @@ export default function DayTradePage() {
       spyMove, vixLevel, tickerCount: movingWith,
     }
   }, [result, myTickerFull])
+
+  // ── Session state machine ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!result) return
+    const m = result.metrics as Record<string, unknown>
+    const bars = parseChartBars(m.chart_bars)
+    const orN = typeof m.or_minutes === 'number' ? m.or_minutes as number : 15
+    const tickerChanged = result.ticker !== prevScannedTickerRef.current
+    prevScannedTickerRef.current = result.ticker
+    if (!bars || bars.length === 0) return
+    if (bars.length < orN) { setSessionState('forming'); return }
+    const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
+    const isGoLocal = /^(STRONG.?GO|GO)$/i.test(verdict)
+    const sienLocal = String((result.entry_guidance as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
+    const rrRaw = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number) ? m.entry_rr_ratio as number : null
+    const z2GoLocal = isGoLocal && sienLocal === 'YES' && (rrRaw === null || rrRaw >= 1.0)
+    const exhaustedLocal = !trendDayData && bars.length > 210
+    setSessionState(prev => {
+      if (!tickerChanged && prev === 'hold') return 'hold'
+      if (exhaustedLocal) return 'exhausted'
+      if (z2GoLocal) return 'entry'
+      return 'watch'
+    })
+  }, [scanCount]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleBannerEntered = useCallback(() => {
+    setSessionState('hold')
+  }, [])
+
+  const handleBannerExpire = useCallback(() => {
+    setSessionState(prev => prev === 'entry' ? 'watch' : prev)
+  }, [])
 
   return (
     <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'clip', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
@@ -1032,7 +1066,11 @@ export default function DayTradePage() {
         const mRvol   = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : null
         const lastPrice = typeof m.last_price === 'number' ? m.last_price as number : 0
 
-        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' = isGo ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
+        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD' =
+          sessionState === 'hold' ? 'HOLD' :
+          sessionState === 'entry' ? 'GO' :
+          sessionState === 'exhausted' ? 'WAIT' :
+          isGo ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
         const direction: 'SHORT' | 'LONG' = isShort ? 'SHORT' : 'LONG'
         const stopPrice = (() => {
           const rb = typeof eg?.risk_below === 'number' ? eg.risk_below as number : null
@@ -1139,8 +1177,9 @@ export default function DayTradePage() {
         // z2* = display values used only for Zone 2's card badge and colours
         const z2IsGo    = isGo && triggerConfirmed && (rrRatio === null || rrRatio >= 1.0)
         const z2IsWatch = !z2IsGo && (isWatch || isGo)   // downgraded GO → WATCH
-        const z2Verdict = z2IsGo ? verdict : (isGo ? 'WATCH' : verdict)
-        const z2VColor  = z2IsGo ? '#34d399' : z2IsWatch ? '#38bdf8' : '#6b7280'
+        const z2Verdict   = z2IsGo ? verdict : (isGo ? 'WATCH' : verdict)
+        const z2BadgeText = sessionState === 'hold' ? 'MANAGING' : sessionState === 'exhausted' ? 'EXHAUSTED' : z2Verdict
+        const z2VColor    = z2IsGo ? '#34d399' : z2IsWatch ? '#38bdf8' : '#6b7280'
 
         // Theme-adaptive card helpers
         const cBg  = (d: string, l: string) => isDark ? d : l
@@ -1212,7 +1251,7 @@ export default function DayTradePage() {
             from: orN,
             to: Math.min(orN + 44, chartBars.length - 1),
             fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
-            label: z2Verdict,
+            label: z2BadgeText,
             sublabel: `${biasLabel} · post-OR`,
             markerColor: z2VColor,
             cardBg:     cBg(
@@ -1224,7 +1263,7 @@ export default function DayTradePage() {
               z2IsGo ? '#059669' : z2IsWatch ? '#0284C7' : '#9CA3AF',
             ),
             textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsWatch ? '#0369A1' : '#374151'),
-            badgeText: z2Verdict,
+            badgeText: z2BadgeText,
             badgeBg: isDark
               ? (z2IsGo ? 'rgba(52,211,153,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
               : (z2IsGo ? 'rgba(52,211,153,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
@@ -1438,8 +1477,8 @@ export default function DayTradePage() {
               isDark={isDark}
             />
             <EntryWindowBanner
-              key={`${result.ticker}-${scanCount}`}
-              active={z2IsGo || !!trendDayData}
+              key={result.ticker}
+              active={sessionState === 'entry' || (!!trendDayData && sessionState !== 'hold' && sessionState !== 'exhausted')}
               ticker={result.ticker}
               direction={isShort ? 'PUT' : 'CALL'}
               entryPrice={pageEntryPoints[0]?.price ?? null}
@@ -1450,6 +1489,8 @@ export default function DayTradePage() {
               t1={t1}
               t2={t2}
               allSession={!!trendDayData}
+              onEntered={handleBannerEntered}
+              onExpire={handleBannerExpire}
             />
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
