@@ -535,7 +535,7 @@ export default function DayTradePage() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'hidden', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
+    <div className="day-trade-page min-h-screen p-4 md:p-6" style={{ maxWidth: '100vw', overflowX: 'clip', background: isDark ? '#0A0C10' : '#F3F4F6', color: dt.text }}>
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* Mobile/tablet search toggle */}
         <button
