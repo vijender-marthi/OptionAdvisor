@@ -16,6 +16,7 @@ import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
+import EntryWindowBanner from '../components/EntryWindowBanner'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -188,6 +189,7 @@ export default function DayTradePage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [ocKey, setOcKey]     = useState(0)
+  const [scanCount, setScanCount] = useState(0)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -226,6 +228,7 @@ export default function DayTradePage() {
         result: data,
       }))
       setOcKey(k => k + 1)
+      setScanCount(c => c + 1)
       try {
         const v2res = await analyzeV2(sym, 'day')
         setUnified(v2res.data)
@@ -1309,6 +1312,16 @@ export default function DayTradePage() {
               totalOptionsVol={typeof m.total_options_vol === 'number' ? m.total_options_vol as number : null}
               bias={result.bias ?? null}
               isDark={isDark}
+            />
+            <EntryWindowBanner
+              key={`${result.ticker}-${scanCount}`}
+              active={z2IsGo}
+              ticker={result.ticker}
+              direction={isShort ? 'PUT' : 'CALL'}
+              entryPrice={pageEntryPoints[0]?.price ?? null}
+              stopPrice={(eg?.risk_below as number | undefined) ?? stopFallback}
+              t1={t1}
+              t2={t2}
             />
             <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
