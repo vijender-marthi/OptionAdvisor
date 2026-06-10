@@ -1818,6 +1818,468 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              {/* ── Day Trade Rules ────────────────────────────── */}
+              <h3 className="text-sm font-bold text-white mt-6 mb-2 flex items-center gap-2">
+                <BookOpen size={14} className="text-amber-400" />
+                Day Trade Rules
+              </h3>
+
+              <DocCard icon={<Target size={15} />} title="Opening Range (OR)">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  The high and low of the <strong className="text-gray-200">first 15 minutes</strong> (6:30–6:45 AM PT) define the battlefield for the entire session. Do not trade inside the OR — wait for the break.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-2">What It Is</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>OR high = resistance until broken and held</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>OR low = support until broken and held</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Wider OR = more volatile day ahead</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-emerald-400">above VWAP + above OR mid</strong> → bullish bias</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-red-400">below VWAP + below OR mid</strong> → bearish bias</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Failed ORH break = strong short signal</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Failed ORL break = strong long signal</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-2">OR Break Confirmation</div>
+                    <div className="space-y-2">
+                      {[
+                        'Price closes a full 1m candle above ORH or below ORL',
+                        'Volume spike on the breakout candle — must be above average',
+                        'VWAP is on the same side as the break (below for longs, above for shorts)',
+                        'Wait for 1–2 candle retest of the broken level before entering',
+                        'If price immediately reverses back inside OR → abort, do not chase',
+                      ].map((step, i) => (
+                        <div key={i} className="flex gap-2 text-[12px] text-gray-300">
+                          <span className="w-5 h-5 rounded-full bg-gray-700 text-gray-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Activity size={15} />} title="VWAP Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Volume Weighted Average Price — the institutional reference line. Bias, support/resistance, and two high-probability setups.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">VWAP as Bias</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-emerald-400">above VWAP</strong> = institutional buyers in control → long bias</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-red-400">below VWAP</strong> = sellers in control → short bias</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP sloping up = trend confirming</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP flat = chop — reduce size or skip</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP sloping down = aggressive short day</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">VWAP as S/R</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>First test of VWAP from below = <strong className="text-gray-100">resistance</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>First test of VWAP from above = <strong className="text-gray-100">support</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Multiple tests = level weakens, eventual break likely</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Reclaim of VWAP with volume = trend change signal</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Never buy resistance, never short support</strong> — wait for confirmation</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">VWAP Rejection Trade</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Price bounces up to VWAP from below, fails to close above</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Enter short on the rejection candle close</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stop above VWAP + buffer</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">Highest probability setup</span> — works best when price has been below VWAP 30+ min</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">VWAP Reclaim Trade</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Price crosses above VWAP and <strong className="text-gray-100">holds for 2+ candles</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Re-test of VWAP from above = long entry</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stop below VWAP. Target: OR high or prior resistance</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-amber-400 font-semibold">Requires volume confirmation</span> — weak reclaims fail fast</li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ArrowDown size={15} />} title="ORL vs VWAP — Short Setup">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  When ORL breaks with VWAP above — the cleanest short setup of the day.
+                </p>
+                <div className="overflow-x-auto mb-3">
+                  <table className="w-full text-[12px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Scenario</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">VWAP</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Bias</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { scenario: 'ORL breaks down, VWAP above', vwap: 'Above price, sloping down', bias: 'STRONG SHORT', biasCls: 'bg-red-900/60 text-red-300', action: 'Short on retest of ORL from below. Stop above ORL.' },
+                        { scenario: 'ORL breaks down, VWAP below', vwap: 'Below price', bias: 'WEAK / SKIP', biasCls: 'bg-gray-800 text-gray-400', action: 'Conflicting signals. Wait. VWAP may act as support.' },
+                        { scenario: 'Price at ORL, VWAP above', vwap: 'Above, acting as resistance', bias: 'SHORT WATCH', biasCls: 'bg-red-900/40 text-red-300', action: 'Wait for ORL break confirmation before entering.' },
+                        { scenario: 'ORL holds, price bounces', vwap: 'Any', bias: 'LONG WATCH', biasCls: 'bg-emerald-900/40 text-emerald-300', action: 'Failed breakdown = potential long. Confirm with volume.' },
+                        { scenario: 'ORL breaks, VWAP above, low volume', vwap: 'Above price', bias: 'SKIP', biasCls: 'bg-gray-800 text-gray-400', action: 'Low volume breakdowns snap back hard. Wait for volume.' },
+                      ].map((row, i) => (
+                        <tr key={i} className="border-b border-gray-800/60 hover:bg-gray-800/30">
+                          <td className="px-3 py-2 text-gray-300">{row.scenario}</td>
+                          <td className="px-3 py-2 text-gray-400">{row.vwap}</td>
+                          <td className="px-3 py-2"><span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${row.biasCls}`}>{row.bias}</span></td>
+                          <td className="px-3 py-2 text-gray-400">{row.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">⚠ Key insight:</strong> ORL + VWAP above = one of the cleanest short setups of the day. If you missed the break, the retest of ORL from below is often a second-chance entry. The move from ORL to T1 can be $5–10+ with high conviction on large-caps.
+                </div>
+              </DocCard>
+
+              <DocCard icon={<TrendingUp size={15} />} title="ORH vs VWAP — Long Setup">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  When ORH breaks with VWAP below — the cleanest long setup of the day.
+                </p>
+                <div className="overflow-x-auto mb-3">
+                  <table className="w-full text-[12px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Scenario</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">VWAP</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Bias</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { scenario: 'ORH breaks up, VWAP below', vwap: 'Below price, sloping up', bias: 'STRONG LONG', biasCls: 'bg-emerald-900/60 text-emerald-300', action: 'Long on retest of ORH from above. Stop below ORH.' },
+                        { scenario: 'ORH breaks up, VWAP above', vwap: 'Above price', bias: 'WEAK / SKIP', biasCls: 'bg-gray-800 text-gray-400', action: 'VWAP is overhead resistance. High failure rate. Skip or small size.' },
+                        { scenario: 'ORH breaks, immediately reverses', vwap: 'Any', bias: 'FAILED BREAK = SHORT', biasCls: 'bg-red-900/50 text-red-300', action: 'Failed ORH = strong short signal. Flip short or exit long immediately.' },
+                        { scenario: 'ORH tested multiple times before break', vwap: 'Below price', bias: 'LONG', biasCls: 'bg-emerald-900/40 text-emerald-300', action: 'Multiple tests weaken resistance. Enter on confirmed close above.' },
+                      ].map((row, i) => (
+                        <tr key={i} className="border-b border-gray-800/60 hover:bg-gray-800/30">
+                          <td className="px-3 py-2 text-gray-300">{row.scenario}</td>
+                          <td className="px-3 py-2 text-gray-400">{row.vwap}</td>
+                          <td className="px-3 py-2"><span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${row.biasCls}`}>{row.bias}</span></td>
+                          <td className="px-3 py-2 text-gray-400">{row.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">⚠ The trap trade:</strong> ORH break with VWAP still above = one of the most common traps. Even if ORH briefly broke, VWAP will kill the move. <strong className="text-amber-200">Never buy an ORH break when VWAP is above price.</strong>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<CheckCircle2 size={15} />} title="Entry Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Only enter when all conditions align — patience is the edge. Entry on retest, never on the initial break.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Long Entry Checklist</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-emerald-400">above VWAP</strong> or reclaiming VWAP with volume</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>ORH confirmed break — close above, not just wick</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP sloping upward</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Entry on <strong className="text-gray-100">retest</strong> of broken level, not the initial break</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stop defined <strong className="text-gray-100">before</strong> entry — if stop is unclear, skip trade</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>R/R minimum <strong className="text-emerald-400">2:1</strong> — risk $1 to make $2+</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Short Entry Checklist</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price <strong className="text-red-400">below VWAP</strong> or rejected at VWAP</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>ORL confirmed break — close below on 1m</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP sloping downward</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Entry on <strong className="text-gray-100">retest</strong> of broken ORL from below</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stop defined above VWAP or above ORL</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Don't short into obvious support without confirmation</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-2">Entry Timing Rules</div>
+                  <ul className="space-y-1.5 text-[12px] text-gray-300">
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">6:30–6:45 AM</strong> — Opening range forming. <strong className="text-red-400">Do not trade.</strong> Watch only.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">6:45–7:30 AM</strong> — Post-OR. Highest probability setups form here. Best entries of the day.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">7:30–8:30 AM</strong> — Still valid. Momentum slows. Require stronger confirmation.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">8:30–9:30 AM</strong> — Lunch chop begins. <strong className="text-amber-400">Reduce size or stop trading.</strong></span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">9:30–10:00 AM</strong> — Dead zone most days. Low volume, random moves. Skip.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">10:00–10:30 AM PT</strong> — End of session. Only take high-conviction setups.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Never chase</strong> — if you missed the entry, the trade is gone. Next setup.</li>
+                  </ul>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ArrowRight size={15} />} title="Exit Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Exits determine your P&amp;L more than entries. Define your exit <strong className="text-gray-200">before you enter</strong>.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Profit Targets</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">T1:</strong> OR high/low — take <strong className="text-emerald-400">50% off</strong> here</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">T2:</strong> VWAP ±1σ bands — take another 25%</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">T3:</strong> Let remaining 25% run with trailing stop</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>On options: take <strong className="text-gray-100">partial at 50% gain</strong>, move rest to break-even</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Never let a +$500 trade become a loss — <strong className="text-gray-100">move stop to break-even</strong></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Forced Exit Signals</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Price recrosses the level that triggered your entry</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP flips against your position</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Opposite OR level breaks (holding long → ORL breaks)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Volume dries up before target — momentum gone</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-red-400">Daily loss limit hit</strong> — stop trading, no exceptions</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">Scale-Out Strategy (Options)</div>
+                  <ul className="space-y-1.5 text-[12px] text-gray-300">
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">+30–40% gain:</strong> Sell 1/3 — take some money off the table</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">+75–100% gain:</strong> Sell another 1/3 — move remaining stop to break-even</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">+150%+:</strong> Let last 1/3 run — it's house money</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>On sudden spikes (news-driven): sell <strong className="text-gray-100">immediately into the spike</strong> — don't wait for pullback</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>If stock invalidates setup but option still has value — <strong className="text-gray-100">exit the option</strong></li>
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">⚠ Honest Truth:</strong> Most traders lose not because of bad entries — but because they hold losers too long and cut winners too early. Define your exit before you enter. Write it down. Follow it.
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ShieldAlert size={15} />} title="Stop Loss Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  A trade without a stop is not a trade — it's a gamble. Stop placement is determined by the level that <strong className="text-gray-200">invalidates your thesis</strong>, not a fixed dollar amount.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Stop Placement</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Long:</strong> Stop below ORL or below VWAP (whichever is closer and logical)</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Short:</strong> Stop above ORH or above VWAP</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Add <strong className="text-gray-100">$0.10–0.25 buffer</strong> beyond the level — avoid stop hunts</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Max risk per trade: <strong className="text-gray-100">1–2% of account</strong></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Stop Management</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Set stop <strong className="text-gray-100">before entering</strong> — not after</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Once at T1 target → move stop to <strong className="text-gray-100">break-even</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Once at T2 → trail stop at prior swing low/high</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-red-400">Never widen a stop</strong> — this is how small losses become big ones</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>If thinking about widening a stop → just exit</li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ShieldCheck size={15} />} title="Options Stop Loss">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Options need different stop mechanics — wide bid/ask spreads will destroy automated stop-market orders.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-orange-400 mb-2">Why Stop-Market Fails on Options</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Bid/ask spread can be $0.30–0.50 wide on volatile names</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stop triggers → market order → fills at <strong className="text-red-400">bid price</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>During fast moves, bid collapses before your order routes</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Example: Mid = $2.00, Bid = $1.50 → filled at $1.50 on stop-market</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Wide spreads = <strong className="text-gray-100">always use stop-limit</strong> instead</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-orange-400 mb-2">Stop-Limit Setup</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Paid $2.00 for option</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Set <strong className="text-gray-100">stop at $1.70</strong> (triggers the order)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Set <strong className="text-gray-100">limit at $1.55</strong> (minimum fill price)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Gap between stop and limit = buffer for fast markets</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Risk: may not fill if price gaps through limit — <strong className="text-gray-100">monitor manually</strong></li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Best Method: Alert on Underlying Stock</div>
+                  <ul className="space-y-1.5 text-[12px] text-gray-300">
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Set price alert on the <strong className="text-gray-100">stock</strong> at your stop level (not the option)</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>When alert fires → manually close the option</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Use a <strong className="text-gray-100">limit order at mid price</strong> — adjust down if no fill in 15 seconds</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>This avoids spread manipulation and bad automated fills entirely</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Works best for: <strong className="text-gray-100">ORH/ORL invalidation, VWAP recross stops</strong></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">This is what professionals actually do.</span> Automate the alert, manual the exit.</li>
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">⚠ Honest Truth:</strong> Stop-limit on options can leave you holding through a massive drop if it doesn't fill. If you need the stop-limit because you can't watch the screen, you're trading options in a situation you shouldn't be in. <strong className="text-amber-200">Options require active monitoring.</strong>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<RefreshCw size={15} />} title="Re-entry Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Getting stopped out doesn't mean the trade is wrong — timing might be. But re-entry out of emotion is the most dangerous move in day trading.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-violet-400 mb-2">When Re-entry Is Valid</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Original thesis still intact (VWAP still overhead, trend still down)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>You were stopped out by a <strong className="text-gray-100">stop hunt</strong> (wick through, immediate recovery)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Price retests the broken level again and holds</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>New volume confirmation on the re-test</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Wait for structure to confirm</strong> — don't re-enter out of emotion</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">When NOT to Re-enter</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>You're re-entering because you're <strong className="text-red-400">angry about the stop</strong></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>VWAP has flipped against you since the stop</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Price is now far from your original entry level</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>You've already taken <strong className="text-gray-100">2 losses today</strong> on same ticker</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>It's after 9:00 AM PT — chop zone, lower probability</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-violet-400 mb-2">Re-entry Framework</div>
+                  <div className="space-y-2">
+                    {[
+                      { step: 1, text: 'Wait 3–5 candles after your stop before considering re-entry — let price show its hand' },
+                      { step: 2, text: 'Check VWAP: is it still aligned with your original thesis?' },
+                      { step: 3, text: 'Is the OR level (ORH/ORL) still intact as expected S/R?' },
+                      { step: 4, text: 'Reduce size on re-entry — 50% of original. You\'re now less certain.' },
+                      { step: 5, text: 'Tighter stop on re-entry — if it stops you again, the thesis is wrong. Done.' },
+                    ].map(({ step, text }) => (
+                      <div key={step} className="flex gap-2 text-[12px] text-gray-300">
+                        <span className="w-5 h-5 rounded-full bg-gray-700 text-gray-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step}</span>
+                        <span>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Eye size={15} />} title="How to Monitor">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  What to watch, when to act, and what to ignore at each phase of the session.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  {[
+                    {
+                      label: 'Pre-Market (Before 6:30 AM)', color: 'text-sky-400',
+                      items: [
+                        'Mark prior day high/low on chart',
+                        'Note pre-market high/low — often becomes OR support/resistance',
+                        'Check for earnings, news, economic events',
+                        'Identify the 2–3 tickers you\'ll watch only — no more',
+                        'Set alert levels at prior day key levels',
+                      ],
+                    },
+                    {
+                      label: '6:30–6:45 AM (OR Formation)', color: 'text-sky-400',
+                      items: [
+                        'Watch — do not trade',
+                        'Note where VWAP opens relative to price',
+                        'Note OR high and low as they form',
+                        'Assess: is this a trending open or a choppy open?',
+                        'Set alerts at ORH and ORL for breakout notification',
+                      ],
+                    },
+                    {
+                      label: '6:45–8:30 AM (Prime Time)', color: 'text-emerald-400',
+                      items: [
+                        'Full attention — active management',
+                        'Monitor: price vs VWAP every candle close',
+                        'Watch for VWAP rejection or reclaim',
+                        'Track volume — is momentum building or fading?',
+                        'Update stop to break-even once T1 hit',
+                      ],
+                    },
+                    {
+                      label: '8:30 AM+ (Chop Zone)', color: 'text-amber-400',
+                      items: [
+                        'Reduce screen time — lower probability setups',
+                        'Only trade clear VWAP reclaims or OR level retests',
+                        'Tighter targets — expect less follow-through',
+                        'If you hit daily profit goal: stop trading',
+                        'If you hit daily loss limit: stop trading',
+                      ],
+                    },
+                  ].map(({ label, color, items }) => (
+                    <div key={label} className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                      <div className={`text-[11px] font-bold uppercase tracking-wide ${color} mb-2`}>{label}</div>
+                      <ul className="space-y-1.5 text-[12px] text-gray-300">
+                        {items.map((item, i) => (
+                          <li key={i} className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">Live Trade Monitoring Checklist</div>
+                  <div className="space-y-2">
+                    {[
+                      'Is price still on the correct side of VWAP for my trade direction?',
+                      'Is volume supporting the move or drying up?',
+                      'Has price reached T1? If yes → take partial, move stop to break-even',
+                      'Any sudden news or macro event? → reduce to flat immediately',
+                      'Am I watching out of fear or out of a plan? If fear → exit, re-assess',
+                    ].map((item, i) => (
+                      <div key={i} className="flex gap-2 text-[12px] text-gray-300">
+                        <span className="w-5 h-5 rounded-full bg-gray-700 text-gray-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<AlertTriangle size={15} />} title="Honest Truths">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Things most trading courses won't tell you. The edge is execution discipline, not finding a magic setup.
+                </p>
+                <ul className="space-y-2">
+                  {[
+                    { text: '90% of traders lose money. The edge is execution discipline, not finding a magic setup.', color: '' },
+                    { text: 'Your best trades will feel boring — obvious setup, clear stop, clear target. If it feels exciting, you\'re gambling.', color: 'text-amber-400' },
+                    { text: 'VWAP above you on a long = headwind. You can win but you\'re fighting the dominant flow. Reduce size.', color: 'text-red-400' },
+                    { text: 'The best trade some days is no trade. Flat = +0. Forced trades = -$.', color: '' },
+                    { text: 'Options decay every second. A stock that goes sideways = a losing options trade. Direction AND timing must be right.', color: '' },
+                    { text: 'R/R below 2:1 means you need a 67%+ win rate to break even. That\'s nearly impossible over time.', color: 'text-red-400' },
+                    { text: 'Widening a stop after price moves against you is not risk management — it\'s denial. Cut it.', color: '' },
+                    { text: 'The market doesn\'t know your position. It doesn\'t owe you a bounce. Take the stop.', color: '' },
+                    { text: 'Partial exits exist for a reason. Taking 50% off at T1 turns "potential winner" into "guaranteed winner + free runner."', color: 'text-emerald-400' },
+                    { text: 'After 2 losses in a day → mandatory 30-min break before any new entry. Your brain is compromised.', color: '' },
+                    { text: 'The OR + VWAP framework fails in low-volume, low-float, or news-driven tickers. Apply it only to liquid large-caps and ETFs.', color: '' },
+                    { text: 'Revenge trading (re-entering bigger after a loss to "make it back") is how traders blow accounts. Follow the process.', color: 'text-red-400' },
+                  ].map(({ text, color }, i) => (
+                    <li key={i} className="flex gap-2 text-[12px] border-b border-gray-800/60 pb-2 last:border-0">
+                      <span className="text-gray-500 mt-0.5 flex-shrink-0">▸</span>
+                      <span className={color || 'text-gray-300'}>{text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DocCard>
+
             </div>
           </section>
 
