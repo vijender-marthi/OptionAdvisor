@@ -574,8 +574,16 @@ export default function DayTradePage() {
     const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
     const isGoLocal = /^(STRONG.?GO|GO)$/i.test(verdict)
     const sienLocal = String((result.entry_guidance as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
-    const rrRaw = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number) ? m.entry_rr_ratio as number : null
-    const z2GoLocal = isGoLocal && sienLocal === 'YES' && (rrRaw === null || rrRaw >= 1.0)
+    const rrRaw        = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number) ? m.entry_rr_ratio as number : null
+    const confLocal    = typeof result.confidence === 'number' ? result.confidence : 0
+    const extFlagLocal = (m.edge_remaining === 'EXHAUSTED' || m.edge_remaining === 'LATE') || !!m.is_chasing
+    const rtxtLocal    = [result.reason ?? '', ...(Array.isArray(result.reasons) ? result.reasons : [])].join(' ').toLowerCase()
+    const z2GoLocal    = isGoLocal && sienLocal === 'YES' && confLocal > 80
+      && (rrRaw === null || rrRaw >= 1.5)
+      && !extFlagLocal
+      && !rtxtLocal.includes('wait')
+      && !rtxtLocal.includes('no clean edge')
+      && !rtxtLocal.includes('confirmation')
     const exhaustedLocal = !trendDayData && bars.length > 210
     setSessionState(prev => {
       if (!tickerChanged && prev === 'hold') return 'hold'
@@ -1066,11 +1074,23 @@ export default function DayTradePage() {
         const mRvol   = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : null
         const lastPrice = typeof m.last_price === 'number' ? m.last_price as number : 0
 
+        const sienOec    = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
+        const rrOec      = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number) ? m.entry_rr_ratio as number : null
+        const confOec    = typeof result.confidence === 'number' ? result.confidence : 0
+        const extFlagOec = (m.edge_remaining === 'EXHAUSTED' || m.edge_remaining === 'LATE') || !!m.is_chasing
+        const rtxtOec    = [result.reason ?? '', ...(Array.isArray(result.reasons) ? result.reasons : [])].join(' ').toLowerCase()
+        const showGO     = isGo && sienOec === 'YES' && confOec > 80
+          && (rrOec === null || rrOec >= 1.5)
+          && !extFlagOec
+          && !rtxtOec.includes('wait')
+          && !rtxtOec.includes('no clean edge')
+          && !rtxtOec.includes('confirmation')
+
         const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD' =
           sessionState === 'hold' ? 'HOLD' :
           sessionState === 'entry' ? 'GO' :
           sessionState === 'exhausted' ? 'WAIT' :
-          isGo ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
+          showGO ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
         const direction: 'SHORT' | 'LONG' = isShort ? 'SHORT' : 'LONG'
         const stopPrice = (() => {
           const rb = typeof eg?.risk_below === 'number' ? eg.risk_below as number : null
@@ -1168,18 +1188,25 @@ export default function DayTradePage() {
         const sien = String((eg as Record<string,unknown>)?.should_enter_now ?? '').toUpperCase()
         const entryReadiness = sien === 'YES' ? 'Execute within 1–2 candles.' : sien === 'CONDITIONAL' ? 'Wait for trigger candle confirmation.' : 'No confirmed trigger yet — monitor closely.'
 
-        // Hard gate: GO badge is only allowed when the trigger is confirmed.
-        // If sien !== 'YES', the card detail says "no confirmed trigger" —
-        // showing GO simultaneously is a contradiction. Downgrade to WATCH.
         const triggerConfirmed = sien === 'YES'
         const rrRatio = typeof m.entry_rr_ratio === 'number' && isFinite(m.entry_rr_ratio as number)
           ? m.entry_rr_ratio as number : null
+        const conf       = typeof result.confidence === 'number' ? result.confidence : 0
+        const extFlagged = (m.edge_remaining === 'EXHAUSTED' || m.edge_remaining === 'LATE') || !!m.is_chasing
+        const reasonTxt  = [result.reason ?? '', ...(Array.isArray(result.reasons) ? result.reasons : [])].join(' ').toLowerCase()
         // z2* = display values used only for Zone 2's card badge and colours
-        const z2IsGo    = isGo && triggerConfirmed && (rrRatio === null || rrRatio >= 1.0)
-        const z2IsWatch = !z2IsGo && (isWatch || isGo)   // downgraded GO → WATCH
-        const z2Verdict   = z2IsGo ? verdict : (isGo ? 'WATCH' : verdict)
+        const z2ShowGO  = isGo && triggerConfirmed && conf > 80
+          && (rrRatio === null || rrRatio >= 1.5)
+          && !extFlagged
+          && !reasonTxt.includes('wait')
+          && !reasonTxt.includes('no clean edge')
+          && !reasonTxt.includes('confirmation')
+        const z2IsGo    = z2ShowGO
+        const z2IsAmber = !z2ShowGO && conf > 80   // setup present, conditions not fully met
+        const z2IsWatch = !z2IsGo && !z2IsAmber && (isWatch || isGo)
+        const z2Verdict   = z2IsGo ? verdict : (z2IsAmber || isGo ? 'WATCH' : verdict)
         const z2BadgeText = sessionState === 'hold' ? 'MANAGING' : sessionState === 'exhausted' ? 'EXHAUSTED' : z2Verdict
-        const z2VColor    = z2IsGo ? '#34d399' : z2IsWatch ? '#38bdf8' : '#6b7280'
+        const z2VColor    = z2IsGo ? '#34d399' : z2IsAmber ? '#E87B3A' : z2IsWatch ? '#38bdf8' : '#6b7280'
 
         // Theme-adaptive card helpers
         const cBg  = (d: string, l: string) => isDark ? d : l
@@ -1250,25 +1277,25 @@ export default function DayTradePage() {
             key: 'entry',
             from: orN,
             to: Math.min(orN + 44, chartBars.length - 1),
-            fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
+            fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsAmber ? 'rgba(232,123,58,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
             label: z2BadgeText,
             sublabel: `${biasLabel} · post-OR`,
             markerColor: z2VColor,
             cardBg:     cBg(
-              z2IsGo ? 'rgba(2,12,8,0.92)'        : z2IsWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
-              z2IsGo ? 'rgba(240,253,244,0.97)'   : z2IsWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
+              z2IsGo ? 'rgba(2,12,8,0.92)'      : z2IsAmber ? 'rgba(18,10,2,0.92)'     : z2IsWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
+              z2IsGo ? 'rgba(240,253,244,0.97)' : z2IsAmber ? 'rgba(255,251,235,0.97)' : z2IsWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
             ),
             cardBorder: cBdr(
-              z2IsGo ? '#065F46' : z2IsWatch ? '#0C4A6E' : '#374151',
-              z2IsGo ? '#059669' : z2IsWatch ? '#0284C7' : '#9CA3AF',
+              z2IsGo ? '#065F46' : z2IsAmber ? '#78350F' : z2IsWatch ? '#0C4A6E' : '#374151',
+              z2IsGo ? '#059669' : z2IsAmber ? '#D97706' : z2IsWatch ? '#0284C7' : '#9CA3AF',
             ),
-            textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsWatch ? '#0369A1' : '#374151'),
+            textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsAmber ? '#92400E' : z2IsWatch ? '#0369A1' : '#374151'),
             badgeText: z2BadgeText,
             badgeBg: isDark
-              ? (z2IsGo ? 'rgba(52,211,153,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
-              : (z2IsGo ? 'rgba(52,211,153,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
+              ? (z2IsGo ? 'rgba(52,211,153,0.12)' : z2IsAmber ? 'rgba(232,123,58,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
+              : (z2IsGo ? 'rgba(52,211,153,0.18)' : z2IsAmber ? 'rgba(232,123,58,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
-            detail: `${z2IsGo ? 'Entry window active' : z2IsWatch ? 'Setup developing' : `Verdict is ${z2Verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+            detail: `${z2IsGo ? 'Entry window active' : z2IsAmber ? 'Setup present · conditions not met · wait for trigger' : z2IsWatch ? 'Setup developing' : `Verdict is ${z2Verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
             flipCondition,
           })
         }
