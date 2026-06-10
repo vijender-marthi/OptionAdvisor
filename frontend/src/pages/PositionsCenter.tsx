@@ -1602,6 +1602,7 @@ export default function PositionsCenter() {
   const [sortKey, setSortKey] = useState<SortKey>('dte')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [plFilter, setPlFilter] = useState<'total' | 'week' | 'day' | null>(null)
+  const [closedDateFilter, setClosedDateFilter] = useState<string | null>(null)
 
   useEffect(() => {
     const s = searchParams.get('style')?.trim().toLowerCase()
@@ -1738,6 +1739,13 @@ export default function PositionsCenter() {
       else if (riskFilter === 'high') list = list.filter(p => cap(p) >= 15000)
     }
 
+    if (closedDateFilter && tab === 'closed') {
+      list = list.filter(p => {
+        if (!p.exitDate) return false
+        return new Date(p.exitDate).toISOString().slice(0, 10) === closedDateFilter
+      })
+    }
+
     list.sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
       let va: number, vb: number
@@ -1754,7 +1762,7 @@ export default function PositionsCenter() {
     })
 
     return list
-  }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, sortKey, sortDir])
+  }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, sortKey, sortDir])
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedId(cur => (cur === id ? null : id))
@@ -1847,7 +1855,7 @@ export default function PositionsCenter() {
     setNotice({ message: `Position added: ${data.ticker} ${data.strategy}` })
   }, [addManualPosition])
 
-  const filtersActive = tradeStyle !== 'all' || typeFilter !== 'all' || riskFilter !== 'all'
+  const filtersActive = tradeStyle !== 'all' || typeFilter !== 'all' || riskFilter !== 'all' || closedDateFilter !== null
 
   return (
     <div className="oa-cc-page positions-center-page max-w-6xl mx-auto p-4 md:p-6 space-y-5">
@@ -2049,6 +2057,19 @@ export default function PositionsCenter() {
                   ))}
                 </div>
               </div>
+              {tab === 'closed' && (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Close Date</div>
+                  <div className="flex items-center gap-2">
+                    <input type="date" value={closedDateFilter ?? ''} onChange={e => setClosedDateFilter(e.target.value || null)}
+                      className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-primary outline-none focus:border-violet-500" />
+                    {closedDateFilter && (
+                      <button type="button" onClick={() => setClosedDateFilter(null)}
+                        className="text-[11px] text-violet-500 hover:text-violet-400 font-semibold">Clear</button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
