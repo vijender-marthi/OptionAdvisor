@@ -51,6 +51,7 @@ export const TICKER_UNIVERSE: TickerEntry[] = [
   { symbol: "LLY", company: "Eli Lilly and Company", sector: "Healthcare" },
   { symbol: "AMGN", company: "Amgen Inc.", sector: "Healthcare" },
   { symbol: "QCOM", company: "Qualcomm Inc.", sector: "Technology" },
+  { symbol: "ARM", company: "Arm Holdings plc", sector: "Technology" },
   { symbol: "IBM", company: "International Business Machines", sector: "Technology" },
   { symbol: "CAT", company: "Caterpillar Inc.", sector: "Industrials" },
   { symbol: "BA", company: "The Boeing Company", sector: "Industrials" },
