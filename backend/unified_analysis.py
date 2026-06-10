@@ -108,9 +108,15 @@ def _day_verdict(scan) -> str:
     suggested = td.get("suggested_action", "") if isinstance(td, dict) else ""
     if suggested in _SA_VERDICT_OVERRIDE:
         override = Verdict.from_raw(_SA_VERDICT_OVERRIDE[suggested]).value
-        # Only apply if the override is a genuine downgrade
         if _VERDICT_RANK.get(override, 0) < _VERDICT_RANK.get(base, 0):
             return override
+    # Extension risk blocks a GO — price is already stretched, entry quality is poor
+    if base in ("GO", "STRONG_GO"):
+        m = getattr(scan, "metrics", {}) or {}
+        risk_profile = m.get("risk_profile") or []
+        has_extension = any(r.get("type") == "EXTENSION" for r in risk_profile if isinstance(r, dict))
+        if has_extension:
+            return "WATCH"
     return base
 
 def normalize_verdict(raw: str) -> str:
