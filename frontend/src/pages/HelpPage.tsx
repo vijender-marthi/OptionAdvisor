@@ -2433,6 +2433,560 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              {/* ── Swing Trade Rules ──────────────────────────── */}
+              <h3 className="text-sm font-bold text-white mt-6 mb-2 flex items-center gap-2">
+                <BookOpen size={14} className="text-violet-400" />
+                Swing Trade Rules
+              </h3>
+
+              <DocCard icon={<LineChart size={15} />} title="MACD — Moving Average Convergence Divergence">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Use the daily chart with settings <strong className="text-gray-200">12 / 26 / 9</strong>. MACD is a trend confirmation tool — not an entry trigger on its own.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Bullish Signals</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Bullish crossover:</strong> MACD crosses <span className="text-emerald-400 font-semibold">above signal line</span> — primary buy signal</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Zero-line cross up:</strong> Trend officially bullish — stronger than crossover alone</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Histogram expanding green:</strong> Momentum accelerating — stay in or add</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Bullish divergence:</strong> Price lower low, MACD higher low = <span className="text-emerald-400 font-semibold">reversal long</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Best:</strong> Crossover + zero-line cross + rising histogram all together</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Bearish Signals</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Bearish crossover:</strong> MACD crosses <span className="text-red-400 font-semibold">below signal line</span> — primary short/exit signal</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Zero-line cross down:</strong> Bearish trend confirmed</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Histogram shrinking / flipping red:</strong> Tighten stop or exit</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Bearish divergence:</strong> Price higher high, MACD lower high = <span className="text-red-400 font-semibold">reversal short</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Best short:</strong> Crossover below signal + histogram expanding red</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-3">MACD Effectiveness for 3–10 Day Swings</div>
+                  {[
+                    { label: 'Trend ID', pct: 85, color: 'bg-emerald-500', textColor: 'text-emerald-400', note: 'Excellent for identifying the broader trend direction' },
+                    { label: 'Entry Timing', pct: 45, color: 'bg-amber-500', textColor: 'text-amber-400', note: 'Lagging — crossovers often happen after the move starts' },
+                    { label: 'Exit Timing', pct: 65, color: 'bg-sky-500', textColor: 'text-sky-400', note: 'Useful: histogram contraction = take profits' },
+                    { label: 'Divergence', pct: 72, color: 'bg-violet-500', textColor: 'text-violet-400', note: 'Divergence signals are MACD\'s highest value output for swings' },
+                  ].map(({ label, pct, color, textColor, note }) => (
+                    <div key={label} className="flex items-center gap-3 py-2 border-b border-gray-700/40 last:border-0">
+                      <span className="text-[12px] font-semibold text-gray-200 w-24 flex-shrink-0">{label}</span>
+                      <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className={`text-[11px] font-bold w-8 text-right flex-shrink-0 ${textColor}`}>{pct}%</span>
+                      <span className="text-[11px] text-gray-500 flex-1 hidden sm:block">{note}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">Rule:</strong> Never use MACD crossover alone as entry on options. By the time MACD crosses, 1–2 days of move may be gone. Use MACD for bias confirmation, RSI for timing.
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Sigma size={15} />} title="RSI — Relative Strength Index">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Use <strong className="text-gray-200">14-period on daily</strong>. MACD gives direction, RSI gives the entry window.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">RSI Zones</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><span className="text-red-400 font-semibold">70–100</span> = Overbought — exit longs, watch for exhaustion</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><span className="text-emerald-400 font-semibold">0–30</span> = Oversold — exit shorts, watch for reversal longs</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><span className="text-amber-400 font-semibold">40–60</span> = Neutral — no signal, wait</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><span className="text-sky-400 font-semibold">50 cross up</span> = Bullish momentum confirmed</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><span className="text-red-400 font-semibold">50 cross down</span> = Bearish momentum confirmed</span></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">Best RSI Setups</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Pullback to 40–50 in uptrend = <span className="text-emerald-400 font-semibold">buy zone</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Bounce off 30 — best with MACD bullish divergence</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Bounce off 60–65 in strong uptrend = strong stock</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Rejection at 70 in downtrend = <span className="text-red-400 font-semibold">short zone</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RSI divergence higher value than MACD for short-term</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-400 mb-2">Traps to Avoid</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-red-400 font-semibold">RSI 70 ≠ sell immediately</span> — strong stocks stay overbought for weeks</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-red-400 font-semibold">RSI 30 ≠ buy immediately</span> — weak stocks stay oversold through earnings</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Wait for <strong className="text-gray-100">reversal candle</strong> on daily before entering</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Less reliable on low-float or news-driven moves</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RSI on weekly = more reliable for swing direction</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">MACD</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">RSI</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Signal</th>
+                        <th className="text-left px-3 py-2 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { macd: 'Bullish crossover', rsi: '40–55, rising', signal: 'STRONG LONG', sCls: 'bg-emerald-900/60 text-emerald-300', action: 'Ideal call entry — early in move, momentum building' },
+                        { macd: 'Bullish crossover', rsi: '65–70+', signal: 'LATE / CAUTION', sCls: 'bg-amber-900/50 text-amber-300', action: 'Move already extended. Wait for RSI pullback or skip.' },
+                        { macd: 'Bearish crossover', rsi: '45–60, falling', signal: 'STRONG SHORT', sCls: 'bg-red-900/60 text-red-300', action: 'Ideal put entry — early in breakdown' },
+                        { macd: 'Bearish crossover', rsi: '30–35', signal: 'SKIP', sCls: 'bg-gray-800 text-gray-400', action: 'Oversold bounce likely. Don\'t chase puts here.' },
+                        { macd: 'Bullish divergence', rsi: 'Oversold + rising', signal: 'REVERSAL LONG', sCls: 'bg-emerald-900/60 text-emerald-300', action: 'High conviction call setup — wait for daily reversal candle' },
+                        { macd: 'Bearish divergence', rsi: 'Overbought + falling', signal: 'REVERSAL SHORT', sCls: 'bg-red-900/60 text-red-300', action: 'High conviction put setup — one of the best swing signals' },
+                        { macd: 'Histogram flat / shrinking', rsi: 'Any', signal: 'EXIT SIGNAL', sCls: 'bg-amber-900/50 text-amber-300', action: 'Take partial profits. Momentum fading.' },
+                      ].map((row, i) => (
+                        <tr key={i} className="border-b border-gray-800/60 hover:bg-gray-800/30">
+                          <td className="px-3 py-2 text-gray-300">{row.macd}</td>
+                          <td className="px-3 py-2 text-gray-400">{row.rsi}</td>
+                          <td className="px-3 py-2"><span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${row.sCls}`}>{row.signal}</span></td>
+                          <td className="px-3 py-2 text-gray-400">{row.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Radar size={15} />} title="Relative Strength (RS) vs SPY / Sector">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  The most underused filter in swing trading. RS tells you if your stock is <strong className="text-gray-200">leading or lagging</strong> the market — use it to rank candidates, not generate signals.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">How to Use RS</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>RS line rising while SPY flat/down = <span className="text-emerald-400 font-semibold">strong stock</span> → buy calls</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>RS line falling while SPY flat/up = <span className="text-red-400 font-semibold">weak stock</span> → buy puts</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RS breakout before price breakout = early warning of big move</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IBD RS Rating 80+ = top 20% of market — prioritize for long swings</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock green on red market day = relative strength</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">RS Red Flags</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Never buy calls on a weak RS stock</strong> — when market dips it'll fall faster</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Best put plays</strong> = low RS stocks in weak sectors during market downturns</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock red on green market day = relative weakness — bearish signal</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RS diverging from price = early reversal signal, more reliable than RSI alone</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">RS + Sector Context Rule</div>
+                  <ul className="space-y-1.5 text-[12px] text-gray-300">
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Best long swings:</strong> Strong RS stock + Strong RS sector + SPY uptrend = all three aligned</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Best short swings:</strong> Weak RS stock + Weak RS sector + SPY downtrend = all three aligned</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock RS strong but sector weak → skip or reduce size. Sector tide will pull it down.</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>During bear markets: even strong RS stocks fall — just fall less. Consider smaller size.</li>
+                  </ul>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<BarChart2 size={15} />} title="MA20 & MA50 — Moving Averages">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Dynamic support/resistance levels — not entry signals on their own. Work in trending markets; nearly useless in chop.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">MA20 — Short-Term Trend</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>~1 month of price action (daily chart)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price above MA20 = <span className="text-emerald-400 font-semibold">short-term bullish</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price below MA20 = <span className="text-red-400 font-semibold">short-term bearish</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Pullback to MA20 in uptrend = buy zone</strong> — highest probability swing long entry</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Rejection off MA20 from below = short signal</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Best for: 3–5 day swings, growth stocks, high-beta</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-violet-400 mb-2">MA50 — Medium-Term Trend</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>~2.5 months — institutional reference level</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price above MA50 = <span className="text-emerald-400 font-semibold">medium-term bullish</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>Price below MA50 = <span className="text-red-400 font-semibold">medium-term bearish</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Pullback to MA50 = deeper buy zone</strong> — bigger move potential, wider stop</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>MA50 loss on volume = serious breakdown — <span className="text-red-400 font-semibold">do not buy calls</span></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Best for: 7–10 day swings, large-cap, ETFs</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-amber-300 mb-3">MA Effectiveness — Honest Numbers</div>
+                  {[
+                    { label: 'MA20 Bounce', pct: 68, color: 'bg-sky-500', textColor: 'text-sky-400', note: 'Works in trending markets. Fails in chop. Requires volume.' },
+                    { label: 'MA50 Bounce', pct: 62, color: 'bg-violet-500', textColor: 'text-violet-400', note: 'Slightly less reliable. Better for longer holds.' },
+                    { label: 'MA Cross 20/50', pct: 55, color: 'bg-amber-500', textColor: 'text-amber-400', note: 'Too slow for 3–10 day swings. More useful for weeks-long holds.' },
+                    { label: 'MA in Chop', pct: 30, color: 'bg-red-500', textColor: 'text-red-400', note: 'Nearly useless in sideways range. Skip MA setups in chop.' },
+                  ].map(({ label, pct, color, textColor, note }) => (
+                    <div key={label} className="flex items-center gap-3 py-2 border-b border-gray-700/40 last:border-0">
+                      <span className="text-[12px] font-semibold text-gray-200 w-28 flex-shrink-0">{label}</span>
+                      <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className={`text-[11px] font-bold w-8 text-right flex-shrink-0 ${textColor}`}>{pct}%</span>
+                      <span className="text-[11px] text-gray-500 flex-1 hidden sm:block">{note}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Ideal Long Setup</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock in uptrend (higher highs, higher lows)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Pulls back to MA20 or MA50</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RSI pulls back to 40–50</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>MACD histogram shrinking but not crossed bearish</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Volume dries up on pullback</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">Enter on reversal candle off the MA</span></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Ideal Short Setup</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock in downtrend (lower highs, lower lows)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Rallies back up to MA20 or MA50 from below</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>RSI rallies to 50–60 then stalls</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>MACD histogram shrinking on the rally</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Volume low on rally — no conviction</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-red-400 font-semibold">Enter put on rejection candle at the MA</span></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-orange-400 mb-2">MA Rules for Options</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-red-400 font-semibold">Never buy ATM calls below MA50</span> — risk too high</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>MA bounce entries give better R/R than breakout chasing</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock at MA50 = wider stop = use larger DTE (14+ days)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Stock at MA20 = tighter stop = 7–10 DTE acceptable</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>MA loss = immediate exit on options — no holds through breakdown</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">Key Rule:</strong> MA levels work as S/R only when the <strong className="text-amber-200">overall trend is intact</strong>. In choppy or ranging markets, price slices through MAs like they don't exist. Always check the weekly chart trend first.
+                </div>
+              </DocCard>
+
+              <DocCard icon={<FlaskConical size={15} />} title="IV — Implied Volatility">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  IV is the market's expectation of future price movement. It directly controls how expensive options are — checking it before every options trade is non-negotiable.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-sky-400 mb-2">What IV Actually Means</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IV = annualized expected move as a % of stock price</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IV 30% on $100 stock → market expects ~$30 move over the year</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Daily expected move = <strong className="text-gray-100">Stock Price × IV ÷ √252</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>High IV = expensive options. Low IV = cheap options.</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IV is forward-looking — tells you <em>how much</em>, not <em>which direction</em></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-violet-400 mb-2">IV Rank (IVR) vs IV Percentile</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">IVR:</strong> Where current IV sits vs its 52-week high/low range</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>IVR 80+ = IV historically high → options <span className="text-red-400 font-semibold">expensive</span> → <strong className="text-gray-100">sell premium</strong></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span>IVR 20– = IV historically low → options <span className="text-emerald-400 font-semibold">cheap</span> → <strong className="text-gray-100">buy premium</strong></span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IVR 40–60 = neutral — direction trade, no volatility edge</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-amber-400 font-semibold">Always check IVR before buying options</span></li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-orange-400 mb-2">IV Crush — The Killer of Swing Options</div>
+                  <ul className="space-y-1.5 text-[12px] text-gray-300">
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">IV crush:</strong> After earnings/news, IV collapses. Option loses value even if direction is correct.</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Example: Buy $5 call before earnings → stock moves +3% your way → call is now $3. You lost.</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Never buy options going into earnings</strong> unless you understand and accept IV crush risk</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IV crush is fastest in the first 30 min after the event</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">Safe rule:</span> Enter option position AFTER earnings if the setup still exists</li>
+                    <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>IV crush affects calls and puts equally — it's not about direction</li>
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-red-800/40 bg-red-950/20 px-3 py-2 text-[11px] text-red-200/80">
+                  <strong className="text-red-300">⚠ Most common mistake:</strong> Buying calls with IVR 80+ before a catalyst. You pay maximum premium, the stock moves modestly your way, IV collapses, and you lose money despite being directionally correct.
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Scale size={15} />} title="IV Impact on Option Types (ITM / ATM / OTM)">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  IV affects ITM, ATM, and OTM options very differently. This determines which to buy based on your IV environment.
+                </p>
+                <div className="overflow-x-auto mb-3">
+                  <table className="w-full text-[12px] border-collapse border border-gray-700/40 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr>
+                        <th className="bg-gray-800/70 px-3 py-2 text-left text-[11px] text-gray-400 font-bold uppercase tracking-wide border-b border-gray-700"></th>
+                        <th className="bg-gray-800/70 px-3 py-2 text-left text-[11px] text-emerald-400 font-bold uppercase tracking-wide border-b border-gray-700">LOW IV (IVR &lt; 30)</th>
+                        <th className="bg-gray-800/70 px-3 py-2 text-left text-[11px] text-red-400 font-bold uppercase tracking-wide border-b border-gray-700">HIGH IV (IVR &gt; 60)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        {
+                          type: 'ITM Options', typeDesc: 'Deep in the money · High delta · Acts like stock', typeCls: 'text-sky-400',
+                          low: { label: '✓ Best ITM choice', cls: 'text-emerald-400', desc: 'Low extrinsic value. IV expansion benefits you. Acts like stock with leverage. Recommended for swing longs.' },
+                          high: { label: 'Expensive but safer', cls: 'text-amber-400', desc: 'IV drop hurts less on ITM. Still pricey premium overall.' },
+                        },
+                        {
+                          type: 'ATM Options', typeDesc: 'At the money · ~0.50 delta · Most sensitive to IV', typeCls: 'text-violet-400',
+                          low: { label: '✓ Ideal buy', cls: 'text-emerald-400', desc: 'Cheap premium + IV likely to expand. Best risk/reward. Standard swing trade setup.' },
+                          high: { label: '✗ Dangerous buy', cls: 'text-red-400', desc: 'Paying maximum extrinsic. IV crush destroys ATM. Avoid buying ATM when IVR 60+. Sell ATM spreads instead.' },
+                        },
+                        {
+                          type: 'OTM Options', typeDesc: 'Out of money · Low delta · Lottery ticket structure', typeCls: 'text-orange-400',
+                          low: { label: 'Selective buy', cls: 'text-amber-400', desc: 'Cheap but needs large move. Only with catalyst AND low IV. Requires big directional conviction.' },
+                          high: { label: '✗ Never buy', cls: 'text-red-400', desc: 'Most expensive relative to intrinsic. Zero intrinsic + high extrinsic = total IV crush victim.' },
+                        },
+                      ].map(row => (
+                        <tr key={row.type} className="border-b border-gray-700/40 last:border-0">
+                          <td className="bg-gray-800/40 px-3 py-3 align-top">
+                            <div className={`text-[12px] font-bold mb-1 ${row.typeCls}`}>{row.type}</div>
+                            <div className="text-[11px] text-gray-500">{row.typeDesc}</div>
+                          </td>
+                          <td className="px-3 py-3 align-top bg-emerald-950/10">
+                            <div className={`text-[12px] font-bold mb-1 ${row.low.cls}`}>{row.low.label}</div>
+                            <div className="text-[11px] text-gray-400">{row.low.desc}</div>
+                          </td>
+                          <td className="px-3 py-3 align-top bg-red-950/10">
+                            <div className={`text-[12px] font-bold mb-1 ${row.high.cls}`}>{row.high.label}</div>
+                            <div className="text-[11px] text-gray-400">{row.high.desc}</div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Low IV Playbook (IVR &lt; 30)</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">Buy ATM or slight OTM calls/puts</span> — cheap premium, IV likely to rise</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Longer DTE acceptable — time decay slow in low IV</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Can hold through minor adverse moves — theta burn is low</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Best stocks: consolidating after big move, coiling on MAs</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">High IV Playbook (IVR &gt; 60)</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-red-400 font-semibold">Avoid buying naked calls/puts</span> — paying maximum premium</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-emerald-400 font-semibold">Sell premium:</span> credit spreads, iron condors, cash-secured puts</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>If must buy: use <strong className="text-gray-100">debit spreads</strong> to neutralize vega risk</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Best stocks: after earnings when IV has already crushed</li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Layers size={15} />} title="IV + DTE Combination Matrix">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  The combination of IV environment and DTE determines what to buy, how much to pay, and when to exit. Low IV → buy options. High IV → sell premium.
+                </p>
+                <div className="overflow-x-auto mb-3">
+                  <table className="w-full text-[12px] border-collapse border border-gray-700/40 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr>
+                        <th className="bg-gray-800/70 px-3 py-2 text-[11px] text-gray-400 font-bold uppercase tracking-wide border-b border-gray-700 text-left">IV Env.</th>
+                        {['7 DTE', '10 DTE', '14 DTE', '21 DTE'].map(d => (
+                          <th key={d} className="bg-gray-800/70 px-3 py-2 text-[11px] text-gray-400 font-bold uppercase tracking-wide border-b border-gray-700 text-center">{d}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        {
+                          ivLabel: 'LOW IV', ivSub: 'IVR < 30', ivCls: 'text-emerald-400',
+                          cells: [
+                            { label: 'RISKY', cls: 'text-amber-400', bg: 'bg-amber-950/20', sub: 'Low IV + short DTE = double pressure. Only for fast, high-conviction moves.' },
+                            { label: '✓ BEST', cls: 'text-emerald-400', bg: 'bg-emerald-950/20', sub: 'Sweet spot. Cheap premium, IV expansion likely, enough time for move.' },
+                            { label: '✓ BEST', cls: 'text-emerald-400', bg: 'bg-emerald-950/20', sub: 'Ideal for swing. Low theta burn, room for trade to develop.' },
+                            { label: 'FINE', cls: 'text-sky-400', bg: 'bg-sky-950/10', sub: 'Good time buffer but paying more. Use if catalyst is next week.' },
+                          ],
+                        },
+                        {
+                          ivLabel: 'MID IV', ivSub: 'IVR 30–60', ivCls: 'text-amber-400',
+                          cells: [
+                            { label: 'SKIP', cls: 'text-red-400', bg: 'bg-red-950/20', sub: 'High theta burn + average premium. Poor R/R. Need immediate move.' },
+                            { label: 'OK', cls: 'text-amber-400', bg: 'bg-amber-950/20', sub: 'Acceptable. Go ITM to reduce vega risk. Needs clear directional setup.' },
+                            { label: '✓ PREFERRED', cls: 'text-emerald-400', bg: 'bg-emerald-950/20', sub: 'Best for mid-IV. Balanced theta and premium cost.' },
+                            { label: 'FINE', cls: 'text-sky-400', bg: 'bg-sky-950/10', sub: 'More expensive, less theta risk. Good for uncertain timing.' },
+                          ],
+                        },
+                        {
+                          ivLabel: 'HIGH IV', ivSub: 'IVR > 60', ivCls: 'text-red-400',
+                          cells: [
+                            { label: '✗ AVOID', cls: 'text-red-400', bg: 'bg-red-950/20', sub: 'Worst combo. Max premium + fastest theta. Sell premium instead.' },
+                            { label: '✗ AVOID', cls: 'text-red-400', bg: 'bg-red-950/20', sub: 'Still very expensive. IV crush + theta = double loss potential.' },
+                            { label: 'IF MUST', cls: 'text-amber-400', bg: 'bg-amber-950/20', sub: 'Use debit spread or go deep ITM only. Never naked OTM.' },
+                            { label: 'IF MUST', cls: 'text-amber-400', bg: 'bg-amber-950/20', sub: 'Most IV exposure — also most time for IV to normalize. Spread recommended.' },
+                          ],
+                        },
+                      ].map(row => (
+                        <tr key={row.ivLabel} className="border-b border-gray-700/40 last:border-0">
+                          <td className="bg-gray-800/40 px-3 py-3 align-top">
+                            <div className={`text-[12px] font-bold ${row.ivCls}`}>{row.ivLabel}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">{row.ivSub}</div>
+                          </td>
+                          {row.cells.map((cell, ci) => (
+                            <td key={ci} className={`px-3 py-3 align-top text-center ${cell.bg}`}>
+                              <div className={`text-[11px] font-bold ${cell.cls}`}>{cell.label}</div>
+                              <div className="text-[10px] text-gray-500 mt-1 text-left leading-relaxed">{cell.sub}</div>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="rounded-lg border border-sky-800/40 bg-sky-950/20 px-3 py-2 text-[11px] text-sky-200/80 mb-3">
+                  <strong className="text-sky-300">Quick Rule:</strong> Low IV → buy options (calls/puts direct). High IV → sell premium (credit spreads, iron condors). Mid IV → use debit spreads to cap vega. For 7–14 DTE swings, <strong className="text-sky-200">never buy naked options in high IV</strong>.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    {
+                      label: 'Low IV + 10–14 DTE', color: 'text-emerald-400',
+                      items: ['ATM calls or puts — 0.45–0.55 delta', '1–2 strikes OTM if high conviction', 'Exit at 50–75% profit — don\'t hold to expiration', 'Stop: 50% of premium paid', 'Best: coiling patterns, inside weeks, low ADR'],
+                    },
+                    {
+                      label: 'Mid IV + 14 DTE', color: 'text-amber-400',
+                      items: ['Debit spreads — buy ATM, sell 1–2 strikes OTM', 'Caps vega risk, reduces cost basis', 'Exit at 60–70% of max profit', 'Best when you have directional conviction but IV is elevated'],
+                    },
+                    {
+                      label: 'High IV + Any DTE', color: 'text-red-400',
+                      items: ['Credit spreads — sell ATM, buy OTM hedge', 'Iron condors if range-bound expected', 'Cash-secured puts on stocks you want at lower price', 'Exit at 50% of max credit', 'If buying: deep ITM only, 0.80+ delta'],
+                    },
+                  ].map(({ label, color, items }) => (
+                    <div key={label} className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                      <div className={`text-[11px] font-bold uppercase tracking-wide ${color} mb-2`}>{label}</div>
+                      <ul className="space-y-1.5 text-[12px] text-gray-300">
+                        {items.map((item, i) => <li key={i} className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>{item}</li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </DocCard>
+
+              <DocCard icon={<CheckCircle2 size={15} />} title="Swing Trade Entry & Exit Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  For 3–10 day holds with options. Timing matters — but not as much as selection. All 7 entry conditions must pass.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-400 mb-2">Entry Checklist — All Must Pass</div>
+                    <div className="space-y-2">
+                      {[
+                        { title: 'Trend Check (Weekly + Daily)', desc: 'Weekly trend must align with trade direction. Don\'t fight the weekly chart.' },
+                        { title: 'MA Position', desc: 'Long: price above MA20 or bouncing off MA50. Short: price below MA20 or rejecting MA50.' },
+                        { title: 'MACD Alignment', desc: 'MACD histogram color matches trade direction. No crossover against you.' },
+                        { title: 'RSI in Entry Zone', desc: 'Long: RSI 40–55 and rising. Short: RSI 45–60 and falling. Not extended.' },
+                        { title: 'RS vs SPY Positive', desc: 'Stock showing strength (long) or weakness (short) relative to SPY.' },
+                        { title: 'IV Check', desc: 'IVR < 40: buy options. IVR 40–60: use spreads. IVR 60+: sell premium.' },
+                        { title: 'No Earnings in 7 Days', desc: 'Check earnings date. If within DTE window, adjust or skip — IV crush risk.' },
+                      ].map(({ title, desc }, i) => (
+                        <div key={i} className="flex gap-2 text-[12px]">
+                          <span className="w-5 h-5 rounded-full bg-gray-700 text-gray-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                          <div>
+                            <div className="font-semibold text-gray-100">{title}</div>
+                            <div className="text-gray-400 text-[11px]">{desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Exit Rules</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300 mb-3">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Profit target:</strong> Exit 50–75% when option doubles or hits stock price target</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Time stop:</strong> No movement after 3–4 days → exit. Theta is eating you.</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">MA breach:</strong> Stock closes below MA20 (for longs) → exit same day</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">MACD flip:</strong> Histogram changes color against you → take partial exit</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">RSI extended:</strong> RSI 70+ on calls or 30– on puts → take 50% off</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Stop loss:</strong> 40–50% of premium paid. Not negotiable.</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">DTE rule:</strong> Exit with 2–3 DTE remaining. Do not hold to expiration.</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><strong className="text-gray-100">Never hold options through earnings</strong> unless it's a specific straddle strategy</li>
+                    </ul>
+                    <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-200/80">
+                      <strong className="text-emerald-300">Scale-Out Rule:</strong> Take 50% off at first target. Move stop to break-even on remainder. Let it run to T2 with zero risk.
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<ShieldAlert size={15} />} title="Swing Trade Stop Loss Rules">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  Swing stops are wider than day trade stops — account for overnight gaps and normal daily volatility.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-red-400 mb-2">Stock-Based Stops</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Long stop:</strong> Daily close below MA20 or below key S/R level</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span><strong className="text-gray-100">Short stop:</strong> Daily close above MA20 or above key R/S level</span></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Add 1–2% buffer beyond the MA to avoid whipsaws</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Use <strong className="text-gray-100">closing price</strong>, not intraday wick, to trigger</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Alert on the stock level → manually exit the option</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-orange-400 mb-2">Option Premium Stops</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Max loss per option trade: <strong className="text-gray-100">40–50% of premium paid</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Paid $2.00 → stop triggers at $1.00–$1.20</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Use stop-limit: stop at $1.10, limit at $0.95</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Set alert on stock — don't rely on option stop alone</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span><span className="text-amber-400 font-semibold">Never hold a 50%+ loser hoping for recovery</span></li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-amber-400 mb-2">Position Sizing Rule</div>
+                    <ul className="space-y-1.5 text-[12px] text-gray-300">
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Max risk per swing trade: <strong className="text-gray-100">2% of account</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>$50K account → max $1,000 at risk per trade</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Option $2.00, stop at $1.00 → risk = $1.00/share ($100/contract)</li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Max contracts = $1,000 ÷ $100 = <strong className="text-gray-100">10 contracts</strong></li>
+                      <li className="flex gap-2"><span className="text-gray-500 mt-0.5">▸</span>Never bet more than 5% of account on any single swing</li>
+                    </ul>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<AlertTriangle size={15} />} title="Honest Truths About Swing Trading Options">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  No filters. What actually happens to most traders.
+                </p>
+                <ul className="space-y-2">
+                  {[
+                    { text: 'MACD and RSI are lagging. By the time they both confirm, you\'ve missed 20–30% of the move. Use them for bias, not precision entries.', color: '' },
+                    { text: '7 DTE is too short for most swings. You need the stock to move immediately. If it doesn\'t, theta kills you in 48 hours. 10–14 DTE is the minimum for 3–10 day holds.', color: 'text-amber-400' },
+                    { text: 'IV crush is real and brutal. A stock moving +5% after earnings can still produce a losing call if IV drops 40%. Check IVR every time.', color: '' },
+                    { text: 'MA20 and MA50 work until they don\'t. In a trending market: reliable. In a choppy market: worthless. Know which regime you\'re in before trading MAs.', color: '' },
+                    { text: 'RS is the most reliable filter that most traders ignore. A stock with strong RS in a weak market is a gift. A stock with weak RS in a strong market = avoid entirely.', color: 'text-emerald-400' },
+                    { text: 'Most 3–10 day swings require holding through 1–2 scary days. Options make this psychologically harder because of daily P&L swings. Have a plan or you\'ll exit at the worst time.', color: '' },
+                    { text: 'Spreads cap your losses but also cap your wins. In high IV environments they\'re the right call. In low IV, naked options outperform.', color: '' },
+                    { text: 'The entry matters less than you think. The exit (both profit and loss) is where you make or lose money. Most traders obsess over entries and ignore exits.', color: '' },
+                    { text: 'Never hold 7–14 DTE options over a weekend when uncertain. Time decay accelerates. Take the trade off and re-enter Monday if the setup is still valid.', color: 'text-amber-400' },
+                    { text: 'The biggest swing trade killer: holding losing options too long hoping they recover. Options decay. Stocks can recover. Options have a death clock.', color: 'text-red-400' },
+                  ].map(({ text, color }, i) => (
+                    <li key={i} className="flex gap-2 text-[12px] border-b border-gray-800/60 pb-2 last:border-0">
+                      <span className="text-gray-500 mt-0.5 flex-shrink-0">▸</span>
+                      <span className={color || 'text-gray-300'}>{text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </DocCard>
+
             </div>
           </section>
 
