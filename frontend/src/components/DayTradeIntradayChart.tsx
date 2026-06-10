@@ -50,6 +50,34 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
+/** Aggregate 1-minute bars into 5-minute bars. */
+export function aggregate5mBars(bars: DayTradeChartBar[]): DayTradeChartBar[] {
+  if (bars.length === 0) return bars
+  const t0 = new Date(bars[0].t).getTime()
+  const buckets = new Map<number, DayTradeChartBar>()
+  const bucketOrder: number[] = []
+  for (const bar of bars) {
+    const elapsed = (new Date(bar.t).getTime() - t0) / 60000
+    const key = Math.floor(elapsed / 5)
+    const existing = buckets.get(key)
+    if (!existing) {
+      buckets.set(key, { ...bar })
+      bucketOrder.push(key)
+    } else {
+      existing.h = Math.max(existing.h, bar.h)
+      existing.l = Math.min(existing.l, bar.l)
+      existing.c = bar.c
+      existing.v += bar.v
+      existing.vwap = bar.vwap
+      if (bar.vwap_upper1 != null) existing.vwap_upper1 = bar.vwap_upper1
+      if (bar.vwap_lower1 != null) existing.vwap_lower1 = bar.vwap_lower1
+      if (bar.vwap_upper2 != null) existing.vwap_upper2 = bar.vwap_upper2
+      if (bar.vwap_lower2 != null) existing.vwap_lower2 = bar.vwap_lower2
+    }
+  }
+  return bucketOrder.map(k => buckets.get(k)!)
+}
+
 const PAD = { l: 56, r: 12, t: 18, b: 34 }
 
 function fmtEtShort(iso: string) {

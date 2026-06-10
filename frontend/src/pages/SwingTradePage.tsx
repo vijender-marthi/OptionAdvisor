@@ -86,7 +86,20 @@ export default function SwingTradePage() {
         result: data,
       }))
       setOcKey(k => k + 1)
-      try { const v2 = await analyzeV2(sym, 'swing'); setUnified(v2.data) } catch { /* non-fatal */ }
+      try {
+        const v2 = await analyzeV2(sym, 'swing')
+        const uData = v2.data
+        // STRONG_GO requires clean conditions — cap to GO when 2+ conditions fail
+        if (uData.verdict === 'STRONG_GO' && uData.verdict_presentation.fail_count >= 2) {
+          uData.verdict = 'GO'
+          uData.verdict_presentation = {
+            ...uData.verdict_presentation,
+            status_text: 'GO',
+            status_color: '#00A86B',
+          }
+        }
+        setUnified(uData)
+      } catch { /* non-fatal */ }
     } catch (e) {
       setUi(cur => ({ ...cur, loading: false, error: axiosDetail(e) }))
     }
@@ -807,13 +820,7 @@ export default function SwingTradePage() {
         </div>
       )}
 
-      {/* Step-by-step walkthrough */}
-      {unified && result && (
-        <SwingTradeWalkthrough unified={unified} result={result} />
-      )}
-
-
-      {/* Metric chart — price + MA20/50 + RSI + HV between walkthrough and methodology */}
+      {/* Metric chart — price + MA20/50 + RSI */}
       {result && result.metrics && (() => {
         const m = result.metrics as Record<string, unknown>
         const hasSeries = m.chart_series != null
@@ -871,6 +878,11 @@ export default function SwingTradePage() {
           </p>
         </div>
       </details>
+
+      {/* Step-by-step walkthrough */}
+      {unified && result && (
+        <SwingTradeWalkthrough unified={unified} result={result} />
+      )}
 
       {/* Add to Positions modal */}
       {enterOpen && result && (
