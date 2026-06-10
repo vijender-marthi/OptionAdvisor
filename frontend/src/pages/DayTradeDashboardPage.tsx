@@ -119,9 +119,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 20, color: dt.text }}>{data.ticker}</span>
             {price != null && <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 16, color: dt.text }}>${price.toFixed(2)}</span>}
-            {changePct != null && (
+            {changePct != null && price != null && (
               <span style={{ fontSize: 12, fontWeight: 600, color: changePct >= 0 ? dt.green : dt.red }}>
-                {changePct >= 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                {changePct >= 0 ? '▲' : '▼'} ${Math.abs(price * changePct / (100 + changePct)).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
               </span>
             )}
             {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}
@@ -229,9 +229,9 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 18, color: dt.text }}>{ticker}</span>
               {company && <span style={{ fontSize: 11, color: dt.muted, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{company}</span>}
               {price != null && <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: dt.text }}>${price.toFixed(2)}</span>}
-              {changePct != null && (
+              {changePct != null && price != null && (
                 <span style={{ fontSize: 11, fontWeight: 600, color: changePct >= 0 ? dt.green : dt.red }}>
-                  {changePct >= 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                  {changePct >= 0 ? '▲' : '▼'} ${Math.abs(price * changePct / (100 + changePct)).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
                 </span>
               )}
               {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}

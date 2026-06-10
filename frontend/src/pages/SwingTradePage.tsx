@@ -569,7 +569,7 @@ export default function SwingTradePage() {
                 <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${unified.price.toFixed(2)}</span>
                 {unified.change_pct != null && (
                   <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? st.green : st.red }}>
-                    {unified.change_pct >= 0 ? '▲' : '▼'} {Math.abs(unified.change_pct).toFixed(2)}%
+                    {unified.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(unified.price * unified.change_pct / (100 + unified.change_pct)).toFixed(2)} ({Math.abs(unified.change_pct).toFixed(2)}%)
                   </span>
                 )}
                 {(() => {
