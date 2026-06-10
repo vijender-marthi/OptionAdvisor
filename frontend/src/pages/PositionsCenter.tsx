@@ -861,7 +861,13 @@ function TradingPositionCard({
   onAlert: () => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const aiStatus = deriveAiStatus(pos)
+  const actionAlert = deriveActionAlert(pos, pnlData, aiAnalysis)
+  // Header badge is always driven by actionAlert so it can't contradict the action strip.
+  const aiStatus = pos.status !== 'open'
+    ? deriveAiStatus(pos)
+    : actionAlert.type === 'EXIT_NOW'  ? 'EXIT NOW'
+    : actionAlert.type === 'SELL_HALF' ? 'TAKE PROFIT'
+    : actionAlert.label
   const sourceKind = deriveEngineSource(pos)
   const guidance = deriveAiGuidance(pos)
   const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
@@ -926,15 +932,17 @@ function TradingPositionCard({
   const creditPer = creditPerContract(pos)
 
   const accentBorder =
-    aiStatus === 'HOLD' || aiStatus === 'EXIT'
-      ? 'border-l-emerald-500'
-      : aiStatus === 'WATCH' || aiStatus === 'EXIT SOON'
-        ? 'border-l-amber-400'
-        : aiStatus === 'CONFLICT'
-          ? 'border-l-fuchsia-500'
-          : aiStatus === 'MANAGE'
-            ? 'border-l-blue-400'
-            : 'border-l-slate-300 dark:border-l-slate-700'
+    aiStatus === 'EXIT NOW'
+      ? 'border-l-red-500'
+      : aiStatus === 'HOLD' || aiStatus === 'EXIT'
+        ? 'border-l-emerald-500'
+        : aiStatus === 'WATCH' || aiStatus === 'EXIT SOON' || aiStatus === 'TAKE PROFIT'
+          ? 'border-l-amber-400'
+          : aiStatus === 'CONFLICT'
+            ? 'border-l-fuchsia-500'
+            : aiStatus === 'MANAGE'
+              ? 'border-l-blue-400'
+              : 'border-l-slate-300 dark:border-l-slate-700'
 
   return (
     <article className={`w-full rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 transition-shadow border-l-[3px] ${accentBorder}`}>
@@ -1004,7 +1012,7 @@ function TradingPositionCard({
 
       {/* ── Action Strip (always visible) ── */}
       {pos.status === 'open' && (() => {
-        const alert = deriveActionAlert(pos, pnlData, aiAnalysis)
+        const alert = actionAlert
         const stripCls = alert.urgency === 'red'   ? 'border-red-500/30'
           : alert.urgency === 'amber' ? 'border-amber-500/30'
           : alert.urgency === 'blue'  ? 'border-sky-500/30'
