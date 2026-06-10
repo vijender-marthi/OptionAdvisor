@@ -1387,6 +1387,437 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<Gauge size={15} />} title="Verdict Window — All Five States & Combinations">
+                <div className="space-y-4 text-xs text-gray-400">
+                  <p className="leading-relaxed">
+                    The Day Trade engine produces one of five verdicts. Each verdict is the result of a two-stage process: a score-based raw verdict followed by a post-verdict gate that can only downgrade, never upgrade. Understanding what produces each state — and how they interact — tells you exactly what must change before an entry is valid.
+                  </p>
+
+                  <div className="space-y-2">
+                    {[
+                      {
+                        verdict: 'STRONG GO',
+                        color: 'text-emerald-300',
+                        badge: 'bg-emerald-900/40 border-emerald-700/60',
+                        dotColor: 'bg-emerald-500',
+                        action: 'Enter at breakout — maximum position size within your plan.',
+                        conditions: [
+                          'Score ≥ 8.0 AND volume spike AND OR breakout confirmed above (long) or below (short)',
+                          'Post-verdict gate did not fire: no extension, no chasing, VWAP structure aligned',
+                          'SPY and QQQ providing a supportive macro backdrop',
+                        ],
+                        note: 'This is the highest-conviction day trade signal. All three signal groups (momentum, breakout, volume) are firing together. The engine has seen this setup historically lead to clean follow-through.',
+                      },
+                      {
+                        verdict: 'GO',
+                        color: 'text-emerald-400',
+                        badge: 'bg-emerald-900/30 border-emerald-800/60',
+                        dotColor: 'bg-emerald-400',
+                        action: 'Enter — standard position sizing. Respect your stop level.',
+                        conditions: [
+                          'Score ≥ 6.0 — good edge present but not all signals at peak',
+                          'Post-verdict gate did not fire (no extension, price on correct side of VWAP)',
+                          'Soft edge confirmed (bull score clearly exceeds bear score by the margin threshold)',
+                        ],
+                        note: 'A valid trade, but entry quality is lower than STRONG GO. Volume or breakout confirmation may be partial. Use standard sizing — do not go maximum size on a GO alone.',
+                      },
+                      {
+                        verdict: 'WATCH',
+                        color: 'text-sky-400',
+                        badge: 'bg-sky-900/30 border-sky-800/60',
+                        dotColor: 'bg-sky-500',
+                        action: 'Monitor only — do NOT enter. Set alerts for OR break and VWAP reclaim.',
+                        conditions: [
+                          'Score 4.5–5.9 — setup building but not confirmed',
+                          'OR: GO downgraded because long bias + price below VWAP, or short bias + price above VWAP',
+                          'RSI overbought (> 73) capping the verdict despite a solid score',
+                        ],
+                        note: 'WATCH means the engine sees a credible setup forming but one structural condition is not yet satisfied. The most common WATCH trigger is a VWAP misalignment — the engine is bullish but price is below VWAP, or bearish but price is above VWAP. Wait for the structure to confirm before touching size.',
+                      },
+                      {
+                        verdict: 'WAIT',
+                        color: 'text-amber-400',
+                        badge: 'bg-amber-900/30 border-amber-800/60',
+                        dotColor: 'bg-amber-500',
+                        action: 'Stay flat. Read the "Flip to GO" condition shown on the session chart zone card.',
+                        conditions: [
+                          'Score < 5.0 — raw edge is insufficient',
+                          'OR: GO downgraded because chasing detected (is_chasing = True)',
+                          'OR: GO downgraded because edge_state = EXHAUSTED or LATE',
+                          'OR: Soft edge failed — bull and bear scores are too close (no clear direction)',
+                        ],
+                        note: 'WAIT has a specific, actionable "Flip to GO" condition shown on the session chart. That condition is the only thing standing between WAIT and a valid entry. Examples: "Two consecutive green candles above $185.50 with no wick recovery," or "Price pulls back to $183.20 before continuing." Read it before deciding to skip or hold.',
+                      },
+                      {
+                        verdict: 'AVOID',
+                        color: 'text-red-400',
+                        badge: 'bg-red-900/30 border-red-800/60',
+                        dotColor: 'bg-red-500',
+                        action: 'Do not trade this ticker today. Move on.',
+                        conditions: [
+                          'VIX ≥ 35 — macro volatility too high for clean intraday setups',
+                          'Score < 3.0 (NO_EDGE) — no statistical edge detected in either direction',
+                          'VIX ≥ 40 — hard veto, bull score zeroed out regardless of other signals',
+                        ],
+                        note: 'AVOID is an absolute signal. A high score does not override an AVOID verdict. The engine is not saying "wait for a better entry" — it is saying the structural conditions for a day trade do not exist today. Move to the next ticker.',
+                      },
+                    ].map(v => (
+                      <div key={v.verdict} className={`rounded-lg border px-3 py-3 space-y-2 ${v.badge}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${v.dotColor}`} />
+                          <span className={`text-[12px] font-bold tracking-wide ${v.color}`}>{v.verdict}</span>
+                        </div>
+                        <div className="rounded-lg bg-black/20 px-3 py-2 space-y-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Conditions that produce this state</p>
+                          {v.conditions.map((c, i) => (
+                            <div key={i} className="flex items-start gap-1.5 text-[11px] text-gray-400">
+                              <span className="mt-1 h-1 w-1 rounded-full bg-gray-600 shrink-0" />{c}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="rounded-lg bg-black/15 px-3 py-2 space-y-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Recommended action</p>
+                          <p className="text-[11px] text-gray-300">{v.action}</p>
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed italic">{v.note}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-violet-800/40 bg-violet-950/20 px-3 py-3 space-y-2">
+                    <p className="text-[11px] font-semibold text-violet-300">Common verdict downgrade combinations</p>
+                    <div className="space-y-1">
+                      {[
+                        { from: 'STRONG GO (raw)', arrow: '→', to: 'WAIT', reason: 'Extension gate fired — is_chasing=True or edge_state=EXHAUSTED' },
+                        { from: 'STRONG GO (raw)', arrow: '→', to: 'WAIT', reason: 'No soft edge — bull and bear scores converged' },
+                        { from: 'GO (raw)',         arrow: '→', to: 'WATCH', reason: 'Long bias + price below VWAP — wait for VWAP reclaim' },
+                        { from: 'GO (raw)',         arrow: '→', to: 'WATCH', reason: 'Short bias + price above VWAP — wait for VWAP rejection' },
+                        { from: 'WATCH',            arrow: '→', to: 'GO',   reason: 'VWAP reclaimed (long) or rejected (short) — stage resolves upward on next scan' },
+                        { from: 'WAIT',             arrow: '→', to: 'GO',   reason: '"Flip to GO" condition met — specific candle and volume pattern confirmed' },
+                      ].map((r, i) => (
+                        <div key={i} className="grid grid-cols-[130px_16px_70px_1fr] gap-x-2 items-start text-[11px]">
+                          <span className="font-mono text-gray-400">{r.from}</span>
+                          <span className="text-gray-600">{r.arrow}</span>
+                          <span className={`font-bold ${r.to === 'WAIT' ? 'text-amber-400' : r.to === 'WATCH' ? 'text-sky-400' : 'text-emerald-400'}`}>{r.to}</span>
+                          <span className="text-gray-500 leading-snug">{r.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<LineChart size={15} />} title="Session Chart — E1, E2, E3, E4 Entry Points">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p className="leading-relaxed">
+                    The intraday session chart overlays up to four labeled entry levels. Each entry is derived from a different source and represents a different level of confidence. They are displayed as colored horizontal lines with arrow markers showing direction (up arrow for long, down arrow for short). Click any row in the entry table to toggle that line on or off the chart.
+                  </p>
+
+                  <div className="space-y-2">
+                    {[
+                      {
+                        label: 'E1',
+                        color: 'text-emerald-400',
+                        dot: 'bg-emerald-400',
+                        title: 'AI Coach Entry Gate Trigger',
+                        source: 'AI Coach — entry_gate.trigger_price',
+                        desc: 'The most specific entry level. The AI Coach has identified the exact price and candle condition that constitutes a valid entry trigger. If no gate price is available, the row shows as a stub placeholder labeled "AI Coach" — this means the AI Coach identified a trigger condition but could not pin it to a specific price level yet.',
+                        pending: false,
+                        stopNote: 'Stop: entry_guidance.risk_below, or OR high/low fallback',
+                      },
+                      {
+                        label: 'E2',
+                        color: 'text-sky-400',
+                        dot: 'bg-sky-400',
+                        title: 'AI Coach Trade Entry with R/R',
+                        source: 'AI Coach — trade.entry_price',
+                        desc: 'The AI Coach recommended entry price derived from its full trade analysis. Includes a risk/reward ratio. Entries where R/R < 1.0× are shown dimmed with an orange "(low R/R)" warning — this entry is not recommended. Uses the AI Coach stop level when available.',
+                        pending: false,
+                        stopNote: 'Stop: ai_coach.trade.stop, or OR high/low fallback',
+                      },
+                      {
+                        label: 'E3',
+                        color: 'text-violet-400',
+                        dot: 'bg-violet-400',
+                        title: 'OR Breakout Level',
+                        source: 'entry_guidance.breakout_level, or OR high (long) / OR low (short)',
+                        desc: 'The opening range breakout entry. For a long, this is the OR high — price must break and hold above with volume expansion. For a short, this is the OR low. This is the classic "confirmed OR break" entry. Stop is placed at the opposite side of the opening range.',
+                        pending: false,
+                        stopNote: 'Stop: OR low (long) / OR high (short)',
+                      },
+                      {
+                        label: 'E4',
+                        color: 'text-amber-400',
+                        dot: 'bg-amber-400',
+                        title: 'VWAP Re-Test (Pending / Conditional)',
+                        source: 'entry_guidance.vwap or metrics.vwap',
+                        desc: 'Shown as a dashed line — this entry is conditional and has not yet triggered. It represents a pullback-to-VWAP entry after an initial breakout. The "Watching" label in the table time column means the price hasn\'t reached this level yet. Only valid after a confirmed initial breakout; do not use as a first entry.',
+                        pending: true,
+                        stopNote: 'Stop: entry_guidance.risk_below, or OR high/low fallback',
+                      },
+                    ].map(e => (
+                      <div key={e.label} className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${e.dot}`} />
+                          <span className={`font-bold font-mono text-[13px] ${e.color}`}>{e.label}</span>
+                          <span className="font-semibold text-gray-200 text-[11px]">{e.title}</span>
+                          {e.pending && <span className="text-[9px] font-semibold uppercase tracking-widest bg-amber-900/30 border border-amber-700/50 text-amber-400 px-1.5 py-0.5 rounded">Dashed — Pending</span>}
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-relaxed">{e.desc}</p>
+                        <p className="text-[10px] text-gray-600 font-mono">{e.stopNote}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-800/20 px-3 py-2.5 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-gray-300">Reading the entry table</p>
+                    <div className="space-y-1">
+                      {[
+                        ['Price column', 'The exact level. "—" means no valid price was computed for this entry type.'],
+                        ['Time column', '"Watching" = not yet triggered. A time stamp = the first bar that touched this level.'],
+                        ['Trigger column', 'The candle condition or rule that defines this entry.'],
+                        ['Stop column', 'The invalidation level in red — your stop loss goes here, not below an arbitrary round number.'],
+                        ['Dimmed row', 'Either a stub placeholder (E1 with no gate price) or a low R/R entry (< 1.0×). Not recommended for execution.'],
+                        ['Yellow "(WAIT)" tag', 'The overall verdict is WAIT — all entry rows are dimmed regardless of individual quality.'],
+                      ].map(([k, v]) => (
+                        <div key={k} className="flex gap-2 text-[11px]">
+                          <span className="font-semibold text-gray-300 shrink-0 min-w-[110px]">{k}:</span>
+                          <span className="text-gray-500">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<CheckCircle2 size={15} />} title="Option Entry Check — Verdict Tab Logic">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p className="leading-relaxed">
+                    The Option Entry Check panel sits below the session chart and runs three simultaneous checks before you touch any contract. It does not change the day-trade signal — it only tells you whether the execution conditions for an option trade are clean right now. The verdict strip at the bottom shows a single color-coded result that combines all three checks.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-2 py-1.5 font-semibold">Check</th>
+                          <th className="px-2 py-1.5 font-semibold">What it measures</th>
+                          <th className="px-2 py-1.5 font-semibold">Pass threshold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['Chart Trigger', 'Is the engine verdict GO (entry confirmed)?', 'chartTrigger = GO — engine authorized entry'],
+                          ['Spread Quality', 'Is the ATM option bid-ask spread acceptable for intraday?', '≤ 5% of premium = OK · 5–10% = Warn · > 10% = Bad'],
+                          ['P/C Alignment', 'Does the put/call ratio confirm the session direction?', 'Aligned = P/C matches bias · Neutral = 0.80–1.00 · Conflict = P/C opposes bias'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-2 py-2 font-semibold text-gray-200">{r[0]}</td>
+                            <td className="px-2 py-2 text-gray-400">{r[1]}</td>
+                            <td className="px-2 py-2 text-gray-500">{r[2]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-300">Four verdict tiers</p>
+                    {[
+                      {
+                        tier: 'Green — All checks passed',
+                        bg: 'bg-emerald-900/20 border-emerald-700/50',
+                        text: 'text-emerald-300',
+                        conditions: 'Chart trigger = GO · Spread ≤ 5% · P/C aligned (or not in conflict)',
+                        message: '"✓ All checks passed · Enter [CALL/PUT] at ATM $X.XX · Set stop at $X.XX before clicking confirm"',
+                        action: 'Proceed with entry at the ATM strike. Use your normal position sizing for a day trade.',
+                      },
+                      {
+                        tier: 'Amber — Marginal conditions',
+                        bg: 'bg-amber-900/20 border-amber-700/50',
+                        text: 'text-amber-300',
+                        conditions: 'Spread 5–10% (moderate) OR P/C ratio is neutral (0.80–1.00)',
+                        message: '"⚠ Spread marginal · enter 1 contract only · confirm volume before entry" or "⚠ P/C ratio neutral — no directional confirmation · 1 contract only"',
+                        action: 'Enter 1 contract maximum. Confirm volume expansion on the next candle before adding size.',
+                      },
+                      {
+                        tier: 'Red — Not ready',
+                        bg: 'bg-red-900/20 border-red-700/50',
+                        text: 'text-red-300',
+                        conditions: 'Chart trigger = WAIT · OR spread > 10% · OR P/C conflicts with session direction',
+                        message: '"✗ Not ready · [reason] · Flip to GO: [specific condition]"',
+                        action: 'Do not enter. The "Flip to GO" condition shown tells you exactly what must happen before this panel can go green.',
+                      },
+                      {
+                        tier: 'Gray — Watching',
+                        bg: 'bg-gray-800/30 border-gray-700/50',
+                        text: 'text-gray-300',
+                        conditions: 'Chart trigger = WATCHING — engine is monitoring but has not confirmed the setup yet',
+                        message: '"— Watching · No trigger yet · Wait for: [condition]"',
+                        action: 'Set an alert. The engine is watching the same condition you are. No action until it fires.',
+                      },
+                    ].map(v => (
+                      <div key={v.tier} className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${v.bg}`}>
+                        <p className={`text-[11px] font-bold ${v.text}`}>{v.tier}</p>
+                        <div className="text-[10px] text-gray-500"><span className="font-semibold text-gray-400">Conditions: </span>{v.conditions}</div>
+                        <div className="text-[10px] text-gray-600 italic">{v.message}</div>
+                        <div className="text-[11px] text-gray-300"><span className="font-semibold">Action: </span>{v.action}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-sky-800/40 bg-sky-950/20 px-3 py-2 text-[11px] text-sky-200/80">
+                    <strong className="text-sky-300">DTE selector:</strong> For day trades use 5–7 DTE. The panel shows the ATM strike for your selected expiry and flags if the chain is incomplete (closest strike more than 5% from current price). When the chain is incomplete, try a later expiry — some tickers have sparse near-term strike coverage.
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<Sigma size={15} />} title="PUT/CALL Ratio — Interpretation & Alignment">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p className="leading-relaxed">
+                    The PUT/CALL ratio measures total put volume divided by total call volume for the ticker, sourced from the prior session's options market. A ratio above 1.0 means more puts than calls were traded — negative sentiment. A ratio below 1.0 means more calls than puts — positive sentiment. This is a pre-market bias indicator, not a real-time timing signal. It tells you what the options market was feeling about this ticker yesterday, not what price will do in the next candle.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                          <th className="px-3 py-2 font-semibold">Ratio range</th>
+                          <th className="px-3 py-2 font-semibold">Reading</th>
+                          <th className="px-3 py-2 font-semibold">Color</th>
+                          <th className="px-3 py-2 font-semibold">Implication</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ['≥ 1.20', 'Bearish lean', 'Red', 'Heavy put buying — market expects downside or is hedging aggressively'],
+                          ['1.00 – 1.19', 'Mild bearish', 'Amber', 'More puts than calls, but not extreme — moderate caution on long entries'],
+                          ['0.80 – 0.99', 'Neutral', 'Gray', 'Balanced put/call activity — no directional confirmation from options market'],
+                          ['0.60 – 0.79', 'Mild bullish', 'Amber', 'More calls than puts — market tilting toward upside but not strongly'],
+                          ['< 0.60', 'Bullish lean', 'Green', 'Call buying dominant — market participants positioning for upside'],
+                        ].map((r, i) => (
+                          <tr key={i} className="border-b border-gray-800/40 text-[11px]">
+                            <td className="px-3 py-2 font-mono text-gray-200">{r[0]}</td>
+                            <td className={`px-3 py-2 font-semibold ${i <= 1 ? 'text-red-400' : i === 2 ? 'text-gray-400' : 'text-emerald-400'}`}>{r[1]}</td>
+                            <td className="px-3 py-2 text-gray-500">{r[2]}</td>
+                            <td className="px-3 py-2 text-gray-500">{r[3]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-200">Alignment with session bias</p>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">The engine compares the P/C ratio against the current day-trade bias to determine alignment. The result appears as a badge on the PUT/CALL strip at the top of the session card.</p>
+                    <div className="space-y-1.5">
+                      {[
+                        { badge: '✓ Aligned', bg: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300', rule: 'SHORT bias + ratio ≥ 1.00 — put buying confirms the downside direction' },
+                        { badge: '✓ Aligned', bg: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300', rule: 'LONG bias + ratio ≤ 0.80 — call buying confirms the upside direction' },
+                        { badge: '— Neutral', bg: 'bg-gray-800/30 border-gray-700/50 text-gray-400', rule: 'Ratio 0.80–1.00 — no clear directional confirmation from options market' },
+                        { badge: '✗ Conflicts', bg: 'bg-red-900/20 border-red-700/50 text-red-300', rule: 'SHORT bias + ratio < 0.90, or LONG bias + ratio > 1.10 — options market leans opposite' },
+                      ].map((r, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[11px]">
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold border ${r.bg}`}>{r.badge}</span>
+                          <span className="text-gray-500">{r.rule}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                    <strong className="text-amber-300">Important:</strong> A conflicting P/C ratio does not block entry — it reduces conviction. The Option Entry Check verdict drops to Red when P/C conflicts with session direction, meaning you should size down or skip the option entirely and trade the underlying equity instead. A neutral P/C ratio caps the Option Entry Check at Amber (1 contract max). The ratio is derived from prior-session data — intraday P/C updates are not available.
+                  </div>
+                </div>
+              </DocCard>
+
+              <DocCard icon={<RefreshCw size={15} />} title="Re-Entry Signals (REntry) — Types A, B, C">
+                <div className="space-y-3 text-xs text-gray-400">
+                  <p className="leading-relaxed">
+                    After the initial entry window closes (roughly 45 bars after the opening range), the engine continues scanning for re-entry opportunities in the Hold / Monitor zone. Re-entries appear as blue "RE-ENTRY" zone cards on the session chart. They are second-chance entries for traders who missed the initial breakout, or opportunities to add size to an existing position at a better price. A maximum of three re-entries are shown per session.
+                  </p>
+
+                  <div className="space-y-2">
+                    {[
+                      {
+                        type: 'A',
+                        label: 'RE-ENTRY A — VWAP Pullback',
+                        color: 'text-blue-300',
+                        badge: 'bg-blue-900/30 border-blue-700/50',
+                        trigger: 'Price extends more than 0.5% past VWAP, then pulls back to within 0.3% of VWAP.',
+                        confirmation: 'The prior candle must close in the trade direction (green for long, red for short) before the zone fires.',
+                        entry: 'First confirming candle off the VWAP test — do not enter before the candle closes.',
+                        stop: '0.5% beyond VWAP (above VWAP for shorts, below for longs).',
+                        why: 'VWAP is institutional anchoring. A pullback to VWAP after an extension often resolves in the direction of the original move — institutional desks add at VWAP, not after the move is 3% extended.',
+                      },
+                      {
+                        type: 'B',
+                        label: 'RE-ENTRY B — OR Level Retest',
+                        color: 'text-blue-300',
+                        badge: 'bg-blue-900/30 border-blue-700/50',
+                        trigger: 'Price already broke out of the opening range (confirmed), then moves away and returns to within 0.3% of OR high (long) or OR low (short).',
+                        confirmation: 'The OR level must hold as new support (long) or resistance (short). Prior candle must close in trade direction.',
+                        entry: 'Confirming candle closing above OR high (long) or below OR low (short) — the OR level is now acting as a floor or ceiling.',
+                        stop: '0.3% beyond the OR level.',
+                        why: 'Breakout-pullback-retest is one of the most reliable intraday patterns. The OR level, once broken, often becomes support or resistance. This re-entry captures that structural hold.',
+                      },
+                      {
+                        type: 'C',
+                        label: 'RE-ENTRY C — Higher Low (Long) / Lower High (Short)',
+                        color: 'text-blue-300',
+                        badge: 'bg-blue-900/30 border-blue-700/50',
+                        trigger: 'A swing low forms that is higher than the prior swing low (long), or a swing high forms that is lower than the prior swing high (short).',
+                        confirmation: 'The first bounce bar after the swing low must close in the trade direction (green for long). This is the confirmation candle.',
+                        entry: 'Enter at the close of the confirmation bar — the bar immediately after the qualifying swing low.',
+                        stop: '0.3% below the new swing low (long) or above the new swing high (short).',
+                        why: 'Higher lows are the definition of an uptrend. When the trend is making higher lows on the intraday chart, momentum is intact and the next push higher is likely. This entry captures the third leg of a wave structure.',
+                      },
+                    ].map(r => (
+                      <div key={r.type} className={`rounded-lg border px-3 py-3 space-y-2 ${r.badge}`}>
+                        <p className={`text-[12px] font-bold ${r.color}`}>{r.label}</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            { label: 'Trigger condition', value: r.trigger },
+                            { label: 'Confirmation required', value: r.confirmation },
+                            { label: 'Entry', value: r.entry },
+                            { label: 'Stop placement', value: r.stop },
+                          ].map(f => (
+                            <div key={f.label} className="rounded-lg bg-black/15 px-2.5 py-2">
+                              <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-600 mb-0.5">{f.label}</p>
+                              <p className="text-[11px] text-gray-300 leading-snug">{f.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed italic">{r.why}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2.5 space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-200">Quality gates — all three types must pass every gate</p>
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {[
+                        { gate: 'Max 3 per session', desc: 'Only the first three qualifying re-entries are shown. After that, the engine stops looking.' },
+                        { gate: '20-bar cooldown', desc: 'A new re-entry cannot fire within 20 bars of the previous one — prevents clustering.' },
+                        { gate: 'R/R ≥ 1.5×', desc: 'Distance to target must be at least 1.5× the distance to stop. Below this, the re-entry is skipped entirely.' },
+                        { gate: '0.5% price movement', desc: 'Price must have moved at least 0.5% from the last re-entry close before the next one can fire.' },
+                        { gate: 'Not invalidated', desc: 'If stop level is breached in future bars, the zone is suppressed — the engine looks ahead and hides stale zones.' },
+                        { gate: 'Trend day exception', desc: 'On a trend day, re-entries remain active even when session bar count exceeds 210. Exhaustion rules are suspended.' },
+                      ].map(g => (
+                        <div key={g.gate} className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-2.5 py-2">
+                          <p className="text-[10px] font-semibold text-gray-300">{g.gate}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{g.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                    <strong className="text-amber-300">Re-entry target logic:</strong> Re-entries target T2 first (the extended scalp target), not T1. If T2 is not available, they fall back to T1. This means re-entry R/R calculations are based on the further target — if T2 is out of reach from the re-entry price, the R/R gate will fail and the zone will not appear.
+                  </div>
+                </div>
+              </DocCard>
+
             </div>
           </section>
 

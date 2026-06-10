@@ -11,7 +11,7 @@ import type { DayTradeAlertEvent } from '../types'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
-import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
@@ -193,6 +193,7 @@ export default function DayTradePage() {
   const [ocKey, setOcKey]     = useState(0)
   const [scanCount, setScanCount] = useState(0)
   const [sessionState, setSessionState] = useState<'forming' | 'watch' | 'entry' | 'hold' | 'reentry' | 'exhausted'>('watch')
+  const [chartInterval, setChartInterval] = useState<'1m' | '5m'>('1m')
   const prevScannedTickerRef = useRef('')
 
   useEffect(() => {
@@ -1494,9 +1495,19 @@ export default function DayTradePage() {
           } // end !isExhausted
         }
 
+        const displayBars = chartInterval === '5m' ? aggregate5mBars(chartBars) : chartBars
+        const displayOrMinutes = chartInterval === '5m' ? Math.max(1, Math.ceil(orN / 5)) : orN
+
         return (
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Session Chart · OR &amp; VWAP</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Session Chart · OR &amp; VWAP</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['1m', '5m'] as const).map(iv => (
+                  <button key={iv} onClick={() => setChartInterval(iv)} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}>{iv}</button>
+                ))}
+              </div>
+            </div>
             <PCRatioStrip
               pcRatio={typeof m.put_call_ratio === 'number' ? m.put_call_ratio as number : null}
               totalOptionsVol={typeof m.total_options_vol === 'number' ? m.total_options_vol as number : null}
@@ -1519,7 +1530,7 @@ export default function DayTradePage() {
               onEntered={handleBannerEntered}
               onExpire={handleBannerExpire}
             />
-            <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orN} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
+            <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMinutes} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
         )
       })()}

@@ -4,7 +4,7 @@ import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp,
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
-import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -91,6 +91,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const orLow      = data.metrics.or_low  as number | undefined
   const orMin      = (data.metrics.or_minutes as number | undefined) ?? 15
   const sessionDate = String(data.metrics.session_date ?? '')
+  const [chartInterval, setChartInterval] = useState<'1m' | '5m'>('1m')
+  const displayBars = !isSwing && chartBars ? (chartInterval === '5m' ? aggregate5mBars(chartBars) : chartBars) : null
+  const displayOrMin = chartInterval === '5m' ? Math.max(1, Math.ceil(orMin / 5)) : orMin
   const verdict    = data.unified?.verdict ?? ''
   const statusColor = data.unified?.verdict_presentation?.status_color
   const dimEntries = (() => {
@@ -128,6 +131,13 @@ function ChartModal({ data, isDark, dt, onClose }: {
             <span style={{ fontSize: 11, color: dt.muted }}>
               {isSwing ? 'Swing · Daily Chart' : 'Intraday · 6:30 AM – 1:00 PM PT'}
             </span>
+            {!isSwing && (
+              <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                {(['1m', '5m'] as const).map(iv => (
+                  <button key={iv} onClick={() => setChartInterval(iv)} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}>{iv}</button>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: '50%', background: isDark ? '#1E2330' : '#F3F4F6', border: 'none', cursor: 'pointer', color: dt.muted, flexShrink: 0 }}>
             <X size={16} />
@@ -138,9 +148,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
         <div style={{ flex: 1, minWidth: 0, width: '100%', overflowY: 'auto', padding: '16px 20px 20px' }}>
           {isSwing ? (
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
-          ) : chartBars && chartBars.length > 0 && orHigh != null && orLow != null ? (
+          ) : displayBars && displayBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-              <DayTradeIntradayChart bars={chartBars} orHigh={orHigh} orLow={orLow} orMinutes={orMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} />
+              <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} />
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: dt.muted }}>No chart data</div>
