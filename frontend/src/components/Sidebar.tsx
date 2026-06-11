@@ -179,6 +179,7 @@ export default function Sidebar() {
       label: 'Review',
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+        { id: 'eod-journal', label: 'EOD Journal', icon: <Monitor size={18} /> },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
       ],
     },
