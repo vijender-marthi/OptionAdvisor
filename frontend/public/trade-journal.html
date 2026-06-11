@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trade Journal</title>
+<title>EOD Trade Journal</title>
 <style>
 :root{
   --bg:#080b10; --card:#161b22; --border:#21262d;
@@ -225,7 +225,7 @@ textarea{resize:vertical; min-height:54px;}
 <body class="day">
 
 <header>
-  <h1>Trade Journal</h1>
+  <h1>EOD Trade Journal</h1>
   <div class="mode-toggle">
     <button class="mode-btn" id="btnDay" data-act="mode" data-mode="day">DAY TRADE</button>
     <button class="mode-btn" id="btnSwing" data-act="mode" data-mode="swing">SWING</button>
@@ -307,6 +307,256 @@ const state = {
     swingObs:"", swingLesson:"", swingPlan:"", swingPrep:""
   }
 };
+
+/* ================= BACKEND (OptionAdvisor API) =================
+   Same-origin iframe: reads the app's bearer token from localStorage and
+   uses the same endpoints as the EOD Journal page. Without a token (file
+   opened standalone) the page stays on the bundled demo tickers. */
+const TOKEN = (() => { try { return localStorage.getItem("oa_access_token"); } catch { return null; } })();
+let liveMode = false;          // true once /my-tickers loads
+const detailState = {};        // sym -> "loading" | "done" | "error"
+
+async function apiCall(path, body){
+  const headers = TOKEN ? {Authorization:"Bearer "+TOKEN} : {};
+  let resp;
+  if(body !== undefined){
+    headers["Content-Type"] = "application/json";
+    resp = await fetch("/api"+path, {method:"POST", headers, body:JSON.stringify(body)});
+  } else {
+    resp = await fetch("/api"+path, {headers});
+  }
+  if(!resp.ok) throw new Error("HTTP "+resp.status);
+  return resp.json();
+}
+
+function makeTickerStub(px, prev){
+  return {
+    close:px||0, prevClose:prev||px||0, dayHigh:0, dayLow:0,
+    orHigh:0, orLow:0, vwap:0, orMid:0,
+    ma20:0, ma50:0, rsi5m:0, rsiDaily:50,
+    macd:"neutral", volRatio:null, vol:"", avgVol:"",
+    ivr:null, structure:"—", weeklyTrend:"neutral",
+    bias:"neutral", sectorEtf:"SPY", sectorChg:0,
+    rs:"neutral", priorDayHigh:0, priorDayLow:0, confidence:50,
+    pmHigh:0, pmLow:0, priorWeekHigh:0, priorWeekLow:0,
+    wk52High:0, wk52Low:0, earningsDays:null
+  };
+}
+
+/** Fill anything the backend didn't provide with close-based estimates. */
+function finalizeTicker(t){
+  const px = t.close>0 ? t.close : 1;
+  if(!(t.prevClose>0)) t.prevClose = px;
+  if(!(t.orHigh>0)) t.orHigh = px*1.008;
+  if(!(t.orLow>0))  t.orLow  = px*0.992;
+  t.orMid = (t.orHigh+t.orLow)/2;
+  if(!(t.vwap>0)) t.vwap = px;
+  if(!(t.ma20>0)) t.ma20 = px;
+  if(!(t.ma50>0)) t.ma50 = px*0.97;
+  if(!(t.dayHigh>0)) t.dayHigh = Math.max(px, t.orHigh);
+  if(!(t.dayLow>0))  t.dayLow  = Math.min(px, t.orLow);
+  if(!(t.pmHigh>0))  t.pmHigh  = px*1.005;
+  if(!(t.pmLow>0))   t.pmLow   = px*0.995;
+  if(!(t.priorDayHigh>0)) t.priorDayHigh = Math.max(t.prevClose, px)*1.01;
+  if(!(t.priorDayLow>0))  t.priorDayLow  = Math.min(t.prevClose, px)*0.99;
+  if(!(t.priorWeekHigh>0)) t.priorWeekHigh = t.priorDayHigh*1.015;
+  if(!(t.priorWeekLow>0))  t.priorWeekLow  = t.priorDayLow*0.985;
+  if(!(t.wk52High>0)) t.wk52High = px*1.4;
+  if(!(t.wk52Low>0))  t.wk52Low  = px*0.6;
+  if(t.ivr==null) t.ivr = 40;
+  if(t.volRatio==null) t.volRatio = 1.0;
+  if(!(t.rsi5m>0)) t.rsi5m = t.rsiDaily;
+  const sec = SECTORS.find(s=>s.etf===t.sectorEtf);
+  t.sectorChg = sec ? sec.chg : 0;
+  return t;
+}
+
+/* Derivations mirror EODJournalPage.tsx */
+function deriveStructure(close, ma20, ma50){
+  const abMa20 = ma20 ? close > ma20 : false;
+  const abMa50 = ma50 ? close > ma50 : false;
+  if(abMa20 && abMa50)   return "HH/HL";
+  if(!abMa20 && !abMa50) return "LL/LH";
+  if(abMa50 && !abMa20)  return "HL/LH";
+  return "Recovery";
+}
+function deriveWeeklyTrend(m){
+  if(m > 3)  return "bullish";
+  if(m > 1)  return "neutral-bullish";
+  if(m < -3) return "bearish";
+  if(m < -1) return "neutral-bearish";
+  return "neutral";
+}
+function deriveMacd(m, close, ma20){
+  const below = ma20 ? close < ma20 : false;
+  if(m < -2 && below)  return "bearish crossover";
+  if(m < 0  && below)  return "bearish histogram";
+  if(m > 2  && !below) return "bullish crossover";
+  if(m > 0  && !below) return "bullish histogram";
+  return "neutral";
+}
+function sectorToEtf(sector){
+  const s = (sector||"").toLowerCase();
+  if(s.includes("semi"))     return "SOXX";
+  if(s.includes("tech"))     return "XLK";
+  if(s.includes("financ"))   return "XLF";
+  if(s.includes("energy"))   return "XLE";
+  if(s.includes("health"))   return "XLV";
+  if(s.includes("consumer")) return "XLY";
+  if(s.includes("industri")) return "XLI";
+  return "SPY";
+}
+
+function stubFromMyTicker(mt){
+  const px = mt.last_price || 0;
+  const prev = px && mt.price_change!=null ? px - mt.price_change : px;
+  const stub = makeTickerStub(px, prev);
+  stub.earningsDays = mt.next_earnings_days!=null ? mt.next_earnings_days : null;
+  return finalizeTicker(stub);
+}
+
+async function loadWatchlist(){
+  const r = await apiCall("/my-tickers");
+  const list = ((r.data||{}).tickers||[]).filter(t=>t.is_active!==false);
+  if(!list.length) return false;
+  Object.keys(tickers).forEach(k=>delete tickers[k]);
+  list.forEach(mt=>{ tickers[mt.symbol] = stubFromMyTicker(mt); });
+  state.ticker = list[0].symbol;
+  trades = [];   // demo trades belong to demo tickers
+  alerts = [];
+  liveMode = true;
+  return true;
+}
+
+async function loadMarketPulse(){
+  try{
+    const r = await apiCall("/market-position");
+    const d = r.data; if(!d) return;
+    pulse = [
+      {sym:"SPY", chg:d.spy_change_pct!=null?d.spy_change_pct:0, note:"S&P 500 — broad market"},
+      {sym:"QQQ", chg:d.qqq_change_pct!=null?d.qqq_change_pct:0, note:"Nasdaq 100 — growth/tech"},
+      {sym:"VIX", chg:d.vix!=null?d.vix:0, isLevel:true, note:d.vix_label||"Volatility index"}
+    ];
+    renderSidebar();
+  }catch(e){ /* keep hardcoded pulse */ }
+}
+
+async function loadTickerDetails(sym){
+  if(!liveMode || detailState[sym]==="loading" || detailState[sym]==="done") return;
+  detailState[sym] = "loading";
+  if(state.ticker===sym) renderMain();
+  const enc = encodeURIComponent(sym);
+  const [tg, dy, sw, fd] = await Promise.allSettled([
+    apiCall("/stock-targets?ticker="+enc),
+    apiCall("/day-trade", {ticker:sym}),
+    apiCall("/swing-trade", {ticker:sym}),
+    apiCall("/signal-feed?search="+enc+"&page_size=5")
+  ]);
+  const t = tickers[sym];
+  if(!t) return;
+  const targets = tg.status==="fulfilled" ? (tg.value.data||null) : null;
+  const day     = dy.status==="fulfilled" ? dy.value : null;
+  const swing   = sw.status==="fulfilled" ? sw.value : null;
+  const rows    = fd.status==="fulfilled" ? (((fd.value||{}).data||{}).rows||[]) : [];
+  const feedRow = rows.find(r=>(r.ticker||"").toUpperCase()===sym.toUpperCase()) || null;
+
+  if(!targets && !day && !swing && !feedRow){
+    detailState[sym] = "error";
+    if(state.ticker===sym) renderAll();
+    return;
+  }
+
+  if(targets && targets.current_price>0){
+    if(!(t.prevClose>0)) t.prevClose = targets.current_price;
+    t.close = targets.current_price;
+  }
+  if(targets){
+    if(targets.ma20>0) t.ma20 = targets.ma20;
+    if(targets.ma50>0) t.ma50 = targets.ma50;
+    if(targets.rsi!=null) t.rsiDaily = Math.round(targets.rsi);
+  }
+  const mom = targets && targets.mom_5d!=null ? targets.mom_5d : 0;
+
+  const eg = (day && day.entry_guidance) || null;
+  if(eg){
+    if(eg.vwap>0) t.vwap = eg.vwap;
+    if(eg.opening_range_high>0) t.orHigh = eg.opening_range_high;
+    if(eg.opening_range_low>0)  t.orLow  = eg.opening_range_low;
+  }
+  const swEg = (swing && swing.entry_guidance) || null;
+  if(!(t.vwap>0) && swEg && swEg.vwap>0) t.vwap = swEg.vwap;
+
+  // prior day / prior week from swing daily chart series (closes)
+  const series = swing && swing.metrics && swing.metrics.chart_series && swing.metrics.chart_series.points;
+  if(Array.isArray(series) && series.length>1){
+    const y = series[series.length-2];
+    if(y && y.c>0){ t.priorDayHigh = y.c*1.01; t.priorDayLow = y.c*0.99; }
+    const prevWeek = series.slice(-6,-1).map(p=>p.c).filter(v=>v>0);
+    if(prevWeek.length){
+      t.priorWeekHigh = Math.max.apply(null, prevWeek)*1.01;
+      t.priorWeekLow  = Math.min.apply(null, prevWeek)*0.99;
+    }
+  }
+
+  if(feedRow && feedRow.metrics){
+    const m = feedRow.metrics;
+    if(m.iv_rank!=null)      t.ivr = Math.round(m.iv_rank);
+    if(m.volume_ratio!=null) t.volRatio = m.volume_ratio;
+    if(m.relative_strength!=null)
+      t.rs = m.relative_strength>60 ? "strong" : m.relative_strength>40 ? "neutral" : "weak";
+  }
+  if(feedRow && feedRow.sector) t.sectorEtf = sectorToEtf(feedRow.sector);
+
+  t.structure   = deriveStructure(t.close, t.ma20, t.ma50);
+  t.weeklyTrend = deriveWeeklyTrend(mom);
+  t.macd        = deriveMacd(mom, t.close, t.ma20);
+  const rawBias = (swing && swing.bias) || (day && day.bias) || null;
+  t.bias = rawBias==="long" ? "bull" : rawBias==="short" ? "bear" : "neutral";
+  if(swing && swing.confidence!=null) t.confidence = Math.round(swing.confidence);
+
+  finalizeTicker(t);
+  t.fetchedAt = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  detailState[sym] = "done";
+  if(state.ticker===sym) renderAll(); else renderSidebar();
+}
+
+async function addTickerLive(sym){
+  try{
+    await apiCall("/my-tickers", {symbol:sym, trade_types:["swing"]});
+  }catch(e){ /* duplicate or transient — verify via list below */ }
+  try{
+    const r = await apiCall("/my-tickers");
+    const mt = ((r.data||{}).tickers||[]).find(t=>t.symbol===sym);
+    if(!mt){ alert("Could not add "+sym+" — ticker not recognized."); return; }
+    if(!tickers[sym]) tickers[sym] = stubFromMyTicker(mt);
+    state.ticker = sym;
+    renderAll();
+    loadTickerDetails(sym);
+  }catch(e){
+    alert("Could not add "+sym+": "+e.message);
+  }
+}
+
+function liveBadge(){
+  if(!liveMode) return `<span class="pill pill-yellow" title="Open inside OptionAdvisor for live data">DEMO DATA</span>`;
+  const st = detailState[state.ticker];
+  if(st==="loading") return `<span class="pill pill-blue">FETCHING…</span>`;
+  if(st==="error")   return `<span class="pill pill-red" title="Backend fetch failed — showing estimates">DATA UNAVAILABLE</span>`;
+  if(st==="done"){
+    const t = T();
+    return `<span class="pill pill-green">LIVE · ${t.fetchedAt||""}</span>`;
+  }
+  return "";
+}
+
+async function boot(){
+  if(!TOKEN) return;
+  try{
+    const ok = await loadWatchlist();
+    if(ok){ renderAll(); loadTickerDetails(state.ticker); }
+  }catch(e){ /* backend unreachable — stay on demo data */ }
+  loadMarketPulse();
+}
 
 /* ================= CHECKLIST DEFINITIONS ================= */
 const CHECKLISTS = {
@@ -465,7 +715,7 @@ const pctCls = n => n>0?"pos":(n<0?"neg":"neu");
 const sign = n => (n>0?"+":"")+fmt(n);
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-function chgOf(t){ const d=t.close-t.prevClose; return {d, p:d/t.prevClose*100}; }
+function chgOf(t){ const d=t.close-t.prevClose; return {d, p:t.prevClose>0 ? d/t.prevClose*100 : 0}; }
 function tradePnl(tr){ return (tr.dir==="SHORT" ? tr.entry-tr.exit : tr.exit-tr.entry)*tr.size; }
 function sessionPnl(){ return trades.reduce((a,t)=>a+tradePnl(t),0); }
 function winRate(){ if(!trades.length) return 0; return trades.filter(t=>tradePnl(t)>0).length/trades.length*100; }
@@ -539,7 +789,7 @@ function renderSidebar(){
 
   const pulseHTML = pulse.map((p,i)=>`
     <div class="pulse-row" data-act="pulse" data-idx="${i}" title="Click to edit">
-      <div class="pulse-top"><span>${p.sym}</span><span class="${pctCls(p.chg)}">${sign(p.chg)}%</span></div>
+      <div class="pulse-top"><span>${p.sym}</span><span class="${p.isLevel?"neu":pctCls(p.chg)}">${p.isLevel ? fmt(p.chg,1) : sign(p.chg)+"%"}</span></div>
       <div class="pulse-note">${esc(p.note)}</div>
     </div>`).join("");
 
@@ -634,6 +884,7 @@ function dayEodTab(){
       <span class="hero-tick">${state.ticker}</span>
       <span class="hero-px">${fmt(t.close)}</span>
       <span class="hero-chg ${pctCls(c.d)}">${sign(c.d)} (${sign(c.p)}%)</span>
+      ${liveBadge()}
     </div>
     <div class="stat-grid">
       <div class="stat"><div class="lbl">OR High</div><div class="val">${fmt(t.orHigh)}</div></div>
@@ -643,7 +894,7 @@ function dayEodTab(){
       <div class="stat"><div class="lbl">Day High</div><div class="val">${fmt(t.dayHigh)}</div></div>
       <div class="stat"><div class="lbl">Day Low</div><div class="val">${fmt(t.dayLow)}</div></div>
       <div class="stat"><div class="lbl">RSI (5m)</div><div class="val ${t.rsi5m<40?"neg":t.rsi5m>60?"pos":"neu"}">${t.rsi5m}</div><div class="sub">${rsiZone(t.rsi5m)}</div></div>
-      <div class="stat"><div class="lbl">Volume Ratio</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol} vs ${t.avgVol} avg</div></div>
+      <div class="stat"><div class="lbl">Volume Ratio</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol ? t.vol+" vs "+t.avgVol+" avg" : "vs average"}</div></div>
     </div>
   </div>
   <div class="card"><h3>VWAP vs OR Mid</h3>${orVisualHTML(t)}</div>
@@ -945,13 +1196,14 @@ function swingEodTab(){
       <span class="hero-tick">${state.ticker}</span>
       <span class="hero-px">${fmt(t.close)}</span>
       <span class="hero-chg ${pctCls(c.d)}">${sign(c.d)} (${sign(c.p)}%)</span>
+      ${liveBadge()}
     </div>
     <div class="stat-grid">
       <div class="stat"><div class="lbl">MA20</div><div class="val ${ma20Above?"pos":"neg"}">${fmt(t.ma20)}</div><div class="sub ${ma20Above?"pos":"neg"}">close ${ma20Above?"above":"below"}</div></div>
       <div class="stat"><div class="lbl">MA50</div><div class="val ${ma50Above?"pos":"neg"}">${fmt(t.ma50)}</div><div class="sub ${ma50Above?"pos":"neg"}">close ${ma50Above?"above":"below"}</div></div>
       <div class="stat"><div class="lbl">Daily RSI</div><div class="val ${t.rsiDaily<40?"neg":t.rsiDaily>60?"pos":"neu"}">${t.rsiDaily}</div><div class="sub">${rsiZone(t.rsiDaily)}</div></div>
       <div class="stat"><div class="lbl">MACD</div><div class="val ${/bear/.test(t.macd)?"neg":"pos"}" style="font-size:13px">${t.macd}</div></div>
-      <div class="stat"><div class="lbl">Vol vs 30d Avg</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol} vs ${t.avgVol}</div></div>
+      <div class="stat"><div class="lbl">Vol vs 30d Avg</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol ? t.vol+" vs "+t.avgVol : "vs 30-day average"}</div></div>
       <div class="stat"><div class="lbl">Prior Day H / L</div><div class="val" style="font-size:13px">${fmt(t.priorDayHigh)} / ${fmt(t.priorDayLow)}</div></div>
       <div class="stat"><div class="lbl">Weekly Trend</div><div class="val ${/bear/.test(t.weeklyTrend)?"neg":/bull/.test(t.weeklyTrend)?"pos":"neu"}" style="font-size:13px">${t.weeklyTrend}</div></div>
       <div class="stat"><div class="lbl">IVR</div><div class="val neu">${t.ivr}</div><div class="sub" style="color:var(--purple);font-weight:700">${ivrLabel(t.ivr)}</div></div>
@@ -1250,7 +1502,7 @@ document.addEventListener("click", e=>{
 
   if(act==="mode"){ state.mode = el.dataset.mode; renderAll(); }
   else if(act==="tab"){ state.tab[state.mode] = el.dataset.tab; renderTabs(); renderMain(); }
-  else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); }
+  else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); loadTickerDetails(state.ticker); }
   else if(act==="check"){
     const list = el.dataset.list, idx = el.dataset.idx;
     state.checks[list] = state.checks[list]||{};
@@ -1262,23 +1514,12 @@ document.addEventListener("click", e=>{
   else if(act==="addTicker"){
     const sym = (prompt("Ticker symbol:")||"").trim().toUpperCase();
     if(!sym) return;
-    const px = parseFloat(prompt("Closing price:"));
-    if(!isFinite(px) || px<=0) return alert("Invalid price.");
-    if(!tickers[sym]){
-      tickers[sym] = {
-        close:px, prevClose:px, dayHigh:px*1.01, dayLow:px*0.99,
-        orHigh:px*1.008, orLow:px*0.992, vwap:px, orMid:px,
-        ma20:px, ma50:px*0.97, rsi5m:50, rsiDaily:50,
-        macd:"flat histogram", volRatio:1.0, vol:"—", avgVol:"—",
-        ivr:40, structure:"HH/HL", weeklyTrend:"neutral",
-        bias:"neutral", sectorEtf:"SPY", sectorChg:-0.85,
-        rs:"neutral", priorDayHigh:px*1.015, priorDayLow:px*0.985, confidence:50,
-        pmHigh:px*1.005, pmLow:px*0.995, priorWeekHigh:px*1.03, priorWeekLow:px*0.97,
-        wk52High:px*1.4, wk52Low:px*0.6, earningsDays:null
-      };
-    } else tickers[sym].close = px;
-    state.ticker = sym;
-    renderAll();
+    if(tickers[sym]){ state.ticker = sym; renderAll(); loadTickerDetails(sym); return; }
+    if(liveMode){
+      addTickerLive(sym);   // adds to My Tickers and pulls price/details from the backend
+    } else {
+      alert("Backend not connected — open this page inside OptionAdvisor to add live tickers.");
+    }
   }
   else if(act==="pulse"){
     const i = +el.dataset.idx, p = pulse[i];
@@ -1328,6 +1569,7 @@ function tick(){
 setInterval(tick,1000); tick();
 
 renderAll();
+boot();
 </script>
 </body>
 </html>
