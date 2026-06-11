@@ -79,6 +79,8 @@ export function locationToPage(pathname: string): Page {
       return 'option-chain'
     case 'eod-journal':
       return 'eod-journal'
+    case 'journal-tool':
+      return 'journal-tool'
     default:
       return 'trade-command-center'
   }
@@ -156,6 +158,8 @@ export function pageToLocation(p: Page): string {
       return '/option-chain'
     case 'eod-journal':
       return '/eod-journal'
+    case 'journal-tool':
+      return '/journal-tool'
     default:
       return '/trade-command-center'
   }
