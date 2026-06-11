@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Journal</title>
+<style>
+:root{
+  --bg:#080b10; --card:#161b22; --border:#21262d;
+  --text:#e6edf3; --muted:#8b949e;
+  --green:#3fb950; --red:#f85149; --yellow:#d29922;
+  --blue:#58a6ff; --purple:#bc8cff;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+body.day{--accent:#58a6ff; --accent-dim:rgba(88,166,255,.12);}
+body.swing{--accent:#bc8cff; --accent-dim:rgba(188,140,255,.12);}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}
+button{font:inherit; cursor:pointer;}
+input,select,textarea{font:inherit; background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px;}
+input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent);}
+.num{font-family:var(--mono);}
+
+/* ---------- Header ---------- */
+header{position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:16px; padding:10px 20px; background:rgba(8,11,16,.95); backdrop-filter:blur(6px); border-bottom:1px solid var(--border);}
+header h1{font-size:17px; font-weight:700; letter-spacing:.3px; white-space:nowrap;}
+.mode-toggle{display:flex; gap:6px;}
+.mode-btn{padding:5px 16px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.6px; transition:all .2s;}
+.mode-btn.active-day{border-color:var(--blue); color:var(--blue); background:rgba(88,166,255,.1);}
+.mode-btn.active-swing{border-color:var(--purple); color:var(--purple); background:rgba(188,140,255,.1);}
+#clock{margin-left:auto; font-family:var(--mono); font-size:14px; color:var(--muted);}
+.pnl-badge{font-family:var(--mono); font-size:13px; font-weight:700; padding:4px 12px; border-radius:999px; border:1px solid;}
+.pnl-pos{color:var(--green); border-color:rgba(63,185,80,.4); background:rgba(63,185,80,.08);}
+.pnl-neg{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.08);}
+#exportBtn{padding:5px 14px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12px;}
+#exportBtn:hover{border-color:var(--accent);}
+
+/* ---------- Layout ---------- */
+.layout{display:flex; align-items:flex-start;}
+aside{width:280px; flex:0 0 280px; padding:14px; border-right:1px solid var(--border); position:sticky; top:53px; height:calc(100vh - 53px); overflow-y:auto;}
+main{flex:1; min-width:0; padding:16px 20px 60px;}
+
+/* ---------- Sidebar ---------- */
+.side-h{font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin:18px 0 8px;}
+.side-h:first-child{margin-top:0;}
+.wl-card{background:var(--card); border:1px solid var(--border); border-radius:8px; padding:9px 11px; margin-bottom:7px; cursor:pointer; transition:border-color .15s;}
+.wl-card:hover{border-color:var(--accent);}
+.wl-card.active{border-color:var(--accent); background:var(--accent-dim);}
+.wl-top{display:flex; align-items:center; gap:7px;}
+.bias-dot{width:8px; height:8px; border-radius:50%; flex:0 0 8px;}
+.wl-tick{font-family:var(--mono); font-weight:700; font-size:14px;}
+.wl-px{margin-left:auto; font-family:var(--mono); font-size:13px;}
+.wl-sub{display:flex; justify-content:space-between; margin-top:3px; font-size:11.5px; color:var(--muted);}
+.wl-sub .num{font-size:11.5px;}
+.add-btn{width:100%; padding:7px; border-radius:8px; border:1px dashed var(--border); background:transparent; color:var(--muted); font-size:12px;}
+.add-btn:hover{border-color:var(--accent); color:var(--accent);}
+.pulse-row{background:var(--card); border:1px solid var(--border); border-radius:8px; padding:8px 11px; margin-bottom:6px; cursor:pointer;}
+.pulse-row:hover{border-color:var(--accent);}
+.pulse-top{display:flex; justify-content:space-between; font-family:var(--mono); font-size:13px; font-weight:600;}
+.pulse-note{font-size:11.5px; color:var(--muted); margin-top:2px;}
+.side-stat{display:flex; justify-content:space-between; font-size:12.5px; padding:3px 0;}
+.side-stat .num{font-weight:600;}
+.side-box{background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+
+/* ---------- Tabs ---------- */
+#tabs{display:flex; gap:4px; margin-bottom:18px; border-bottom:1px solid var(--border); flex-wrap:wrap;}
+.tab-btn{padding:8px 16px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); font-size:13px; font-weight:600;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--accent); border-bottom-color:var(--accent);}
+
+/* ---------- Cards / common ---------- */
+.card{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px;}
+.card h3{font-size:13px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--muted); margin-bottom:12px;}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+.grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+@media(max-width:1100px){.grid2,.grid3{grid-template-columns:1fr;}}
+.pos{color:var(--green);} .neg{color:var(--red);} .neu{color:var(--yellow);}
+.pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.5px;}
+.pill-green{background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.35);}
+.pill-red{background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.35);}
+.pill-yellow{background:rgba(210,153,34,.15); color:var(--yellow); border:1px solid rgba(210,153,34,.35);}
+.pill-blue{background:rgba(88,166,255,.15); color:var(--blue); border:1px solid rgba(88,166,255,.35);}
+.pill-purple{background:rgba(188,140,255,.15); color:var(--purple); border:1px solid rgba(188,140,255,.35);}
+
+/* hero */
+.hero-head{display:flex; align-items:baseline; gap:14px; margin-bottom:14px; flex-wrap:wrap;}
+.hero-tick{font-family:var(--mono); font-size:26px; font-weight:800;}
+.hero-px{font-family:var(--mono); font-size:24px; font-weight:600;}
+.hero-chg{font-family:var(--mono); font-size:15px; font-weight:600;}
+.stat-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px;}
+.stat{background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:8px 11px;}
+.stat .lbl{font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted);}
+.stat .val{font-family:var(--mono); font-size:15px; font-weight:600; margin-top:2px;}
+.stat .sub{font-size:11px; color:var(--muted); margin-top:1px;}
+
+/* checklist */
+.check-item{display:flex; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:7px; cursor:pointer; transition:background .2s,border-color .2s; background:#0d1117;}
+.check-item:hover{border-color:var(--accent);}
+.check-item.done{background:rgba(63,185,80,.1); border-color:rgba(63,185,80,.35);}
+.check-item.done .ck-text{text-decoration:line-through; color:var(--muted);}
+.ck-box{width:18px; height:18px; flex:0 0 18px; border:1.5px solid var(--muted); border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--green); margin-top:1px;}
+.check-item.done .ck-box{border-color:var(--green); background:rgba(63,185,80,.2);}
+.ck-text{font-size:13px; font-weight:500;}
+.ck-note{font-size:11.5px; color:var(--muted); margin-top:2px;}
+.progress{height:8px; background:#0d1117; border:1px solid var(--border); border-radius:999px; overflow:hidden; margin-top:12px;}
+.progress > div{height:100%; border-radius:999px; transition:width .45s ease, background .45s;}
+.prog-lbl{font-size:11.5px; color:var(--muted); margin-top:5px; font-family:var(--mono);}
+
+/* OR visual */
+.or-visual{display:flex; gap:20px; align-items:stretch; flex-wrap:wrap;}
+.or-bar-wrap{position:relative; width:170px; flex:0 0 170px; height:240px; margin:10px 0 10px 6px;}
+.or-track{position:absolute; left:60px; top:0; bottom:0; width:14px; background:#0d1117; border:1px solid var(--border); border-radius:7px;}
+.or-zone{position:absolute; left:60px; width:14px; border-radius:4px;}
+.or-mark{position:absolute; left:0; right:0; height:0;}
+.or-mark .line{position:absolute; left:52px; width:30px; border-top:2px solid; top:0;}
+.or-mark .tag{position:absolute; left:88px; top:-9px; font-family:var(--mono); font-size:11px; white-space:nowrap;}
+.or-mark .tagl{position:absolute; right:118px; top:-9px; font-family:var(--mono); font-size:11px; white-space:nowrap; text-align:right;}
+
+/* key levels */
+.lvl-row{display:flex; align-items:center; gap:12px; padding:7px 12px; border-bottom:1px solid var(--border); font-size:13px;}
+.lvl-row:last-child{border-bottom:none;}
+.lvl-row.is-close{background:var(--accent-dim); border-radius:6px;}
+.lvl-px{font-family:var(--mono); font-weight:700; width:90px;}
+.lvl-name{font-weight:600; width:160px;}
+.lvl-note{color:var(--muted); font-size:12px; flex:1;}
+
+/* drill / boxes */
+.drill{border:1px solid rgba(210,153,34,.45); background:rgba(210,153,34,.07); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+.drill h3{color:var(--yellow);}
+.danger-box{border:1px solid rgba(248,81,73,.45); background:rgba(248,81,73,.06); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+.danger-box h3{color:var(--red);}
+.ok-box{border:1px solid rgba(63,185,80,.45); background:rgba(63,185,80,.06); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+.ok-box h3{color:var(--green);}
+.drill-step{display:flex; gap:10px; padding:5px 0; font-size:13px;}
+.drill-num{font-family:var(--mono); font-weight:700; color:var(--yellow); flex:0 0 22px;}
+
+/* scenarios */
+.scen-card{border-radius:10px; padding:16px; border:1px solid var(--border); background:var(--card); display:flex; flex-direction:column;}
+.scen-bull{border-top:3px solid var(--green);}
+.scen-bear{border-top:3px solid var(--red);}
+.scen-flat{border-top:3px solid var(--yellow);}
+.scen-title{font-size:14px; font-weight:800; letter-spacing:.5px; margin-bottom:2px;}
+.scen-sub{font-size:11.5px; color:var(--muted); margin-bottom:10px;}
+.scen-row{display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px dashed var(--border); font-size:12.5px;}
+.scen-row:last-of-type{border-bottom:none;}
+.scen-row .k{color:var(--muted);}
+.scen-row .v{font-family:var(--mono); font-weight:600; text-align:right;}
+.action-box{margin-top:auto; padding:9px 11px; border-radius:8px; font-size:12px; margin-top:12px;}
+.action-bull{background:rgba(63,185,80,.08); border:1px solid rgba(63,185,80,.3);}
+.action-bear{background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.3);}
+.action-flat{background:rgba(210,153,34,.08); border:1px solid rgba(210,153,34,.3);}
+
+/* decision tree */
+.tree-step{display:flex; gap:12px; align-items:flex-start;}
+.tree-node{flex:1; background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:9px 13px; font-size:12.5px;}
+.tree-node b{color:var(--accent);}
+.tree-arrow{text-align:center; color:var(--muted); font-size:14px; padding:2px 0 2px 30px;}
+.tree-n{flex:0 0 26px; height:26px; border-radius:50%; background:var(--accent-dim); border:1px solid var(--accent); color:var(--accent); font-family:var(--mono); font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; margin-top:4px;}
+
+/* trade table */
+table{width:100%; border-collapse:collapse; font-size:12.5px;}
+th{text-align:left; font-size:10.5px; letter-spacing:.7px; text-transform:uppercase; color:var(--muted); padding:7px 9px; border-bottom:1px solid var(--border);}
+td{padding:8px 9px; border-bottom:1px solid var(--border); vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+.form-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;}
+.form-grid label{display:block; font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin-bottom:3px;}
+.form-grid input,.form-grid select{width:100%;}
+.btn-accent{padding:8px 18px; border-radius:6px; border:1px solid var(--accent); background:var(--accent-dim); color:var(--accent); font-weight:700; font-size:13px;}
+.btn-accent:hover{filter:brightness(1.2);}
+
+/* rules */
+.rule-cat{margin-bottom:18px;}
+.rule-cat-h{display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:700; letter-spacing:.7px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
+.score-big{font-family:var(--mono); font-size:34px; font-weight:800;}
+.truth{border-left:3px solid var(--border); padding:8px 14px; margin-bottom:12px;}
+.truth .lie{font-size:13px; font-style:italic; color:var(--yellow);}
+.truth .fact{font-size:12.5px; color:var(--muted); margin-top:4px;}
+.truth .fact b{color:var(--text);}
+
+/* matrix */
+.matrix{display:grid; grid-template-columns:90px repeat(4,1fr); gap:6px; font-size:11.5px;}
+.mx-h{font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-size:10.5px; display:flex; align-items:center; justify-content:center; text-align:center;}
+.mx-row-h{font-weight:700; display:flex; align-items:center; font-size:11px; color:var(--muted); text-transform:uppercase;}
+.mx-cell{border-radius:8px; padding:8px 9px; border:1px solid;}
+.mx-best{background:rgba(63,185,80,.1); border-color:rgba(63,185,80,.4);}
+.mx-best .mx-lbl{color:var(--green);}
+.mx-ok{background:rgba(210,153,34,.08); border-color:rgba(210,153,34,.35);}
+.mx-ok .mx-lbl{color:var(--yellow);}
+.mx-risky{background:rgba(248,81,73,.06); border-color:rgba(210,153,34,.45);}
+.mx-risky .mx-lbl{color:var(--yellow);}
+.mx-avoid{background:rgba(248,81,73,.1); border-color:rgba(248,81,73,.4);}
+.mx-avoid .mx-lbl{color:var(--red);}
+.mx-lbl{font-weight:800; letter-spacing:.5px; font-size:11px;}
+.mx-why{color:var(--muted); margin-top:2px; font-size:11px;}
+
+/* sectors */
+.sector-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
+@media(max-width:1100px){.sector-grid{grid-template-columns:repeat(2,1fr);}}
+.sector-card{background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:9px 11px;}
+.sector-card.hot{border-color:var(--accent); background:var(--accent-dim);}
+.sector-top{display:flex; justify-content:space-between; font-family:var(--mono); font-weight:700; font-size:13px;}
+.sector-sub{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:3px;}
+
+/* notes */
+.note-field{margin-bottom:10px;}
+.note-field label{display:block; font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin-bottom:4px;}
+.note-field input,.note-field textarea,.note-field select{width:100%;}
+textarea{resize:vertical; min-height:54px;}
+
+/* confidence */
+.conf-meter{height:14px; background:#0d1117; border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+.conf-meter>div{height:100%; transition:width .45s ease;}
+.conf-zones{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; font-size:12px;}
+.conf-zone{border-radius:8px; padding:8px 10px; border:1px solid var(--border); background:#0d1117;}
+.conf-zone.active-zone{border-color:var(--accent); background:var(--accent-dim);}
+
+.muted{color:var(--muted);}
+.small{font-size:12px;}
+.mb0{margin-bottom:0;}
+.flex-between{display:flex; justify-content:space-between; align-items:center;}
+.del-x{background:none; border:none; color:var(--muted); font-size:14px; padding:2px 6px;}
+.del-x:hover{color:var(--red);}
+</style>
+</head>
+<body class="day">
+
+<header>
+  <h1>Trade Journal</h1>
+  <div class="mode-toggle">
+    <button class="mode-btn" id="btnDay" data-act="mode" data-mode="day">DAY TRADE</button>
+    <button class="mode-btn" id="btnSwing" data-act="mode" data-mode="swing">SWING</button>
+  </div>
+  <div id="clock" class="num"></div>
+  <div class="pnl-badge" id="pnlBadge"></div>
+  <button id="exportBtn" data-act="export">&#11015; Export</button>
+</header>
+
+<div class="layout">
+  <aside id="sidebar"></aside>
+  <main>
+    <nav id="tabs"></nav>
+    <div id="content"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ================= DATA ================= */
+const tickers = {
+  ARM:{ close:305.00, prevClose:322.00, dayHigh:327.50, dayLow:298.50,
+    orHigh:327.00, orLow:316.00, vwap:318.40, orMid:321.50,
+    ma20:318.00, ma50:295.00, rsi5m:32, rsiDaily:38,
+    macd:"bearish crossover", volRatio:1.50, vol:"2.1M", avgVol:"1.4M",
+    ivr:52, structure:"LL/LH", weeklyTrend:"bearish",
+    bias:"bear", sectorEtf:"SOXX", sectorChg:-2.1,
+    rs:"weak", priorDayHigh:335.00, priorDayLow:310.00, confidence:68,
+    pmHigh:326.50, pmLow:318.00, priorWeekHigh:345.00, priorWeekLow:312.00,
+    wk52High:360.00, wk52Low:210.00, earningsDays:38 },
+  QQQ:{ close:693.71, prevClose:701.50, dayHigh:712.43, dayLow:690.64,
+    orHigh:707.00, orLow:695.00, vwap:699.20, orMid:701.00,
+    ma20:701.00, ma50:682.00, rsi5m:38, rsiDaily:42,
+    macd:"bearish histogram", volRatio:1.18, vol:"45M", avgVol:"38M",
+    ivr:38, structure:"LL/LH", weeklyTrend:"neutral-bearish",
+    bias:"bear", sectorEtf:"QQQ", sectorChg:-1.11,
+    rs:"index", priorDayHigh:708.00, priorDayLow:692.00, confidence:55,
+    pmHigh:706.00, pmLow:696.50, priorWeekHigh:715.00, priorWeekLow:688.00,
+    wk52High:720.00, wk52Low:540.00, earningsDays:null },
+  NVDA:{ close:118.50, prevClose:122.30, dayHigh:124.10, dayLow:117.20,
+    orHigh:123.50, orLow:118.00, vwap:120.40, orMid:120.75,
+    ma20:121.00, ma50:112.00, rsi5m:41, rsiDaily:44,
+    macd:"bearish crossover", volRatio:1.07, vol:"310M", avgVol:"290M",
+    ivr:41, structure:"LL/LH", weeklyTrend:"neutral",
+    bias:"bear", sectorEtf:"SOXX", sectorChg:-2.1,
+    rs:"neutral", priorDayHigh:125.00, priorDayLow:117.00, confidence:52,
+    pmHigh:123.00, pmLow:119.50, priorWeekHigh:128.00, priorWeekLow:115.00,
+    wk52High:153.00, wk52Low:92.00, earningsDays:16 }
+};
+
+let pulse = [
+  {sym:"SPY", val:612.40, chg:-0.85, note:"Third red day, sitting on the 20-day"},
+  {sym:"QQQ", val:693.71, chg:-1.11, note:"Tech leading the downside"},
+  {sym:"VIX", val:18.40, chg:+6.20, note:"Fear waking up — respect stops"}
+];
+
+let trades = [
+  {time:"7:02", dir:"SHORT", entry:315.50, exit:308.20, size:100, result:"win",
+   setup:"ORL breakdown", followedPlan:true, mistake:""},
+  {time:"8:45", dir:"LONG", entry:307.00, exit:305.50, size:50, result:"loss",
+   setup:"VWAP reclaim attempt", followedPlan:false,
+   mistake:"Bought into VWAP resistance — bias was still bearish"}
+];
+
+let alerts = [
+  {ticker:"ARM", price:316.00, note:"ORL — breakdown trigger"},
+  {ticker:"ARM", price:321.50, note:"OR mid — bias flip line"}
+];
+
+const swingSummary = {open:2, avgHold:4, unrealized:-340};
+
+const state = {
+  mode:"day",
+  ticker:"ARM",
+  tab:{day:"eod", swing:"eod"},
+  checks:{},           // listId -> {idx:true}
+  notes:{
+    dayBest:"", dayWorst:"", dayRule:"", dayFix:"", dayEmotion:"",
+    swingObs:"", swingLesson:"", swingPlan:"", swingPrep:""
+  }
+};
+
+/* ================= CHECKLIST DEFINITIONS ================= */
+const CHECKLISTS = {
+  "day-eod":[
+    ["Recorded every trade — entry, exit, size, result","Unrecorded trades are how losses hide. If it isn't written down, your memory will rewrite it kinder."],
+    ["Calculated total P&L for the session","One number, no spin. You can't manage what you refuse to look at."],
+    ["Identified which trades followed the plan","A losing trade that followed the plan is a good trade. Grade process, not outcome."],
+    ["Identified which trades broke the rules","A winning trade that broke the rules is a bad trade that paid you. It collects later."],
+    ["Noted VWAP vs OR mid at 6:45 AM","This single comparison sets the day's bias. Track whether it worked so you trust it — or stop using it."],
+    ["Marked ORH and ORL for tomorrow reference","Yesterday's opening range often acts as today's support and resistance."],
+    ["Checked where price closed vs VWAP","Close below VWAP means sellers paid worse prices on average and still won. Carry that into the open."],
+    ["Noted volume vs average — was today confirmed?","A move without volume is a rumor. A move on 1.5× volume is a statement."],
+    ["Written tomorrow's 3 scenarios (Bull/Bear/Flat)","If you can't write the scenario tonight, you'll improvise at the open — and improvising is gambling."],
+    ["Set price alerts at tomorrow's key levels","Alerts let the market come to you. Without them you stare at the screen and force trades."],
+    ["Checked earnings/news for tomorrow","Nothing humbles a clean technical setup like a 6 AM headline you didn't know was coming."],
+    ["Mental state check — am I even-keeled?","Revenge, euphoria, fear — name it tonight or you will trade it tomorrow."]
+  ],
+  "day-pre":[
+    ["SPY/QQQ gap direction noted",""],
+    ["VIX level checked — fear elevated?",""],
+    ["Prior day high/low marked on chart",""],
+    ["Pre-market high/low noted",""],
+    ["Earnings/news calendar checked",""],
+    ["2–3 tickers selected maximum",""],
+    ["OR mid calculated for each ticker",""],
+    ["Position size calculated before open",""],
+    ["Daily max loss limit in mind",""],
+    ["Platform ready, distractions removed",""]
+  ],
+  "day-mental":[
+    ["Slept 7+ hours",""],
+    ["Not angry about yesterday",""],
+    ["Not overconfident from a win streak",""],
+    ["Stop defined for every planned trade",""],
+    ["Know today's max loss number",""],
+    ["Not trying to recover losses",""]
+  ],
+  "swing-eod":[
+    ["Marked prior day high/low on chart","These are tomorrow's first battle lines. Every swing entry or stop should reference them."],
+    ["Noted MA20 and MA50 proximity — how far is price?","Swings live and die at moving averages. Distance tells you if a pullback entry is near or you're chasing."],
+    ["Recorded daily RSI number","A number, not a feeling. 38 and 'kind of weak' are different things when you review later."],
+    ["Checked MACD histogram color and direction","Momentum turns before price confirms. Shrinking histogram is the early whisper."],
+    ["Noted volume vs 30-day average","Institutions leave footprints in volume. A breakdown on 1.5× volume is real; on 0.6× it's noise."],
+    ["Checked IVR before options plan","Buying expensive options is the silent account killer. IVR decides the structure before direction does."],
+    ["Identified sector ETF trend","A stock fighting its sector wins maybe 1 time in 3. Know which fight you're picking."],
+    ["Checked RS vs SPY","Weak stocks in weak markets fall hardest. Relative strength tells you which side has the wind."],
+    ["Written 3 scenarios for tomorrow (Bull/Bear/Neutral)","If you can't write the scenario, you don't understand the trade. Skip it."],
+    ["Set price alerts at key levels","The market doesn't need you staring at it. Alerts protect both the entry and your attention."],
+    ["Defined entry, stop, and target for each setup","A trade without all three written down is an opinion, not a plan."],
+    ["Checked earnings calendar — no earnings within DTE window","IV crush doesn't care that you were right on direction. Earnings inside your DTE window is a veto."]
+  ],
+  "day-rules":[
+    ["Waited for the opening range to complete — no entries before 6:45",""],
+    ["Traded only pre-selected tickers from last night's prep",""],
+    ["Stopped trading after hitting the daily max loss",""],
+    ["Entered only on a confirmed 5m close through the level — no anticipating",""],
+    ["Entry, stop, and target written before clicking buy/sell",""],
+    ["Took profits at planned targets — no improvised 'let it ride'",""],
+    ["Position sized so the stop costs at most 1% of the account",""],
+    ["Never moved a stop further away from entry",""],
+    ["Maximum 3 trades for the day",""],
+    ["No revenge trade after a loss",""],
+    ["No sizing up because of a win streak",""],
+    ["Walked away when the even keel was gone",""]
+  ],
+  "swing-rules":[
+    ["Did not enter a swing based on a single day's move alone",""],
+    ["Checked weekly trend before the daily signal",""],
+    ["MA level confirmed before entry — not just approaching",""],
+    ["RSI was in the entry zone (40–55 long, 45–60 short) — not extended",""],
+    ["MACD aligned with trade direction — no counter signals",""],
+    ["IVR checked before the options structure was chosen",""],
+    ["Earnings date confirmed outside the DTE window",""],
+    ["Sector ETF aligned with trade direction",""],
+    ["Position sized to 2% max account risk",""],
+    ["Stop defined as a specific price level, not % of premium alone",""],
+    ["Did not hold options past 2–3 DTE remaining",""],
+    ["Did not average down on a losing swing position",""]
+  ]
+};
+
+const DAY_RULE_CATS = [
+  ["Discipline",[0,1,2]],
+  ["Execution",[3,4,5]],
+  ["Risk",[6,7,8]],
+  ["Psychology",[9,10,11]]
+];
+const SWING_RULE_CATS = [
+  ["Trend & Structure",[0,1,2]],
+  ["Signal Quality",[3,4,7]],
+  ["Options Discipline",[5,6,10]],
+  ["Risk",[8,9,11]]
+];
+
+const DAY_TRUTHS = [
+  ["Moving the stop: “It just needs a little room to breathe.”",
+   "You're not giving the trade room — you're refusing to be wrong. <b>The stop was the plan. Moving it is the ego.</b>"],
+  ["Revenge trading: “One good trade and I'm back to even.”",
+   "The market doesn't know you're down and doesn't owe you a recovery. <b>Trying to get it back is how a bad day becomes a bad month.</b>"],
+  ["Oversizing: “This setup is too clean to play small.”",
+   "Certainty is a feeling, not an edge. <b>The cleanest-looking setups fail at the same rate as the rest of yours.</b>"],
+  ["Skipping the journal: “I remember what happened today.”",
+   "Memory grades on a curve and always rounds in your favor. <b>The journal is the only witness that doesn't lie for you.</b>"],
+  ["Chasing: “It's running without me.”",
+   "The move you missed cost you nothing. <b>The chase entry hands you the worst price of the day and a stop that makes no sense.</b>"]
+];
+const SWING_TRUTHS = [
+  ["Entering off one big day: “It's clearly turning around.”",
+   "One candle is weather, not climate. <b>You're buying someone else's exit liquidity at the most emotional price of the week.</b>"],
+  ["Skipping the IVR check: “Direction is what matters, options are just leverage.”",
+   "You can be exactly right on the move and still lose on IV crush. <b>The structure is the trade; direction is only half of it.</b>"],
+  ["Averaging down: “I liked it at 310, I love it at 295.”",
+   "Adding to a loser doubles your conviction, not your odds. <b>The market is telling you the thesis is wrong; averaging down is arguing with it using more money.</b>"],
+  ["Holding into earnings: “The chart looks great going in.”",
+   "Earnings reset every technical level on the chart and crush the IV you paid for. <b>That's not a swing trade anymore — it's a coin flip with a fee.</b>"],
+  ["Holding to expiry: “It only needs one more day.”",
+   "The last 2–3 days of an option's life are pure theta burn. <b>Time decay doesn't negotiate, and 'one more day' is how winners round-trip to zero.</b>"]
+];
+
+const SECTORS = [
+  {etf:"SOXX", name:"Semis", chg:-2.10, rs:"weak", trend:"down"},
+  {etf:"XLK", name:"Tech", chg:-1.35, rs:"weak", trend:"down"},
+  {etf:"XLF", name:"Financials", chg:+0.25, rs:"strong", trend:"up"},
+  {etf:"XLE", name:"Energy", chg:+0.80, rs:"strong", trend:"up"},
+  {etf:"XLV", name:"Health", chg:-0.15, rs:"neutral", trend:"flat"},
+  {etf:"XLY", name:"Discretionary", chg:-0.95, rs:"weak", trend:"down"},
+  {etf:"XLI", name:"Industrials", chg:-0.40, rs:"neutral", trend:"flat"},
+  {etf:"SPY", name:"Market", chg:-0.85, rs:"index", trend:"down"}
+];
+
+const MATRIX = {
+  rows:["LOW IV (<35)","MID IV (35–60)","HIGH IV (60+)"],
+  cols:["7 DTE","10 DTE","14 DTE","21 DTE"],
+  cells:[
+    [["RISKY","Cheap, but theta burns fast — needs an immediate move"],
+     ["OK","Workable if the catalyst is days away, not weeks"],
+     ["BEST","Cheap premium plus enough time to be right"],
+     ["OK","More time, more cost — fine for slower setups"]],
+    [["AVOID","Mid-priced premium decays hardest in the final week"],
+     ["OK","Workable, but only as a debit spread"],
+     ["BEST","Debit spreads offset the IV you're paying"],
+     ["OK","Spreads keep the cost sane over longer holds"]],
+    [["AVOID","Buying panic pricing with no time is a donation"],
+     ["RISKY","Only as defined-risk credit spreads"],
+     ["BEST","Sell premium — credit spreads collect the fat IV"],
+     ["OK","Credit spreads work, but more days for the trade to go wrong"]]
+  ]
+};
+
+/* ================= HELPERS ================= */
+const $ = s => document.querySelector(s);
+const T = () => tickers[state.ticker];
+const fmt = (n,d=2) => n==null ? "—" : Number(n).toFixed(d);
+const money = n => (n<0?"-$":"+$")+Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,",");
+const pctCls = n => n>0?"pos":(n<0?"neg":"neu");
+const sign = n => (n>0?"+":"")+fmt(n);
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function chgOf(t){ const d=t.close-t.prevClose; return {d, p:d/t.prevClose*100}; }
+function tradePnl(tr){ return (tr.dir==="SHORT" ? tr.entry-tr.exit : tr.exit-tr.entry)*tr.size; }
+function sessionPnl(){ return trades.reduce((a,t)=>a+tradePnl(t),0); }
+function winRate(){ if(!trades.length) return 0; return trades.filter(t=>tradePnl(t)>0).length/trades.length*100; }
+function ivrEnv(ivr){ return ivr<35?"LOW":(ivr<=60?"MID":"HIGH"); }
+function ivrLabel(ivr){ return ivr<35?"BUY OPTIONS":(ivr<=60?"USE SPREADS":"SELL PREMIUM"); }
+function rsiZone(r){ return r<30?"oversold":r<40?"weak":r<60?"neutral":r<70?"strong":"overbought"; }
+function biasColor(b){ return b==="bull"?"var(--green)":b==="bear"?"var(--red)":"var(--yellow)"; }
+function probs(bias){ return bias==="bull"?{bull:50,bear:20,flat:30}:bias==="bear"?{bull:20,bear:50,flat:30}:{bull:30,bear:30,flat:40}; }
+function checked(listId){ const c=state.checks[listId]||{}; return CHECKLISTS[listId].reduce((a,_,i)=>a+(c[i]?1:0),0); }
+function scoreColor(p){ return p>=80?"var(--green)":p>=60?"var(--yellow)":"var(--red)"; }
+
+/* ================= GENERIC RENDER PARTS ================= */
+function checklistHTML(listId, title){
+  const items = CHECKLISTS[listId];
+  const done = state.checks[listId]||{};
+  const n = checked(listId), pct = Math.round(n/items.length*100);
+  return `<div class="card"><h3>${title}</h3>
+    ${items.map(([txt,note],i)=>`
+      <div class="check-item ${done[i]?"done":""}" data-act="check" data-list="${listId}" data-idx="${i}">
+        <div class="ck-box">${done[i]?"✓":""}</div>
+        <div><div class="ck-text">${txt}</div>${note?`<div class="ck-note">${note}</div>`:""}</div>
+      </div>`).join("")}
+    <div class="progress"><div id="prog-${listId}" style="width:${pct}%;background:${scoreColor(pct)}"></div></div>
+    <div class="prog-lbl" id="proglbl-${listId}">${n} / ${items.length} complete — ${pct}%</div>
+  </div>`;
+}
+
+function updateChecklistUI(listId){
+  const items = CHECKLISTS[listId];
+  const n = checked(listId), pct = Math.round(n/items.length*100);
+  const bar = document.getElementById("prog-"+listId);
+  if(bar){ bar.style.width = pct+"%"; bar.style.background = scoreColor(pct); }
+  const lbl = document.getElementById("proglbl-"+listId);
+  if(lbl) lbl.textContent = `${n} / ${items.length} complete — ${pct}%`;
+  if(listId.endsWith("rules")) renderMain(); // rules tab shows score breakdowns
+}
+
+function noteField(key, label, placeholder, kind){
+  const v = esc(state.notes[key]||"");
+  if(kind==="textarea") return `<div class="note-field"><label>${label}</label><textarea data-note="${key}" placeholder="${placeholder}">${v}</textarea></div>`;
+  return `<div class="note-field"><label>${label}</label><input data-note="${key}" placeholder="${placeholder}" value="${v}"></div>`;
+}
+
+function levelsHTML(levels, close){
+  const rows = levels.filter(l=>l.v!=null).sort((a,b)=>b.v-a.v);
+  return rows.map(l=>{
+    const isClose = l.name.startsWith("Close");
+    const cls = isClose ? "is-close" : "";
+    const col = isClose ? "var(--accent)" : (l.v>close ? "var(--red)" : "var(--green)");
+    return `<div class="lvl-row ${cls}">
+      <span class="lvl-px" style="color:${col}">${fmt(l.v)}</span>
+      <span class="lvl-name">${l.name}</span>
+      <span class="lvl-note">${l.note||""}</span>
+    </div>`;
+  }).join("");
+}
+
+/* ================= SIDEBAR ================= */
+function renderSidebar(){
+  const wl = Object.keys(tickers).map(sym=>{
+    const t = tickers[sym], c = chgOf(t);
+    return `<div class="wl-card ${sym===state.ticker?"active":""}" data-act="select" data-tick="${sym}">
+      <div class="wl-top">
+        <span class="bias-dot" style="background:${biasColor(t.bias)}"></span>
+        <span class="wl-tick">${sym}</span>
+        <span class="wl-px">${fmt(t.close)}</span>
+      </div>
+      <div class="wl-sub"><span class="num ${pctCls(c.p)}">${sign(c.p)}%</span><span>${t.structure}</span></div>
+    </div>`;
+  }).join("");
+
+  const pulseHTML = pulse.map((p,i)=>`
+    <div class="pulse-row" data-act="pulse" data-idx="${i}" title="Click to edit">
+      <div class="pulse-top"><span>${p.sym}</span><span class="${pctCls(p.chg)}">${sign(p.chg)}%</span></div>
+      <div class="pulse-note">${esc(p.note)}</div>
+    </div>`).join("");
+
+  let third;
+  if(state.mode==="day"){
+    const pnl = sessionPnl(), wr = winRate();
+    third = `<div class="side-h">Session P&amp;L</div><div class="side-box">
+      <div class="side-stat"><span>Net P&amp;L</span><span class="num ${pnl>=0?"pos":"neg"}">${money(pnl)}</span></div>
+      <div class="side-stat"><span>Trades</span><span class="num">${trades.length}</span></div>
+      <div class="side-stat"><span>Win rate</span><span class="num">${fmt(wr,0)}%</span></div>
+      <div class="progress"><div style="width:${fmt(wr,0)}%;background:${scoreColor(wr)}"></div></div>
+    </div>`;
+  } else {
+    third = `<div class="side-h">Position Summary</div><div class="side-box">
+      <div class="side-stat"><span>Open positions</span><span class="num">${swingSummary.open}</span></div>
+      <div class="side-stat"><span>Avg hold</span><span class="num">${swingSummary.avgHold} days</span></div>
+      <div class="side-stat"><span>Unrealized</span><span class="num ${swingSummary.unrealized>=0?"pos":"neg"}">${money(swingSummary.unrealized)}</span></div>
+    </div>`;
+  }
+
+  $("#sidebar").innerHTML = `
+    <div class="side-h">Watchlist</div>${wl}
+    <button class="add-btn" data-act="addTicker">+ Add Ticker</button>
+    <div class="side-h">Market Pulse</div>${pulseHTML}
+    ${third}`;
+}
+
+/* ================= TABS ================= */
+const TABS = {
+  day:[["eod","EOD Review"],["prep","Pre-Market Prep"],["scen","Scenarios"],["log","Trade Log"],["rules","Rules Check"]],
+  swing:[["eod","EOD Review"],["prep","Next Day Prep"],["scen","Scenarios"],["options","Options Plan"],["rules","Rules Check"]]
+};
+function renderTabs(){
+  $("#tabs").innerHTML = TABS[state.mode].map(([id,lbl])=>
+    `<button class="tab-btn ${state.tab[state.mode]===id?"active":""}" data-act="tab" data-tab="${id}">${lbl}</button>`).join("");
+}
+
+/* ================= DAY: EOD REVIEW ================= */
+function orVisualHTML(t){
+  const vals = [t.orHigh,t.orLow,t.vwap,t.close,t.orMid];
+  const hi = Math.max(...vals), lo = Math.min(...vals);
+  const pad = (hi-lo)*0.12 || 1;
+  const top = hi+pad, bot = lo-pad, span = top-bot;
+  const y = v => ((top-v)/span*100);
+  const lean = t.vwap >= t.orMid;
+  const leanColor = lean ? "var(--green)" : "var(--red)";
+  const zoneTop = y(t.orHigh), zoneBot = y(t.orLow);
+  const mark = (v,color,label,left) => `
+    <div class="or-mark" style="top:${y(v)}%">
+      <div class="line" style="border-color:${color}"></div>
+      ${left
+        ? `<div class="tagl" style="color:${color}">${label} ${fmt(v)}</div>`
+        : `<div class="tag" style="color:${color}">${label} ${fmt(v)}</div>`}
+    </div>`;
+  return `<div class="or-visual">
+    <div class="or-bar-wrap">
+      <div class="or-track"></div>
+      <div class="or-zone" style="top:${zoneTop}%;height:${zoneBot-zoneTop}%;background:${lean?"rgba(63,185,80,.18)":"rgba(248,81,73,.18)"}"></div>
+      ${mark(t.orHigh,"var(--muted)","ORH",false)}
+      ${mark(t.orMid,"var(--yellow)","OR Mid",false)}
+      ${mark(t.orLow,"var(--muted)","ORL",false)}
+      ${mark(t.vwap,"var(--blue)","VWAP",true)}
+      ${mark(t.close,"var(--text)","Close",true)}
+    </div>
+    <div style="flex:1;min-width:200px">
+      <div style="font-weight:800;font-size:15px;color:${leanColor};margin-bottom:6px">
+        ${lean ? "BULLISH LEAN" : "BEARISH LEAN"} — VWAP ${lean?"above":"below"} OR Mid
+      </div>
+      <p class="small muted" style="margin-bottom:8px">
+        VWAP at <span class="num">${fmt(t.vwap)}</span> sits ${lean?"above":"below"} the OR midpoint at
+        <span class="num">${fmt(t.orMid)}</span>. The average dollar traded today changed hands
+        ${lean?"above":"below"} the middle of the opening range — ${lean?"buyers":"sellers"} controlled the auction.
+      </p>
+      <p class="small muted" style="margin-bottom:8px">
+        <b style="color:var(--text)">For tomorrow:</b> ${lean
+          ? "lean long. Favor the bull scenario on a break of ORH; treat ORL breakdowns with suspicion unless volume confirms."
+          : "lean short. Favor the bear scenario on a break of ORL; treat ORH breakouts with suspicion unless volume confirms."}
+        Close at <span class="num">${fmt(t.close)}</span> ${t.close>=t.vwap?"above":"below"} VWAP confirms the read.
+      </p>
+      <div class="small num" style="color:var(--muted);border:1px dashed var(--border);border-radius:6px;padding:6px 10px;display:inline-block">
+        OR Mid = (ORH + ORL) ÷ 2 = (${fmt(t.orHigh)} + ${fmt(t.orLow)}) ÷ 2 = ${fmt(t.orMid)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function dayEodTab(){
+  const t = T(), c = chgOf(t);
+  return `
+  <div class="card">
+    <div class="hero-head">
+      <span class="hero-tick">${state.ticker}</span>
+      <span class="hero-px">${fmt(t.close)}</span>
+      <span class="hero-chg ${pctCls(c.d)}">${sign(c.d)} (${sign(c.p)}%)</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="lbl">OR High</div><div class="val">${fmt(t.orHigh)}</div></div>
+      <div class="stat"><div class="lbl">OR Low</div><div class="val">${fmt(t.orLow)}</div></div>
+      <div class="stat"><div class="lbl">OR Mid</div><div class="val neu">${fmt(t.orMid)}</div></div>
+      <div class="stat"><div class="lbl">VWAP</div><div class="val" style="color:var(--blue)">${fmt(t.vwap)}</div></div>
+      <div class="stat"><div class="lbl">Day High</div><div class="val">${fmt(t.dayHigh)}</div></div>
+      <div class="stat"><div class="lbl">Day Low</div><div class="val">${fmt(t.dayLow)}</div></div>
+      <div class="stat"><div class="lbl">RSI (5m)</div><div class="val ${t.rsi5m<40?"neg":t.rsi5m>60?"pos":"neu"}">${t.rsi5m}</div><div class="sub">${rsiZone(t.rsi5m)}</div></div>
+      <div class="stat"><div class="lbl">Volume Ratio</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol} vs ${t.avgVol} avg</div></div>
+    </div>
+  </div>
+  <div class="card"><h3>VWAP vs OR Mid</h3>${orVisualHTML(t)}</div>
+  ${checklistHTML("day-eod","EOD Checklist")}
+  <div class="card"><h3>Journal Notes</h3>
+    <div class="grid2">
+      <div>
+        ${noteField("dayBest","Best trade today","What made it good — process, not just P&L")}
+        ${noteField("dayWorst","Worst trade today","What went wrong, honestly")}
+      </div>
+      <div>
+        ${noteField("dayRule","Rule broken (if any)","Name it — vague confessions don't fix anything")}
+        ${noteField("dayFix","One fix for tomorrow","One. Not five. One.")}
+      </div>
+    </div>
+    <div class="note-field" style="max-width:280px">
+      <label>Emotional state</label>
+      <select data-note="dayEmotion">
+        ${["","even-keeled","confident","anxious","frustrated","euphoric","revenge mode","exhausted"].map(o=>
+          `<option value="${o}" ${state.notes.dayEmotion===o?"selected":""}>${o||"— select —"}</option>`).join("")}
+      </select>
+    </div>
+  </div>`;
+}
+
+/* ================= DAY: PRE-MARKET PREP ================= */
+function dayPrepTab(){
+  const t = T();
+  const levels = [
+    {name:"OR High", v:t.orHigh, note:"Break + 5m close above = bull trigger"},
+    {name:"Pre-market High", v:t.pmHigh, note:"Early resistance — watch reaction"},
+    {name:"Prior Day High", v:t.priorDayHigh, note:"Major resistance from yesterday"},
+    {name:"VWAP", v:t.vwap, note:"Bias line — above bullish, below bearish"},
+    {name:"Close (yesterday)", v:t.close, note:"Where the last session settled"},
+    {name:"OR Low", v:t.orLow, note:"Break + 5m close below = bear trigger"},
+    {name:"Pre-market Low", v:t.pmLow, note:"Early support — watch reaction"},
+    {name:"Prior Day Low", v:t.priorDayLow, note:"Major support from yesterday"},
+    {name:"MA50", v:t.ma50, note:"Big-picture support — institutions watch it"}
+  ];
+  const myAlerts = alerts.map((a,i)=>({...a,i})).filter(a=>a.ticker===state.ticker);
+  return `
+  <div class="grid2">
+    <div>
+      ${checklistHTML("day-pre","Pre-Market Checklist")}
+      <div class="drill"><h3>6:44 AM Drill</h3>
+        ${[
+          ["1","<b>6:44</b> — opening range about to complete. Hands off the keyboard."],
+          ["2","Mark <b>ORH</b> and <b>ORL</b> from the first 15 minutes."],
+          ["3","Calculate <b>OR Mid = (ORH + ORL) ÷ 2</b>."],
+          ["4","Compare <b>VWAP vs OR Mid</b>. Above = bull lean. Below = bear lean."],
+          ["5","<b>Lock the bias.</b> Write it down. No flip-flopping mid-morning."],
+          ["6","<b>Wait for the break</b> — a 5m close through ORH or ORL. No break, no trade."]
+        ].map(([n,txt])=>`<div class="drill-step"><span class="drill-num">${n}</span><span>${txt}</span></div>`).join("")}
+      </div>
+      <div class="danger-box"><h3>Honest Disqualifiers — if any are true, do not trade today</h3>
+        ${[
+          "Slept under 6 hours.",
+          "Down big yesterday and itching to make it back.",
+          "You feel certain. Certainty means you've stopped thinking in scenarios.",
+          "No written scenarios for your tickers.",
+          "Big news/earnings dropped and price is outside all your levels — you have no map.",
+          "You're trading because you're bored, not because there's a setup."
+        ].map(d=>`<div class="drill-step"><span class="drill-num" style="color:var(--red)">✕</span><span class="small">${d}</span></div>`).join("")}
+      </div>
+    </div>
+    <div>
+      <div class="card"><h3>Key Levels — ${state.ticker} (high → low)</h3>${levelsHTML(levels,t.close)}</div>
+      <div class="card"><h3>Alert Levels — ${state.ticker}</h3>
+        ${myAlerts.length ? myAlerts.map(a=>`
+          <div class="lvl-row">
+            <span class="lvl-px" style="color:var(--yellow)">${fmt(a.price)}</span>
+            <span class="lvl-note" style="flex:1">${esc(a.note)}</span>
+            <button class="del-x" data-act="delAlert" data-idx="${a.i}" title="Remove">✕</button>
+          </div>`).join("") : `<p class="small muted">No alerts set for ${state.ticker}.</p>`}
+        <button class="add-btn" style="margin-top:10px" data-act="addAlert">+ Add Alert</button>
+      </div>
+      ${checklistHTML("day-mental","Mental Game Checklist")}
+    </div>
+  </div>`;
+}
+
+/* ================= SCENARIOS (shared math) ================= */
+function dayScenarios(t){
+  const p = probs(t.bias);
+  const bullEntry = t.orHigh+Math.max(t.orHigh*0.0005,0.05);
+  const bullStop = t.orMid;
+  const bullR = bullEntry-bullStop;
+  const bearEntry = t.orLow-Math.max(t.orLow*0.0005,0.05);
+  const bearStop = t.orMid;
+  const bearR = bearStop-bearEntry;
+  return {
+    bull:{trigger:`5m close above ORH ${fmt(t.orHigh)}`, entry:bullEntry, stop:bullStop,
+      t1:bullEntry+bullR, t2:bullEntry+2*bullR, rr:"1 : 2", prob:p.bull},
+    bear:{trigger:`5m close below ORL ${fmt(t.orLow)}`, entry:bearEntry, stop:bearStop,
+      t1:bearEntry-bearR, t2:bearEntry-2*bearR, rr:"1 : 2", prob:p.bear},
+    flat:{trigger:`No 5m close beyond ORH ${fmt(t.orHigh)} or ORL ${fmt(t.orLow)} by 7:30`, prob:p.flat}
+  };
+}
+
+function scenRows(s, dirDown){
+  return `
+    <div class="scen-row"><span class="k">Trigger</span><span class="v" style="text-align:right;max-width:60%">${s.trigger}</span></div>
+    <div class="scen-row"><span class="k">Entry</span><span class="v">${fmt(s.entry)}</span></div>
+    <div class="scen-row"><span class="k">Stop</span><span class="v ${dirDown?"pos":"neg"}">${fmt(s.stop)}</span></div>
+    <div class="scen-row"><span class="k">Target 1</span><span class="v">${fmt(s.t1)}</span></div>
+    <div class="scen-row"><span class="k">Target 2</span><span class="v">${fmt(s.t2)}</span></div>
+    <div class="scen-row"><span class="k">R / R</span><span class="v">${s.rr}</span></div>`;
+}
+function probBar(prob, color){
+  return `<div class="scen-row" style="border:none"><span class="k">Probability</span><span class="v">${prob}%</span></div>
+    <div class="progress" style="margin-top:2px"><div style="width:${prob}%;background:${color}"></div></div>`;
+}
+
+function dayScenTab(){
+  const t = T(), s = dayScenarios(t);
+  const lean = t.vwap>=t.orMid;
+  return `
+  <div class="grid3">
+    <div class="scen-card scen-bull">
+      <div class="scen-title pos">BULL CASE</div><div class="scen-sub">Structure flips to HL / HH</div>
+      ${scenRows(s.bull,true)}
+      ${probBar(s.bull.prob,"var(--green)")}
+      <div class="action-box action-bull"><b>If this opens above ORH:</b> do NOT chase. Wait for the pullback that retests ORH ${fmt(t.orHigh)} as support and holds. Chasing the open print is paying the worst price of the day.</div>
+    </div>
+    <div class="scen-card scen-bear">
+      <div class="scen-title neg">BEAR CASE</div><div class="scen-sub">Structure continues LL / LH</div>
+      ${scenRows(s.bear,false)}
+      ${probBar(s.bear.prob,"var(--red)")}
+      <div class="action-box action-bear"><b>If this opens below ORL:</b> do NOT market-sell into the hole. Wait for the weak bounce that fails at ORL ${fmt(t.orLow)} from below, then enter on the rejection.</div>
+    </div>
+    <div class="scen-card scen-flat">
+      <div class="scen-title neu">FLAT / CHOP</div><div class="scen-sub">Range day — both sides get chopped</div>
+      <div class="scen-row"><span class="k">Trigger</span><span class="v" style="text-align:right;max-width:60%">${s.flat.trigger}</span></div>
+      <div class="scen-row"><span class="k">Action</span><span class="v">NO TRADE</span></div>
+      ${probBar(s.flat.prob,"var(--yellow)")}
+      <div class="action-box action-flat"><b>Chop kills accounts</b> one small stop-out at a time. If the range holds past 7:30, close the platform or paper trade. Cash is a position.</div>
+    </div>
+  </div>
+  <div class="card"><h3>OR Mid Decision Tree</h3>
+    ${[
+      `<b>6:44</b> — opening range complete. Mark ORH and ORL. No trades have been placed.`,
+      `Calculate <b>OR Mid = (ORH + ORL) ÷ 2</b>.`,
+      `Locate <b>VWAP</b> relative to OR Mid.`,
+      `VWAP <b>above</b> OR Mid → bull lean. VWAP <b>below</b> → bear lean. This is the bias — lock it.`,
+      `Wait for a <b>5m close</b> through ORH (bull) or ORL (bear). A wick through the level is not a break.`,
+      `<b>Execute the matching scenario</b> — entry, stop, targets as written. No break by 7:30 → flat case → no trade.`
+    ].map((txt,i,arr)=>`
+      <div class="tree-step"><div class="tree-n">${i+1}</div><div class="tree-node">${txt}</div></div>
+      ${i<arr.length-1?`<div class="tree-arrow">↓</div>`:""}`).join("")}
+  </div>
+  <div class="card"><h3>Worked Example — ${state.ticker}, today's actual data</h3>
+    <div class="small" style="line-height:2">
+      ORH <span class="num">${fmt(t.orHigh)}</span> · ORL <span class="num">${fmt(t.orLow)}</span>
+      → OR Mid = (${fmt(t.orHigh)} + ${fmt(t.orLow)}) ÷ 2 = <span class="num neu">${fmt(t.orMid)}</span><br>
+      VWAP <span class="num" style="color:var(--blue)">${fmt(t.vwap)}</span> was
+      <b class="${lean?"pos":"neg"}">${lean?"ABOVE":"BELOW"}</b> OR Mid →
+      <b class="${lean?"pos":"neg"}">${lean?"bull":"bear"} lean</b> locked at 6:45.<br>
+      ${lean
+        ? `Watch for a 5m close above ORH <span class="num">${fmt(t.orHigh)}</span>; close did finish at <span class="num">${fmt(t.close)}</span>.`
+        : `Watch for a 5m close below ORL <span class="num">${fmt(t.orLow)}</span>; price closed at <span class="num">${fmt(t.close)}</span> — ${t.close<t.orLow?"the breakdown followed through":"the breakdown did not follow through"}.`}
+    </div>
+  </div>`;
+}
+
+/* ================= DAY: TRADE LOG ================= */
+function dayLogTab(){
+  const pnl = sessionPnl();
+  const wins = trades.filter(t=>tradePnl(t)>0), losses = trades.filter(t=>tradePnl(t)<=0);
+  const avgWin = wins.length ? wins.reduce((a,t)=>a+tradePnl(t),0)/wins.length : 0;
+  const avgLoss = losses.length ? losses.reduce((a,t)=>a+tradePnl(t),0)/losses.length : 0;
+  const followed = trades.filter(t=>t.followedPlan), broke = trades.filter(t=>!t.followedPlan);
+  const fPnl = followed.reduce((a,t)=>a+tradePnl(t),0), bPnl = broke.reduce((a,t)=>a+tradePnl(t),0);
+  return `
+  <div class="card">
+    <div class="stat-grid">
+      <div class="stat"><div class="lbl">Net P&amp;L</div><div class="val ${pnl>=0?"pos":"neg"}">${money(pnl)}</div></div>
+      <div class="stat"><div class="lbl">Win Rate</div><div class="val">${fmt(winRate(),0)}%</div><div class="sub">${wins.length}W / ${losses.length}L</div></div>
+      <div class="stat"><div class="lbl">Avg Win</div><div class="val pos">${money(avgWin)}</div></div>
+      <div class="stat"><div class="lbl">Avg Loss</div><div class="val neg">${money(avgLoss)}</div></div>
+    </div>
+  </div>
+  <div class="card"><h3>Trades</h3>
+    ${trades.length ? `<div style="overflow-x:auto"><table>
+      <tr><th>Time</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Size</th><th>P&amp;L</th><th>Setup</th><th>Plan</th><th>Mistake / Note</th><th></th></tr>
+      ${trades.map((tr,i)=>{
+        const p = tradePnl(tr);
+        return `<tr>
+          <td class="num">${esc(tr.time)}</td>
+          <td><span class="pill ${tr.dir==="LONG"?"pill-green":"pill-red"}">${tr.dir}</span></td>
+          <td class="num">${fmt(tr.entry)}</td><td class="num">${fmt(tr.exit)}</td>
+          <td class="num">${tr.size}</td>
+          <td class="num ${p>=0?"pos":"neg"}">${money(p)}</td>
+          <td>${esc(tr.setup)}</td>
+          <td><span class="pill ${tr.followedPlan?"pill-green":"pill-red"}">${tr.followedPlan?"YES":"NO"}</span></td>
+          <td class="muted small">${esc(tr.mistake||"—")}</td>
+          <td><button class="del-x" data-act="delTrade" data-idx="${i}">✕</button></td>
+        </tr>`;}).join("")}
+    </table></div>` : `<p class="small muted">No trades logged.</p>`}
+  </div>
+  <div class="card"><h3>Add Trade</h3>
+    <div class="form-grid">
+      <div><label>Time</label><input id="f-time" placeholder="7:02"></div>
+      <div><label>Direction</label><select id="f-dir"><option>LONG</option><option>SHORT</option></select></div>
+      <div><label>Entry</label><input id="f-entry" type="number" step="0.01"></div>
+      <div><label>Exit</label><input id="f-exit" type="number" step="0.01"></div>
+      <div><label>Size</label><input id="f-size" type="number" step="1"></div>
+      <div><label>Setup</label><input id="f-setup" placeholder="ORL breakdown"></div>
+      <div><label>Result</label><select id="f-result"><option>win</option><option>loss</option><option>scratch</option></select></div>
+      <div><label>Followed plan</label><select id="f-plan"><option value="yes">YES</option><option value="no">NO</option></select></div>
+      <div style="grid-column:span 2"><label>Mistake / note</label><input id="f-mistake" placeholder="Optional"></div>
+    </div>
+    <button class="btn-accent" style="margin-top:12px" data-act="addTrade">Add Trade</button>
+  </div>
+  ${trades.length ? `<div class="card"><h3>Pattern Analysis</h3>
+    <div class="grid2">
+      <div class="ok-box mb0"><h3>Followed the plan — ${followed.length} trade${followed.length===1?"":"s"}</h3>
+        <div class="num" style="font-size:20px;font-weight:700" class="${fPnl>=0?"pos":"neg"}">${money(fPnl)}</div>
+        <p class="small muted" style="margin-top:4px">${followed.map(t=>esc(t.setup)).join(" · ")||"—"}</p></div>
+      <div class="danger-box mb0"><h3>Broke the rules — ${broke.length} trade${broke.length===1?"":"s"}</h3>
+        <div class="num" style="font-size:20px;font-weight:700">${money(bPnl)}</div>
+        <p class="small muted" style="margin-top:4px">${broke.map(t=>esc(t.mistake||t.setup)).join(" · ")||"—"}</p></div>
+    </div>
+    <p class="small" style="margin-top:12px"><b>Honest read:</b> ${broke.length} of ${trades.length} trade${trades.length===1?"":"s"} broke the plan.
+    ${broke.length===0
+      ? "Clean session — protect this standard."
+      : `Plan-following trades netted <span class="num ${fPnl>=0?"pos":"neg"}">${money(fPnl)}</span>; rule-breaking trades netted <span class="num ${bPnl>=0?"pos":"neg"}">${money(bPnl)}</span>. The edge isn't the setup — it's the obedience.`}</p>
+  </div>`:""}`;
+}
+
+/* ================= RULES TABS ================= */
+function rulesTab(listId, cats, truths){
+  const items = CHECKLISTS[listId];
+  const done = state.checks[listId]||{};
+  const n = checked(listId), pct = Math.round(n/items.length*100);
+  return `
+  <div class="card">
+    <div class="flex-between" style="flex-wrap:wrap;gap:14px">
+      <div>
+        <div class="score-big" style="color:${scoreColor(pct)}">${pct}%</div>
+        <div class="small muted">${n} of ${items.length} rules followed — ${pct>=80?"disciplined session":pct>=60?"leaks forming — tighten up":"the rules lost today"}</div>
+      </div>
+      <div style="flex:1;min-width:260px;max-width:520px">
+        ${cats.map(([name,idxs])=>{
+          const cn = idxs.filter(i=>done[i]).length;
+          const cp = Math.round(cn/idxs.length*100);
+          return `<div style="margin-bottom:8px">
+            <div class="flex-between small"><span class="muted">${name}</span><span class="num muted">${cn}/${idxs.length}</span></div>
+            <div class="progress" style="margin-top:3px"><div style="width:${cp}%;background:${scoreColor(cp)}"></div></div>
+          </div>`;}).join("")}
+      </div>
+    </div>
+  </div>
+  ${cats.map(([name,idxs])=>`
+    <div class="card rule-cat"><div class="rule-cat-h"><span>${name}</span></div>
+      ${idxs.map(i=>`
+        <div class="check-item ${done[i]?"done":""}" data-act="check" data-list="${listId}" data-idx="${i}">
+          <div class="ck-box">${done[i]?"✓":""}</div>
+          <div><div class="ck-text">${items[i][0]}</div></div>
+        </div>`).join("")}
+    </div>`).join("")}
+  <div class="card"><h3>Why Traders Break Each Rule</h3>
+    ${truths.map(([lie,fact])=>`
+      <div class="truth"><div class="lie">${lie}</div><div class="fact">${fact}</div></div>`).join("")}
+  </div>`;
+}
+
+/* ================= SWING: EOD REVIEW ================= */
+function swingStory(t){
+  const aboveMa20 = t.close>=t.ma20, aboveMa50 = t.close>=t.ma50;
+  const volTxt = t.volRatio>=1.3 ? `on ${fmt(t.volRatio,1)}× average volume — conviction behind the move`
+    : t.volRatio>=0.9 ? `on roughly average volume (${fmt(t.volRatio,2)}×) — no strong statement either way`
+    : `on light volume (${fmt(t.volRatio,2)}×) — the move lacks conviction`;
+  const ctrl = !aboveMa20 && t.structure==="LL/LH" ? "Bears in control."
+    : aboveMa20 && t.structure==="HH/HL" ? "Bulls in control."
+    : "Control is contested — wait for the next decisive close.";
+  return `Closed ${aboveMa20?"above":"below"} MA20 (${fmt(t.ma20)}) ${volTxt}. ` +
+    `MACD shows a ${t.macd}. Daily RSI at ${t.rsiDaily} (${rsiZone(t.rsiDaily)}), structure ${t.structure}, weekly trend ${t.weeklyTrend}. ` +
+    `${ctrl} ${aboveMa50?`MA50 at ${fmt(t.ma50)} is the support that matters below.`:`Price is below MA50 (${fmt(t.ma50)}) — the bigger trend is broken too.`}`;
+}
+
+function swingEodTab(){
+  const t = T(), c = chgOf(t);
+  const ma20Above = t.close>=t.ma20, ma50Above = t.close>=t.ma50;
+  const levels = [
+    {name:"Prior Week High", v:t.priorWeekHigh, note:"Weekly resistance — swing target zone"},
+    {name:"Prior Day High", v:t.priorDayHigh, note:"First resistance for tomorrow"},
+    {name:"MA20", v:t.ma20, note:"Short-term trend line — pullback entries live here"},
+    {name:"Close (today)", v:t.close, note:"Where the session settled"},
+    {name:"Prior Day Low", v:t.priorDayLow, note:"First support — break extends the slide"},
+    {name:"MA50", v:t.ma50, note:"Big-picture support — institutional reference"},
+    {name:"Prior Week Low", v:t.priorWeekLow, note:"Weekly support — last line before a deeper leg"}
+  ];
+  // 52-week levels only if within 10% of close
+  if(Math.abs(t.close-t.wk52High)/t.close < 0.10) levels.push({name:"52-Week High", v:t.wk52High, note:"Major psychological level"});
+  if(Math.abs(t.close-t.wk52Low)/t.close < 0.10) levels.push({name:"52-Week Low", v:t.wk52Low, note:"Major psychological level"});
+  return `
+  <div class="card">
+    <div class="hero-head">
+      <span class="hero-tick">${state.ticker}</span>
+      <span class="hero-px">${fmt(t.close)}</span>
+      <span class="hero-chg ${pctCls(c.d)}">${sign(c.d)} (${sign(c.p)}%)</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="lbl">MA20</div><div class="val ${ma20Above?"pos":"neg"}">${fmt(t.ma20)}</div><div class="sub ${ma20Above?"pos":"neg"}">close ${ma20Above?"above":"below"}</div></div>
+      <div class="stat"><div class="lbl">MA50</div><div class="val ${ma50Above?"pos":"neg"}">${fmt(t.ma50)}</div><div class="sub ${ma50Above?"pos":"neg"}">close ${ma50Above?"above":"below"}</div></div>
+      <div class="stat"><div class="lbl">Daily RSI</div><div class="val ${t.rsiDaily<40?"neg":t.rsiDaily>60?"pos":"neu"}">${t.rsiDaily}</div><div class="sub">${rsiZone(t.rsiDaily)}</div></div>
+      <div class="stat"><div class="lbl">MACD</div><div class="val ${/bear/.test(t.macd)?"neg":"pos"}" style="font-size:13px">${t.macd}</div></div>
+      <div class="stat"><div class="lbl">Vol vs 30d Avg</div><div class="val ${t.volRatio>=1.3?"pos":"neu"}">${fmt(t.volRatio)}×</div><div class="sub">${t.vol} vs ${t.avgVol}</div></div>
+      <div class="stat"><div class="lbl">Prior Day H / L</div><div class="val" style="font-size:13px">${fmt(t.priorDayHigh)} / ${fmt(t.priorDayLow)}</div></div>
+      <div class="stat"><div class="lbl">Weekly Trend</div><div class="val ${/bear/.test(t.weeklyTrend)?"neg":/bull/.test(t.weeklyTrend)?"pos":"neu"}" style="font-size:13px">${t.weeklyTrend}</div></div>
+      <div class="stat"><div class="lbl">IVR</div><div class="val neu">${t.ivr}</div><div class="sub" style="color:var(--purple);font-weight:700">${ivrLabel(t.ivr)}</div></div>
+      <div class="stat"><div class="lbl">Structure</div><div class="val ${t.structure==="HH/HL"?"pos":"neg"}">${t.structure}</div></div>
+      <div class="stat"><div class="lbl">RS vs SPY</div><div class="val ${t.rs==="strong"?"pos":t.rs==="weak"?"neg":"neu"}" style="text-transform:uppercase;font-size:13px">${t.rs}</div></div>
+    </div>
+  </div>
+  <div class="card"><h3>Today's Story</h3>
+    <p style="font-size:14px;line-height:1.7">${swingStory(t)}</p>
+  </div>
+  <div class="card"><h3>Key Levels for Tomorrow (high → low)</h3>${levelsHTML(levels,t.close)}</div>
+  ${checklistHTML("swing-eod","EOD Swing Checklist")}
+  <div class="card"><h3>Journal Notes</h3>
+    ${noteField("swingObs","Observation today","What did the chart actually do — not what you wanted it to do","textarea")}
+    ${noteField("swingLesson","Lesson","One thing today taught (or re-taught) you","textarea")}
+    ${noteField("swingPlan","Tomorrow's game plan (1 sentence)","If X then Y — one sentence, no hedging")}
+  </div>`;
+}
+
+/* ================= SWING: NEXT DAY PREP ================= */
+function swingPrepTab(){
+  const t = T();
+  const levels = [
+    {name:"Prior Week High", v:t.priorWeekHigh, note:"Swing resistance — T2 zone for longs"},
+    {name:"Prior Day High", v:t.priorDayHigh, note:"First resistance — bear entries on rejection here"},
+    {name:"MA20", v:t.ma20, note:"The bias line for the swing — reclaim = bull case alive"},
+    {name:"Close (today)", v:t.close, note:"Starting point"},
+    {name:"Prior Day Low", v:t.priorDayLow, note:"Break below continues the downtrend"},
+    {name:"MA50", v:t.ma50, note:"Last structural support — longs defended here"},
+    {name:"Prior Week Low", v:t.priorWeekLow, note:"Weekly support — break opens a new leg down"}
+  ];
+  const conf = t.confidence;
+  const zone = conf>=70?2:conf>=50?1:0;
+  const confColor = conf>=70?"var(--green)":conf>=50?"var(--yellow)":"var(--red)";
+  const aligned = SECTORS.find(s=>s.etf===t.sectorEtf);
+  const sectorAligned = aligned && ((t.bias==="bear" && aligned.chg<0) || (t.bias==="bull" && aligned.chg>0));
+  return `
+  <div class="card"><h3>Key Levels Map — ${state.ticker} (high → low)</h3>${levelsHTML(levels,t.close)}</div>
+  <div class="card"><h3>Sector Context</h3>
+    <div class="sector-grid">
+      ${SECTORS.map(s=>`
+        <div class="sector-card ${s.etf===t.sectorEtf?"hot":""}">
+          <div class="sector-top"><span>${s.etf}</span><span class="${pctCls(s.chg)}">${sign(s.chg)}%</span></div>
+          <div class="sector-sub"><span>${s.name}</span><span>${s.rs} · ${s.trend==="up"?"↑":s.trend==="down"?"↓":"→"}</span></div>
+        </div>`).join("")}
+    </div>
+    <div class="${sectorAligned?"ok-box":"danger-box"}" style="margin:14px 0 0">
+      <h3>Sector verdict: ${sectorAligned?"ALIGNED":"CONFLICTING"}</h3>
+      <p class="small">${state.ticker}'s sector ${t.sectorEtf} is ${sign(aligned?aligned.chg:0)}% with a ${aligned?aligned.trend:"?"} trend.
+      Your bias is <b>${t.bias.toUpperCase()}</b> — the sector is ${sectorAligned
+        ? "pushing the same direction. Tailwind confirmed."
+        : "fighting your trade. Either reduce size or demand a stronger trigger."}</p>
+    </div>
+  </div>
+  <div class="card"><h3>Confidence Meter</h3>
+    <div class="flex-between" style="margin-bottom:8px">
+      <span class="small muted">Signal alignment for ${state.ticker}</span>
+      <span class="num" style="font-size:22px;font-weight:800;color:${confColor}">${conf}%</span>
+    </div>
+    <div class="conf-meter"><div style="width:${conf}%;background:${confColor}"></div></div>
+    <div class="conf-zones">
+      <div class="conf-zone ${zone===0?"active-zone":""}"><b class="neg">LOW &lt;50</b><br><span class="muted">Skip the trade or paper trade it. The chart hasn't earned your money.</span></div>
+      <div class="conf-zone ${zone===1?"active-zone":""}"><b class="neu">MEDIUM 50–70</b><br><span class="muted">Reduce size 30–50%. Some signals agree; the rest are noise you're choosing to ignore.</span></div>
+      <div class="conf-zone ${zone===2?"active-zone":""}"><b class="pos">HIGH 70+</b><br><span class="muted">Standard size. Trend, structure, sector, and momentum point the same way.</span></div>
+    </div>
+  </div>
+  <div class="card"><h3>Preparation Notes</h3>
+    ${noteField("swingPrep","Notes for tomorrow","Entries you're stalking, levels you're watching, what would change your mind","textarea")}
+  </div>`;
+}
+
+/* ================= SWING: SCENARIOS ================= */
+function swingScenarios(t){
+  const p = probs(t.bias);
+  const maRef = t.close>=t.ma20 ? t.ma20 : Math.min(t.ma20,t.priorDayHigh);
+  // Bull: reclaim + pullback entry at MA20 (or prior day high if reclaimed above)
+  const bullEntry = t.ma20;
+  const bullStop = Math.min(t.priorDayLow, t.ma20*0.985);
+  const bullT1 = t.priorDayHigh;
+  const bullT2 = t.priorWeekHigh;
+  const bullRR = (bullT1-bullEntry)/(bullEntry-bullStop);
+  // Bear: rejection at MA20/prior-day-high zone or breakdown of prior day low
+  const bearEntry = t.priorDayLow;
+  const bearStop = Math.min(t.ma20*1.005, t.priorDayHigh);
+  const bearT1 = Math.min(t.dayLow, t.priorWeekLow*1.01);
+  const bearT2 = t.priorWeekLow < bearT1 ? t.priorWeekLow : bearT1*0.97;
+  const bearRR = (bearEntry-bearT1)/(bearStop-bearEntry);
+  return {
+    bull:{trigger:`Daily close back above MA20 ${fmt(t.ma20)}, then pullback that holds it`,
+      entry:bullEntry, stop:bullStop, t1:bullT1, t2:bullT2, rr:"1 : "+fmt(Math.max(bullRR,0.1),1), prob:p.bull},
+    bear:{trigger:`Rejection candle at MA20 ${fmt(t.ma20)} zone, or break of prior day low ${fmt(t.priorDayLow)}`,
+      entry:bearEntry, stop:bearStop, t1:bearT1, t2:bearT2, rr:"1 : "+fmt(Math.max(bearRR,0.1),1), prob:p.bear},
+    flat:{trigger:`Price pinned between prior day low ${fmt(t.priorDayLow)} and MA20 ${fmt(t.ma20)} on shrinking volume`, prob:p.flat}
+  };
+}
+
+function swingScenTab(){
+  const t = T(), s = swingScenarios(t);
+  return `
+  <div class="grid3">
+    <div class="scen-card scen-bull">
+      <div class="scen-title pos">BULL CASE</div><div class="scen-sub">Reclaim and hold the moving average</div>
+      ${scenRows(s.bull,true)}
+      ${probBar(s.bull.prob,"var(--green)")}
+      <div class="action-box action-bull"><b>Action guide:</b> wait for the pullback to the level — MA20 at ${fmt(t.ma20)}. Do not chase an open gap-up move; if it runs without you, it was never your trade.</div>
+    </div>
+    <div class="scen-card scen-bear">
+      <div class="scen-title neg">BEAR CASE</div><div class="scen-sub">Trend continuation lower</div>
+      ${scenRows(s.bear,false)}
+      ${probBar(s.bear.prob,"var(--red)")}
+      <div class="action-box action-bear"><b>Action guide:</b> wait for the rejection candle at resistance before entering. Do not short into support at ${fmt(t.ma50)} — that's where shorts get squeezed, not paid.</div>
+    </div>
+    <div class="scen-card scen-flat">
+      <div class="scen-title neu">NEUTRAL / CHOP</div><div class="scen-sub">No edge between the levels</div>
+      <div class="scen-row"><span class="k">Trigger</span><span class="v" style="text-align:right;max-width:60%">${s.flat.trigger}</span></div>
+      <div class="scen-row"><span class="k">Action</span><span class="v">NO TRADE</span></div>
+      ${probBar(s.flat.prob,"var(--yellow)")}
+      <div class="action-box action-flat"><b>Middle of the range is the no-trade zone.</b> Entries belong at levels. Let it pick a side on the daily close — you lose nothing by waiting a day on a 3–10 day hold.</div>
+    </div>
+  </div>
+  <div class="drill"><h3>Honest Rule</h3>
+    <p class="small">If you can't write the scenario — trigger, entry, stop, target, in numbers — <b>you don't understand the trade.</b>
+    A scenario you can't write down is a feeling, and feelings pay commissions, not traders.</p>
+  </div>`;
+}
+
+/* ================= SWING: OPTIONS PLAN ================= */
+function swingOptionsTab(){
+  const t = T();
+  const env = ivrEnv(t.ivr);
+  const dirWord = t.bias==="bear"?"puts":"calls";
+  const recs = {
+    LOW:{type:`Buy ATM ${dirWord} direct`, dte:"10–14 DTE",
+      why:"IV is cheap — you're buying premium at a discount. Long options carry the most edge when volatility expands in your favor."},
+    MID:{type:`${t.bias==="bear"?"Put":"Call"} debit spread (buy ATM, sell 1 strike ${t.bias==="bear"?"lower":"higher"})`, dte:"14 DTE",
+      why:"IV is middling — the short leg subsidizes the inflated premium you're paying on the long leg. You cap upside to cut the IV tax."},
+    HIGH:{type:`Sell premium — ${t.bias==="bear"?"call":"put"} credit spread ${t.bias==="bear"?"above resistance":"below support"}`, dte:"14–21 DTE",
+      why:"IV is rich — buying here means paying panic prices. Selling defined-risk spreads makes the fat premium work for you instead."}
+  };
+  const rec = recs[env];
+  const envCards = [
+    ["LOW","IVR < 35","Buy ATM calls or puts direct, 10–14 DTE","Premium is cheap. Long options have the best payoff profile."],
+    ["MID","IVR 35–60","Use debit spreads, 14 DTE","Offset inflated premium by selling a further strike against your long."],
+    ["HIGH","IVR 60+","Sell premium — credit spreads, 14–21 DTE","Volatility is overpriced. Be the casino, not the gambler."]
+  ];
+  const earnWarn = t.earningsDays!=null && t.earningsDays<=21;
+  return `
+  <div class="card"><h3>IV Environment — ${state.ticker} IVR ${t.ivr} (${env})</h3>
+    <div class="grid3">
+      ${envCards.map(([k,rng,strat,why])=>`
+        <div class="conf-zone ${env===k?"active-zone":""}">
+          <b style="color:${k==="LOW"?"var(--green)":k==="MID"?"var(--yellow)":"var(--red)"}">${k} — ${rng}</b>
+          <div style="margin-top:4px;font-weight:600">${strat}</div>
+          <div class="muted small" style="margin-top:3px">${why}</div>
+        </div>`).join("")}
+    </div>
+  </div>
+  <div class="card"><h3>Recommended Structure — ${state.ticker}</h3>
+    <div class="stat-grid">
+      <div class="stat"><div class="lbl">Option Type</div><div class="val" style="font-size:13px">${rec.type}</div></div>
+      <div class="stat"><div class="lbl">DTE Range</div><div class="val">${rec.dte}</div></div>
+      <div class="stat"><div class="lbl">Bias</div><div class="val ${t.bias==="bear"?"neg":"pos"}" style="text-transform:uppercase">${t.bias}</div></div>
+    </div>
+    <p class="small muted" style="margin-top:10px"><b style="color:var(--text)">Why this fits:</b> ${rec.why}</p>
+  </div>
+  <div class="card"><h3>IV + DTE Combo Matrix</h3>
+    <div class="matrix">
+      <div></div>${MATRIX.cols.map(c=>`<div class="mx-h">${c}</div>`).join("")}
+      ${MATRIX.rows.map((r,ri)=>`
+        <div class="mx-row-h">${r}</div>
+        ${MATRIX.cells[ri].map(([lbl,why])=>`
+          <div class="mx-cell mx-${lbl.toLowerCase()}"><div class="mx-lbl">${lbl}</div><div class="mx-why">${why}</div></div>`).join("")}`).join("")}
+    </div>
+  </div>
+  <div class="card"><h3>Stop Loss Rules for Options</h3>
+    <div class="grid2">
+      <div class="ok-box mb0"><h3>Stock-based stop (preferred)</h3>
+        <p class="small">Set the alert on the <b>underlying</b> price level, exit the option manually when it triggers.
+        Your thesis is about the stock; let the stock tell you when it's dead. Option prices wiggle too much to trust alone.</p></div>
+      <div class="conf-zone"><b>Stop-limit on the option</b>
+        <p class="small muted" style="margin-top:4px">Paid $X → stop trigger at <b>50%</b> of X → limit at <b>45%</b> of X.
+        The 5% gap gives the order room to actually fill on the way down.</p></div>
+    </div>
+    <div class="danger-box" style="margin:14px 0 0"><h3>Never use a stop-market on options</h3>
+      <p class="small">Option bid/ask spreads gap wide the instant things move fast — exactly when stops trigger.
+      A stop-market sells at <b>whatever the bid is</b>, and in a fast tape that can be 30% below your trigger. Stop-limit or stock-based alert, always.</p></div>
+  </div>
+  <div class="card"><h3>Scale-Out Plan</h3>
+    ${[
+      ["+30–40%","Sell 1/3","Pay yourself first. The trade now owes you nothing."],
+      ["+75–100%","Sell another 1/3, move stop to break-even","Worst case from here is a scratch. You cannot lose on this trade anymore."],
+      ["+150%+","Let the last 1/3 run","House money. This is the piece that pays for the losers — give it room."]
+    ].map(([lvl,act,why])=>`
+      <div class="lvl-row">
+        <span class="lvl-px pos" style="width:90px">${lvl}</span>
+        <span class="lvl-name" style="width:300px">${act}</span>
+        <span class="lvl-note">${why}</span>
+      </div>`).join("")}
+  </div>
+  <div class="${earnWarn?"danger-box":"drill"}"><h3>IV Crush Warning</h3>
+    <p class="small">Check the earnings date <b>before</b> choosing DTE. If earnings land inside your DTE window → skip the trade or cut size hard.
+    Never buy ATM options into earnings when IVR is already elevated — the post-print IV crush can erase a correct directional call entirely.</p>
+    <p class="small" style="margin-top:8px"><b>${state.ticker}:</b> ${
+      t.earningsDays==null ? "No earnings risk (ETF / none scheduled)." :
+      earnWarn ? `⚠ Earnings in ~${t.earningsDays} days — INSIDE a 21 DTE window. Use ≤${Math.max(t.earningsDays-2,3)} DTE, cut size, or skip.` :
+      `Earnings in ~${t.earningsDays} days — outside the 21 DTE window. Clear.`}</p>
+  </div>`;
+}
+
+/* ================= MAIN RENDER ================= */
+function renderMain(){
+  const tab = state.tab[state.mode];
+  let html = "";
+  if(state.mode==="day"){
+    if(tab==="eod") html = dayEodTab();
+    else if(tab==="prep") html = dayPrepTab();
+    else if(tab==="scen") html = dayScenTab();
+    else if(tab==="log") html = dayLogTab();
+    else html = rulesTab("day-rules", DAY_RULE_CATS, DAY_TRUTHS);
+  } else {
+    if(tab==="eod") html = swingEodTab();
+    else if(tab==="prep") html = swingPrepTab();
+    else if(tab==="scen") html = swingScenTab();
+    else if(tab==="options") html = swingOptionsTab();
+    else html = rulesTab("swing-rules", SWING_RULE_CATS, SWING_TRUTHS);
+  }
+  $("#content").innerHTML = html;
+}
+
+function renderHeader(){
+  document.body.className = state.mode;
+  $("#btnDay").className = "mode-btn"+(state.mode==="day"?" active-day":"");
+  $("#btnSwing").className = "mode-btn"+(state.mode==="swing"?" active-swing":"");
+  const pnl = sessionPnl();
+  const b = $("#pnlBadge");
+  b.textContent = money(pnl);
+  b.className = "pnl-badge "+(pnl>=0?"pnl-pos":"pnl-neg");
+}
+
+function renderAll(){ renderHeader(); renderSidebar(); renderTabs(); renderMain(); }
+
+/* ================= EXPORT ================= */
+function exportTxt(){
+  const L = [];
+  const line = "=".repeat(58);
+  L.push("TRADE JOURNAL EXPORT", new Date().toLocaleString(), line, "");
+  L.push("MARKET PULSE");
+  pulse.forEach(p=>L.push(`  ${p.sym}: ${sign(p.chg)}%  ${p.note}`));
+  L.push("", line);
+  Object.keys(tickers).forEach(sym=>{
+    const t = tickers[sym], c = chgOf(t);
+    L.push("", `TICKER: ${sym}   close ${fmt(t.close)} (${sign(c.p)}%)  bias: ${t.bias.toUpperCase()}`);
+    L.push(`  -- Day trade data --`);
+    L.push(`  ORH ${fmt(t.orHigh)} | ORL ${fmt(t.orLow)} | OR Mid ${fmt(t.orMid)} | VWAP ${fmt(t.vwap)}`);
+    L.push(`  Day H/L ${fmt(t.dayHigh)}/${fmt(t.dayLow)} | RSI 5m ${t.rsi5m} | Vol ratio ${fmt(t.volRatio)}x`);
+    L.push(`  VWAP vs OR Mid: ${t.vwap>=t.orMid?"BULLISH":"BEARISH"} lean`);
+    L.push(`  -- Swing data --`);
+    L.push(`  MA20 ${fmt(t.ma20)} (${t.close>=t.ma20?"above":"below"}) | MA50 ${fmt(t.ma50)} (${t.close>=t.ma50?"above":"below"})`);
+    L.push(`  Daily RSI ${t.rsiDaily} (${rsiZone(t.rsiDaily)}) | MACD ${t.macd}`);
+    L.push(`  IVR ${t.ivr} -> ${ivrLabel(t.ivr)} | Structure ${t.structure} | Weekly trend ${t.weeklyTrend}`);
+    L.push(`  Sector ${t.sectorEtf} ${sign(t.sectorChg)}% | RS vs SPY: ${t.rs} | Confidence ${t.confidence}%`);
+    L.push(`  Prior day H/L ${fmt(t.priorDayHigh)}/${fmt(t.priorDayLow)} | Prior week H/L ${fmt(t.priorWeekHigh)}/${fmt(t.priorWeekLow)}`);
+  });
+  L.push("", line, "", "TRADE LOG (DAY)");
+  if(trades.length){
+    trades.forEach(tr=>{
+      L.push(`  ${tr.time}  ${tr.dir}  ${fmt(tr.entry)} -> ${fmt(tr.exit)}  x${tr.size}  P&L ${money(tradePnl(tr))}  [${tr.setup}]  plan:${tr.followedPlan?"YES":"NO"}${tr.mistake?"  NOTE: "+tr.mistake:""}`);
+    });
+    L.push(`  NET: ${money(sessionPnl())}  |  Win rate ${fmt(winRate(),0)}%`);
+  } else L.push("  (no trades)");
+  L.push("", "ALERTS");
+  alerts.forEach(a=>L.push(`  ${a.ticker} @ ${fmt(a.price)}  ${a.note}`));
+  L.push("", line, "", "CHECKLIST PROGRESS");
+  Object.keys(CHECKLISTS).forEach(id=>{
+    L.push(`  ${id}: ${checked(id)}/${CHECKLISTS[id].length}`);
+  });
+  L.push("", "NOTES");
+  const NN = {dayBest:"Best trade",dayWorst:"Worst trade",dayRule:"Rule broken",dayFix:"Fix tomorrow",
+    dayEmotion:"Emotional state",swingObs:"Swing observation",swingLesson:"Swing lesson",
+    swingPlan:"Swing game plan",swingPrep:"Swing prep notes"};
+  Object.keys(NN).forEach(k=>{ if(state.notes[k]) L.push(`  ${NN[k]}: ${state.notes[k]}`); });
+  L.push("", "-- end --");
+  const blob = new Blob([L.join("\n")], {type:"text/plain"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "trade-journal-"+new Date().toISOString().slice(0,10)+".txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ================= EVENTS ================= */
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  const act = el.dataset.act;
+
+  if(act==="mode"){ state.mode = el.dataset.mode; renderAll(); }
+  else if(act==="tab"){ state.tab[state.mode] = el.dataset.tab; renderTabs(); renderMain(); }
+  else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); }
+  else if(act==="check"){
+    const list = el.dataset.list, idx = el.dataset.idx;
+    state.checks[list] = state.checks[list]||{};
+    state.checks[list][idx] = !state.checks[list][idx];
+    el.classList.toggle("done", !!state.checks[list][idx]);
+    el.querySelector(".ck-box").textContent = state.checks[list][idx] ? "✓" : "";
+    updateChecklistUI(list);
+  }
+  else if(act==="addTicker"){
+    const sym = (prompt("Ticker symbol:")||"").trim().toUpperCase();
+    if(!sym) return;
+    const px = parseFloat(prompt("Closing price:"));
+    if(!isFinite(px) || px<=0) return alert("Invalid price.");
+    if(!tickers[sym]){
+      tickers[sym] = {
+        close:px, prevClose:px, dayHigh:px*1.01, dayLow:px*0.99,
+        orHigh:px*1.008, orLow:px*0.992, vwap:px, orMid:px,
+        ma20:px, ma50:px*0.97, rsi5m:50, rsiDaily:50,
+        macd:"flat histogram", volRatio:1.0, vol:"—", avgVol:"—",
+        ivr:40, structure:"HH/HL", weeklyTrend:"neutral",
+        bias:"neutral", sectorEtf:"SPY", sectorChg:-0.85,
+        rs:"neutral", priorDayHigh:px*1.015, priorDayLow:px*0.985, confidence:50,
+        pmHigh:px*1.005, pmLow:px*0.995, priorWeekHigh:px*1.03, priorWeekLow:px*0.97,
+        wk52High:px*1.4, wk52Low:px*0.6, earningsDays:null
+      };
+    } else tickers[sym].close = px;
+    state.ticker = sym;
+    renderAll();
+  }
+  else if(act==="pulse"){
+    const i = +el.dataset.idx, p = pulse[i];
+    const chg = parseFloat(prompt(`${p.sym} % change:`, p.chg));
+    if(isFinite(chg)) p.chg = chg;
+    const note = prompt(`${p.sym} note:`, p.note);
+    if(note!==null) p.note = note.trim();
+    renderSidebar();
+  }
+  else if(act==="addAlert"){
+    const price = parseFloat(prompt(`Alert price for ${state.ticker}:`));
+    if(!isFinite(price)) return;
+    const note = (prompt("Note for this alert:")||"").trim();
+    alerts.push({ticker:state.ticker, price, note});
+    renderMain();
+  }
+  else if(act==="delAlert"){ alerts.splice(+el.dataset.idx,1); renderMain(); }
+  else if(act==="delTrade"){ trades.splice(+el.dataset.idx,1); renderHeader(); renderSidebar(); renderMain(); }
+  else if(act==="addTrade"){
+    const g = id=>document.getElementById(id);
+    const entry = parseFloat(g("f-entry").value), exit = parseFloat(g("f-exit").value), size = parseInt(g("f-size").value,10);
+    if(!isFinite(entry)||!isFinite(exit)||!isFinite(size)||size<=0) return alert("Entry, exit and size are required.");
+    trades.push({
+      time:g("f-time").value.trim()||"—", dir:g("f-dir").value,
+      entry, exit, size,
+      result:g("f-result").value, setup:g("f-setup").value.trim()||"—",
+      followedPlan:g("f-plan").value==="yes", mistake:g("f-mistake").value.trim()
+    });
+    renderHeader(); renderSidebar(); renderMain();
+  }
+  else if(act==="export"){ exportTxt(); }
+});
+
+document.addEventListener("input", e=>{
+  const k = e.target.dataset && e.target.dataset.note;
+  if(k) state.notes[k] = e.target.value;
+});
+document.addEventListener("change", e=>{
+  const k = e.target.dataset && e.target.dataset.note;
+  if(k) state.notes[k] = e.target.value;
+});
+
+/* clock */
+function tick(){
+  $("#clock").textContent = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+setInterval(tick,1000); tick();
+
+renderAll();
+</script>
+</body>
+</html>
