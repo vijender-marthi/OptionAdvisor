@@ -668,7 +668,7 @@ export default function EODJournalPage() {
       {/* Header */}
       <div style={{ background: sideBg, borderBottom: `1px solid ${bdr}`, padding: '13px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 0, zIndex: 10 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>EOD Journal · Next Day Prep</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>Swing EOD Journal · Next Day Prep</div>
           <div style={{ fontSize: 11, color: txMuted, marginTop: 1 }}>End-of-session analysis → Tomorrow's game plan</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
