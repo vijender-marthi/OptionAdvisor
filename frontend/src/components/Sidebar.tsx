@@ -181,7 +181,7 @@ export default function Sidebar() {
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
         { id: 'eod-journal', label: 'EOD Journal', icon: <Monitor size={18} /> },
-        { id: 'journal-tool', label: 'Journal Workbench', icon: <NotebookPen size={18} /> },
+        { id: 'journal-tool', label: 'EOD Trade Journal', icon: <NotebookPen size={18} /> },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
       ],
     },
@@ -220,7 +220,7 @@ export default function Sidebar() {
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     // Review
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
-    { id: 'journal-tool',   label: 'Journal Workbench', icon: <NotebookPen size={18} /> },
+    { id: 'journal-tool',   label: 'EOD Trade Journal', icon: <NotebookPen size={18} /> },
     { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
     // Support
     { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },
