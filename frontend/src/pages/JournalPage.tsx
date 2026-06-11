@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   BookOpen, RefreshCw, Trash2, CheckSquare, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, MinusCircle, Clock, Activity, X, Edit3, Check,
@@ -945,8 +945,11 @@ export default function JournalPage() {
   const [refreshing, setRefreshing]   = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [deleting, setDeleting]       = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; entry: JournalEntry } | null>(null)
+  const [deleteCountdown, setDeleteCountdown] = useState(5)
+  const pendingDeleteIdRef = useRef<string | null>(null)
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
     if (!email) return
@@ -1012,27 +1015,58 @@ export default function JournalPage() {
     await _reloadFromDb()
   }
 
-  const handleDeleteConfirm = (id: string) => { setDeleteTarget(id); setDeleteError(null) }
+  const _clearDeleteTimers = useCallback(() => {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
+    if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null }
+  }, [])
 
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  // Cleanup on unmount
+  useEffect(() => () => { _clearDeleteTimers() }, [_clearDeleteTimers])
 
-  const handleDeleteExecute = async () => {
-    if (!deleteTarget || !email) return
-    setDeleting(true)
-    setDeleteError(null)
-    const targetId = deleteTarget
-    setDeleteTarget(null)
-    try {
-      await deleteJournalEntry(email, targetId)
-      await _reloadFromDb()
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e instanceof Error ? e.message : 'Delete failed')
-      setError(msg)
-    } finally {
-      setDeleting(false)
+  const handleDeleteConfirm = useCallback((id: string) => {
+    // Commit any previously pending delete immediately
+    if (pendingDeleteIdRef.current && email) {
+      const prevId = pendingDeleteIdRef.current
+      _clearDeleteTimers()
+      pendingDeleteIdRef.current = null
+      setPendingDelete(null)
+      deleteJournalEntry(email, prevId).then(() => _reloadFromDb()).catch(() => {})
     }
-  }
+    const entry = entries.find(e => e.id === id)
+    if (!entry) return
+    setEntries(prev => prev.filter(e => e.id !== id))
+    pendingDeleteIdRef.current = id
+    setPendingDelete({ id, entry })
+    setDeleteCountdown(5)
+    countdownIntervalRef.current = setInterval(() => {
+      setDeleteCountdown(c => (c > 0 ? c - 1 : 0))
+    }, 1000)
+    deleteTimerRef.current = setTimeout(async () => {
+      pendingDeleteIdRef.current = null
+      _clearDeleteTimers()
+      setPendingDelete(null)
+      if (!email) return
+      try {
+        await deleteJournalEntry(email, id)
+        await _reloadFromDb()
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+          ?? (e instanceof Error ? e.message : 'Delete failed')
+        setError(msg)
+        await _reloadFromDb()
+      }
+    }, 5000)
+  }, [email, entries, _clearDeleteTimers, _reloadFromDb])
+
+  const handleRevoke = useCallback(() => {
+    _clearDeleteTimers()
+    pendingDeleteIdRef.current = null
+    setPendingDelete(prev => {
+      if (prev) setEntries(cur => [prev.entry, ...cur.filter(e => e.id !== prev.id)])
+      return null
+    })
+    setDeleteCountdown(5)
+  }, [_clearDeleteTimers])
 
   const handleNotesSave = async (id: string, notes: string) => {
     if (!email) return
@@ -1085,39 +1119,30 @@ export default function JournalPage() {
   return (
     <div className="journal-page min-h-screen p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-5">
-      {/* Delete confirm modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto overscroll-contain bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-5 shadow-2xl">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} className="text-red-400" />
-              <div className="font-bold text-white">Delete Entry?</div>
+      {/* Undo-delete toast */}
+      {pendingDelete && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3 shadow-2xl min-w-[300px] max-w-[420px]" style={{ animation: 'fadeInUp 0.2s ease' }}>
+          <div className="w-8 h-8 rounded-full bg-red-900/40 flex items-center justify-center flex-shrink-0">
+            <Trash2 size={14} className="text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-white truncate">
+              Entry deleted
+              {pendingDelete.entry.ticker && <span className="ml-1.5 font-mono text-gray-400 text-xs">{pendingDelete.entry.ticker}</span>}
             </div>
-            <p className="text-sm text-gray-400 mb-4">
-              This will permanently remove this trade from your journal. This action cannot be undone.
-            </p>
-            {deleteError && (
-              <div className="mb-3 rounded-lg border border-red-700 bg-red-900/20 px-3 py-2 text-xs text-red-400 flex items-center gap-2">
-                <AlertTriangle size={12} className="shrink-0" />
-                {deleteError}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
-                className="flex-1 px-4 py-3 sm:py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:bg-gray-700 transition-colors min-h-[44px] sm:min-h-0"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteExecute}
-                disabled={deleting}
-                className="flex-1 px-4 py-3 sm:py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60 min-h-[44px] sm:min-h-0"
-              >
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
+            <div className="mt-1.5 h-1 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-red-500 rounded-full transition-all duration-1000 ease-linear"
+                style={{ width: `${(deleteCountdown / 5) * 100}%` }}
+              />
             </div>
           </div>
+          <button
+            onClick={handleRevoke}
+            className="flex-shrink-0 px-3 py-1.5 text-xs font-bold text-amber-300 border border-amber-700/50 bg-amber-900/20 rounded-lg hover:bg-amber-800/40 transition-colors"
+          >
+            Revoke {deleteCountdown}s
+          </button>
         </div>
       )}
 

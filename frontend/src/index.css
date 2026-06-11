@@ -2219,3 +2219,8 @@ html.light [id^="oa-rec-"] input.bg-gray-800 { background-color: #f8fafc !import
 @media (min-width: 700px) {
   .tcc-engine-grid { grid-template-columns: repeat(3, 1fr) !important; }
 }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
