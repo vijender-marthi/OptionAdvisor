@@ -102,10 +102,74 @@ const EOD_CHECKS = [
 
 const NOTES_KEY = 'eod_journal_notes_'
 const CHECKS_KEY = 'eod_journal_checks_'
+const EXIT_STRATEGY_KEY = 'exit_strategy_'
+
+const EXIT_TOOLTIP = [
+  "EV uses the scenario's probability as P(T1 hit).",
+  "P(T2|T1): conditional probability T2 hits AFTER T1.",
+  "Adjust based on conviction:",
+  "  Strong trending: 60-70%",
+  "  Average setup:   40-50%",
+  "  Choppy/contested: 25-35%",
+  "",
+  "Options mode: $1 stock move ≈ $50 per contract (50 delta ATM).",
+  "Shares mode: raw $ × shares.",
+  "",
+  "When all EVs are near zero — the setup is marginal.",
+  "No exit strategy can fix a bad R/R.",
+].join('\n')
 
 function todayKey() { return new Date().toISOString().split('T')[0] }
 function fmt(n: number, d = 2) { return `$${n.toFixed(d)}` }
 function pct(n: number) { return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%` }
+
+// ─── Exit Strategy Types & Helpers ────────────────────────────────────────────
+
+interface ExitStrategyState {
+  contracts: number
+  pT2GivenT1: number
+  mode: 'options' | 'shares'
+}
+
+function parsePrice(s: string): number {
+  const m = s.match(/\$?([\d,]+\.?\d*)/)
+  return m ? parseFloat(m[1].replace(/,/g, '')) : 0
+}
+
+function loadExitState(ticker: string, type: string): ExitStrategyState {
+  try {
+    const saved = localStorage.getItem(EXIT_STRATEGY_KEY + ticker + '_' + type + '_' + todayKey())
+    if (saved) return JSON.parse(saved)
+  } catch { /* */ }
+  return { contracts: 1, pT2GivenT1: 50, mode: 'options' }
+}
+
+function saveExitState(ticker: string, type: string, state: ExitStrategyState) {
+  try {
+    localStorage.setItem(EXIT_STRATEGY_KEY + ticker + '_' + type + '_' + todayKey(), JSON.stringify(state))
+  } catch { /* */ }
+}
+
+function useCountUp(target: number, duration = 350) {
+  const [display, setDisplay] = useState(target)
+  const fromRef = useRef(target)
+  useEffect(() => {
+    const from = fromRef.current
+    if (Math.abs(from - target) < 0.5) { fromRef.current = target; return }
+    const start = performance.now()
+    let raf: number
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1)
+      const eased = 1 - (1 - t) * (1 - t)
+      setDisplay(from + (target - from) * eased)
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return display
+}
 
 // ─── Scenario generation (mirrors HTML logic) ─────────────────────────────────
 
@@ -268,23 +332,131 @@ function Sparkline({ isUp, label, price }: { isUp: boolean; label: string; price
 
 // ─── Scenario Card ────────────────────────────────────────────────────────────
 
-function ScenarioCard({ type, data }: { type: 'bull' | 'bear'; data: ScenarioData }) {
+function ScenarioCard({ type, data, ticker }: { type: 'bull' | 'bear'; data: ScenarioData; ticker: string }) {
   const isBull = type === 'bull'
   const color = isBull ? '#3fb950' : '#f85149'
   const bg    = isBull ? '#0d2011' : '#200d0d'
   const bdr   = isBull ? '#1a4a1f' : '#5a1a1a'
   const icon  = isBull ? '▲' : '▼'
   const label = isBull ? 'BULL CASE — Gap Up / HL/HH' : 'BEAR CASE — Gap Down / LL/LH'
+
+  // ── Exit strategy state (persisted per ticker + type + day) ──────────────
+  const [contracts, setContracts] = useState(() => loadExitState(ticker, type).contracts)
+  const [pT2GivenT1, setPT2GivenT1] = useState(() => loadExitState(ticker, type).pT2GivenT1)
+  const [mode, setMode] = useState<'options' | 'shares'>(() => loadExitState(ticker, type).mode)
+
+  useEffect(() => {
+    saveExitState(ticker, type, { contracts, pT2GivenT1, mode })
+  }, [ticker, type, contracts, pT2GivenT1, mode])
+
+  // ── EV calculations ───────────────────────────────────────────────────────
+  const entryNum = parsePrice(data.entry)
+  const stopNum  = parsePrice(data.stop)
+  const t1Num    = parsePrice(data.t1)
+  const t2Num    = parsePrice(data.t2)
+
+  const stopDist = Math.abs(entryNum - stopNum)
+  const t1Dist   = Math.abs(t1Num - entryNum)
+  const t2Dist   = Math.abs(t2Num - entryNum)
+
+  // mult = dollar value of the full position per $1 stock move
+  const mult = mode === 'options' ? 50 * contracts : contracts
+  const prob = data.probability / 100
+  const pT2  = pT2GivenT1 / 100
+
+  const t1D  = t1Dist * mult
+  const t2D  = t2Dist * mult
+  const stpD = stopDist * mult
+
+  // Strategy 1: Exit at T1
+  const ev1 = prob * t1D - (1 - prob) * stpD
+
+  // Strategy 2: Hold for T2 (T1 reverses = break-even; T1 missed = full stop)
+  const ev2 = prob * pT2 * t2D - (1 - prob) * stpD
+
+  // Strategy 3: Trail (half at T1 locked, half runs to T2; requires 2+ contracts)
+  const ev3Raw = prob * (t1D / 2) + prob * pT2 * (t2D / 2) - (1 - prob) * stpD
+  const ev3 = contracts >= 2 ? ev3Raw : null
+
+  // Animated display values
+  const animEv1 = useCountUp(ev1)
+  const animEv2 = useCountUp(ev2)
+  const animEv3 = useCountUp(ev3 ?? 0)
+
+  // Win rates
+  const wr1 = data.probability
+  const wr2 = Math.round(prob * pT2 * 100)
+  const wr3 = data.probability
+
+  // ── Best strategy ─────────────────────────────────────────────────────────
+  function isClose(a: number, b: number) {
+    const mx = Math.max(Math.abs(a), Math.abs(b))
+    return mx < 1 ? true : Math.abs(a - b) / mx <= 0.1
+  }
+  function getBestId() {
+    if (contracts < 2) {
+      if (isClose(ev1, ev2)) return 1 // prefer lower variance
+      return ev1 >= ev2 ? 1 : 2
+    }
+    const e3 = ev3!
+    if (isClose(e3, ev1)) return 3 // trail has better risk profile
+    const maxEV = Math.max(ev1, ev2, e3)
+    if (maxEV === e3) return 3
+    if (maxEV === ev1) return 1
+    return 2
+  }
+  const bestId = getBestId()
+
+  // Marginal warning: all non-disabled EVs within $50 of zero
+  const evList = [ev1, ev2, ...(ev3 !== null ? [ev3] : [])]
+  const allMarginal = evList.every(e => Math.abs(e) < 50)
+
+  // Recommendation text
+  function getRecText() {
+    const names: Record<number, string> = { 1: 'Exit at T1', 2: 'Hold for T2', 3: 'Trail Stop' }
+    const bestEV = bestId === 1 ? ev1 : bestId === 2 ? ev2 : ev3!
+    const sign = bestEV >= -0.5 ? '+' : '-'
+    const amt  = `$${Math.abs(bestEV).toFixed(0)}`
+
+    if (contracts < 2 && Math.abs(ev1 - ev2) < 5) {
+      return `EVs are nearly identical with 1 contract. Exit at T1 chosen for lower variance. Upgrade to 2+ contracts to unlock Trail Stop.`
+    }
+    const reasons: Record<number, string> = {
+      1: `${wr1}% win rate with lowest variance. Lock in T1 profit — don't give it back.`,
+      2: `${wr2}% chance of reaching T2 after T1. Only use if setup is clearly trending.`,
+      3: `Half locked at T1 with zero risk on second half. Best risk-adjusted return at ${contracts} contracts.`,
+    }
+    return `With ${contracts} contract${contracts > 1 ? 's' : ''} at ${data.probability}% probability, ${names[bestId]} gives best EV of ${sign}${amt}. ${reasons[bestId]}`
+  }
+
   const rows: [string, string, string?][] = [
-    ['Trigger', data.trigger],
-    ['Entry',   data.entry],
-    ['Stop',    data.stop,  '#f85149'],
-    ['Target 1', data.t1,  '#3fb950'],
-    ['Target 2', data.t2,  '#3fb950'],
-    ['R/R',     data.rr,   '#58a6ff'],
+    ['Trigger',  data.trigger],
+    ['Entry',    data.entry],
+    ['Stop',     data.stop,  '#f85149'],
+    ['Target 1', data.t1,   '#3fb950'],
+    ['Target 2', data.t2,   '#3fb950'],
+    ['R/R',      data.rr,   '#58a6ff'],
   ]
+
+  const btnSm: React.CSSProperties = {
+    width: 22, height: 22, borderRadius: 4, fontSize: 14, fontWeight: 700,
+    border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.06)',
+    color: '#f0f6fc', cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', padding: 0, lineHeight: 1,
+  }
+
+  const stratCards = [
+    { id: 1, name: 'EXIT AT T1',  icon: '🎯', col: '#58a6ff', ev: animEv1, variance: 'LOW',  wr: wr1, disabled: false },
+    { id: 2, name: 'HOLD FOR T2', icon: '🚀', col: '#bc8cff', ev: animEv2, variance: 'HIGH', wr: wr2, disabled: false },
+    { id: 3, name: 'TRAIL STOP',  icon: '⚡',  col: '#3fb950', ev: animEv3, variance: 'MED',  wr: wr3, disabled: contracts < 2 },
+  ]
+
+  const bestName  = bestId === 1 ? 'Exit at T1' : bestId === 2 ? 'Hold for T2' : 'Trail Stop'
+  const bestColor = bestId === 1 ? '#58a6ff'    : bestId === 2 ? '#bc8cff'     : '#3fb950'
+
   return (
     <div style={{ background: bg, border: `1px solid ${bdr}`, borderRadius: 10, padding: '14px 16px' }}>
+      {/* Header */}
       <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         {icon} {label}
         <span style={{
@@ -292,21 +464,138 @@ function ScenarioCard({ type, data }: { type: 'bull' | 'bear'; data: ScenarioDat
           color, border: `1px solid ${bdr}`, background: 'rgba(0,0,0,.3)',
         }}>{data.probability}% prob</span>
       </div>
+
+      {/* Scenario rows */}
       {rows.map(([k, v, c]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,.05)', fontSize: 12 }}>
           <span style={{ color: '#8b949e', flexShrink: 0 }}>{k}</span>
           <span style={{ fontWeight: 700, color: c ?? '#f0f6fc', textAlign: 'right', maxWidth: '62%' }}>{v}</span>
         </div>
       ))}
+
+      {/* Probability bar */}
       <div style={{ marginTop: 10, height: 4, background: '#21262d', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${data.probability}%`, background: color, borderRadius: 2 }} />
       </div>
+
+      {/* If this happens */}
       <div style={{ marginTop: 10, background: 'rgba(0,0,0,.25)', borderRadius: 6, padding: '8px 10px', fontSize: 11, color: '#8b949e', lineHeight: 1.6 }}>
         <strong style={{ color: '#e6edf3', display: 'block', marginBottom: 3 }}>📋 If this happens:</strong>
         {isBull
           ? 'Watch for gap + VWAP reclaim in first 5 min. Do NOT chase open. Wait for 1m pullback to VWAP, confirm hold, then enter. Stop below VWAP.'
-          : 'Watch for weak open or retest of yesterday\'s close as resistance. Enter on VWAP rejection confirmation. Stop tight above level.'
+          : "Watch for weak open or retest of yesterday's close as resistance. Enter on VWAP rejection confirmation. Stop tight above level."
         }
+      </div>
+
+      {/* ── EXIT STRATEGY ─────────────────────────────────────────────────── */}
+      <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 14 }}>
+
+        {/* Header + tooltip */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 11 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color }}>
+            Exit Strategy
+          </span>
+          <span title={EXIT_TOOLTIP} style={{ fontSize: 12, color: '#8b949e', cursor: 'help', userSelect: 'none' }}>ⓘ</span>
+        </div>
+
+        {/* Contracts + mode toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 11, color: '#8b949e' }}>{mode === 'options' ? 'Contracts' : 'Shares'}</span>
+            <button style={btnSm} onClick={() => setContracts(c => Math.max(1, c - 1))}>−</button>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#f0f6fc', fontFamily: 'monospace', minWidth: 22, textAlign: 'center' }}>{contracts}</span>
+            <button style={btnSm} onClick={() => setContracts(c => c + 1)}>+</button>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid rgba(255,255,255,.12)' }}>
+            {(['options', 'shares'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{
+                  padding: '3px 10px', fontSize: 11, fontWeight: mode === m ? 700 : 400,
+                  background: mode === m ? color : 'transparent',
+                  color: mode === m ? (isBull ? '#0d2011' : '#200d0d') : '#8b949e',
+                  border: 'none', cursor: 'pointer', textTransform: 'capitalize',
+                }}
+              >{m}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* P(T2|T1) slider */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 11 }}>
+            <span style={{ color: '#8b949e' }}>P(T2 | T1 hit)</span>
+            <span style={{ fontWeight: 700, color: '#f0f6fc', fontFamily: 'monospace' }}>{pT2GivenT1}%</span>
+          </div>
+          <input
+            type="range" min="10" max="90" step="5"
+            value={pT2GivenT1}
+            onChange={e => setPT2GivenT1(Number(e.target.value))}
+            style={{ width: '100%', accentColor: color, cursor: 'pointer' }}
+          />
+        </div>
+
+        {/* Marginal setup warning */}
+        {allMarginal && (
+          <div style={{ marginBottom: 10, padding: '7px 10px', background: '#1a1200', border: '1px solid #5a3a00', borderRadius: 6, fontSize: 11, color: '#ffa657', lineHeight: 1.6 }}>
+            ⚠ Marginal setup — EV near zero at this probability. No strategy fixes a bad R/R. Consider higher conviction before sizing up.
+          </div>
+        )}
+
+        {/* Strategy mini-cards (3 across) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 11 }}>
+          {stratCards.map(s => {
+            const isBestCard = bestId === s.id && !s.disabled
+            return (
+              <div
+                key={s.id}
+                style={{
+                  background: '#0d1117',
+                  border: isBestCard ? '1px solid #d29922' : '1px solid rgba(255,255,255,.08)',
+                  borderRadius: 7, padding: '10px 11px', minHeight: 96,
+                  opacity: s.disabled ? 0.4 : 1, position: 'relative',
+                  boxShadow: isBestCard ? '0 0 10px rgba(210,153,34,.2)' : 'none',
+                  transition: 'border-color .2s, box-shadow .2s',
+                }}
+              >
+                {isBestCard && (
+                  <span style={{ position: 'absolute', top: -9, right: 2, fontSize: 13 }}>⭐</span>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: s.col, letterSpacing: '0.05em' }}>{s.name}</span>
+                  <span style={{ fontSize: 13 }}>{s.icon}</span>
+                </div>
+                {s.disabled ? (
+                  <div style={{ fontSize: 10, color: '#8b949e', lineHeight: 1.5, marginTop: 4 }}>
+                    Requires<br />2+ contracts
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: s.ev >= -0.5 ? '#3fb950' : '#f85149', marginBottom: 4 }}>
+                      {s.ev >= -0.5 ? '+' : '-'}${Math.abs(s.ev).toFixed(0)}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#6e7681', lineHeight: 1.6 }}>
+                      <span style={{ color: '#8b949e' }}>Var </span>{s.variance}
+                      {' · '}
+                      <span style={{ color: '#8b949e' }}>Win </span>{s.wr}%
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Recommendation */}
+        <div style={{ background: 'rgba(0,0,0,.3)', borderRadius: 6, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#f0f6fc', marginBottom: 4 }}>
+            ▸ Recommendation:{' '}
+            <span style={{ color: bestColor }}>{bestName}</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#8b949e', lineHeight: 1.7 }}>{getRecText()}</div>
+        </div>
+
       </div>
     </div>
   )
@@ -935,8 +1224,8 @@ export default function EODJournalPage() {
                 {!collapsed['scenarios'] && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <ScenarioCard type="bull" data={analysis.scenarios.bull} />
-                      <ScenarioCard type="bear" data={analysis.scenarios.bear} />
+                      <ScenarioCard type="bull" data={analysis.scenarios.bull} ticker={analysis.ticker} />
+                      <ScenarioCard type="bear" data={analysis.scenarios.bear} ticker={analysis.ticker} />
                     </div>
 
                     {/* Neutral strip */}
