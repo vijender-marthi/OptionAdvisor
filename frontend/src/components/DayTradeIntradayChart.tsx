@@ -200,7 +200,7 @@ export default function DayTradeIntradayChart({
   // Entries for the chart (exclude stubs and bad-R/R entries — no line to draw)
   const validEntryPoints = useMemo(() => {
     if (!entryPoints) return undefined
-    return entryPoints.filter(ep => !ep.stub && !(ep.rr != null && ep.rr < 1.0))
+    return entryPoints.filter(ep => !ep.stub)
   }, [entryPoints])
 
   // All entries for the table (stubs and bad-R/R still shown, grayed)
@@ -344,7 +344,7 @@ export default function DayTradeIntradayChart({
             </span>
           )}
           {displayEntryPoints.map((ep, idx) => {
-            if (ep.stub || (ep.rr != null && ep.rr < 1.0)) return null
+            if (ep.stub) return null
             const color = ep.color ?? entryColors[idx % entryColors.length]!
             const isHidden = hidden.has(idx)
             const effectiveDim = dimEntries && !isHidden
@@ -825,13 +825,13 @@ export default function DayTradeIntradayChart({
             </thead>
             <tbody>
               {displayEntryPoints.map((ep, idx) => {
-                const isUnavailable = ep.stub || (ep.rr != null && ep.rr < 1.0)
+                const isUnavailable = ep.stub
                 const isHidden = hidden.has(idx)
                 const color = ep.color ?? entryColors[idx % entryColors.length]!
                 const touchTime = displayFirstTouchTimes[idx]
                 const rowOpacity = isUnavailable ? 0.45 : isHidden ? 0.38 : dimEntries ? 0.4 : 1
                 const rowTitle = isUnavailable
-                  ? `${ep.label} — AI Coach entry (not actionable${ep.rr != null ? `, R/R ${ep.rr.toFixed(1)}×` : ''})`
+                  ? `${ep.label} — placeholder (no price level)`
                   : isHidden ? `Click to show ${ep.label} on chart`
                   : dimEntries ? `${ep.label} — signal exists but verdict is WAIT`
                   : `Click to hide ${ep.label} on chart`
@@ -860,8 +860,6 @@ export default function DayTradeIntradayChart({
                     <td className="py-1 pr-3 text-gray-400">
                       {ep.stub ? (
                         <span className="text-gray-600 italic">AI Coach</span>
-                      ) : ep.rr != null && ep.rr < 1.0 ? (
-                        <span>{ep.trigger} <span className="text-orange-500/70 text-[10px]">(low R/R)</span></span>
                       ) : dimEntries ? (
                         <span>{ep.trigger} <span className="text-yellow-500/60 text-[10px]">(WAIT)</span></span>
                       ) : ep.pending ? (
