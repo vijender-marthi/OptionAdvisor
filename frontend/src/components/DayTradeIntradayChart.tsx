@@ -193,7 +193,7 @@ export default function DayTradeIntradayChart({
   // Entries for the chart (exclude stubs and bad-R/R entries — no line to draw)
   const validEntryPoints = useMemo(() => {
     if (!entryPoints) return undefined
-    return entryPoints.filter(ep => !ep.stub && !(ep.rr != null && ep.rr < 1.0))
+    return entryPoints.filter(ep => !ep.stub)
   }, [entryPoints])
 
   // All entries for the table (stubs and bad-R/R still shown, grayed)
@@ -818,13 +818,13 @@ export default function DayTradeIntradayChart({
             </thead>
             <tbody>
               {displayEntryPoints.map((ep, idx) => {
-                const isUnavailable = ep.stub || (ep.rr != null && ep.rr < 1.0)
+                const isUnavailable = ep.stub
                 const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
                 const isHidden = hidden.has(idx)
                 const touchTime = displayFirstTouchTimes[idx]
                 const rowOpacity = isUnavailable ? 0.45 : isHidden ? 0.38 : dimEntries ? 0.4 : 1
                 const rowTitle = isUnavailable
-                  ? `${ep.label} — AI Coach entry (not actionable${ep.rr != null ? `, R/R ${ep.rr.toFixed(1)}×` : ''})`
+                  ? `${ep.label} — placeholder (no price level)`
                   : isHidden ? `Click to show ${ep.label} on chart`
                   : dimEntries ? `${ep.label} — signal exists but verdict is WAIT`
                   : `Click to hide ${ep.label} on chart`
