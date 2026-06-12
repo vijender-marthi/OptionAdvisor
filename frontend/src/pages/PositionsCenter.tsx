@@ -17,6 +17,7 @@ import {
   Shield,
   TrendingUp,
   TrendingDown,
+  Trash2,
   X,
 } from 'lucide-react'
 import { fetchPositionsCenter, fetchStockTargets } from '../api/commandCenter'
@@ -844,6 +845,7 @@ function TradingPositionCard({
   onClose,
   onManage,
   onAlert,
+  onDelete,
 }: {
   pos: PortfolioPosition
   expanded: boolean
@@ -859,6 +861,7 @@ function TradingPositionCard({
   onClose: () => void
   onManage: () => void
   onAlert: () => void
+  onDelete: () => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const actionAlert = deriveActionAlert(pos, pnlData, aiAnalysis)
@@ -1046,6 +1049,9 @@ function TradingPositionCard({
         {pos.status === 'closed' && (
           <button type="button" onClick={onManage} className={`${getActionButtonClass('surface')} px-2 py-0.5 text-[10px]`}>Review</button>
         )}
+        <button type="button" onClick={onDelete} className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-900/20 rounded-lg transition-colors" title="Delete position">
+          <Trash2 size={10} />Delete
+        </button>
         <button
           type="button"
           onClick={onToggle}
@@ -1783,6 +1789,14 @@ export default function PositionsCenter() {
     setEditingId(pos.id)
   }, [])
 
+  const handleDeletePosition = useCallback((pos: PortfolioPosition) => {
+    const label = `${pos.ticker} · ${pos.strategy || 'Position'}`
+    if (!window.confirm(`Delete ${label} permanently? This cannot be undone.`)) return
+    removeFromPortfolio(pos.id)
+    toggleExpanded(pos.id)
+    setNotice({ message: `${label} deleted.` })
+  }, [removeFromPortfolio, toggleExpanded])
+
   const handleEdit = useCallback((id: string) => {
     setEditingId(id)
   }, [])
@@ -2113,6 +2127,7 @@ export default function PositionsCenter() {
               onClose={() => handleClose(pos)}
               onManage={() => handleManage(pos)}
               onAlert={() => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
+              onDelete={() => handleDeletePosition(pos)}
             />
           ))}
         </div>

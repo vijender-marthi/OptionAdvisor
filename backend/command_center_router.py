@@ -1758,6 +1758,27 @@ class PortfolioNoteBody(BaseModel):
     note: str = Field(..., min_length=1)
 
 
+class PortfolioRemoveBody(BaseModel):
+    id: str = Field(..., min_length=1)
+
+
+@command_center_router.post("/portfolio/remove")
+def post_portfolio_remove(body: PortfolioRemoveBody, auth_email: str = Depends(require_access_email)):
+    email = normalize_email(auth_email)
+    state = get_user_state(email)
+    port = list(state.get("portfolio") or [])
+    found = False
+    for p in port:
+        if isinstance(p, dict) and str(p.get("id")) == body.id:
+            port.remove(p)
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Position not found")
+    saved = save_user_state(email, state.get("watchlist") or [], port)
+    return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
+
+
 @command_center_router.post("/portfolio/update-note")
 def post_portfolio_update_note(body: PortfolioNoteBody, auth_email: str = Depends(require_access_email)):
     email = normalize_email(auth_email)

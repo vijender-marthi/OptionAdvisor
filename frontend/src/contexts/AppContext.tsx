@@ -32,7 +32,7 @@ import {
   setAccessToken,
   type AuthLoginResponse,
 } from '../api/client'
-import { addPortfolioPosition, closePortfolioPosition, updatePortfolioPositionApi, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
+import { addPortfolioPosition, closePortfolioPosition, updatePortfolioPositionApi, removePortfolioPosition, fetchAlertCenterPage, removeWatchlistTicker } from '../api/commandCenter'
 import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import { canAccessPage as roleCanAccessPage, normalizeUserRole } from '../permissions'
 import {
@@ -995,7 +995,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const removeFromPortfolio = useCallback((id: string) => {
+    const prev = portfolioRef.current
     setPortfolio(prev => prev.filter(p => p.id !== id))
+    removePortfolioPosition({ id }).catch(e => {
+      console.warn('[portfolio] remove persist failed:', e)
+      if (prev) setPortfolio(prev)
+    })
   }, [])
 
   const closePosition = useCallback(async (id: string, payload: ClosePositionPayload) => {
