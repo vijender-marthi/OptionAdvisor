@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   ShieldCheck, RefreshCw, AlertTriangle, XCircle,
   CheckCircle2, Clock, BarChart2, Layers,
@@ -598,6 +598,24 @@ export default function TradeSignalsPage() {
   useEffect(() => {
     fetchMyTickers().then(res => setMyTickers(res.data?.tickers || [])).catch(() => {})
   }, [])
+
+  // Auto-fetch analysis for tickers not yet in cache
+  const autoFetchedRef = useRef(false)
+  useEffect(() => {
+    if (!myTickers.length || autoFetchedRef.current) return
+    const toFetch = myTickers.filter(mt => !tickerCache[mt.symbol])
+    if (!toFetch.length) { autoFetchedRef.current = true; return }
+    let cancelled = false
+    ;(async () => {
+      for (const mt of toFetch) {
+        if (cancelled) break
+        try { await refreshTicker(mt.symbol) } catch { /* non-fatal */ }
+        await new Promise(r => setTimeout(r, 600))
+      }
+      if (!cancelled) autoFetchedRef.current = true
+    })()
+    return () => { cancelled = true }
+  }, [myTickers.length, refreshTicker])
 
   const openSignalInFinder = useCallback((ticker: string, weeksOut: number, rec: Recommendation) => {
     requestAnalysis(ticker.trim().toUpperCase(), {

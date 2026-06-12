@@ -196,14 +196,24 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && isFinite(v) ? v : null
 }
 
-function DayTickerTable({ tickers, tiles, dt }: {
+function DayTickerTable({ tickers, tiles, dt, isDark }: {
   tickers: string[]
   tiles: Record<string, TileData>
   dt: Record<string, string>
+  isDark: boolean
 }) {
-  const [expandedSym, setExpandedSym] = useState<string | null>(null)
+  const [expandedSyms, setExpandedSyms] = useState<Set<string>>(new Set())
+  const [chartIntervals, setChartIntervals] = useState<Record<string, '1m' | '5m'>>({})
+  const toggleExpanded = (sym: string) => {
+    setExpandedSyms(prev => {
+      const next = new Set(prev)
+      if (next.has(sym)) next.delete(sym); else next.add(sym)
+      return next
+    })
+  }
   const th: React.CSSProperties = { padding: '9px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: dt.muted, textAlign: 'left', whiteSpace: 'nowrap', borderBottom: `1px solid ${dt.border}` }
   const td: React.CSSProperties = { padding: '10px', fontSize: 12, borderBottom: `1px solid ${dt.border}`, verticalAlign: 'top', whiteSpace: 'nowrap' }
+  const entryTd: React.CSSProperties = { ...td, background: isDark ? 'rgba(74,124,255,0.06)' : 'rgba(74,124,255,0.10)' }
   const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }
 
   const entryCell = (pts: ChartEntryPoint[], i: number) => {
@@ -212,12 +222,18 @@ function DayTickerTable({ tickers, tiles, dt }: {
     return (
       <div>
         <div style={{ ...mono, color: dt.text }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: dt.accent, marginRight: 4 }}>{p.label}</span>
           {p.price.toFixed(2)}
           {p.pending && <span style={{ fontSize: 9, color: dt.amber, marginLeft: 4 }}>PENDING</span>}
         </div>
-        <div style={{ fontSize: 10, color: dt.muted, whiteSpace: 'normal', maxWidth: 150, lineHeight: 1.4 }}>
-          {p.trigger}{p.stop != null ? ` · stop ${p.stop.toFixed(2)}` : ''}
+        <div style={{ fontSize: 10, color: dt.text, whiteSpace: 'normal', maxWidth: 150, lineHeight: 1.4 }}>
+          {p.trigger}{p.stop != null ? ` · stop` : ''}
         </div>
+        {p.stop != null && (
+          <div style={{ fontSize: 10, color: isDark ? '#f87171' : '#dc2626', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }}>
+            stop ${p.stop.toFixed(2)}
+          </div>
+        )}
       </div>
     )
   }
@@ -290,13 +306,13 @@ function DayTickerTable({ tickers, tiles, dt }: {
             const rvol   = num(m.rvol)
             const pts    = result ? buildEntryPoints(result, m) : []
             const verdict = unified?.verdict ?? result?.verdict?.replace(' ', '_') ?? ''
-            const isExpanded = expandedSym === sym
+            const isExpanded = expandedSyms.has(sym)
             const chartBars = parseChartBars(m.chart_bars)
             const hasChart = !!(chartBars && chartBars.length > 0 && orHigh != null && orLow != null)
 
             return (
               <Fragment key={sym}>
-                <tr onClick={() => setExpandedSym(isExpanded ? null : sym)}
+                <tr onClick={() => toggleExpanded(sym)}
                   style={{ cursor: 'pointer', background: isExpanded ? `${dt.accent}08` : undefined }}
                   onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = `${dt.bg2 || '#ffffff08'}` }}
                   onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = '' }}>
@@ -321,9 +337,9 @@ function DayTickerTable({ tickers, tiles, dt }: {
                   </td>
                   <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
                   <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>
-                  <td style={td}>{entryCell(pts, 0)}</td>
-                  <td style={td}>{entryCell(pts, 1)}</td>
-                  <td style={td}>{entryCell(pts, 2)}</td>
+                  <td style={entryTd}>{entryCell(pts, 0)}</td>
+                  <td style={entryTd}>{entryCell(pts, 1)}</td>
+                  <td style={entryTd}>{entryCell(pts, 2)}</td>
                   <td style={td} onClick={e => e.stopPropagation()}>
                     <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
                       title="Open in Day Trade page (new window)"
@@ -334,16 +350,23 @@ function DayTickerTable({ tickers, tiles, dt }: {
                 </tr>
                 {isExpanded && hasChart && (
                   <tr>
-                    <td colSpan={12} style={{ padding: 0, background: `${dt.bg2 || '#0d1117'}` }}>
+                    <td colSpan={12} style={{ padding: 0, background: dt.bg2 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 0' }}>
+                        <span style={{ fontSize: 10, color: dt.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Candle</span>
+                        {(['1m', '5m'] as const).map(iv => (
+                          <button key={iv} onClick={() => setChartIntervals(prev => ({ ...prev, [sym]: iv }))} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${(chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.border}`, background: (chartIntervals[sym] ?? '1m') === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: (chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.muted }}>{iv}</button>
+                        ))}
+                      </div>
                       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
                         <DayTradeIntradayChart
-                          bars={chartBars!}
+                          bars={(chartIntervals[sym] ?? '1m') === '5m' ? aggregate5mBars(chartBars!) : chartBars!}
                           orHigh={orHigh!}
                           orLow={orLow!}
-                          orMinutes={(m.or_minutes as number | undefined) ?? 15}
+                          orMinutes={(chartIntervals[sym] ?? '1m') === '5m' ? Math.max(1, Math.ceil(((m.or_minutes as number | undefined) ?? 15) / 5)) : ((m.or_minutes as number | undefined) ?? 15)}
                           sessionDate={String(m.session_date ?? '')}
                           entryPoints={pts.length > 0 ? pts : undefined}
-                          dimEntries={/WAIT|AVOID|NO_EDGE/i.test(verdict)}
+                          dimEntries={false}
+                          isDark={isDark}
                         />
                       </div>
                     </td>
@@ -683,7 +706,7 @@ export default function DayTradeDashboardPage() {
   const isDark = theme !== 'light'
 
   const dt = {
-    bg: isDark ? '#111318' : '#FFFFFF', bgDeep: isDark ? '#0A0C10' : '#F3F4F6',
+    bg: isDark ? '#111318' : '#FFFFFF', bg2: isDark ? '#0A0C10' : '#F3F4F6',
     border: isDark ? '#1E2330' : '#E5E7EB', text: isDark ? '#E8EBF0' : '#111827',
     muted: isDark ? '#5A6478' : '#6B7280', green: isDark ? '#00E5A0' : '#00A86B',
     red: isDark ? '#FF4D6D' : '#DC2626', amber: isDark ? '#F5A623' : '#D97706',
@@ -848,7 +871,7 @@ export default function DayTradeDashboardPage() {
   const tabAccent = activeTab === 'swing' ? dt.violet : dt.accent
 
   return (
-    <div style={{ minHeight: '100vh', background: dt.bgDeep, color: dt.text, padding: '20px 16px 40px' }}>
+    <div style={{ minHeight: '100vh', background: dt.bg2, color: dt.text, padding: '20px 16px 40px' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ maxWidth: 1280, margin: '0 auto' }}>
@@ -908,7 +931,7 @@ export default function DayTradeDashboardPage() {
             <div style={{ fontSize: 13 }}>Add up to {MAX_TICKERS} tickers above to monitor them all at once</div>
           </div>
         ) : activeTab === 'table' ? (
-          <DayTickerTable tickers={dayTickers} tiles={tiles} dt={dt} />
+          <DayTickerTable tickers={dayTickers} tiles={tiles} dt={dt} isDark={isDark} />
         ) : activeTab === 'swing' ? (
           <SwingTickerTable tickers={swingTickers} tiles={tiles} dt={dt} />
         ) : (

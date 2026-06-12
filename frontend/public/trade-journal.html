@@ -296,12 +296,13 @@ let pulse = [
 ];
 
 let trades = [
-  {time:"7:02", dir:"SHORT", entry:315.50, exit:308.20, size:100, result:"win",
+  {ticker:"ARM", time:"7:02", dir:"SHORT", entry:315.50, exit:308.20, size:100, result:"win",
    setup:"ORL breakdown", followedPlan:true, mistake:""},
-  {time:"8:45", dir:"LONG", entry:307.00, exit:305.50, size:50, result:"loss",
+  {ticker:"ARM", time:"8:45", dir:"LONG", entry:307.00, exit:305.50, size:50, result:"loss",
    setup:"VWAP reclaim attempt", followedPlan:false,
    mistake:"Bought into VWAP resistance — bias was still bearish"}
 ];
+let editTradeIdx = -1;
 
 let alerts = [
   {ticker:"ARM", price:316.00, note:"ORL — breakdown trigger"},
@@ -799,9 +800,10 @@ const sign = n => (n>0?"+":"")+fmt(n);
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 function chgOf(t){ const d=t.close-t.prevClose; return {d, p:t.prevClose>0 ? d/t.prevClose*100 : 0}; }
+function currentTrades(){ return trades.filter(t=>t.ticker===state.ticker); }
 function tradePnl(tr){ return (tr.dir==="SHORT" ? tr.entry-tr.exit : tr.exit-tr.entry)*tr.size; }
-function sessionPnl(){ return trades.reduce((a,t)=>a+tradePnl(t),0); }
-function winRate(){ if(!trades.length) return 0; return trades.filter(t=>tradePnl(t)>0).length/trades.length*100; }
+function sessionPnl(){ return currentTrades().reduce((a,t)=>a+tradePnl(t),0); }
+function winRate(){ const ct=currentTrades(); if(!ct.length) return 0; return ct.filter(t=>tradePnl(t)>0).length/ct.length*100; }
 function ivrEnv(ivr){ return ivr<35?"LOW":(ivr<=60?"MID":"HIGH"); }
 function ivrLabel(ivr){ return ivr<35?"BUY OPTIONS":(ivr<=60?"USE SPREADS":"SELL PREMIUM"); }
 function rsiZone(r){ return r<30?"oversold":r<40?"weak":r<60?"neutral":r<70?"strong":"overbought"; }
@@ -1147,11 +1149,12 @@ function dayScenTab(){
 
 /* ================= DAY: TRADE LOG ================= */
 function dayLogTab(){
+  const ct = currentTrades();
   const pnl = sessionPnl();
-  const wins = trades.filter(t=>tradePnl(t)>0), losses = trades.filter(t=>tradePnl(t)<=0);
+  const wins = ct.filter(t=>tradePnl(t)>0), losses = ct.filter(t=>tradePnl(t)<=0);
   const avgWin = wins.length ? wins.reduce((a,t)=>a+tradePnl(t),0)/wins.length : 0;
   const avgLoss = losses.length ? losses.reduce((a,t)=>a+tradePnl(t),0)/losses.length : 0;
-  const followed = trades.filter(t=>t.followedPlan), broke = trades.filter(t=>!t.followedPlan);
+  const followed = ct.filter(t=>t.followedPlan), broke = ct.filter(t=>!t.followedPlan);
   const fPnl = followed.reduce((a,t)=>a+tradePnl(t),0), bPnl = broke.reduce((a,t)=>a+tradePnl(t),0);
   return `
   <div class="card">
@@ -1162,10 +1165,11 @@ function dayLogTab(){
       <div class="stat"><div class="lbl">Avg Loss</div><div class="val neg">${money(avgLoss)}</div></div>
     </div>
   </div>
-  <div class="card"><h3>Trades</h3>
-    ${trades.length ? `<div style="overflow-x:auto"><table>
+  <div class="card"><h3>Trades — ${state.ticker}</h3>
+    ${ct.length ? `<div style="overflow-x:auto"><table>
       <tr><th>Time</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Size</th><th>P&amp;L</th><th>Setup</th><th>Plan</th><th>Mistake / Note</th><th></th></tr>
-      ${trades.map((tr,i)=>{
+      ${ct.map((tr)=>{
+        const i = trades.indexOf(tr);
         const p = tradePnl(tr);
         return `<tr>
           <td class="num">${esc(tr.time)}</td>
@@ -1176,7 +1180,7 @@ function dayLogTab(){
           <td>${esc(tr.setup)}</td>
           <td><span class="pill ${tr.followedPlan?"pill-green":"pill-red"}">${tr.followedPlan?"YES":"NO"}</span></td>
           <td class="muted small">${esc(tr.mistake||"—")}</td>
-          <td><button class="del-x" data-act="delTrade" data-idx="${i}">✕</button></td>
+          <td class="nowrap"><button class="edit-btn" data-act="editTrade" data-idx="${i}" title="Edit" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:13px;padding:2px 5px;margin-right:4px;">✎</button><button class="del-x" data-act="delTrade" data-idx="${i}">✕</button></td>
         </tr>`;}).join("")}
     </table></div>` : `<p class="small muted">No trades logged.</p>`}
   </div>
@@ -1192,9 +1196,12 @@ function dayLogTab(){
       <div><label>Followed plan</label><select id="f-plan"><option value="yes">YES</option><option value="no">NO</option></select></div>
       <div style="grid-column:span 2"><label>Mistake / note</label><input id="f-mistake" placeholder="Optional"></div>
     </div>
-    <button class="btn-accent" style="margin-top:12px" data-act="addTrade">Add Trade</button>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn-accent" data-act="addTrade" id="addTradeBtn">Add Trade</button>
+      <button class="btn-cancel" id="cancelEditBtn" style="display:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--card-bg2);color:var(--muted);" data-act="cancelEdit">Cancel</button>
+    </div>
   </div>
-  ${trades.length ? `<div class="card"><h3>Pattern Analysis</h3>
+  ${ct.length ? `<div class="card"><h3>Pattern Analysis</h3>
     <div class="grid2">
       <div class="ok-box mb0"><h3>Followed the plan — ${followed.length} trade${followed.length===1?"":"s"}</h3>
         <div class="num" style="font-size:20px;font-weight:700" class="${fPnl>=0?"pos":"neg"}">${money(fPnl)}</div>
@@ -1203,7 +1210,7 @@ function dayLogTab(){
         <div class="num" style="font-size:20px;font-weight:700">${money(bPnl)}</div>
         <p class="small muted" style="margin-top:4px">${broke.map(t=>esc(t.mistake||t.setup)).join(" · ")||"—"}</p></div>
     </div>
-    <p class="small" style="margin-top:12px"><b>Honest read:</b> ${broke.length} of ${trades.length} trade${trades.length===1?"":"s"} broke the plan.
+    <p class="small" style="margin-top:12px"><b>Honest read:</b> ${broke.length} of ${ct.length} trade${ct.length===1?"":"s"} broke the plan.
     ${broke.length===0
       ? "Clean session — protect this standard."
       : `Plan-following trades netted <span class="num ${fPnl>=0?"pos":"neg"}">${money(fPnl)}</span>; rule-breaking trades netted <span class="num ${bPnl>=0?"pos":"neg"}">${money(bPnl)}</span>. The edge isn't the setup — it's the obedience.`}</p>
@@ -1626,17 +1633,55 @@ document.addEventListener("click", e=>{
     renderMain();
   }
   else if(act==="delAlert"){ alerts.splice(+el.dataset.idx,1); renderMain(); }
-  else if(act==="delTrade"){ trades.splice(+el.dataset.idx,1); renderHeader(); renderSidebar(); renderMain(); }
+  else if(act==="delTrade"){ trades.splice(+el.dataset.idx,1); editTradeIdx=-1; renderHeader(); renderSidebar(); renderMain(); }
+  else if(act==="editTrade"){
+    const i=+el.dataset.idx, tr=trades[i];
+    if(!tr) return;
+    editTradeIdx=i;
+    document.getElementById("f-time").value=tr.time;
+    document.getElementById("f-dir").value=tr.dir;
+    document.getElementById("f-entry").value=tr.entry;
+    document.getElementById("f-exit").value=tr.exit;
+    document.getElementById("f-size").value=tr.size;
+    document.getElementById("f-setup").value=tr.setup;
+    document.getElementById("f-result").value=tr.result;
+    document.getElementById("f-plan").value=tr.followedPlan?"yes":"no";
+    document.getElementById("f-mistake").value=tr.mistake||"";
+    document.getElementById("addTradeBtn").textContent="Update Trade";
+    document.getElementById("addTradeBtn").dataset.edit="1";
+    document.getElementById("cancelEditBtn").style.display="inline-block";
+    setTimeout(()=>document.getElementById("f-time")?.focus(),100);
+    document.querySelector(".main")?.scrollTo(0,document.querySelector(".main")?.scrollHeight||9999);
+  }
+  else if(act==="cancelEdit"){
+    editTradeIdx=-1;
+    document.getElementById("addTradeBtn").textContent="Add Trade";
+    document.getElementById("addTradeBtn").dataset.edit="";
+    document.getElementById("cancelEditBtn").style.display="none";
+    ["f-time","f-entry","f-exit","f-size","f-setup","f-mistake"].forEach(id=>document.getElementById(id).value="");
+    document.getElementById("f-dir").value="LONG";
+    document.getElementById("f-result").value="win";
+    document.getElementById("f-plan").value="yes";
+  }
   else if(act==="addTrade"){
     const g = id=>document.getElementById(id);
     const entry = parseFloat(g("f-entry").value), exit = parseFloat(g("f-exit").value), size = parseInt(g("f-size").value,10);
     if(!isFinite(entry)||!isFinite(exit)||!isFinite(size)||size<=0) return alert("Entry, exit and size are required.");
-    trades.push({
-      time:g("f-time").value.trim()||"—", dir:g("f-dir").value,
+    const trade = {
+      ticker:state.ticker, time:g("f-time").value.trim()||"—", dir:g("f-dir").value,
       entry, exit, size,
       result:g("f-result").value, setup:g("f-setup").value.trim()||"—",
       followedPlan:g("f-plan").value==="yes", mistake:g("f-mistake").value.trim()
-    });
+    };
+    if(editTradeIdx>=0 && editTradeIdx<trades.length){
+      trades[editTradeIdx] = trade;
+      editTradeIdx = -1;
+      g("addTradeBtn").textContent = "Add Trade";
+      g("addTradeBtn").dataset.edit = "";
+    } else {
+      trades.push(trade);
+    }
+    g("cancelEditBtn").style.display="none";
     renderHeader(); renderSidebar(); renderMain();
   }
   else if(act==="refresh"){ refreshAll(); }

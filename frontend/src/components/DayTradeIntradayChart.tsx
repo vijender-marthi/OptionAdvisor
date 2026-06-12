@@ -117,11 +117,17 @@ export interface ChartEntryPoint {
   pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
 }
 
-const ENTRY_COLORS = [
+const EC_DARK = [
   '#34d399', // emerald
   '#38bdf8', // sky
   '#a78bfa', // violet
   '#fbbf24', // amber (4th if needed)
+]
+const EC_LIGHT = [
+  '#059669', // darker emerald
+  '#0284c7', // darker sky
+  '#7c3aed', // darker violet
+  '#d97706', // darker amber
 ]
 
 const TL_H = 60 // timeline SVG height (px)
@@ -148,6 +154,7 @@ export default function DayTradeIntradayChart({
   zones?: ZoneAnnotation[]
   isDark?: boolean
 }) {
+  const entryColors = isDark ? EC_DARK : EC_LIGHT
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
   const uid = useId().replace(/:/g, '')
@@ -338,7 +345,7 @@ export default function DayTradeIntradayChart({
           )}
           {displayEntryPoints.map((ep, idx) => {
             if (ep.stub || (ep.rr != null && ep.rr < 1.0)) return null
-            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const color = ep.color ?? entryColors[idx % entryColors.length]!
             const isHidden = hidden.has(idx)
             const effectiveDim = dimEntries && !isHidden
             const chipColor = isHidden || effectiveDim ? '#6b7280' : color
@@ -568,7 +575,7 @@ export default function DayTradeIntradayChart({
             if (!Number.isFinite(ep.price) || ep.price <= 0) return null
             if (ep.price < yMin || ep.price > yMax) return null
             const ey = yAt(ep.price)
-            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
+            const color = dimEntries ? '#6b7280' : (ep.color ?? entryColors[idx % entryColors.length]!)
             const isPending = ep.pending === true
             return (
               <g key={`entry-${idx}`} opacity={dimEntries ? 0.4 : isPending ? 0.45 : 1}>
@@ -597,7 +604,7 @@ export default function DayTradeIntradayChart({
             const touch = displayFirstTouchData[idx]
             if (!touch) return null
             const bar = bars[touch.barIndex]!
-            const color = dimEntries ? '#6b7280' : (ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!)
+            const color = dimEntries ? '#6b7280' : (ep.color ?? entryColors[idx % entryColors.length]!)
             const isShort = ep.direction === 'short'
             const cx = xAt(times[touch.barIndex]!)
             const arrowSize = 6
@@ -633,7 +640,7 @@ export default function DayTradeIntradayChart({
             if (!ep.exitPrice || !Number.isFinite(ep.exitPrice)) return null
             if (ep.exitPrice < yMin || ep.exitPrice > yMax) return null
             const ey = yAt(ep.exitPrice)
-            const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
+            const color = ep.color ?? entryColors[idx % entryColors.length]!
             return (
               <g key={`exit-${idx}`} clipPath={`url(#${clipId})`}>
                 <line
@@ -819,8 +826,8 @@ export default function DayTradeIntradayChart({
             <tbody>
               {displayEntryPoints.map((ep, idx) => {
                 const isUnavailable = ep.stub || (ep.rr != null && ep.rr < 1.0)
-                const color = ep.color ?? ENTRY_COLORS[idx % ENTRY_COLORS.length]!
                 const isHidden = hidden.has(idx)
+                const color = ep.color ?? entryColors[idx % entryColors.length]!
                 const touchTime = displayFirstTouchTimes[idx]
                 const rowOpacity = isUnavailable ? 0.45 : isHidden ? 0.38 : dimEntries ? 0.4 : 1
                 const rowTitle = isUnavailable
