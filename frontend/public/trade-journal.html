@@ -6,23 +6,34 @@
 <title>EOD Trade Journal</title>
 <style>
 :root{
-  --bg:#080b10; --card:#161b22; --border:#21262d;
+  --bg:#080b10; --bg2:#0d1117; --card:#161b22; --border:#21262d;
   --text:#e6edf3; --muted:#8b949e;
   --green:#3fb950; --red:#f85149; --yellow:#d29922;
   --blue:#58a6ff; --purple:#bc8cff;
+  --header-bg:rgba(8,11,16,.95);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 body.day{--accent:#58a6ff; --accent-dim:rgba(88,166,255,.12);}
 body.swing{--accent:#bc8cff; --accent-dim:rgba(188,140,255,.12);}
+/* Light theme — follows the parent app's html.light class (or OS preference standalone) */
+body.light{
+  --bg:#f6f8fa; --bg2:#eef1f5; --card:#ffffff; --border:#d0d7de;
+  --text:#1f2328; --muted:#57606a;
+  --green:#1a7f37; --red:#cf222e; --yellow:#9a6700;
+  --blue:#0969da; --purple:#8250df;
+  --header-bg:rgba(246,248,250,.95);
+}
+body.light.day{--accent:#0969da; --accent-dim:rgba(9,105,218,.08);}
+body.light.swing{--accent:#8250df; --accent-dim:rgba(130,80,223,.08);}
 *{box-sizing:border-box; margin:0; padding:0;}
 body{background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}
 button{font:inherit; cursor:pointer;}
-input,select,textarea{font:inherit; background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px;}
+input,select,textarea{font:inherit; background:var(--bg2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px;}
 input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent);}
 .num{font-family:var(--mono);}
 
 /* ---------- Header ---------- */
-header{position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:16px; padding:10px 20px; background:rgba(8,11,16,.95); backdrop-filter:blur(6px); border-bottom:1px solid var(--border);}
+header{position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:16px; padding:10px 20px; background:var(--header-bg); backdrop-filter:blur(6px); border-bottom:1px solid var(--border);}
 header h1{font-size:17px; font-weight:700; letter-spacing:.3px; white-space:nowrap;}
 .mode-toggle{display:flex; gap:6px;}
 .mode-btn{padding:5px 16px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.6px; transition:all .2s;}
@@ -32,8 +43,9 @@ header h1{font-size:17px; font-weight:700; letter-spacing:.3px; white-space:nowr
 .pnl-badge{font-family:var(--mono); font-size:13px; font-weight:700; padding:4px 12px; border-radius:999px; border:1px solid;}
 .pnl-pos{color:var(--green); border-color:rgba(63,185,80,.4); background:rgba(63,185,80,.08);}
 .pnl-neg{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.08);}
-#exportBtn{padding:5px 14px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12px;}
-#exportBtn:hover{border-color:var(--accent);}
+#exportBtn,#refreshBtn{padding:5px 14px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12px;}
+#exportBtn:hover,#refreshBtn:hover{border-color:var(--accent);}
+#refreshBtn[disabled]{opacity:.55; cursor:wait;}
 
 /* ---------- Layout ---------- */
 .layout{display:flex; align-items:flex-start;}
@@ -88,13 +100,13 @@ main{flex:1; min-width:0; padding:16px 20px 60px;}
 .hero-px{font-family:var(--mono); font-size:24px; font-weight:600;}
 .hero-chg{font-family:var(--mono); font-size:15px; font-weight:600;}
 .stat-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px;}
-.stat{background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:8px 11px;}
+.stat{background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:8px 11px;}
 .stat .lbl{font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted);}
 .stat .val{font-family:var(--mono); font-size:15px; font-weight:600; margin-top:2px;}
 .stat .sub{font-size:11px; color:var(--muted); margin-top:1px;}
 
 /* checklist */
-.check-item{display:flex; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:7px; cursor:pointer; transition:background .2s,border-color .2s; background:#0d1117;}
+.check-item{display:flex; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:7px; cursor:pointer; transition:background .2s,border-color .2s; background:var(--bg2);}
 .check-item:hover{border-color:var(--accent);}
 .check-item.done{background:rgba(63,185,80,.1); border-color:rgba(63,185,80,.35);}
 .check-item.done .ck-text{text-decoration:line-through; color:var(--muted);}
@@ -102,14 +114,14 @@ main{flex:1; min-width:0; padding:16px 20px 60px;}
 .check-item.done .ck-box{border-color:var(--green); background:rgba(63,185,80,.2);}
 .ck-text{font-size:13px; font-weight:500;}
 .ck-note{font-size:11.5px; color:var(--muted); margin-top:2px;}
-.progress{height:8px; background:#0d1117; border:1px solid var(--border); border-radius:999px; overflow:hidden; margin-top:12px;}
+.progress{height:8px; background:var(--bg2); border:1px solid var(--border); border-radius:999px; overflow:hidden; margin-top:12px;}
 .progress > div{height:100%; border-radius:999px; transition:width .45s ease, background .45s;}
 .prog-lbl{font-size:11.5px; color:var(--muted); margin-top:5px; font-family:var(--mono);}
 
 /* OR visual */
 .or-visual{display:flex; gap:20px; align-items:stretch; flex-wrap:wrap;}
 .or-bar-wrap{position:relative; width:170px; flex:0 0 170px; height:240px; margin:10px 0 10px 6px;}
-.or-track{position:absolute; left:60px; top:0; bottom:0; width:14px; background:#0d1117; border:1px solid var(--border); border-radius:7px;}
+.or-track{position:absolute; left:60px; top:0; bottom:0; width:14px; background:var(--bg2); border:1px solid var(--border); border-radius:7px;}
 .or-zone{position:absolute; left:60px; width:14px; border-radius:4px;}
 .or-mark{position:absolute; left:0; right:0; height:0;}
 .or-mark .line{position:absolute; left:52px; width:30px; border-top:2px solid; top:0;}
@@ -152,7 +164,7 @@ main{flex:1; min-width:0; padding:16px 20px 60px;}
 
 /* decision tree */
 .tree-step{display:flex; gap:12px; align-items:flex-start;}
-.tree-node{flex:1; background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:9px 13px; font-size:12.5px;}
+.tree-node{flex:1; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:9px 13px; font-size:12.5px;}
 .tree-node b{color:var(--accent);}
 .tree-arrow{text-align:center; color:var(--muted); font-size:14px; padding:2px 0 2px 30px;}
 .tree-n{flex:0 0 26px; height:26px; border-radius:50%; background:var(--accent-dim); border:1px solid var(--accent); color:var(--accent); font-family:var(--mono); font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; margin-top:4px;}
@@ -196,7 +208,7 @@ tr:last-child td{border-bottom:none;}
 /* sectors */
 .sector-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
 @media(max-width:1100px){.sector-grid{grid-template-columns:repeat(2,1fr);}}
-.sector-card{background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:9px 11px;}
+.sector-card{background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:9px 11px;}
 .sector-card.hot{border-color:var(--accent); background:var(--accent-dim);}
 .sector-top{display:flex; justify-content:space-between; font-family:var(--mono); font-weight:700; font-size:13px;}
 .sector-sub{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:3px;}
@@ -208,10 +220,10 @@ tr:last-child td{border-bottom:none;}
 textarea{resize:vertical; min-height:54px;}
 
 /* confidence */
-.conf-meter{height:14px; background:#0d1117; border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+.conf-meter{height:14px; background:var(--bg2); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
 .conf-meter>div{height:100%; transition:width .45s ease;}
 .conf-zones{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; font-size:12px;}
-.conf-zone{border-radius:8px; padding:8px 10px; border:1px solid var(--border); background:#0d1117;}
+.conf-zone{border-radius:8px; padding:8px 10px; border:1px solid var(--border); background:var(--bg2);}
 .conf-zone.active-zone{border-color:var(--accent); background:var(--accent-dim);}
 
 .muted{color:var(--muted);}
@@ -232,6 +244,7 @@ textarea{resize:vertical; min-height:54px;}
   </div>
   <div id="clock" class="num"></div>
   <div class="pnl-badge" id="pnlBadge"></div>
+  <button id="refreshBtn" data-act="refresh" title="Refetch watchlist, prices, and ticker details">&#10227; Refresh</button>
   <button id="exportBtn" data-act="export">&#11015; Export</button>
 </header>
 
@@ -307,6 +320,21 @@ const state = {
     swingObs:"", swingLesson:"", swingPlan:"", swingPrep:""
   }
 };
+
+/* ── Journal notes persistence — per-day localStorage, same pattern as EODJournalPage ── */
+const NOTES_KEY = "eod_trade_journal_notes_" + new Date().toISOString().slice(0,10);
+function loadSavedNotes(){
+  try{ return JSON.parse(localStorage.getItem(NOTES_KEY) || "{}"); }catch(e){ return {}; }
+}
+function saveNotes(){
+  try{ localStorage.setItem(NOTES_KEY, JSON.stringify(state.notes)); }catch(e){ /* quota */ }
+}
+(function restoreNotes(){
+  const saved = loadSavedNotes();
+  Object.keys(saved).forEach(k=>{
+    if(k in state.notes && typeof saved[k] === "string") state.notes[k] = saved[k];
+  });
+})();
 
 /* ================= BACKEND (OptionAdvisor API) =================
    Same-origin iframe: reads the app's bearer token from localStorage and
@@ -558,6 +586,61 @@ async function boot(){
   loadMarketPulse();
 }
 
+/* ================= REFRESH ================= */
+let refreshing = false;
+function setRefreshBtn(){
+  const b = document.getElementById("refreshBtn");
+  if(!b) return;
+  b.disabled = refreshing;
+  b.innerHTML = refreshing ? "&#10227; Refreshing…" : "&#10227; Refresh";
+}
+async function refreshAll(){
+  if(refreshing) return;
+  refreshing = true; setRefreshBtn();
+  try{
+    if(!liveMode){
+      await boot();           // backend may have come up since load
+    } else {
+      Object.keys(detailState).forEach(k=>delete detailState[k]);
+      try{
+        const r = await apiCall("/my-tickers");
+        const list = ((r.data||{}).tickers||[]).filter(t=>t.is_active!==false);
+        list.forEach(mt=>{
+          const t = tickers[mt.symbol];
+          if(!t){ tickers[mt.symbol] = stubFromMyTicker(mt); return; }
+          if(mt.last_price>0){
+            t.close = mt.last_price;
+            if(mt.price_change!=null) t.prevClose = mt.last_price - mt.price_change;
+          }
+          if(mt.next_earnings_days!=null) t.earningsDays = mt.next_earnings_days;
+        });
+      }catch(e){ /* keep current prices */ }
+      loadMarketPulse();
+      renderAll();
+      await loadTickerDetails(state.ticker);
+    }
+  } finally {
+    refreshing = false; setRefreshBtn();
+  }
+}
+
+/* ================= THEME (follows parent app) ================= */
+function applyTheme(light){ document.body.classList.toggle("light", !!light); }
+function detectTheme(){
+  try{
+    if(window.parent && window.parent !== window){
+      const root = window.parent.document.documentElement;
+      applyTheme(root.classList.contains("light"));
+      new MutationObserver(()=>applyTheme(root.classList.contains("light")))
+        .observe(root, {attributes:true, attributeFilter:["class"]});
+      return;
+    }
+  }catch(e){ /* cross-origin parent — fall through */ }
+  const mq = window.matchMedia("(prefers-color-scheme: light)");
+  applyTheme(mq.matches);
+  if(mq.addEventListener) mq.addEventListener("change", e=>applyTheme(e.matches));
+}
+
 /* ================= CHECKLIST DEFINITIONS ================= */
 const CHECKLISTS = {
   "day-eod":[
@@ -753,6 +836,8 @@ function updateChecklistUI(listId){
   if(listId.endsWith("rules")) renderMain(); // rules tab shows score breakdowns
 }
 
+const NOTES_HINT = `<p class="small muted" style="margin:-6px 0 12px">✓ Auto-saves on this device as you type — restored when you reopen today</p>`;
+
 function noteField(key, label, placeholder, kind){
   const v = esc(state.notes[key]||"");
   if(kind==="textarea") return `<div class="note-field"><label>${label}</label><textarea data-note="${key}" placeholder="${placeholder}">${v}</textarea></div>`;
@@ -900,6 +985,7 @@ function dayEodTab(){
   <div class="card"><h3>VWAP vs OR Mid</h3>${orVisualHTML(t)}</div>
   ${checklistHTML("day-eod","EOD Checklist")}
   <div class="card"><h3>Journal Notes</h3>
+    ${NOTES_HINT}
     <div class="grid2">
       <div>
         ${noteField("dayBest","Best trade today","What made it good — process, not just P&L")}
@@ -1217,6 +1303,7 @@ function swingEodTab(){
   <div class="card"><h3>Key Levels for Tomorrow (high → low)</h3>${levelsHTML(levels,t.close)}</div>
   ${checklistHTML("swing-eod","EOD Swing Checklist")}
   <div class="card"><h3>Journal Notes</h3>
+    ${NOTES_HINT}
     ${noteField("swingObs","Observation today","What did the chart actually do — not what you wanted it to do","textarea")}
     ${noteField("swingLesson","Lesson","One thing today taught (or re-taught) you","textarea")}
     ${noteField("swingPlan","Tomorrow's game plan (1 sentence)","If X then Y — one sentence, no hedging")}
@@ -1271,6 +1358,7 @@ function swingPrepTab(){
     </div>
   </div>
   <div class="card"><h3>Preparation Notes</h3>
+    ${NOTES_HINT}
     ${noteField("swingPrep","Notes for tomorrow","Entries you're stalking, levels you're watching, what would change your mind","textarea")}
   </div>`;
 }
@@ -1434,7 +1522,8 @@ function renderMain(){
 }
 
 function renderHeader(){
-  document.body.className = state.mode;
+  document.body.classList.toggle("day", state.mode==="day");
+  document.body.classList.toggle("swing", state.mode==="swing");
   $("#btnDay").className = "mode-btn"+(state.mode==="day"?" active-day":"");
   $("#btnSwing").className = "mode-btn"+(state.mode==="swing"?" active-swing":"");
   const pnl = sessionPnl();
@@ -1550,16 +1639,17 @@ document.addEventListener("click", e=>{
     });
     renderHeader(); renderSidebar(); renderMain();
   }
+  else if(act==="refresh"){ refreshAll(); }
   else if(act==="export"){ exportTxt(); }
 });
 
 document.addEventListener("input", e=>{
   const k = e.target.dataset && e.target.dataset.note;
-  if(k) state.notes[k] = e.target.value;
+  if(k){ state.notes[k] = e.target.value; saveNotes(); }
 });
 document.addEventListener("change", e=>{
   const k = e.target.dataset && e.target.dataset.note;
-  if(k) state.notes[k] = e.target.value;
+  if(k){ state.notes[k] = e.target.value; saveNotes(); }
 });
 
 /* clock */
@@ -1568,6 +1658,7 @@ function tick(){
 }
 setInterval(tick,1000); tick();
 
+detectTheme();
 renderAll();
 boot();
 </script>

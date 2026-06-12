@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
+import MacdHistogramChart from '../components/MacdHistogramChart'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
@@ -30,6 +31,7 @@ export default function SwingTradePage() {
     portfolio,
     user,
     theme,
+    setHelpOpen,
   } = useApp()
   const isDark = theme !== 'light'
   const st = {
@@ -817,6 +819,28 @@ export default function SwingTradePage() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* MACD histogram — momentum phase, computed from chart_series closes */}
+      {result && result.metrics && (result.metrics as Record<string, unknown>).chart_series != null && (
+        <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
+          <div className="px-4 py-2.5 border-b border-gray-800/60 flex items-center gap-2">
+            <BarChart2 size={14} className="text-violet-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              MACD Histogram (12/26/9 daily)
+            </span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="ml-auto text-[11px] font-medium text-violet-400 hover:text-violet-300"
+            >
+              Reading guide →
+            </button>
+          </div>
+          <div className="p-3">
+            <MacdHistogramChart metrics={result.metrics as Record<string, unknown>} />
+          </div>
         </div>
       )}
 
