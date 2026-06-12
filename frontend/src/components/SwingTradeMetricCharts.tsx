@@ -83,7 +83,7 @@ function fmtTickDate(d: string) {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function parseChartPayload(raw: unknown): SwingTradeChartPoint[] | null {
+export function parseChartPayload(raw: unknown): SwingTradeChartPoint[] | null {
   if (!raw || typeof raw !== 'object') return null
   const pts = (raw as { points?: unknown }).points
   if (!Array.isArray(pts) || pts.length === 0) return null

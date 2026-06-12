@@ -2488,6 +2488,89 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                 </div>
               </DocCard>
 
+              <DocCard icon={<BarChart2 size={15} />} title="MACD Histogram — Visual Reference">
+                <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                  How to read the histogram chart on the Swing Trade page. Daily chart, <strong className="text-gray-200">12 / 26 / 9</strong> settings.
+                  Solid bars = momentum <strong className="text-gray-200">growing</strong>, faded bars = momentum <strong className="text-gray-200">fading</strong>.
+                  The histogram is the gap between the MACD line and its signal line — it shows acceleration, not just direction.
+                </p>
+
+                {/* Entry timing ladder — the four phases and what to do in each */}
+                <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-violet-300 mb-2">Entry Timing — When to Actually Enter the Swing</div>
+                  {[
+                    { bar: 'RED GROWING', barCls: 'bg-red-950 text-red-400', name: 'Do Not Enter Long', nameCls: 'text-red-400',
+                      desc: 'Sellers accelerating — gap expanding downward. Entering long means fighting the trend. Hold puts/shorts; do NOT buy calls.',
+                      tag: 'SKIP', tagCls: 'bg-red-950 text-red-400' },
+                    { bar: 'RED SHRINKING', barCls: 'bg-red-950/60 text-red-300', name: 'Prepare — Not Yet', nameCls: 'text-red-300',
+                      desc: 'Sellers losing power. Reversal long setups start forming here. Watch RSI 35–45 + MA test; build the plan but wait for the green flip — do not anticipate.',
+                      tag: 'WATCH', tagCls: 'bg-amber-950 text-amber-400' },
+                    { bar: 'GREEN SMALL', barCls: 'bg-emerald-950 text-emerald-400 ring-1 ring-emerald-500', name: '✓ IDEAL ENTRY — crossover just happened', nameCls: 'text-emerald-400',
+                      desc: 'Histogram just flipped green. Early in the move, maximum runway ahead. Entry window: 1–5 days after the crossover.',
+                      tag: 'ENTER HERE', tagCls: 'bg-emerald-950 text-emerald-400' },
+                    { bar: 'GREEN GROWING', barCls: 'bg-emerald-950 text-emerald-400', name: '✓ Good Entry — momentum confirmed', nameCls: 'text-emerald-400',
+                      desc: 'Buyers accelerating; each day closes stronger. Slightly later but still valid. Hold longs, add on pullbacks to MA20 — do not exit early.',
+                      tag: 'ENTER', tagCls: 'bg-emerald-950 text-emerald-400' },
+                    { bar: 'GREEN SHRINKING', barCls: 'bg-emerald-950/60 text-emerald-300', name: 'Late — Take Profits Instead', nameCls: 'text-emerald-300',
+                      desc: 'Buyers still in control but losing steam. This is the exit zone, not the entry zone. Take partials (50%), tighten stop to break-even, no new positions.',
+                      tag: 'EXIT / PARTIAL', tagCls: 'bg-amber-950 text-amber-400' },
+                  ].map(r => (
+                    <div key={r.bar} className="flex items-start gap-3 py-2.5 border-b border-gray-700/40 last:border-0">
+                      <span className={`w-24 flex-shrink-0 rounded px-1.5 py-1.5 text-center text-[9px] font-bold leading-tight ${r.barCls}`}>{r.bar}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-[12px] font-bold ${r.nameCls}`}>{r.name}</div>
+                        <div className="text-[11px] text-gray-400 leading-relaxed">{r.desc}</div>
+                      </div>
+                      <span className={`flex-shrink-0 rounded px-2 py-0.5 text-[10px] font-bold ${r.tagCls}`}>{r.tag}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Crossover — where the histogram changes color */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-lg bg-emerald-950/20 border border-emerald-900/40 p-3">
+                    <div className="text-[12px] font-bold text-emerald-400 mb-1.5">▲ Bullish Crossover</div>
+                    <div className="text-[11px] text-gray-400 leading-relaxed">
+                      MACD line crosses <strong className="text-gray-200">above</strong> the signal line. Histogram flips red → green.
+                      Short-term momentum is now faster than medium-term.
+                      <div className="mt-1 font-semibold text-emerald-400">Entry window opens: 1–5 days after the crossover.</div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-red-950/20 border border-red-900/40 p-3">
+                    <div className="text-[12px] font-bold text-red-400 mb-1.5">▼ Bearish Crossover</div>
+                    <div className="text-[11px] text-gray-400 leading-relaxed">
+                      MACD line crosses <strong className="text-gray-200">below</strong> the signal line. Histogram flips green → red.
+                      Short-term momentum is now slower than medium-term.
+                      <div className="mt-1 font-semibold text-red-400">Do not enter longs here. Wait for the next bullish cross.</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3-second rule */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 text-center">
+                    <div className="text-xl mb-1">🟩</div>
+                    <div className="text-[12px] font-bold text-emerald-400 mb-1">Green histogram?</div>
+                    <div className="text-[11px] text-gray-500">Calls / longs only<br />Growing = better<br />Shrinking = exit soon</div>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 text-center">
+                    <div className="text-xl mb-1">🟥</div>
+                    <div className="text-[12px] font-bold text-red-400 mb-1">Red histogram?</div>
+                    <div className="text-[11px] text-gray-500">Puts / shorts only<br />Growing = better<br />Shrinking = cover soon</div>
+                  </div>
+                  <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 text-center">
+                    <div className="text-xl mb-1">⬜</div>
+                    <div className="text-[12px] font-bold text-amber-400 mb-1">Crossing zero?</div>
+                    <div className="text-[11px] text-gray-500">Wait 1 day<br />Let direction confirm<br />Do not anticipate</div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+                  <strong className="text-amber-300">Honest truth:</strong> If the histogram color does not match your trade direction — do not enter. No exceptions.
+                  Wins come from trades where the histogram and direction were aligned; losses come from fighting the histogram.
+                </div>
+              </DocCard>
+
               <DocCard icon={<Sigma size={15} />} title="RSI — Relative Strength Index">
                 <p className="text-xs text-gray-400 leading-relaxed mb-3">
                   Use <strong className="text-gray-200">14-period on daily</strong>. MACD gives direction, RSI gives the entry window.

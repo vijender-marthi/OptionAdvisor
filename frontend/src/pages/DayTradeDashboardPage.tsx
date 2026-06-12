@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge, Table2 } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
@@ -15,7 +15,9 @@ const SK_ACTIVE_TAB    = 'oa_dashboard_active_tab'
 const AUTO_REFRESH_MS  = 60 * 1000
 const MAX_TICKERS      = 8
 
-type Tab = 'day' | 'swing'
+type Tab = 'day' | 'swing' | 'table'
+/** Tabs share two data pools — the table tab reads the day pool. */
+type DataTab = 'day' | 'swing'
 
 interface TileData {
   ticker: string
@@ -78,6 +80,140 @@ function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?:
     <span title={VERDICT_TITLES[verdict] ?? verdict} style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 20, border: `1.5px solid ${c}`, color: c, background: `${c}18`, whiteSpace: 'nowrap' }}>
       {verdict.replace('_', ' ')}
     </span>
+  )
+}
+
+// ─── Day ticker table (Ticker Table tab) ───────────────────────────────────
+function num(v: unknown): number | null {
+  return typeof v === 'number' && isFinite(v) ? v : null
+}
+
+function DayTickerTable({ tickers, tiles, dt }: {
+  tickers: string[]
+  tiles: Record<string, TileData>
+  dt: Record<string, string>
+}) {
+  const th: React.CSSProperties = { padding: '9px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: dt.muted, textAlign: 'left', whiteSpace: 'nowrap', borderBottom: `1px solid ${dt.border}` }
+  const td: React.CSSProperties = { padding: '10px', fontSize: 12, borderBottom: `1px solid ${dt.border}`, verticalAlign: 'top', whiteSpace: 'nowrap' }
+  const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }
+
+  const entryCell = (pts: ChartEntryPoint[], i: number) => {
+    const p = pts[i]
+    if (!p) return <span style={{ color: dt.muted }}>—</span>
+    return (
+      <div>
+        <div style={{ ...mono, color: dt.text }}>
+          {p.price.toFixed(2)}
+          {p.pending && <span style={{ fontSize: 9, color: dt.amber, marginLeft: 4 }}>PENDING</span>}
+        </div>
+        <div style={{ fontSize: 10, color: dt.muted, whiteSpace: 'normal', maxWidth: 150, lineHeight: 1.4 }}>
+          {p.trigger}{p.stop != null ? ` · stop ${p.stop.toFixed(2)}` : ''}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1150 }}>
+        <thead>
+          <tr>
+            <th style={th}>Ticker</th>
+            <th style={th}>Change</th>
+            <th style={th}>Verdict</th>
+            <th style={th}>ORH</th>
+            <th style={th}>ORL</th>
+            <th style={th} title="Red when VWAP is below OR mid — bearish lean">VWAP</th>
+            <th style={th} title="Put/Call ratio">P/C</th>
+            <th style={th} title="Volume vs average (RVOL)">Volume</th>
+            <th style={th}>E1</th>
+            <th style={th}>E2</th>
+            <th style={th}>E3</th>
+            <th style={th}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {tickers.map(sym => {
+            const tile = tiles[sym]
+            const result = (tile?.result ?? null) as DayTradeScanResult | null
+            const unified = tile?.unified ?? null
+            const m = (result?.metrics ?? {}) as Record<string, unknown>
+
+            if (!tile || (tile.loading && !result)) {
+              return (
+                <tr key={sym}>
+                  <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
+                  <td style={{ ...td, color: dt.muted }} colSpan={11}>
+                    <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', verticalAlign: '-2px', marginRight: 6 }} />
+                    Scanning…
+                  </td>
+                </tr>
+              )
+            }
+            if (tile.error && !result) {
+              return (
+                <tr key={sym}>
+                  <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={11}>{tile.error}</td>
+                </tr>
+              )
+            }
+
+            const price  = num(unified?.price)
+            const pct    = num(unified?.change_pct)
+            const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
+            const up     = (pct ?? 0) >= 0
+            const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
+
+            const orHigh = num(m.or_high)
+            const orLow  = num(m.or_low)
+            const vwap   = num(m.vwap) ?? num(result?.entry_guidance?.vwap)
+            const orMid  = orHigh != null && orLow != null ? (orHigh + orLow) / 2 : null
+            const vwapBelowMid = vwap != null && orMid != null && vwap < orMid
+            const pcr    = num(m.put_call_ratio)
+            const rvol   = num(m.rvol)
+            const pts    = result ? buildEntryPoints(result, m) : []
+            const verdict = unified?.verdict ?? result?.verdict?.replace(' ', '_') ?? ''
+
+            return (
+              <tr key={sym}>
+                <td style={td}>
+                  <div style={{ ...mono, fontWeight: 800, fontSize: 13, color: dt.text }}>{sym}</div>
+                  <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? price.toFixed(2) : '—'}</div>
+                </td>
+                <td style={{ ...td, color: chgColor }}>
+                  {pct == null ? '—' : (
+                    <div style={mono}>
+                      {up ? '▲' : '▼'} {chgAmt != null ? `${up ? '+' : '-'}$${Math.abs(chgAmt).toFixed(2)}` : ''}
+                      <div style={{ fontSize: 11 }}>{up ? '+' : ''}{pct.toFixed(2)}%</div>
+                    </div>
+                  )}
+                </td>
+                <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : '—'}</td>
+                <td style={{ ...td, ...mono, color: dt.text }}>{orHigh != null ? orHigh.toFixed(2) : '—'}</td>
+                <td style={{ ...td, ...mono, color: dt.text }}>{orLow != null ? orLow.toFixed(2) : '—'}</td>
+                <td style={{ ...td, ...mono, color: vwap == null ? dt.muted : vwapBelowMid ? dt.red : dt.green }}
+                  title={vwap == null ? '' : vwapBelowMid ? 'VWAP below OR mid — bearish lean' : 'VWAP at/above OR mid — bullish lean'}>
+                  {vwap != null ? vwap.toFixed(2) : '—'}
+                </td>
+                <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
+                <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>
+                <td style={td}>{entryCell(pts, 0)}</td>
+                <td style={td}>{entryCell(pts, 1)}</td>
+                <td style={td}>{entryCell(pts, 2)}</td>
+                <td style={td}>
+                  <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
+                    title="Open in Day Trade page (new window)"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
+                    Day Trade <ExternalLink size={12} />
+                  </a>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -454,16 +590,17 @@ export default function DayTradeDashboardPage() {
   const [swingTiles, setSwingTiles] = useState<Record<string, TileData>>({})
   const [expandedChart, setExpandedChart] = useState<ExpandedChart | null>(null)
 
-  const tickers    = activeTab === 'day' ? dayTickers   : swingTickers
-  const setTickers = activeTab === 'day' ? setDayTickers : setSwingTickers
-  const tiles      = activeTab === 'day' ? dayTiles     : swingTiles
+  const dataTab: DataTab = activeTab === 'swing' ? 'swing' : 'day'
+  const tickers    = dataTab === 'day' ? dayTickers   : swingTickers
+  const setTickers = dataTab === 'day' ? setDayTickers : setSwingTickers
+  const tiles      = dataTab === 'day' ? dayTiles     : swingTiles
 
-  const [lastRefreshed, setLastRefreshed] = useState<Record<Tab, Date | null>>({ day: null, swing: null })
+  const [lastRefreshed, setLastRefreshed] = useState<Record<DataTab, Date | null>>({ day: null, swing: null })
   const [refreshing,    setRefreshing]    = useState(false)
   const [agreementMap,  setAgreementMap]  = useState<Record<string, string>>({})
 
   // Scan a single ticker — force_refresh bypasses all caches
-  const scanTicker = useCallback(async (sym: string, tab: Tab, forceRefresh = false) => {
+  const scanTicker = useCallback(async (sym: string, tab: DataTab, forceRefresh = false) => {
     const setter = tab === 'day' ? setDayTiles : setSwingTiles
     setter(prev => ({ ...prev, [sym]: { ...(prev[sym] ?? { ticker: sym, result: null, unified: null, error: null }), loading: true, error: null } }))
     try {
@@ -479,7 +616,7 @@ export default function DayTradeDashboardPage() {
     }
   }, [])
 
-  const scanAll = useCallback(async (syms: string[], tab: Tab, forceRefresh = false) => {
+  const scanAll = useCallback(async (syms: string[], tab: DataTab, forceRefresh = false) => {
     if (!syms.length) return
     setRefreshing(true)
     await Promise.allSettled(syms.map(s => scanTicker(s, tab, forceRefresh)))
@@ -511,14 +648,14 @@ export default function DayTradeDashboardPage() {
   // Auto-refresh every 60s — also refresh when tab becomes visible again
   useEffect(() => {
     if (!tickers.length) return
-    const id = setInterval(() => void scanAll(tickers, activeTab, true), AUTO_REFRESH_MS)
-    const onVisible = () => { if (document.visibilityState === 'visible') void scanAll(tickers, activeTab, true) }
+    const id = setInterval(() => void scanAll(tickers, dataTab, true), AUTO_REFRESH_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') void scanAll(tickers, dataTab, true) }
     document.addEventListener('visibilitychange', onVisible)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
-  }, [tickers, activeTab, scanAll])
+  }, [tickers, dataTab, scanAll])
 
   // Expand chart — force fresh scan first
-  const handleExpand = useCallback(async (sym: string, tab: Tab) => {
+  const handleExpand = useCallback(async (sym: string, tab: DataTab) => {
     await scanTicker(sym, tab, true)
     const setter = tab === 'day' ? setDayTiles : setSwingTiles
     setter(prev => {
@@ -537,12 +674,12 @@ export default function DayTradeDashboardPage() {
 
   const addTicker = (sym: string) => {
     setTickers(prev => [sym, ...prev])
-    void scanTicker(sym, activeTab, true)
+    void scanTicker(sym, dataTab, true)
   }
 
   const removeTicker = (sym: string) => {
     setTickers(prev => prev.filter(t => t !== sym))
-    const setter = activeTab === 'day' ? setDayTiles : setSwingTiles
+    const setter = dataTab === 'day' ? setDayTiles : setSwingTiles
     setter(prev => { const n = { ...prev }; delete n[sym]; return n })
   }
 
@@ -588,12 +725,12 @@ export default function DayTradeDashboardPage() {
             </Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {lastRefreshed[activeTab] && (
+            {lastRefreshed[dataTab] && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: dt.muted }}>
-                <Clock size={11} /> Updated {fmtTime(lastRefreshed[activeTab]!)}
+                <Clock size={11} /> Updated {fmtTime(lastRefreshed[dataTab]!)}
               </div>
             )}
-            <button onClick={() => void scanAll(tickers, activeTab, true)} disabled={refreshing || !tickers.length}
+            <button onClick={() => void scanAll(tickers, dataTab, true)} disabled={refreshing || !tickers.length}
               style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, cursor: refreshing || !tickers.length ? 'not-allowed' : 'pointer', background: tabAccent, color: '#fff', border: 'none', opacity: refreshing || !tickers.length ? 0.5 : 1 }}>
               <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} /> Refresh
             </button>
@@ -603,15 +740,16 @@ export default function DayTradeDashboardPage() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${dt.border}` }}>
           {([
-            { id: 'day'   as Tab, label: 'Intraday',    icon: <Zap size={14} />,       accent: dt.accent },
+            { id: 'day'   as Tab, label: 'Intraday',    icon: <Zap size={14} />,        accent: dt.accent },
             { id: 'swing' as Tab, label: 'Swing Trade', icon: <TrendingUp size={14} />, accent: dt.violet },
+            { id: 'table' as Tab, label: 'Ticker Table', icon: <Table2 size={14} />,    accent: dt.accent },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
             return (
               <button key={id} onClick={() => setActiveTab(id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', fontSize: 13, fontWeight: active ? 700 : 500, color: active ? accent : dt.muted, background: 'none', border: 'none', borderBottom: active ? `2px solid ${accent}` : '2px solid transparent', marginBottom: -1, cursor: 'pointer', transition: 'color 0.15s' }}>
                 {icon} {label}
                 <span style={{ fontSize: 10, fontFamily: 'monospace', background: active ? `${accent}20` : 'transparent', color: active ? accent : dt.muted, borderRadius: 10, padding: '1px 6px', fontWeight: 700 }}>
-                  {id === 'day' ? dayTickers.length : swingTickers.length}
+                  {id === 'swing' ? swingTickers.length : dayTickers.length}
                 </span>
               </button>
             )
@@ -621,13 +759,15 @@ export default function DayTradeDashboardPage() {
         {/* Add ticker bar */}
         <TickerBar tickers={tickers} onAdd={addTicker} onRemove={removeTicker} dt={dt} accentColor={tabAccent} />
 
-        {/* Tile grid */}
+        {/* Tile grid / ticker table */}
         {tickers.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '60px 20px', border: `2px dashed ${dt.border}`, borderRadius: 16, color: dt.muted, textAlign: 'center' }}>
-            <div style={{ fontSize: 40 }}>{activeTab === 'swing' ? '📈' : '⚡'}</div>
+            <div style={{ fontSize: 40 }}>{activeTab === 'swing' ? '📈' : activeTab === 'table' ? '📋' : '⚡'}</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: dt.text }}>No tickers added yet</div>
             <div style={{ fontSize: 13 }}>Add up to {MAX_TICKERS} tickers above to monitor them all at once</div>
           </div>
+        ) : activeTab === 'table' ? (
+          <DayTickerTable tickers={tickers} tiles={tiles} dt={dt} />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 560px), 1fr))', gap: 16 }}>
             {tickers.map(sym => (
@@ -638,9 +778,9 @@ export default function DayTradeDashboardPage() {
               >
                 <TickerTile
                   tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
-                  tab={activeTab} dt={dt} isDark={isDark}
+                  tab={dataTab} dt={dt} isDark={isDark}
                   onRemove={() => removeTicker(sym)}
-                  onExpand={() => void handleExpand(sym, activeTab)}
+                  onExpand={() => void handleExpand(sym, dataTab)}
                   dragHandleProps={makeHandleProps(sym)}
                   isDragging={dragging === sym}
                   isDropTarget={dropTarget === sym}

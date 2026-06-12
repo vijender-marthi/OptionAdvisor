@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
+import MacdHistogramChart from '../components/MacdHistogramChart'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
@@ -30,6 +31,7 @@ export default function SwingTradePage() {
     portfolio,
     user,
     theme,
+    setHelpOpen,
   } = useApp()
   const isDark = theme !== 'light'
   const st = {
@@ -820,6 +822,28 @@ export default function SwingTradePage() {
         </div>
       )}
 
+      {/* MACD histogram — momentum phase, computed from chart_series closes */}
+      {result && result.metrics && (result.metrics as Record<string, unknown>).chart_series != null && (
+        <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
+          <div className="px-4 py-2.5 border-b border-gray-800/60 flex items-center gap-2">
+            <BarChart2 size={14} className="text-violet-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              MACD Histogram (12/26/9 daily)
+            </span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="ml-auto text-[11px] font-medium text-violet-400 hover:text-violet-300"
+            >
+              Reading guide →
+            </button>
+          </div>
+          <div className="p-3">
+            <MacdHistogramChart metrics={result.metrics as Record<string, unknown>} />
+          </div>
+        </div>
+      )}
+
       {/* MACD Histogram Reference Guide */}
       <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden mb-3">
         <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-secondary hover:bg-surface-muted/30">
@@ -871,25 +895,17 @@ export default function SwingTradePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               {col:'#3fb950', bg:'bg-emerald-900/10', brd:'border-emerald-800/30', title:'Green Growing', subtitle:'Momentum Accelerating Up',
-               bars:[0.4,0.8,1.3,1.9,2.5,3.0,3.4], color1:'#3fb950', color2:'#3fb950',
-               desc:'Gap between fast and slow MA is expanding upward. Buyers are accelerating. Each day closes stronger than the last.',
-               action:'Hold longs. Add on pullbacks to MA20. Do not exit early — momentum is your friend here.',
-               actionBg:'bg-emerald-900/20', actionCol:'text-emerald-400'},
+               bars:[0.4,0.8,1.3,1.9,2.5,3.0,3.4], desc:'Gap between fast and slow MA expanding upward. Buyers accelerating.',
+               action:'Hold longs. Add on pullbacks to MA20. Do not exit early.', actionBg:'bg-emerald-900/20', actionCol:'text-emerald-400'},
               {col:'rgba(63,185,80,0.6)', bg:'bg-emerald-900/5', brd:'border-emerald-800/20', title:'Green Shrinking', subtitle:'Momentum Fading',
-               bars:[3.4,2.9,2.3,1.7,1.1,0.6,0.2], color1:'rgba(63,185,80,0.6)', color2:'rgba(63,185,80,0.6)',
-               desc:'Buyers still in control but losing steam. The move is slowing. Not a sell signal yet — but the engine is throttling down.',
-               action:'Take partial profits (50%). Tighten stop to break-even. Do not add new positions.',
-               actionBg:'bg-yellow-900/20', actionCol:'text-yellow-400'},
+               bars:[3.4,2.9,2.3,1.7,1.1,0.6,0.2], desc:'Buyers still in control but losing steam. Move slowing.',
+               action:'Take partial profits (50%). Tighten stop to break-even.', actionBg:'bg-yellow-900/20', actionCol:'text-yellow-400'},
               {col:'rgba(248,81,73,0.6)', bg:'bg-rose-900/5', brd:'border-rose-800/20', title:'Red Shrinking', subtitle:'Selling Momentum Fading',
-               bars:[-3.2,-2.6,-2.0,-1.4,-0.8,-0.3,-0.05], color1:'rgba(248,81,73,0.6)', color2:'rgba(248,81,73,0.6)',
-               desc:'Sellers losing power. Downward momentum decelerating. Reversal long setups start forming here.',
-               action:'Watch for RSI 35–45 + MA test. Prepare long setup. Wait for histogram to turn green before entering.',
-               actionBg:'bg-blue-900/20', actionCol:'text-blue-400'},
+               bars:[-3.2,-2.6,-2.0,-1.4,-0.8,-0.3,-0.05], desc:'Sellers losing power. Reversal long setups start forming.',
+               action:'Watch for RSI 35–45 + MA test. Wait for green flip.', actionBg:'bg-blue-900/20', actionCol:'text-blue-400'},
               {col:'#f85149', bg:'bg-rose-900/10', brd:'border-rose-800/30', title:'Red Growing', subtitle:'Momentum Accelerating Down',
-               bars:[0,-0.4,-0.9,-1.5,-2.2,-2.8,-3.3], color1:'#f85149', color2:'#f85149',
-               desc:'Sellers accelerating. Gap between fast and slow MA expanding downward. Short setups have maximum wind behind them.',
-               action:'Hold puts/shorts. Do NOT buy calls. Exit any longs immediately. Wait for red shrinking before considering reversal.',
-               actionBg:'bg-rose-900/20', actionCol:'text-rose-400'},
+               bars:[0,-0.4,-0.9,-1.5,-2.2,-2.8,-3.3], desc:'Sellers accelerating. Short setups have maximum wind.',
+               action:'Hold shorts. Do NOT buy calls. Exit any longs.', actionBg:'bg-rose-900/20', actionCol:'text-rose-400'},
             ].map(phase => (
               <div key={phase.title} className={`rounded-lg border ${phase.brd} ${phase.bg} p-3`}>
                 <div className="text-xs font-bold mb-1" style={{color:phase.col}}>{phase.title}</div>
@@ -898,7 +914,7 @@ export default function SwingTradePage() {
                   {phase.bars.map((v,i) => {
                     const h = Math.abs(v)/3.5*32
                     const growing = i===0 || (Math.abs(v) > Math.abs(phase.bars[i-1]))
-                    const col = growing ? phase.color1 : phase.color2
+                    const col = growing ? phase.col : (phase.col.includes('rgba') ? phase.col : phase.col.replace(')', ',0.5)').replace('rgb','rgba'))
                     return <div key={i} style={{height:h+'px',background:col,width:'100%',borderRadius:'2px',alignSelf:v>=0?'flex-end':'flex-start',marginTop:v>=0?'auto':'0',marginBottom:v>=0?'0':'auto'}} />
                   })}
                 </div>
@@ -928,11 +944,11 @@ export default function SwingTradePage() {
             <div className="text-[11px] font-semibold text-gray-500 mb-2">Entry Timing — Histogram Phases</div>
             <div className="space-y-2">
               {[
-                {bar:'RED GROWING', barBg:'bg-rose-900', barCol:'text-rose-400', name:'Do Not Enter Long', desc:'Momentum accelerating against you. Fighting the trend.', tag:'SKIP', tagBg:'bg-rose-900', tagCol:'text-rose-400'},
-                {bar:'RED SHRINK', barBg:'bg-rose-900/50', barCol:'text-rose-300', name:'Prepare — Not Yet', desc:'Sellers fading. Watch RSI and MA levels. Wait for the flip.', tag:'WATCH', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
-                {bar:'GREEN SMALL', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ IDEAL ENTRY — Crossover just happened', desc:'Early in the move. Maximum runway ahead. Sweet spot for swing entries.', tag:'ENTER HERE', tagBg:'bg-emerald-900', tagCol:'text-emerald-400', highlight:true},
-                {bar:'GREEN GROWING', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ Good Entry — Momentum confirmed', desc:'Momentum building. Slightly later but valid with strong confirmation.', tag:'ENTER', tagBg:'bg-emerald-900', tagCol:'text-emerald-400'},
-                {bar:'GREEN SHRINK', barBg:'bg-emerald-900/30', barCol:'text-emerald-300', name:'Late — Take Profits Instead', desc:'Move extended. Buying fading momentum. Exit zone, not entry.', tag:'EXIT / PARTIAL', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
+                {bar:'RED GROWING', barBg:'bg-rose-900', barCol:'text-rose-400', name:'Do Not Enter Long', desc:'Momentum accelerating against you.', tag:'SKIP', tagBg:'bg-rose-900', tagCol:'text-rose-400'},
+                {bar:'RED SHRINK', barBg:'bg-rose-900/50', barCol:'text-rose-300', name:'Prepare — Not Yet', desc:'Sellers fading. Watch RSI and MA levels.', tag:'WATCH', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
+                {bar:'GREEN SMALL', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ IDEAL ENTRY — Crossover just happened', desc:'Early in the move. Maximum runway ahead.', tag:'ENTER HERE', tagBg:'bg-emerald-900', tagCol:'text-emerald-400', highlight:true},
+                {bar:'GREEN GROWING', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ Good Entry — Momentum confirmed', desc:'Momentum building. Slightly later but valid.', tag:'ENTER', tagBg:'bg-emerald-900', tagCol:'text-emerald-400'},
+                {bar:'GREEN SHRINK', barBg:'bg-emerald-900/30', barCol:'text-emerald-300', name:'Late — Take Profits Instead', desc:'Move extended. Buying fading momentum.', tag:'EXIT / PARTIAL', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
               ].map(row => (
                 <div key={row.name} className={`flex items-center gap-3 px-2 py-2 rounded-lg ${row.highlight ? 'bg-emerald-900/10 border border-emerald-800/30' : ''}`}>
                   <div className={`w-20 h-7 rounded flex items-center justify-center text-[9px] font-bold ${row.barBg} ${row.barCol} shrink-0`}>{row.bar}</div>
@@ -967,7 +983,7 @@ export default function SwingTradePage() {
               </div>
             </div>
             <div className="rounded-lg border border-yellow-800/30 bg-yellow-900/10 p-3 text-[11px] text-yellow-300 leading-relaxed">
-              <strong>Honest truth:</strong> If the histogram color does not match your trade direction — do not enter. No exceptions. The single rule that prevents every bad swing trade.
+              <strong>Honest truth:</strong> If the histogram color does not match your trade direction — do not enter. No exceptions.
             </div>
           </div>
         </div>
