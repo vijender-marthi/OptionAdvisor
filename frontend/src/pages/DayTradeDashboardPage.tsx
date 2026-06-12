@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge, Table2 } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
@@ -83,6 +83,114 @@ function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?:
   )
 }
 
+// ─── Swing ticker table ────────────────────────────────────────────────────
+function SwingTickerTable({ tickers, tiles, dt }: {
+  tickers: string[]
+  tiles: Record<string, TileData>
+  dt: Record<string, string>
+}) {
+  const th: React.CSSProperties = { padding: '9px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: dt.muted, textAlign: 'left', whiteSpace: 'nowrap', borderBottom: `1px solid ${dt.border}` }
+  const td: React.CSSProperties = { padding: '10px', fontSize: 12, borderBottom: `1px solid ${dt.border}`, verticalAlign: 'top', whiteSpace: 'nowrap' }
+  const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }
+
+  const macdPill = (v: number | null) => {
+    if (v == null) return <span style={{ color: dt.muted }}>—</span>
+    const col = v > 0 ? dt.green : dt.red
+    return <span style={{ ...mono, color: col }}>{v >= 0 ? '+' : ''}{v.toFixed(3)}</span>
+  }
+
+  const maCell = (v: number | null, price: number | null) => {
+    if (v == null) return <span style={{ color: dt.muted }}>—</span>
+    const above = price != null && price >= v
+    return <span style={{ ...mono, color: above ? dt.green : dt.red }}>{v.toFixed(2)}</span>
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
+        <thead>
+          <tr>
+            <th style={th}>Ticker</th>
+            <th style={th}>Change</th>
+            <th style={th}>MACD</th>
+            <th style={th}>MA20</th>
+            <th style={th}>MA50</th>
+            <th style={th}>Verdict</th>
+            <th style={th}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {tickers.map(sym => {
+            const tile = tiles[sym]
+            const result = (tile?.result ?? null) as SwingTradeScanResult | null
+            const unified = tile?.unified ?? null
+            const m = (result?.metrics ?? {}) as Record<string, unknown>
+
+            if (!tile || (tile.loading && !result)) {
+              return (
+                <tr key={sym}>
+                  <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
+                  <td style={{ ...td, color: dt.muted }} colSpan={6}>
+                    <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', verticalAlign: '-2px', marginRight: 6 }} />
+                    Scanning…
+                  </td>
+                </tr>
+              )
+            }
+            if (tile.error && !result) {
+              return (
+                <tr key={sym}>
+                  <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={6}>{tile.error}</td>
+                </tr>
+              )
+            }
+
+            const price  = num(unified?.price) ?? num(m.last_price)
+            const pct    = num(unified?.change_pct) ?? (price != null && result ? null : null)
+            const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
+            const up     = (pct ?? 0) >= 0
+            const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
+
+            const macd   = num(m.macd)
+            const ma20   = num(m.ma20)
+            const ma50   = num(m.ma50)
+            const verdict = unified?.verdict ?? result?.final_decision ?? result?.verdict?.replace(' ', '_') ?? ''
+
+            return (
+              <tr key={sym}>
+                <td style={td}>
+                  <div style={{ ...mono, fontWeight: 800, fontSize: 13, color: dt.text }}>{sym}</div>
+                  <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? price.toFixed(2) : '—'}</div>
+                </td>
+                <td style={{ ...td, color: chgColor }}>
+                  {pct == null ? '—' : (
+                    <div style={mono}>
+                      {up ? '▲' : '▼'} {chgAmt != null ? `${up ? '+' : '-'}$${Math.abs(chgAmt).toFixed(2)}` : ''}
+                      <div style={{ fontSize: 11 }}>{up ? '+' : ''}{pct.toFixed(2)}%</div>
+                    </div>
+                  )}
+                </td>
+                <td style={td}>{macdPill(macd)}</td>
+                <td style={td}>{maCell(ma20, price)}</td>
+                <td style={td}>{maCell(ma50, price)}</td>
+                <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : '—'}</td>
+                <td style={td}>
+                  <a href={`${ROUTES.swingTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
+                    title="Open in Swing Trade page (new window)"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.violet, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
+                    Swing Trade <ExternalLink size={12} />
+                  </a>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─── Day ticker table (Ticker Table tab) ───────────────────────────────────
 function num(v: unknown): number | null {
   return typeof v === 'number' && isFinite(v) ? v : null
@@ -93,6 +201,7 @@ function DayTickerTable({ tickers, tiles, dt }: {
   tiles: Record<string, TileData>
   dt: Record<string, string>
 }) {
+  const [expandedSym, setExpandedSym] = useState<string | null>(null)
   const th: React.CSSProperties = { padding: '9px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: dt.muted, textAlign: 'left', whiteSpace: 'nowrap', borderBottom: `1px solid ${dt.border}` }
   const td: React.CSSProperties = { padding: '10px', fontSize: 12, borderBottom: `1px solid ${dt.border}`, verticalAlign: 'top', whiteSpace: 'nowrap' }
   const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }
@@ -115,7 +224,14 @@ function DayTickerTable({ tickers, tiles, dt }: {
 
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1150 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1150, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: '7%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
+          <col style={{ width: '7%' }} /><col style={{ width: '7%' }} /><col style={{ width: '7%' }} />
+          <col style={{ width: '6%' }} /><col style={{ width: '7%' }} />
+          <col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} />
+          <col style={{ width: '5%' }} />
+        </colgroup>
         <thead>
           <tr>
             <th style={th}>Ticker</th>
@@ -174,41 +290,66 @@ function DayTickerTable({ tickers, tiles, dt }: {
             const rvol   = num(m.rvol)
             const pts    = result ? buildEntryPoints(result, m) : []
             const verdict = unified?.verdict ?? result?.verdict?.replace(' ', '_') ?? ''
+            const isExpanded = expandedSym === sym
+            const chartBars = parseChartBars(m.chart_bars)
+            const hasChart = !!(chartBars && chartBars.length > 0 && orHigh != null && orLow != null)
 
             return (
-              <tr key={sym}>
-                <td style={td}>
-                  <div style={{ ...mono, fontWeight: 800, fontSize: 13, color: dt.text }}>{sym}</div>
-                  <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? price.toFixed(2) : '—'}</div>
-                </td>
-                <td style={{ ...td, color: chgColor }}>
-                  {pct == null ? '—' : (
-                    <div style={mono}>
-                      {up ? '▲' : '▼'} {chgAmt != null ? `${up ? '+' : '-'}$${Math.abs(chgAmt).toFixed(2)}` : ''}
-                      <div style={{ fontSize: 11 }}>{up ? '+' : ''}{pct.toFixed(2)}%</div>
-                    </div>
-                  )}
-                </td>
-                <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : '—'}</td>
-                <td style={{ ...td, ...mono, color: dt.text }}>{orHigh != null ? orHigh.toFixed(2) : '—'}</td>
-                <td style={{ ...td, ...mono, color: dt.text }}>{orLow != null ? orLow.toFixed(2) : '—'}</td>
-                <td style={{ ...td, ...mono, color: vwap == null ? dt.muted : vwapBelowMid ? dt.red : dt.green }}
-                  title={vwap == null ? '' : vwapBelowMid ? 'VWAP below OR mid — bearish lean' : 'VWAP at/above OR mid — bullish lean'}>
-                  {vwap != null ? vwap.toFixed(2) : '—'}
-                </td>
-                <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
-                <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>
-                <td style={td}>{entryCell(pts, 0)}</td>
-                <td style={td}>{entryCell(pts, 1)}</td>
-                <td style={td}>{entryCell(pts, 2)}</td>
-                <td style={td}>
-                  <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
-                    title="Open in Day Trade page (new window)"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
-                    Day Trade <ExternalLink size={12} />
-                  </a>
-                </td>
-              </tr>
+              <Fragment key={sym}>
+                <tr onClick={() => setExpandedSym(isExpanded ? null : sym)}
+                  style={{ cursor: 'pointer', background: isExpanded ? `${dt.accent}08` : undefined }}
+                  onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = `${dt.bg2 || '#ffffff08'}` }}
+                  onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = '' }}>
+                  <td style={td}>
+                    <div style={{ ...mono, fontWeight: 800, fontSize: 13, color: dt.text }}>{sym}</div>
+                    <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? price.toFixed(2) : '—'}</div>
+                  </td>
+                  <td style={{ ...td, color: chgColor }}>
+                    {pct == null ? '—' : (
+                      <div style={mono}>
+                        {up ? '▲' : '▼'} {chgAmt != null ? `${up ? '+' : '-'}$${Math.abs(chgAmt).toFixed(2)}` : ''}
+                        <div style={{ fontSize: 11 }}>{up ? '+' : ''}{pct.toFixed(2)}%</div>
+                      </div>
+                    )}
+                  </td>
+                  <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : '—'}</td>
+                  <td style={{ ...td, ...mono, color: dt.text }}>{orHigh != null ? orHigh.toFixed(2) : '—'}</td>
+                  <td style={{ ...td, ...mono, color: dt.text }}>{orLow != null ? orLow.toFixed(2) : '—'}</td>
+                  <td style={{ ...td, ...mono, color: vwap == null ? dt.muted : vwapBelowMid ? dt.red : dt.green }}
+                    title={vwap == null ? '' : vwapBelowMid ? 'VWAP below OR mid — bearish lean' : 'VWAP at/above OR mid — bullish lean'}>
+                    {vwap != null ? vwap.toFixed(2) : '—'}
+                  </td>
+                  <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
+                  <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>
+                  <td style={td}>{entryCell(pts, 0)}</td>
+                  <td style={td}>{entryCell(pts, 1)}</td>
+                  <td style={td}>{entryCell(pts, 2)}</td>
+                  <td style={td} onClick={e => e.stopPropagation()}>
+                    <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
+                      title="Open in Day Trade page (new window)"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
+                      Day Trade <ExternalLink size={12} />
+                    </a>
+                  </td>
+                </tr>
+                {isExpanded && hasChart && (
+                  <tr>
+                    <td colSpan={12} style={{ padding: 0, background: `${dt.bg2 || '#0d1117'}` }}>
+                      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
+                        <DayTradeIntradayChart
+                          bars={chartBars!}
+                          orHigh={orHigh!}
+                          orLow={orLow!}
+                          orMinutes={(m.or_minutes as number | undefined) ?? 15}
+                          sessionDate={String(m.session_date ?? '')}
+                          entryPoints={pts.length > 0 ? pts : undefined}
+                          dimEntries={/WAIT|AVOID|NO_EDGE/i.test(verdict)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             )
           })}
         </tbody>
@@ -740,9 +881,9 @@ export default function DayTradeDashboardPage() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${dt.border}` }}>
           {([
-            { id: 'day'   as Tab, label: 'Intraday',    icon: <Zap size={14} />,        accent: dt.accent },
-            { id: 'swing' as Tab, label: 'Swing Trade', icon: <TrendingUp size={14} />, accent: dt.violet },
-            { id: 'table' as Tab, label: 'Ticker Table', icon: <Table2 size={14} />,    accent: dt.accent },
+            { id: 'table' as Tab, label: 'Intraday Table', icon: <Table2 size={14} />,  accent: dt.accent },
+            { id: 'day'   as Tab, label: 'Intraday',        icon: <Zap size={14} />,     accent: dt.accent },
+            { id: 'swing' as Tab, label: 'Swing Trade',     icon: <TrendingUp size={14} />, accent: dt.violet },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
             return (
@@ -767,7 +908,9 @@ export default function DayTradeDashboardPage() {
             <div style={{ fontSize: 13 }}>Add up to {MAX_TICKERS} tickers above to monitor them all at once</div>
           </div>
         ) : activeTab === 'table' ? (
-          <DayTickerTable tickers={tickers} tiles={tiles} dt={dt} />
+          <DayTickerTable tickers={dayTickers} tiles={tiles} dt={dt} />
+        ) : activeTab === 'swing' ? (
+          <SwingTickerTable tickers={swingTickers} tiles={tiles} dt={dt} />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 560px), 1fr))', gap: 16 }}>
             {tickers.map(sym => (

@@ -15,6 +15,7 @@ import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntry
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
+import OvernightRunnerCard from '../components/OvernightRunnerCard'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import EntryWindowBanner from '../components/EntryWindowBanner'
 import TrendDayBanner from '../components/TrendDayBanner'
@@ -1143,6 +1144,49 @@ export default function DayTradePage() {
             initialPrice={lastPrice}
             isDark={isDark}
           />
+        )
+      })()}
+
+      {/* Overnight Runner — shown when T1 is hit and position is in hold */}
+      {result && result.metrics && sessionState === 'hold' && (() => {
+        const m = result.metrics as Record<string, unknown>
+        const eg = result.entry_guidance
+        const chartBars = parseChartBars(m.chart_bars)
+        const lastPrice = typeof m.last_price === 'number' ? m.last_price as number : 0
+        const vwap = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap as number : 0
+        const orh = typeof m.or_high === 'number' ? m.or_high as number : 0
+        const orl = typeof m.or_low === 'number' ? m.or_low as number : 0
+        const rvol = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : 0
+        const isShort = result.bias === 'short'
+        const t1 = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target as number : null
+        const t1Hit = t1 !== null && (isShort ? lastPrice <= t1 : lastPrice >= t1)
+        const spyChg = typeof m.spy_change_pct === 'number' ? m.spy_change_pct as number : 0
+        const qqqChg = typeof m.qqq_change_pct === 'number' ? m.qqq_change_pct as number : 0
+        // Convert SPY/QQQ change to trend score (7% = 100, proportional)
+        const spyScore = Math.min(100, Math.max(0, Math.round((spyChg + 2) / 4 * 100)))
+        const qqqScore = Math.min(100, Math.max(0, Math.round((qqqChg + 2) / 4 * 100)))
+        const intradayHighs = chartBars ? chartBars.map(b => b.h) : [lastPrice]
+        const regime = spyChg > 0.5 && qqqChg > 0.5 ? 'BULLISH' : spyChg < -0.5 && qqqChg < -0.5 ? 'BEARISH' : 'NEUTRAL'
+        if (!t1Hit) return null
+        return (
+          <div className="mb-3">
+            <OvernightRunnerCard
+              ticker={result.ticker}
+              currentPrice={lastPrice}
+              vwap={vwap}
+              orh={orh}
+              orl={orl}
+              intradayHighs={intradayHighs}
+              volumeToday={Math.round(rvol * 1000)}
+              avgVolume20d={1000}
+              spyTrendScore={spyScore}
+              qqqTrendScore={qqqScore}
+              tickerTrendScore={Math.round((spyScore + qqqScore) / 2)}
+              t1Hit={t1Hit}
+              t2Hit={false}
+              marketRegime={regime}
+            />
+          </div>
         )
       })()}
 

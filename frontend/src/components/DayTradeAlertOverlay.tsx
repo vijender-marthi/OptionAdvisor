@@ -499,7 +499,7 @@ export default function DayTradeAlertOverlay({
     if (!user?.email) return
     setLoading(true)
     try {
-      const env = await fetchAlertCenterPage({ engine_type: 'DAY', ticker })
+      const env = await fetchAlertCenterPage({ engine_type: 'DAY', ticker, today_only: true })
       const raw: UnifiedAlert[] = env?.data?.alerts ?? []
       setAllAlerts(raw.map(unifiedToAlertEvent))
     } catch { /* non-fatal */ } finally {
@@ -531,7 +531,7 @@ export default function DayTradeAlertOverlay({
         return !noiseVerdicts.has(v)
       }),
     ]
-    return merged.sort((a, b) => a.detectedAt - b.detectedAt)
+    return merged.sort((a, b) => b.detectedAt - a.detectedAt)
   }, [allAlerts, scanAlerts])
 
   // Build alert positions (idx + price) relative to bars

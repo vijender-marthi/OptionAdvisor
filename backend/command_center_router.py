@@ -2067,3 +2067,121 @@ def put_my_tickers_reorder(body: MyTickersReorderBody, auth_email: str = Depends
 
     updated = _save_my_tickers(email, ordered)
     return api_envelope({"ok": True, "tickers": updated})
+
+
+# ── Overnight Runner Decision Engine ─────────────────────────────────────────
+
+class OvernightRunnerRequest(BaseModel):
+    ticker: str = Field(..., min_length=1)
+    current_price: float
+    vwap: float
+    orh: float
+    orl: float
+    intraday_highs: list[float] = Field(default_factory=list)
+    volume_today: float = 0
+    avg_volume_20d: float = 0
+    spy_trend_score: float = 0
+    qqq_trend_score: float = 0
+    ticker_trend_score: float = 0
+    t1_hit: bool = False
+    t2_hit: bool = False
+    market_regime: str = "NEUTRAL"
+
+
+class OvernightRunnerResponse(BaseModel):
+    runner_score: int
+    verdict: str
+    confidence: str
+    conditions: dict
+    recommended_stop: float | None = None
+    recommended_size_pct: int | None = None
+
+
+@command_center_router.post("/day-trade/overnight-runner", response_model=OvernightRunnerResponse)
+def post_overnight_runner(body: OvernightRunnerRequest, auth_email: str = Depends(require_access_email)):
+    score = 0
+    conditions = {}
+
+    # Condition 1: Price Above VWAP
+    above_vwap = body.current_price > body.vwap
+    if above_vwap:
+        score += 25
+        conditions["above_vwap"] = {"pass": True, "label": "Above VWAP", "points": 25}
+    else:
+        conditions["above_vwap"] = {"pass": False, "label": "Above VWAP", "points": 0}
+
+    # Condition 2: Price Above ORH
+    above_orh = body.current_price > body.orh
+    if above_orh:
+        score += 20
+        conditions["above_orh"] = {"pass": True, "label": "Above ORH", "points": 20}
+    else:
+        conditions["above_orh"] = {"pass": False, "label": "Above ORH", "points": 0}
+
+    # Condition 3: Higher High Structure (last 5 swing highs)
+    hh_intact = False
+    if len(body.intraday_highs) >= 3:
+        last_5 = body.intraday_highs[-5:] if len(body.intraday_highs) >= 5 else body.intraday_highs
+        hh_intact = all(last_5[i] > last_5[i + 1] for i in range(len(last_5) - 1))
+    if hh_intact:
+        score += 20
+        conditions["hh_structure"] = {"pass": True, "label": "Higher Highs Intact", "points": 20}
+    else:
+        conditions["hh_structure"] = {"pass": False, "label": "Higher Highs Intact", "points": 0}
+
+    # Condition 4: Volume Confirmation
+    vol_ratio = body.volume_today / body.avg_volume_20d if body.avg_volume_20d > 0 else 0
+    if vol_ratio > 1.20:
+        score += 15
+        conditions["volume"] = {"pass": True, "label": f"Volume {vol_ratio:.1f}x Average", "points": 15}
+    elif vol_ratio > 1.00:
+        score += 10
+        conditions["volume"] = {"pass": True, "label": f"Volume {vol_ratio:.1f}x Average", "points": 10}
+    else:
+        conditions["volume"] = {"pass": False, "label": f"Volume {vol_ratio:.1f}x Average", "points": 0}
+
+    # Condition 5: Market Alignment
+    spy_strong = body.spy_trend_score >= 70
+    qqq_strong = body.qqq_trend_score >= 70
+    spy_good = body.spy_trend_score >= 60
+    qqq_good = body.qqq_trend_score >= 60
+
+    if spy_strong and qqq_strong:
+        score += 20
+        conditions["market_alignment"] = {"pass": True, "label": "SPY + QQQ Bullish", "points": 20}
+    elif spy_good and qqq_good:
+        score += 10
+        conditions["market_alignment"] = {"pass": True, "label": "SPY + QQQ Neutral-Bullish", "points": 10}
+    else:
+        conditions["market_alignment"] = {"pass": False, "label": "SPY + QQQ Alignment Weak", "points": 0}
+
+    score = min(score, 100)
+
+    # Verdict
+    if score >= 80:
+        verdict = "KEEP 25% OVERNIGHT"
+        confidence = "HIGH"
+        recommended_size_pct = 25
+    elif score >= 60:
+        verdict = "OPTIONAL RUNNER"
+        confidence = "MEDIUM"
+        recommended_size_pct = 15
+    else:
+        verdict = "CLOSE ENTIRE POSITION"
+        confidence = "LOW"
+        recommended_size_pct = 0
+
+    # Recommended stop
+    stop = None
+    if verdict != "CLOSE ENTIRE POSITION":
+        # Use max of VWAP, previous swing low - not requiring recent lows data, use VWAP as floor
+        stop = round(max(body.vwap, body.current_price * 0.97), 2)
+
+    return OvernightRunnerResponse(
+        runner_score=score,
+        verdict=verdict,
+        confidence=confidence,
+        conditions=conditions,
+        recommended_stop=stop,
+        recommended_size_pct=recommended_size_pct,
+    )
