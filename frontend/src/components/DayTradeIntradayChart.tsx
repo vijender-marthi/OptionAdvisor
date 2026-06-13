@@ -115,6 +115,7 @@ export interface ChartEntryPoint {
   rr?: number                   // risk/reward ratio — entries < 1.0 are flagged
   stub?: boolean                 // table-only placeholder (no price/chart line)
   pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
+  verdict?: string               // 'NO_TRADE' | 'VALID' | 'LOW_RR' | 'INVALID' — per-entry status
 }
 
 const EC_DARK = [
@@ -344,11 +345,17 @@ export default function DayTradeIntradayChart({
             </span>
           )}
           {displayEntryPoints.map((ep, idx) => {
-            if (ep.stub) return null
-            const color = ep.color ?? entryColors[idx % entryColors.length]!
+            const isNoTrade = ep.verdict === 'NO_TRADE'
+            // Hide low-RR valid entries but always show NO_TRADE warnings
+            if (ep.stub || (!isNoTrade && ep.rr != null && ep.rr < 1.0)) return null
+            const defaultColor = isNoTrade ? '#f87171' : entryColors[idx % entryColors.length]!
+            const color = ep.color ?? defaultColor
             const isHidden = hidden.has(idx)
             const effectiveDim = dimEntries && !isHidden
             const chipColor = isHidden || effectiveDim ? '#6b7280' : color
+            const chipTitle = isNoTrade
+              ? `${ep.label} — NO TRADE · EXTENDED`
+              : (dimEntries ? `${ep.label} — signal exists but verdict is WAIT` : (isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`))
             return (
               <button
                 key={`chip-${idx}`}
@@ -361,11 +368,14 @@ export default function DayTradeIntradayChart({
                   background: isHidden || effectiveDim ? 'transparent' : `${color}18`,
                   opacity: isHidden ? 0.55 : effectiveDim ? 0.4 : 1,
                 }}
-                title={dimEntries ? `${ep.label} — signal exists but verdict is WAIT` : (isHidden ? `Show ${ep.label}` : `Hide ${ep.label}`)}
+                title={chipTitle}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: chipColor, display: 'inline-block', flexShrink: 0 }} />
                 {ep.label}
-                <span className="font-mono" style={{ opacity: 0.8 }}>${fmtPrice(ep.price)}</span>
+                {isNoTrade
+                  ? <span style={{ opacity: 0.9 }}>⚠ NO TRADE</span>
+                  : <span className="font-mono" style={{ opacity: 0.8 }}>${fmtPrice(ep.price)}</span>
+                }
               </button>
             )
           })}
