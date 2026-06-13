@@ -256,6 +256,7 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
             or eg.get("risk_below") or 0
         ),
         "_adaptive_rr":      (metrics.get("adaptive_rr") or {}).get("recommended_rr"),
+        "_pullback_entry":   metrics.get("pullback_entry"),
         "_bounce_scenario":  str(metrics.get("bounce_scenario") or ""),
         "rvol":                  round(rvol, 2),
         "price_vs_orl":          price_vs_orl,
@@ -502,6 +503,7 @@ def _calc_per_entry_rr(
     vwap_lower2: float,
     or_high: float,
     or_low: float,
+    is_or_breakout: bool = False,  # True for OR-level entries — skip sigma proximity check
 ) -> dict:
     """
     Per-entry R/R calculation.  Each entry signal gets its own fresh analysis:
@@ -528,8 +530,9 @@ def _calc_per_entry_rr(
         sigma_distance = round((entry_price - vwap) / vwap_std_dev, 1)
 
     # ── EXTENDED detection ────────────────────────────────────────────────────
-    # 1. Entry is within 0.5σ of the 1σ band — T1 is too close for a viable trade
-    at_1sigma = bool(
+    # 1. Entry is within 0.5σ of the 1σ band — T1 is too close for a viable trade.
+    #    OR breakout entries sit near 1σ by market structure, so skip for those.
+    at_1sigma = (not is_or_breakout) and bool(
         (is_long  and vwap_upper1 > 0 and entry_price >= vwap_upper1 - _sigma * 0.5) or
         (not is_long and vwap_lower1 > 0 and entry_price <= vwap_lower1 + _sigma * 0.5)
     )
@@ -969,7 +972,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     # This replaces the old single adaptive-R/R override and adds EXTENDED detection.
     _trade_per = _calc_per_entry_rr(
         _entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
     )
     if _trade_per.get("verdict") == "NO_TRADE":
         _trade.update({
@@ -997,7 +1000,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     if _entry_gate_price > 0 and _trade_dir != "NONE":
         _eg_per = _calc_per_entry_rr(
             _entry_gate_price, _trade_dir, scalp, vwap, _vwap_std_dev,
-            _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+            _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
         )
         _entry_gate.update({
             "risk_reward":     _eg_per.get("risk_reward", 0.0),
@@ -1012,13 +1015,14 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     _or_entry_px = orh if not is_bear else orl
     _or_rr = _calc_per_entry_rr(
         _or_entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl,
+        is_or_breakout=True,
     ) if _or_entry_px > 0 and _trade_dir != "NONE" else {}
 
     # Per-entry R/R for VWAP retest (E4 pending in frontend)
     _vwap_rr = _calc_per_entry_rr(
         vwap, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
     ) if vwap > 0 and _trade_dir != "NONE" else {}
 
     _no_trade      = _build_no_trade_reason(_drp, _rvol, _confluence, _trade, price)
@@ -1068,6 +1072,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         "trade":            _trade,
         "or_breakout_rr":   _or_rr,
         "vwap_retest_rr":   _vwap_rr,
+        "pullback_entry":   signal.get("_pullback_entry"),
         "no_trade_reason":  _no_trade,
         "confluence_note":  _conf_note,
         "_source":          "deterministic",

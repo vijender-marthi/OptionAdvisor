@@ -117,18 +117,40 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     orIsNT ? undefined : (orRr?.target as number | undefined),
   )
 
-  // E4 — VWAP retest (pending / conditional)
-  const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
-  const vVerdict = vRr?.verdict as string | undefined
-  add(
-    (eg?.vwap ?? mVwap) as number | null,
-    'VWAP re-test',
-    (eg?.risk_below as number | undefined) ?? sf,
-    vRr?.risk_reward as number | undefined,
-    true,
-    vVerdict,
-    vRr?.target as number | undefined,
-  )
+  // E4 — VWAP retest (pending / conditional) or Pullback Reset (active if detected)
+  const pb = ac?.pullback_entry
+  if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
+    // Pullback Reset fired — show as active amber entry
+    const pbPrice = pb.entry_price
+    if (!seen.has(pbPrice)) {
+      seen.add(pbPrice)
+      pts.push({
+        label:     `E${pts.length + 1}`,
+        price:     pbPrice,
+        trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+        stop:      pb.stop,
+        direction,
+        exitPrice: pb.target_1,
+        rr:        pb.rr_t1,
+        pending:   false,
+        verdict:   'VALID',
+        color:     '#f59e0b',  // amber — dynamic pullback entry
+      })
+    }
+  } else {
+    // Static VWAP retest (pending)
+    const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
+    const vVerdict = vRr?.verdict as string | undefined
+    add(
+      (eg?.vwap ?? mVwap) as number | null,
+      'VWAP re-test',
+      (eg?.risk_below as number | undefined) ?? sf,
+      vRr?.risk_reward as number | undefined,
+      true,
+      vVerdict,
+      vRr?.target as number | undefined,
+    )
+  }
 
   return pts
 }
