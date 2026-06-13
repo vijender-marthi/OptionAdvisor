@@ -502,6 +502,7 @@ def _calc_per_entry_rr(
     vwap_lower2: float,
     or_high: float,
     or_low: float,
+    skip_sigma_check: bool = False,  # Fresh OR breakouts skip sigma band proximity check
 ) -> dict:
     """
     Per-entry R/R calculation.  Each entry signal gets its own fresh analysis:
@@ -528,16 +529,22 @@ def _calc_per_entry_rr(
         sigma_distance = round((entry_price - vwap) / vwap_std_dev, 1)
 
     # ── EXTENDED detection ────────────────────────────────────────────────────
-    # 1. Entry is within 0.5σ of the 1σ band — T1 is too close for a viable trade
-    at_1sigma = bool(
-        (is_long  and vwap_upper1 > 0 and entry_price >= vwap_upper1 - _sigma * 0.5) or
-        (not is_long and vwap_lower1 > 0 and entry_price <= vwap_lower1 + _sigma * 0.5)
-    )
-    # 2. Entry is at or beyond the 2σ band
-    sigma_extended = bool(
-        (is_long  and vwap_upper2 > 0 and entry_price >= vwap_upper2) or
-        (not is_long and vwap_lower2 > 0 and entry_price <= vwap_lower2)
-    )
+    # Fresh OR breakouts (first 60 minutes) skip sigma band proximity checks
+    # because entries near the 1σ band are expected by definition.
+    # Only the structural OR boundary check applies to those.
+    at_1sigma = False
+    sigma_extended = False
+    if not skip_sigma_check:
+        # 1. Entry is within 0.5σ of the 1σ band — T1 is too close for a viable trade
+        at_1sigma = bool(
+            (is_long  and vwap_upper1 > 0 and entry_price >= vwap_upper1 - _sigma * 0.5) or
+            (not is_long and vwap_lower1 > 0 and entry_price <= vwap_lower1 + _sigma * 0.5)
+        )
+        # 2. Entry is at or beyond the 2σ band
+        sigma_extended = bool(
+            (is_long  and vwap_upper2 > 0 and entry_price >= vwap_upper2) or
+            (not is_long and vwap_lower2 > 0 and entry_price <= vwap_lower2)
+        )
     # 3. Entry is 2%+ beyond the OR boundary — structurally extended
     or_extended = bool(
         (is_long  and or_high > 0 and entry_price > or_high * 1.02) or
@@ -969,7 +976,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     # This replaces the old single adaptive-R/R override and adds EXTENDED detection.
     _trade_per = _calc_per_entry_rr(
         _entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
     )
     if _trade_per.get("verdict") == "NO_TRADE":
         _trade.update({
@@ -997,7 +1004,7 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     if _entry_gate_price > 0 and _trade_dir != "NONE":
         _eg_per = _calc_per_entry_rr(
             _entry_gate_price, _trade_dir, scalp, vwap, _vwap_std_dev,
-            _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+            _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
         )
         _entry_gate.update({
             "risk_reward":     _eg_per.get("risk_reward", 0.0),
@@ -1008,17 +1015,18 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
             "sigma_distance":  _eg_per.get("sigma_distance"),
         })
 
-    # Per-entry R/R for OR breakout level (E3 in frontend)
+    # Per-entry R/R for OR breakout level (E3 in frontend) — fresh breakout, skip sigma check
     _or_entry_px = orh if not is_bear else orl
     _or_rr = _calc_per_entry_rr(
         _or_entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl,
+        skip_sigma_check=True
     ) if _or_entry_px > 0 and _trade_dir != "NONE" else {}
 
     # Per-entry R/R for VWAP retest (E4 pending in frontend)
     _vwap_rr = _calc_per_entry_rr(
         vwap, _trade_dir, scalp, vwap, _vwap_std_dev,
-        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orh, orl
     ) if vwap > 0 and _trade_dir != "NONE" else {}
 
     _no_trade      = _build_no_trade_reason(_drp, _rvol, _confluence, _trade, price)
