@@ -50,6 +50,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   const sf      = isShort ? orHigh : orLow
   const direction = isShort ? 'short' : 'long' as const
   const pts: ChartEntryPoint[] = []
+  const seen = new Set<number>()
 
   // Each entry gets its own target, stop, R/R and verdict from per-entry R/R calculation
   const add = (
@@ -62,7 +63,8 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     exitPrice?: number,
     exitPrice2?: number,
   ) => {
-    if (!price || !isFinite(price) || price <= 0) return
+    if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
+    seen.add(price)
     pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
   }
 
@@ -125,20 +127,24 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
   const pb = ac?.pullback_entry
   if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
-    pts.push({
-      label:     `E${pts.length + 1}`,
-      price:     pb.entry_price,
-      trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
-      stop:      pb.stop,
-      direction,
-      exitPrice: pb.target_1,
-      exitPrice2: pb.target_2,
-      rr:        pb.rr_t1,
-      pending:   false,
-      verdict:   'VALID',
-      color:     '#f59e0b',
-      triggerTime: (pb as Record<string, unknown>).bar_timestamp as string | undefined,
-    })
+    const pbPrice = pb.entry_price
+    if (!seen.has(pbPrice)) {
+      seen.add(pbPrice)
+      pts.push({
+        label:       `E${pts.length + 1}`,
+        price:       pbPrice,
+        trigger:     `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+        stop:        pb.stop,
+        direction,
+        exitPrice:   pb.target_1,
+        exitPrice2:  pb.target_2,
+        rr:          pb.rr_t1,
+        pending:     false,
+        verdict:     'VALID',
+        color:       '#f59e0b',
+        triggerTime: (pb as Record<string, unknown>).bar_timestamp as string | undefined,
+      })
+    }
   } else {
     // Static VWAP retest (pending)
     const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined

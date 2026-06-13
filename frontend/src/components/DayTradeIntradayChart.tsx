@@ -111,8 +111,8 @@ export interface ChartEntryPoint {
   stop?: number
   color?: string  // CSS color — defaults to per-index color
   direction?: 'long' | 'short'  // arrow direction; default 'long'
-  exitPrice?: number             // optional T1 take-profit line
-  exitPrice2?: number            // optional T2 take-profit line
+  exitPrice?: number             // T1 take-profit line
+  exitPrice2?: number            // T2 extended target
   rr?: number                   // risk/reward ratio — entries < 1.0 are flagged
   stub?: boolean                 // table-only placeholder (no price/chart line)
   pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
@@ -657,7 +657,7 @@ export default function DayTradeIntradayChart({
             }
           })}
 
-          {/* ── Exit / take-profit lines ── */}
+          {/* ── T1 exit / take-profit lines ── */}
           {displayEntryPoints?.map((ep, idx) => {
             if (hidden.has(idx)) return null
             if (!ep.exitPrice || !Number.isFinite(ep.exitPrice)) return null
@@ -677,7 +677,33 @@ export default function DayTradeIntradayChart({
                   y={ey - 4}
                   textAnchor="end" fill={color} fontSize={8} fontWeight={600} fillOpacity={0.8}
                 >
-                  {ep.label} exit · ${fmtPrice(ep.exitPrice)}
+                  {ep.label} T1 · ${fmtPrice(ep.exitPrice)}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* ── T2 extended target lines ── */}
+          {displayEntryPoints?.map((ep, idx) => {
+            if (hidden.has(idx)) return null
+            if (!ep.exitPrice2 || !Number.isFinite(ep.exitPrice2)) return null
+            if (ep.exitPrice2 < yMin || ep.exitPrice2 > yMax) return null
+            const ey2 = yAt(ep.exitPrice2)
+            const color = ep.color ?? entryColors[idx % entryColors.length]!
+            return (
+              <g key={`exit2-${idx}`} clipPath={`url(#${clipId})`}>
+                <line
+                  x1={PAD.l} x2={PAD.l + innerW}
+                  y1={ey2} y2={ey2}
+                  stroke={color} strokeWidth={1}
+                  strokeDasharray="4 6" strokeOpacity={0.35}
+                />
+                <text
+                  x={PAD.l + innerW - 4}
+                  y={ey2 - 4}
+                  textAnchor="end" fill={color} fontSize={8} fontWeight={600} fillOpacity={0.45}
+                >
+                  {ep.label} T2 · ${fmtPrice(ep.exitPrice2)}
                 </text>
               </g>
             )
@@ -897,7 +923,7 @@ export default function DayTradeIntradayChart({
                     <td className="py-1 pr-3 text-right font-mono text-emerald-400">
                       {ep.exitPrice && ep.exitPrice > 0 ? `$${fmtPrice(ep.exitPrice)}` : '—'}
                     </td>
-                    <td className="py-1 text-right font-mono text-emerald-400/70">
+                    <td className="py-1 text-right font-mono text-emerald-400/50">
                       {ep.exitPrice2 && ep.exitPrice2 > 0 ? `$${fmtPrice(ep.exitPrice2)}` : '—'}
                     </td>
                   </tr>
