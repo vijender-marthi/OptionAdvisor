@@ -2,11 +2,12 @@ import { useState, useMemo, useRef } from 'react'
 import {
   FlaskConical, Play, RefreshCw, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Activity, BarChart3, AlertTriangle,
-  CheckCircle2, XCircle, MinusCircle, Info,
+  CheckCircle2, XCircle, MinusCircle, Info, MonitorPlay,
 } from 'lucide-react'
 import { runBacktest } from '../api/client'
 import type { BacktestResult, BacktestTrade, BacktestEquityPoint } from '../types'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
+import IntradayReplay from '../components/IntradayReplay'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -310,7 +311,10 @@ function toDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+type BTab = 'options' | 'replay'
+
 export default function BacktestPage() {
+  const [btab, setBtab] = useState<BTab>('options')
   const today = new Date()
 
   // Controls
@@ -417,11 +421,37 @@ export default function BacktestPage() {
             <div className="min-w-0">
               <h1 className="tcc-hero-title text-2xl font-bold tracking-tight text-heading">Backtest Lab</h1>
               <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                Walk-forward simulation · Black-Scholes pricing · HV-20 as IV proxy
+                Options simulation · Intraday replay
               </p>
             </div>
           </div>
         </div>
+
+        {/* ── Tab switcher ───────────────────────────────────── */}
+        <div className="flex gap-2">
+          {([
+            { id: 'options' as BTab, label: 'Options Sim', icon: <FlaskConical size={13} /> },
+            { id: 'replay'  as BTab, label: 'Intraday Replay', icon: <MonitorPlay size={13} /> },
+          ]).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setBtab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                btab === tab.id
+                  ? 'bg-violet-600/20 border-violet-600 text-violet-300'
+                  : 'bg-gray-900 border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-300'
+              }`}
+            >
+              {tab.icon}{tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Intraday Replay tab ────────────────────────────── */}
+        {btab === 'replay' && <IntradayReplay />}
+
+        {/* ── Options Sim tab ────────────────────────────────── */}
+        {btab === 'options' && <>
 
         {/* ── Controls ───────────────────────────────────────── */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-5 space-y-4">
@@ -819,6 +849,8 @@ export default function BacktestPage() {
             </div>
           </div>
         )}
+
+        </>}
 
       </div>
     </div>
