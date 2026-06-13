@@ -2251,8 +2251,6 @@ def _detect_pullback_entry(
         return None
     if vwap_ser is None or vwap_ser.empty or vwap_std_dev is None or vwap_std_dev <= 0:
         return None
-    if session_minutes_elapsed > 330:
-        return None
 
     is_long = (direction or "long").lower() == "long"
     sigma = vwap_std_dev
@@ -2261,6 +2259,10 @@ def _detect_pullback_entry(
     best: Optional[dict] = None
     n = len(session)
     for i in range(10, n):  # start after first 10 bars
+        # Per-bar time check — skip bars past afternoon chop zone (~3:00 PM ET)
+        if i > 330:
+            continue
+
         bar      = session.iloc[i]
         vwap_at  = float(vwap_ser.iloc[i])
         if not math.isfinite(vwap_at) or vwap_at <= 0:
