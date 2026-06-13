@@ -108,7 +108,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   add(
     orEntryPx,
     isShort ? 'OR low breakout' : 'OR high breakout',
-    orIsNT ? undefined : (isShort ? orHigh : orLow),
+    orIsNT ? undefined : (orRr?.stop as number | undefined) ?? (isShort ? orHigh : orLow),
     orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
     false,
     orVerdict,
@@ -137,7 +137,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     add(
       (eg?.vwap ?? mVwap) as number | null,
       'VWAP re-test',
-      (eg?.risk_below as number | undefined) ?? sf,
+      (vRr?.stop as number | undefined) ?? (eg?.risk_below as number | undefined) ?? sf,
       vRr?.risk_reward as number | undefined,
       true,
       vVerdict,
