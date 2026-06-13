@@ -49,7 +49,6 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   const isShort = result.bias === 'short'
   const sf      = isShort ? orHigh : orLow
   const direction = isShort ? 'short' : 'long' as const
-  const seen = new Set<number>()
   const pts: ChartEntryPoint[] = []
 
   // Each entry gets its own target, stop, R/R and verdict from per-entry R/R calculation
@@ -62,8 +61,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     verdict?: string,
     exitPrice?: number,
   ) => {
-    if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
-    seen.add(price)
+    if (!price || !isFinite(price) || price <= 0) return
     pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
   }
 

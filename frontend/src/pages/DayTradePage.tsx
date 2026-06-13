@@ -1205,7 +1205,6 @@ export default function DayTradePage() {
         const isShort = result.bias === 'short'
         const mVwap = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap : null
         const stopFallback = isShort ? orHigh : orLow
-        const seen = new Set<number>()
         const pageEntryPoints: ChartEntryPoint[] = []
         const direction = isShort ? 'short' : 'long' as const
 
@@ -1218,8 +1217,7 @@ export default function DayTradePage() {
           verdict?: string,
           exitPrice?: number,
         ) => {
-          if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
-          seen.add(price)
+          if (!price || !isFinite(price) || price <= 0) return
           pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
         }
 
