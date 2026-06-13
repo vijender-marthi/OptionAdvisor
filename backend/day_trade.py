@@ -2247,7 +2247,7 @@ def _detect_pullback_entry(
         return None
     if vwap_ser is None or vwap_ser.empty:
         return None
-    if session_minutes_elapsed > 150:  # past 11:30 AM PT
+    if session_minutes_elapsed > 330:  # past ~3:00 PM ET / 12:00 PM PT — afternoon chop zone
         return None
     if vwap_std_dev is None or vwap_std_dev <= 0:
         return None

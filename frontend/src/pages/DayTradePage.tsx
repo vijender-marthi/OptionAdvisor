@@ -1216,9 +1216,10 @@ export default function DayTradePage() {
           pending?: boolean,
           verdict?: string,
           exitPrice?: number,
+          exitPrice2?: number,
         ) => {
           if (!price || !isFinite(price) || price <= 0) return
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
         }
 
         // E1 — AI coach entry gate (confluence zone trigger)
@@ -1236,6 +1237,7 @@ export default function DayTradePage() {
           false,
           eg1Verdict,
           eg1IsNT ? undefined : (eg1?.target as number | undefined),
+          eg1IsNT ? undefined : (eg1?.target_2 as number | undefined),
         )
 
         // E2 — AI coach trade (current price analysis)
@@ -1254,6 +1256,7 @@ export default function DayTradePage() {
           false,
           trVerdict,
           trIsNT ? undefined : (tr?.target as number | undefined),
+          trIsNT ? undefined : (tr?.target_2 as number | undefined),
         )
 
         // E3 — OR breakout level
@@ -1261,14 +1264,19 @@ export default function DayTradePage() {
         const orRr       = ac?.or_breakout_rr as Record<string, unknown> | undefined
         const orVerdict  = orRr?.verdict as string | undefined
         const orIsNT     = orVerdict === 'NO_TRADE'
+        // Compute a tight OR breakout stop: just below ORH (long) or above ORL (short) — NOT the far side
+        const orBreakoutStop = orEntryPx
+          ? (isShort ? orEntryPx * 1.003 : orEntryPx * 0.997)
+          : (isShort ? orHigh : orLow)
         addEntry(
           orEntryPx,
           isShort ? 'OR low breakout' : 'OR high breakout',
-          orIsNT ? undefined : (orRr?.stop as number | undefined) ?? (isShort ? orHigh : orLow),
+          orIsNT ? undefined : (orRr?.stop as number | undefined) ?? orBreakoutStop,
           orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
           false,
           orVerdict,
           orIsNT ? undefined : (orRr?.target as number | undefined),
+          orIsNT ? undefined : (orRr?.target_2 as number | undefined),
         )
 
         // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
@@ -1289,15 +1297,19 @@ export default function DayTradePage() {
         } else {
           const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
           const vVerdict = vRr?.verdict as string | undefined
+          const vwapPrice = (eg?.vwap ?? mVwap) as number | null
+          // Tight VWAP stop: just below VWAP for long — NOT ORL which is way too far
+          const vwapRetestStop = vwapPrice ? (isShort ? vwapPrice * 1.003 : vwapPrice * 0.997) : stopFallback
           addEntry(
-            (eg?.vwap ?? mVwap) as number | null,
+            vwapPrice,
             'VWAP re-test',
-            (vRr?.stop as number | undefined) ?? (eg?.risk_below as number | undefined) ?? stopFallback,
+            (vRr?.stop as number | undefined) ?? vwapRetestStop,
             vRr?.risk_reward as number | undefined,
             true,
             vVerdict,
-            vRr?.target as number | undefined,
-          )
+          vRr?.target as number | undefined,
+          vRr?.target_2 as number | undefined,
+        )
         }
 
         // ── Build zone annotations ──────────────────────────────────────────

@@ -111,7 +111,8 @@ export interface ChartEntryPoint {
   stop?: number
   color?: string  // CSS color — defaults to per-index color
   direction?: 'long' | 'short'  // arrow direction; default 'long'
-  exitPrice?: number             // optional take-profit line
+  exitPrice?: number             // optional T1 take-profit line
+  exitPrice2?: number            // optional T2 take-profit line
   rr?: number                   // risk/reward ratio — entries < 1.0 are flagged
   stub?: boolean                 // table-only placeholder (no price/chart line)
   pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
@@ -831,7 +832,8 @@ export default function DayTradeIntradayChart({
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Time</th>
                 <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Trigger</th>
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Stop</th>
-                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">T1 Target</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">T1</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">T2</th>
               </tr>
             </thead>
             <tbody>
@@ -880,8 +882,11 @@ export default function DayTradeIntradayChart({
                     <td className="py-1 pr-3 text-right font-mono text-red-400">
                       {ep.stop && ep.stop > 0 ? `$${fmtPrice(ep.stop)}` : '—'}
                     </td>
-                    <td className="py-1 text-right font-mono text-emerald-400">
+                    <td className="py-1 pr-3 text-right font-mono text-emerald-400">
                       {ep.exitPrice && ep.exitPrice > 0 ? `$${fmtPrice(ep.exitPrice)}` : '—'}
+                    </td>
+                    <td className="py-1 text-right font-mono text-emerald-400/70">
+                      {ep.exitPrice2 && ep.exitPrice2 > 0 ? `$${fmtPrice(ep.exitPrice2)}` : '—'}
                     </td>
                   </tr>
                 )

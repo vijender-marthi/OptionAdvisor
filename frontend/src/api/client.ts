@@ -203,7 +203,9 @@ export interface AiCoachResult {
     candle_required: 'rejection' | 'bounce' | 'breakout' | 'none'
     // per-entry fields
     risk_reward?: number
+    risk_reward_t2?: number
     target?: number
+    target_2?: number
     stop?: number
     verdict?: string
     extended_reason?: string
@@ -214,8 +216,10 @@ export interface AiCoachResult {
     direction: 'PUT' | 'CALL' | 'NONE'
     entry_price: number
     target?: number
+    target_2?: number
     stop: number
     risk_reward: number
+    risk_reward_t2?: number
     r_r_valid: boolean
     verdict?: string
     extended_reason?: string
@@ -225,7 +229,9 @@ export interface AiCoachResult {
   or_breakout_rr?: {
     verdict?: string
     risk_reward?: number
+    risk_reward_t2?: number
     target?: number
+    target_2?: number
     stop?: number
     sigma_distance?: number | null
   }
@@ -233,7 +239,9 @@ export interface AiCoachResult {
   vwap_retest_rr?: {
     verdict?: string
     risk_reward?: number
+    risk_reward_t2?: number
     target?: number
+    target_2?: number
     stop?: number
     sigma_distance?: number | null
   }

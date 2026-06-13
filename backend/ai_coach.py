@@ -1003,6 +1003,8 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
             "risk_reward":     round(_rr, 2),
             "r_r_valid":       _rr >= 2.0,
             "target":          _trade_per.get("target") or _trade.get("target"),
+            "target_2":        _trade_per.get("target_2"),
+            "stop":            _trade_per.get("stop") or _trade.get("stop"),
             "verdict":         _trade_per.get("verdict", "VALID"),
             "sigma_distance":  _trade_per.get("sigma_distance"),
         })
@@ -1154,7 +1156,7 @@ def get_ai_coach(
             if key in deterministic and key not in result:
                 result[key] = deterministic[key]
             elif key in deterministic and isinstance(result.get(key), dict) and isinstance(deterministic[key], dict):
-                for sub in ("risk_reward", "target", "stop", "verdict", "extended_reason", "sigma_distance"):
+                for sub in ("risk_reward", "risk_reward_t2", "target", "target_2", "stop", "verdict", "extended_reason", "sigma_distance"):
                     if sub in deterministic[key] and sub not in result.get(key, {}):
                         result.setdefault(key, {})[sub] = deterministic[key][sub]
 
