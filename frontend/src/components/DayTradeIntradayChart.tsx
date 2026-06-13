@@ -117,7 +117,7 @@ export interface ChartEntryPoint {
   stub?: boolean                 // table-only placeholder (no price/chart line)
   pending?: boolean              // conditional setup not yet triggered — dashed line, no arrow
   verdict?: string               // 'NO_TRADE' | 'VALID' | 'LOW_RR' | 'INVALID' — per-entry status
-  triggerBarIndex?: number       // bar index where this entry triggered (overrides price-based search)
+  triggerTime?: string           // ISO timestamp of trigger bar (overrides bar search for 1m/5m compat)
 }
 
 const EC_DARK = [
@@ -213,10 +213,7 @@ export default function DayTradeIntradayChart({
     if (!displayEntryPoints) return []
     return displayEntryPoints.map(ep => {
       if (ep.stub || !ep.price) return null
-      if (ep.triggerBarIndex != null && ep.triggerBarIndex >= 0 && ep.triggerBarIndex < bars.length) {
-        const b = bars[ep.triggerBarIndex]!
-        return { time: fmtEtShort(b.t), barIndex: ep.triggerBarIndex }
-      }
+      if (ep.triggerTime) return { time: fmtEtShort(ep.triggerTime), barIndex: 0 }
       for (let i = orMinutes; i < bars.length; i++) {
         const b = bars[i]!
         if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }

@@ -2343,6 +2343,7 @@ def _detect_pullback_entry(
             "rr_t1":       rr_t1,
             "vwap":        round(vwap_at, 2),
             "bar_index":   i,
+            "bar_timestamp": pd.Timestamp(session.index[i]).isoformat(),
             "reason":      (
                 f"Price pulled back from extended levels to VWAP ${vwap_at:.2f} . "
                 f"Reclaim candle confirmed . Entry ${entry:.2f} . T1 ${t1:.2f} . "

@@ -1294,7 +1294,7 @@ export default function DayTradePage() {
             pending:   false,
             verdict:   'VALID',
             color:     '#f59e0b',
-            triggerBarIndex: (pb as Record<string, unknown>).bar_index as number | undefined,
+            triggerTime: (pb as Record<string, unknown>).bar_timestamp as string | undefined,
           })
         } else {
           const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined

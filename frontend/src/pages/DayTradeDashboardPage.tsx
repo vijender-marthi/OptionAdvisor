@@ -137,7 +137,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
       pending:   false,
       verdict:   'VALID',
       color:     '#f59e0b',
-      triggerBarIndex: (pb as Record<string, unknown>).bar_index as number | undefined,
+      triggerTime: (pb as Record<string, unknown>).bar_timestamp as string | undefined,
     })
   } else {
     // Static VWAP retest (pending)
