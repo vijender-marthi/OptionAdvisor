@@ -1,43 +1,59 @@
 import { useState, FormEvent } from 'react'
-import { TrendingUp, Shield, Zap, BarChart2, ArrowRight, Search } from 'lucide-react'
-import { analyzeV2 } from '../api/client'
+import { TrendingUp, Shield, Zap, BarChart2, ArrowRight, Search, ChevronUp, ChevronDown } from 'lucide-react'
+import { analyzePublic } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
 import { useApp } from '../contexts/AppContext'
 
 type Rec = UnifiedAnalysis['regular_recommendations'][number]
 
-const VERDICT_COLOR: Record<string, string> = {
-  STRONG_GO: 'text-emerald-400',
-  GO:        'text-green-400',
-  WATCH:     'text-amber-400',
-  WAIT:      'text-gray-400',
-  AVOID:     'text-red-400',
-  NO_EDGE:   'text-gray-500',
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtCost(rec: Rec): { label: string; value: string; color: string } {
+  const isCredit = (rec.net_credit ?? 0) > 0
+  if (isCredit) {
+    const amt = Math.round((rec.net_credit ?? 0) * 100)
+    return { label: 'Credit', value: `+$${amt}`, color: 'text-emerald-400' }
+  }
+  const cost = Math.round(Math.abs(rec.max_loss ?? 0) * 100)
+  return { label: 'Max Cost', value: `-$${cost}`, color: 'text-red-400' }
 }
 
-function scoreLabel(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: 'Strong', color: 'text-emerald-400' }
-  if (score >= 60) return { label: 'Good',   color: 'text-green-400' }
-  if (score >= 40) return { label: 'Fair',   color: 'text-amber-400' }
-  return { label: 'Weak', color: 'text-gray-500' }
+function fmtRR(rec: Rec): string {
+  const rr = rec.risk_reward_ratio
+  if (rr != null && Number.isFinite(rr)) return `${rr.toFixed(1)}×`
+  if (rec.max_profit && rec.max_loss && rec.max_loss > 0)
+    return `${(rec.max_profit / rec.max_loss).toFixed(1)}×`
+  return '—'
 }
 
-function fmtUsd(n: number) {
-  if (!Number.isFinite(n)) return '—'
-  return n >= 0 ? `$${n.toFixed(0)}` : `-$${Math.abs(n).toFixed(0)}`
+function rrColor(rec: Rec): string {
+  const rr = rec.risk_reward_ratio ?? (rec.max_loss > 0 ? rec.max_profit / rec.max_loss : 0)
+  if (rr >= 2)   return 'text-emerald-400'
+  if (rr >= 1.5) return 'text-lime-400'
+  if (rr >= 1)   return 'text-yellow-400'
+  return 'text-red-400'
 }
 
-function fmtPct(n: number) {
-  if (!Number.isFinite(n)) return '—'
-  return `${(n * 100).toFixed(0)}%`
+function setupState(rec: Rec): { label: string; cls: string } {
+  const score = rec.scores?.total_score ?? rec.score ?? 0
+  const rrOk  = rec.passes_rr_filter !== false
+  const liqOk = rec.passes_liquidity_filter !== false
+
+  if (score >= 70 && rrOk && liqOk)
+    return { label: 'ENTRY', cls: 'bg-emerald-900/40 text-emerald-300 border-emerald-700' }
+  if (score >= 55 && liqOk)
+    return { label: 'SETUP', cls: 'bg-blue-900/40 text-blue-300 border-blue-700' }
+  if (score >= 40)
+    return { label: 'WATCH', cls: 'bg-sky-900/30 text-sky-400 border-sky-700' }
+  return { label: 'AVOID', cls: 'bg-red-900/30 text-red-400 border-red-800' }
 }
 
 function BiasChip({ bias }: { bias: string }) {
-  const up = bias.toLowerCase().includes('bull') || bias.toLowerCase() === 'long'
+  const up   = bias.toLowerCase().includes('bull') || bias.toLowerCase() === 'long'
   const down = bias.toLowerCase().includes('bear') || bias.toLowerCase() === 'short'
-  const cls = up ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40'
-    : down ? 'bg-red-900/40 text-red-400 border-red-700/40'
-    : 'bg-gray-800/60 text-gray-400 border-gray-700/40'
+  const cls  = up   ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40'
+             : down ? 'bg-red-900/40 text-red-400 border-red-700/40'
+                    : 'bg-amber-900/40 text-amber-400 border-amber-700/40'
   return (
     <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
       {bias}
@@ -45,15 +61,48 @@ function BiasChip({ bias }: { bias: string }) {
   )
 }
 
+// Compact legs display: "BUY CALL $150 · SELL CALL $155 · Jun 20"
+function LegsCell({ legs }: { legs: Rec['legs'] }) {
+  if (!legs?.length) return <span className="text-gray-600 font-mono text-[11px]">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {legs.map((leg, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+            leg.action === 'BUY'
+              ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
+              : 'bg-red-950/50 text-red-300 border-red-800/60'
+          }`}
+        >
+          <span className="opacity-60 text-[9px]">{leg.action}</span>
+          {' '}{leg.option_type} ${leg.strike.toFixed(0)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// ── Sample data for the pre-analysis teaser ───────────────────────────────────
+
+const SAMPLE_ROWS = [
+  { rank:1, strategy:'Bull Call Spread',  bias:'Bullish', setup:'ENTRY', legs:'BUY CALL $185 · SELL CALL $195', expiry:'Jun 20', rr:'2.5×', cost:'+$310', rrCls:'text-emerald-400', setupCls:'bg-emerald-900/40 text-emerald-300 border-emerald-700' },
+  { rank:2, strategy:'Bear Put Spread',   bias:'Bearish', setup:'SETUP', legs:'BUY PUT $180 · SELL PUT $170',  expiry:'Jun 20', rr:'1.8×', cost:'+$290', rrCls:'text-lime-400',    setupCls:'bg-blue-900/40 text-blue-300 border-blue-700' },
+  { rank:3, strategy:'Iron Condor',       bias:'Neutral', setup:'WATCH', legs:'SELL CALL $200 · BUY CALL $210 · SELL PUT $170 · BUY PUT $160', expiry:'Jul 18', rr:'0.7×', cost:'+$145', rrCls:'text-yellow-400',  setupCls:'bg-sky-900/30 text-sky-400 border-sky-700' },
+  { rank:4, strategy:'Bear Call Spread',  bias:'Bearish', setup:'WATCH', legs:'SELL CALL $200 · BUY CALL $210', expiry:'Jun 27', rr:'0.6×', cost:'+$180', rrCls:'text-yellow-400',  setupCls:'bg-sky-900/30 text-sky-400 border-sky-700' },
+  { rank:5, strategy:'Long Call',         bias:'Bullish', setup:'AVOID', legs:'BUY CALL $190',                  expiry:'Jun 20', rr:'0.4×', cost:'-$230', rrCls:'text-red-400',     setupCls:'bg-red-900/30 text-red-400 border-red-800' },
+]
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function LandingPage() {
   const { user, navigate } = useApp()
-  const [ticker, setTicker] = useState('')
+  const [ticker, setTicker]   = useState('')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<UnifiedAnalysis | null>(null)
+  const [result, setResult]   = useState<UnifiedAnalysis | null>(null)
   const [weeksOut, setWeeksOut] = useState(4)
-  const [error, setError] = useState('')
-
-  // Logged-in users see the landing page too (with dashboard link in nav)
+  const [error, setError]     = useState('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const runAnalyze = async (sym: string, weeks: number) => {
     setError('')
@@ -61,38 +110,37 @@ export default function LandingPage() {
     setLoading(true)
     setWeeksOut(weeks)
     try {
-      const res = await analyzeV2(sym, 'regular', { weeksOut: weeks, strategyMode: 'all' })
-      // Auto-retry with wider window if no recs returned
+      const res = await analyzePublic(sym, { weeksOut: weeks, strategyMode: 'all' })
       if ((res.data.regular_recommendations ?? []).length === 0 && weeks === 4) {
-        const res2 = await analyzeV2(sym, 'regular', { weeksOut: 8, strategyMode: 'all' })
+        const res2 = await analyzePublic(sym, { weeksOut: 8, strategyMode: 'all' })
         setWeeksOut(8)
         setResult(res2.data)
       } else {
         setResult(res.data)
       }
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 401 || status === 403) {
-        setError('Sign in to unlock full analysis — or create a free account.')
-      } else {
-        setError('Could not analyze ticker. Please try again.')
-      }
+      setError('Could not analyze ticker. Check the symbol and try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleAnalyze = async (e: FormEvent) => {
+  const handleAnalyze = (e: FormEvent) => {
     e.preventDefault()
     const sym = ticker.trim().toUpperCase()
     if (!sym) return
     runAnalyze(sym, 4)
   }
 
-  const recs: Rec[] = result?.regular_recommendations ?? []
+  const recs: Rec[] = (result?.regular_recommendations ?? []).slice().sort((a, b) => {
+    const sa = a.scores?.total_score ?? a.score ?? 0
+    const sb = b.scores?.total_score ?? b.score ?? 0
+    return sortDir === 'desc' ? sb - sa : sa - sb
+  })
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
+
       {/* Nav */}
       <header className="border-b border-gray-800/60 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-2">
@@ -110,10 +158,7 @@ export default function LandingPage() {
             </button>
           ) : (
             <>
-              <button
-                onClick={() => navigate('login')}
-                className="text-sm text-gray-400 hover:text-white transition-colors"
-              >
+              <button onClick={() => navigate('login')} className="text-sm text-gray-400 hover:text-white transition-colors">
                 Sign in
               </button>
               <button
@@ -137,8 +182,7 @@ export default function LandingPage() {
           <span className="text-violet-400">in seconds</span>
         </h1>
         <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto">
-          Enter any ticker below to see ranked options strategies for the next 3–4 weeks,
-          with AI-scored setups and plain-English decisions.
+          Enter any ticker to see ranked options strategies — setup state, legs, strikes, expiry, R/R, and cost. No login required.
         </p>
 
         {/* Ticker Input */}
@@ -166,25 +210,18 @@ export default function LandingPage() {
         {error && (
           <div className="mt-4 max-w-sm mx-auto px-4 py-3 rounded-lg bg-red-900/30 border border-red-700/40 text-red-300 text-sm">
             {error}
-            {error.includes('Sign in') && (
-              <button
-                onClick={() => navigate('login')}
-                className="ml-2 underline font-medium"
-              >
-                Sign in →
-              </button>
-            )}
           </div>
         )}
       </section>
 
-      {/* Results */}
+      {/* ── Live results ──────────────────────────────────────────────────────── */}
       {result && (
-        <section className="max-w-5xl mx-auto px-6 pb-16">
-          {/* Summary */}
-          <div className="mb-6 p-4 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-wrap items-center gap-4">
+        <section className="max-w-6xl mx-auto px-6 pb-16">
+
+          {/* Summary strip */}
+          <div className="mb-5 px-4 py-3 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-wrap items-center gap-4">
             <div>
-              <span className="font-mono font-bold text-white text-lg">{result.ticker}</span>
+              <span className="font-mono font-bold text-white text-base">{result.ticker}</span>
               <span className="ml-2 text-gray-400 text-sm">{result.company}</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -196,174 +233,168 @@ export default function LandingPage() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-gray-500 text-xs">Verdict</span>
-              <span className={`text-sm font-bold ${VERDICT_COLOR[result.verdict] ?? 'text-gray-400'}`}>
-                {result.verdict.replace('_', ' ')}
-              </span>
-            </div>
-            <div className="ml-auto text-xs text-gray-400 max-w-xs leading-snug hidden md:block">
-              {result.reason}
+            <div className="ml-auto hidden md:block text-xs text-gray-500 max-w-xs leading-snug">
+              {recs.length} setup{recs.length !== 1 ? 's' : ''} · {weeksOut}-week window · Sign in for alerts, coaching &amp; portfolio tracking
             </div>
           </div>
 
-          {/* Options Table */}
           {recs.length > 0 ? (
-            <>
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                Options strategies · {recs.length} setups across 3–4 weeks
-              </h2>
-              <div className="overflow-x-auto rounded-xl border border-gray-800">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-800 bg-gray-900/60">
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">#</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Strategy</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Bias</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Expiry</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">DTE</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Max Profit</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Max Loss</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Prob Profit</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Exp. Value</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Score</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Decision</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recs.map((rec, i) => {
-                      const { label: scoreText, color: scoreColor } = scoreLabel(rec.score)
-                      return (
-                        <tr
-                          key={i}
-                          className="border-b border-gray-800/50 last:border-0 hover:bg-gray-900/40 transition-colors"
-                        >
-                          <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{rec.rank ?? i + 1}</td>
-                          <td className="px-3 py-2.5 font-medium text-white text-xs whitespace-nowrap">{rec.strategy}</td>
-                          <td className="px-3 py-2.5"><BiasChip bias={rec.bias} /></td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{rec.expiry}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-400">{rec.dte}d</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs text-emerald-400">{fmtUsd(rec.max_profit)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs text-red-400">{fmtUsd(-Math.abs(rec.max_loss))}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{fmtPct(rec.prob_of_profit)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-xs">
-                            <span className={rec.expected_value >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                              {fmtUsd(rec.expected_value)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            <span className={`font-bold text-xs ${scoreColor}`}>
-                              {rec.score.toFixed(0)} <span className="font-normal opacity-70">{scoreText}</span>
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 max-w-[220px]">
-                            <p className="text-[11px] text-gray-400 leading-snug line-clamp-2">{rec.rationale}</p>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+            <div className="rounded-xl border border-gray-800 overflow-hidden">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 bg-gray-900/70 text-left text-[10px] uppercase tracking-wide text-gray-500">
+                    <th className="px-3 py-2.5 w-6">#</th>
+                    <th className="px-3 py-2.5">Strategy</th>
+                    <th className="px-3 py-2.5">Bias</th>
+                    <th className="px-3 py-2.5">Setup</th>
+                    <th className="px-3 py-2.5">Legs</th>
+                    <th className="px-3 py-2.5 text-center">Expiry</th>
+                    <th
+                      className="px-3 py-2.5 text-right cursor-pointer select-none hover:text-gray-300 transition-colors"
+                      onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        Score
+                        {sortDir === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                      </span>
+                    </th>
+                    <th className="px-3 py-2.5 text-right">R/R</th>
+                    <th className="px-3 py-2.5 text-right">Cost / Contract</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recs.map((rec, i) => {
+                    const state = setupState(rec)
+                    const cost  = fmtCost(rec)
+                    const score = rec.scores?.total_score ?? rec.score ?? 0
+                    return (
+                      <tr key={i} className="border-b border-gray-800/50 last:border-0 hover:bg-gray-900/30 transition-colors">
+                        <td className="px-3 py-3 text-gray-600 font-mono text-xs">{rec.rank ?? i + 1}</td>
+                        <td className="px-3 py-3 font-medium text-white text-xs whitespace-nowrap">{rec.strategy}</td>
+                        <td className="px-3 py-3"><BiasChip bias={rec.bias} /></td>
+                        <td className="px-3 py-3">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border tracking-wide ${state.cls}`}>
+                            {state.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3"><LegsCell legs={rec.legs} /></td>
+                        <td className="px-3 py-3 text-center font-mono text-xs text-gray-300">{rec.expiry}<span className="ml-1 text-gray-600 text-[10px]">{rec.dte}d</span></td>
+                        <td className="px-3 py-3 text-right font-mono text-xs font-bold text-gray-300">{score}</td>
+                        <td className={`px-3 py-3 text-right font-mono text-xs font-bold ${rrColor(rec)}`}>{fmtRR(rec)}</td>
+                        <td className={`px-3 py-3 text-right font-mono text-xs font-bold ${cost.color}`}>
+                          <div>{cost.value}</div>
+                          <div className="text-[10px] font-normal text-gray-600">{cost.label}</div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
               </div>
-              <p className="mt-2 text-[11px] text-gray-600">
-                Ranked by expected value and probability of profit. Sign in for real-time alerts, portfolio tracking, and AI coaching.
-              </p>
-            </>
+            </div>
           ) : (
             <div className="py-8 px-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center">
               <p className="text-gray-400 text-sm font-medium mb-1">No setups passed filters for this ticker</p>
               <p className="text-gray-600 text-xs mb-5">
                 {weeksOut >= 8
-                  ? 'Even with an 8-week window, no setups cleared the risk/reward filters. The market may be pricing in too much uncertainty.'
-                  : 'Filters were applied across 4- and 8-week windows. No setups cleared the risk/reward thresholds.'}
+                  ? 'Even with an 8-week window, no setups cleared the risk/reward filters.'
+                  : 'Filters were applied across 4- and 8-week windows.'}
               </p>
-              <div className="flex items-center justify-center gap-3 flex-wrap">
-                <button
-                  onClick={() => runAnalyze(ticker.trim().toUpperCase(), 12)}
-                  disabled={loading}
-                  className="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-300 text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-40"
-                >
-                  Try 12-week window
-                </button>
-                <button
-                  onClick={() => navigate('login')}
-                  className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors"
-                >
-                  Sign in for advanced filters →
-                </button>
-              </div>
+              <button
+                onClick={() => runAnalyze(ticker.trim().toUpperCase(), 12)}
+                disabled={loading}
+                className="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-300 text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-40"
+              >
+                Try 12-week window
+              </button>
             </div>
           )}
+
+          <p className="mt-3 text-[11px] text-gray-600">
+            Ranked by score · not financial advice · sign in for AI coaching, alerts, and portfolio tracking
+          </p>
         </section>
       )}
 
-      {/* Preview teaser — shown when no result yet */}
+      {/* ── Pre-analysis teaser ───────────────────────────────────────────────── */}
       {!result && !error && (
-        <section className="max-w-5xl mx-auto px-6 pb-10">
+        <section className="max-w-6xl mx-auto px-6 pb-10">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-              Sample output · AAPL · 6 setups · Long &amp; Short
+              Sample output · AAPL · 5 setups
             </h2>
-            <span className="text-[11px] text-violet-400 font-medium">← Enter a ticker above to run live analysis</span>
+            <span className="text-[11px] text-violet-400 font-medium">← Enter a ticker above for live analysis</span>
           </div>
+
           <div className="relative rounded-xl border border-gray-800 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 bg-gray-900/60">
-                    {['#','Strategy','Bias','Expiry','DTE','Max Profit','Max Loss','Prob Profit','Exp. Value','Score','Decision'].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { rank:1, strategy:'Bull Call Spread',  bias:'Bullish', expiry:'Jun 20', dte:19, profit:'$320', loss:'-$180', prob:'62%', ev:'$56',  score:'84 Strong', rationale:'Strong momentum with support at 20-day MA. IV rank at 28 favours debit spreads.' },
-                    { rank:2, strategy:'Bear Put Spread',   bias:'Bearish', expiry:'Jun 20', dte:19, profit:'$290', loss:'-$210', prob:'54%', ev:'$33',  score:'72 Good',   rationale:'Overhead resistance at 200-day MA. Negative divergence on RSI. Defined risk bearish play.' },
-                    { rank:3, strategy:'Iron Condor',       bias:'Neutral', expiry:'Jul 18', dte:47, profit:'$145', loss:'-$355', prob:'68%', ev:'$24',  score:'61 Good',   rationale:'Range-bound price action. IV contraction expected post-FOMC. Wide wings reduce assignment risk.' },
-                    { rank:4, strategy:'Bear Call Spread',  bias:'Bearish', expiry:'Jun 27', dte:26, profit:'$180', loss:'-$320', prob:'58%', ev:'$14',  score:'55 Fair',   rationale:'Call premium elevated near resistance. Credit spread captures decay while capping upside risk.' },
-                    { rank:5, strategy:'Cash-Secured Put',  bias:'Neutral', expiry:'Jun 27', dte:26, profit:'$210', loss:'-$790', prob:'71%', ev:'$41',  score:'50 Fair',   rationale:'High put premium relative to delta. Earnings risk cleared. Suitable for accumulation below support.' },
-                    { rank:6, strategy:'Long Call',         bias:'Bullish', expiry:'Jun 20', dte:19, profit:'∞',   loss:'-$230', prob:'44%', ev:'-$8',  score:'39 Weak',   rationale:'Breakout potential but low probability. Only suitable for high-conviction directional plays.' },
-                  ].map(row => (
-                    <tr key={row.rank} className="border-b border-gray-800/50 last:border-0 bg-gray-900/20">
-                      <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{row.rank}</td>
-                      <td className="px-3 py-2.5 font-medium text-white text-xs whitespace-nowrap">{row.strategy}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${row.bias === 'Bullish' ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40' : row.bias === 'Bearish' ? 'bg-red-900/40 text-red-400 border-red-700/40' : 'bg-gray-800/60 text-gray-400 border-gray-700/40'}`}>{row.bias}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{row.expiry}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-400">{row.dte}d</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs text-emerald-400">{row.profit}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs text-red-400">{row.loss}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-300">{row.prob}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs">
-                        <span className={row.ev.startsWith('-') ? 'text-red-400' : 'text-emerald-400'}>{row.ev}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <span className={`font-bold text-xs ${row.score.includes('Strong') ? 'text-emerald-400' : row.score.includes('Good') ? 'text-green-400' : row.score.includes('Fair') ? 'text-amber-400' : 'text-gray-500'}`}>{row.score}</span>
-                      </td>
-                      <td className="px-3 py-2.5 max-w-[220px]">
-                        <p className="text-[11px] text-gray-400 leading-snug line-clamp-2">{row.rationale}</p>
-                      </td>
-                    </tr>
+            <table className="w-full min-w-[860px] text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-800 bg-gray-900/70 text-left text-[10px] uppercase tracking-wide text-gray-500">
+                  {['#','Strategy','Bias','Setup','Legs','Expiry','Score','R/R','Cost / Contract'].map(h => (
+                    <th key={h} className="px-3 py-2.5 whitespace-nowrap">{h}</th>
                   ))}
-                </tbody>
-              </table>
+                </tr>
+              </thead>
+              <tbody>
+                {SAMPLE_ROWS.map(row => (
+                  <tr key={row.rank} className="border-b border-gray-800/50 last:border-0 bg-gray-900/20">
+                    <td className="px-3 py-3 text-gray-600 font-mono text-xs">{row.rank}</td>
+                    <td className="px-3 py-3 font-medium text-white text-xs whitespace-nowrap">{row.strategy}</td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                        row.bias === 'Bullish' ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40'
+                        : row.bias === 'Bearish' ? 'bg-red-900/40 text-red-400 border-red-700/40'
+                        : 'bg-amber-900/40 text-amber-400 border-amber-700/40'
+                      }`}>{row.bias}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border tracking-wide ${row.setupCls}`}>
+                        {row.setup}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {row.legs.split(' · ').map((leg, i) => {
+                          const isBuy = leg.startsWith('BUY')
+                          return (
+                            <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                              isBuy ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
+                                    : 'bg-red-950/50 text-red-300 border-red-800/60'
+                            }`}>
+                              <span className="opacity-60 text-[9px]">{isBuy ? 'BUY' : 'SELL'}</span>
+                              {' '}{leg.replace(/^(BUY|SELL)\s+/, '')}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-gray-300">{row.expiry}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-gray-500">—</td>
+                    <td className={`px-3 py-3 font-mono text-xs font-bold ${row.rrCls}`}>{row.rr}</td>
+                    <td className={`px-3 py-3 font-mono text-xs font-bold ${row.cost.startsWith('-') ? 'text-red-400' : 'text-emerald-400'}`}>{row.cost}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             </div>
-            {/* bottom fade + CTA strip */}
-            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-gray-950 via-gray-950/80 to-transparent pointer-events-none" />
+
+            {/* fade + CTA */}
+            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-gray-950 via-gray-950/80 to-transparent pointer-events-none" />
             <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3">
               <p className="text-xs text-gray-500">Sample data · enter a ticker above for live results</p>
               <button
                 onClick={() => navigate('login')}
                 className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors pointer-events-auto"
               >
-                Sign in for real-time analysis →
+                Sign in for AI coaching &amp; alerts →
               </button>
             </div>
           </div>
+
           <p className="mt-2 text-[11px] text-gray-600">
-            Ranked by expected value and probability of profit · Sample data shown for illustration only
+            Sample data for illustration · setup state, legs, expiry, R/R, and cost shown for each strategy
           </p>
         </section>
       )}
@@ -374,18 +405,18 @@ export default function LandingPage() {
           {[
             {
               icon: <TrendingUp className="w-5 h-5 text-violet-400" />,
-              title: 'Multi-week options view',
-              desc: 'See ranked strategies across 1–4 week expirations with scored R/R and probability of profit.',
+              title: 'Setup state at a glance',
+              desc: 'Every strategy is classified as ENTRY, SETUP, WATCH, or AVOID — no guessing what the score means.',
             },
             {
               icon: <Zap className="w-5 h-5 text-amber-400" />,
-              title: 'AI-powered decisions',
-              desc: 'Every setup comes with a plain-English rationale and a confidence-scored verdict.',
+              title: 'Full leg detail',
+              desc: 'Strike, option type, expiry, and cost per contract for every leg — ready to place.',
             },
             {
               icon: <Shield className="w-5 h-5 text-emerald-400" />,
-              title: 'Risk-aware guardrails',
-              desc: 'R/R filters, opening range checks, and IV environment alerts keep you out of bad trades.',
+              title: 'Risk-aware R/R',
+              desc: 'Adaptive R/R filters, IV environment checks, and probability of profit on every setup.',
             },
           ].map(({ icon, title, desc }) => (
             <div key={title} className="p-5 rounded-xl bg-gray-900/50 border border-gray-800">

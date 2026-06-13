@@ -755,10 +755,31 @@ export interface UnifiedAnalysis {
     expected_value: number
     expiry: string
     dte: number
-    legs: any[]
+    legs: Array<{
+      action: string
+      option_type: string
+      strike: number
+      expiry: string
+      mid_price: number
+      delta?: number
+      iv?: number
+    }>
     exit_plan: any
     warnings: string[]
     rationale: string
+    net_credit?: number
+    risk_reward_ratio?: number
+    passes_rr_filter?: boolean
+    passes_liquidity_filter?: boolean
+    passes_credit_filter?: boolean
+    spread_width?: number
+    scores?: {
+      total_score: number
+      signal_score: number
+      structure_score: number
+      liquidity_score: number
+      iv_fit_score: number
+    }
   }>
 }
 
@@ -777,6 +798,19 @@ export const analyzeV2 = (
       trade_type: tradeType,
       weeks_out: options?.weeksOut ?? 4,
       spread_width: options?.spreadWidth ?? 5,
+      strategy_mode: options?.strategyMode ?? 'all',
+    }
+  }
+)
+
+export const analyzePublic = (
+  ticker: string,
+  options?: { weeksOut?: number; strategyMode?: string }
+) => api.get<UnifiedAnalysis>(
+  `/v2/analyze/${encodeURIComponent(ticker)}/public`,
+  {
+    params: {
+      weeks_out: options?.weeksOut ?? 4,
       strategy_mode: options?.strategyMode ?? 'all',
     }
   }
