@@ -249,6 +249,9 @@ export interface AiCoachResult {
     target_2?: number
     rr_t1?: number
     vwap?: number
+    reclaim_pattern?: string
+    confidence?: string
+    recommended_size_pct?: number
     reason?: string
   } | null
   no_trade_reason?: string | null

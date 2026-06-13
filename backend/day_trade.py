@@ -2233,15 +2233,13 @@ def _detect_pullback_entry(
     Pullback Reset — detects when an extended price returns to VWAP and sets up
     a fresh continuation entry (VWAP_DEFENSE_CONTINUATION).
 
-    Fires when ALL of:
-      1. Session has run ≥ 10 bars and ≤ 90 min (no pullback resets in the first 10 min)
-      2. Not past 11:30 AM PT (session_minutes_elapsed ≤ 150)
-      3. In the last 60 bars, price was ≥ 1.5σ extended from VWAP (confirmed runup)
-      4. Current price is within 0.5σ of VWAP (returned from extension)
-      5. Last completed bar: low touched VWAP band, closed above VWAP (reclaim candle)
-      6. Volume on signal bar ≥ 0.7× average session volume
+    4 reclaim patterns with confidence scoring:
+      DOUBLE_GREEN        (HIGH):        2 consecutive greens after VWAP touch, higher high
+      STRONG_SINGLE_GREEN (MEDIUM_HIGH): 1 green, body>0.5×ATR, close>VWAP+0.2×ATR, vol>1.3×avg
+      GREEN_HOLD          (MEDIUM):      1 green reclaim + 2 small hold bars, all above VWAP
+      VOLUME_SURGE        (MEDIUM):      vol>2×avg on reclaim bar, next bar holds above VWAP
 
-    Returns None when no signal, or a dict with the entry details.
+    Safety guardrails: ≥3 wick failures in last 10 bars, or insufficient move from VWAP → reject.
     """
     if session is None or len(session) < 10:
         return None
@@ -2253,97 +2251,189 @@ def _detect_pullback_entry(
         return None
 
     is_long = (direction or "long").lower() == "long"
+    n = len(session)
 
     vwap_now = float(vwap_ser.iloc[-1])
     if not math.isfinite(vwap_now) or vwap_now <= 0:
         return None
 
     sigma = vwap_std_dev
-    upper_band_half = vwap_now + sigma * 0.5
-    lower_band_half = vwap_now - sigma * 0.5
 
-    bar = session.iloc[-1]
-    o   = float(bar["Open"])
-    h   = float(bar["High"])
-    l   = float(bar["Low"])
-    c   = float(bar["Close"])
+    # ATR: average range of last 14 bars (for body/clearance thresholds)
+    atr_n = min(14, n - 1)
+    try:
+        _atr_sub = session.iloc[-(atr_n + 1):-1]
+        atr = float((_atr_sub["High"] - _atr_sub["Low"]).mean())
+    except Exception:
+        atr = sigma * 0.3
+    if not math.isfinite(atr) or atr <= 0:
+        atr = sigma * 0.3
 
-    # ── Check 3: was price ≥ 1.5σ extended in last 60 bars? ─────────────────
-    lookback = min(60, len(session) - 1)
+    # ── Check: was price ≥ 1.5σ extended from VWAP in last 60 bars? ──────────
+    lookback = min(60, n - 1)
     sub      = session.iloc[-(lookback + 1):-1]
     sub_vwap = vwap_ser.iloc[-(lookback + 1):-1]
     if len(sub) < 5 or len(sub_vwap) < 5:
         return None
 
-    was_extended = False
-    for price_val, vwap_val in zip(sub["Close"].values, sub_vwap.values):
-        if not (math.isfinite(float(price_val)) and math.isfinite(float(vwap_val))):
-            continue
-        dist = abs(float(price_val) - float(vwap_val))
-        if dist >= sigma * 1.5:
-            was_extended = True
-            break
+    was_extended = any(
+        math.isfinite(float(p)) and math.isfinite(float(v))
+        and abs(float(p) - float(v)) >= sigma * 1.5
+        for p, v in zip(sub["Close"].values, sub_vwap.values)
+    )
     if not was_extended:
         return None
 
-    # ── Check 4: current price within 0.5σ of VWAP ──────────────────────────
-    near_vwap = abs(c - vwap_now) <= sigma * 0.5
-    if not near_vwap:
+    # ── Safety: reject if ≥3 wick failures through VWAP in last 10 bars ──────
+    wf_n     = min(10, n - 1)
+    wf_sub   = session.iloc[-(wf_n + 1):-1]
+    wf_vwap  = vwap_ser.iloc[-(wf_n + 1):-1]
+    wick_fails = 0
+    for _i in range(len(wf_sub)):
+        try:
+            _h = float(wf_sub["High"].iloc[_i])
+            _l = float(wf_sub["Low"].iloc[_i])
+            _c = float(wf_sub["Close"].iloc[_i])
+            _v = float(wf_vwap.iloc[_i])
+            if is_long:
+                if _h >= _v and _c < _v:  # touched/exceeded VWAP but closed below
+                    wick_fails += 1
+            else:
+                if _l <= _v and _c > _v:  # touched/undercut VWAP but closed above
+                    wick_fails += 1
+        except Exception:
+            pass
+    if wick_fails >= 3:
         return None
 
-    # ── Check 5: reclaim candle ──────────────────────────────────────────────
-    # Long side: low dipped into VWAP band, closed above VWAP
-    # Short side: high spiked into VWAP band, closed below VWAP
-    if is_long:
-        reclaim = l <= upper_band_half and c > vwap_now and c > o
-    else:
-        reclaim = h >= lower_band_half and c < vwap_now and c < o
-    if not reclaim:
-        return None
-
-    # ── Check 6: volume ≥ 0.7× average ──────────────────────────────────────
-    try:
-        avg_vol = float(session["Volume"].iloc[:-1].mean())
-        bar_vol = float(bar["Volume"])
-        if avg_vol > 0 and bar_vol < avg_vol * 0.7:
+    # ── Gather recent bars (negative index: -1=last, -2=prior, -3=two prior) ─
+    def _b(neg_idx: int) -> Optional[dict]:
+        abs_idx = n + neg_idx
+        if abs_idx < 0 or abs_idx >= n:
             return None
-    except Exception:
-        pass  # skip volume check if data unavailable
+        row    = session.iloc[abs_idx]
+        vwap_v = float(vwap_ser.iloc[abs_idx]) if abs_idx < len(vwap_ser) else vwap_now
+        return dict(o=float(row["Open"]), h=float(row["High"]),
+                    l=float(row["Low"]),  c=float(row["Close"]),
+                    v=float(row["Volume"]), vw=vwap_v)
 
-    # ── Build entry ───────────────────────────────────────────────────────────
-    entry = round(c, 2)
+    b1 = _b(-1)   # signal bar (most recent)
+    b2 = _b(-2)
+    b3 = _b(-3)
+
+    if b1 is None:
+        return None
+
+    # Average volume of the 5 bars preceding b1
+    vol_n     = min(5, n - 2)
+    avg_vol5  = float(session.iloc[-(vol_n + 2):-2]["Volume"].mean()) if vol_n > 0 else 0.0
+
+    def _green(b: dict) -> bool:
+        return b["c"] > b["o"]
+
+    def _touched_vwap(b: dict) -> bool:
+        return b["l"] <= b["vw"] + sigma * 0.5 if is_long else b["h"] >= b["vw"] - sigma * 0.5
+
+    def _above_vwap(b: dict) -> bool:
+        return (b["c"] > b["vw"]) if is_long else (b["c"] < b["vw"])
+
+    # ── 4-pattern detection (highest confidence first) ────────────────────────
+    reclaim_pattern: Optional[str] = None
+    confidence:      Optional[str] = None
+
+    # Pattern 1 — DOUBLE_GREEN (HIGH)
+    # b2 touched VWAP and is green; b1 also green with a higher high (lower low for shorts)
+    if b2 and _touched_vwap(b2) and _green(b2) and _green(b1) and _above_vwap(b1):
+        if (is_long and b1["h"] > b2["h"]) or (not is_long and b1["l"] < b2["l"]):
+            reclaim_pattern = "DOUBLE_GREEN"
+            confidence      = "HIGH"
+
+    # Pattern 2 — STRONG_SINGLE_GREEN (MEDIUM_HIGH)
+    # b1 itself is the reclaim: touched VWAP, large body, cleared VWAP by ≥0.2×ATR, high volume
+    if reclaim_pattern is None and _touched_vwap(b1) and _green(b1):
+        body      = abs(b1["c"] - b1["o"])
+        clearance = (b1["c"] - b1["vw"]) if is_long else (b1["vw"] - b1["c"])
+        if body > atr * 0.5 and clearance >= atr * 0.2 and avg_vol5 > 0 and b1["v"] > avg_vol5 * 1.3:
+            reclaim_pattern = "STRONG_SINGLE_GREEN"
+            confidence      = "MEDIUM_HIGH"
+
+    # Pattern 3 — GREEN_HOLD (MEDIUM)
+    # b3 = green reclaim; b2 and b1 = small consolidation bars holding above VWAP
+    if reclaim_pattern is None and b3 and b2:
+        if (_touched_vwap(b3) and _green(b3) and _above_vwap(b3)
+                and abs(b2["c"] - b2["o"]) < atr * 0.3 and _above_vwap(b2)
+                and abs(b1["c"] - b1["o"]) < atr * 0.3 and _above_vwap(b1)):
+            reclaim_pattern = "GREEN_HOLD"
+            confidence      = "MEDIUM"
+
+    # Pattern 4 — VOLUME_SURGE (MEDIUM)
+    # b2 = volume-surge bar closing above VWAP; b1 = hold bar above VWAP
+    if reclaim_pattern is None and b2:
+        if avg_vol5 > 0 and b2["v"] > avg_vol5 * 2.0 and _above_vwap(b2) and _above_vwap(b1):
+            reclaim_pattern = "VOLUME_SURGE"
+            confidence      = "MEDIUM"
+
+    if reclaim_pattern is None:
+        return None
+
+    # ── Safety: close must be meaningfully above VWAP (not a hairline reclaim) ─
+    move_from_vwap = (b1["c"] - vwap_now) if is_long else (vwap_now - b1["c"])
+    if move_from_vwap < sigma * 0.15:
+        return None
+
+    # ── Entry levels scaled by confidence ────────────────────────────────────
+    entry = round(b1["c"], 2)
+    _conf_params: dict = {
+        "HIGH":        (0.30, 100, 1.5),
+        "MEDIUM_HIGH": (0.25,  75, 1.2),
+        "MEDIUM":      (0.20,  50, 1.0),
+    }
+    stop_mult, recommended_size_pct, rr_min = _conf_params[confidence]
+
     if is_long:
-        stop     = round(vwap_now - sigma * 0.3, 2)
-        target_1 = round(vwap_now + sigma, 2)
-        target_2 = round(vwap_now + sigma * 2, 2)
+        stop     = round(vwap_now - sigma * stop_mult, 2)
+        target_1 = round(vwap_now + sigma,             2)
+        target_2 = round(vwap_now + sigma * 2,         2)
     else:
-        stop     = round(vwap_now + sigma * 0.3, 2)
-        target_1 = round(vwap_now - sigma, 2)
-        target_2 = round(vwap_now - sigma * 2, 2)
+        stop     = round(vwap_now + sigma * stop_mult, 2)
+        target_1 = round(vwap_now - sigma,             2)
+        target_2 = round(vwap_now - sigma * 2,         2)
 
     risk      = abs(entry - stop)
     reward_t1 = abs(target_1 - entry)
     rr_t1     = round(reward_t1 / risk, 2) if risk > 0 else 0.0
-    if rr_t1 < 1.5:
+    if rr_t1 < rr_min:
         return None
 
     direction_label = "CALL" if is_long else "PUT"
+    _pattern_labels = {
+        "DOUBLE_GREEN":        "Double green reclaim",
+        "STRONG_SINGLE_GREEN": "Strong single green",
+        "GREEN_HOLD":          "Green reclaim + hold",
+        "VOLUME_SURGE":        "Volume surge reclaim",
+    }
+    conf_display = confidence.replace("_", "-")
+    reason = (
+        f"{_pattern_labels[reclaim_pattern]} at VWAP ${vwap_now:.2f} · "
+        f"Entry ${entry:.2f} · Stop ${stop:.2f} · T1 ${target_1:.2f} · "
+        f"R/R {rr_t1:.1f}x · {conf_display} confidence · {recommended_size_pct}% size"
+    )
+
     return {
-        "detected":    True,
-        "setup_type":  "VWAP_DEFENSE_CONTINUATION",
-        "direction":   direction_label,
-        "label":       f"Pullback Reset — {direction_label} Entry",
-        "entry_price": entry,
-        "stop":        stop,
-        "target_1":    target_1,
-        "target_2":    target_2,
-        "rr_t1":       rr_t1,
-        "vwap":        round(vwap_now, 2),
-        "reason":      (
-            f"Price pulled back from extended levels to VWAP ${vwap_now:.2f} · "
-            f"Reclaim candle confirmed · Entry ${entry:.2f} · T1 ${target_1:.2f} · "
-            f"R/R {rr_t1:.1f}x"
-        ),
+        "detected":             True,
+        "setup_type":           "VWAP_DEFENSE_CONTINUATION",
+        "direction":            direction_label,
+        "label":                f"Pullback Reset — {direction_label} Entry",
+        "entry_price":          entry,
+        "stop":                 stop,
+        "target_1":             target_1,
+        "target_2":             target_2,
+        "rr_t1":                rr_t1,
+        "vwap":                 round(vwap_now, 2),
+        "reclaim_pattern":      reclaim_pattern,
+        "confidence":           confidence,
+        "recommended_size_pct": recommended_size_pct,
+        "reason":               reason,
     }
 
 

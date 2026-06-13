@@ -124,14 +124,19 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   // E4 — VWAP retest (pending / conditional) or Pullback Reset (active if detected)
   const pb = ac?.pullback_entry
   if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
-    // Pullback Reset fired — show as active amber entry
-    const pbPrice = pb.entry_price
+    // Pullback Reset fired — color and label vary by confidence
+    const pbPrice    = pb.entry_price
     if (!seen.has(pbPrice)) {
       seen.add(pbPrice)
+      const pbConf     = pb.confidence
+      const pbPat      = (pb.reclaim_pattern ?? 'RECLAIM').replace(/_/g, ' ')
+      const pbColor    = pbConf === 'HIGH' ? '#f59e0b' : pbConf === 'MEDIUM_HIGH' ? '#fb923c' : '#94a3b8'
+      const pbSizeNote = pbConf === 'HIGH' ? '' : pbConf === 'MEDIUM_HIGH' ? ' · 75% size' : ' · 50% size'
+      const pbTrigger  = `⚡ Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
       pts.push({
         label:      `E${pts.length + 1}`,
         price:      pbPrice,
-        trigger:    `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+        trigger:    pbTrigger,
         stop:       pb.stop,
         direction,
         exitPrice:  pb.target_1,
@@ -139,7 +144,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
         rr:         pb.rr_t1,
         pending:    false,
         verdict:    'VALID',
-        color:      '#f59e0b',  // amber — dynamic pullback entry
+        color:      pbColor,
       })
     }
   } else {

@@ -1279,17 +1279,23 @@ export default function DayTradePage() {
           const pbPrice = pb.entry_price
           if (!seen.has(pbPrice)) {
             seen.add(pbPrice)
+            const pbConf     = pb.confidence
+            const pbPat      = (pb.reclaim_pattern ?? 'RECLAIM').replace(/_/g, ' ')
+            const pbColor    = pbConf === 'HIGH' ? '#f59e0b' : pbConf === 'MEDIUM_HIGH' ? '#fb923c' : '#94a3b8'
+            const pbSizeNote = pbConf === 'HIGH' ? '' : pbConf === 'MEDIUM_HIGH' ? ' · 75% size' : ' · 50% size'
+            const pbTrigger  = `⚡ Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
             pageEntryPoints.push({
-              label:     `E${pageEntryPoints.length + 1}`,
-              price:     pbPrice,
-              trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
-              stop:      pb.stop,
+              label:      `E${pageEntryPoints.length + 1}`,
+              price:      pbPrice,
+              trigger:    pbTrigger,
+              stop:       pb.stop,
               direction,
-              exitPrice: pb.target_1,
-              rr:        pb.rr_t1,
-              pending:   false,
-              verdict:   'VALID',
-              color:     '#f59e0b',  // amber — dynamic pullback entry
+              exitPrice:  pb.target_1,
+              exitPrice2: pb.target_2,
+              rr:         pb.rr_t1,
+              pending:    false,
+              verdict:    'VALID',
+              color:      pbColor,
             })
           }
         } else {
