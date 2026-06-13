@@ -2220,6 +2220,133 @@ def _check_vwap_retest_entry(
     }
 
 
+def _detect_pullback_entry(
+    session: "pd.DataFrame",
+    vwap_ser: "pd.Series",
+    or_high: float,
+    or_low: float,
+    vwap_std_dev: float,
+    session_minutes_elapsed: int,
+    direction: str = "long",
+) -> Optional[dict]:
+    """
+    Pullback Reset — detects when an extended price returns to VWAP and sets up
+    a fresh continuation entry (VWAP_DEFENSE_CONTINUATION).
+
+    Fires when ALL of:
+      1. Session has run ≥ 10 bars and ≤ 90 min (no pullback resets in the first 10 min)
+      2. Not past 11:30 AM PT (session_minutes_elapsed ≤ 150)
+      3. In the last 60 bars, price was ≥ 1.5σ extended from VWAP (confirmed runup)
+      4. Current price is within 0.5σ of VWAP (returned from extension)
+      5. Last completed bar: low touched VWAP band, closed above VWAP (reclaim candle)
+      6. Volume on signal bar ≥ 0.7× average session volume
+
+    Returns None when no signal, or a dict with the entry details.
+    """
+    if session is None or len(session) < 10:
+        return None
+    if vwap_ser is None or vwap_ser.empty:
+        return None
+    if session_minutes_elapsed > 150:  # past 11:30 AM PT
+        return None
+    if vwap_std_dev is None or vwap_std_dev <= 0:
+        return None
+
+    is_long = (direction or "long").lower() == "long"
+
+    vwap_now = float(vwap_ser.iloc[-1])
+    if not math.isfinite(vwap_now) or vwap_now <= 0:
+        return None
+
+    sigma = vwap_std_dev
+    upper_band_half = vwap_now + sigma * 0.5
+    lower_band_half = vwap_now - sigma * 0.5
+
+    bar = session.iloc[-1]
+    o   = float(bar["Open"])
+    h   = float(bar["High"])
+    l   = float(bar["Low"])
+    c   = float(bar["Close"])
+
+    # ── Check 3: was price ≥ 1.5σ extended in last 60 bars? ─────────────────
+    lookback = min(60, len(session) - 1)
+    sub      = session.iloc[-(lookback + 1):-1]
+    sub_vwap = vwap_ser.iloc[-(lookback + 1):-1]
+    if len(sub) < 5 or len(sub_vwap) < 5:
+        return None
+
+    was_extended = False
+    for price_val, vwap_val in zip(sub["Close"].values, sub_vwap.values):
+        if not (math.isfinite(float(price_val)) and math.isfinite(float(vwap_val))):
+            continue
+        dist = abs(float(price_val) - float(vwap_val))
+        if dist >= sigma * 1.5:
+            was_extended = True
+            break
+    if not was_extended:
+        return None
+
+    # ── Check 4: current price within 0.5σ of VWAP ──────────────────────────
+    near_vwap = abs(c - vwap_now) <= sigma * 0.5
+    if not near_vwap:
+        return None
+
+    # ── Check 5: reclaim candle ──────────────────────────────────────────────
+    # Long side: low dipped into VWAP band, closed above VWAP
+    # Short side: high spiked into VWAP band, closed below VWAP
+    if is_long:
+        reclaim = l <= upper_band_half and c > vwap_now and c > o
+    else:
+        reclaim = h >= lower_band_half and c < vwap_now and c < o
+    if not reclaim:
+        return None
+
+    # ── Check 6: volume ≥ 0.7× average ──────────────────────────────────────
+    try:
+        avg_vol = float(session["Volume"].iloc[:-1].mean())
+        bar_vol = float(bar["Volume"])
+        if avg_vol > 0 and bar_vol < avg_vol * 0.7:
+            return None
+    except Exception:
+        pass  # skip volume check if data unavailable
+
+    # ── Build entry ───────────────────────────────────────────────────────────
+    entry = round(c, 2)
+    if is_long:
+        stop     = round(vwap_now - sigma * 0.3, 2)
+        target_1 = round(vwap_now + sigma, 2)
+        target_2 = round(vwap_now + sigma * 2, 2)
+    else:
+        stop     = round(vwap_now + sigma * 0.3, 2)
+        target_1 = round(vwap_now - sigma, 2)
+        target_2 = round(vwap_now - sigma * 2, 2)
+
+    risk      = abs(entry - stop)
+    reward_t1 = abs(target_1 - entry)
+    rr_t1     = round(reward_t1 / risk, 2) if risk > 0 else 0.0
+    if rr_t1 < 1.5:
+        return None
+
+    direction_label = "CALL" if is_long else "PUT"
+    return {
+        "detected":    True,
+        "setup_type":  "VWAP_DEFENSE_CONTINUATION",
+        "direction":   direction_label,
+        "label":       f"Pullback Reset — {direction_label} Entry",
+        "entry_price": entry,
+        "stop":        stop,
+        "target_1":    target_1,
+        "target_2":    target_2,
+        "rr_t1":       rr_t1,
+        "vwap":        round(vwap_now, 2),
+        "reason":      (
+            f"Price pulled back from extended levels to VWAP ${vwap_now:.2f} · "
+            f"Reclaim candle confirmed · Entry ${entry:.2f} · T1 ${target_1:.2f} · "
+            f"R/R {rr_t1:.1f}x"
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Adaptive R/R — setup-type detection and context-aware R/R calculation
 # ---------------------------------------------------------------------------
@@ -3828,6 +3955,22 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         })
         entry_guidance["contextual_alerts"] = _ca
         entry_guidance["vwap_retest_entry"] = _sig   # shortcut for frontend
+
+    # ── Pullback Reset — dynamic E4 entry when extended price returns to VWAP ──
+    pullback_entry: Optional[dict] = None
+    try:
+        pullback_entry = _detect_pullback_entry(
+            session                 = session,
+            vwap_ser                = vwap_ser,
+            or_high                 = or_high,
+            or_low                  = or_low,
+            vwap_std_dev            = vwap_std_dev or 0.0,
+            session_minutes_elapsed = session_minutes_elapsed,
+            direction               = bias or "long",
+        )
+    except Exception:
+        pass
+    metrics["pullback_entry"] = pullback_entry
 
     option_risk_context = build_day_option_risk_context(t, info)
 

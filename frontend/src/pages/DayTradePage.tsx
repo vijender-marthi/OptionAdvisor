@@ -1271,18 +1271,38 @@ export default function DayTradePage() {
           orIsNT ? undefined : (orRr?.target as number | undefined),
         )
 
-        // E4 — VWAP retest (pending / conditional)
-        const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
-        const vVerdict = vRr?.verdict as string | undefined
-        addEntry(
-          (eg?.vwap ?? mVwap) as number | null,
-          'VWAP re-test',
-          (eg?.risk_below as number | undefined) ?? stopFallback,
-          vRr?.risk_reward as number | undefined,
-          true,
-          vVerdict,
-          vRr?.target as number | undefined,
-        )
+        // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
+        const pb = ac?.pullback_entry
+        if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
+          const pbPrice = pb.entry_price
+          if (!seen.has(pbPrice)) {
+            seen.add(pbPrice)
+            pageEntryPoints.push({
+              label:     `E${pageEntryPoints.length + 1}`,
+              price:     pbPrice,
+              trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+              stop:      pb.stop,
+              direction,
+              exitPrice: pb.target_1,
+              rr:        pb.rr_t1,
+              pending:   false,
+              verdict:   'VALID',
+              color:     '#f59e0b',  // amber — dynamic pullback entry
+            })
+          }
+        } else {
+          const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
+          const vVerdict = vRr?.verdict as string | undefined
+          addEntry(
+            (eg?.vwap ?? mVwap) as number | null,
+            'VWAP re-test',
+            (eg?.risk_below as number | undefined) ?? stopFallback,
+            vRr?.risk_reward as number | undefined,
+            true,
+            vVerdict,
+            vRr?.target as number | undefined,
+          )
+        }
 
         // ── Build zone annotations ──────────────────────────────────────────
         const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
