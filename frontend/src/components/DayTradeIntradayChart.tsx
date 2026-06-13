@@ -339,8 +339,8 @@ export default function DayTradeIntradayChart({
           )}
           {displayEntryPoints.map((ep, idx) => {
             const isNoTrade = ep.verdict === 'NO_TRADE'
-            // Hide low-RR valid entries but always show NO_TRADE warnings
-            if (ep.stub || (!isNoTrade && ep.rr != null && ep.rr < 1.0)) return null
+            // Hide low-RR valid entries; always show NO_TRADE warnings and pending (watching) entries
+            if (ep.stub || (!isNoTrade && !ep.pending && ep.rr != null && ep.rr < 1.0)) return null
             const defaultColor = isNoTrade ? '#f87171' : ENTRY_COLORS[idx % ENTRY_COLORS.length]!
             const color = ep.color ?? defaultColor
             const isHidden = hidden.has(idx)
