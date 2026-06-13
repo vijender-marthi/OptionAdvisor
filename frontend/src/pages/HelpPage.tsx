@@ -4570,6 +4570,70 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
               </div>
             </DocCard>
 
+            <DocCard icon={<Zap size={15} />} title="Adaptive R/R — Day Trade Setup Classification">
+              <p className="text-[11px] text-gray-400 leading-relaxed mb-3">
+                The Day Trade engine computes two R/R values for every entry: a <strong className="text-gray-300">conservative R/R</strong> using the full opening-range width as the risk anchor, and an <strong className="text-gray-300">adaptive R/R</strong> based on a tighter, setup-specific stop. The <em>recommended</em> R/R shown in the interface is the adaptive value unless it falls more than 20% below the conservative — in that case, the conservative value is used.
+              </p>
+
+              <p className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold mb-2">Setup Types &amp; Probabilities</p>
+              <div className="overflow-x-auto mb-3">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                      <th className="px-3 py-2 font-semibold">Setup Type</th>
+                      <th className="px-3 py-2 font-semibold">P(T1)</th>
+                      <th className="px-3 py-2 font-semibold">P(T2 | T1)</th>
+                      <th className="px-3 py-2 font-semibold">Stop Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['FRESH OR BREAKOUT',          '55%', '45%', '0.15% beyond ORH/ORL', 'text-emerald-400'],
+                      ['VWAP DEFENSE CONTINUATION',  '65%', '55%', 'VWAP − 0.3σ (long) / VWAP + 0.3σ (short)', 'text-sky-400'],
+                      ['VWAP DOUBLE BOTTOM',         '60%', '50%', 'VWAP − 0.5σ (long) / VWAP + 0.5σ (short)', 'text-violet-400'],
+                      ['LEVEL FLIP',                 '62%', '48%', '0.3% beyond the flipped ORH/ORL level', 'text-amber-400'],
+                      ['EXTENDED',                   '45%', '35%', '1σ band (fade-trade stop)', 'text-rose-400'],
+                      ['UNCLEAR',                    '50%', '40%', 'ORL (long) / ORH (short) — conservative', 'text-gray-400'],
+                    ].map(([type, pt1, pt2, stop, tone]) => (
+                      <tr key={type} className="border-b border-gray-800/40">
+                        <td className={`px-3 py-2 font-bold font-mono text-[10px] ${tone}`}>{type}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-gray-300">{pt1}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-gray-300">{pt2}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-400">{stop}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold mb-2">Detection Logic</p>
+              <div className="space-y-2 mb-3">
+                {[
+                  { label: 'EXTENDED',                  tone: 'text-rose-400',    desc: 'Price is at or beyond the 2σ VWAP band. The typical daily range for this σ level is already consumed. The engine marks this as a fade-only zone and suppresses normal entry signals.' },
+                  { label: 'FRESH OR BREAKOUT',         tone: 'text-emerald-400', desc: 'Opening range was broken (up for long, down for short) within the last 90 minutes and price is still within 1.5% of the breakout level. Classic momentum continuation.' },
+                  { label: 'LEVEL FLIP',                tone: 'text-amber-400',   desc: 'A broken OR level (ORH for longs, ORL for shorts) has been retested and is now acting as support/resistance. Price is within 0.5% of the level. High-conviction re-entry zone.' },
+                  { label: 'VWAP DEFENSE CONTINUATION', tone: 'text-sky-400',     desc: 'An active bounce-scenario signal (vwap_rejection_long, vwap_rejection, or orl_rejection_retest) is detected, or price is within 0.4% of VWAP with a volume spike confirming absorption.' },
+                  { label: 'VWAP DOUBLE BOTTOM',        tone: 'text-violet-400',  desc: 'Two separate VWAP touches (at least 5 bars apart) within the last 60 bars, where the second touch is higher than the first (long) or lower (short). Indicates accumulation/distribution at VWAP.' },
+                ].map(({ label, tone, desc }) => (
+                  <div key={label} className="rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2">
+                    <div className={`font-mono text-[10px] font-bold mb-1 ${tone}`}>{label}</div>
+                    <div className="text-[11px] text-gray-400">{desc}</div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold mb-2">Targets</p>
+              <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
+                Adaptive targets use the VWAP σ band levels: <strong className="text-gray-300">T1 = 1σ band</strong> (vwap_upper1 for longs, vwap_lower1 for shorts) and <strong className="text-gray-300">T2 = 2σ band</strong> (vwap_upper2 / vwap_lower2). When the current price is already beyond the 1σ band, T1 falls back to entry + 1.5× the adaptive risk, and T2 mirrors that extension.
+              </p>
+              <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 font-mono text-[11px] text-gray-300 space-y-1">
+                <div><span className="text-gray-600">conservative_rr   </span>reward to ORL/ORH ÷ entry-to-ORL/ORH risk</div>
+                <div><span className="text-gray-600">adaptive_rr       </span>reward to 1σ target ÷ entry-to-adaptive-stop risk</div>
+                <div><span className="text-gray-600">recommended_rr    </span>adaptive_rr, unless it is &lt;80% of conservative_rr</div>
+                <div><span className="text-gray-600">conservative_rr_ratio </span>original scalar preserved for comparison</div>
+              </div>
+            </DocCard>
+
             <DocCard icon={<Target size={15} />} title="Combining Range + R/R">
               <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
                 Both signals must be acceptable before entering. A good R/R with an exhausted range still means chasing. A good range phase with poor R/R still means the setup is misaligned.
