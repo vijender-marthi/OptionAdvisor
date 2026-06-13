@@ -571,21 +571,29 @@ def _calc_per_entry_rr(
             "stop": None,
         }
 
-    # ── Fresh T1/T2 targets from this entry price ─────────────────────────────
+    # ── Per-entry stop + targets ───────────────────────────────────────────────
+    # Stop is setup-type-aware: OR breakout and VWAP entries use tight VWAP-based
+    # stop (vwap ± 0.3σ); OR range entries use ORL/ORH if within 2.5σ; else 0.7σ.
+    # T1/T2 are per-entry: entry ± 1σ / 2σ (not shared session-level VWAP bands).
+    _is_vwap_entry = vwap > 0 and abs(entry_price - vwap) <= _sigma * 0.5
     if is_long:
-        t1 = vwap_upper1 if vwap_upper1 > entry_price else None
-        if t1 is None:
-            or_range = or_high - or_low if or_high > or_low else entry_price * 0.01
-            t1 = round(entry_price + or_range * 0.5, 2)
-        t2 = vwap_upper2 if vwap_upper2 > t1 else round(t1 + abs(t1 - entry_price), 2)
-        stop = round(or_low, 2) if or_low > 0 and or_low < entry_price else round(entry_price * 0.995, 2)
+        if (is_or_breakout or _is_vwap_entry) and vwap > 0:
+            stop = round(vwap - _sigma * 0.3, 2)
+        elif or_low > 0 and or_low < entry_price and (entry_price - or_low) <= _sigma * 2.5:
+            stop = round(or_low, 2)
+        else:
+            stop = round(entry_price - _sigma * 0.7, 2)
+        t1 = round(entry_price + _sigma, 2)
+        t2 = round(entry_price + _sigma * 2, 2)
     else:
-        t1 = vwap_lower1 if vwap_lower1 < entry_price else None
-        if t1 is None:
-            or_range = or_high - or_low if or_high > or_low else entry_price * 0.01
-            t1 = round(entry_price - or_range * 0.5, 2)
-        t2 = vwap_lower2 if vwap_lower2 < t1 else round(t1 - abs(entry_price - t1), 2)
-        stop = round(or_high, 2) if or_high > 0 and or_high > entry_price else round(entry_price * 1.005, 2)
+        if (is_or_breakout or _is_vwap_entry) and vwap > 0:
+            stop = round(vwap + _sigma * 0.3, 2)
+        elif or_high > 0 and or_high > entry_price and (or_high - entry_price) <= _sigma * 2.5:
+            stop = round(or_high, 2)
+        else:
+            stop = round(entry_price + _sigma * 0.7, 2)
+        t1 = round(entry_price - _sigma, 2)
+        t2 = round(entry_price - _sigma * 2, 2)
 
     risk      = abs(entry_price - stop)
     reward_t1 = abs(t1 - entry_price)
