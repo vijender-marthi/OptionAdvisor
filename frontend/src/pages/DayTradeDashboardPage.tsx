@@ -49,18 +49,87 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
   const isShort = result.bias === 'short'
   const sf      = isShort ? orHigh : orLow
   const direction = isShort ? 'short' : 'long' as const
-  const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
   const seen = new Set<number>()
   const pts: ChartEntryPoint[] = []
-  const add = (price: number | null | undefined, trigger: string, stop?: number, rr?: number, pending?: boolean) => {
+
+  // Each entry gets its own target, stop, R/R and verdict from per-entry R/R calculation
+  const add = (
+    price: number | null | undefined,
+    trigger: string,
+    stop?: number,
+    rr?: number,
+    pending?: boolean,
+    verdict?: string,
+    exitPrice?: number,
+  ) => {
     if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
     seen.add(price)
-    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending })
+    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
   }
-  add(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? sf)
-  add(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? sf, ac?.trade?.risk_reward)
-  add((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
-  add((eg?.vwap ?? mVwap) as number | null, 'VWAP re-test', eg?.risk_below ?? sf, undefined, true)
+
+  // E1 — AI coach entry gate (confluence zone trigger)
+  const eg1 = ac?.entry_gate as Record<string, unknown> | undefined
+  const eg1Verdict  = eg1?.verdict as string | undefined
+  const eg1IsNT     = eg1Verdict === 'NO_TRADE'
+  const eg1Trigger  = eg1IsNT
+    ? `⚠ EXTENDED — ${(eg1?.extended_reason as string) || 'entry past session T1'}`
+    : ((eg1?.trigger_condition as string) ?? 'Gate trigger')
+  add(
+    eg1?.trigger_price as number | undefined,
+    eg1Trigger,
+    eg1IsNT ? undefined : (eg1?.stop as number | undefined) ?? sf,
+    eg1IsNT ? 0 : (eg1?.risk_reward as number | undefined),
+    false,
+    eg1Verdict,
+    eg1IsNT ? undefined : (eg1?.target as number | undefined),
+  )
+
+  // E2 — AI coach trade (current price analysis)
+  const tr = ac?.trade as Record<string, unknown> | undefined
+  const trVerdict = tr?.verdict as string | undefined
+  const trIsNT    = trVerdict === 'NO_TRADE'
+  const trRr      = tr?.risk_reward as number | undefined
+  const trTrigger = trIsNT
+    ? `⚠ EXTENDED — ${(tr?.extended_reason as string) || 'entry past session T1'}`
+    : (tr ? `AI Coach · ${tr.direction} (R/R ${(trRr ?? 0).toFixed(1)}×)` : 'AI Coach')
+  add(
+    tr?.entry_price as number | undefined,
+    trTrigger,
+    trIsNT ? undefined : (tr?.stop as number | undefined) ?? sf,
+    trIsNT ? 0 : trRr,
+    false,
+    trVerdict,
+    trIsNT ? undefined : (tr?.target as number | undefined),
+  )
+
+  // E3 — OR breakout level
+  const orEntryPx  = (eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number | undefined
+  const orRr       = ac?.or_breakout_rr as Record<string, unknown> | undefined
+  const orVerdict  = orRr?.verdict as string | undefined
+  const orIsNT     = orVerdict === 'NO_TRADE'
+  add(
+    orEntryPx,
+    isShort ? 'OR low breakout' : 'OR high breakout',
+    orIsNT ? undefined : (isShort ? orHigh : orLow),
+    orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
+    false,
+    orVerdict,
+    orIsNT ? undefined : (orRr?.target as number | undefined),
+  )
+
+  // E4 — VWAP retest (pending / conditional)
+  const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
+  const vVerdict = vRr?.verdict as string | undefined
+  add(
+    (eg?.vwap ?? mVwap) as number | null,
+    'VWAP re-test',
+    (eg?.risk_below as number | undefined) ?? sf,
+    vRr?.risk_reward as number | undefined,
+    true,
+    vVerdict,
+    vRr?.target as number | undefined,
+  )
+
   return pts
 }
 
@@ -219,17 +288,22 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   const entryCell = (pts: ChartEntryPoint[], i: number) => {
     const p = pts[i]
     if (!p) return <span style={{ color: dt.muted }}>—</span>
+    const isNoTrade = p.verdict === 'NO_TRADE'
+    const priceColor = isNoTrade ? dt.red : dt.text
     return (
       <div>
-        <div style={{ ...mono, color: dt.text }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: dt.accent, marginRight: 4 }}>{p.label}</span>
+        <div style={{ ...mono, color: priceColor }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: isNoTrade ? dt.red : dt.accent, marginRight: 4 }}>{p.label}</span>
           {p.price.toFixed(2)}
           {p.pending && <span style={{ fontSize: 9, color: dt.amber, marginLeft: 4 }}>PENDING</span>}
+          {isNoTrade && <span style={{ fontSize: 9, color: dt.red, marginLeft: 4, fontWeight: 700 }}>NO TRADE</span>}
         </div>
-        <div style={{ fontSize: 10, color: dt.text, whiteSpace: 'normal', maxWidth: 150, lineHeight: 1.4 }}>
-          {p.trigger}{p.stop != null ? ` · stop` : ''}
+        <div style={{ fontSize: 10, color: isNoTrade ? dt.red : dt.muted, whiteSpace: 'normal', maxWidth: 160, lineHeight: 1.4 }}>
+          {p.trigger}
+          {!isNoTrade && p.stop != null && ` · stop ${p.stop.toFixed(2)}`}
+          {!isNoTrade && p.exitPrice != null && ` · T1 ${p.exitPrice.toFixed(2)}`}
         </div>
-        {p.stop != null && (
+        {!isNoTrade && p.stop != null && (
           <div style={{ fontSize: 10, color: isDark ? '#f87171' : '#dc2626', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }}>
             stop ${p.stop.toFixed(2)}
           </div>

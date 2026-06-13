@@ -1297,7 +1297,7 @@ export default function DayTradeEnginePanel({
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1">
               {[
                 { label: 'Entry', value: `$${ac!.trade.entry_price.toFixed(2)}` },
-                { label: 'Target', value: `$${ac!.trade.target.toFixed(2)}` },
+                { label: 'Target', value: ac!.trade.target != null ? `$${ac!.trade.target.toFixed(2)}` : '—' },
                 { label: 'Stop', value: `$${ac!.trade.stop.toFixed(2)}` },
                 { label: 'R/R', value: `${ac!.trade.risk_reward.toFixed(1)}:1`, highlight: ac!.trade.r_r_valid },
               ].map(({ label, value, highlight }) => (

@@ -240,7 +240,12 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
         "spy_bias":          spy_bias,
         "spy_vs_vwap":       spy_vs_vwap,
         "spy_vs_orh":        spy_vs_orh,
-        # extra context passed through but not in AI prompt
+        # extra context passed through but not in AI prompt — sigma bands for per-entry R/R
+        "_vwap_upper1":  float(metrics.get("vwap_upper1") or 0),
+        "_vwap_lower1":  float(metrics.get("vwap_lower1") or 0),
+        "_vwap_upper2":  float(metrics.get("vwap_upper2") or 0),
+        "_vwap_lower2":  float(metrics.get("vwap_lower2") or 0),
+        "_vwap_std_dev": float(metrics.get("vwap_std_dev") or 0),
         "_rs_vs_qqq":        float(metrics.get("rs_vs_qqq_pct") or 0),
         "_scalp_target":     float(
             (metrics.get("adaptive_rr") or {}).get("target_1")
@@ -482,6 +487,105 @@ def _build_trade_levels(
         "stop":        stop,
         "risk_reward": rr,
         "r_r_valid":   rr >= 2.0,
+    }
+
+
+def _calc_per_entry_rr(
+    entry_price: float,
+    direction: str,       # "CALL" (long) or "PUT" (short) or "NONE"
+    session_t1: float,    # adaptive T1 from session start — EXTENDED if entry is past this
+    vwap: float,
+    vwap_std_dev: float,
+    vwap_upper1: float,
+    vwap_lower1: float,
+    vwap_upper2: float,
+    vwap_lower2: float,
+    or_high: float,
+    or_low: float,
+) -> dict:
+    """
+    Per-entry R/R calculation.  Each entry signal gets its own fresh analysis:
+      - EXTENDED detection  (entry past session T1 or ≥ 2σ from VWAP)
+      - Fresh T1/T2 from THIS entry price (not session-start target)
+      - Verdict: NO_TRADE | VALID | LOW_RR | INVALID
+    """
+    if not entry_price or entry_price <= 0 or direction == "NONE":
+        return {"verdict": "INVALID", "risk_reward": 0.0, "target": None, "stop": None}
+
+    is_long = direction != "PUT"
+
+    # ── Sigma distance from VWAP ──────────────────────────────────────────────
+    sigma_distance: Optional[float] = None
+    if vwap > 0 and vwap_std_dev > 0:
+        sigma_distance = round((entry_price - vwap) / vwap_std_dev, 1)
+
+    # ── EXTENDED detection ────────────────────────────────────────────────────
+    t1_extended = bool(
+        (is_long  and session_t1 > 0 and entry_price >= session_t1 * 1.01) or
+        (not is_long and session_t1 > 0 and entry_price <= session_t1 * 0.99)
+    )
+    sigma_extended = bool(
+        (is_long  and vwap_upper2 > 0 and entry_price >= vwap_upper2) or
+        (not is_long and vwap_lower2 > 0 and entry_price <= vwap_lower2)
+    )
+
+    if t1_extended or sigma_extended:
+        reasons: list[str] = []
+        if t1_extended and session_t1 > 0:
+            pct = abs(entry_price - session_t1) / session_t1 * 100
+            side = "above" if is_long else "below"
+            reasons.append(f"Entry {pct:.1f}% {side} session T1 ${session_t1:.2f}")
+        if sigma_extended and sigma_distance is not None:
+            side = "above" if is_long else "below"
+            reasons.append(f"Price is {abs(sigma_distance):.1f}σ {side} VWAP (≥2σ)")
+        return {
+            "verdict": "NO_TRADE",
+            "setup_type": "EXTENDED",
+            "reason": " · ".join(reasons),
+            "sigma_distance": sigma_distance,
+            "risk_reward": 0.0,
+            "target": None,
+            "stop": None,
+        }
+
+    # ── Fresh T1/T2 targets from this entry price ─────────────────────────────
+    if is_long:
+        t1 = vwap_upper1 if vwap_upper1 > entry_price else None
+        if t1 is None:
+            or_range = or_high - or_low if or_high > or_low else entry_price * 0.01
+            t1 = round(entry_price + or_range * 0.5, 2)
+        t2 = vwap_upper2 if vwap_upper2 > t1 else round(t1 + abs(t1 - entry_price), 2)
+        stop = round(or_low, 2) if or_low > 0 and or_low < entry_price else round(entry_price * 0.995, 2)
+    else:
+        t1 = vwap_lower1 if vwap_lower1 < entry_price else None
+        if t1 is None:
+            or_range = or_high - or_low if or_high > or_low else entry_price * 0.01
+            t1 = round(entry_price - or_range * 0.5, 2)
+        t2 = vwap_lower2 if vwap_lower2 < t1 else round(t1 - abs(entry_price - t1), 2)
+        stop = round(or_high, 2) if or_high > 0 and or_high > entry_price else round(entry_price * 1.005, 2)
+
+    risk      = abs(entry_price - stop)
+    reward_t1 = abs(t1 - entry_price)
+    reward_t2 = abs(t2 - entry_price) if t2 else reward_t1 * 2
+    rr_t1 = round(reward_t1 / risk, 1) if risk > 0 else 0.0
+    rr_t2 = round(reward_t2 / risk, 1) if risk > 0 else 0.0
+
+    if rr_t1 >= 1.5:
+        verdict = "VALID"
+    elif rr_t1 >= 0.8:
+        verdict = "LOW_RR"
+    else:
+        verdict = "INVALID"
+
+    return {
+        "verdict":        verdict,
+        "setup_type":     "RECALCULATED",
+        "sigma_distance": sigma_distance,
+        "risk_reward":    rr_t1,
+        "risk_reward_t2": rr_t2,
+        "target":         round(t1, 2),
+        "target_2":       round(t2, 2),
+        "stop":           stop,
     }
 
 
@@ -824,6 +928,13 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     elif action == "ENTER" and setup_type == "SPREAD":
         opts += f"Spread limits risk relative to naked option at this confidence level."
 
+    # ── Sigma band context (for per-entry R/R) ───────────────────────────────
+    _vwap_upper1  = float(signal.get("_vwap_upper1") or 0)
+    _vwap_lower1  = float(signal.get("_vwap_lower1") or 0)
+    _vwap_upper2  = float(signal.get("_vwap_upper2") or 0)
+    _vwap_lower2  = float(signal.get("_vwap_lower2") or 0)
+    _vwap_std_dev = float(signal.get("_vwap_std_dev") or 0)
+
     # ── Confluence Zone extensions ───────────────────────────────────────────
     _rvol          = float(signal.get("rvol") or 1.0)
     _drp           = float(signal.get("daily_range_used_pct") or 50.0)
@@ -832,11 +943,64 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     _trade_dir     = "PUT" if is_bear else ("CALL" if is_bull else "NONE")
     _entry_px      = price  # use current price as entry reference
     _trade         = _build_trade_levels(_trade_dir, _entry_px, scalp, stop, orl, orh)
-    # Override R/R with adaptive value when available (set by calculate_adaptive_rr in day_trade.py)
-    _adaptive_rr_val = signal.get("_adaptive_rr")
-    if _adaptive_rr_val and float(_adaptive_rr_val) > 0:
-        _trade["risk_reward"] = round(float(_adaptive_rr_val), 2)
-        _trade["r_r_valid"]   = _trade["risk_reward"] >= 2.0
+
+    # ── Per-entry R/R — each entry signal gets its own fresh analysis ────────
+    # scalp = adaptive T1 from session start; used as EXTENDED threshold.
+    # This replaces the old single adaptive-R/R override and adds EXTENDED detection.
+    _trade_per = _calc_per_entry_rr(
+        _entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+    )
+    if _trade_per.get("verdict") == "NO_TRADE":
+        _trade.update({
+            "risk_reward": 0.0, "r_r_valid": False,
+            "verdict": "NO_TRADE",
+            "extended_reason": _trade_per.get("reason", ""),
+            "sigma_distance":  _trade_per.get("sigma_distance"),
+        })
+    else:
+        _rr = float(_trade_per.get("risk_reward") or 0)
+        # Honour adaptive session R/R if it's higher than per-entry (conservative fallback)
+        _adaptive_rr_val = signal.get("_adaptive_rr")
+        if _adaptive_rr_val and float(_adaptive_rr_val) > _rr:
+            _rr = float(_adaptive_rr_val)
+        _trade.update({
+            "risk_reward":     round(_rr, 2),
+            "r_r_valid":       _rr >= 2.0,
+            "target":          _trade_per.get("target") or _trade.get("target"),
+            "verdict":         _trade_per.get("verdict", "VALID"),
+            "sigma_distance":  _trade_per.get("sigma_distance"),
+        })
+
+    # Per-entry R/R for entry gate (E1 in frontend)
+    _entry_gate_price = float(_entry_gate.get("trigger_price") or 0)
+    if _entry_gate_price > 0 and _trade_dir != "NONE":
+        _eg_per = _calc_per_entry_rr(
+            _entry_gate_price, _trade_dir, scalp, vwap, _vwap_std_dev,
+            _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+        )
+        _entry_gate.update({
+            "risk_reward":     _eg_per.get("risk_reward", 0.0),
+            "target":          _eg_per.get("target"),
+            "stop":            _eg_per.get("stop") or stop,
+            "verdict":         _eg_per.get("verdict", "VALID"),
+            "extended_reason": _eg_per.get("reason", ""),
+            "sigma_distance":  _eg_per.get("sigma_distance"),
+        })
+
+    # Per-entry R/R for OR breakout level (E3 in frontend)
+    _or_entry_px = orh if not is_bear else orl
+    _or_rr = _calc_per_entry_rr(
+        _or_entry_px, _trade_dir, scalp, vwap, _vwap_std_dev,
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+    ) if _or_entry_px > 0 and _trade_dir != "NONE" else {}
+
+    # Per-entry R/R for VWAP retest (E4 pending in frontend)
+    _vwap_rr = _calc_per_entry_rr(
+        vwap, _trade_dir, scalp, vwap, _vwap_std_dev,
+        _vwap_upper1, _vwap_lower1, _vwap_upper2, _vwap_lower2, orl, orh
+    ) if vwap > 0 and _trade_dir != "NONE" else {}
+
     _no_trade      = _build_no_trade_reason(_drp, _rvol, _confluence, _trade, price)
 
     # Confluence note (≤20 words)
@@ -879,12 +1043,14 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         "decision_tree":   dt,
         "best_next_step":  best,
         "options_note":    opts,
-        "confluence":      _confluence,
-        "entry_gate":      _entry_gate,
-        "trade":           _trade,
-        "no_trade_reason": _no_trade,
-        "confluence_note": _conf_note,
-        "_source":         "deterministic",
+        "confluence":       _confluence,
+        "entry_gate":       _entry_gate,
+        "trade":            _trade,
+        "or_breakout_rr":   _or_rr,
+        "vwap_retest_rr":   _vwap_rr,
+        "no_trade_reason":  _no_trade,
+        "confluence_note":  _conf_note,
+        "_source":          "deterministic",
     }
 
 

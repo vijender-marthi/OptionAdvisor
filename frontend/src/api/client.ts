@@ -194,22 +194,48 @@ export interface AiCoachResult {
     strength: 'EXTREME' | 'STRONG' | 'NONE'
     zone_role: 'RESISTANCE' | 'SUPPORT' | 'CHOP' | 'NONE'
   }
-  /** Entry gate validation */
+  /** Entry gate validation — enriched with per-entry R/R */
   entry_gate?: {
     valid: boolean
     trigger_price: number
     trigger_condition: string
     rvol_required: number
     candle_required: 'rejection' | 'bounce' | 'breakout' | 'none'
+    // per-entry fields
+    risk_reward?: number
+    target?: number
+    stop?: number
+    verdict?: string
+    extended_reason?: string
+    sigma_distance?: number | null
   }
-  /** Trade levels with R/R */
+  /** Trade levels with per-entry R/R */
   trade?: {
     direction: 'PUT' | 'CALL' | 'NONE'
     entry_price: number
-    target: number
+    target?: number
     stop: number
     risk_reward: number
     r_r_valid: boolean
+    verdict?: string
+    extended_reason?: string
+    sigma_distance?: number | null
+  }
+  /** Per-entry R/R for OR breakout level (E3) */
+  or_breakout_rr?: {
+    verdict?: string
+    risk_reward?: number
+    target?: number
+    stop?: number
+    sigma_distance?: number | null
+  }
+  /** Per-entry R/R for VWAP retest (E4 pending) */
+  vwap_retest_rr?: {
+    verdict?: string
+    risk_reward?: number
+    target?: number
+    stop?: number
+    sigma_distance?: number | null
   }
   no_trade_reason?: string | null
   confluence_note?: string
