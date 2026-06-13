@@ -242,8 +242,15 @@ def build_coach_signal(scan_dict: dict[str, Any], risk_state: str = "MEDIUM") ->
         "spy_vs_orh":        spy_vs_orh,
         # extra context passed through but not in AI prompt
         "_rs_vs_qqq":        float(metrics.get("rs_vs_qqq_pct") or 0),
-        "_scalp_target":     float(eg.get("scalp_target") or 0),
-        "_risk_below":       float(eg.get("risk_below") or 0),
+        "_scalp_target":     float(
+            (metrics.get("adaptive_rr") or {}).get("target_1")
+            or eg.get("scalp_target") or 0
+        ),
+        "_risk_below":       float(
+            (metrics.get("adaptive_rr") or {}).get("adaptive_stop")
+            or eg.get("risk_below") or 0
+        ),
+        "_adaptive_rr":      (metrics.get("adaptive_rr") or {}).get("recommended_rr"),
         "_bounce_scenario":  str(metrics.get("bounce_scenario") or ""),
         "rvol":                  round(rvol, 2),
         "price_vs_orl":          price_vs_orl,
@@ -825,6 +832,11 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
     _trade_dir     = "PUT" if is_bear else ("CALL" if is_bull else "NONE")
     _entry_px      = price  # use current price as entry reference
     _trade         = _build_trade_levels(_trade_dir, _entry_px, scalp, stop, orl, orh)
+    # Override R/R with adaptive value when available (set by calculate_adaptive_rr in day_trade.py)
+    _adaptive_rr_val = signal.get("_adaptive_rr")
+    if _adaptive_rr_val and float(_adaptive_rr_val) > 0:
+        _trade["risk_reward"] = round(float(_adaptive_rr_val), 2)
+        _trade["r_r_valid"]   = _trade["risk_reward"] >= 2.0
     _no_trade      = _build_no_trade_reason(_drp, _rvol, _confluence, _trade, price)
 
     # Confluence note (≤20 words)
