@@ -1137,6 +1137,17 @@ def get_ai_coach(
 
     if not result:
         result = build_deterministic_coach(signal)
+    else:
+        # AI coach succeeded but doesn't include per-entry R/R fields.
+        # Merge them from the deterministic coach so E3/E4 show on the frontend.
+        deterministic = build_deterministic_coach(signal)
+        for key in ("or_breakout_rr", "vwap_retest_rr", "no_trade_reason", "entry_gate", "trade"):
+            if key in deterministic and key not in result:
+                result[key] = deterministic[key]
+            elif key in deterministic and isinstance(result.get(key), dict) and isinstance(deterministic[key], dict):
+                for sub in ("risk_reward", "target", "stop", "verdict", "extended_reason", "sigma_distance"):
+                    if sub in deterministic[key] and sub not in result.get(key, {}):
+                        result.setdefault(key, {})[sub] = deterministic[key][sub]
 
     _coach_cache[cache_key] = (time.monotonic(), result)
     return result
