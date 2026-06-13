@@ -237,6 +237,20 @@ export interface AiCoachResult {
     stop?: number
     sigma_distance?: number | null
   }
+  /** Pullback Reset — dynamic E4 when extended price returns to VWAP */
+  pullback_entry?: {
+    detected?: boolean
+    setup_type?: string
+    direction?: string
+    label?: string
+    entry_price?: number
+    stop?: number
+    target_1?: number
+    target_2?: number
+    rr_t1?: number
+    vwap?: number
+    reason?: string
+  } | null
   no_trade_reason?: string | null
   confluence_note?: string
   /** 'anthropic' | 'openai' | 'deterministic' — for debugging */
