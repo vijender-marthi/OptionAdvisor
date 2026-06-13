@@ -1274,22 +1274,18 @@ export default function DayTradePage() {
         // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
         const pb = ac?.pullback_entry
         if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
-          const pbPrice = pb.entry_price
-          if (!seen.has(pbPrice)) {
-            seen.add(pbPrice)
-            pageEntryPoints.push({
-              label:     `E${pageEntryPoints.length + 1}`,
-              price:     pbPrice,
-              trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
-              stop:      pb.stop,
-              direction,
-              exitPrice: pb.target_1,
-              rr:        pb.rr_t1,
-              pending:   false,
-              verdict:   'VALID',
-              color:     '#f59e0b',  // amber — dynamic pullback entry
-            })
-          }
+          pageEntryPoints.push({
+            label:     `E${pageEntryPoints.length + 1}`,
+            price:     pb.entry_price,
+            trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+            stop:      pb.stop,
+            direction,
+            exitPrice: pb.target_1,
+            rr:        pb.rr_t1,
+            pending:   false,
+            verdict:   'VALID',
+            color:     '#f59e0b',
+          })
         } else {
           const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
           const vVerdict = vRr?.verdict as string | undefined
