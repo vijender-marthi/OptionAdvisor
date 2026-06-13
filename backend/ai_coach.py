@@ -493,7 +493,7 @@ def _build_trade_levels(
 def _calc_per_entry_rr(
     entry_price: float,
     direction: str,       # "CALL" (long) or "PUT" (short) or "NONE"
-    session_t1: float,    # adaptive T1 from session start — EXTENDED if entry is past this
+    session_t1: float,    # session-level T1 (for context only — not the primary EXTENDED trigger)
     vwap: float,
     vwap_std_dev: float,
     vwap_upper1: float,
@@ -505,9 +505,16 @@ def _calc_per_entry_rr(
 ) -> dict:
     """
     Per-entry R/R calculation.  Each entry signal gets its own fresh analysis:
-      - EXTENDED detection  (entry past session T1 or ≥ 2σ from VWAP)
-      - Fresh T1/T2 from THIS entry price (not session-start target)
+      - EXTENDED detection (entry near 1σ band, at/past 2σ, or 2%+ past OR level)
+      - Fresh T1/T2 from THIS entry price (not the session-start target)
       - Verdict: NO_TRADE | VALID | LOW_RR | INVALID
+
+    Key design: session_t1 is NOT used as the EXTENDED threshold because it is
+    re-computed for the current price and always sits just above entry, making
+    the 1% check nearly impossible to trigger.  Instead we use structural checks:
+      1. Entry is within 0.5σ of the 1σ band (no meaningful profit room)
+      2. Entry is at or beyond the 2σ band
+      3. Entry is 2%+ above OR high (for longs) or below OR low (for shorts)
     """
     if not entry_price or entry_price <= 0 or direction == "NONE":
         return {"verdict": "INVALID", "risk_reward": 0.0, "target": None, "stop": None}
@@ -516,28 +523,41 @@ def _calc_per_entry_rr(
 
     # ── Sigma distance from VWAP ──────────────────────────────────────────────
     sigma_distance: Optional[float] = None
+    _sigma = vwap_std_dev if vwap_std_dev > 0 else entry_price * 0.005
     if vwap > 0 and vwap_std_dev > 0:
         sigma_distance = round((entry_price - vwap) / vwap_std_dev, 1)
 
     # ── EXTENDED detection ────────────────────────────────────────────────────
-    t1_extended = bool(
-        (is_long  and session_t1 > 0 and entry_price >= session_t1 * 1.01) or
-        (not is_long and session_t1 > 0 and entry_price <= session_t1 * 0.99)
+    # 1. Entry is within 0.5σ of the 1σ band — T1 is too close for a viable trade
+    at_1sigma = bool(
+        (is_long  and vwap_upper1 > 0 and entry_price >= vwap_upper1 - _sigma * 0.5) or
+        (not is_long and vwap_lower1 > 0 and entry_price <= vwap_lower1 + _sigma * 0.5)
     )
+    # 2. Entry is at or beyond the 2σ band
     sigma_extended = bool(
         (is_long  and vwap_upper2 > 0 and entry_price >= vwap_upper2) or
         (not is_long and vwap_lower2 > 0 and entry_price <= vwap_lower2)
     )
+    # 3. Entry is 2%+ beyond the OR boundary — structurally extended
+    or_extended = bool(
+        (is_long  and or_high > 0 and entry_price > or_high * 1.02) or
+        (not is_long and or_low > 0 and entry_price < or_low * 0.98)
+    )
 
-    if t1_extended or sigma_extended:
+    if at_1sigma or sigma_extended or or_extended:
         reasons: list[str] = []
-        if t1_extended and session_t1 > 0:
-            pct = abs(entry_price - session_t1) / session_t1 * 100
-            side = "above" if is_long else "below"
-            reasons.append(f"Entry {pct:.1f}% {side} session T1 ${session_t1:.2f}")
+        if at_1sigma:
+            band_ref = vwap_upper1 if is_long else vwap_lower1
+            band_dist = abs(entry_price - band_ref)
+            reasons.append(f"Entry ${entry_price:.2f} is only ${band_dist:.2f} from 1σ band — no room for profit")
         if sigma_extended and sigma_distance is not None:
             side = "above" if is_long else "below"
-            reasons.append(f"Price is {abs(sigma_distance):.1f}σ {side} VWAP (≥2σ)")
+            reasons.append(f"Price {abs(sigma_distance):.1f}σ {side} VWAP (≥2σ)")
+        if or_extended:
+            ref_price = or_high if is_long else or_low
+            ref_name  = "OR high" if is_long else "OR low"
+            pct = abs(entry_price - ref_price) / ref_price * 100
+            reasons.append(f"Entry {pct:.1f}% beyond {ref_name} ${ref_price:.2f}")
         return {
             "verdict": "NO_TRADE",
             "setup_type": "EXTENDED",
