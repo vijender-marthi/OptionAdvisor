@@ -1208,16 +1208,83 @@ export default function DayTradePage() {
         const seen = new Set<number>()
         const pageEntryPoints: ChartEntryPoint[] = []
         const direction = isShort ? 'short' : 'long' as const
-        const exitPrice = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target : undefined
-        const addEntry = (price: number | null | undefined, trigger: string, stop?: number, pending?: boolean) => {
+
+        const addEntry = (
+          price: number | null | undefined,
+          trigger: string,
+          stop?: number,
+          rr?: number,
+          pending?: boolean,
+          verdict?: string,
+          exitPrice?: number,
+        ) => {
           if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
           seen.add(price)
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, pending })
+          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
         }
-        addEntry(ac?.entry_gate?.trigger_price, ac?.entry_gate?.trigger_condition ?? 'Gate trigger', eg?.risk_below ?? stopFallback)
-        addEntry(ac?.trade?.entry_price, ac?.trade ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)` : 'AI Coach', ac?.trade?.stop ?? stopFallback)
-        addEntry((eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number, isShort ? 'OR low breakout' : 'OR high breakout', isShort ? orHigh : orLow)
-        addEntry(((eg?.vwap ?? mVwap) as number | null), 'VWAP re-test', eg?.risk_below ?? stopFallback, true)
+
+        // E1 — AI coach entry gate (confluence zone trigger)
+        const eg1 = ac?.entry_gate as Record<string, unknown> | undefined
+        const eg1Verdict  = eg1?.verdict as string | undefined
+        const eg1IsNT     = eg1Verdict === 'NO_TRADE'
+        const eg1Trigger  = eg1IsNT
+          ? `⚠ EXTENDED — ${(eg1?.extended_reason as string) || 'entry past session T1'}`
+          : ((eg1?.trigger_condition as string) ?? 'Gate trigger')
+        addEntry(
+          eg1?.trigger_price as number | undefined,
+          eg1Trigger,
+          eg1IsNT ? undefined : (eg1?.stop as number | undefined) ?? stopFallback,
+          eg1IsNT ? 0 : (eg1?.risk_reward as number | undefined),
+          false,
+          eg1Verdict,
+          eg1IsNT ? undefined : (eg1?.target as number | undefined),
+        )
+
+        // E2 — AI coach trade (current price analysis)
+        const tr = ac?.trade as Record<string, unknown> | undefined
+        const trVerdict = tr?.verdict as string | undefined
+        const trIsNT    = trVerdict === 'NO_TRADE'
+        const trRr      = tr?.risk_reward as number | undefined
+        const trTrigger = trIsNT
+          ? `⚠ EXTENDED — ${(tr?.extended_reason as string) || 'entry past session T1'}`
+          : (tr ? `AI Coach · ${tr.direction} (R/R ${(trRr ?? 0).toFixed(1)}×)` : 'AI Coach')
+        addEntry(
+          tr?.entry_price as number | undefined,
+          trTrigger,
+          trIsNT ? undefined : (tr?.stop as number | undefined) ?? stopFallback,
+          trIsNT ? 0 : trRr,
+          false,
+          trVerdict,
+          trIsNT ? undefined : (tr?.target as number | undefined),
+        )
+
+        // E3 — OR breakout level
+        const orEntryPx  = (eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number | undefined
+        const orRr       = ac?.or_breakout_rr as Record<string, unknown> | undefined
+        const orVerdict  = orRr?.verdict as string | undefined
+        const orIsNT     = orVerdict === 'NO_TRADE'
+        addEntry(
+          orEntryPx,
+          isShort ? 'OR low breakout' : 'OR high breakout',
+          orIsNT ? undefined : (isShort ? orHigh : orLow),
+          orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
+          false,
+          orVerdict,
+          orIsNT ? undefined : (orRr?.target as number | undefined),
+        )
+
+        // E4 — VWAP retest (pending / conditional)
+        const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined
+        const vVerdict = vRr?.verdict as string | undefined
+        addEntry(
+          (eg?.vwap ?? mVwap) as number | null,
+          'VWAP re-test',
+          (eg?.risk_below as number | undefined) ?? stopFallback,
+          vRr?.risk_reward as number | undefined,
+          true,
+          vVerdict,
+          vRr?.target as number | undefined,
+        )
 
         // ── Build zone annotations ──────────────────────────────────────────
         const verdict = result.verdict ?? result.final_decision ?? 'WAIT'
