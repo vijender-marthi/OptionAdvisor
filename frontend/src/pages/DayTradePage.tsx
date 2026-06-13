@@ -1282,19 +1282,24 @@ export default function DayTradePage() {
         // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
         const pb = ac?.pullback_entry
         if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
+          const pbConf     = pb.confidence
+          const pbPat      = (pb.reclaim_pattern ?? 'RECLAIM').replace(/_/g, ' ')
+          const pbColor    = pbConf === 'HIGH' ? '#f59e0b' : pbConf === 'MEDIUM_HIGH' ? '#fb923c' : '#94a3b8'
+          const pbSizeNote = pbConf === 'HIGH' ? '' : pbConf === 'MEDIUM_HIGH' ? ' · 75% size' : ' · 50% size'
+          const pbTrigger  = `⚡ Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
           pageEntryPoints.push({
-            label:     `E${pageEntryPoints.length + 1}`,
-            price:     pb.entry_price,
-            trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
-            stop:      pb.stop,
+            label:       `E${pageEntryPoints.length + 1}`,
+            price:       pb.entry_price,
+            trigger:     pbTrigger,
+            stop:        pb.stop,
             direction,
-            exitPrice: pb.target_1,
-            exitPrice2: pb.target_2,
-            rr:        pb.rr_t1,
-            pending:   false,
-            verdict:   'VALID',
-            color:     '#f59e0b',
-            triggerTime: (pb as Record<string, unknown>).bar_timestamp as string | undefined,
+            exitPrice:   pb.target_1,
+            exitPrice2:  pb.target_2,
+            rr:          pb.rr_t1,
+            pending:     false,
+            verdict:     'VALID',
+            color:       pbColor,
+            triggerTime: pb.bar_timestamp,
           })
         } else {
           const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined

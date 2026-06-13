@@ -259,6 +259,9 @@ export interface AiCoachResult {
     vwap?: number
     bar_index?: number
     bar_timestamp?: string
+    reclaim_pattern?: string
+    confidence?: string
+    recommended_size_pct?: number
     reason?: string
   } | null
   no_trade_reason?: string | null
