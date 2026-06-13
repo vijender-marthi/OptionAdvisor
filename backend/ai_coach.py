@@ -998,7 +998,9 @@ def build_deterministic_coach(signal: dict[str, Any]) -> dict[str, Any]:
         _trade.update({
             "risk_reward":     round(_rr, 2),
             "r_r_valid":       _rr >= 2.0,
+            "stop":            _trade_per.get("stop") or _trade.get("stop"),
             "target":          _trade_per.get("target") or _trade.get("target"),
+            "target_2":        _trade_per.get("target_2"),
             "verdict":         _trade_per.get("verdict", "VALID"),
             "sigma_distance":  _trade_per.get("sigma_distance"),
         })

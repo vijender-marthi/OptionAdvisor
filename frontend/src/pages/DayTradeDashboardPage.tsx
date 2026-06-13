@@ -61,10 +61,11 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     pending?: boolean,
     verdict?: string,
     exitPrice?: number,
+    exitPrice2?: number,
   ) => {
     if (!price || !isFinite(price) || price <= 0 || seen.has(price)) return
     seen.add(price)
-    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, rr, pending, verdict })
+    pts.push({ label: `E${pts.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
   }
 
   // E1 — AI coach entry gate (confluence zone trigger)
@@ -82,6 +83,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     false,
     eg1Verdict,
     eg1IsNT ? undefined : (eg1?.target as number | undefined),
+    eg1IsNT ? undefined : (eg1?.target_2 as number | undefined),
   )
 
   // E2 — AI coach trade (current price analysis)
@@ -100,6 +102,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     false,
     trVerdict,
     trIsNT ? undefined : (tr?.target as number | undefined),
+    trIsNT ? undefined : (tr?.target_2 as number | undefined),
   )
 
   // E3 — OR breakout level
@@ -115,6 +118,7 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     false,
     orVerdict,
     orIsNT ? undefined : (orRr?.target as number | undefined),
+    orIsNT ? undefined : (orRr?.target_2 as number | undefined),
   )
 
   // E4 — VWAP retest (pending / conditional) or Pullback Reset (active if detected)
@@ -125,16 +129,17 @@ function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, un
     if (!seen.has(pbPrice)) {
       seen.add(pbPrice)
       pts.push({
-        label:     `E${pts.length + 1}`,
-        price:     pbPrice,
-        trigger:   `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
-        stop:      pb.stop,
+        label:      `E${pts.length + 1}`,
+        price:      pbPrice,
+        trigger:    `⚡ Pullback Reset — ${pb.reason ?? 'VWAP reclaim confirmed'}`,
+        stop:       pb.stop,
         direction,
-        exitPrice: pb.target_1,
-        rr:        pb.rr_t1,
-        pending:   false,
-        verdict:   'VALID',
-        color:     '#f59e0b',  // amber — dynamic pullback entry
+        exitPrice:  pb.target_1,
+        exitPrice2: pb.target_2,
+        rr:         pb.rr_t1,
+        pending:    false,
+        verdict:    'VALID',
+        color:      '#f59e0b',  // amber — dynamic pullback entry
       })
     }
   } else {
