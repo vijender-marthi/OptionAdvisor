@@ -213,7 +213,17 @@ export default function DayTradeIntradayChart({
     if (!displayEntryPoints) return []
     return displayEntryPoints.map(ep => {
       if (ep.stub || !ep.price) return null
-      if (ep.triggerTime) return { time: fmtEtShort(ep.triggerTime), barIndex: 0 }
+      if (ep.triggerTime) {
+        const tgt = new Date(ep.triggerTime).getTime()
+        if (isFinite(tgt)) {
+          let best = 0, bestDist = Infinity
+          for (let i = 0; i < bars.length; i++) {
+            const dist = Math.abs(new Date(bars[i]!.t).getTime() - tgt)
+            if (dist < bestDist) { bestDist = dist; best = i }
+          }
+          return { time: fmtEtShort(ep.triggerTime), barIndex: best }
+        }
+      }
       for (let i = orMinutes; i < bars.length; i++) {
         const b = bars[i]!
         if (b.l <= ep.price && ep.price <= b.h) return { time: fmtEtShort(b.t), barIndex: i }
