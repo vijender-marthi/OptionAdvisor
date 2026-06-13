@@ -1289,10 +1289,12 @@ export default function DayTradePage() {
             stop:      pb.stop,
             direction,
             exitPrice: pb.target_1,
+            exitPrice2: pb.target_2,
             rr:        pb.rr_t1,
             pending:   false,
             verdict:   'VALID',
             color:     '#f59e0b',
+            triggerBarIndex: (pb as Record<string, unknown>).bar_index as number | undefined,
           })
         } else {
           const vRr      = ac?.vwap_retest_rr as Record<string, unknown> | undefined

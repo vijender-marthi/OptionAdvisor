@@ -257,6 +257,7 @@ export interface AiCoachResult {
     target_2?: number
     rr_t1?: number
     vwap?: number
+    bar_index?: number
     reason?: string
   } | null
   no_trade_reason?: string | null
