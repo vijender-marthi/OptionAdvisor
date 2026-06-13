@@ -2220,6 +2220,251 @@ def _check_vwap_retest_entry(
     }
 
 
+# ---------------------------------------------------------------------------
+# Adaptive R/R — setup-type detection and context-aware R/R calculation
+# ---------------------------------------------------------------------------
+
+# Probability of reaching T1 and P(T2 | T1 reached) by setup type.
+_SETUP_PROBS: Dict[str, Tuple[float, float]] = {
+    "FRESH_OR_BREAKOUT":          (0.55, 0.45),
+    "VWAP_DEFENSE_CONTINUATION":  (0.65, 0.55),
+    "VWAP_DOUBLE_BOTTOM":         (0.60, 0.50),
+    "LEVEL_FLIP":                 (0.62, 0.48),
+    "EXTENDED":                   (0.45, 0.35),
+    "UNCLEAR":                    (0.50, 0.40),
+}
+
+
+def _detect_setup_type(
+    session: pd.DataFrame,
+    vwap_ser: pd.Series,
+    or_high: float,
+    or_low: float,
+    last: float,
+    direction: str,
+    session_minutes_elapsed: int,
+    vwap_std_dev: Optional[float],
+    vol_spike: bool,
+    bounce_scenario: str = "",
+    or_historical: str = "contained",
+    or_state: str = "inside",
+    vwap_last: float = 0.0,
+    vwap_upper2: float = 0.0,
+    vwap_lower2: float = 0.0,
+) -> str:
+    """
+    Classify the current intraday setup into one of six types.
+
+    Returns one of:
+        FRESH_OR_BREAKOUT, VWAP_DEFENSE_CONTINUATION, VWAP_DOUBLE_BOTTOM,
+        LEVEL_FLIP, EXTENDED, UNCLEAR
+    """
+    is_long = (direction or "long").lower() == "long"
+
+    # 1. EXTENDED — price beyond 2σ band (highest priority; do not chase)
+    if vwap_upper2 > 0 and vwap_lower2 > 0:
+        if is_long  and last >= vwap_upper2:
+            return "EXTENDED"
+        if not is_long and last <= vwap_lower2:
+            return "EXTENDED"
+
+    # 2. FRESH_OR_BREAKOUT — price just broke out of the opening range
+    if session_minutes_elapsed <= 90:
+        if is_long and or_historical == "broke_up" and or_state == "above" and or_high > 0:
+            if (last - or_high) / or_high * 100 <= 1.5:
+                return "FRESH_OR_BREAKOUT"
+        if not is_long and or_historical == "broke_down" and or_state == "below" and or_low > 0:
+            if (or_low - last) / or_low * 100 <= 1.5:
+                return "FRESH_OR_BREAKOUT"
+
+    # 3. LEVEL_FLIP — broken OR level acting as new support/resistance
+    if is_long and or_historical == "broke_up" and or_state in ("above", "inside") and or_high > 0:
+        if abs(last - or_high) / or_high * 100 <= 0.5:
+            return "LEVEL_FLIP"
+    if not is_long and or_historical == "broke_down" and or_state in ("below", "inside") and or_low > 0:
+        if abs(last - or_low) / or_low * 100 <= 0.5:
+            return "LEVEL_FLIP"
+
+    # 4. VWAP_DEFENSE_CONTINUATION — confirmed bounce/rejection at VWAP
+    if bounce_scenario in ("vwap_rejection_long", "vwap_rejection", "orl_rejection_retest"):
+        return "VWAP_DEFENSE_CONTINUATION"
+    if vwap_last > 0 and vol_spike and abs(last - vwap_last) / vwap_last * 100 <= 0.4:
+        return "VWAP_DEFENSE_CONTINUATION"
+
+    # 5. VWAP_DOUBLE_BOTTOM — two VWAP touches, second holds higher (long)
+    #    or two VWAP touches, second holds lower (short)
+    try:
+        lookback = min(60, len(session))
+        close_arr = session["Close"].iloc[-lookback:].values
+        vwap_arr  = vwap_ser.iloc[-lookback:].values
+        touch_thresh = 0.002  # within 0.20% of VWAP counts as a touch
+        touches: list[tuple[int, float]] = []
+        in_touch = False
+        for i, (c, v) in enumerate(zip(close_arr, vwap_arr)):
+            if v > 0 and abs(c - v) / v <= touch_thresh:
+                if not in_touch:
+                    touches.append((i, float(c)))
+                    in_touch = True
+            else:
+                in_touch = False
+        if len(touches) >= 2:
+            _, p1 = touches[-2]
+            idx2, p2 = touches[-1]
+            _, _idx1 = touches[-2][0], touches[-2][0]
+            if idx2 - touches[-2][0] >= 5:  # touches must be at least 5 bars apart
+                if is_long  and p2 > p1:
+                    return "VWAP_DOUBLE_BOTTOM"
+                if not is_long and p2 < p1:
+                    return "VWAP_DOUBLE_BOTTOM"
+    except Exception:
+        pass
+
+    return "UNCLEAR"
+
+
+def calculate_adaptive_rr(
+    session: pd.DataFrame,
+    vwap_ser: pd.Series,
+    or_high: float,
+    or_low: float,
+    entry: float,
+    direction: str,
+    vwap_upper1: float,
+    vwap_lower1: float,
+    vwap_upper2: float,
+    vwap_lower2: float,
+    vwap_std_dev: Optional[float],
+    session_minutes_elapsed: int,
+    vol_spike: bool,
+    bounce_scenario: str = "",
+    or_historical: str = "contained",
+    or_state: str = "inside",
+    vwap_last: float = 0.0,
+) -> Optional[Dict[str, Any]]:
+    """
+    Compute setup-aware R/R metrics for the current intraday entry.
+
+    Returns a dict with keys:
+        setup_type, conservative_rr, adaptive_rr, recommended_rr,
+        p_t1, p_t2_given_t1, conservative_stop, adaptive_stop,
+        target_1, target_2, vol_confirmed, recommendation
+    Returns None when entry price or OR levels are unavailable.
+    """
+    if not entry or entry <= 0 or or_high <= 0 or or_low <= 0:
+        return None
+
+    is_long = (direction or "long").lower() == "long"
+    sigma   = vwap_std_dev  # may be None; used as fallback stop spacing
+
+    setup_type = _detect_setup_type(
+        session, vwap_ser, or_high, or_low, entry, direction,
+        session_minutes_elapsed, sigma, vol_spike,
+        bounce_scenario, or_historical, or_state,
+        vwap_last, vwap_upper2, vwap_lower2,
+    )
+    p_t1, p_t2_given_t1 = _SETUP_PROBS.get(setup_type, (0.50, 0.40))
+    vol_confirmed = bool(vol_spike)
+
+    # ── Conservative R/R — ORL/ORH as wide stop anchor ──────────────────
+    # Uses the full opening-range width as the maximum risk reference.
+    if is_long:
+        con_stop = or_low
+        con_t1   = vwap_upper1 if vwap_upper1 > entry else or_high + (or_high - or_low)
+        con_t2   = vwap_upper2 if vwap_upper2 > con_t1 else con_t1 + (con_t1 - entry)
+    else:
+        con_stop = or_high
+        con_t1   = vwap_lower1 if vwap_lower1 < entry else or_low - (or_high - or_low)
+        con_t2   = vwap_lower2 if vwap_lower2 < con_t1 else con_t1 - (entry - con_t1)
+
+    con_reward = abs(con_t1 - entry)
+    con_risk   = abs(entry - con_stop)
+    conservative_rr = round(con_reward / con_risk, 2) if con_risk > 0 else None
+
+    # ── Adaptive stop — tighter, setup-specific reference ────────────────
+    _sigma_fallback = (sigma if sigma and sigma > 0 else entry * 0.004)
+    if setup_type == "FRESH_OR_BREAKOUT":
+        adap_stop = (or_high * 0.9985) if is_long else (or_low * 1.0015)
+    elif setup_type == "VWAP_DEFENSE_CONTINUATION":
+        _s = _sigma_fallback
+        adap_stop = (vwap_last - 0.3 * _s) if is_long else (vwap_last + 0.3 * _s)
+    elif setup_type == "VWAP_DOUBLE_BOTTOM":
+        _s = _sigma_fallback
+        adap_stop = (vwap_last - 0.5 * _s) if is_long else (vwap_last + 0.5 * _s)
+    elif setup_type == "LEVEL_FLIP":
+        flip = or_high if is_long else or_low
+        adap_stop = (flip * 0.997) if is_long else (flip * 1.003)
+    elif setup_type == "EXTENDED":
+        # Fade trade: stop at the 1σ band
+        adap_stop = vwap_upper1 if is_long else vwap_lower1
+    else:  # UNCLEAR — fall back to conservative
+        adap_stop = con_stop
+
+    # Safety: ensure stop is on the correct side of entry
+    if is_long  and adap_stop >= entry:
+        adap_stop = entry * 0.998
+    if not is_long and adap_stop <= entry:
+        adap_stop = entry * 1.002
+
+    # ── Adaptive targets — σ band levels above/below current VWAP ────────
+    if is_long:
+        adap_t1 = vwap_upper1 if vwap_upper1 > entry else entry + abs(entry - adap_stop) * 1.5
+        adap_t2 = vwap_upper2 if vwap_upper2 > adap_t1 else adap_t1 + (adap_t1 - entry)
+    else:
+        adap_t1 = vwap_lower1 if vwap_lower1 < entry else entry - abs(adap_stop - entry) * 1.5
+        adap_t2 = vwap_lower2 if vwap_lower2 < adap_t1 else adap_t1 - (entry - adap_t1)
+
+    adap_reward = abs(adap_t1 - entry)
+    adap_risk   = abs(entry - adap_stop)
+    adaptive_rr = round(adap_reward / adap_risk, 2) if adap_risk > 0 else None
+
+    # ── Recommended R/R — prefer adaptive unless it is materially worse ──
+    if adaptive_rr is not None and conservative_rr is not None:
+        recommended_rr = adaptive_rr if adaptive_rr >= conservative_rr * 0.8 else conservative_rr
+    else:
+        recommended_rr = adaptive_rr if adaptive_rr is not None else conservative_rr
+
+    # ── Recommendation text ───────────────────────────────────────────────
+    st_label = setup_type.replace("_", " ").title()
+    if setup_type == "EXTENDED":
+        recommendation = (
+            "Price extended beyond 2σ band — avoid chasing. "
+            "Wait for a pullback to the 1σ level before reassessing entry."
+        )
+    elif recommended_rr is not None and recommended_rr < 1.0:
+        recommendation = (
+            f"R/R {recommended_rr:.1f}× is below 1:1 — "
+            "setup does not offer adequate reward relative to risk."
+        )
+    elif recommended_rr is not None and recommended_rr < 1.5:
+        recommendation = (
+            f"{st_label} · R/R {recommended_rr:.1f}× is marginal. "
+            "Require high-probability confirmation before entry."
+        )
+    elif recommended_rr is not None:
+        vol_txt = "Volume confirmed." if vol_confirmed else "Await volume confirmation."
+        recommendation = (
+            f"{st_label} · R/R {recommended_rr:.1f}× · "
+            f"P(T1) {p_t1*100:.0f}% · {vol_txt}"
+        )
+    else:
+        recommendation = "Insufficient data for R/R calculation."
+
+    return {
+        "setup_type":        setup_type,
+        "conservative_rr":   conservative_rr,
+        "adaptive_rr":       adaptive_rr,
+        "recommended_rr":    recommended_rr,
+        "p_t1":              p_t1,
+        "p_t2_given_t1":     p_t2_given_t1,
+        "conservative_stop": round(float(con_stop), 4),
+        "adaptive_stop":     round(float(adap_stop), 4),
+        "target_1":          round(float(adap_t1), 4),
+        "target_2":          round(float(adap_t2), 4),
+        "vol_confirmed":     vol_confirmed,
+        "recommendation":    recommendation,
+    }
+
+
 def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                        daily_trend_context: Optional[Dict[str, str]] = None) -> DayTradeScan:
     """
@@ -3501,6 +3746,40 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         metrics["entry_rr_ratio"] = round(_reward / _risk, 2) if _risk > 0 else None
     else:
         metrics["entry_rr_ratio"] = None
+
+    # ── Adaptive R/R — setup-type-aware calculation ───────────────────────
+    _adaptive_rr_result: Optional[dict] = None
+    try:
+        _adaptive_rr_result = calculate_adaptive_rr(
+            session                 = session,
+            vwap_ser                = vwap_ser,
+            or_high                 = or_high,
+            or_low                  = or_low,
+            entry                   = _eg_price,
+            direction               = bias or "long",
+            vwap_upper1             = vwap_upper1,
+            vwap_lower1             = vwap_lower1,
+            vwap_upper2             = vwap_upper2,
+            vwap_lower2             = vwap_lower2,
+            vwap_std_dev            = vwap_std_dev,
+            session_minutes_elapsed = session_minutes_elapsed,
+            vol_spike               = bool(vol_spike),
+            bounce_scenario         = _bounce_scenario,
+            or_historical           = or_historical,
+            or_state                = or_state,
+            vwap_last               = vwap_last,
+        )
+    except Exception:
+        pass
+    metrics["adaptive_rr"] = _adaptive_rr_result
+
+    # When adaptive R/R is available, prefer it over the basic scalar entry_rr_ratio.
+    # Preserve the original value under conservative_rr_ratio for reference.
+    if _adaptive_rr_result and _adaptive_rr_result.get("recommended_rr") is not None:
+        metrics["conservative_rr_ratio"] = metrics.get("entry_rr_ratio")
+        metrics["entry_rr_ratio"]        = _adaptive_rr_result["recommended_rr"]
+    else:
+        metrics["conservative_rr_ratio"] = None
 
     # Range warning — fires when daily move is nearly exhausted vs 14-day ATR
     _atr_ctx = f" (14-day ATR ${_atr14:.2f})" if _atr14 > 0 else ""
