@@ -830,7 +830,8 @@ export default function DayTradeIntradayChart({
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Price</th>
                 <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Time</th>
                 <th className="pb-1 text-left font-medium text-gray-500 uppercase tracking-wide pr-3">Trigger</th>
-                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">Stop</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide pr-3">Stop</th>
+                <th className="pb-1 text-right font-mono font-medium text-gray-500 uppercase tracking-wide">T1 Target</th>
               </tr>
             </thead>
             <tbody>
@@ -876,8 +877,11 @@ export default function DayTradeIntradayChart({
                         <span>{ep.trigger} <span className="text-amber-500/60 text-[10px]">(no confirmation yet)</span></span>
                       ) : ep.trigger}
                     </td>
-                    <td className="py-1 text-right font-mono text-red-400">
+                    <td className="py-1 pr-3 text-right font-mono text-red-400">
                       {ep.stop && ep.stop > 0 ? `$${fmtPrice(ep.stop)}` : '—'}
+                    </td>
+                    <td className="py-1 text-right font-mono text-emerald-400">
+                      {ep.exitPrice && ep.exitPrice > 0 ? `$${fmtPrice(ep.exitPrice)}` : '—'}
                     </td>
                   </tr>
                 )
