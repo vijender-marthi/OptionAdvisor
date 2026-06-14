@@ -6,7 +6,7 @@ import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import MacdHistogramChart from '../components/MacdHistogramChart'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
-import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
+import type { DeskAlertCreate, UnifiedAnalysis, SwingTradeScanResult } from '../api/client'
 import { fetchMyTickers } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
@@ -21,6 +21,105 @@ function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
   if (typeof d === 'string') return d
   return (e as Error)?.message ?? 'Request failed'
+}
+
+// ─── AI Coach: overall situation read ──────────────────────────────────────────
+// Synthesizes the verdict, bias/tape alignment, condition tally, R/R and levels
+// into a plain-English read of the whole setup plus a single "do this" instruction.
+
+type SituationTone = 'good' | 'warn' | 'bad' | 'neutral'
+interface SituationRead {
+  headline: string
+  points: { label: string; text: string; tone: SituationTone }[]
+  instruction: string
+  instructionTone: SituationTone
+}
+
+function buildSituationRead(u: UnifiedAnalysis, r: SwingTradeScanResult | null): SituationRead {
+  const vp = u.verdict_presentation
+  const pass = vp.pass_count, warn = vp.warn_count, fail = vp.fail_count
+  const total = pass + warn + fail
+  const biasWord = r?.bias === 'long' ? 'Bullish' : r?.bias === 'short' ? 'Bearish' : 'Neutral'
+  const mkt = (r?.market_bias || '').toLowerCase()
+  const mktWord = mkt ? mkt.charAt(0).toUpperCase() + mkt.slice(1) : null
+  const aligned: boolean | null = mkt
+    ? (r?.bias === 'long' && /bull|up|risk.?on/.test(mkt)) || (r?.bias === 'short' && /bear|down|risk.?off/.test(mkt))
+    : null
+
+  const entryStr = u.entry_price != null
+    ? `$${u.entry_price.toFixed(2)}`
+    : (u.verdict === 'GO' || u.verdict === 'STRONG_GO') ? 'the trigger' : 'TBD'
+  const stopStr = u.stop_price != null ? `$${u.stop_price.toFixed(2)}` : 'TBD'
+  const t1 = u.exit_rows.find(x => x.type === 't1')
+  const targetStr = t1 && !/tbd/i.test(t1.price) ? t1.price : 'first target'
+
+  const points: SituationRead['points'] = []
+
+  // 1 — trend & tape alignment
+  points.push({
+    label: 'Trend & tape',
+    text: `${u.ticker} reads ${biasWord.toLowerCase()}.`
+      + (mktWord
+        ? ` Broad market is ${mktWord.toLowerCase()} — ${aligned ? 'the tape is behind this trade.' : aligned === false ? "you'd be leaning against the tape, so trim size." : 'mixed backdrop.'}`
+        : ''),
+    tone: aligned ? 'good' : aligned === false ? 'warn' : 'neutral',
+  })
+
+  // 2 — setup quality from condition tally
+  const quality: SituationTone = total === 0 ? 'neutral' : fail === 0 && pass >= warn ? 'good' : fail <= 1 ? 'warn' : 'bad'
+  points.push({
+    label: 'Setup quality',
+    text: total > 0
+      ? `${pass} of ${total} conditions pass (${warn} warn, ${fail} fail) — ${quality === 'good' ? 'clean confirmation.' : quality === 'warn' ? 'mixed signals; wait for more confirmation.' : 'too many failing; low conviction.'}`
+      : 'Conditions still being evaluated.',
+    tone: quality,
+  })
+
+  // 3 — risk / reward + levels
+  points.push({
+    label: 'Risk / reward',
+    text: `R/R ${u.rr_ratio || '—'}, risk ${u.risk_level || '—'}. Entry ${entryStr}, stop ${stopStr}, first target ${targetStr}.`,
+    tone: u.risk_level === 'LOW' ? 'good' : u.risk_level === 'HIGH' ? 'warn' : 'neutral',
+  })
+
+  // 4 — timing / participation
+  if (r?.expected_holding_period || u.rvol) {
+    points.push({
+      label: 'Timing',
+      text: `${r?.expected_holding_period ? `Expected hold ${r.expected_holding_period}.` : ''}${u.rvol ? ` Relative volume ${u.rvol}.` : ''}`.trim(),
+      tone: 'neutral',
+    })
+  }
+
+  let instruction: string
+  let instructionTone: SituationTone
+  switch (u.verdict) {
+    case 'STRONG_GO':
+    case 'GO':
+      instruction = `Execute the plan: enter at/near ${entryStr}, hard stop ${stopStr}, scale out into ${targetStr}. ${aligned === false ? 'Use reduced size — the market is against you.' : 'Standard size.'}`
+      instructionTone = 'good'; break
+    case 'WATCH':
+      instruction = `Not triggered yet. Set an alert at ${entryStr} and only enter once price confirms the move — do not anticipate.`
+      instructionTone = 'warn'; break
+    case 'WAIT':
+      instruction = 'Stand by. No clean trigger here — let the setup come to you rather than forcing it.'
+      instructionTone = 'warn'; break
+    case 'AVOID':
+      instruction = 'Skip this one. Conditions conflict — protect capital and look for a cleaner setup.'
+      instructionTone = 'bad'; break
+    default:
+      instruction = u.coach || 'Wait for the engine to finish evaluating before acting.'
+      instructionTone = 'neutral'
+  }
+
+  const verdictPhrase = (u.verdict === 'GO' || u.verdict === 'STRONG_GO') ? 'execute the plan'
+    : u.verdict === 'WATCH' ? 'wait for the trigger'
+    : u.verdict === 'WAIT' ? 'stand by'
+    : u.verdict === 'AVOID' ? 'stand aside'
+    : 'evaluate'
+  const headline = `${biasWord}${aligned === true ? ', market-aligned' : aligned === false ? ', against the tape' : ''} — ${verdictPhrase}.`
+
+  return { headline, points, instruction, instructionTone }
 }
 
 export default function SwingTradePage() {
@@ -609,74 +708,6 @@ export default function SwingTradePage() {
             </div>
           </div>
 
-          {/* ── Decision Snapshot — the at-a-glance trade decision ── */}
-          {(() => {
-            const vp = unified.verdict_presentation
-            const verdictColor = vp.status_color
-            const t1 = unified.exit_rows.find(r => r.type === 't1')
-            const targetStr = t1 ? (/tbd/i.test(t1.price) ? 'On entry' : t1.price) : '—'
-            const entryStr = unified.entry_price != null
-              ? `$${unified.entry_price.toFixed(2)}`
-              : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? 'On trigger' : '—'
-            const stopStr = unified.stop_price != null ? `$${unified.stop_price.toFixed(2)}` : '—'
-            const rrStr = unified.rr_ratio || '—'
-            const structureStr = (unified.structure || '').replace(/\s*·\s*\d+\s*DTE.*$/, '').trim()
-            const biasLabel = result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : null
-            const biasColor = result?.bias === 'long' ? st.green : result?.bias === 'short' ? st.red : st.muted
-            const inPosition = existingPositions.length > 0
-            const tiles: { label: string; value: string; color: string }[] = [
-              { label: 'Entry',  value: entryStr,  color: st.text },
-              { label: 'Stop',   value: stopStr,   color: unified.stop_price != null ? st.red : st.muted },
-              { label: 'Target', value: targetStr, color: targetStr === '—' ? st.muted : st.green },
-              { label: 'R / R',  value: rrStr,     color: unified.rr_ratio ? st.green : st.muted },
-            ]
-            return (
-              <div className="dt-card" style={{ background: `${verdictColor}0A`, border: `1px solid ${verdictColor}55`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-                {/* Row 1 — verdict + bias/structure + primary actions */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ width: 11, height: 11, borderRadius: '50%', background: verdictColor, boxShadow: `0 0 8px ${verdictColor}90`, flexShrink: 0 }} />
-                    <span style={{ fontSize: 21, fontWeight: 800, color: verdictColor, letterSpacing: '-0.01em' }}>{vp.status_text}</span>
-                    {biasLabel && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: biasColor, border: `1px solid ${biasColor}55`, background: `${biasColor}12`, borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{biasLabel}</span>
-                    )}
-                    {structureStr && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: st.muted, border: `1px solid ${st.border}`, background: st.bgDeep, borderRadius: 6, padding: '2px 8px' }}>{structureStr}</span>
-                    )}
-                    <span style={{ fontSize: 11, color: st.muted }}>
-                      Setup <span style={{ fontWeight: 800, color: verdictColor, fontFamily: 'monospace' }}>{unified.confidence}</span>
-                      <span style={{ margin: '0 6px', opacity: 0.4 }}>·</span>
-                      Signal <span style={{ fontWeight: 800, color: vp.signal_quality.color, fontFamily: 'monospace' }}>{vp.signal_quality.score}/10</span>
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {inPosition ? (
-                      <button type="button" onClick={() => navigate(ROUTES.positions)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 px-3.5 py-2 text-xs font-bold transition-colors">
-                        <BarChart2 size={14} /> View Positions
-                      </button>
-                    ) : (
-                      <button type="button" onClick={handleAddToPortfolio} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-2 text-xs font-bold transition-colors">
-                        <PlusCircle size={14} /> Add to Portfolio
-                      </button>
-                    )}
-                    <button type="button" onClick={() => setAlertOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/50 hover:bg-rose-900/30 text-rose-300 px-3.5 py-2 text-xs font-bold transition-colors">
-                      <Bell size={14} /> Add Alert
-                    </button>
-                  </div>
-                </div>
-                {/* Row 2 — key level tiles */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                  {tiles.map(tile => (
-                    <div key={tile.label} style={{ background: st.bgDeep, border: `1px solid ${st.border}`, borderRadius: 10, padding: '8px 10px' }}>
-                      <div style={{ fontSize: '0.6rem', fontWeight: 700, color: st.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{tile.label}</div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace', color: tile.color }}>{tile.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })()}
-
           {/* IV data missing warning banner */}
           {(() => {
             const m = result?.metrics as Record<string, unknown> | undefined
@@ -694,7 +725,37 @@ export default function SwingTradePage() {
             )
           })()}
 
-          <UnifiedVerdictCard analysis={unified} />
+          {/* Consolidated verdict card — verdict + bias + key levels + primary actions in one place */}
+          {(() => {
+            const t1 = unified.exit_rows.find(r => r.type === 't1')
+            const targetStr = t1 ? (/tbd/i.test(t1.price) ? 'On entry' : t1.price) : '—'
+            const entryStr = unified.entry_price != null
+              ? `$${unified.entry_price.toFixed(2)}`
+              : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? 'On trigger' : '—'
+            const stopStr = unified.stop_price != null ? `$${unified.stop_price.toFixed(2)}` : '—'
+            const levels = [
+              { label: 'Entry',  value: entryStr,  color: st.text },
+              { label: 'Stop',   value: stopStr,   color: unified.stop_price != null ? st.red : st.muted },
+              { label: 'Target', value: targetStr, color: targetStr === '—' ? st.muted : st.green },
+              { label: 'R / R',  value: unified.rr_ratio || '—', color: unified.rr_ratio ? st.green : st.muted },
+            ]
+            const bias = result?.bias === 'long' || result?.bias === 'short' ? result.bias : 'neutral'
+            const actions = existingPositions.length > 0 ? (
+              <button type="button" onClick={() => navigate(ROUTES.positions)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 px-3 py-1.5 text-xs font-bold transition-colors">
+                <BarChart2 size={13} /> Positions
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={handleAddToPortfolio} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 text-xs font-bold transition-colors">
+                  <PlusCircle size={13} /> Portfolio
+                </button>
+                <button type="button" onClick={() => setAlertOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/50 hover:bg-rose-900/30 text-rose-300 px-3 py-1.5 text-xs font-bold transition-colors">
+                  <Bell size={13} /> Alert
+                </button>
+              </>
+            )
+            return <UnifiedVerdictCard analysis={unified} bias={bias} levels={levels} headerActions={actions} />
+          })()}
 
           {/* Entry Plan / Risk Profile — hidden when not ready, always shown but marked pending */}
           <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
@@ -860,16 +921,40 @@ export default function SwingTradePage() {
             )
           })()}
 
-          {/* AI Coach */}
-          {unified.coach && (
-            <div className="dt-card" style={{ background: '#181C23', border: '1px solid #1E2330', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
-              <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4A7CFF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach</div>
-                <div className="dt-muted" style={{ color: '#5A6478', fontSize: '0.82rem', lineHeight: 1.6 }}>{unified.coach}</div>
+          {/* AI Coach — overall situation read */}
+          {(() => {
+            const sr = buildSituationRead(unified, result)
+            const toneColor = (t: SituationTone) => t === 'good' ? st.green : t === 'warn' ? st.amber : t === 'bad' ? st.red : st.muted
+            return (
+              <div className="dt-card" style={{ background: '#181C23', border: '1px solid #1E2330', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 14, marginBottom: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, background: 'rgba(74,124,255,0.12)', border: '1px solid rgba(74,124,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎯</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#4A7CFF', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>AI Coach — Situation Read</div>
+                  {/* Headline */}
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, color: st.text, marginBottom: unified.coach ? 4 : 10 }}>{sr.headline}</div>
+                  {/* Engine coach line, if present */}
+                  {unified.coach && (
+                    <div style={{ color: st.muted, fontSize: '0.78rem', lineHeight: 1.55, fontStyle: 'italic', marginBottom: 10 }}>{unified.coach}</div>
+                  )}
+                  {/* Situation points */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                    {sr.points.map(p => (
+                      <div key={p.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: toneColor(p.tone), flexShrink: 0, marginTop: 6 }} />
+                        <div style={{ fontSize: '0.8rem', lineHeight: 1.5, color: st.muted }}>
+                          <span style={{ color: st.text, fontWeight: 600 }}>{p.label}: </span>{p.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Instruction */}
+                  <div style={{ borderLeft: `3px solid ${toneColor(sr.instructionTone)}`, background: `${toneColor(sr.instructionTone)}12`, borderRadius: 4, padding: '8px 12px', fontSize: '0.82rem', lineHeight: 1.55, color: st.text }}>
+                    <span style={{ fontWeight: 700, color: toneColor(sr.instructionTone) }}>▸ Do this: </span>{sr.instruction}
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
         </div>
       )}
