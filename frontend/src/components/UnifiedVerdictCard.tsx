@@ -44,7 +44,6 @@ export default function UnifiedVerdictCard({ analysis, bias, levels, headerActio
   const vp = analysis.verdict_presentation
   const { status_text, status_color, signal_quality, setup_bar_pct, setup_bar_color, pass_count, warn_count, fail_count } = vp
   const bg = VERDICT_BG[analysis.verdict] ?? 'rgba(107,114,128,0.06)'
-  const spread = analysis.spread_entry
 
   // ─── Swing Trade Verdict Card ────────────────────────────────────────
   if (isSwing) {
@@ -137,44 +136,6 @@ export default function UnifiedVerdictCard({ analysis, bias, levels, headerActio
                   {c.label}
                 </span>
               ))}
-            </div>
-          )}
-
-          {/* Spread entry summary */}
-          {spread && (
-            <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: 'var(--surface-raised)', padding: '10px 12px', marginBottom: 12 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Spread Entry</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Buy</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#00A86B' }}>{spread.long_leg}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Sell</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#D0312D' }}>{spread.short_leg}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Expiry</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: C.text }}>{spread.expiry}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Debit</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#00A86B' }}>${spread.est_debit.toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Max Gain</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#00A86B' }}>${(spread.max_gain || 0).toFixed(2)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: C.textTer }}>Max Loss</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#D0312D' }}>${(spread.max_loss || 0).toFixed(2)}</span>
-                </div>
-              </div>
-              {spread.entry_note && (
-                <div style={{ marginTop: 8, padding: '5px 8px', borderRadius: 4, background: 'rgba(212,160,23,0.08)', fontSize: 10.5, color: '#D4A017' }}>
-                  {spread.entry_note}
-                </div>
-              )}
             </div>
           )}
 
