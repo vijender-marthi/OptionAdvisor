@@ -31,7 +31,7 @@ function unifiedStructureLabel(s: string): string {
   return s.replace(/\s*·\s*\d+\s*DTE.*$/, '').trim() || s
 }
 
-export default function UnifiedVerdictCard({ analysis, bias, levels, headerActions }: {
+export default function UnifiedVerdictCard({ analysis, bias, levels, headerActions, priceHeader }: {
   analysis: UnifiedAnalysis
   /** Optional Long/Short/Neutral bias pill (swing layout only). */
   bias?: 'long' | 'short' | 'neutral' | null
@@ -39,6 +39,8 @@ export default function UnifiedVerdictCard({ analysis, bias, levels, headerActio
   levels?: { label: string; value: string; color: string }[]
   /** Optional primary action buttons rendered in the header band (swing layout only). */
   headerActions?: ReactNode
+  /** Optional ticker/price strip rendered at the very top of the card (swing layout only). */
+  priceHeader?: ReactNode
 }) {
   const isSwing = analysis.trade_type === 'swing'
   const vp = analysis.verdict_presentation
@@ -49,6 +51,11 @@ export default function UnifiedVerdictCard({ analysis, bias, levels, headerActio
   if (isSwing) {
     return (
       <div className="uv-card" style={{ background: bg, border: `1px solid ${status_color}40`, borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+
+        {/* Ticker / price strip */}
+        {priceHeader && (
+          <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>{priceHeader}</div>
+        )}
 
         {/* Header band */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${status_color}20`, background: `${status_color}08` }}>

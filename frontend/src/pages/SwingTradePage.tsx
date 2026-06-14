@@ -659,56 +659,6 @@ export default function SwingTradePage() {
       {/* Result panel */}
       {unified && (
         <div className="day-trade-unified">
-          {/* Ticker header bar */}
-          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>{unified.ticker}</span>
-                {unified.company && <span className="dt-muted" style={{ fontSize: '0.78rem', color: st.muted }}>{unified.company}</span>}
-                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${unified.price.toFixed(2)}</span>
-                {unified.change_pct != null && (
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? st.green : st.red }}>
-                    {unified.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(unified.price * unified.change_pct / (100 + unified.change_pct)).toFixed(2)} ({Math.abs(unified.change_pct).toFixed(2)}%)
-                  </span>
-                )}
-                {(() => {
-                  const m = result?.metrics as Record<string, unknown> | undefined
-                  const extPrice = m?.ext_market_price as number | undefined
-                  if (!extPrice) return null
-                  const extChg = m?.ext_market_change as number | undefined
-                  const extChgPct = m?.ext_market_change_pct as number | undefined
-                  const extType = m?.ext_market_type as string | undefined
-                  return (
-                    <>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{extType === 'pre' ? 'Pre' : 'AH'}</span>
-                      <span className="dt-primary" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${extPrice.toFixed(2)}</span>
-                      {extChg != null && (
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: extChg >= 0 ? st.green : st.red }}>
-                          {extChg >= 0 ? '▲' : '▼'}{Math.abs(extChg).toFixed(2)} ({(extChgPct ?? 0) >= 0 ? '+' : ''}{(extChgPct ?? 0).toFixed(2)}%)
-                        </span>
-                      )}
-                    </>
-                  )
-                })()}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {unified.session && <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{unified.session}</span>}
-                {/* Bias conflict display */}
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.6rem', color: st.muted, letterSpacing: '0.04em' }}>Bias</div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: result?.bias === 'long' ? st.green : result?.bias === 'short' ? st.red : st.muted }}>
-                    {result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : '—'}
-                    {result?.bias && result?.market_bias && (
-                      <span style={{ fontWeight: 400, color: st.muted, fontSize: '0.65rem' }}>
-                        {' · '}{result.market_bias.charAt(0).toUpperCase() + result.market_bias.slice(1).toLowerCase()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* IV data missing warning banner */}
           {(() => {
             const m = result?.metrics as Record<string, unknown> | undefined
@@ -755,7 +705,38 @@ export default function SwingTradePage() {
                 </button>
               </>
             )
-            return <UnifiedVerdictCard analysis={unified} bias={bias} levels={levels} headerActions={actions} />
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const extPrice = m?.ext_market_price as number | undefined
+            const extChg = m?.ext_market_change as number | undefined
+            const extChgPct = m?.ext_market_change_pct as number | undefined
+            const extType = m?.ext_market_type as string | undefined
+            const priceHeader = (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>{unified.ticker}</span>
+                  {unified.company && <span style={{ fontSize: '0.78rem', color: st.muted }}>{unified.company}</span>}
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${unified.price.toFixed(2)}</span>
+                  {unified.change_pct != null && (
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? st.green : st.red }}>
+                      {unified.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(unified.price * unified.change_pct / (100 + unified.change_pct)).toFixed(2)} ({Math.abs(unified.change_pct).toFixed(2)}%)
+                    </span>
+                  )}
+                  {extPrice != null && (
+                    <>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{extType === 'pre' ? 'Pre' : 'AH'}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'monospace', color: st.text }}>${extPrice.toFixed(2)}</span>
+                      {extChg != null && (
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: extChg >= 0 ? st.green : st.red }}>
+                          {extChg >= 0 ? '▲' : '▼'}{Math.abs(extChg).toFixed(2)} ({(extChgPct ?? 0) >= 0 ? '+' : ''}{(extChgPct ?? 0).toFixed(2)}%)
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {unified.session && <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.violet}`, color: st.violet, background: `${st.violet}15` }}>{unified.session}</span>}
+              </div>
+            )
+            return <UnifiedVerdictCard analysis={unified} bias={bias} levels={levels} headerActions={actions} priceHeader={priceHeader} />
           })()}
 
           {/* ── Trade Plan — Entry + Spread + Exit consolidated ── */}
