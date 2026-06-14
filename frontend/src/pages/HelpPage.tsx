@@ -498,6 +498,82 @@ function strikeLine(x: number, h: number, color: string) {
   return <line x1={x} y1={h-10} x2={x} y2={15} stroke={color} strokeWidth="0.5" strokeDasharray="2,1.5" opacity={0.6} />
 }
 
+// ─── MACD histogram visuals (moved from the Swing Trade page; rendered inside
+//     the "MACD Histogram — Visual Reference" card in the Swing Trade Engine section) ───
+function MacdHistogramVisuals() {
+  return (
+    <div className="space-y-3 mb-3">
+      {/* Full cycle visual */}
+      <div className="rounded-lg border border-gray-700/40 bg-gray-800/50 p-4">
+        <div className="text-[11px] font-semibold text-gray-500 mb-3">Full Cycle — Histogram + Price</div>
+        <div className="flex items-end h-24 gap-[3px] mb-2">
+          {(() => {
+            const hist = [-0.8,-1.2,-1.8,-2.4,-2.8,-3.0,-2.6,-2.1,-1.6,-1.1,-0.6,-0.2,0.3,0.7,1.2,1.8,2.4,2.9,2.7,2.2,1.7,1.2,0.8,0.4,-0.2,-0.6,-1.0,-1.4]
+            const max = 3.2
+            return hist.map((v,i) => {
+              const h = Math.abs(v)/max * 76
+              const isPos = v>=0
+              const growing = i===0 || Math.abs(v) > Math.abs(hist[i-1])
+              const col = isPos ? (growing ? '#3fb950' : 'rgba(63,185,80,0.5)') : (growing ? '#f85149' : 'rgba(248,81,73,0.5)')
+              return <div key={i} style={{height:h+'px',background:col,width:'100%',borderRadius:'2px',alignSelf:isPos?'flex-end':'flex-start',marginTop:isPos?'auto':'0',marginBottom:isPos?'0':'auto'}} />
+            })
+          })()}
+        </div>
+        <div className="h-px bg-gray-700 mb-1" />
+        <div className="flex items-start h-20 gap-[3px]">
+          {(() => {
+            const price = [102,101,100,99,97,95,94,93,93,94,95,96,97,99,101,104,107,110,111,112,113,113,112,111,110,109,108,107]
+            const mn=93, mx=114
+            return price.map((v,i) => {
+              const h = (v-mn)/(mx-mn)*72
+              return <div key={i} style={{height:h+'px',background:'#58a6ff',width:'100%',borderRadius:'2px 2px 0 0',opacity:0.7,alignSelf:'flex-end'}} />
+            })
+          })()}
+        </div>
+        <div className="flex justify-between mt-2 text-[9px] text-gray-500 flex-wrap gap-1">
+          <span style={{color:'#3fb950'}}>█ Green growing = momentum up accel.</span>
+          <span style={{color:'rgba(63,185,80,0.6)'}}>█ Green shrink = momentum fading</span>
+          <span style={{color:'rgba(248,81,73,0.6)'}}>█ Red shrink = selling fading</span>
+          <span style={{color:'#f85149'}}>█ Red growing = momentum down accel.</span>
+        </div>
+      </div>
+
+      {/* 4-phase grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {[
+          {col:'#3fb950', bg:'bg-emerald-900/10', brd:'border-emerald-800/30', title:'Green Growing', subtitle:'Momentum Accelerating Up',
+           bars:[0.4,0.8,1.3,1.9,2.5,3.0,3.4], desc:'Gap between fast and slow MA expanding upward. Buyers accelerating.',
+           action:'Hold longs. Add on pullbacks to MA20. Do not exit early.', actionBg:'bg-emerald-900/20', actionCol:'text-emerald-400'},
+          {col:'rgba(63,185,80,0.6)', bg:'bg-emerald-900/5', brd:'border-emerald-800/20', title:'Green Shrinking', subtitle:'Momentum Fading',
+           bars:[3.4,2.9,2.3,1.7,1.1,0.6,0.2], desc:'Buyers still in control but losing steam. Move slowing.',
+           action:'Take partial profits (50%). Tighten stop to break-even.', actionBg:'bg-yellow-900/20', actionCol:'text-yellow-400'},
+          {col:'rgba(248,81,73,0.6)', bg:'bg-rose-900/5', brd:'border-rose-800/20', title:'Red Shrinking', subtitle:'Selling Momentum Fading',
+           bars:[-3.2,-2.6,-2.0,-1.4,-0.8,-0.3,-0.05], desc:'Sellers losing power. Reversal long setups start forming.',
+           action:'Watch for RSI 35–45 + MA test. Wait for green flip.', actionBg:'bg-blue-900/20', actionCol:'text-blue-400'},
+          {col:'#f85149', bg:'bg-rose-900/10', brd:'border-rose-800/30', title:'Red Growing', subtitle:'Momentum Accelerating Down',
+           bars:[0,-0.4,-0.9,-1.5,-2.2,-2.8,-3.3], desc:'Sellers accelerating. Short setups have maximum wind.',
+           action:'Hold shorts. Do NOT buy calls. Exit any longs.', actionBg:'bg-rose-900/20', actionCol:'text-rose-400'},
+        ].map(phase => (
+          <div key={phase.title} className={`rounded-lg border ${phase.brd} ${phase.bg} p-3`}>
+            <div className="text-xs font-bold mb-1" style={{color:phase.col}}>{phase.title}</div>
+            <div className="text-[10px] text-gray-500 mb-2">{phase.subtitle}</div>
+            <div className="flex items-end h-10 gap-[2px] mb-2">
+              {phase.bars.map((v,i) => {
+                const h = Math.abs(v)/3.5*32
+                const growing = i===0 || (Math.abs(v) > Math.abs(phase.bars[i-1]))
+                const col = growing ? phase.col : (phase.col.includes('rgba') ? phase.col : phase.col.replace(')', ',0.5)').replace('rgb','rgba'))
+                return <div key={i} style={{height:h+'px',background:col,width:'100%',borderRadius:'2px',alignSelf:v>=0?'flex-end':'flex-start',marginTop:v>=0?'auto':'0',marginBottom:v>=0?'0':'auto'}} />
+              })}
+            </div>
+            <div className="text-[11px] text-gray-400 leading-relaxed">{phase.desc}</div>
+            <div className={`mt-2 text-[10px] font-semibold px-2 py-1 rounded ${phase.actionBg} ${phase.actionCol}`}>{phase.action}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ───────────────────────────────────────────────────────────
 
 export default function HelpPage({ embedded }: { embedded?: boolean }) {
@@ -2494,6 +2570,9 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
                   Solid bars = momentum <strong className="text-gray-200">growing</strong>, faded bars = momentum <strong className="text-gray-200">fading</strong>.
                   The histogram is the gap between the MACD line and its signal line — it shows acceleration, not just direction.
                 </p>
+
+                {/* Histogram visuals — full cycle + the four momentum phases */}
+                <MacdHistogramVisuals />
 
                 {/* Entry timing ladder — the four phases and what to do in each */}
                 <div className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-3 mb-3">
