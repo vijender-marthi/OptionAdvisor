@@ -33,8 +33,13 @@ def _float_or(x: Any, default: float = 0.0) -> float:
 # Market data helpers
 # ---------------------------------------------------------------------------
 
-def _get_ma_data(ticker: str) -> dict[str, Any]:
-    """Fetch MA20, MA50, RSI-14, 5-day momentum from 3-month daily history."""
+def _get_ma_data(ticker: str, fib_lookback: int = 20) -> dict[str, Any]:
+    """Fetch MA20, MA50, RSI-14, 5-day momentum from 3-month daily history.
+
+    Also derives swing-trade pullback helpers (additive, daily-chart only):
+      - 9 EMA + slope + price position (early momentum signal)
+      - Swing high / low over ``fib_lookback`` trading days (for Fibonacci levels)
+    """
     try:
         h = bar_cache.get_history(ticker, period="3mo", interval="1d", auto_adjust=True)
         if h is None or h.empty:
@@ -60,7 +65,7 @@ def _get_ma_data(ticker: str) -> dict[str, Any]:
 
         mom_5d = (current / float(c.iloc[-6]) - 1.0) * 100.0 if len(c) >= 6 else 0.0
 
-        return {
+        result = {
             "current_price": current,
             "prev_close":    prev_close,
             "ma20":          round(ma20, 4),
@@ -68,6 +73,79 @@ def _get_ma_data(ticker: str) -> dict[str, Any]:
             "rsi":           round(rsi_val, 1),
             "mom_5d":        round(mom_5d, 2),
             "bar_count":     len(c),
+        }
+        result.update(_ema9_fields(c, current))
+        result.update(_swing_fib_fields(c, fib_lookback))
+        return result
+    except Exception:
+        return {}
+
+
+def _ema9_fields(closes: Any, current: float) -> dict[str, Any]:
+    """9-period EMA on the daily close, its 3-day slope, and price position."""
+    try:
+        if len(closes) < 3:
+            return {}
+        ema = closes.ewm(span=9, adjust=False).mean()
+        ema9 = float(ema.iloc[-1])
+        # Slope from the last 3 EMA values, normalized to % of price
+        e0 = float(ema.iloc[-3])
+        slope_pct = (ema9 / e0 - 1.0) * 100.0 if e0 > 0 else 0.0
+        if slope_pct > 0.15:
+            slope = "up"
+        elif slope_pct < -0.15:
+            slope = "down"
+        else:
+            slope = "flat"
+        # Price position vs 9 EMA (0.1% tolerance for "at")
+        tol = max(ema9 * 0.001, 0.01)
+        if current > ema9 + tol:
+            pos = "above"
+        elif current < ema9 - tol:
+            pos = "below"
+        else:
+            pos = "at"
+        return {
+            "ema9":          round(ema9, 4),
+            "ema9_slope":    slope,
+            "price_vs_ema9": pos,
+        }
+    except Exception:
+        return {}
+
+
+def _swing_fib_fields(closes: Any, lookback: int) -> dict[str, Any]:
+    """Swing high / low (by closing price) over the last ``lookback`` bars.
+
+    Returns the extremes, their ISO dates, and the implied Fibonacci
+    direction ('up' = swing low is older than swing high → bullish pullback).
+    """
+    try:
+        lb = max(5, int(lookback))
+        window = closes.tail(lb)
+        if len(window) < 5:
+            return {}
+        hi_idx = window.idxmax()
+        lo_idx = window.idxmin()
+        swing_high = float(window.loc[hi_idx])
+        swing_low = float(window.loc[lo_idx])
+
+        def _iso(idx: Any) -> str:
+            try:
+                return idx.date().isoformat()
+            except Exception:
+                return str(idx)[:10]
+
+        hi_date = _iso(hi_idx)
+        lo_date = _iso(lo_idx)
+        # Direction: high made after the low → uptrend, measure pullback off the high
+        direction = "up" if hi_idx >= lo_idx else "down"
+        return {
+            "fib_swing_high":      round(swing_high, 4),
+            "fib_swing_high_date": hi_date,
+            "fib_swing_low":       round(swing_low, 4),
+            "fib_swing_low_date":  lo_date,
+            "fib_direction":       direction,
         }
     except Exception:
         return {}
