@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
@@ -757,133 +758,127 @@ export default function SwingTradePage() {
             return <UnifiedVerdictCard analysis={unified} bias={bias} levels={levels} headerActions={actions} />
           })()}
 
-          {/* Entry Plan / Risk Profile — hidden when not ready, always shown but marked pending */}
-          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Entry status</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? st.green : unified.verdict === 'AVOID' ? st.red : st.amber }}>
-                    {unified.entry_price
-                      ? `$${unified.entry_price.toFixed(2)}`
-                      : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO')
-                        ? 'GO'
-                        : unified.verdict === 'WATCH'
-                          ? 'WATCH'
-                          : unified.verdict === 'WAIT'
-                            ? 'WAIT'
-                            : unified.verdict === 'AVOID'
-                              ? 'AVOID'
-                              : '—'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Structure</span>
-                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Contract</span>
-                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{result?.recommended_contract_duration ? `${result.recommended_contract_duration} DTE` : '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Strike</span>
-                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>{unified.entry_price ? `~$${unified.entry_price.toFixed(0)}` : 'Confirm on entry'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Stop loss</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? st.red : st.muted, fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
-                </div>
-              </div>
-              <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>R/R ratio</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: unified.rr_ratio ? st.green : st.muted, fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Risk level</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? st.green : unified.risk_level === 'MEDIUM' ? st.amber : st.red, fontSize: '0.82rem' }}>{unified.rr_ratio ? (unified.risk_level || '—') : '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>RVOL</span>
-                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${st.border}` }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>IV vs HV</span>
-                  <span style={{ fontFamily: 'monospace', color: st.muted, fontSize: '0.82rem' }}>Check platform</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>Holding period</span>
-                  <span style={{ fontFamily: 'monospace', color: st.text, fontSize: '0.82rem' }}>{result?.expected_holding_period || '3–5 days'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Exit Plan — Pre-Staged (dimmed when not in trade) */}
+          {/* ── Trade Plan — Entry + Spread + Exit consolidated ── */}
           {(() => {
-          const exitOpacity = unified.entry_price ? 1 : 0.45
-          return (
-          <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12, opacity: exitOpacity }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Exit Plan</span>
-              <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, border: `1px solid ${st.amber}40`, color: st.amber, background: `${st.amber}12`, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pre-staged · Activates on entry</span>
-            </div>
-            {unified.exit_rows.length > 0 ? (
-              <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${st.border}` }}>
-                    {['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} style={{ textAlign: 'left', color: st.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em' }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {unified.exit_rows.map((row, i) => {
-                    const isStop = row.type === 'stop'
-                    const isT2 = row.type === 't2'
-                    const isT1 = row.type === 't1'
-                    const isTime = row.type === 'time'
-                    const isStall = /stalls/i.test(row.when)
-                    const priceCls = isStop ? st.red : isT2 ? st.amber : isT1 ? st.green : st.muted
-                    const whenLabel = row.when
-                      .replace(/^Target 1 reached$/i, 'Target 1')
-                      .replace(/^Target 2 reached$/i, 'Target 2')
-                      .replace(/^Stop loss$/i, 'Stop Loss')
-                      .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
-                    const priceDisplay = !unified.entry_price && (isT1 || isT2) ? 'TBD on entry' : row.price
-                    const tag = isStop ? { label: 'Hard stop', cls: 'red' } : isT2 ? { label: 'Trade complete', cls: 'green' } : isT1 ? { label: 'Partial profit', cls: 'green' } : isStall ? { label: 'Structure fail', cls: 'amber' } : null
-                    const displayAction = row.note ? `${row.action} · ${row.note}` : row.action
-                    return (
-                      <tr key={i} style={{ borderBottom: `1px solid ${st.border}` }}>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontFamily: 'monospace', fontSize: '0.78rem' }}>{whenLabel}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: (isT1 || isT2) && !unified.entry_price ? st.muted : priceCls, fontSize: '0.78rem' }}>{priceDisplay}</td>
-                        <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontSize: '0.78rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>{displayAction}</span>
-                            {tag && (
-                              <span style={{
-                                fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
-                                color: tag.cls === 'green' ? st.green : tag.cls === 'amber' ? st.amber : st.red,
-                                border: `1px solid ${tag.cls === 'green' ? st.green + '40' : tag.cls === 'amber' ? st.amber + '40' : st.red + '40'}`,
-                                background: tag.cls === 'green' ? `${st.green}10` : tag.cls === 'amber' ? `${st.amber}10` : `${st.red}10`,
-                              }}>
-                                {tag.label}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            const spread = unified.spread_entry
+            const exitOpacity = unified.entry_price ? 1 : 0.45
+            const planRow = (label: string, value: ReactNode, valueColor: string, opts?: { bold?: boolean; last?: boolean }) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: opts?.last ? 'none' : `1px solid ${st.border}` }}>
+                <span className="dt-muted" style={{ color: st.muted, fontSize: '0.82rem' }}>{label}</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: opts?.bold ? 700 : 400, color: valueColor, fontSize: '0.82rem' }}>{value}</span>
               </div>
-            ) : (
-              <div style={{ color: st.muted, textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
-            )}
-          </div>
-          )})()}
+            )
+            return (
+              <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: st.text, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12 }}>Trade Plan</div>
+
+                {/* Entry + Risk Profile */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  <div>
+                    <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry</div>
+                    {planRow('Entry status',
+                      unified.entry_price
+                        ? `$${unified.entry_price.toFixed(2)}`
+                        : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? 'GO'
+                          : unified.verdict === 'WATCH' ? 'WATCH'
+                            : unified.verdict === 'WAIT' ? 'WAIT'
+                              : unified.verdict === 'AVOID' ? 'AVOID' : '—',
+                      (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? st.green : unified.verdict === 'AVOID' ? st.red : st.amber,
+                      { bold: true })}
+                    {planRow('Structure', unified.structure || '—', st.text)}
+                    {planRow('Contract', result?.recommended_contract_duration ? `${result.recommended_contract_duration} DTE` : '—', st.text)}
+                    {planRow('Strike', unified.entry_price ? `~$${unified.entry_price.toFixed(0)}` : 'Confirm on entry', st.muted)}
+                    {planRow('Stop loss', unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—', unified.stop_price ? st.red : st.muted, { bold: true, last: true })}
+                  </div>
+                  <div>
+                    <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
+                    {planRow('R/R ratio', unified.rr_ratio || '—', unified.rr_ratio ? st.green : st.muted)}
+                    {planRow('Risk level', unified.rr_ratio ? (unified.risk_level || '—') : '—', unified.risk_level === 'LOW' ? st.green : unified.risk_level === 'MEDIUM' ? st.amber : st.red, { bold: true })}
+                    {planRow('RVOL', unified.rvol || '—', st.muted)}
+                    {planRow('IV vs HV', 'Check platform', st.muted)}
+                    {planRow('Holding period', result?.expected_holding_period || '3–5 days', st.text, { last: true })}
+                  </div>
+                </div>
+
+                {/* Spread Entry (only for spread structures) */}
+                {spread && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${st.border}` }}>
+                    <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Spread Entry</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '4px 16px' }}>
+                      {planRow('Buy', spread.long_leg, st.green, { bold: true })}
+                      {planRow('Sell', spread.short_leg, st.red, { bold: true })}
+                      {planRow('Expiry', spread.expiry, st.text)}
+                      {planRow('Debit', `$${spread.est_debit.toFixed(2)}`, st.green)}
+                      {planRow('Max gain', `$${(spread.max_gain || 0).toFixed(2)}`, st.green)}
+                      {planRow('Max loss', `$${(spread.max_loss || 0).toFixed(2)}`, st.red)}
+                    </div>
+                    {spread.entry_note && (
+                      <div style={{ marginTop: 8, padding: '5px 8px', borderRadius: 4, background: `${st.amber}14`, fontSize: '0.66rem', color: st.amber }}>{spread.entry_note}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Exit Plan — pre-staged until in a trade */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${st.border}`, opacity: exitOpacity }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Exit Plan</span>
+                    <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, border: `1px solid ${st.amber}40`, color: st.amber, background: `${st.amber}12`, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pre-staged · Activates on entry</span>
+                  </div>
+                  {unified.exit_rows.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${st.border}` }}>
+                          {['WHEN', 'PRICE', 'ACTION'].map(h => <th key={h} style={{ textAlign: 'left', color: st.muted, fontWeight: 600, paddingBottom: 8, fontSize: '0.68rem', letterSpacing: '0.06em' }}>{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unified.exit_rows.map((row, i) => {
+                          const isStop = row.type === 'stop'
+                          const isT2 = row.type === 't2'
+                          const isT1 = row.type === 't1'
+                          const isStall = /stalls/i.test(row.when)
+                          const priceCls = isStop ? st.red : isT2 ? st.amber : isT1 ? st.green : st.muted
+                          const whenLabel = row.when
+                            .replace(/^Target 1 reached$/i, 'Target 1')
+                            .replace(/^Target 2 reached$/i, 'Target 2')
+                            .replace(/^Stop loss$/i, 'Stop Loss')
+                            .replace(/^Price closes below MA20$/i, 'MA20 Breakdown')
+                          const priceDisplay = !unified.entry_price && (isT1 || isT2) ? 'TBD on entry' : row.price
+                          const tag = isStop ? { label: 'Hard stop', cls: 'red' } : isT2 ? { label: 'Trade complete', cls: 'green' } : isT1 ? { label: 'Partial profit', cls: 'green' } : isStall ? { label: 'Structure fail', cls: 'amber' } : null
+                          const displayAction = row.note ? `${row.action} · ${row.note}` : row.action
+                          return (
+                            <tr key={i} style={{ borderBottom: `1px solid ${st.border}` }}>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontFamily: 'monospace', fontSize: '0.78rem' }}>{whenLabel}</td>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, fontFamily: 'monospace', fontWeight: 700, color: (isT1 || isT2) && !unified.entry_price ? st.muted : priceCls, fontSize: '0.78rem' }}>{priceDisplay}</td>
+                              <td style={{ paddingTop: 8, paddingBottom: 8, color: st.muted, fontSize: '0.78rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span>{displayAction}</span>
+                                  {tag && (
+                                    <span style={{
+                                      fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
+                                      color: tag.cls === 'green' ? st.green : tag.cls === 'amber' ? st.amber : st.red,
+                                      border: `1px solid ${tag.cls === 'green' ? st.green + '40' : tag.cls === 'amber' ? st.amber + '40' : st.red + '40'}`,
+                                      background: tag.cls === 'green' ? `${st.green}10` : tag.cls === 'amber' ? `${st.amber}10` : `${st.red}10`,
+                                    }}>
+                                      {tag.label}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    </div>
+                  ) : (
+                    <div style={{ color: st.muted, textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>Run full analysis for detailed exit levels</div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Options Entry Check — swing mode (7/14/21/28 DTE) */}
           {result && result.metrics && (() => {
@@ -982,150 +977,6 @@ export default function SwingTradePage() {
         </details>
       )}
 
-      {/* MACD Histogram Reference Guide */}
-      <details className="group rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 overflow-hidden mb-3">
-        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-secondary hover:bg-surface-muted/30">
-          <span className="flex items-center gap-2">
-            <Activity size={16} className="text-violet-400" />
-            MACD Histogram — Visual Reference
-          </span>
-          <ChevronDown size={16} className="text-muted transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-t border-slate-100 dark:border-white/[0.05] px-4 pb-4 space-y-4 text-xs pt-3">
-          <p className="text-gray-500">Daily MACD histogram reading guide for swing trades · 12 / 26 / 9 settings</p>
-
-          {/* Full cycle visual */}
-          <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-800/40 p-4">
-            <div className="text-[11px] font-semibold text-gray-500 mb-3">Full Cycle — Histogram + Price</div>
-            <div className="flex items-end h-24 gap-[3px] mb-2">
-              {(() => {
-                const hist = [-0.8,-1.2,-1.8,-2.4,-2.8,-3.0,-2.6,-2.1,-1.6,-1.1,-0.6,-0.2,0.3,0.7,1.2,1.8,2.4,2.9,2.7,2.2,1.7,1.2,0.8,0.4,-0.2,-0.6,-1.0,-1.4]
-                const max = 3.2
-                return hist.map((v,i) => {
-                  const h = Math.abs(v)/max * 76
-                  const isPos = v>=0
-                  const growing = i===0 || Math.abs(v) > Math.abs(hist[i-1])
-                  const col = isPos ? (growing ? '#3fb950' : 'rgba(63,185,80,0.5)') : (growing ? '#f85149' : 'rgba(248,81,73,0.5)')
-                  return <div key={i} style={{height:h+'px',background:col,width:'100%',borderRadius:'2px',alignSelf:isPos?'flex-end':'flex-start',marginTop:isPos?'auto':'0',marginBottom:isPos?'0':'auto'}} />
-                })
-              })()}
-            </div>
-            <div className="h-px bg-gray-700 mb-1" />
-            <div className="flex items-start h-20 gap-[3px]">
-              {(() => {
-                const price = [102,101,100,99,97,95,94,93,93,94,95,96,97,99,101,104,107,110,111,112,113,113,112,111,110,109,108,107]
-                const mn=93, mx=114
-                return price.map((v,i) => {
-                  const h = (v-mn)/(mx-mn)*72
-                  return <div key={i} style={{height:h+'px',background:'#58a6ff',width:'100%',borderRadius:'2px 2px 0 0',opacity:0.7,alignSelf:'flex-end'}} />
-                })
-              })()}
-            </div>
-            <div className="flex justify-between mt-2 text-[9px] text-gray-500 flex-wrap gap-1">
-              <span style={{color:'#3fb950'}}>█ Green growing = momentum up accel.</span>
-              <span style={{color:'rgba(63,185,80,0.6)'}}>█ Green shrink = momentum fading</span>
-              <span style={{color:'rgba(248,81,73,0.6)'}}>█ Red shrink = selling fading</span>
-              <span style={{color:'#f85149'}}>█ Red growing = momentum down accel.</span>
-            </div>
-          </div>
-
-          {/* 4-phase grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              {col:'#3fb950', bg:'bg-emerald-900/10', brd:'border-emerald-800/30', title:'Green Growing', subtitle:'Momentum Accelerating Up',
-               bars:[0.4,0.8,1.3,1.9,2.5,3.0,3.4], desc:'Gap between fast and slow MA expanding upward. Buyers accelerating.',
-               action:'Hold longs. Add on pullbacks to MA20. Do not exit early.', actionBg:'bg-emerald-900/20', actionCol:'text-emerald-400'},
-              {col:'rgba(63,185,80,0.6)', bg:'bg-emerald-900/5', brd:'border-emerald-800/20', title:'Green Shrinking', subtitle:'Momentum Fading',
-               bars:[3.4,2.9,2.3,1.7,1.1,0.6,0.2], desc:'Buyers still in control but losing steam. Move slowing.',
-               action:'Take partial profits (50%). Tighten stop to break-even.', actionBg:'bg-yellow-900/20', actionCol:'text-yellow-400'},
-              {col:'rgba(248,81,73,0.6)', bg:'bg-rose-900/5', brd:'border-rose-800/20', title:'Red Shrinking', subtitle:'Selling Momentum Fading',
-               bars:[-3.2,-2.6,-2.0,-1.4,-0.8,-0.3,-0.05], desc:'Sellers losing power. Reversal long setups start forming.',
-               action:'Watch for RSI 35–45 + MA test. Wait for green flip.', actionBg:'bg-blue-900/20', actionCol:'text-blue-400'},
-              {col:'#f85149', bg:'bg-rose-900/10', brd:'border-rose-800/30', title:'Red Growing', subtitle:'Momentum Accelerating Down',
-               bars:[0,-0.4,-0.9,-1.5,-2.2,-2.8,-3.3], desc:'Sellers accelerating. Short setups have maximum wind.',
-               action:'Hold shorts. Do NOT buy calls. Exit any longs.', actionBg:'bg-rose-900/20', actionCol:'text-rose-400'},
-            ].map(phase => (
-              <div key={phase.title} className={`rounded-lg border ${phase.brd} ${phase.bg} p-3`}>
-                <div className="text-xs font-bold mb-1" style={{color:phase.col}}>{phase.title}</div>
-                <div className="text-[10px] text-gray-500 mb-2">{phase.subtitle}</div>
-                <div className="flex items-end h-10 gap-[2px] mb-2">
-                  {phase.bars.map((v,i) => {
-                    const h = Math.abs(v)/3.5*32
-                    const growing = i===0 || (Math.abs(v) > Math.abs(phase.bars[i-1]))
-                    const col = growing ? phase.col : (phase.col.includes('rgba') ? phase.col : phase.col.replace(')', ',0.5)').replace('rgb','rgba'))
-                    return <div key={i} style={{height:h+'px',background:col,width:'100%',borderRadius:'2px',alignSelf:v>=0?'flex-end':'flex-start',marginTop:v>=0?'auto':'0',marginBottom:v>=0?'0':'auto'}} />
-                  })}
-                </div>
-                <div className="text-[11px] text-gray-400 leading-relaxed">{phase.desc}</div>
-                <div className={`mt-2 text-[10px] font-semibold px-2 py-1 rounded ${phase.actionBg} ${phase.actionCol}`}>{phase.action}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Crossover reference */}
-          <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-800/40 p-3">
-            <div className="text-[11px] font-semibold text-gray-500 mb-2">The Crossover — Where the Histogram Changes Color</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-lg border border-emerald-800/30 bg-emerald-900/10 p-3">
-                <div className="text-xs font-bold text-emerald-400 mb-1">▲ Bullish Crossover</div>
-                <div className="text-[11px] text-gray-400 leading-relaxed">MACD line crosses <span className="text-gray-200">above</span> signal line. Histogram flips red → green. <span className="text-emerald-400 font-semibold">Entry window opens: 1–5 days after crossover.</span></div>
-              </div>
-              <div className="rounded-lg border border-rose-800/30 bg-rose-900/10 p-3">
-                <div className="text-xs font-bold text-rose-400 mb-1">▼ Bearish Crossover</div>
-                <div className="text-[11px] text-gray-400 leading-relaxed">MACD line crosses <span className="text-gray-200">below</span> signal line. Histogram flips green → red. <span className="text-rose-400 font-semibold">Do not enter longs here. Wait for next bullish cross.</span></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Entry timing */}
-          <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-800/40 p-3">
-            <div className="text-[11px] font-semibold text-gray-500 mb-2">Entry Timing — Histogram Phases</div>
-            <div className="space-y-2">
-              {[
-                {bar:'RED GROWING', barBg:'bg-rose-900', barCol:'text-rose-400', name:'Do Not Enter Long', desc:'Momentum accelerating against you.', tag:'SKIP', tagBg:'bg-rose-900', tagCol:'text-rose-400'},
-                {bar:'RED SHRINK', barBg:'bg-rose-900/50', barCol:'text-rose-300', name:'Prepare — Not Yet', desc:'Sellers fading. Watch RSI and MA levels.', tag:'WATCH', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
-                {bar:'GREEN SMALL', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ IDEAL ENTRY — Crossover just happened', desc:'Early in the move. Maximum runway ahead.', tag:'ENTER HERE', tagBg:'bg-emerald-900', tagCol:'text-emerald-400', highlight:true},
-                {bar:'GREEN GROWING', barBg:'bg-emerald-900', barCol:'text-emerald-400', name:'✓ Good Entry — Momentum confirmed', desc:'Momentum building. Slightly later but valid.', tag:'ENTER', tagBg:'bg-emerald-900', tagCol:'text-emerald-400'},
-                {bar:'GREEN SHRINK', barBg:'bg-emerald-900/30', barCol:'text-emerald-300', name:'Late — Take Profits Instead', desc:'Move extended. Buying fading momentum.', tag:'EXIT / PARTIAL', tagBg:'bg-yellow-900', tagCol:'text-yellow-400'},
-              ].map(row => (
-                <div key={row.name} className={`flex items-center gap-3 px-2 py-2 rounded-lg ${row.highlight ? 'bg-emerald-900/10 border border-emerald-800/30' : ''}`}>
-                  <div className={`w-20 h-7 rounded flex items-center justify-center text-[9px] font-bold ${row.barBg} ${row.barCol} shrink-0`}>{row.bar}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-semibold text-gray-200">{row.name}</div>
-                    <div className="text-[10px] text-gray-500">{row.desc}</div>
-                  </div>
-                  <div className={`text-[9px] font-bold px-2 py-1 rounded ${row.tagBg} ${row.tagCol} shrink-0`}>{row.tag}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 3-second rule */}
-          <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-800/40 p-3">
-            <div className="text-[11px] font-semibold text-gray-500 mb-2">The Simple 3-Second Rule — Before Every Swing Entry</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-900 p-3 text-center">
-                <div className="text-2xl mb-2" style={{color:'#3fb950'}}>🟢</div>
-                <div className="text-xs font-bold text-emerald-400 mb-1">Green histogram?</div>
-                <div className="text-[10px] text-gray-500">Calls / Longs only<br />Growing = better<br />Shrinking = exit soon</div>
-              </div>
-              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-900 p-3 text-center">
-                <div className="text-2xl mb-2" style={{color:'#f85149'}}>🔴</div>
-                <div className="text-xs font-bold text-rose-400 mb-1">Red histogram?</div>
-                <div className="text-[10px] text-gray-500">Puts / Shorts only<br />Growing = better<br />Shrinking = cover soon</div>
-              </div>
-              <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-gray-50 dark:bg-slate-900 p-3 text-center">
-                <div className="text-2xl mb-2" style={{color:'#d29922'}}>⬜</div>
-                <div className="text-xs font-bold text-yellow-400 mb-1">Crossing zero?</div>
-                <div className="text-[10px] text-gray-500">Wait 1 day<br />Let direction confirm<br />Do not anticipate</div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-yellow-800/30 bg-yellow-900/10 p-3 text-[11px] text-yellow-300 leading-relaxed">
-              <strong>Honest truth:</strong> If the histogram color does not match your trade direction — do not enter. No exceptions.
-            </div>
-          </div>
-        </div>
-      </details>
 
       {/* Metric chart — price + MA20/50 + RSI */}
       {result && result.metrics && (() => {
