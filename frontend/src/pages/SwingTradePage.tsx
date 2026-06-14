@@ -8,7 +8,11 @@ import MacdHistogramChart from '../components/MacdHistogramChart'
 import SwingTradeWalkthrough from '../components/SwingTradeWalkthrough'
 import { analyzeSwingTrade, analyzeV2, saveToJournal, deskApi } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis, SwingTradeScanResult } from '../api/client'
-import { fetchMyTickers } from '../api/commandCenter'
+import { fetchMyTickers, fetchStockTargets, type StockTargetData } from '../api/commandCenter'
+import {
+  buildFibData, detectFibMaConfluence, loadSwingToolSettings,
+  FIB_PCTS, FIB_ZONE_META, EMA9_TOOLTIP, FIB_TOOLTIP, CONFLUENCE_TOOLTIP,
+} from '../utils/fibConfluence'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import { computeExecLevels } from '../components/SwingTradeEnginePanel'
@@ -162,6 +166,7 @@ export default function SwingTradePage() {
   const navigate = useNavigate()
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [savedToJournal, setSavedToJournal] = useState(false)
+  const [fibTargets, setFibTargets] = useState<StockTargetData | null>(null)
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -171,6 +176,19 @@ export default function SwingTradePage() {
       setMyTickers(symbols)
     }).catch(() => {})
   }, [])
+
+  // 9 EMA + Fibonacci swing high/low come from /stock-targets (same source as the
+  // EOD Journal). Refetch whenever the loaded ticker changes.
+  useEffect(() => {
+    const sym = result?.ticker
+    if (!sym) { setFibTargets(null); return }
+    let cancelled = false
+    setFibTargets(null)
+    fetchStockTargets(sym, undefined, loadSwingToolSettings().fibLookback)
+      .then(t => { if (!cancelled) setFibTargets(t) })
+      .catch(() => { if (!cancelled) setFibTargets(null) })
+    return () => { cancelled = true }
+  }, [result?.ticker])
 
   const runScan = useCallback(async (overrideTicker?: string) => {
     const sym = (overrideTicker || ticker).trim().toUpperCase()
@@ -861,6 +879,120 @@ export default function SwingTradePage() {
             )
           })()}
 
+          {/* ── 9 EMA + Fibonacci & Confluence — pullback tooling ── */}
+          {fibTargets && (() => {
+            const swingCfg = loadSwingToolSettings()
+            const close = fibTargets.current_price
+            const fib = buildFibData(
+              fibTargets.fib_swing_high, fibTargets.fib_swing_high_date,
+              fibTargets.fib_swing_low, fibTargets.fib_swing_low_date,
+              fibTargets.fib_direction, close,
+            )
+            const confluence = detectFibMaConfluence(
+              { close, ema9: fibTargets.ema9, ma20: fibTargets.ma20, ma50: fibTargets.ma50, fibLevels: fib?.levels ?? null },
+              swingCfg.confluenceTightness,
+            )
+            const fmtP = (n: number) => `$${n.toFixed(2)}`
+            const fmtD = (iso?: string | null) => {
+              if (!iso) return ''
+              const d = new Date(iso + 'T00:00:00')
+              return isNaN(d.getTime()) ? '' : ` (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
+            }
+            // 9 EMA color: above+rising green, above+flat amber, below red
+            const ema9Color = fibTargets.ema9 == null ? st.muted
+              : fibTargets.price_vs_ema9 === 'below' ? st.red
+              : fibTargets.ema9_slope === 'up' ? st.green : st.amber
+            const ema9Sub = fibTargets.ema9 == null ? '—'
+              : fibTargets.price_vs_ema9 === 'below' ? 'below — early warning'
+              : fibTargets.ema9_slope === 'up' ? 'above — strong'
+              : fibTargets.ema9_slope === 'down' ? 'above — fading' : 'above — slowing'
+            const maTile = (label: string, value: number | null, color: string, sub: string, tip?: string) => (
+              <div style={{ background: st.bgDeep, border: `1px solid ${st.border}`, borderRadius: 10, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.6rem', fontWeight: 700, color: st.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>
+                  {label}{tip && <span title={tip} style={{ cursor: 'help', color: st.muted, opacity: 0.7 }}>ⓘ</span>}
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace', color }}>{value != null ? fmtP(value) : '—'}</div>
+                <div style={{ fontSize: '0.62rem', color: st.muted, marginTop: 1 }}>{sub}</div>
+              </div>
+            )
+            const zoneMeta = fib ? FIB_ZONE_META[fib.currentZone] : null
+            return (
+              <div className="dt-card" style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: st.text, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Fibonacci & Confluence</span>
+                  <span style={{ fontSize: '0.66rem', color: st.muted }}>Pullback zones · where levels align</span>
+                </div>
+
+                {/* 9 EMA / MA20 / MA50 */}
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${swingCfg.showEma9 && fibTargets.ema9 != null ? 3 : 2}, 1fr)`, gap: 8, marginBottom: 12 }}>
+                  {swingCfg.showEma9 && fibTargets.ema9 != null && maTile('9 EMA', fibTargets.ema9, ema9Color, ema9Sub, EMA9_TOOLTIP)}
+                  {maTile('MA20', fibTargets.ma20, close < fibTargets.ma20 ? st.red : st.green, close < fibTargets.ma20 ? 'below' : 'above')}
+                  {maTile('MA50', fibTargets.ma50, close < fibTargets.ma50 ? st.red : st.green, close < fibTargets.ma50 ? 'below' : 'above')}
+                </div>
+
+                {/* Fibonacci levels */}
+                {fib ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.72rem', color: st.muted, flexWrap: 'wrap' }}>
+                      <span title={FIB_TOOLTIP} style={{ cursor: 'help', fontWeight: 700, color: st.text }}>Fibonacci ⓘ</span>
+                      <span>Swing High <span style={{ fontFamily: 'monospace', color: st.text, fontWeight: 700 }}>{fmtP(fib.swingHigh)}</span>{fmtD(fib.swingHighDate)}</span>
+                      <span>→ Swing Low <span style={{ fontFamily: 'monospace', color: st.text, fontWeight: 700 }}>{fmtP(fib.swingLow)}</span>{fmtD(fib.swingLowDate)}</span>
+                      <span style={{ color: fib.direction === 'up' ? st.green : st.red, fontWeight: 700 }}>· {fib.direction === 'up' ? 'Bullish pullback' : 'Bearish bounce'}</span>
+                    </div>
+                    <div style={{ marginBottom: 10 }}>
+                      {FIB_PCTS.map(p => {
+                        const meta = FIB_ZONE_META[p]
+                        const isCur = fib.currentZone === p
+                        return (
+                          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 6, marginBottom: 2, background: isCur ? `${meta.color}14` : 'transparent', border: isCur ? `1px solid ${meta.color}55` : '1px solid transparent' }}>
+                            <span style={{ width: 9, height: 9, borderRadius: 2, background: meta.color, flexShrink: 0 }} />
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: meta.color, fontSize: '0.78rem', minWidth: 42 }}>{p}%</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: st.text, fontSize: '0.78rem', minWidth: 64 }}>{fmtP(fib.levels[p])}</span>
+                            <span style={{ fontSize: '0.68rem', color: st.muted, flex: 1 }}>{meta.label}</span>
+                            {isCur && <span style={{ fontSize: '0.55rem', fontWeight: 700, color: meta.color, textTransform: 'uppercase' }}>here</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {zoneMeta && (
+                      <div style={{ borderLeft: `3px solid ${zoneMeta.color}`, background: `${zoneMeta.color}12`, borderRadius: 4, padding: '7px 11px', fontSize: '0.72rem', color: st.text, lineHeight: 1.5, marginBottom: 12 }}>
+                        Price <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmtP(close)}</span> → <span style={{ color: zoneMeta.color, fontWeight: 700 }}>{fib.currentZone}% zone</span>. {zoneMeta.verdict}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: '0.72rem', color: st.muted, marginBottom: 12 }}>Swing high/low not available for fib calculation.</div>
+                )}
+
+                {/* Confluence zones */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span title={CONFLUENCE_TOOLTIP} style={{ cursor: 'help', fontSize: '0.72rem', fontWeight: 700, color: st.text }}>Confluence zones ⓘ</span>
+                </div>
+                {confluence.length === 0 ? (
+                  <div style={{ fontSize: '0.7rem', color: st.muted, lineHeight: 1.5 }}>No levels aligning within the threshold right now. Watch for a pullback toward a cluster of 9 EMA / MA20 / MA50 / fib.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {confluence.map((z, i) => {
+                      const strong = z.strength === 'STRONG'
+                      const col = strong ? st.green : st.amber
+                      const below = z.price <= close
+                      return (
+                        <div key={i} style={{ borderLeft: `3px solid ${col}`, background: st.bgDeep, borderRadius: 6, padding: '7px 11px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, color: st.text, fontSize: '0.85rem' }}>{fmtP(z.price)}</span>
+                            <span style={{ fontSize: '0.58rem', fontWeight: 700, color: col, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{strong ? '⭐ Strong' : 'Medium'}</span>
+                            <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: st.muted, fontFamily: 'monospace' }}>{fmtP(Math.abs(z.price - close))} {below ? 'below' : 'above'}</span>
+                          </div>
+                          <div style={{ fontSize: '0.66rem', color: st.muted, marginTop: 2 }}>{z.levelsAligned.join(' + ')} · {below ? 'pullback support' : 'resistance'}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* Options Entry Check — swing mode (7/14/21/28 DTE) */}
           {result && result.metrics && (() => {
             const m    = result.metrics as Record<string, unknown>
@@ -881,6 +1013,12 @@ export default function SwingTradePage() {
                 ? 'Wait for price to close above the breakout trigger — do not enter before confirmation.'
                 : 'Wait for price to close below the breakdown trigger — do not enter before confirmation.'
             )
+            // Recommended structure drives which option side is analyzed — so credit
+            // spreads (Bull Put / Bear Call) and debit spreads are reflected correctly,
+            // not just LONG/SHORT single legs.
+            const structure = result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE'
+              ? result.suggested_strategy
+              : (unified.structure && unified.structure !== 'See analysis' ? unified.structure : undefined)
             return (
               <OptionsEntryCheck
                 key={ocKey}
@@ -893,6 +1031,7 @@ export default function SwingTradePage() {
                 initialPrice={lastPrice || 0}
                 isDark={isDark}
                 mode="swing"
+                structure={structure}
               />
             )
           })()}

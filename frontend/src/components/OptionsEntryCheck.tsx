@@ -99,12 +99,22 @@ export interface OptionsEntryCheckProps {
   isDark?: boolean
   /** 'day' shows 5/7 DTE; 'swing' shows 7/14/21/28 DTE */
   mode?: 'day' | 'swing'
+  /**
+   * Recommended options structure (e.g. "Bull Put Spread", "Bear Call Spread",
+   * "Debit Call Spread", "Long Call"). Drives which option side (calls vs puts)
+   * is analyzed and the displayed label. Credit spreads invert the naive
+   * direction→side mapping: Bull Put is bullish but uses puts; Bear Call is
+   * bearish but uses calls. When omitted, falls back to direction (LONG→call,
+   * SHORT→put) for backward compatibility with the day-trade pages.
+   */
+  structure?: string
 }
 
 export default function OptionsEntryCheck({
   ticker, direction, stopPrice, chartTrigger, flipCondition, pcAlignment, initialPrice,
   isDark = true,
   mode = 'day',
+  structure,
 }: OptionsEntryCheckProps) {
   const T = makeT(isDark)
   const dteOptions = mode === 'swing' ? [7, 14, 21, 28] : [5, 7]
@@ -182,7 +192,14 @@ export default function OptionsEntryCheck({
     }
   }
 
-  const side: 'put' | 'call' = direction === 'SHORT' ? 'put' : 'call'
+  // Option side comes from the recommended structure when available, since credit
+  // spreads invert direction (Bull Put = bullish/puts, Bear Call = bearish/calls).
+  const structLc = (structure ?? '').toLowerCase()
+  const side: 'put' | 'call' = /call/.test(structLc) ? 'call'
+    : /put/.test(structLc) ? 'put'
+    : direction === 'SHORT' ? 'put' : 'call'
+  const strategyLabel = (structure ?? '').replace(/\s*·\s*\d+\s*DTE.*$/i, '').trim()
+    || (direction === 'SHORT' ? 'Short' : 'Long')
   const rows: OptionChainRow[] = data ? (side === 'call' ? data.calls : data.puts) : []
   const atmIdx = rows.length > 0
     ? rows.reduce((b, r, i) => Math.abs(r.strike - livePrice) < Math.abs(rows[b]!.strike - livePrice) ? i : b, 0)
@@ -191,7 +208,7 @@ export default function OptionsEntryCheck({
   const three: { r: OptionChainRow; lbl: 'ITM' | 'ATM' | 'OTM' }[] = []
   if (atmIdx >= 0) {
     const atmRow = rows[atmIdx]!
-    if (direction === 'SHORT') {
+    if (side === 'put') {
       const itm = rows[atmIdx + 1]; const otm = rows[atmIdx - 1]
       if (itm) three.push({ r: itm, lbl: 'ITM' })
       three.push({ r: atmRow, lbl: 'ATM' })
@@ -208,7 +225,7 @@ export default function OptionsEntryCheck({
   // Strike is more than 5% from current price → chain is incomplete for this expiry
   const atmTooFar  = atmRow != null && Math.abs(atmRow.strike - livePrice) / livePrice > 0.05
   const ss         = (atmRow && !atmTooFar) ? (atmRow.spread_pct <= 5 ? 'ok' : atmRow.spread_pct <= 10 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' : null
-  const word    = (direction === 'SHORT' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
+  const word    = (side === 'put' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
   const { tier, msg } = ocVerdictStrip(chartTrigger, pcAlignment, ss, flipCondition, word, atmRow?.strike ?? null, stopPrice)
 
   const vtBg  = tier === 'green' ? T.greenBg  : tier === 'amber' ? T.amberBg  : tier === 'red' ? T.redBg  : T.grayBg
@@ -242,8 +259,9 @@ export default function OptionsEntryCheck({
               color:      direction === 'SHORT' ? T.shortBadgeTxt : T.longBadgeTxt,
             }}
           >
-            {direction === 'SHORT' ? '▼ SHORT' : '▲ LONG'}
+            {direction === 'SHORT' ? '▼ ' : '▲ '}{strategyLabel.toUpperCase()}
           </span>
+          <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>{word}S</span>
           {loading && <span style={{ fontSize: 10, color: T.muted }}>loading…</span>}
           {data && selDte !== null && !loading && (
             <span style={{ fontSize: 10, color: T.muted }}>{selDte}DTE · {side}s</span>
