@@ -8,6 +8,12 @@ import {
 } from '../api/commandCenter'
 import { analyzeSwingTrade, type SwingTradeScanResult } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
+import {
+  buildFibData, detectFibMaConfluence, loadSwingToolSettings,
+  FIB_PCTS, FIB_COLORS, FIB_ZONE_META,
+  EMA9_TOOLTIP, FIB_TOOLTIP, CONFLUENCE_TOOLTIP,
+  type FibData, type ConfluenceZone,
+} from '../utils/fibConfluence'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +50,13 @@ interface StockAnalysis {
   ma50: number | null
   rsi: number | null
   ivr: number | null
+  // ── Additive: 9 EMA early-momentum signal ──
+  ema9: number | null
+  ema9Slope: 'up' | 'flat' | 'down' | null
+  priceVsEma9: 'above' | 'at' | 'below' | null
+  // ── Additive: Fibonacci + confluence pullback tooling ──
+  fib: FibData | null
+  confluence: ConfluenceZone[]
   structure: string
   weeklyTrend: string
   macd: string
@@ -98,7 +111,18 @@ const EOD_CHECKS = [
   'Set price alerts for trigger levels',
   'Defined entry, stop, and target for each setup',
   'Checked earnings calendar — no surprises',
+  // ── Additive items (13–15): 9 EMA / Fib / Confluence pullback tooling ──
+  '9 EMA crossed against my position? (early warning — tighten stop, do not exit)',
+  'Identified fib retracement from recent swing high/low',
+  'Found confluence zone for entry',
 ]
+
+// Sub-notes for the additive checklist items, keyed by index.
+const EOD_CHECK_NOTES: Record<number, string> = {
+  12: 'If holding long and price closed below 9 EMA today: tighten stop, do not exit. 9 EMA is early warning. If the next 2 days also close below 9 EMA, exit. The actual exit trigger remains the MA20 break.',
+  13: 'Draw fib from the last 20-day swing. Note which level current price is in (23.6%, 38.2%, 50%, 61.8%, 78.6%).',
+  14: 'Two or more levels aligning within $1 = high-conviction entry zone. Three or more = strong setup. Set an alert at this price.',
+}
 
 const NOTES_KEY = 'eod_journal_notes_'
 const CHECKS_KEY = 'eod_journal_checks_'
@@ -603,10 +627,13 @@ function ScenarioCard({ type, data, ticker }: { type: 'bull' | 'bear'; data: Sce
 
 // ─── Stat Box ─────────────────────────────────────────────────────────────────
 
-function StatBox({ label, value, sub, color }: { label: string; value: string; sub: string; color?: string }) {
+function StatBox({ label, value, sub, color, tooltip }: { label: string; value: string; sub: string; color?: string; tooltip?: string }) {
   return (
     <div style={{ background: '#1c2330', border: '1px solid #21262d', borderRadius: 7, padding: '9px 11px' }}>
-      <div style={{ fontSize: 10, color: '#8b949e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 10, color: '#8b949e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {label}
+        {tooltip && <span title={tooltip} style={{ cursor: 'help', userSelect: 'none', color: '#6e7681' }}>ⓘ</span>}
+      </div>
       <div style={{ fontSize: 14, fontWeight: 700, color: color ?? '#f0f6fc', fontFamily: 'monospace' }}>{value}</div>
       <div style={{ fontSize: 10, color: '#8b949e', marginTop: 2 }}>{sub}</div>
     </div>
@@ -655,6 +682,166 @@ function saveChecks(c: Record<number, boolean>) {
   try { localStorage.setItem(CHECKS_KEY + todayKey(), JSON.stringify(c)) } catch { /* quota */ }
 }
 
+// ─── Fibonacci + Confluence panels (additive) ──────────────────────────────────
+
+interface PanelColors { isDark: boolean; cardBg: string; cardBg2: string; bdr: string; tx: string; txMuted: string }
+
+function fmtSwingDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Fib ladder — dotted horizontal lines per level, labelled with % + price (Part 13).
+function FibLadder({ fib, price, colors }: { fib: FibData; price: number; colors: PanelColors }) {
+  const vals = FIB_PCTS.map(p => fib.levels[p])
+  const lo = Math.min(...vals, price, fib.swingLow)
+  const hi = Math.max(...vals, price, fib.swingHigh)
+  const span = hi - lo || 1
+  const H = 150, W = 320, padX = 8
+  const y = (v: number) => 8 + (1 - (v - lo) / span) * (H - 16)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+      {FIB_PCTS.map(p => {
+        const yy = y(fib.levels[p])
+        const col = FIB_COLORS[p]
+        const isCur = fib.currentZone === p
+        return (
+          <g key={p}>
+            <line x1={padX} y1={yy} x2={W - padX} y2={yy} stroke={col} strokeWidth={isCur ? 1.6 : 1} strokeDasharray="4 3" opacity={isCur ? 1 : 0.7} />
+            <text x={padX} y={yy - 3} fontSize="9" fill={col} fontFamily="monospace" fontWeight={isCur ? 700 : 400}>{p}%</text>
+            <text x={W - padX} y={yy - 3} fontSize="9" fill={col} fontFamily="monospace" textAnchor="end" fontWeight={isCur ? 700 : 400}>${fib.levels[p].toFixed(2)}</text>
+          </g>
+        )
+      })}
+      {/* Current price marker */}
+      <line x1={padX} y1={y(price)} x2={W - padX} y2={y(price)} stroke={colors.isDark ? '#f0f6fc' : '#1f2328'} strokeWidth={1.4} />
+      <text x={(W) / 2} y={y(price) - 3} fontSize="9" fill={colors.isDark ? '#f0f6fc' : '#1f2328'} fontFamily="monospace" textAnchor="middle" fontWeight={700}>now ${price.toFixed(2)}</text>
+    </svg>
+  )
+}
+
+function FibPanel({ fib, price, colors }: { fib: FibData; price: number; colors: PanelColors }) {
+  const { cardBg, cardBg2, bdr, tx, txMuted } = colors
+  const zoneMeta = FIB_ZONE_META[fib.currentZone]
+  return (
+    <div style={{ background: cardBg, border: `1px solid ${bdr}`, borderRadius: 8, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: tx }}>Fibonacci Retracement</span>
+        <span title={FIB_TOOLTIP} style={{ fontSize: 12, color: txMuted, cursor: 'help', userSelect: 'none' }}>ⓘ</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: fib.direction === 'up' ? '#3fb950' : '#f85149', fontWeight: 700 }}>
+          {fib.direction === 'up' ? 'Bullish — measuring pullback zones' : 'Bearish — measuring bounce zones'}
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: txMuted, marginBottom: 12 }}>
+        Swing High: <span style={{ color: tx, fontWeight: 700, fontFamily: 'monospace' }}>{fmt(fib.swingHigh)}</span>{fib.swingHighDate ? ` (${fmtSwingDate(fib.swingHighDate)})` : ''}
+        {'  →  '}
+        Swing Low: <span style={{ color: tx, fontWeight: 700, fontFamily: 'monospace' }}>{fmt(fib.swingLow)}</span>{fib.swingLowDate ? ` (${fmtSwingDate(fib.swingLowDate)})` : ''}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+        {/* Level rows */}
+        <div>
+          {FIB_PCTS.map(p => {
+            const meta = FIB_ZONE_META[p]
+            const isCur = fib.currentZone === p
+            return (
+              <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 5, marginBottom: 2, background: isCur ? (colors.isDark ? 'rgba(255,255,255,.05)' : '#f0f4f8') : 'transparent', border: isCur ? `1px solid ${meta.color}` : '1px solid transparent' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: meta.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: meta.color, fontFamily: 'monospace', minWidth: 44 }}>{p}%</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: tx, fontFamily: 'monospace', minWidth: 70 }}>{fmt(fib.levels[p])}</span>
+                <span style={{ fontSize: 11, color: txMuted, flex: 1 }}>← {meta.label}</span>
+                {isCur && <span style={{ fontSize: 9, fontWeight: 700, color: meta.color, textTransform: 'uppercase' }}>here</span>}
+              </div>
+            )
+          })}
+        </div>
+        {/* Ladder visual */}
+        <div style={{ background: cardBg2, borderRadius: 6, border: `1px solid ${bdr}`, padding: '6px 4px' }}>
+          <FibLadder fib={fib} price={price} colors={colors} />
+        </div>
+      </div>
+
+      {/* Verdict */}
+      <div style={{ marginTop: 12, borderRadius: 7, padding: '9px 12px', fontSize: 12, borderLeft: `3px solid ${zoneMeta.color}`, background: colors.isDark ? 'rgba(0,0,0,.25)' : '#f6f8fa', color: tx, lineHeight: 1.6 }}>
+        Current price <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(price)}</span> → in the{' '}
+        <span style={{ color: zoneMeta.color, fontWeight: 700 }}>{fib.currentZone}% zone</span>.{' '}
+        <strong>Verdict:</strong> {zoneMeta.verdict}
+      </div>
+    </div>
+  )
+}
+
+function ConfluencePanel({ zones, price, colors }: { zones: ConfluenceZone[]; price: number; colors: PanelColors }) {
+  const { cardBg, bdr, tx, txMuted } = colors
+  return (
+    <div style={{ background: cardBg, border: `1px solid ${bdr}`, borderRadius: 8, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: tx }}>Confluence Zones</span>
+        <span title={CONFLUENCE_TOOLTIP} style={{ fontSize: 12, color: txMuted, cursor: 'help', userSelect: 'none' }}>ⓘ</span>
+        <span style={{ fontSize: 11, color: txMuted }}>Where multiple levels align</span>
+      </div>
+      {zones.length === 0 ? (
+        <div style={{ fontSize: 12, color: txMuted, lineHeight: 1.6 }}>
+          No levels aligning within the confluence threshold right now. Wait for price to pull back toward a zone where 9 EMA, MA20/50, or a fib level cluster.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {zones.map((z, i) => {
+            const strong = z.strength === 'STRONG'
+            const col = strong ? '#3fb950' : '#d29922'
+            const below = z.price <= price
+            const dist = Math.abs(z.price - price)
+            const type = below ? 'Pullback support — high-conviction buy zone' : 'Resistance — caution if approaching'
+            return (
+              <div key={i} style={{ borderLeft: `3px solid ${col}`, background: colors.isDark ? 'rgba(0,0,0,.25)' : '#f6f8fa', borderRadius: 7, padding: '9px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: tx, fontFamily: 'monospace' }}>{fmt(z.price)}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: col, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{strong ? '⭐ STRONG' : 'MEDIUM'}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: txMuted, fontFamily: 'monospace' }}>{fmt(dist)} {below ? 'below' : 'above'}</span>
+                </div>
+                <div style={{ fontSize: 11, color: tx, marginBottom: 2 }}>Levels: <span style={{ color: col, fontWeight: 700 }}>{z.levelsAligned.join(' + ')}</span></div>
+                <div style={{ fontSize: 11, color: txMuted }}>Type: {type}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Static worked example for first-time users (Part 11). Collapsed by default.
+function ArmExamplePanel({ colors }: { colors: PanelColors }) {
+  const { cardBg2, bdr, tx, txMuted } = colors
+  const rows: [string, string][] = [
+    ['23.6%', '$366.12'], ['38.2%', '$354.44'], ['50.0%', '$345.00'], ['61.8%', '$335.56'], ['78.6%', '$322.12'],
+  ]
+  return (
+    <div style={{ background: cardBg2, border: `1px dashed ${bdr}`, borderRadius: 8, padding: '14px 16px', fontSize: 12, color: txMuted, lineHeight: 1.7 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#58a6ff', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Example — ARM (how to read fib + 9 EMA + MAs)</div>
+      <div>Recent swing low: <strong style={{ color: tx }}>$305 (Jun 11)</strong> → swing high: <strong style={{ color: tx }}>$385 (Jun 13)</strong>. Direction: <span style={{ color: '#3fb950', fontWeight: 700 }}>Bullish</span> — measuring pullback zones.</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, margin: '8px 0' }}>
+        {rows.map(([p, v]) => (
+          <div key={p} style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, color: tx, fontFamily: 'monospace' }}>{p}</div>
+            <div style={{ fontFamily: 'monospace' }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div>MAs: 9 EMA <strong style={{ color: tx }}>$355</strong> · MA20 <strong style={{ color: tx }}>$345</strong> · MA50 <strong style={{ color: tx }}>$315</strong>.</div>
+      <div style={{ marginTop: 6 }}>
+        <span style={{ color: '#d29922', fontWeight: 700 }}>$354 zone</span> = 38.2% Fib + 9 EMA (within $1) → MEDIUM.{' '}
+        <span style={{ color: '#3fb950', fontWeight: 700 }}>$345 zone ⭐</span> = 50% Fib + MA20 (exact) → STRONG.
+      </div>
+      <div style={{ marginTop: 6, color: tx }}>
+        If ARM pulls back, watch $354 first (early support). If $354 fails, $345 is the high-conviction buy zone where 50% Fib and MA20 both support. Below $335 (61.8% Fib), the trend is in question.
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function EODJournalPage() {
@@ -672,7 +859,8 @@ export default function EODJournalPage() {
   const [vixVal,      setVixVal]      = useState<number | null>(null)
   const [checkState,  setCheckState]  = useState<Record<number, boolean>>(loadChecks)
   const [notes,       setNotes]       = useState<Record<string, StockNotes>>(loadNotes)
-  const [collapsed,   setCollapsed]   = useState<Record<string, boolean>>({})
+  const [collapsed,   setCollapsed]   = useState<Record<string, boolean>>({ fibExample: true })
+  const [showEma9]                    = useState(() => loadSwingToolSettings().showEma9)
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [addQuery,    setAddQuery]    = useState('')
@@ -715,10 +903,11 @@ export default function EODJournalPage() {
 
     try {
       const mt = myTickers.find(t => t.symbol === ticker)
+      const swingSettings = loadSwingToolSettings()
 
       // Fetch in parallel: stock targets + swing analysis + signal feed (for IV rank)
       const [targetsRes, swingRes, feedRes, sectorRes] = await Promise.allSettled([
-        fetchStockTargets(ticker),
+        fetchStockTargets(ticker, undefined, swingSettings.fibLookback),
         analyzeSwingTrade(ticker) as Promise<SwingTradeScanResult>,
         fetchSignalFeed({ search: ticker, page_size: 5 }),
         Promise.allSettled(SECTOR_ETFS.map(s => fetchStockTargets(s.etf))),
@@ -783,12 +972,33 @@ export default function EODJournalPage() {
         : sector.toLowerCase().includes('industri') ? 'XLI'
         : 'SPY'
 
+      // ── 9 EMA + Fibonacci + confluence (additive pullback tooling) ───────
+      const ema9        = targets?.ema9 ?? null
+      const ema9Slope   = targets?.ema9_slope ?? null
+      const priceVsEma9 = targets?.price_vs_ema9 ?? null
+      const fib = buildFibData(
+        targets?.fib_swing_high, targets?.fib_swing_high_date,
+        targets?.fib_swing_low,  targets?.fib_swing_low_date,
+        targets?.fib_direction,  close,
+      )
+      const confluence = detectFibMaConfluence(
+        { close, ema9, ma20, ma50, fibLevels: fib?.levels ?? null },
+        swingSettings.confluenceTightness,
+      )
+
       // ── Generate scenarios ───────────────────────────────────────────────
       const scenarios = generateScenarios(
         close, vwap, ma20, ma50,
         bullScore, bearScore,
         brkLvl, riskBel, scalpTgt,
       )
+
+      // Enhance the bull entry with the nearest support confluence zone (Part 7).
+      const supportZone = confluence.find(z => z.price <= close)
+      if (supportZone) {
+        scenarios.bull.entry =
+          `${fmt(supportZone.price)} confluence zone (${supportZone.levelsAligned.join(' + ')} align here)`
+      }
 
       // ── Sector data ──────────────────────────────────────────────────────
       const spyTargets = sectorResults.find((_, i) => SECTOR_ETFS[i]?.etf === 'SPY')
@@ -811,7 +1021,10 @@ export default function EODJournalPage() {
         ticker, company, sector,
         close, prevClose, vwap,
         ma20, ma50, rsi,
-        ivr, structure: struct,
+        ivr,
+        ema9, ema9Slope, priceVsEma9,
+        fib, confluence,
+        structure: struct,
         weeklyTrend: wkTrnd,
         macd, rs, volRatio,
         sectorEtf, bias,
@@ -903,6 +1116,18 @@ export default function EODJournalPage() {
   const chgPct = analysis && analysis.prevClose > 0 ? (chgAbs / analysis.prevClose) * 100 : 0
   const isUp   = chgAbs >= 0
 
+  // ── 9 EMA display: color + sub (Part 1) ──
+  // Above + rising = green (strong); above + flat = yellow (slowing); below = red (early warning)
+  const ema9Color = analysis?.ema9 == null ? '#8b949e'
+    : analysis.priceVsEma9 === 'below' ? '#f85149'
+    : analysis.ema9Slope === 'up' ? '#3fb950'
+    : '#d29922'
+  const ema9Sub = analysis?.ema9 == null ? 'Not available'
+    : analysis.priceVsEma9 === 'below' ? 'Below — early warning'
+    : analysis.ema9Slope === 'up' ? 'Above — strong momentum'
+    : analysis.ema9Slope === 'down' ? 'Above — momentum fading'
+    : 'Above — momentum slowing'
+
   const ivrNum       = analysis?.ivr ?? 0
   const optionsType  = ivrNum < 40
     ? (analysis?.bias === 'bull' ? 'Buy ATM Call' : 'Buy ATM Put')
@@ -922,7 +1147,10 @@ export default function EODJournalPage() {
   const primaryBias = bearPct > bullPct ? 'SHORT' : 'LONG'
   const domScenario = bearPct > bullPct ? analysis?.scenarios.bear : analysis?.scenarios.bull
 
-  const conf = analysis?.confidence ?? 50
+  const baseConf = analysis?.confidence ?? 50
+  // Part 12: nudge the displayed confidence by the current fib zone (scenario logic unchanged).
+  const fibAdjust = analysis?.fib ? FIB_ZONE_META[analysis.fib.currentZone].probAdjust : 0
+  const conf = Math.max(0, Math.min(100, baseConf + fibAdjust))
 
   const mySector = analysis ? sectors.find(s => s.etf === analysis.sectorEtf) : null
   const spySector = sectors.find(s => s.etf === 'SPY')
@@ -941,6 +1169,8 @@ export default function EODJournalPage() {
   const bdr      = isDark ? '#21262d' : '#d0d7de'
   const tx       = isDark ? '#f0f6fc' : '#1f2328'
   const txMuted  = isDark ? '#8b949e' : '#57606a'
+
+  const panelColors: PanelColors = { isDark, cardBg, cardBg2, bdr, tx, txMuted }
 
   const iStyle: React.CSSProperties = {
     background: isDark ? '#0d1117' : '#f6f8fa',
@@ -1082,7 +1312,12 @@ export default function EODJournalPage() {
               {EOD_CHECKS.map((c, i) => (
                 <div key={i} onClick={() => toggleCheck(i)} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '5px 7px', background: checkState[i] ? '#0d2011' : cardBg, border: `1px solid ${checkState[i] ? '#1a4a1f' : bdr}`, borderRadius: 5, cursor: 'pointer', transition: 'all 0.15s' }}>
                   {checkState[i] ? <CheckSquare size={13} style={{ color: '#3fb950', flexShrink: 0, marginTop: 1 }} /> : <Square size={13} style={{ color: '#30363d', flexShrink: 0, marginTop: 1 }} />}
-                  <span style={{ fontSize: 11, color: checkState[i] ? '#6e7681' : tx, textDecoration: checkState[i] ? 'line-through' : 'none', flex: 1, lineHeight: 1.4 }}>{c}</span>
+                  <span style={{ flex: 1 }}>
+                    <span style={{ fontSize: 11, color: checkState[i] ? '#6e7681' : tx, textDecoration: checkState[i] ? 'line-through' : 'none', lineHeight: 1.4, display: 'block' }}>{c}</span>
+                    {EOD_CHECK_NOTES[i] && (
+                      <span style={{ fontSize: 10, color: txMuted, lineHeight: 1.4, display: 'block', marginTop: 2 }}>{EOD_CHECK_NOTES[i]}</span>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1179,7 +1414,7 @@ export default function EODJournalPage() {
                 </div>
 
                 {/* Stat boxes */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${showEma9 && analysis.ema9 != null ? 6 : 5}, 1fr)`, gap: 8, marginBottom: 10 }}>
                   <StatBox
                     label="Close"
                     value={fmt(analysis.close)}
@@ -1192,6 +1427,15 @@ export default function EODJournalPage() {
                     sub={analysis.vwap ? (analysis.close < analysis.vwap ? 'Close below VWAP' : 'Close above VWAP') : 'Not available'}
                     color={analysis.vwap ? (analysis.close < analysis.vwap ? '#f85149' : '#3fb950') : txMuted}
                   />
+                  {showEma9 && analysis.ema9 != null && (
+                    <StatBox
+                      label="9 EMA"
+                      value={fmt(analysis.ema9)}
+                      sub={ema9Sub}
+                      color={ema9Color}
+                      tooltip={EMA9_TOOLTIP}
+                    />
+                  )}
                   <StatBox
                     label="MA20"
                     value={analysis.ma20 ? fmt(analysis.ma20) : '—'}
@@ -1317,6 +1561,25 @@ export default function EODJournalPage() {
                 )}
               </div>
 
+              {/* ── Fibonacci & Confluence (additive pullback tooling) ── */}
+              <div>
+                <SectionHeader id="fib" title="Fibonacci & Confluence" sub="Pullback zones + where levels align" collapsed={!!collapsed['fib']} onToggle={toggleSection} />
+                {!collapsed['fib'] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {analysis.fib
+                      ? <FibPanel fib={analysis.fib} price={analysis.close} colors={panelColors} />
+                      : <div style={{ background: cardBg, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px', fontSize: 12, color: txMuted }}>Swing high/low not available for fib calculation.</div>
+                    }
+                    <ConfluencePanel zones={analysis.confluence} price={analysis.close} colors={panelColors} />
+                    {/* First-time example */}
+                    <div>
+                      <SectionHeader id="fibExample" title="Example" sub="ARM — how to read this" collapsed={!!collapsed['fibExample']} onToggle={toggleSection} />
+                      {!collapsed['fibExample'] && <ArmExamplePanel colors={panelColors} />}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* ── Sector Context ── */}
               <div>
                 <SectionHeader id="sector" title="Sector Context" sub="Does the sector support the trade?" collapsed={!!collapsed['sector']} onToggle={toggleSection} />
@@ -1420,7 +1683,14 @@ export default function EODJournalPage() {
                     <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: tx }}>Setup Confidence</span>
-                        <span style={{ fontSize: 18, fontWeight: 800, color: conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149' }}>{conf}%</span>
+                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          {fibAdjust !== 0 && (
+                            <span title={`Adjusted ${fibAdjust > 0 ? '+' : ''}${fibAdjust}% — price in ${analysis.fib?.currentZone}% fib zone`} style={{ fontSize: 11, fontWeight: 700, color: fibAdjust > 0 ? '#3fb950' : '#f85149' }}>
+                              {fibAdjust > 0 ? '+' : ''}{fibAdjust}% fib
+                            </span>
+                          )}
+                          <span style={{ fontSize: 18, fontWeight: 800, color: conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149' }}>{conf}%</span>
+                        </span>
                       </div>
                       <div style={{ height: 8, background: isDark ? '#21262d' : '#e0e0e0', borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
                         <div style={{ height: '100%', width: `${conf}%`, background: conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149', borderRadius: 4, transition: 'width 0.4s' }} />
