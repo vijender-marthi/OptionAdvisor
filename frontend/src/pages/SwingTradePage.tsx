@@ -296,6 +296,60 @@ export default function SwingTradePage() {
     setAlertOpen(false)
   }, [])
 
+  // Primary "Add to Portfolio" action — shared by the Decision snapshot and the
+  // left-panel actions menu. (Extracted verbatim from the former inline button.)
+  const handleAddToPortfolio = useCallback(() => {
+    if (!result) return
+    const m = result.metrics as Record<string, unknown>
+    const eg = result.entry_guidance
+    const execLevels = m?.exec_levels as Record<string, unknown> | undefined
+    const lastPrice = typeof m?.last_price === 'number' ? m.last_price : 0
+    const entryPrice = typeof eg?.breakout_level === 'number' ? eg.breakout_level : lastPrice
+    const isPut = result.bias === 'short'
+    const spread = m?.spread_entry as Record<string, unknown> | undefined
+    let legs: OptionLeg[] = []
+    if (spread?.long_strike) {
+      const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
+      const estDebit = Number(spread.est_debit || 0)
+      legs.push({
+        action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
+        expiry: String(spread.expiry || ''), mid_price: estDebit,
+        delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+      })
+    } else {
+      legs = [{
+        action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
+        expiry: result.suggested_expiry_window ?? '', mid_price: entryPrice,
+        delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
+      }]
+    }
+    addManualPosition({
+      ticker: result.ticker,
+      companyName: result.company_name,
+      strategy: result.suggested_strategy ?? 'SWING',
+      bias: result.bias === 'short' ? 'short' : 'long',
+      legs,
+      expiry: result.suggested_expiry_window ?? '',
+      dte: 0,
+      net_credit: 0,
+      spread_width: 0,
+      max_profit: 0,
+      max_loss: 0,
+      prob_of_profit: 0,
+      expected_value: 0,
+      scores_total: result.trade_quality_score || 0,
+      contracts: 1,
+      breakeven_lower: 0,
+      breakeven_upper: 0,
+      entryPrice,
+      source: 'swing',
+      notes: result.decision_message || '',
+      target1: execLevels?.target1 as number | undefined,
+      stopLoss: execLevels?.stop as number | undefined,
+    })
+    setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
+  }, [result, addManualPosition])
+
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
@@ -426,125 +480,55 @@ export default function SwingTradePage() {
 
           {/* Action buttons */}
           {result && (
-          <div className="flex flex-wrap items-center gap-2">
-            {existingPositions.length > 0 ? (
+          <details className="group relative">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors">
+              <PlusCircle size={14} />
+              More actions
+              <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => navigate(ROUTES.positions)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 px-3.5 py-2 text-xs font-bold transition-colors"
+                onClick={() => setEnterOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors"
               >
-                <BarChart2 size={14} />
-                View Positions
+                <Activity size={14} />
+                Track Intraday
               </button>
-            ) : (
-            <button
-              type="button"
-              onClick={() => {
-                if (!result) return
-                const m = result.metrics as Record<string, unknown>
-                const eg = result.entry_guidance
-                const execLevels = m?.exec_levels as Record<string, unknown> | undefined
-                const lastPrice = typeof m?.last_price === 'number' ? m.last_price : 0
-                const entryPrice = typeof eg?.breakout_level === 'number' ? eg.breakout_level : lastPrice
-                const isPut = result.bias === 'short'
-                const spread = m?.spread_entry as Record<string, unknown> | undefined
-                let legs: OptionLeg[] = []
-                if (spread?.long_strike) {
-                  const optType = String(spread.long_leg || '').toUpperCase().includes('P') ? 'PUT' as const : 'CALL' as const
-                  const estDebit = Number(spread.est_debit || 0)
-                  legs.push({
-                    action: 'BUY', option_type: optType, strike: Number(spread.long_strike),
-                    expiry: String(spread.expiry || ''), mid_price: estDebit,
-                    delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
-                  })
-                } else {
-                  legs = [{
-                    action: 'BUY', option_type: isPut ? 'PUT' : 'CALL', strike: 0,
-                    expiry: result.suggested_expiry_window ?? '', mid_price: entryPrice,
-                    delta: 0, bid: 0, ask: 0, iv: 0, oi: 0, volume: 0, bid_ask_spread_pct: 0,
-                  }]
-                }
-                addManualPosition({
-                  ticker: result.ticker,
-                  companyName: result.company_name,
-                  strategy: result.suggested_strategy ?? 'SWING',
-                  bias: result.bias === 'short' ? 'short' : 'long',
-                  legs,
-                  expiry: result.suggested_expiry_window ?? '',
-                  dte: 0,
-                  net_credit: 0,
-                  spread_width: 0,
-                  max_profit: 0,
-                  max_loss: 0,
-                  prob_of_profit: 0,
-                  expected_value: 0,
-                  scores_total: result.trade_quality_score || 0,
-                  contracts: 1,
-                  breakeven_lower: 0,
-                  breakeven_upper: 0,
-                  entryPrice,
-                  source: 'swing',
-                  notes: result.decision_message || '',
-                  target1: execLevels?.target1 as number | undefined,
-                  stopLoss: execLevels?.stop as number | undefined,
-                })
-                setNotice({ tone: 'success', message: `${result.ticker} added to Positions Center.` })
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-2 text-xs font-bold transition-colors"
-            >
-              <PlusCircle size={14} />
-              Add to Portfolio
-            </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setEnterOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors"
-            >
-              <Activity size={14} />
-              Track Intraday
-            </button>
-            <button
-              type="button"
-              onClick={() => setAlertOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/50 hover:bg-rose-900/30 text-rose-300 px-3.5 py-2 text-xs font-bold transition-colors"
-            >
-              <Bell size={14} />
-              Add Alert
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const sym = result.ticker.toUpperCase()
-                try {
-                  const existing: string[] = JSON.parse(localStorage.getItem('oa_dashboard_tickers_swing') ?? '[]')
-                  if (!existing.includes(sym) && existing.length < 8) {
-                    localStorage.setItem('oa_dashboard_tickers_swing', JSON.stringify([...existing, sym]))
-                  }
-                } catch { /* ignore quota */ }
-                navigate(ROUTES.dayTradeDashboard)
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-700/50 hover:bg-orange-900/30 text-orange-300 px-3 py-2 text-[11px] font-semibold transition-colors"
-            >
-              <Gauge size={13} />
-              Add to Dashboard
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-700/50 hover:bg-violet-900/30 text-violet-300 px-3 py-2 text-[11px] font-semibold transition-colors"
-            >
-              <BarChart2 size={13} />
-              Position Trading
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveToJournal()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/50 hover:bg-emerald-900/30 text-emerald-300 px-3 py-2 text-[11px] font-semibold transition-colors"
-            >
-              {savedToJournal ? '✓' : '📋'} {savedToJournal ? 'Saved' : 'Save to Journal'}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const sym = result.ticker.toUpperCase()
+                  try {
+                    const existing: string[] = JSON.parse(localStorage.getItem('oa_dashboard_tickers_swing') ?? '[]')
+                    if (!existing.includes(sym) && existing.length < 8) {
+                      localStorage.setItem('oa_dashboard_tickers_swing', JSON.stringify([...existing, sym]))
+                    }
+                  } catch { /* ignore quota */ }
+                  navigate(ROUTES.dayTradeDashboard)
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-orange-700/50 hover:bg-orange-900/30 text-orange-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+              >
+                <Gauge size={13} />
+                Add to Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`${ROUTES.strategyFinder}?ticker=${encodeURIComponent(result.ticker)}`)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-700/50 hover:bg-violet-900/30 text-violet-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+              >
+                <BarChart2 size={13} />
+                Position Trading
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveToJournal()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/50 hover:bg-emerald-900/30 text-emerald-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+              >
+                {savedToJournal ? '✓' : '📋'} {savedToJournal ? 'Saved' : 'Save to Journal'}
+              </button>
+            </div>
+          </details>
           )}
         </div>
 
@@ -624,6 +608,74 @@ export default function SwingTradePage() {
               </div>
             </div>
           </div>
+
+          {/* ── Decision Snapshot — the at-a-glance trade decision ── */}
+          {(() => {
+            const vp = unified.verdict_presentation
+            const verdictColor = vp.status_color
+            const t1 = unified.exit_rows.find(r => r.type === 't1')
+            const targetStr = t1 ? (/tbd/i.test(t1.price) ? 'On entry' : t1.price) : '—'
+            const entryStr = unified.entry_price != null
+              ? `$${unified.entry_price.toFixed(2)}`
+              : (unified.verdict === 'GO' || unified.verdict === 'STRONG_GO') ? 'On trigger' : '—'
+            const stopStr = unified.stop_price != null ? `$${unified.stop_price.toFixed(2)}` : '—'
+            const rrStr = unified.rr_ratio || '—'
+            const structureStr = (unified.structure || '').replace(/\s*·\s*\d+\s*DTE.*$/, '').trim()
+            const biasLabel = result?.bias ? result.bias.charAt(0).toUpperCase() + result.bias.slice(1) : null
+            const biasColor = result?.bias === 'long' ? st.green : result?.bias === 'short' ? st.red : st.muted
+            const inPosition = existingPositions.length > 0
+            const tiles: { label: string; value: string; color: string }[] = [
+              { label: 'Entry',  value: entryStr,  color: st.text },
+              { label: 'Stop',   value: stopStr,   color: unified.stop_price != null ? st.red : st.muted },
+              { label: 'Target', value: targetStr, color: targetStr === '—' ? st.muted : st.green },
+              { label: 'R / R',  value: rrStr,     color: unified.rr_ratio ? st.green : st.muted },
+            ]
+            return (
+              <div className="dt-card" style={{ background: `${verdictColor}0A`, border: `1px solid ${verdictColor}55`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                {/* Row 1 — verdict + bias/structure + primary actions */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ width: 11, height: 11, borderRadius: '50%', background: verdictColor, boxShadow: `0 0 8px ${verdictColor}90`, flexShrink: 0 }} />
+                    <span style={{ fontSize: 21, fontWeight: 800, color: verdictColor, letterSpacing: '-0.01em' }}>{vp.status_text}</span>
+                    {biasLabel && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: biasColor, border: `1px solid ${biasColor}55`, background: `${biasColor}12`, borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{biasLabel}</span>
+                    )}
+                    {structureStr && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: st.muted, border: `1px solid ${st.border}`, background: st.bgDeep, borderRadius: 6, padding: '2px 8px' }}>{structureStr}</span>
+                    )}
+                    <span style={{ fontSize: 11, color: st.muted }}>
+                      Setup <span style={{ fontWeight: 800, color: verdictColor, fontFamily: 'monospace' }}>{unified.confidence}</span>
+                      <span style={{ margin: '0 6px', opacity: 0.4 }}>·</span>
+                      Signal <span style={{ fontWeight: 800, color: vp.signal_quality.color, fontFamily: 'monospace' }}>{vp.signal_quality.score}/10</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {inPosition ? (
+                      <button type="button" onClick={() => navigate(ROUTES.positions)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-600/50 bg-amber-900/30 text-amber-300 hover:bg-amber-900/50 px-3.5 py-2 text-xs font-bold transition-colors">
+                        <BarChart2 size={14} /> View Positions
+                      </button>
+                    ) : (
+                      <button type="button" onClick={handleAddToPortfolio} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-2 text-xs font-bold transition-colors">
+                        <PlusCircle size={14} /> Add to Portfolio
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setAlertOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/50 hover:bg-rose-900/30 text-rose-300 px-3.5 py-2 text-xs font-bold transition-colors">
+                      <Bell size={14} /> Add Alert
+                    </button>
+                  </div>
+                </div>
+                {/* Row 2 — key level tiles */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  {tiles.map(tile => (
+                    <div key={tile.label} style={{ background: st.bgDeep, border: `1px solid ${st.border}`, borderRadius: 10, padding: '8px 10px' }}>
+                      <div style={{ fontSize: '0.6rem', fontWeight: 700, color: st.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{tile.label}</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace', color: tile.color }}>{tile.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* IV data missing warning banner */}
           {(() => {
@@ -824,24 +876,25 @@ export default function SwingTradePage() {
 
       {/* MACD histogram — momentum phase, computed from chart_series closes */}
       {result && result.metrics && (result.metrics as Record<string, unknown>).chart_series != null && (
-        <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
-          <div className="px-4 py-2.5 border-b border-gray-800/60 flex items-center gap-2">
+        <details className="group rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 border-b border-gray-800/60 hover:bg-surface-muted/20">
             <BarChart2 size={14} className="text-violet-400" />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               MACD Histogram (12/26/9 daily)
             </span>
             <button
               type="button"
-              onClick={() => setHelpOpen(true)}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setHelpOpen(true) }}
               className="ml-auto text-[11px] font-medium text-violet-400 hover:text-violet-300"
             >
               Reading guide →
             </button>
-          </div>
+            <ChevronDown size={14} className="text-muted transition-transform group-open:rotate-180" />
+          </summary>
           <div className="p-3">
             <MacdHistogramChart metrics={result.metrics as Record<string, unknown>} />
           </div>
-        </div>
+        </details>
       )}
 
       {/* MACD Histogram Reference Guide */}
@@ -997,11 +1050,12 @@ export default function SwingTradePage() {
         const hasHistory = Array.isArray(rawHistory) && rawHistory.length >= 2
         if (!hasSeries && !hasHistory) return null
         return (
-          <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
-            <div className="px-4 py-2.5 border-b border-gray-800/60 flex items-center gap-2">
+          <details className="group rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 border-b border-gray-800/60 hover:bg-surface-muted/20">
               <BarChart2 size={14} className="text-violet-400" />
               <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Price chart · MA20/50 · RSI</span>
-            </div>
+              <ChevronDown size={14} className="ml-auto text-muted transition-transform group-open:rotate-180" />
+            </summary>
             <div className="p-3">
               {hasSeries ? (
                 <SwingTradeMetricCharts metrics={m} mode="all" />
@@ -1009,7 +1063,7 @@ export default function SwingTradePage() {
                 <PriceChart history={rawHistory as unknown as import('../types').PricePoint[]} />
               )}
             </div>
-          </div>
+          </details>
         )
       })()}
 

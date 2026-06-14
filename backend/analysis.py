@@ -199,17 +199,24 @@ def compute_iv_rank(series: pd.Series, current_iv: float) -> float:
     return round(float(np.clip(rank, 0, 100)), 1)
 
 
-MIN_IMPLIED_IV_SAMPLES_FOR_RANK = 20
+MIN_IMPLIED_IV_SAMPLES_FOR_RANK = 60
+# Below this many sessions, 5th–95th percentile trimming distorts the band (it can
+# place "low" above readings that actually occurred, ranking a mid-band IV as 0%).
+# Short histories use the true min/max instead.
+MIN_IMPLIED_IV_SAMPLES_FOR_TRIM = 100
 
 
 def compute_iv_rank_implied_history(iv_samples: list[float], current_iv: float) -> Optional[float]:
     """
     Broker-style IV Rank (0–100): compare today's ATM IV % to past ATM IV readings.
 
-    Uses a robust band (5th–95th percentile) over stored snapshots — broker highs/lows are
-    effectively extremes over ~252 sessions; trimming reduces single-bar outliers.
+    With ≥100 stored snapshots uses a robust band (5th–95th percentile) — broker
+    highs/lows are effectively extremes over ~252 sessions; trimming reduces
+    single-bar outliers. With fewer snapshots the band is the true min/max, since
+    trimming a short history throws away real lows/highs.
 
-    Returns None when insufficient history → caller falls back to HV proxy.
+    Returns None when insufficient history (<60 sessions) → caller falls back to
+    the HV proxy, which is built from a full year of daily bars.
     """
     vals = [float(v) for v in iv_samples if v is not None and float(v) > 0]
     if len(vals) < MIN_IMPLIED_IV_SAMPLES_FOR_RANK:
@@ -217,8 +224,12 @@ def compute_iv_rank_implied_history(iv_samples: list[float], current_iv: float) 
     if current_iv is None or (isinstance(current_iv, float) and (np.isnan(current_iv) or current_iv <= 0)):
         return None
     s = pd.Series(vals)
-    low = float(s.quantile(0.05))
-    high = float(s.quantile(0.95))
+    if len(vals) >= MIN_IMPLIED_IV_SAMPLES_FOR_TRIM:
+        low = float(s.quantile(0.05))
+        high = float(s.quantile(0.95))
+    else:
+        low = float(s.min())
+        high = float(s.max())
     if high <= low:
         return 50.0
     rank = (current_iv - low) / (high - low) * 100
