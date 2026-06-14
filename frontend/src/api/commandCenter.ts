@@ -179,14 +179,26 @@ export interface StockTargetData {
   suggested_target1:    number
   suggested_target2:    number
   suggested_stop_loss:  number
+  // ── Additive: 9 EMA early-momentum signal (daily chart) ──
+  ema9?:                number | null
+  ema9_slope?:          'up' | 'flat' | 'down' | null
+  price_vs_ema9?:       'above' | 'at' | 'below' | null
+  // ── Additive: Fibonacci swing high / low (daily chart) ──
+  fib_swing_high?:      number | null
+  fib_swing_high_date?: string | null
+  fib_swing_low?:       number | null
+  fib_swing_low_date?:  string | null
+  fib_direction?:       'up' | 'down' | null
 }
 
 export async function fetchStockTargets(
   ticker: string,
   entryPrice?: number,
+  fibLookback?: number,
 ): Promise<StockTargetData> {
   const params = new URLSearchParams({ ticker })
   if (entryPrice && entryPrice > 0) params.set('entry_price', String(entryPrice))
+  if (fibLookback && fibLookback > 0) params.set('fib_lookback', String(fibLookback))
   const { data } = await api.get<ApiEnvelope<StockTargetData>>(`/stock-targets?${params}`)
   if (!data.data) throw new Error('No data returned')
   return data.data

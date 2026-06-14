@@ -1484,16 +1484,20 @@ def get_early_entry_trigger(
 def get_stock_targets(
     ticker: str = Query(..., min_length=1, max_length=12),
     entry_price: Optional[float] = Query(None, gt=0),
+    fib_lookback: int = Query(20, ge=5, le=120),
     auth_email: str = Depends(require_access_email),
 ) -> dict[str, Any]:
     """
     Return live MA context and MA-based target / stop suggestions for a stock ticker.
     Called by the Add Position form when the user clicks "Auto-Fill Targets".
+
+    Additive swing-trade fields (9 EMA + Fibonacci swing high/low) are included
+    for the EOD Journal pullback tooling; ``fib_lookback`` controls the swing window.
     """
     from stock_decision_engine import _get_ma_data, _calc_targets
 
     t = ticker.strip().upper()
-    mkt = _get_ma_data(t)
+    mkt = _get_ma_data(t, fib_lookback=fib_lookback)
     if not mkt or not mkt.get("current_price"):
         raise HTTPException(status_code=404, detail=f"No price data available for {t}.")
 
@@ -1514,6 +1518,16 @@ def get_stock_targets(
         "suggested_target1":  t1,
         "suggested_target2":  t2,
         "suggested_stop_loss": stop,
+        # ── Additive: 9 EMA early-momentum signal ──
+        "ema9":               mkt.get("ema9"),
+        "ema9_slope":         mkt.get("ema9_slope"),
+        "price_vs_ema9":      mkt.get("price_vs_ema9"),
+        # ── Additive: Fibonacci swing high / low (daily) ──
+        "fib_swing_high":      mkt.get("fib_swing_high"),
+        "fib_swing_high_date": mkt.get("fib_swing_high_date"),
+        "fib_swing_low":       mkt.get("fib_swing_low"),
+        "fib_swing_low_date":  mkt.get("fib_swing_low_date"),
+        "fib_direction":       mkt.get("fib_direction"),
     })
 
 

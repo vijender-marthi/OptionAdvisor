@@ -4,6 +4,10 @@ import { Activity, Bell, Clock, Database, Mail, Palette, RefreshCw, ShieldCheck,
 import { useApp } from '../contexts/AppContext'
 import { getEmailStatus, sendTestEmail, clearAllCaches, getUserAccent, setUserAccent } from '../api/client'
 import { roleBadgeClass, roleLabel } from '../permissions'
+import {
+  loadSwingToolSettings, saveFibLookback, saveShowEma9, saveConfluenceTightness,
+  type ConfluenceTightness,
+} from '../utils/fibConfluence'
 
 // ── Reusable toggle row ───────────────────────────────────────────────────────
 interface ToggleRowProps {
@@ -75,6 +79,7 @@ export default function SettingsPage() {
   const [accent, setAccent] = useState(() => { try { return localStorage.getItem('oa_accent') || 'blue' } catch { return 'blue' } })
   const [deployedVersion, setDeployedVersion] = useState('—')
   const [timezone, setTimezone] = useState(() => { try { return localStorage.getItem('oa_timezone') || 'America/New_York' } catch { return 'America/New_York' } })
+  const [swingTools, setSwingTools] = useState(() => loadSwingToolSettings())
   const [emailStatus, setEmailStatus] = useState<{
     configured: boolean
     provider: 'sendgrid' | 'smtp' | 'none'
@@ -275,6 +280,61 @@ export default function SettingsPage() {
               <Clock size={12} className="inline mr-1.5 -mt-0.5" />{tz.label}
             </button>
           ))}
+        </div>
+      </SettingsCard>
+
+      {/* Swing Tools — Fibonacci / 9 EMA / Confluence (swing page only) */}
+      <SettingsCard title="Swing Tools (Fib / 9 EMA / Confluence)">
+        {/* Fibonacci lookback */}
+        <div className="py-4">
+          <div className="text-sm font-semibold text-gray-100 tracking-tight mb-0.5">Fibonacci Lookback Period</div>
+          <p className="text-xs text-gray-500 leading-relaxed mb-2">Trading days used to find the swing high/low for fib levels. 20 is the default and captures most swing patterns.</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { v: 10, label: '10d — very recent' },
+              { v: 20, label: '20d — default' },
+              { v: 60, label: '60d — longer-term' },
+              { v: 90, label: '90d — positional' },
+            ].map(o => (
+              <button key={o.v} onClick={() => { saveFibLookback(o.v); setSwingTools(s => ({ ...s, fibLookback: o.v })) }}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                  swingTools.fibLookback === o.v
+                    ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                    : 'border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                }`}
+              >{o.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* 9 EMA display toggle */}
+        <ToggleRow
+          icon={<Activity size={16} />}
+          label="9 EMA Display"
+          description="Show the 9 EMA early-momentum stat on the swing stock card. Hide if you only trade off MA20/MA50."
+          checked={swingTools.showEma9}
+          onChange={v => { saveShowEma9(v); setSwingTools(s => ({ ...s, showEma9: v })) }}
+        />
+
+        {/* Confluence threshold */}
+        <div className="py-4">
+          <div className="text-sm font-semibold text-gray-100 tracking-tight mb-0.5">Confluence Threshold</div>
+          <p className="text-xs text-gray-500 leading-relaxed mb-2">How close levels must sit to count as aligned. Medium ($1 or 0.5% of price) works for most users.</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { v: 'tight' as ConfluenceTightness, label: 'Tight ($0.50 / 0.3%)' },
+              { v: 'medium' as ConfluenceTightness, label: 'Medium ($1 / 0.5%)' },
+              { v: 'loose' as ConfluenceTightness, label: 'Loose ($2 / 1%)' },
+            ].map(o => (
+              <button key={o.v} onClick={() => { saveConfluenceTightness(o.v); setSwingTools(s => ({ ...s, confluenceTightness: o.v })) }}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                  swingTools.confluenceTightness === o.v
+                    ? 'border-slate-500 dark:border-white/30 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                    : 'border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                }`}
+              >{o.label}</button>
+            ))}
+          </div>
         </div>
       </SettingsCard>
 
