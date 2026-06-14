@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Info } from 'lucide-react'
 import type { UnifiedAnalysis } from '../api/client'
 
@@ -30,7 +31,15 @@ function unifiedStructureLabel(s: string): string {
   return s.replace(/\s*·\s*\d+\s*DTE.*$/, '').trim() || s
 }
 
-export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnalysis }) {
+export default function UnifiedVerdictCard({ analysis, bias, levels, headerActions }: {
+  analysis: UnifiedAnalysis
+  /** Optional Long/Short/Neutral bias pill (swing layout only). */
+  bias?: 'long' | 'short' | 'neutral' | null
+  /** Optional key-level tiles (Entry/Stop/Target/R-R) rendered under the header (swing layout only). */
+  levels?: { label: string; value: string; color: string }[]
+  /** Optional primary action buttons rendered in the header band (swing layout only). */
+  headerActions?: ReactNode
+}) {
   const isSwing = analysis.trade_type === 'swing'
   const vp = analysis.verdict_presentation
   const { status_text, status_color, signal_quality, setup_bar_pct, setup_bar_color, pass_count, warn_count, fail_count } = vp
@@ -44,16 +53,21 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
 
         {/* Header band */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${status_color}20`, background: `${status_color}08` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: status_color, boxShadow: `0 0 7px ${status_color}80`, flexShrink: 0 }} />
             <span style={{ fontSize: 18, fontWeight: 800, color: status_color, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '-0.01em' }}>{status_text}</span>
+            {bias && (
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: bias === 'long' ? '#00A86B' : bias === 'short' ? '#D0312D' : C.textTer, border: `1px solid ${bias === 'long' ? 'rgba(0,168,107,0.35)' : bias === 'short' ? 'rgba(208,49,45,0.35)' : C.border}`, background: bias === 'long' ? 'rgba(0,168,107,0.08)' : bias === 'short' ? 'rgba(208,49,45,0.08)' : 'var(--surface-raised)', borderRadius: 6, padding: '2px 8px' }}>
+                {bias.charAt(0).toUpperCase() + bias.slice(1)}
+              </span>
+            )}
             {analysis.structure && (
               <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, background: 'var(--surface-raised)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px' }}>
                 {unifiedStructureLabel(analysis.structure)}
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: status_color, fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1 }}>{analysis.confidence}</div>
               <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Setup</div>
@@ -65,10 +79,28 @@ export default function UnifiedVerdictCard({ analysis }: { analysis: UnifiedAnal
               </div>
               <div style={{ fontSize: 9, color: C.textTer, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Signal</div>
             </div>
+            {headerActions && (
+              <>
+                <div style={{ width: 1, height: 28, background: C.border }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{headerActions}</div>
+              </>
+            )}
           </div>
         </div>
 
         <div style={{ padding: '12px 16px' }}>
+          {/* Key-level tiles (Entry / Stop / Target / R-R) */}
+          {levels && levels.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${levels.length}, 1fr)`, gap: 8, marginBottom: 12 }}>
+              {levels.map(l => (
+                <div key={l.label} style={{ background: 'var(--surface-raised)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: C.textTer, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{l.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'SF Mono', 'Fira Code', monospace", color: l.color }}>{l.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Reason */}
           <div className="uv-reason" style={{ fontSize: 12.5, color: C.textSec, lineHeight: 1.55, marginBottom: 12 }}>
             {analysis.reason || (analysis.entry_price ? 'Entry levels available.' : 'Setup conditions are being evaluated.')}
