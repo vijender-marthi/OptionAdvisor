@@ -323,10 +323,10 @@ def serialize_day_trade(scan) -> dict:
              list(getattr(scan, 'trader_decision', {}).keys()))
 
     try:
-        m = scan.metrics or {}
-        eg = scan.entry_guidance or {}
-        td = scan.trader_decision or {}
-        orc = scan.option_risk_context or {}
+        m = (scan.metrics or {}) if hasattr(scan, 'metrics') else (scan.get('metrics') or {})
+        eg = (scan.entry_guidance or {}) if hasattr(scan, 'entry_guidance') else (scan.get('entry_guidance') or {})
+        td = (scan.trader_decision or {}) if hasattr(scan, 'trader_decision') else (scan.get('trader_decision') or {})
+        orc = (scan.option_risk_context or {}) if hasattr(scan, 'option_risk_context') else (scan.get('option_risk_context') or {})
 
         entry_price = eg.get("entry_price") or eg.get("current_price") or m.get("last_price")
         stop_price = eg.get("stop_price") or eg.get("risk_below") or m.get("or_low")

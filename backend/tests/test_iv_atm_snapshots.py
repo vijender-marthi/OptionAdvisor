@@ -44,7 +44,7 @@ class IvRankImpliedHistoryTests(unittest.TestCase):
         self.assertIsNone(analysis.compute_iv_rank_implied_history([25.0, 26.0], 35.0))
 
     def test_rank_in_band(self) -> None:
-        base = [18.0 + (i % 12) * 0.8 for i in range(25)]
+        base = [18.0 + (i % 12) * 0.8 for i in range(80)]
         r = analysis.compute_iv_rank_implied_history(base, 22.0)
         self.assertIsNotNone(r)
         assert r is not None
