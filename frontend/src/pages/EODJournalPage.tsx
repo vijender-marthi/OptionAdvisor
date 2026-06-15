@@ -356,11 +356,12 @@ function Sparkline({ isUp, label, price }: { isUp: boolean; label: string; price
 
 // ─── Scenario Card ────────────────────────────────────────────────────────────
 
-function ScenarioCard({ type, data, ticker }: { type: 'bull' | 'bear'; data: ScenarioData; ticker: string }) {
+function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bear'; data: ScenarioData; ticker: string; panelColors?: PanelColors }) {
   const isBull = type === 'bull'
+  const isDark = panelColors?.isDark ?? true
   const color = isBull ? '#3fb950' : '#f85149'
-  const bg    = isBull ? '#0d2011' : '#200d0d'
-  const bdr   = isBull ? '#1a4a1f' : '#5a1a1a'
+  const bg    = isBull ? (isDark ? '#0d2011' : '#0d2011') : (isDark ? '#200d0d' : '#200d0d')
+  const bdr   = isBull ? (isDark ? '#1a4a1f' : '#3d7a0f') : (isDark ? '#5a1a1a' : '#b91c1c')
   const icon  = isBull ? '▲' : '▼'
   const label = isBull ? 'BULL CASE — Gap Up / HL/HH' : 'BEAR CASE — Gap Down / LL/LH'
 
@@ -1228,7 +1229,7 @@ export default function EODJournalPage() {
               {loadingData ? 'Fetching…' : 'Refresh'}
             </button>
           )}
-          <button onClick={handleExport} disabled={!analysis} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: analysis ? 'pointer' : 'default', border: '1px solid #1a3050', background: '#0d1a28', color: analysis ? '#58a6ff' : '#3a5a7a', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <button onClick={handleExport} disabled={!analysis} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: analysis ? 'pointer' : 'default', border: `1px solid ${isDark ? '#1a3050' : '#58a6ff'}`, background: isDark ? '#0d1a28' : '#e8f0fe', color: analysis ? '#58a6ff' : '#8b949e', display: 'flex', alignItems: 'center', gap: 5 }}>
             <Download size={12} /> Export
           </button>
         </div>
@@ -1500,8 +1501,8 @@ export default function EODJournalPage() {
                 {!collapsed['scenarios'] && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div className="eod-journal-scenarios-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <ScenarioCard type="bull" data={analysis.scenarios.bull} ticker={analysis.ticker} />
-                      <ScenarioCard type="bear" data={analysis.scenarios.bear} ticker={analysis.ticker} />
+                      <ScenarioCard type="bull" data={analysis.scenarios.bull} ticker={analysis.ticker} panelColors={panelColors} />
+                      <ScenarioCard type="bear" data={analysis.scenarios.bear} ticker={analysis.ticker} panelColors={panelColors} />
                     </div>
 
                     {/* Neutral strip */}
@@ -1828,10 +1829,10 @@ export default function EODJournalPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={handleSaveNotes} style={{ padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: saveFeedback ? '#1a4a1f' : '#21a047', color: saveFeedback ? '#3fb950' : '#000', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <button onClick={handleSaveNotes} style={{ padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: isDark ? '#1a4a1f' : '#21a047', color: isDark ? '#3fb950' : '#000', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Save size={13} /> {saveFeedback ?? 'Save Notes'}
                       </button>
-                      <button onClick={handleExport} style={{ padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid #1a3050', background: '#0d1a28', color: '#58a6ff', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <button onClick={handleExport} style={{ padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${isDark ? '#1a3050' : '#58a6ff'}`, background: isDark ? '#0d1a28' : '#e8f0fe', color: '#58a6ff', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Download size={13} /> Export
                       </button>
                     </div>
