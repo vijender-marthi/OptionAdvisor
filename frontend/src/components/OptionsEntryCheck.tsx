@@ -108,6 +108,22 @@ export interface OptionsEntryCheckProps {
    * SHORT→put) for backward compatibility with the day-trade pages.
    */
   structure?: string
+  /**
+   * When the recommendation is a 2-leg debit/credit spread, the leg details so
+   * the check renders the actual spread (both strikes + net debit/credit +
+   * per-leg fillability) instead of a single ATM contract.
+   */
+  spread?: {
+    longLeg: string
+    shortLeg: string
+    longStrike: number
+    shortStrike: number
+    netDebit: number
+    maxGain: number
+    maxLoss: number
+    breakeven: number
+    kind: 'debit' | 'credit'
+  } | null
 }
 
 export default function OptionsEntryCheck({
@@ -115,6 +131,7 @@ export default function OptionsEntryCheck({
   isDark = true,
   mode = 'day',
   structure,
+  spread,
 }: OptionsEntryCheckProps) {
   const T = makeT(isDark)
   const dteOptions = mode === 'swing' ? [7, 14, 21, 28] : [5, 7]
@@ -342,8 +359,67 @@ export default function OptionsEntryCheck({
             </div>
           )}
 
-          {/* Stat cards */}
-          {atmRow && !atmTooFar && (() => {
+          {/* Spread structure — both legs + net debit/credit + per-leg fillability */}
+          {spread && (() => {
+            const rowAt = (strike: number) => rows.length
+              ? rows.reduce((b, r) => Math.abs(r.strike - strike) < Math.abs(b.strike - strike) ? r : b)
+              : null
+            const shortRow = rowAt(spread.shortStrike)
+            const longRow  = rowAt(spread.longStrike)
+            const legLiq = (r: OptionChainRow | null) => {
+              if (!r) return { clr: T.liqNone, lbl: '—' }
+              if (r.spread_pct <= 5)  return { clr: T.liqGood, lbl: '✓ good' }
+              if (r.spread_pct <= 10) return { clr: T.liqWarn, lbl: '⚠ moderate' }
+              return { clr: T.liqBad, lbl: '✗ poor' }
+            }
+            const credit = spread.kind === 'credit'
+            const legRow = (verb: 'Sell' | 'Buy', label: string, strike: number, r: OptionChainRow | null) => {
+              const liq = legLiq(r)
+              const vClr = verb === 'Sell' ? T.redTxt : T.greenTxt
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `0.5px solid ${T.rowLine}` }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: vClr, minWidth: 30 }}>{verb}</span>
+                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 600, color: T.text }}>{label}</span>
+                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: T.muted }}>${strike.toFixed(2)}</span>
+                  {r && <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: T.muted }}>bid ${r.bid.toFixed(2)} / ask ${r.ask.toFixed(2)}</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, color: liq.clr }}>{r ? `${r.spread_pct.toFixed(1)}% · ${liq.lbl}` : 'no quote'}</span>
+                </div>
+              )
+            }
+            return (
+              <div style={{ border: `0.5px solid ${T.border}`, borderRadius: 7, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', background: T.cardBg, borderBottom: `0.5px solid ${T.border}` }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.muted }}>Spread structure</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: credit ? T.greenBg : T.amberBg, color: credit ? T.greenTxt : T.amberTxt }}>
+                    {credit ? 'CREDIT' : 'DEBIT'}
+                  </span>
+                </div>
+                <div style={{ padding: '4px 11px 8px' }}>
+                  {legRow('Sell', spread.shortLeg, spread.shortStrike, shortRow)}
+                  {legRow('Buy', spread.longLeg, spread.longStrike, longRow)}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {([
+                      { lbl: credit ? 'Net credit' : 'Net debit', val: `$${Math.abs(spread.netDebit).toFixed(2)}`, clr: credit ? T.greenTxt : T.text },
+                      { lbl: 'Max gain', val: `$${spread.maxGain.toFixed(2)}`, clr: T.greenTxt },
+                      { lbl: 'Max loss', val: `$${spread.maxLoss.toFixed(2)}`, clr: T.redTxt },
+                      { lbl: 'Breakeven', val: spread.breakeven ? `$${spread.breakeven.toFixed(2)}` : '—', clr: T.text },
+                    ] as const).map(s => (
+                      <div key={s.lbl} style={{ flex: 1, minWidth: 80, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 6, padding: '6px 9px' }}>
+                        <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{s.lbl}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: s.clr, fontFamily: 'ui-monospace,monospace' }}>{s.val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 6, lineHeight: 1.5 }}>
+                    Per-contract ≈ ${(Math.abs(spread.netDebit) * 100).toFixed(0)} {credit ? 'received' : 'paid'}. Fillability above uses each leg's bid/ask spread — both legs need decent liquidity for a clean spread fill.
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Stat cards (single leg) */}
+          {!spread && atmRow && !atmTooFar && (() => {
             const spreadPct = atmRow.mid > 0 ? (atmRow.spread / atmRow.mid * 100) : atmRow.spread_pct
             return (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
