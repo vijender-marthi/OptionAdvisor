@@ -1108,6 +1108,16 @@ export default function EODJournalPage() {
 
   // ── Derived display values ────────────────────────────────────────────────
 
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => { setIsMobile(e.matches); if (e.matches) setSidebarOpen(false) }
+    mq.addEventListener('change', handler as (e: MediaQueryListEvent) => void)
+    handler(mq)
+    return () => mq.removeEventListener('change', handler as (e: MediaQueryListEvent) => void)
+  }, [])
+
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   const doneChecks = Object.values(checkState).filter(Boolean).length
   const checkPct   = Math.round((doneChecks / EOD_CHECKS.length) * 100)
@@ -1171,6 +1181,7 @@ export default function EODJournalPage() {
   const txMuted  = isDark ? '#8b949e' : '#57606a'
 
   const panelColors: PanelColors = { isDark, cardBg, cardBg2, bdr, tx, txMuted }
+  const gc = (cols: string, mobileCols = '1fr') => ({ gridTemplateColumns: isMobile ? mobileCols : cols })
 
   const iStyle: React.CSSProperties = {
     background: isDark ? '#0d1117' : '#f6f8fa',
@@ -1182,13 +1193,32 @@ export default function EODJournalPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
+    <>
+    <style>{`
+      @media (max-width: 768px) {
+        .eod-journal-stat-grid { grid-template-columns: repeat(2,1fr) !important; }
+        .eod-journal-scenarios-grid { grid-template-columns: 1fr !important; }
+        .eod-journal-two-col { grid-template-columns: 1fr !important; }
+        .eod-journal-sector-grid { grid-template-columns: repeat(2,1fr) !important; }
+        .eod-journal-three-col { grid-template-columns: 1fr !important; }
+      }
+      @media (max-width: 480px) {
+        .eod-journal-stat-grid { grid-template-columns: 1fr !important; }
+        .eod-journal-sector-grid { grid-template-columns: 1fr !important; }
+      }
+      .sidebar-toggle { display: none; }
+      @media (max-width: 768px) { .sidebar-toggle { display: inline-flex !important; } }
+    `}</style>
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: pageBg }}>
 
       {/* Header */}
       <div style={{ background: sideBg, borderBottom: `1px solid ${bdr}`, padding: '13px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 0, zIndex: 10 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>Swing EOD Journal · Next Day Prep</div>
-          <div style={{ fontSize: 11, color: txMuted, marginTop: 1 }}>End-of-session analysis → Tomorrow's game plan</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar" style={{ display: 'none', padding: '4px 8px', borderRadius: 5, border: `1px solid ${bdr}`, background: cardBg2, color: tx, cursor: 'pointer', fontSize: 16, lineHeight: 1 }} className="sidebar-toggle">☰</button>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>Swing EOD Journal · Next Day Prep</div>
+            <div style={{ fontSize: 11, color: txMuted, marginTop: 1 }}>End-of-session analysis → Tomorrow's game plan</div>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600, color: txMuted }}>{today}</div>
@@ -1205,10 +1235,11 @@ export default function EODJournalPage() {
       </div>
 
       {/* Body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', flex: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', flex: 1 }}>
 
         {/* ── Sidebar ── */}
-        <div style={{ background: sideBg, borderRight: `1px solid ${bdr}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', maxHeight: 'calc(100vh - 57px)', position: 'sticky', top: 57 }}>
+        {(isMobile ? sidebarOpen : true) && (
+        <div style={{ background: sideBg, borderRight: `1px solid ${bdr}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', maxHeight: isMobile ? 'none' : 'calc(100vh - 57px)', position: isMobile ? 'static' : 'sticky', top: 57 }}>
 
           {/* Watchlist */}
           <div>
@@ -1332,6 +1363,7 @@ export default function EODJournalPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* ── Main Content ── */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -1414,7 +1446,7 @@ export default function EODJournalPage() {
                 </div>
 
                 {/* Stat boxes */}
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${showEma9 && analysis.ema9 != null ? 6 : 5}, 1fr)`, gap: 8, marginBottom: 10 }}>
+                <div className="eod-journal-stat-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${showEma9 && analysis.ema9 != null ? 6 : 5}, 1fr)`, gap: 8, marginBottom: 10 }}>
                   <StatBox
                     label="Close"
                     value={fmt(analysis.close)}
@@ -1467,7 +1499,7 @@ export default function EODJournalPage() {
                 <SectionHeader id="scenarios" title="Tomorrow's Scenarios" sub="3 cases — define before open" collapsed={!!collapsed['scenarios']} onToggle={toggleSection} />
                 {!collapsed['scenarios'] && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="eod-journal-scenarios-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <ScenarioCard type="bull" data={analysis.scenarios.bull} ticker={analysis.ticker} />
                       <ScenarioCard type="bear" data={analysis.scenarios.bear} ticker={analysis.ticker} />
                     </div>
@@ -1505,7 +1537,7 @@ export default function EODJournalPage() {
               <div>
                 <SectionHeader id="structure" title="Structure & Context" sub="What today tells you about tomorrow" collapsed={!!collapsed['structure']} onToggle={toggleSection} />
                 {!collapsed['structure'] && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="eod-journal-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     {/* Today's Story */}
                     <div style={{ background: cardBg, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
@@ -1585,7 +1617,7 @@ export default function EODJournalPage() {
                 <SectionHeader id="sector" title="Sector Context" sub="Does the sector support the trade?" collapsed={!!collapsed['sector']} onToggle={toggleSection} />
                 {!collapsed['sector'] && sectors.length > 0 && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                    <div className="eod-journal-sector-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                       {sectors.map(sec => {
                         const isRelated = sec.etf === analysis.sectorEtf || sec.etf === 'SPY'
                         const pos = sec.mom5d >= 0
@@ -1636,7 +1668,7 @@ export default function EODJournalPage() {
                 <SectionHeader id="perception" title="Perception Builder" sub="Your mental model for tomorrow's open" collapsed={!!collapsed['perception']} onToggle={toggleSection} />
                 {!collapsed['perception'] && (
                   <div style={{ background: cardBg, border: `1px solid ${bdr}`, borderRadius: 10, padding: '16px 18px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+                    <div className="eod-journal-three-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
                       {/* Bull summary */}
                       <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#3fb950' }}>
@@ -1719,7 +1751,7 @@ export default function EODJournalPage() {
                   onToggle={toggleSection}
                 />
                 {!collapsed['options'] && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="eod-journal-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#bc8cff' }}>
                         <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#bc8cff' }} />
@@ -1775,7 +1807,7 @@ export default function EODJournalPage() {
                         placeholder={`e.g. ${analysis.ticker} broke ORL at open, VWAP stayed overhead all day, sold off into close…`}
                       />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="eod-journal-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div>
                         <label style={{ fontSize: 10, color: txMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 4 }}>Mistake / Lesson</label>
                         <textarea
@@ -1813,5 +1845,6 @@ export default function EODJournalPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

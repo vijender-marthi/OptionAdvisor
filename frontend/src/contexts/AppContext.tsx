@@ -917,28 +917,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rec: Recommendation, ticker: string, companyName: string, entryPrice: number, contracts: number,
   ) => {
     const addedAt = new Date().toISOString()
-    setPortfolio(prev => {
-      const acctSize = load<number>('oa_account_size', 25000)
-      return [{
-        id: `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        ticker, companyName,
-        strategy: rec.strategy, bias: rec.bias, legs: rec.legs,
-        expiry: rec.expiry, dte: rec.dte,
-        net_credit: rec.net_credit, spread_width: rec.spread_width,
-        max_profit: rec.max_profit, max_loss: rec.max_loss,
-        prob_of_profit: rec.prob_of_profit, expected_value: rec.expected_value,
-        scores_total: rec.scores.total_score,
-        contracts,
-        breakeven_lower: rec.breakeven_lower,
-        breakeven_upper: rec.breakeven_upper,
-        addedAt, entryPrice, status: 'open' as const,
-        kelly_fraction: rec.kelly_fraction,
-        half_kelly_fraction: rec.half_kelly_fraction,
-        edge_ratio: rec.edge_ratio,
-        capital_at_risk: Math.round(rec.max_loss * 100 * contracts),
-        account_size_at_entry: acctSize,
-      }, ...prev]
-    })
+    const id = `${ticker}-${rec.strategy}-${rec.expiry}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const acctSize = load<number>('oa_account_size', 25000)
+    const newPos = {
+      id, ticker, companyName,
+      strategy: rec.strategy, bias: rec.bias, legs: rec.legs,
+      expiry: rec.expiry, dte: rec.dte,
+      net_credit: rec.net_credit, spread_width: rec.spread_width,
+      max_profit: rec.max_profit, max_loss: rec.max_loss,
+      prob_of_profit: rec.prob_of_profit, expected_value: rec.expected_value,
+      scores_total: rec.scores.total_score,
+      contracts,
+      breakeven_lower: rec.breakeven_lower,
+      breakeven_upper: rec.breakeven_upper,
+      addedAt, entryPrice, status: 'open' as const,
+      kelly_fraction: rec.kelly_fraction,
+      half_kelly_fraction: rec.half_kelly_fraction,
+      edge_ratio: rec.edge_ratio,
+      capital_at_risk: Math.round(rec.max_loss * 100 * contracts),
+      account_size_at_entry: acctSize,
+    }
+    // Optimistic local update
+    setPortfolio(prev => [newPos, ...prev])
+    // Persist to backend
+    addPortfolioPosition({ position: newPos as unknown as Record<string, unknown> })
+      .then(resp => {
+        if (resp.data?.ok && Array.isArray(resp.data.portfolio)) {
+          setPortfolio(resp.data.portfolio as unknown as PortfolioPosition[])
+        }
+      })
+      .catch(e => console.warn('[portfolio] add persist failed:', e))
     // Auto-sync to Journal — best-effort, don't block the UI
     const email = userRef.current?.email
     if (email) {

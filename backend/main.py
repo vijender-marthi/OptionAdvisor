@@ -4185,6 +4185,39 @@ def backtest_strategy_proxy_alias(request: BacktestRequest):
     return _run_backtest_endpoint(request)
 
 
+# ── Historical 1m bars for day trade backtest playback ────────────────────
+from bar_cache import get_history
+
+@app.get("/api/history-bars")
+def get_history_bars(
+    ticker: str = Query(..., min_length=1),
+    date: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
+    auth_email: str = Depends(require_access_email),
+):
+    """Return 1-minute OHLCV bars for a ticker on a single date."""
+    import pandas as pd
+    from datetime import datetime, timezone
+    t = ticker.strip().upper()
+    df = get_history(t, interval="1m", start=date, end=date)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for {t} on {date}")
+    # Ensure tz-aware index
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("America/New_York")
+    df.index = df.index.tz_convert("UTC")
+    bars = []
+    for ts, row in df.iterrows():
+        bars.append({
+            "t": pd.Timestamp(ts).isoformat(),
+            "o": round(float(row["Open"]), 4),
+            "h": round(float(row["High"]), 4),
+            "l": round(float(row["Low"]), 4),
+            "c": round(float(row["Close"]), 4),
+            "v": round(float(row["Volume"]), 4),
+        })
+    return {"ticker": t, "date": date, "bars": bars}
+
+
 # ── TRADE JOURNAL ──────────────────────────────────────────────────────────────
 
 from storage import (

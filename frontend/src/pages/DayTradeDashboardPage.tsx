@@ -353,13 +353,13 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
 
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1150, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1280, tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '7%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
           <col style={{ width: '7%' }} /><col style={{ width: '7%' }} /><col style={{ width: '7%' }} />
-          <col style={{ width: '6%' }} /><col style={{ width: '7%' }} />
-          <col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} />
-          <col style={{ width: '5%' }} />
+          <col style={{ width: '6%' }} /><col style={{ width: '6%' }} />
+          <col style={{ width: '9%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
+          <col style={{ width: '6%' }} />
         </colgroup>
         <thead>
           <tr>
@@ -371,9 +371,10 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
             <th style={th} title="Red when VWAP is below OR mid — bearish lean">VWAP</th>
             <th style={th} title="Put/Call ratio">P/C</th>
             <th style={th} title="Volume vs average (RVOL)">Volume</th>
-            <th style={th}>E1</th>
-            <th style={th}>E2</th>
-            <th style={th}>E3</th>
+            <th style={th} title="AI Coach entry gate (confluence zone)">E1</th>
+            <th style={th} title="AI Coach trade at current price">E2</th>
+            <th style={th} title="Opening-range breakout level">E3</th>
+            <th style={th} title="Pullback Reset (live) or VWAP re-test (pending)">E4</th>
             <th style={th}></th>
           </tr>
         </thead>
@@ -388,7 +389,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.muted }} colSpan={11}>
+                  <td style={{ ...td, color: dt.muted }} colSpan={12}>
                     <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', verticalAlign: '-2px', marginRight: 6 }} />
                     Scanning…
                   </td>
@@ -399,7 +400,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.red }} colSpan={11}>{tile.error}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={12}>{tile.error}</td>
                 </tr>
               )
             }
@@ -453,6 +454,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                   <td style={entryTd}>{entryCell(pts, 0)}</td>
                   <td style={entryTd}>{entryCell(pts, 1)}</td>
                   <td style={entryTd}>{entryCell(pts, 2)}</td>
+                  <td style={entryTd}>{entryCell(pts, 3)}</td>
                   <td style={td} onClick={e => e.stopPropagation()}>
                     <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
                       title="Open in Day Trade page (new window)"
@@ -463,7 +465,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                 </tr>
                 {isExpanded && hasChart && (
                   <tr>
-                    <td colSpan={12} style={{ padding: 0, background: dt.bg2 }}>
+                    <td colSpan={13} style={{ padding: 0, background: dt.bg2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 0' }}>
                         <span style={{ fontSize: 10, color: dt.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Candle</span>
                         {(['1m', '5m'] as const).map(iv => (

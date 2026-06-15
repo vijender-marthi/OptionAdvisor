@@ -52,6 +52,27 @@ header h1{font-size:17px; font-weight:700; letter-spacing:.3px; white-space:nowr
 aside{width:280px; flex:0 0 280px; padding:14px; border-right:1px solid var(--border); position:sticky; top:53px; height:calc(100vh - 53px); overflow-y:auto;}
 main{flex:1; min-width:0; padding:16px 20px 60px;}
 
+/* Sidebar toggle — hidden by default, shown on mobile */
+#sidebarToggle{display:none; background:none; border:none; color:var(--text); font-size:18px; cursor:pointer; padding:4px 8px;}
+
+/* Mobile responsive */
+@media(max-width:900px){
+  aside{display:none; position:fixed; left:0; top:53px; z-index:100; height:calc(100vh - 53px); width:280px; box-shadow:4px 0 20px rgba(0,0,0,.5);}
+  aside.open{display:block;}
+  #sidebarToggle{display:inline-flex;}
+  .layout{flex-direction:column;}
+  main{padding:12px 14px 60px;}
+  .grid2,.grid3,.grid4{grid-template-columns:1fr !important;}
+}
+@media(max-width:500px){
+  .hdr{flex-wrap:wrap; padding:10px 12px;}
+  .hdr-r{width:100%; justify-content:flex-end;}
+  .stat-grid{grid-template-columns:1fr 1fr !important;}
+  .sc{grid-template-columns:1fr !important;}
+  table{font-size:10px;}
+  .matrix-cell{padding:4px; font-size:9px;}
+}
+
 /* ---------- Sidebar ---------- */
 .side-h{font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin:18px 0 8px;}
 .side-h:first-child{margin-top:0;}
@@ -237,6 +258,7 @@ textarea{resize:vertical; min-height:54px;}
 <body class="day">
 
 <header>
+  <button id="sidebarToggle" data-act="toggleSidebar">&#9776;</button>
   <h1>EOD Trade Journal</h1>
   <div class="mode-toggle">
     <button class="mode-btn" id="btnDay" data-act="mode" data-mode="day">DAY TRADE</button>
@@ -1596,9 +1618,10 @@ document.addEventListener("click", e=>{
   if(!el) return;
   const act = el.dataset.act;
 
-  if(act==="mode"){ state.mode = el.dataset.mode; renderAll(); }
+  if(act==="toggleSidebar"){ document.querySelector("aside").classList.toggle("open"); }
+  else if(act==="mode"){ state.mode = el.dataset.mode; renderAll(); }
   else if(act==="tab"){ state.tab[state.mode] = el.dataset.tab; renderTabs(); renderMain(); }
-  else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); loadTickerDetails(state.ticker); }
+  else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); loadTickerDetails(state.ticker); if(window.innerWidth<900) document.querySelector("aside").classList.remove("open"); }
   else if(act==="check"){
     const list = el.dataset.list, idx = el.dataset.idx;
     state.checks[list] = state.checks[list]||{};
