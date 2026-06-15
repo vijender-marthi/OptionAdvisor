@@ -3821,10 +3821,14 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     market_state_raw = info.get("marketState")
     market_state = str(market_state_raw).strip().upper() if market_state_raw else ""
 
+    prev_close = _info_opt_float(info, "previousClose") or 0.0
+    oda_change = round((last / prev_close - 1.0) * 100.0, 3) if prev_close > 0 else None
     metrics = {
         "session_date": session_date,
         "bars_used": len(session),
         "last_price": round(last, 4),
+        "prev_close": round(prev_close, 4) if prev_close > 0 else None,
+        "change_pct": oda_change,
         "session_change_pct": session_change_pct,
         "post_market_price": post_m_p,
         "post_market_change_pct": post_m_chg,

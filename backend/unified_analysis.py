@@ -447,7 +447,7 @@ def serialize_day_trade(scan) -> dict:
             "company": getattr(scan, "company_name", scan.ticker),
             "trade_type": "day",
             "price": m.get("last_price") or 0,
-            "change_pct": m.get("session_change_pct"),
+            "change_pct": m.get("change_pct") or m.get("session_change_pct"),
             "verdict": _day_verdict(scan),
             "verdict_raw": _day_verdict(scan),
             "confidence": _extract_confidence(m.get("confidence")),
