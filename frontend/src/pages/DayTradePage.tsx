@@ -1673,6 +1673,7 @@ export default function DayTradePage() {
               allSession={!!trendDayData}
               onEntered={handleBannerEntered}
               onExpire={handleBannerExpire}
+              isDark={isDark}
             />
             <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMinutes} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>

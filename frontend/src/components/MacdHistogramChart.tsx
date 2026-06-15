@@ -234,12 +234,12 @@ export default function MacdHistogramChart({ metrics }: { metrics: Record<string
       <canvas ref={canvasRef} className="block w-full" />
 
       {/* current readings for the selected ticker */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-gray-400">
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-slate-500 dark:text-gray-400">
         <span className="font-sans font-bold" style={{ color: phase.color }}>● {phase.name}</span>
-        <span>MACD <span className="text-gray-200">{data.macd[data.macd.length - 1].toFixed(2)}</span></span>
-        <span>Signal <span className="text-gray-200">{data.signal[data.signal.length - 1].toFixed(2)}</span></span>
+        <span>MACD <span className="text-slate-700 dark:text-gray-200">{data.macd[data.macd.length - 1].toFixed(2)}</span></span>
+        <span>Signal <span className="text-slate-700 dark:text-gray-200">{data.signal[data.signal.length - 1].toFixed(2)}</span></span>
         <span>Histogram <span style={{ color: lastHist >= 0 ? C.greenGrow : C.redGrow }}>{lastHist.toFixed(2)}</span></span>
-        <span>Last flip <span className="text-gray-200">{flipAge >= data.hist.length ? '—' : `${flipAge} bar${flipAge === 1 ? '' : 's'} ago`}</span></span>
+        <span>Last flip <span className="text-slate-700 dark:text-gray-200">{flipAge >= data.hist.length ? '—' : `${flipAge} bar${flipAge === 1 ? '' : 's'} ago`}</span></span>
       </div>
     </div>
   )

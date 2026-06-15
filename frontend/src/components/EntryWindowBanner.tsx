@@ -13,6 +13,7 @@ interface Props {
   allSession?: boolean
   onEntered?: () => void
   onExpire?: () => void
+  isDark?: boolean
 }
 
 type Phase = 'idle' | 'open' | 'expired' | 'entered'
@@ -74,31 +75,38 @@ function logWindow(
 // ── Progress bar sub-component ───────────────────────────────────────────────
 
 function Bar({
-  label, progress, isActive, isDone,
+  label, progress, isActive, isDone, isDark,
 }: {
-  label: string; progress: number; isActive: boolean; isDone: boolean
+  label: string; progress: number; isActive: boolean; isDone: boolean; isDark: boolean
 }) {
+  const B = {
+    green: isDark ? '#a3cc6a' : '#3d7a0f',
+    greenBg: isDark ? '#639922' : '#3d7a0f',
+    muted: isDark ? '#888780' : '#6B7280',
+    trackBg: isDark ? '#2a2c28' : '#E5E7EB',
+    fillBg: isDark ? '#444441' : '#D1D5DB',
+  }
   const filled = isDone || isActive
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span style={{
         width: 58, flexShrink: 0, fontSize: 11, fontWeight: 600,
-        color: isDone ? '#a3cc6a' : isActive ? '#a3cc6a' : '#888780',
+        color: isDone || isActive ? B.green : B.muted,
       }}>
         {label}
       </span>
       <div style={{
         flex: 1, height: 8, borderRadius: 4,
-        background: '#2a2c28', overflow: 'hidden',
+        background: B.trackBg, overflow: 'hidden',
       }}>
         <div style={{
           height: '100%', borderRadius: 4,
-          background: filled ? '#639922' : '#444441',
+          background: filled ? B.greenBg : B.fillBg,
           width: `${Math.min(100, progress * 100).toFixed(1)}%`,
           transition: 'width 0.25s linear',
         }} />
       </div>
-      <span style={{ width: 48, textAlign: 'right', fontSize: 10, color: '#888780' }}>
+      <span style={{ width: 48, textAlign: 'right', fontSize: 10, color: B.muted }}>
         {isDone ? 'done' : isActive ? 'filling' : 'waiting'}
       </span>
     </div>
@@ -108,8 +116,20 @@ function Bar({
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function EntryWindowBanner({
-  active, ticker, direction, entryPrice, stopPrice, t1, t2, allSession = false, onEntered, onExpire,
+  active, ticker, direction, entryPrice, stopPrice, t1, t2, allSession = false, onEntered, onExpire, isDark = true,
 }: Props) {
+  const C = {
+    green: isDark ? '#a3cc6a' : '#3d7a0f',
+    greenBg: isDark ? '#639922' : '#3d7a0f',
+    greenBgDim: isDark ? 'rgba(99,153,34,0.15)' : 'rgba(99,153,34,0.12)',
+    greenBgOpen: isDark ? 'rgba(99,153,34,0.18)' : 'rgba(99,153,34,0.10)',
+    greenBgBtn: isDark ? 'rgba(99,153,34,0.28)' : 'rgba(99,153,34,0.20)',
+    greenBgBtnHover: isDark ? 'rgba(99,153,34,0.48)' : 'rgba(99,153,34,0.35)',
+    muted: isDark ? '#888780' : '#6B7280',
+    body: isDark ? '#c2c0b6' : '#4B5563',
+    trackBg: isDark ? '#2a2c28' : '#E5E7EB',
+    fillBg: isDark ? '#444441' : '#D1D5DB',
+  }
   const [phase, setPhase]   = useState<Phase>('idle')
   const [openTime, setOpenTime] = useState(0)
   const [pulse, setPulse]   = useState(true)
@@ -219,20 +239,20 @@ export default function EntryWindowBanner({
     return (
       <div style={{
         marginBottom: 8, borderRadius: 8, padding: '12px 14px',
-        background: 'rgba(99,153,34,0.15)', border: '1px solid #639922',
+        background: C.greenBgDim, border: `1px solid ${C.greenBg}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <span style={{ fontSize: 16, color: '#a3cc6a', flexShrink: 0, lineHeight: 1 }}>✓</span>
+          <span style={{ fontSize: 16, color: C.green, flexShrink: 0, lineHeight: 1 }}>✓</span>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#a3cc6a', marginBottom: 5 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.green, marginBottom: 5 }}>
               Trade active · {ticker} {direction}{ep ? ` · ${ep}` : ''}
             </div>
-            <div style={{ fontSize: 11, color: '#c2c0b6', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11, color: C.body, lineHeight: 1.6 }}>
               {sp && <>Stop locked at {sp}</>}
               {t1  && ` · T1: $${t1.toFixed(2)}`}
               {t2  && ` · T2: $${t2.toFixed(2)}`}
             </div>
-            <div style={{ fontSize: 11, color: '#888780', marginTop: 3 }}>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>
               Move stop to breakeven when T1 hits
             </div>
           </div>
@@ -249,14 +269,14 @@ export default function EntryWindowBanner({
         background: 'rgba(136,135,128,0.10)', border: '0.5px solid #888780',
         opacity: fading ? 0 : 1, transition: 'opacity 1.2s ease',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: '#888780', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: C.muted, marginBottom: 8 }}>
           ⏱ Entry window closed
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
-          <Bar label="Candle 1" progress={1} isActive={false} isDone />
-          <Bar label="Candle 2" progress={1} isActive={false} isDone />
+          <Bar label="Candle 1" progress={1} isActive={false} isDone isDark={isDark} />
+          <Bar label="Candle 2" progress={1} isActive={false} isDone isDark={isDark} />
         </div>
-        <div style={{ fontSize: 11, color: '#888780' }}>
+        <div style={{ fontSize: 11, color: C.muted }}>
           Window expired · Watching for re-entry setup
         </div>
       </div>
@@ -268,18 +288,18 @@ export default function EntryWindowBanner({
   return (
     <div style={{
       marginBottom: 8, borderRadius: 8, padding: '14px 16px',
-      background: 'rgba(99,153,34,0.18)',
+      background: isDark ? 'rgba(99,153,34,0.18)' : '#0d1a0d',
       border: `2px solid rgba(99,153,34,${borderAlpha})`,
       transition: 'border-color 0.35s ease',
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 500, color: '#a3cc6a', letterSpacing: '0.01em' }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: C.green, letterSpacing: '0.01em' }}>
           ⚡ ENTRY WINDOW OPEN · ACT NOW
         </span>
         <span style={{
-          fontSize: 10, fontWeight: 700, color: '#a3cc6a',
-          background: 'rgba(99,153,34,0.2)', borderRadius: 4, padding: '2px 6px',
+          fontSize: 10, fontWeight: 700, color: C.green,
+          background: isDark ? 'rgba(99,153,34,0.2)' : 'rgba(99,153,34,0.25)', borderRadius: 4, padding: '2px 6px',
         }}>
           {allSession ? 'TREND DAY' : onCandle2 ? 'CANDLE 2' : 'CANDLE 1'}
         </span>
@@ -287,7 +307,7 @@ export default function EntryWindowBanner({
 
       {/* Trade line */}
       {(ep || sp) && (
-        <div style={{ fontSize: 12, color: '#c2c0b6', marginBottom: 10, fontFamily: 'monospace' }}>
+        <div style={{ fontSize: 12, color: C.body, marginBottom: 10, fontFamily: 'monospace' }}>
           {ticker} · {direction}{ep ? ` · ${ep}` : ''}{sp ? ` · Stop ${sp}` : ''}
         </div>
       )}
@@ -299,12 +319,14 @@ export default function EntryWindowBanner({
           progress={c1Prog}
           isActive={!onCandle2 && !windowDone}
           isDone={c1Prog >= 1}
+          isDark={isDark}
         />
         <Bar
           label="Candle 2"
           progress={c2Prog}
           isActive={onCandle2}
           isDone={c2Prog >= 1}
+          isDark={isDark}
         />
       </div>
 
@@ -313,7 +335,7 @@ export default function EntryWindowBanner({
         display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
       }}>
-        <span style={{ fontSize: 11, color: '#888780', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
           {allSession
             ? '⚡ Trend day · Entry valid all session · Any OR retest failure is valid'
             : 'Enter within this candle or next one. After that — window closes.'}
@@ -323,11 +345,11 @@ export default function EntryWindowBanner({
           onClick={handleEntered}
           style={{
             minHeight: 44, padding: '8px 18px', borderRadius: 6, flexShrink: 0,
-            background: 'rgba(99,153,34,0.28)', border: '1px solid #639922',
-            color: '#a3cc6a', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: C.greenBgBtn, border: `1px solid ${C.greenBg}`,
+            color: C.green, fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,153,34,0.48)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,153,34,0.28)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.greenBgBtnHover }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = C.greenBgBtn }}
         >
           ✓ I entered this trade
         </button>

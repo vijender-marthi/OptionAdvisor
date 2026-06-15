@@ -11,13 +11,15 @@ export default function TrendDayBanner({
   direction, spyMove, vixLevel, tickerCount, atrUsedPct, isDark = true,
 }: TrendDayBannerProps) {
   const isBear   = direction === 'BEAR'
-  const bg       = isBear ? 'rgba(226,75,74,0.12)'  : 'rgba(99,153,34,0.12)'
-  const border   = isBear ? '#E24B4A'                : '#639922'
-  const color    = isBear ? '#e07070'                : '#a3cc6a'
+  const bg       = isBear
+    ? (isDark ? 'rgba(226,75,74,0.12)' : '#1a0d0d')
+    : (isDark ? 'rgba(99,153,34,0.12)' : '#0d1a0d')
+  const border   = isBear ? '#E24B4A' : (isDark ? '#639922' : '#3d7a0f')
+  const textCol  = isBear ? (isDark ? '#e07070' : '#f87171') : (isDark ? '#a3cc6a' : '#4ade80')
   const icon     = isBear ? '📉'                     : '📈'
   const label    = isBear ? 'Bear confirmed'          : 'Bull confirmed'
   const orBreak  = isBear ? 'OR low breaks'           : 'OR high breaks'
-  const bodyMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
+  const bodyMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.75)'
 
   const atrOver = atrUsedPct != null && atrUsedPct >= 150
 
@@ -30,7 +32,7 @@ export default function TrendDayBanner({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 14 }}>{icon}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: textCol, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             TREND DAY · {label}
           </span>
         </div>
@@ -42,7 +44,7 @@ export default function TrendDayBanner({
       </div>
 
       {/* Context line */}
-      <div style={{ fontSize: 11, color, fontFamily: 'monospace', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: textCol, fontFamily: 'monospace', marginBottom: 8 }}>
         SPY {spyMove >= 0 ? '+' : ''}{spyMove.toFixed(2)}%
         {' · '}VIX {vixLevel.toFixed(1)}
         {' · '}{tickerCount} ticker{tickerCount !== 1 ? 's' : ''} moving together
@@ -56,7 +58,7 @@ export default function TrendDayBanner({
           'Widen stops by 50%',
         ].map((line, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 9, color, flexShrink: 0 }}>▸</span>
+            <span style={{ fontSize: 9, color: textCol, flexShrink: 0 }}>▸</span>
             <span style={{ fontSize: 11, color: bodyMuted }}>{line}</span>
           </div>
         ))}
@@ -64,8 +66,8 @@ export default function TrendDayBanner({
         {/* ATR usage */}
         {atrUsedPct != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <span style={{ fontSize: 9, color: atrOver ? '#E24B4A' : color, flexShrink: 0 }}>▸</span>
-            <span style={{ fontSize: 11, color: atrOver ? '#E24B4A' : color }}>
+            <span style={{ fontSize: 9, color: atrOver ? '#E24B4A' : textCol, flexShrink: 0 }}>▸</span>
+            <span style={{ fontSize: 11, color: atrOver ? '#E24B4A' : textCol }}>
               Entry valid until ATR 150% used · Current ATR used: {Math.round(atrUsedPct)}%
               {atrOver ? ' · Suspend new entries' : ''}
             </span>

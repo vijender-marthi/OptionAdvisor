@@ -1076,20 +1076,20 @@ export default function SwingTradePage() {
 
       {/* MACD histogram — momentum phase, computed from chart_series closes */}
       {result && result.metrics && (result.metrics as Record<string, unknown>).chart_series != null && (
-        <details className="group rounded-xl border border-gray-800/80 bg-gray-900/40 overflow-hidden mb-3">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 border-b border-gray-800/60 hover:bg-surface-muted/20">
+        <details className="group rounded-xl border border-slate-200 dark:border-gray-800/80 bg-white dark:bg-gray-900/40 overflow-hidden mb-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-gray-800/60 hover:bg-surface-muted/20">
             <BarChart2 size={14} className="text-violet-400" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500">
               MACD Histogram (12/26/9 daily)
             </span>
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setHelpOpen(true) }}
-              className="ml-auto text-[11px] font-medium text-violet-400 hover:text-violet-300"
+              className="ml-auto text-[11px] font-medium text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300"
             >
               Reading guide →
             </button>
-            <ChevronDown size={14} className="text-muted transition-transform group-open:rotate-180" />
+            <ChevronDown size={14} className="text-slate-400 dark:text-muted transition-transform group-open:rotate-180" />
           </summary>
           <div className="p-3">
             <MacdHistogramChart metrics={result.metrics as Record<string, unknown>} />
