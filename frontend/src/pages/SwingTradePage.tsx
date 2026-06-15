@@ -1019,6 +1019,20 @@ export default function SwingTradePage() {
             const structure = result.suggested_strategy && result.suggested_strategy !== 'NO_TRADE'
               ? result.suggested_strategy
               : (unified.structure && unified.structure !== 'See analysis' ? unified.structure : undefined)
+            // For a 2-leg debit/credit spread, hand the legs to the check so it
+            // shows the actual spread (both strikes + net debit/credit + fillability).
+            const se = unified.spread_entry
+            const spreadInfo = se && se.long_strike && se.short_strike ? {
+              longLeg: se.long_leg,
+              shortLeg: se.short_leg,
+              longStrike: se.long_strike,
+              shortStrike: se.short_strike,
+              netDebit: se.est_debit,
+              maxGain: se.max_gain ?? 0,
+              maxLoss: se.max_loss ?? 0,
+              breakeven: se.breakeven ?? 0,
+              kind: /bull[\s_]*put|bear[\s_]*call|credit/i.test(structure ?? '') ? 'credit' as const : 'debit' as const,
+            } : undefined
             return (
               <OptionsEntryCheck
                 key={ocKey}
@@ -1032,6 +1046,7 @@ export default function SwingTradePage() {
                 isDark={isDark}
                 mode="swing"
                 structure={structure}
+                spread={spreadInfo}
               />
             )
           })()}

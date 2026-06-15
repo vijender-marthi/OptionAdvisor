@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, CheckSquare, Square, RefreshCw, Download, Save, ChevronDown, ChevronUp, X, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, CheckSquare, Square, RefreshCw, Download, Save, ChevronDown, ChevronUp, X, Loader2, AlertCircle, Calendar } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import {
   fetchMyTickers, addMyTicker, searchTickers,
@@ -127,6 +127,8 @@ const EOD_CHECK_NOTES: Record<number, string> = {
 const NOTES_KEY = 'eod_journal_notes_'
 const CHECKS_KEY = 'eod_journal_checks_'
 const EXIT_STRATEGY_KEY = 'exit_strategy_'
+const SNAPSHOT_KEY = 'eod_journal_snapshot_'
+const SNAPSHOT_KEEP_DAYS = 3
 
 const EXIT_TOOLTIP = [
   "EV uses the scenario's probability as P(T1 hit).",
@@ -670,17 +672,60 @@ function SectionHeader({
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
-function loadNotes(): Record<string, StockNotes> {
-  try { return JSON.parse(localStorage.getItem(NOTES_KEY + todayKey()) ?? '{}') } catch { return {} }
+function loadNotes(dateKey: string): Record<string, StockNotes> {
+  try { return JSON.parse(localStorage.getItem(NOTES_KEY + dateKey) ?? '{}') } catch { return {} }
 }
-function saveNotes(notes: Record<string, StockNotes>) {
-  try { localStorage.setItem(NOTES_KEY + todayKey(), JSON.stringify(notes)) } catch { /* quota */ }
+function saveNotes(dateKey: string, notes: Record<string, StockNotes>) {
+  try { localStorage.setItem(NOTES_KEY + dateKey, JSON.stringify(notes)) } catch { /* quota */ }
 }
-function loadChecks(): Record<number, boolean> {
-  try { return JSON.parse(localStorage.getItem(CHECKS_KEY + todayKey()) ?? '{}') } catch { return {} }
+function loadChecks(dateKey: string): Record<number, boolean> {
+  try { return JSON.parse(localStorage.getItem(CHECKS_KEY + dateKey) ?? '{}') } catch { return {} }
 }
-function saveChecks(c: Record<number, boolean>) {
-  try { localStorage.setItem(CHECKS_KEY + todayKey(), JSON.stringify(c)) } catch { /* quota */ }
+function saveChecks(dateKey: string, c: Record<number, boolean>) {
+  try { localStorage.setItem(CHECKS_KEY + dateKey, JSON.stringify(c)) } catch { /* quota */ }
+}
+
+// ─── Dated snapshots ───────────────────────────────────────────────────────────
+// The analysis is live data that changes through the day. Snapshotting it per
+// date+ticker lets the trader save an EOD entry and review the last few days
+// instead of always seeing the latest fetch.
+
+interface SnapshotEntry { analysis: StockAnalysis; sectors: SectorEntry[]; savedAt: string }
+
+/** Most recent N calendar days as ISO date keys (today first). */
+function recentDateKeys(n: number): string[] {
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    out.push(d.toISOString().split('T')[0])
+  }
+  return out
+}
+function loadDaySnapshots(dateKey: string): Record<string, SnapshotEntry> {
+  try { return JSON.parse(localStorage.getItem(SNAPSHOT_KEY + dateKey) ?? '{}') } catch { return {} }
+}
+function loadSnapshot(dateKey: string, ticker: string): SnapshotEntry | null {
+  return loadDaySnapshots(dateKey)[ticker] ?? null
+}
+function saveSnapshot(dateKey: string, ticker: string, analysis: StockAnalysis, sectors: SectorEntry[]) {
+  try {
+    const day = loadDaySnapshots(dateKey)
+    day[ticker] = { analysis, sectors, savedAt: new Date().toISOString() }
+    localStorage.setItem(SNAPSHOT_KEY + dateKey, JSON.stringify(day))
+  } catch { /* quota */ }
+}
+/** Drop snapshot buckets older than the retention window. */
+function pruneSnapshots(keepDays: number) {
+  const keep = new Set(recentDateKeys(keepDays))
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(SNAPSHOT_KEY) && !keep.has(k.slice(SNAPSHOT_KEY.length))) {
+        localStorage.removeItem(k)
+      }
+    }
+  } catch { /* ignore */ }
 }
 
 // ─── Fibonacci + Confluence panels (additive) ──────────────────────────────────
@@ -858,8 +903,10 @@ export default function EODJournalPage() {
   const [spyChg,      setSpyChg]      = useState<number | null>(null)
   const [qqqChg,      setQqqChg]      = useState<number | null>(null)
   const [vixVal,      setVixVal]      = useState<number | null>(null)
-  const [checkState,  setCheckState]  = useState<Record<number, boolean>>(loadChecks)
-  const [notes,       setNotes]       = useState<Record<string, StockNotes>>(loadNotes)
+  const [viewDate,    setViewDate]    = useState<string>(todayKey())
+  const [checkState,  setCheckState]  = useState<Record<number, boolean>>(() => loadChecks(todayKey()))
+  const [notes,       setNotes]       = useState<Record<string, StockNotes>>(() => loadNotes(todayKey()))
+  const [entrySaved,  setEntrySaved]  = useState<string | null>(null)
   const [collapsed,   setCollapsed]   = useState<Record<string, boolean>>({ fibExample: true })
   const [showEma9]                    = useState(() => loadSwingToolSettings().showEma9)
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null)
@@ -1018,7 +1065,7 @@ export default function EODJournalPage() {
       })
       setSectors(newSectors)
 
-      setAnalysis({
+      const analysisObj: StockAnalysis = {
         ticker, company, sector,
         close, prevClose, vwap,
         ma20, ma50, rsi,
@@ -1033,7 +1080,11 @@ export default function EODJournalPage() {
         confidence: conf,
         scenarios,
         fetchedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      })
+      }
+      setAnalysis(analysisObj)
+      // Auto-snapshot today's entry so history accumulates without manual saves.
+      saveSnapshot(todayKey(), ticker, analysisObj, newSectors)
+      pruneSnapshots(SNAPSHOT_KEEP_DAYS)
     } catch (e) {
       setDataError((e instanceof Error ? e.message : null) ?? 'Data fetch failed')
     } finally {
@@ -1041,10 +1092,32 @@ export default function EODJournalPage() {
     }
   }, [myTickers])
 
-  // Auto-load when ticker selected
+  // Load when ticker or viewed date changes: live fetch for today, saved
+  // snapshot for past dates (so the EOD entry isn't overwritten by live data).
   useEffect(() => {
-    if (selected) loadTickerData(selected)
-  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selected) { setAnalysis(null); setSectors([]); return }
+    if (viewDate === todayKey()) {
+      loadTickerData(selected)
+    } else {
+      const snap = loadSnapshot(viewDate, selected)
+      if (snap) {
+        setAnalysis(snap.analysis)
+        setSectors(snap.sectors)
+        setDataError(null)
+      } else {
+        setAnalysis(null)
+        setSectors([])
+        setDataError(`No saved entry for ${selected} on this date. Entries are kept for the last ${SNAPSHOT_KEEP_DAYS} days.`)
+      }
+      setLoadingData(false)
+    }
+  }, [selected, viewDate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Notes + checklist are per-date; reload them when the viewed date changes.
+  useEffect(() => {
+    setCheckState(loadChecks(viewDate))
+    setNotes(loadNotes(viewDate))
+  }, [viewDate])
 
   const handleAddTicker = useCallback(async (symbol: string, company: string) => {
     setAdding(true)
@@ -1061,7 +1134,7 @@ export default function EODJournalPage() {
   const toggleCheck = (i: number) => {
     setCheckState(prev => {
       const next = { ...prev, [i]: !prev[i] }
-      saveChecks(next)
+      saveChecks(viewDate, next)
       return next
     })
   }
@@ -1072,15 +1145,25 @@ export default function EODJournalPage() {
   const updateNote = (ticker: string, key: keyof StockNotes, val: string) => {
     setNotes(prev => {
       const next = { ...prev, [ticker]: { ...(prev[ticker] ?? { observations: '', mistakes: '', gamePlan: '' }), [key]: val } }
-      saveNotes(next)
+      saveNotes(viewDate, next)
       return next
     })
   }
 
   const handleSaveNotes = () => {
-    saveNotes(notes)
+    saveNotes(viewDate, notes)
     setSaveFeedback('Saved ✓')
     setTimeout(() => setSaveFeedback(null), 2000)
+  }
+
+  // Explicitly snapshot today's entry (analysis + notes) so it can be reviewed later.
+  const handleSaveEntry = () => {
+    if (!analysis) return
+    saveSnapshot(todayKey(), analysis.ticker, analysis, sectors)
+    saveNotes(todayKey(), notes)
+    pruneSnapshots(SNAPSHOT_KEEP_DAYS)
+    setEntrySaved('Saved ✓')
+    setTimeout(() => setEntrySaved(null), 2000)
   }
 
   const handleExport = useCallback(() => {
@@ -1120,6 +1203,7 @@ export default function EODJournalPage() {
   }, [])
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const isToday = viewDate === todayKey()
   const doneChecks = Object.values(checkState).filter(Boolean).length
   const checkPct   = Math.round((doneChecks / EOD_CHECKS.length) * 100)
 
@@ -1221,12 +1305,36 @@ export default function EODJournalPage() {
             <div style={{ fontSize: 11, color: txMuted, marginTop: 1 }}>End-of-session analysis → Tomorrow's game plan</div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600, color: txMuted }}>{today}</div>
-          {analysis && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Date history selector — last few days of saved entries */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 6, padding: 3 }}>
+            <Calendar size={12} style={{ color: txMuted, margin: '0 3px' }} />
+            {recentDateKeys(SNAPSHOT_KEEP_DAYS).map(dk => {
+              const active = dk === viewDate
+              const label = dk === todayKey() ? 'Today' : new Date(dk + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              return (
+                <button key={dk} onClick={() => setViewDate(dk)} title={dk} style={{
+                  padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+                  background: active ? '#1f6feb' : 'transparent', color: active ? '#fff' : txMuted,
+                }}>{label}</button>
+              )
+            })}
+          </div>
+          {!isToday && analysis && (
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '4px 8px', borderRadius: 5, border: `1px solid ${bdr}`, color: '#d29922', background: '#1a1200' }}>
+              Saved entry{analysis.fetchedAt ? ` · ${analysis.fetchedAt}` : ''}
+            </span>
+          )}
+          {isToday && analysis && (
             <button onClick={() => loadTickerData(analysis.ticker)} disabled={loadingData} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${bdr}`, background: cardBg2, color: txMuted, display: 'flex', alignItems: 'center', gap: 5 }}>
               <RefreshCw size={12} className={loadingData ? 'animate-spin' : ''} />
               {loadingData ? 'Fetching…' : 'Refresh'}
+            </button>
+          )}
+<<<<<<< HEAD
+          {isToday && (
+            <button onClick={handleSaveEntry} disabled={!analysis} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: analysis ? 'pointer' : 'default', border: 'none', background: isDark ? (entrySaved ? '#1a4a1f' : '#21a047') : (entrySaved ? '#3d7a0f' : '#21a047'), color: isDark ? (entrySaved ? '#3fb950' : '#000') : '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Save size={12} /> {entrySaved ?? 'Save Entry'}
             </button>
           )}
           <button onClick={handleExport} disabled={!analysis} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: analysis ? 'pointer' : 'default', border: `1px solid ${isDark ? '#1a3050' : '#58a6ff'}`, background: isDark ? '#0d1a28' : '#e8f0fe', color: analysis ? '#58a6ff' : '#8b949e', display: 'flex', alignItems: 'center', gap: 5 }}>
