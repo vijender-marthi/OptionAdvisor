@@ -356,13 +356,30 @@ function Sparkline({ isUp, label, price }: { isUp: boolean; label: string; price
   )
 }
 
+// ─── Light/dark theme helpers (EOD Journal) ─────────────────────────────────
+// Every value below resolves dark → light. Pass the page's `isDark` so inset
+// panels, overlays, dividers and muted text match the rest of the app in light
+// mode instead of rendering dark-on-light.
+const eodBullBg   = (d: boolean) => (d ? '#0d2011' : '#eaf7ee')
+const eodBearBg   = (d: boolean) => (d ? '#200d0d' : '#fdeded')
+const eodNeutBg   = (d: boolean) => (d ? '#1a1200' : '#fef6e6')
+const eodPanelBg  = (d: boolean) => (d ? '#0d1117' : '#ffffff')       // inset card surface
+const eodInsetBg  = (d: boolean) => (d ? '#1c2330' : '#f6f8fa')       // stat box / dashed surface
+const eodOverlay  = (d: boolean) => (d ? 'rgba(0,0,0,.25)' : 'rgba(255,255,255,.55)')
+const eodOverlay3 = (d: boolean) => (d ? 'rgba(0,0,0,.3)' : 'rgba(255,255,255,.65)')
+const eodDivider  = (d: boolean) => (d ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.07)')
+const eodHairline = (d: boolean) => (d ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.09)')
+const eodTxStrong = (d: boolean) => (d ? '#f0f6fc' : '#1f2328')
+const eodTxMuted  = (d: boolean) => (d ? '#8b949e' : '#57606a')
+const eodTxFaint  = (d: boolean) => (d ? '#6e7681' : '#8590a0')
+
 // ─── Scenario Card ────────────────────────────────────────────────────────────
 
 function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bear'; data: ScenarioData; ticker: string; panelColors?: PanelColors }) {
   const isBull = type === 'bull'
   const isDark = panelColors?.isDark ?? true
-  const color = isBull ? '#3fb950' : '#f85149'
-  const bg    = isBull ? (isDark ? '#0d2011' : '#0d2011') : (isDark ? '#200d0d' : '#200d0d')
+  const color = isBull ? (isDark ? '#3fb950' : '#15803d') : (isDark ? '#f85149' : '#b91c1c')
+  const bg    = isBull ? (isDark ? '#0d2011' : '#eaf7ee') : (isDark ? '#200d0d' : '#fdeded')
   const bdr   = isBull ? (isDark ? '#1a4a1f' : '#3d7a0f') : (isDark ? '#5a1a1a' : '#b91c1c')
   const icon  = isBull ? '▲' : '▼'
   const label = isBull ? 'BULL CASE — Gap Up / HL/HH' : 'BEAR CASE — Gap Down / LL/LH'
@@ -467,8 +484,8 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
 
   const btnSm: React.CSSProperties = {
     width: 22, height: 22, borderRadius: 4, fontSize: 14, fontWeight: 700,
-    border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.06)',
-    color: '#f0f6fc', cursor: 'pointer', display: 'flex', alignItems: 'center',
+    border: `1px solid ${eodHairline(isDark)}`, background: isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.04)',
+    color: eodTxStrong(isDark), cursor: 'pointer', display: 'flex', alignItems: 'center',
     justifyContent: 'center', padding: 0, lineHeight: 1,
   }
 
@@ -488,26 +505,26 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
         {icon} {label}
         <span style={{
           marginLeft: 'auto', padding: '1px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-          color, border: `1px solid ${bdr}`, background: 'rgba(0,0,0,.3)',
+          color, border: `1px solid ${bdr}`, background: eodOverlay3(isDark),
         }}>{data.probability}% prob</span>
       </div>
 
       {/* Scenario rows */}
       {rows.map(([k, v, c]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,.05)', fontSize: 12 }}>
-          <span style={{ color: '#8b949e', flexShrink: 0 }}>{k}</span>
-          <span style={{ fontWeight: 700, color: c ?? '#f0f6fc', textAlign: 'right', maxWidth: '62%' }}>{v}</span>
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '5px 0', borderBottom: `1px solid ${eodDivider(isDark)}`, fontSize: 12 }}>
+          <span style={{ color: eodTxMuted(isDark), flexShrink: 0 }}>{k}</span>
+          <span style={{ fontWeight: 700, color: c ?? eodTxStrong(isDark), textAlign: 'right', maxWidth: '62%' }}>{v}</span>
         </div>
       ))}
 
       {/* Probability bar */}
-      <div style={{ marginTop: 10, height: 4, background: '#21262d', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ marginTop: 10, height: 4, background: isDark ? '#21262d' : '#d0d7de', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${data.probability}%`, background: color, borderRadius: 2 }} />
       </div>
 
       {/* If this happens */}
-      <div style={{ marginTop: 10, background: 'rgba(0,0,0,.25)', borderRadius: 6, padding: '8px 10px', fontSize: 11, color: '#8b949e', lineHeight: 1.6 }}>
-        <strong style={{ color: '#e6edf3', display: 'block', marginBottom: 3 }}>📋 If this happens:</strong>
+      <div style={{ marginTop: 10, background: eodOverlay(isDark), borderRadius: 6, padding: '8px 10px', fontSize: 11, color: eodTxMuted(isDark), lineHeight: 1.6 }}>
+        <strong style={{ color: eodTxStrong(isDark), display: 'block', marginBottom: 3 }}>📋 If this happens:</strong>
         {isBull
           ? 'Watch for gap + VWAP reclaim in first 5 min. Do NOT chase open. Wait for 1m pullback to VWAP, confirm hold, then enter. Stop below VWAP.'
           : "Watch for weak open or retest of yesterday's close as resistance. Enter on VWAP rejection confirmation. Stop tight above level."
@@ -515,25 +532,25 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
       </div>
 
       {/* ── EXIT STRATEGY ─────────────────────────────────────────────────── */}
-      <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 14 }}>
+      <div style={{ marginTop: 14, borderTop: `1px solid ${eodHairline(isDark)}`, paddingTop: 14 }}>
 
         {/* Header + tooltip */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 11 }}>
           <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color }}>
             Exit Strategy
           </span>
-          <span title={EXIT_TOOLTIP} style={{ fontSize: 12, color: '#8b949e', cursor: 'help', userSelect: 'none' }}>ⓘ</span>
+          <span title={EXIT_TOOLTIP} style={{ fontSize: 12, color: eodTxMuted(isDark), cursor: 'help', userSelect: 'none' }}>ⓘ</span>
         </div>
 
         {/* Contracts + mode toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 11, color: '#8b949e' }}>{mode === 'options' ? 'Contracts' : 'Shares'}</span>
+            <span style={{ fontSize: 11, color: eodTxMuted(isDark) }}>{mode === 'options' ? 'Contracts' : 'Shares'}</span>
             <button style={btnSm} onClick={() => setContracts(c => Math.max(1, c - 1))}>−</button>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#f0f6fc', fontFamily: 'monospace', minWidth: 22, textAlign: 'center' }}>{contracts}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: eodTxStrong(isDark), fontFamily: 'monospace', minWidth: 22, textAlign: 'center' }}>{contracts}</span>
             <button style={btnSm} onClick={() => setContracts(c => c + 1)}>+</button>
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid rgba(255,255,255,.12)' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 5, overflow: 'hidden', border: `1px solid ${eodHairline(isDark)}` }}>
             {(['options', 'shares'] as const).map(m => (
               <button
                 key={m}
@@ -541,7 +558,7 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
                 style={{
                   padding: '3px 10px', fontSize: 11, fontWeight: mode === m ? 700 : 400,
                   background: mode === m ? color : 'transparent',
-                  color: mode === m ? (isBull ? '#0d2011' : '#200d0d') : '#8b949e',
+                  color: mode === m ? (isDark ? (isBull ? '#0d2011' : '#200d0d') : '#ffffff') : eodTxMuted(isDark),
                   border: 'none', cursor: 'pointer', textTransform: 'capitalize',
                 }}
               >{m}</button>
@@ -552,8 +569,8 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
         {/* P(T2|T1) slider */}
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 11 }}>
-            <span style={{ color: '#8b949e' }}>P(T2 | T1 hit)</span>
-            <span style={{ fontWeight: 700, color: '#f0f6fc', fontFamily: 'monospace' }}>{pT2GivenT1}%</span>
+            <span style={{ color: eodTxMuted(isDark) }}>P(T2 | T1 hit)</span>
+            <span style={{ fontWeight: 700, color: eodTxStrong(isDark), fontFamily: 'monospace' }}>{pT2GivenT1}%</span>
           </div>
           <input
             type="range" min="10" max="90" step="5"
@@ -565,7 +582,7 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
 
         {/* Marginal setup warning */}
         {allMarginal && (
-          <div style={{ marginBottom: 10, padding: '7px 10px', background: '#1a1200', border: '1px solid #5a3a00', borderRadius: 6, fontSize: 11, color: '#ffa657', lineHeight: 1.6 }}>
+          <div style={{ marginBottom: 10, padding: '7px 10px', background: eodNeutBg(isDark), border: `1px solid ${isDark ? '#5a3a00' : '#e0b050'}`, borderRadius: 6, fontSize: 11, color: isDark ? '#ffa657' : '#9a6700', lineHeight: 1.6 }}>
             ⚠ Marginal setup — EV near zero at this probability. No strategy fixes a bad R/R. Consider higher conviction before sizing up.
           </div>
         )}
@@ -578,8 +595,8 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
               <div
                 key={s.id}
                 style={{
-                  background: '#0d1117',
-                  border: isBestCard ? '1px solid #d29922' : '1px solid rgba(255,255,255,.08)',
+                  background: eodPanelBg(isDark),
+                  border: isBestCard ? '1px solid #d29922' : `1px solid ${eodHairline(isDark)}`,
                   borderRadius: 7, padding: '10px 11px', minHeight: 96,
                   opacity: s.disabled ? 0.4 : 1, position: 'relative',
                   boxShadow: isBestCard ? '0 0 10px rgba(210,153,34,.2)' : 'none',
@@ -594,7 +611,7 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
                   <span style={{ fontSize: 13 }}>{s.icon}</span>
                 </div>
                 {s.disabled ? (
-                  <div style={{ fontSize: 10, color: '#8b949e', lineHeight: 1.5, marginTop: 4 }}>
+                  <div style={{ fontSize: 10, color: eodTxMuted(isDark), lineHeight: 1.5, marginTop: 4 }}>
                     Requires<br />2+ contracts
                   </div>
                 ) : (
@@ -602,10 +619,10 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
                     <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'monospace', color: s.ev >= -0.5 ? '#3fb950' : '#f85149', marginBottom: 4 }}>
                       {s.ev >= -0.5 ? '+' : '-'}${Math.abs(s.ev).toFixed(0)}
                     </div>
-                    <div style={{ fontSize: 10, color: '#6e7681', lineHeight: 1.6 }}>
-                      <span style={{ color: '#8b949e' }}>Var </span>{s.variance}
+                    <div style={{ fontSize: 10, color: eodTxFaint(isDark), lineHeight: 1.6 }}>
+                      <span style={{ color: eodTxMuted(isDark) }}>Var </span>{s.variance}
                       {' · '}
-                      <span style={{ color: '#8b949e' }}>Win </span>{s.wr}%
+                      <span style={{ color: eodTxMuted(isDark) }}>Win </span>{s.wr}%
                     </div>
                   </>
                 )}
@@ -615,12 +632,12 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
         </div>
 
         {/* Recommendation */}
-        <div style={{ background: 'rgba(0,0,0,.3)', borderRadius: 6, padding: '10px 12px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#f0f6fc', marginBottom: 4 }}>
+        <div style={{ background: eodOverlay3(isDark), borderRadius: 6, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: eodTxStrong(isDark), marginBottom: 4 }}>
             ▸ Recommendation:{' '}
             <span style={{ color: bestColor }}>{bestName}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#8b949e', lineHeight: 1.7 }}>{getRecText()}</div>
+          <div style={{ fontSize: 11, color: eodTxMuted(isDark), lineHeight: 1.7 }}>{getRecText()}</div>
         </div>
 
       </div>
@@ -1331,7 +1348,6 @@ export default function EODJournalPage() {
               {loadingData ? 'Fetching…' : 'Refresh'}
             </button>
           )}
-<<<<<<< HEAD
           {isToday && (
             <button onClick={handleSaveEntry} disabled={!analysis} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: analysis ? 'pointer' : 'default', border: 'none', background: isDark ? (entrySaved ? '#1a4a1f' : '#21a047') : (entrySaved ? '#3d7a0f' : '#21a047'), color: isDark ? (entrySaved ? '#3fb950' : '#000') : '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
               <Save size={12} /> {entrySaved ?? 'Save Entry'}

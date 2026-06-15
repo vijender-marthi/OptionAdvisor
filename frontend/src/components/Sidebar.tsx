@@ -217,6 +217,7 @@ export default function Sidebar() {
     { id: 'q-radar',        label: 'Quantum Radar',  icon: <Atom size={18} /> },
     { id: 'trade-signals',  label: 'Trade Signals',  icon: <BarChart2 size={18} /> },
     // Portfolio
+    { id: 'positions',      label: 'Positions',      icon: <Briefcase size={18} /> },
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     // Review
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
