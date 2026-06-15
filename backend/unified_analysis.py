@@ -412,7 +412,9 @@ def serialize_day_trade(scan) -> dict:
             exit_rows.append({"when": "Stop Loss", "price": _fmt_price(stop_price), "action": _stop_action, "type": "stop"})
         exit_rows.append({"when": "Time Stop", "price": "EOD", "action": "3:55 PM ET · Never carry overnight", "type": "time"})
 
-        conditions = _shorten_reasons(scan.reasons or [], scan.verdict or "", max_conditions=6)
+        reasons = (scan.reasons if hasattr(scan, 'reasons') else scan.get('reasons')) or []
+        verdict = (scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict')) or ""
+        conditions = _shorten_reasons(reasons, verdict, max_conditions=6)
 
         # Only show R/R when there is a valid profit target in the exit plan.
         # The engine's entry_rr_ratio is computed from the scan bias which may
@@ -451,7 +453,7 @@ def serialize_day_trade(scan) -> dict:
             "verdict": _day_verdict(scan),
             "verdict_raw": _day_verdict(scan),
             "confidence": _extract_confidence(m.get("confidence")),
-            "reason": td.get("decision_message") or (scan.reasons[0] if scan.reasons else ""),
+            "reason": td.get("decision_message") or (_reasons[0] if _reasons else ""),
             "conditions": conditions,
             "entry_price": entry_price,
             "entry_description": _entry_description(entry_price, eg, scan.verdict or ""),
@@ -470,6 +472,8 @@ def serialize_day_trade(scan) -> dict:
             "vix": m.get("vix"),
             "vix_label": _vix_label(m.get("vix")),
             "regime": _regime_label(spy_chg, qqq_chg),
+            "reasons": _reasons,
+            "verdict_raw": _verdict,
             "psychology": m.get("psychology") or None,
             "risk_profile": m.get("risk_profile") or [],
             "session": m.get("session_phase") or "",
@@ -533,7 +537,11 @@ def serialize_swing_trade(scan) -> dict:
         rr = exec_levels.get("rr_ratio")
         rr_str = f"{rr:.1f}:1" if rr else None
 
-        conditions = _shorten_reasons(scan.reasons or [], scan.verdict or "", max_conditions=6)
+        _sw_reasons = (scan.reasons if hasattr(scan, 'reasons') else scan.get('reasons')) or []
+        _sw_verdict = (scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict')) or ''
+        _sw_ticker = scan.ticker if hasattr(scan, 'ticker') else scan.get('ticker', '')
+
+        conditions = _shorten_reasons(_sw_reasons, _sw_verdict, max_conditions=6)
 
         coach = getattr(scan, "playbook_hint", "") or getattr(scan, "decision_message", "") or ""
 
@@ -558,7 +566,7 @@ def serialize_swing_trade(scan) -> dict:
             sw_verdict_val = "AVOID"
         else:
             # Fallback to raw scan verdict when final_action is unknown/empty
-            sw_verdict_val = normalize_verdict(scan.verdict or "")
+            sw_verdict_val = normalize_verdict(_sw_verdict)
 
         # Clear entry plan for non-actionable verdicts
         if sw_verdict_val in ('AVOID', 'WAIT', 'NO_EDGE'):
@@ -568,15 +576,15 @@ def serialize_swing_trade(scan) -> dict:
             exit_rows = []
 
         return {
-            "ticker": scan.ticker,
-            "company": getattr(scan, "company_name", scan.ticker),
+            "ticker": _sw_ticker,
+            "company": getattr(scan, "company_name", _sw_ticker) if hasattr(scan, 'company_name') else scan.get('company_name', _sw_ticker),
             "trade_type": "swing",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("momentum_5d_pct"),
             "verdict": sw_verdict_val,
-            "verdict_raw": Verdict.from_raw(scan.verdict or "").value,
+            "verdict_raw": Verdict.from_raw(_sw_verdict).value,
             "confidence": _extract_confidence(m.get("confidence")),
-            "reason": getattr(scan, "decision_message", "") or (scan.reasons[0] if scan.reasons else ""),
+            "reason": getattr(scan, "decision_message", "") or (_sw_reasons[0] if _sw_reasons else ""),
             "conditions": conditions,
             "entry_price": entry_price,
             "entry_description": exec_levels.get("entry_description") or _entry_description(entry_price, exec_levels, scan.verdict or ""),
