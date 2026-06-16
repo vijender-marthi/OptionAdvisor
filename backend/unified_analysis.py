@@ -438,7 +438,7 @@ def serialize_day_trade(scan) -> dict:
             "verdict": _day_verdict(scan),
             "verdict_raw": _day_verdict(scan),
             "confidence": _extract_confidence(m.get("confidence")),
-            "reason": td.get("decision_message") or (_reasons[0] if _reasons else ""),
+            "reason": td.get("decision_message") or (reasons[0] if reasons else ""),
             "conditions": conditions,
             "entry_price": entry_price,
             "entry_description": _entry_description(entry_price, eg, (scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict')) or ""),
@@ -457,8 +457,8 @@ def serialize_day_trade(scan) -> dict:
             "vix": m.get("vix"),
             "vix_label": _vix_label(m.get("vix")),
             "regime": _regime_label(spy_chg, qqq_chg),
-            "reasons": _reasons,
-            "verdict_raw": _verdict,
+            "reasons": reasons,
+            "verdict_raw": verdict,
             "psychology": m.get("psychology") or None,
             "risk_profile": m.get("risk_profile") or [],
             "session": m.get("session_phase") or "",
@@ -467,7 +467,8 @@ def serialize_day_trade(scan) -> dict:
         }
     except Exception as e:
         log.error("serialize_day_trade error for %s: %s", getattr(scan, 'ticker', '?'), e, exc_info=True)
-        return _error_response(getattr(scan, 'ticker', ''), "day", str(e))
+        m = getattr(scan, 'metrics', None) or {}
+        return _error_response(getattr(scan, 'ticker', ''), "day", str(e), fallback_price=m.get("last_price"))
 
 
 def serialize_swing_trade(scan) -> dict:
@@ -752,12 +753,12 @@ def serialize_regular_trade(ticker: str, company: str, price: float, candidates:
         return _error_response(ticker, "regular", str(e))
 
 
-def _error_response(ticker: str, trade_type: str, error: str) -> dict:
+def _error_response(ticker: str, trade_type: str, error: str, fallback_price: float | None = None) -> dict:
     return {
         "ticker": ticker,
         "company": ticker,
         "trade_type": trade_type,
-        "price": 0,
+        "price": fallback_price or 0,
         "change_pct": None,
         "verdict": "wait",
         "verdict_raw": "ERROR",
