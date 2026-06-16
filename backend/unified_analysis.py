@@ -447,7 +447,7 @@ def serialize_day_trade(scan) -> dict:
             "structure": structure,
             "exit_rows": exit_rows,
             "rr_ratio": rr_str,
-            "risk_level": _risk_level(scan.verdict or "", m),
+            "risk_level": _risk_level((scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict', '')) or "", m),
             "rvol": rvol_str,
             "coach": coach,
             "spy_price": None,
