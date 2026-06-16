@@ -925,7 +925,7 @@ export default function DayTradePage() {
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 10px', flex: '1 1 200px', minWidth: 0 }}>
                 <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>{unified.ticker}</span>
                 {unified.company && <span className="dt-muted" style={{ fontSize: '0.78rem', color: dt.muted }}>{unified.company}</span>}
-                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>${unified.price.toFixed(2)}</span>
+                <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: dt.text }}>${unified.price > 0 ? unified.price.toFixed(2) : '—'}</span>
                 {unified.change_pct != null && (
                   <span style={{ fontSize: '0.82rem', fontWeight: 600, color: unified.change_pct >= 0 ? dt.green : dt.red }}>
                     {unified.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(unified.price * unified.change_pct / (100 + unified.change_pct)).toFixed(2)} ({Math.abs(unified.change_pct).toFixed(2)}%)

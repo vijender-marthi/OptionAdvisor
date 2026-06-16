@@ -307,21 +307,6 @@ def _extract_confidence(conf) -> int:
     return round((total / max_possible) * 100)
 
 def serialize_day_trade(scan) -> dict:
-    import logging
-    log = logging.getLogger(__name__)
-
-    # ADD THESE DEBUG LINES AT TOP:
-    log.info("serialize_day_trade called")
-    log.info("scan type: %s", type(scan))
-    log.info("scan.verdict: %s",
-             getattr(scan, 'verdict', 'MISSING'))
-    log.info("scan.metrics keys: %s",
-             list(getattr(scan, 'metrics', {}).keys())[:10])
-    log.info("scan.entry_guidance: %s",
-             getattr(scan, 'entry_guidance', 'MISSING'))
-    log.info("scan.trader_decision keys: %s",
-             list(getattr(scan, 'trader_decision', {}).keys()))
-
     try:
         m = (scan.metrics or {}) if hasattr(scan, 'metrics') else (scan.get('metrics') or {})
         eg = (scan.entry_guidance or {}) if hasattr(scan, 'entry_guidance') else (scan.get('entry_guidance') or {})
