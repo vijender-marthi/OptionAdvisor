@@ -12,14 +12,14 @@ export default function TrendDayBanner({
 }: TrendDayBannerProps) {
   const isBear   = direction === 'BEAR'
   const bg       = isBear
-    ? (isDark ? 'rgba(226,75,74,0.12)' : '#1a0d0d')
-    : (isDark ? 'rgba(99,153,34,0.12)' : '#0d1a0d')
-  const border   = isBear ? '#E24B4A' : (isDark ? '#639922' : '#3d7a0f')
-  const textCol  = isBear ? (isDark ? '#e07070' : '#f87171') : (isDark ? '#a3cc6a' : '#4ade80')
+    ? (isDark ? 'rgba(226,75,74,0.12)' : 'rgba(220,38,38,0.10)')
+    : (isDark ? 'rgba(99,153,34,0.12)' : 'rgba(16,185,129,0.12)')
+  const border   = isBear ? (isDark ? '#E24B4A' : '#dc2626') : (isDark ? '#639922' : '#3d7a0f')
+  const textCol  = isBear ? (isDark ? '#e07070' : '#b91c1c') : (isDark ? '#a3cc6a' : '#15803d')
   const icon     = isBear ? '📉'                     : '📈'
   const label    = isBear ? 'Bear confirmed'          : 'Bull confirmed'
   const orBreak  = isBear ? 'OR low breaks'           : 'OR high breaks'
-  const bodyMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.75)'
+  const bodyMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.60)'
 
   const atrOver = atrUsedPct != null && atrUsedPct >= 150
 

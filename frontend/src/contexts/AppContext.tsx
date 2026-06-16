@@ -578,10 +578,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         advisoryAcceptedAt && advisoryTermsVersion
           ? { advisoryTermsVersion, advisoryAcceptedAt }
           : undefined
-      // Portfolio is intentionally excluded — each portfolio operation uses its own
-      // dedicated endpoint (/portfolio/add, /portfolio/update, /portfolio/close).
-      // Use the actual portfolio state so fallback positions (created when a dedicated
-      // API call fails) are also persisted. The saveGenRef prevents stale overwrites.
+      // Portfolio is sent for backwards compatibility but the backend IGNORES it
+      // here — every portfolio operation uses its own dedicated endpoint
+      // (/portfolio/add, /portfolio/update, /portfolio/close, /portfolio/remove),
+      // which are the only paths that persist positions. This bulk save must not
+      // carry a stale snapshot that could clobber a just-added or just-removed
+      // position (the cause of positions disappearing/reappearing).
       saveUserData(user.email, watchlist, portfolio, advisory, dayTradeWatchlist, swingTradeWatchlist, alertEmailEnabled)
         .then(() => {
           if (gen !== saveGenRef.current) return // stale — a newer save already superseded this

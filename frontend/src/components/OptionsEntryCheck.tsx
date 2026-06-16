@@ -16,7 +16,7 @@ function ocFindExpiry(expiries: string[], targetDte: number): string | null {
 }
 
 function ocVerdictStrip(
-  trigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD',
+  trigger: 'GO' | 'WAIT' | 'WATCHING',
   pc: 'aligned' | 'conflict' | 'neutral',
   ss: 'ok' | 'warn' | 'bad' | null,
   flip: string,
@@ -24,8 +24,7 @@ function ocVerdictStrip(
   atmStrike: number | null,
   stop: number,
 ): { tier: 'green' | 'amber' | 'red' | 'gray'; msg: string } {
-  if (trigger === 'HOLD')
-    return { tier: 'green' as const, msg: '✓ Position active · Manage to T1/T2 · Move stop to breakeven at T1' }
+
   if (trigger === 'WATCHING')
     return { tier: 'gray', msg: `— Watching · No trigger yet · Wait for: ${flip}` }
   if (trigger === 'WAIT')
@@ -92,53 +91,21 @@ export interface OptionsEntryCheckProps {
   ticker: string
   direction: 'SHORT' | 'LONG'
   stopPrice: number
-  chartTrigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD'
+  chartTrigger: 'GO' | 'WAIT' | 'WATCHING'
   flipCondition: string
   pcAlignment: 'aligned' | 'conflict' | 'neutral'
   initialPrice: number
   isDark?: boolean
-  /** 'day' shows 5/7 DTE; 'swing' shows 7/14/21/28 DTE */
-  mode?: 'day' | 'swing'
-  /**
-   * Recommended options structure (e.g. "Bull Put Spread", "Bear Call Spread",
-   * "Debit Call Spread", "Long Call"). Drives which option side (calls vs puts)
-   * is analyzed and the displayed label. Credit spreads invert the naive
-   * direction→side mapping: Bull Put is bullish but uses puts; Bear Call is
-   * bearish but uses calls. When omitted, falls back to direction (LONG→call,
-   * SHORT→put) for backward compatibility with the day-trade pages.
-   */
-  structure?: string
-  /**
-   * When the recommendation is a 2-leg debit/credit spread, the leg details so
-   * the check renders the actual spread (both strikes + net debit/credit +
-   * per-leg fillability) instead of a single ATM contract.
-   */
-  spread?: {
-    longLeg: string
-    shortLeg: string
-    longStrike: number
-    shortStrike: number
-    netDebit: number
-    maxGain: number
-    maxLoss: number
-    breakeven: number
-    kind: 'debit' | 'credit'
-  } | null
 }
 
 export default function OptionsEntryCheck({
   ticker, direction, stopPrice, chartTrigger, flipCondition, pcAlignment, initialPrice,
   isDark = true,
-  mode = 'day',
-  structure,
-  spread,
 }: OptionsEntryCheckProps) {
   const T = makeT(isDark)
-  const dteOptions = mode === 'swing' ? [7, 14, 21, 28] : [5, 7]
-  const defaultDte = dteOptions[0]!
 
   const [expanded, setExpanded]   = useState(false)
-  const [targetDte, setTargetDte] = useState<number>(defaultDte)
+  const [targetDte, setTargetDte] = useState<5 | 7>(5)
   const [livePrice, setLivePrice] = useState(initialPrice)
   const [draft, setDraft]         = useState(initialPrice.toFixed(2))
   const [data, setData]           = useState<OptionChainLiquidityResponse | null>(null)
@@ -169,7 +136,7 @@ export default function OptionsEntryCheck({
       try {
         const r1 = await fetchOptionChainLiquidity(ticker)
         if (cancelled) return
-        const best5 = ocFindExpiry(r1.expiries, defaultDte)
+        const best5 = ocFindExpiry(r1.expiries, 5)
         if (best5 && best5 !== r1.selected_expiry) {
           try {
             const r2 = await fetchOptionChainLiquidity(ticker, best5)
@@ -201,7 +168,7 @@ export default function OptionsEntryCheck({
     }
   }, [data])
 
-  const handleDte = (dte: number) => {
+  const handleDte = (dte: 5 | 7) => {
     setTargetDte(dte)
     if (data) {
       const best = ocFindExpiry(data.expiries, dte)
@@ -209,14 +176,7 @@ export default function OptionsEntryCheck({
     }
   }
 
-  // Option side comes from the recommended structure when available, since credit
-  // spreads invert direction (Bull Put = bullish/puts, Bear Call = bearish/calls).
-  const structLc = (structure ?? '').toLowerCase()
-  const side: 'put' | 'call' = /call/.test(structLc) ? 'call'
-    : /put/.test(structLc) ? 'put'
-    : direction === 'SHORT' ? 'put' : 'call'
-  const strategyLabel = (structure ?? '').replace(/\s*·\s*\d+\s*DTE.*$/i, '').trim()
-    || (direction === 'SHORT' ? 'Short' : 'Long')
+  const side: 'put' | 'call' = direction === 'SHORT' ? 'put' : 'call'
   const rows: OptionChainRow[] = data ? (side === 'call' ? data.calls : data.puts) : []
   const atmIdx = rows.length > 0
     ? rows.reduce((b, r, i) => Math.abs(r.strike - livePrice) < Math.abs(rows[b]!.strike - livePrice) ? i : b, 0)
@@ -225,7 +185,7 @@ export default function OptionsEntryCheck({
   const three: { r: OptionChainRow; lbl: 'ITM' | 'ATM' | 'OTM' }[] = []
   if (atmIdx >= 0) {
     const atmRow = rows[atmIdx]!
-    if (side === 'put') {
+    if (direction === 'SHORT') {
       const itm = rows[atmIdx + 1]; const otm = rows[atmIdx - 1]
       if (itm) three.push({ r: itm, lbl: 'ITM' })
       three.push({ r: atmRow, lbl: 'ATM' })
@@ -238,11 +198,9 @@ export default function OptionsEntryCheck({
     }
   }
 
-  const atmRow     = three.find(x => x.lbl === 'ATM')?.r ?? null
-  // Strike is more than 5% from current price → chain is incomplete for this expiry
-  const atmTooFar  = atmRow != null && Math.abs(atmRow.strike - livePrice) / livePrice > 0.05
-  const ss         = (atmRow && !atmTooFar) ? (atmRow.spread_pct <= 5 ? 'ok' : atmRow.spread_pct <= 10 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' : null
-  const word    = (side === 'put' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
+  const atmRow  = three.find(x => x.lbl === 'ATM')?.r ?? null
+  const ss      = atmRow ? (atmRow.spread_pct <= 5 ? 'ok' : atmRow.spread_pct <= 10 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' : null
+  const word    = (direction === 'SHORT' ? 'PUT' : 'CALL') as 'PUT' | 'CALL'
   const { tier, msg } = ocVerdictStrip(chartTrigger, pcAlignment, ss, flipCondition, word, atmRow?.strike ?? null, stopPrice)
 
   const vtBg  = tier === 'green' ? T.greenBg  : tier === 'amber' ? T.amberBg  : tier === 'red' ? T.redBg  : T.grayBg
@@ -276,9 +234,8 @@ export default function OptionsEntryCheck({
               color:      direction === 'SHORT' ? T.shortBadgeTxt : T.longBadgeTxt,
             }}
           >
-            {direction === 'SHORT' ? '▼ ' : '▲ '}{strategyLabel.toUpperCase()}
+            {direction === 'SHORT' ? '▼ SHORT' : '▲ LONG'}
           </span>
-          <span style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>{word}S</span>
           {loading && <span style={{ fontSize: 10, color: T.muted }}>loading…</span>}
           {data && selDte !== null && !loading && (
             <span style={{ fontSize: 10, color: T.muted }}>{selDte}DTE · {side}s</span>
@@ -328,7 +285,7 @@ export default function OptionsEntryCheck({
           {/* DTE selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, color: T.muted }}>DTE</span>
-            {dteOptions.map(dte => (
+            {([5, 7] as const).map(dte => (
               <button
                 key={dte}
                 onClick={() => handleDte(dte)}
@@ -345,101 +302,24 @@ export default function OptionsEntryCheck({
             ))}
           </div>
 
-          {/* Error */}
-          {error && (
-            <div style={{ fontSize: 11, color: T.redTxt, padding: '6px 10px', borderRadius: 5, background: T.redBg }}>
-              {error}
+          {/* Stat cards */}
+          {atmRow && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {([
+                { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: T.text      },
+                { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: T.text      },
+                { lbl: 'Spread cost',val: `$${(atmRow.spread * 100).toFixed(0)}`,       sub: `${atmRow.spread_pct.toFixed(1)}% of premium`,                     clr: liqColor    },
+                { lbl: 'Liquidity',  val: liqLbl,                                        sub: null,                                                              clr: liqColor    },
+                { lbl: 'Round trip', val: rt != null ? `$${rt.toFixed(0)}` : '—',       sub: rt != null ? `entry + exit · 2× = $${(rt * 2).toFixed(0)}` : null, clr: rtClr       },
+              ] as const).map(({ lbl, val, sub, clr }) => (
+                <div key={lbl} style={{ flex: 1, minWidth: 90, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 7, padding: '7px 11px' }}>
+                  <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{lbl}</div>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: clr }}>{val}</div>
+                  {sub && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{sub}</div>}
+                </div>
+              ))}
             </div>
           )}
-
-          {/* Chain incomplete warning */}
-          {atmTooFar && atmRow && (
-            <div style={{ fontSize: 11, color: T.amberTxt, padding: '6px 10px', borderRadius: 5, background: T.amberBg, border: `0.5px solid ${T.amberBdr}` }}>
-              ⚠ Chain tops out at ${atmRow.strike.toFixed(2)} — stock is at ${livePrice.toFixed(2)}. No near-money strikes available for this expiry. Try a later expiry date to find options closer to the current price.
-            </div>
-          )}
-
-          {/* Spread structure — both legs + net debit/credit + per-leg fillability */}
-          {spread && (() => {
-            const rowAt = (strike: number) => rows.length
-              ? rows.reduce((b, r) => Math.abs(r.strike - strike) < Math.abs(b.strike - strike) ? r : b)
-              : null
-            const shortRow = rowAt(spread.shortStrike)
-            const longRow  = rowAt(spread.longStrike)
-            const legLiq = (r: OptionChainRow | null) => {
-              if (!r) return { clr: T.liqNone, lbl: '—' }
-              if (r.spread_pct <= 5)  return { clr: T.liqGood, lbl: '✓ good' }
-              if (r.spread_pct <= 10) return { clr: T.liqWarn, lbl: '⚠ moderate' }
-              return { clr: T.liqBad, lbl: '✗ poor' }
-            }
-            const credit = spread.kind === 'credit'
-            const legRow = (verb: 'Sell' | 'Buy', label: string, strike: number, r: OptionChainRow | null) => {
-              const liq = legLiq(r)
-              const vClr = verb === 'Sell' ? T.redTxt : T.greenTxt
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `0.5px solid ${T.rowLine}` }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: vClr, minWidth: 30 }}>{verb}</span>
-                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 600, color: T.text }}>{label}</span>
-                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: T.muted }}>${strike.toFixed(2)}</span>
-                  {r && <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: T.muted }}>bid ${r.bid.toFixed(2)} / ask ${r.ask.toFixed(2)}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, color: liq.clr }}>{r ? `${r.spread_pct.toFixed(1)}% · ${liq.lbl}` : 'no quote'}</span>
-                </div>
-              )
-            }
-            return (
-              <div style={{ border: `0.5px solid ${T.border}`, borderRadius: 7, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', background: T.cardBg, borderBottom: `0.5px solid ${T.border}` }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.muted }}>Spread structure</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: credit ? T.greenBg : T.amberBg, color: credit ? T.greenTxt : T.amberTxt }}>
-                    {credit ? 'CREDIT' : 'DEBIT'}
-                  </span>
-                </div>
-                <div style={{ padding: '4px 11px 8px' }}>
-                  {legRow('Sell', spread.shortLeg, spread.shortStrike, shortRow)}
-                  {legRow('Buy', spread.longLeg, spread.longStrike, longRow)}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    {([
-                      { lbl: credit ? 'Net credit' : 'Net debit', val: `$${Math.abs(spread.netDebit).toFixed(2)}`, clr: credit ? T.greenTxt : T.text },
-                      { lbl: 'Max gain', val: `$${spread.maxGain.toFixed(2)}`, clr: T.greenTxt },
-                      { lbl: 'Max loss', val: `$${spread.maxLoss.toFixed(2)}`, clr: T.redTxt },
-                      { lbl: 'Breakeven', val: spread.breakeven ? `$${spread.breakeven.toFixed(2)}` : '—', clr: T.text },
-                    ] as const).map(s => (
-                      <div key={s.lbl} style={{ flex: 1, minWidth: 80, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 6, padding: '6px 9px' }}>
-                        <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{s.lbl}</div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: s.clr, fontFamily: 'ui-monospace,monospace' }}>{s.val}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 10, color: T.muted, marginTop: 6, lineHeight: 1.5 }}>
-                    Per-contract ≈ ${(Math.abs(spread.netDebit) * 100).toFixed(0)} {credit ? 'received' : 'paid'}. Fillability above uses each leg's bid/ask spread — both legs need decent liquidity for a clean spread fill.
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* Stat cards (single leg) */}
-          {!spread && atmRow && !atmTooFar && (() => {
-            const spreadPct = atmRow.mid > 0 ? (atmRow.spread / atmRow.mid * 100) : atmRow.spread_pct
-            return (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {([
-                  { lbl: 'ATM strike', val: `$${atmRow.strike.toFixed(2)}`,               sub: null,                                                              clr: T.text      },
-                  { lbl: 'Mid price',  val: `$${atmRow.mid.toFixed(2)}`,                  sub: `$${(atmRow.mid * 100).toFixed(0)} per contract`,                  clr: T.text      },
-                  { lbl: 'Spread cost',val: `$${(atmRow.spread * 100).toFixed(0)}`,       sub: `${spreadPct.toFixed(2)}% of premium`,                             clr: liqColor    },
-                  { lbl: 'Liquidity',  val: liqLbl,                                        sub: null,                                                              clr: liqColor    },
-                  { lbl: 'Round trip', val: rt != null ? `$${rt.toFixed(0)}` : '—',       sub: rt != null ? `entry + exit · 2× = $${(rt * 2).toFixed(0)}` : null, clr: rtClr       },
-                ] as const).map(({ lbl, val, sub, clr }) => (
-                  <div key={lbl} style={{ flex: 1, minWidth: 90, background: T.cardBg, border: `0.5px solid ${T.border}`, borderRadius: 7, padding: '7px 11px' }}>
-                    <div style={{ fontSize: 9, color: T.muted, marginBottom: 2 }}>{lbl}</div>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: clr }}>{val}</div>
-                    {sub && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{sub}</div>}
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
-
           {/* 3-strike table */}
           {three.length > 0 && (
             <div style={{ border: `0.5px solid ${T.border}`, borderRadius: 7, overflow: 'hidden' }}>

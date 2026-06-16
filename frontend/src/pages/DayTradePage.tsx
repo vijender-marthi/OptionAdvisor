@@ -15,7 +15,6 @@ import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntry
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
-import OvernightRunnerCard from '../components/OvernightRunnerCard'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import EntryWindowBanner from '../components/EntryWindowBanner'
 import TrendDayBanner from '../components/TrendDayBanner'
@@ -125,6 +124,87 @@ function axiosDetail(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
   if (typeof d === 'string') return d
   return (e as Error)?.message ?? 'Request failed'
+}
+
+// ─── VWAP vs OR Mid ───────────────────────────────────────────────────────────
+// Where session VWAP sits relative to the opening-range midpoint tells you which
+// side controlled the auction. Rendered as a price ladder (Close/VWAP on the
+// left, the OR structure on the right) plus a plain-language read of the lean.
+interface DtTokens { bg: string; bgDeep: string; border: string; text: string; muted: string; green: string; red: string; amber: string }
+
+function VwapVsOrMidCard({
+  close, vwap, orHigh, orLow, isDark, dt,
+}: { close: number | null; vwap: number | null; orHigh?: number; orLow?: number; isDark: boolean; dt: DtTokens }) {
+  if (vwap == null || orHigh == null || orLow == null) return null
+
+  const orMid   = (orHigh + orLow) / 2
+  const bullish = vwap >= orMid
+  const blue    = isDark ? '#58a6ff' : '#2563eb'
+  const headCol = bullish ? (isDark ? '#3fb950' : '#1a7f37') : (isDark ? '#ff6b81' : '#b91c1c')
+  const railFill = bullish
+    ? (isDark ? 'rgba(0,229,160,0.13)' : '#e7f4ec')
+    : (isDark ? 'rgba(255,77,109,0.13)' : '#fdecec')
+
+  const levels = [
+    { key: 'Close',  price: close,  color: dt.text,  side: 'L' as const, strong: false, show: close != null && close > 0 },
+    { key: 'VWAP',   price: vwap,   color: blue,     side: 'L' as const, strong: false, show: true },
+    { key: 'ORH',    price: orHigh, color: dt.text,  side: 'R' as const, strong: false, show: true },
+    { key: 'OR Mid', price: orMid,  color: dt.amber, side: 'R' as const, strong: true,  show: true },
+    { key: 'ORL',    price: orLow,  color: dt.text,  side: 'R' as const, strong: false, show: true },
+  ].filter(l => l.show && l.price != null) as { key: string; price: number; color: string; side: 'L' | 'R'; strong: boolean }[]
+
+  const prices = levels.map(l => l.price)
+  const hi = Math.max(...prices), lo = Math.min(...prices)
+  const span = hi - lo || 1
+  const top = hi + span * 0.14, bot = lo - span * 0.14
+  const W = 300, H = 232, padY = 18, railX = 116, railW = 14
+  const y = (p: number) => padY + ((top - p) / (top - bot)) * (H - padY * 2)
+  const mono = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+
+  const lean = `${bullish ? 'BULLISH' : 'BEARISH'} LEAN — VWAP ${bullish ? 'above' : 'below'} OR Mid`
+  const closeLine = close != null && close > 0
+    ? ` Last ${close.toFixed(2)} ${ (bullish ? close >= vwap : close <= vwap)
+        ? `${bullish ? 'above' : 'below'} VWAP confirms the read.`
+        : 'is fighting VWAP — wait for a reclaim before pressing.'}`
+    : ''
+
+  return (
+    <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+      <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>VWAP vs OR Mid</div>
+      <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <svg width={W} height={H} style={{ flexShrink: 0 }} role="img" aria-label="VWAP versus opening-range midpoint ladder">
+          <rect x={railX} y={padY} width={railW} height={H - padY * 2} rx={railW / 2} fill={railFill} stroke={dt.border} strokeWidth={1} />
+          {levels.map(l => {
+            const yy = y(l.price)
+            const x1 = l.side === 'L' ? railX - 14 : railX
+            const x2 = l.side === 'L' ? railX + railW : railX + railW + 14
+            const lx = l.side === 'L' ? railX - 20 : railX + railW + 20
+            return (
+              <g key={l.key}>
+                <line x1={x1} y1={yy} x2={x2} y2={yy} stroke={l.color} strokeWidth={l.strong ? 2.2 : 1.6} />
+                <text x={lx} y={yy + 4} textAnchor={l.side === 'L' ? 'end' : 'start'} fontSize={12} fill={l.color} fontWeight={l.strong ? 700 : 600}>
+                  {l.key}
+                  <tspan dx={6} fontFamily={mono} fontWeight={700}>{l.price.toFixed(2)}</tspan>
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: headCol, marginBottom: 8 }}>{lean}</div>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: dt.text, margin: '0 0 10px' }}>
+            VWAP at <span style={{ fontFamily: mono, fontWeight: 600 }}>{vwap.toFixed(2)}</span> sits {bullish ? 'above' : 'below'} the OR midpoint at <span style={{ fontFamily: mono, fontWeight: 600 }}>{orMid.toFixed(2)}</span>. The average dollar traded today changed hands {bullish ? 'above' : 'below'} the middle of the opening range — {bullish ? 'buyers' : 'sellers'} controlled the auction.
+          </p>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: dt.text, margin: '0 0 12px' }}>
+            <strong>Bias:</strong> lean {bullish ? 'long' : 'short'}. Favor the {bullish ? 'bull' : 'bear'} scenario on a break of {bullish ? 'ORH' : 'ORL'}; treat {bullish ? 'ORL breakdowns' : 'ORH breakouts'} with suspicion unless volume confirms.{closeLine}
+          </p>
+          <div style={{ border: `1px dashed ${dt.border}`, borderRadius: 8, padding: '10px 14px', background: dt.bgDeep, fontFamily: mono, fontSize: 13, color: dt.text }}>
+            OR Mid = (ORH + ORL) ÷ 2 = ({orHigh.toFixed(2)} + {orLow.toFixed(2)}) ÷ 2 = {orMid.toFixed(2)}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function DayTradePage() {
@@ -1147,48 +1227,7 @@ export default function DayTradePage() {
         )
       })()}
 
-      {/* Overnight Runner — shown when T1 is hit and position is in hold */}
-      {result && result.metrics && sessionState === 'hold' && (() => {
-        const m = result.metrics as Record<string, unknown>
-        const eg = result.entry_guidance
-        const chartBars = parseChartBars(m.chart_bars)
-        const lastPrice = typeof m.last_price === 'number' ? m.last_price as number : 0
-        const vwap = typeof m.vwap === 'number' && isFinite(m.vwap) ? m.vwap as number : 0
-        const orh = typeof m.or_high === 'number' ? m.or_high as number : 0
-        const orl = typeof m.or_low === 'number' ? m.or_low as number : 0
-        const rvol = typeof m.rvol === 'number' && isFinite(m.rvol as number) ? m.rvol as number : 0
-        const isShort = result.bias === 'short'
-        const t1 = typeof eg?.scalp_target === 'number' && isFinite(eg.scalp_target) ? eg.scalp_target as number : null
-        const t1Hit = t1 !== null && (isShort ? lastPrice <= t1 : lastPrice >= t1)
-        const spyChg = typeof m.spy_change_pct === 'number' ? m.spy_change_pct as number : 0
-        const qqqChg = typeof m.qqq_change_pct === 'number' ? m.qqq_change_pct as number : 0
-        // Convert SPY/QQQ change to trend score (7% = 100, proportional)
-        const spyScore = Math.min(100, Math.max(0, Math.round((spyChg + 2) / 4 * 100)))
-        const qqqScore = Math.min(100, Math.max(0, Math.round((qqqChg + 2) / 4 * 100)))
-        const intradayHighs = chartBars ? chartBars.map(b => b.h) : [lastPrice]
-        const regime = spyChg > 0.5 && qqqChg > 0.5 ? 'BULLISH' : spyChg < -0.5 && qqqChg < -0.5 ? 'BEARISH' : 'NEUTRAL'
-        if (!t1Hit) return null
-        return (
-          <div className="mb-3">
-            <OvernightRunnerCard
-              ticker={result.ticker}
-              currentPrice={lastPrice}
-              vwap={vwap}
-              orh={orh}
-              orl={orl}
-              intradayHighs={intradayHighs}
-              volumeToday={Math.round(rvol * 1000)}
-              avgVolume20d={1000}
-              spyTrendScore={spyScore}
-              qqqTrendScore={qqqScore}
-              tickerTrendScore={Math.round((spyScore + qqqScore) / 2)}
-              t1Hit={t1Hit}
-              t2Hit={false}
-              marketRegime={regime}
-            />
-          </div>
-        )
-      })()}
+
 
       {/* Intraday chart */}
       {result && result.metrics && (() => {
@@ -1643,6 +1682,15 @@ export default function DayTradePage() {
         const displayOrMinutes = chartInterval === '5m' ? Math.max(1, Math.ceil(orN / 5)) : orN
 
         return (
+         <>
+          <VwapVsOrMidCard
+            close={typeof m.last_price === 'number' ? (m.last_price as number) : null}
+            vwap={mVwap}
+            orHigh={orHigh}
+            orLow={orLow}
+            isDark={isDark}
+            dt={dt}
+          />
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Session Chart · OR &amp; VWAP</div>
@@ -1677,6 +1725,7 @@ export default function DayTradePage() {
             />
             <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMinutes} sessionDate={sessionDate} entryPoints={pageEntryPoints.length > 0 ? pageEntryPoints : undefined} zones={dayZones} isDark={isDark} />
           </div>
+         </>
         )
       })()}
 

@@ -648,14 +648,16 @@ function ScenarioCard({ type, data, ticker, panelColors }: { type: 'bull' | 'bea
 // ─── Stat Box ─────────────────────────────────────────────────────────────────
 
 function StatBox({ label, value, sub, color, tooltip }: { label: string; value: string; sub: string; color?: string; tooltip?: string }) {
+  const { theme } = useApp()
+  const isDark = theme !== 'light'
   return (
-    <div style={{ background: '#1c2330', border: '1px solid #21262d', borderRadius: 7, padding: '9px 11px' }}>
-      <div style={{ fontSize: 10, color: '#8b949e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div style={{ background: eodInsetBg(isDark), border: `1px solid ${isDark ? '#21262d' : '#e1e4e8'}`, borderRadius: 7, padding: '9px 11px' }}>
+      <div style={{ fontSize: 10, color: eodTxMuted(isDark), fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
         {label}
-        {tooltip && <span title={tooltip} style={{ cursor: 'help', userSelect: 'none', color: '#6e7681' }}>ⓘ</span>}
+        {tooltip && <span title={tooltip} style={{ cursor: 'help', userSelect: 'none', color: eodTxFaint(isDark) }}>ⓘ</span>}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: color ?? '#f0f6fc', fontFamily: 'monospace' }}>{value}</div>
-      <div style={{ fontSize: 10, color: '#8b949e', marginTop: 2 }}>{sub}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: color ?? eodTxStrong(isDark), fontFamily: 'monospace' }}>{value}</div>
+      <div style={{ fontSize: 10, color: eodTxMuted(isDark), marginTop: 2 }}>{sub}</div>
     </div>
   )
 }
@@ -675,14 +677,16 @@ function Pill({ color, bg, border, children }: { color: string; bg: string; bord
 function SectionHeader({
   id, title, sub, collapsed, onToggle,
 }: { id: string; title: string; sub?: string; collapsed: boolean; onToggle: (id: string) => void }) {
+  const { theme } = useApp()
+  const isDark = theme !== 'light'
   return (
     <button
       onClick={() => onToggle(id)}
       style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 14, background: 'none', border: 'none', padding: 0, cursor: 'pointer', width: '100%', textAlign: 'left' }}
     >
-      <span style={{ fontSize: 14, fontWeight: 700, color: '#f0f6fc' }}>{title}</span>
-      {sub && <span style={{ fontSize: 11, color: '#8b949e' }}>{sub}</span>}
-      <span style={{ marginLeft: 'auto', color: '#8b949e' }}>{collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</span>
+      <span style={{ fontSize: 14, fontWeight: 700, color: eodTxStrong(isDark) }}>{title}</span>
+      {sub && <span style={{ fontSize: 11, color: eodTxMuted(isDark) }}>{sub}</span>}
+      <span style={{ marginLeft: 'auto', color: eodTxMuted(isDark) }}>{collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</span>
     </button>
   )
 }
@@ -1338,7 +1342,7 @@ export default function EODJournalPage() {
             })}
           </div>
           {!isToday && analysis && (
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '4px 8px', borderRadius: 5, border: `1px solid ${bdr}`, color: '#d29922', background: '#1a1200' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '4px 8px', borderRadius: 5, border: `1px solid ${bdr}`, color: isDark ? '#d29922' : '#9a6700', background: eodNeutBg(isDark) }}>
               Saved entry{analysis.fetchedAt ? ` · ${analysis.fetchedAt}` : ''}
             </span>
           )}
@@ -1466,10 +1470,10 @@ export default function EODJournalPage() {
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: txMuted, marginBottom: 8 }}>EOD Checklist</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {EOD_CHECKS.map((c, i) => (
-                <div key={i} onClick={() => toggleCheck(i)} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '5px 7px', background: checkState[i] ? '#0d2011' : cardBg, border: `1px solid ${checkState[i] ? '#1a4a1f' : bdr}`, borderRadius: 5, cursor: 'pointer', transition: 'all 0.15s' }}>
+                <div key={i} onClick={() => toggleCheck(i)} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '5px 7px', background: checkState[i] ? eodBullBg(isDark) : cardBg, border: `1px solid ${checkState[i] ? (isDark ? '#1a4a1f' : '#3d7a0f') : bdr}`, borderRadius: 5, cursor: 'pointer', transition: 'all 0.15s' }}>
                   {checkState[i] ? <CheckSquare size={13} style={{ color: '#3fb950', flexShrink: 0, marginTop: 1 }} /> : <Square size={13} style={{ color: '#30363d', flexShrink: 0, marginTop: 1 }} />}
                   <span style={{ flex: 1 }}>
-                    <span style={{ fontSize: 11, color: checkState[i] ? '#6e7681' : tx, textDecoration: checkState[i] ? 'line-through' : 'none', lineHeight: 1.4, display: 'block' }}>{c}</span>
+                    <span style={{ fontSize: 11, color: checkState[i] ? eodTxFaint(isDark) : tx, textDecoration: checkState[i] ? 'line-through' : 'none', lineHeight: 1.4, display: 'block' }}>{c}</span>
                     {EOD_CHECK_NOTES[i] && (
                       <span style={{ fontSize: 10, color: txMuted, lineHeight: 1.4, display: 'block', marginTop: 2 }}>{EOD_CHECK_NOTES[i]}</span>
                     )}
@@ -1532,19 +1536,19 @@ export default function EODJournalPage() {
                     <div style={{ fontSize: 12, color: txMuted, marginTop: 2 }}>{analysis.company}{analysis.sector ? ` · ${analysis.sector}` : ''}</div>
                     <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {/* Bias pill */}
-                      {analysis.bias === 'bull' && <Pill color="#3fb950" bg="#0d2011" border="#1a4a1f">↑ BULL BIAS</Pill>}
-                      {analysis.bias === 'bear' && <Pill color="#f85149" bg="#200d0d" border="#5a1a1a">↓ BEAR BIAS</Pill>}
-                      {analysis.bias === 'neutral' && <Pill color="#d29922" bg="#1a1200" border="#4a3800">→ NEUTRAL</Pill>}
+                      {analysis.bias === 'bull' && <Pill color={isDark ? '#3fb950' : '#15803d'} bg={eodBullBg(isDark)} border={isDark ? '#1a4a1f' : '#3d7a0f'}>↑ BULL BIAS</Pill>}
+                      {analysis.bias === 'bear' && <Pill color={isDark ? '#f85149' : '#b91c1c'} bg={eodBearBg(isDark)} border={isDark ? '#5a1a1a' : '#b91c1c'}>↓ BEAR BIAS</Pill>}
+                      {analysis.bias === 'neutral' && <Pill color={isDark ? '#d29922' : '#9a6700'} bg={eodNeutBg(isDark)} border={isDark ? '#4a3800' : '#e0b050'}>→ NEUTRAL</Pill>}
                       {/* Structure */}
                       <Pill color="#58a6ff" bg="#0d1a28" border="#1a3050">{analysis.structure}</Pill>
                       {/* IVR */}
                       {analysis.ivr != null && (
                         <>
-                          <Pill color="#bc8cff" bg="#140d20" border="#3a1a5a">IVR {analysis.ivr.toFixed(0)}</Pill>
+                          <Pill color={isDark ? '#bc8cff' : '#7c3aed'} bg={isDark ? '#140d20' : '#f3eafe'} border={isDark ? '#3a1a5a' : '#c4a0f0'}>IVR {analysis.ivr.toFixed(0)}</Pill>
                           <Pill
-                            color={analysis.ivr < 35 ? '#3fb950' : analysis.ivr < 60 ? '#d29922' : '#f85149'}
-                            bg={analysis.ivr < 35 ? '#0d2011' : analysis.ivr < 60 ? '#1a1200' : '#200d0d'}
-                            border={analysis.ivr < 35 ? '#1a4a1f' : analysis.ivr < 60 ? '#4a3800' : '#5a1a1a'}
+                            color={analysis.ivr < 35 ? (isDark ? '#3fb950' : '#15803d') : analysis.ivr < 60 ? (isDark ? '#d29922' : '#9a6700') : (isDark ? '#f85149' : '#b91c1c')}
+                            bg={analysis.ivr < 35 ? eodBullBg(isDark) : analysis.ivr < 60 ? eodNeutBg(isDark) : eodBearBg(isDark)}
+                            border={analysis.ivr < 35 ? (isDark ? '#1a4a1f' : '#3d7a0f') : analysis.ivr < 60 ? (isDark ? '#4a3800' : '#e0b050') : (isDark ? '#5a1a1a' : '#b91c1c')}
                           >
                             {analysis.ivr < 35 ? 'BUY OPTIONS' : analysis.ivr < 60 ? 'USE SPREADS' : 'SELL PREMIUM'}
                           </Pill>
@@ -1553,15 +1557,15 @@ export default function EODJournalPage() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: isUp ? '#3fb950' : '#f85149', fontFamily: 'monospace' }}>{fmt(analysis.close)}</div>
-                    <div style={{ fontSize: 12, color: isUp ? '#3fb950' : '#f85149', marginTop: 2 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: isUp ? (isDark ? '#3fb950' : '#15803d') : (isDark ? '#f85149' : '#b91c1c'), fontFamily: 'monospace' }}>{fmt(analysis.close)}</div>
+                    <div style={{ fontSize: 12, color: isUp ? (isDark ? '#3fb950' : '#15803d') : (isDark ? '#f85149' : '#b91c1c'), marginTop: 2 }}>
                       {isUp ? '+' : ''}{fmt(Math.abs(chgAbs))} ({isUp ? '+' : ''}{chgPct.toFixed(2)}%) today
                     </div>
                     <div style={{ marginTop: 5, display: 'flex', justifyContent: 'flex-end' }}>
                       <Pill
-                        color={analysis.rs.includes('strong') ? '#3fb950' : analysis.rs.includes('weak') ? '#f85149' : '#d29922'}
-                        bg={analysis.rs.includes('strong') ? '#0d2011' : analysis.rs.includes('weak') ? '#200d0d' : '#1a1200'}
-                        border={analysis.rs.includes('strong') ? '#1a4a1f' : analysis.rs.includes('weak') ? '#5a1a1a' : '#4a3800'}
+                        color={analysis.rs.includes('strong') ? (isDark ? '#3fb950' : '#15803d') : analysis.rs.includes('weak') ? (isDark ? '#f85149' : '#b91c1c') : (isDark ? '#d29922' : '#9a6700')}
+                        bg={analysis.rs.includes('strong') ? eodBullBg(isDark) : analysis.rs.includes('weak') ? eodBearBg(isDark) : eodNeutBg(isDark)}
+                        border={analysis.rs.includes('strong') ? (isDark ? '#1a4a1f' : '#3d7a0f') : analysis.rs.includes('weak') ? (isDark ? '#5a1a1a' : '#b91c1c') : (isDark ? '#4a3800' : '#e0b050')}
                       >
                         RS: {analysis.rs}
                       </Pill>
@@ -1630,24 +1634,24 @@ export default function EODJournalPage() {
                     </div>
 
                     {/* Neutral strip */}
-                    <div style={{ background: '#1a1200', border: '1px solid #4a3800', borderRadius: 10, padding: '12px 16px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
+                    <div style={{ background: eodNeutBg(isDark), border: `1px solid ${isDark ? '#4a3800' : '#e0b050'}`, borderRadius: 10, padding: '12px 16px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#d29922', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#d29922' : '#9a6700', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                           → NEUTRAL / CHOP — No Clear Direction
-                          <span style={{ marginLeft: 'auto', padding: '1px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, color: '#d29922', border: '1px solid #4a3800', background: 'rgba(0,0,0,.3)' }}>{analysis.scenarios.neutral.probability}% prob</span>
+                          <span style={{ marginLeft: 'auto', padding: '1px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, color: isDark ? '#d29922' : '#9a6700', border: `1px solid ${isDark ? '#4a3800' : '#e0b050'}`, background: eodOverlay3(isDark) }}>{analysis.scenarios.neutral.probability}% prob</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,.05)', fontSize: 12 }}>
-                          <span style={{ color: '#8b949e' }}>Trigger</span>
-                          <span style={{ fontWeight: 700, color: '#d29922', textAlign: 'right', maxWidth: '65%' }}>{analysis.scenarios.neutral.trigger}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${eodDivider(isDark)}`, fontSize: 12 }}>
+                          <span style={{ color: eodTxMuted(isDark) }}>Trigger</span>
+                          <span style={{ fontWeight: 700, color: isDark ? '#d29922' : '#9a6700', textAlign: 'right', maxWidth: '65%' }}>{analysis.scenarios.neutral.trigger}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
-                          <span style={{ color: '#8b949e' }}>Action</span>
-                          <span style={{ fontWeight: 700, color: '#f0f6fc' }}>{analysis.scenarios.neutral.entry}</span>
+                          <span style={{ color: eodTxMuted(isDark) }}>Action</span>
+                          <span style={{ fontWeight: 700, color: eodTxStrong(isDark) }}>{analysis.scenarios.neutral.entry}</span>
                         </div>
                       </div>
-                      <div style={{ background: 'rgba(0,0,0,.25)', borderRadius: 6, padding: '9px 11px', fontSize: 11, color: '#8b949e', lineHeight: 1.7 }}>
-                        <strong style={{ color: '#f0f6fc', display: 'block', marginBottom: 3 }}>Honest Rule:</strong>
-                        If market opens flat and your stock chops between two obvious levels — <span style={{ color: '#f85149', fontWeight: 600 }}>no trade is a trade.</span> Flat = +$0. Forced trades = -$.
+                      <div style={{ background: eodOverlay(isDark), borderRadius: 6, padding: '9px 11px', fontSize: 11, color: eodTxMuted(isDark), lineHeight: 1.7 }}>
+                        <strong style={{ color: eodTxStrong(isDark), display: 'block', marginBottom: 3 }}>Honest Rule:</strong>
+                        If market opens flat and your stock chops between two obvious levels — <span style={{ color: isDark ? '#f85149' : '#b91c1c', fontWeight: 600 }}>no trade is a trade.</span> Flat = +$0. Forced trades = -$.
                       </div>
                     </div>
 
@@ -1772,7 +1776,7 @@ export default function EODJournalPage() {
 
                     {/* Sector verdict */}
                     {mySector && (
-                      <div style={{ marginTop: 12, borderRadius: 8, padding: '10px 14px', fontSize: 12, borderLeft: `3px solid ${sectorAligned ? '#3fb950' : '#f85149'}`, background: sectorAligned ? '#0d2011' : '#200d0d', color: sectorAligned ? '#7ee787' : '#ffa29e', lineHeight: 1.7 }}>
+                      <div style={{ marginTop: 12, borderRadius: 8, padding: '10px 14px', fontSize: 12, borderLeft: `3px solid ${sectorAligned ? '#3fb950' : '#f85149'}`, background: sectorAligned ? eodBullBg(isDark) : eodBearBg(isDark), color: sectorAligned ? (isDark ? '#7ee787' : '#15803d') : (isDark ? '#ffa29e' : '#b91c1c'), lineHeight: 1.7 }}>
                         <strong>{sectorAligned ? '✓ Sector Aligned:' : '⚠ Sector Conflict:'}</strong>{' '}
                         {analysis.ticker}'s sector ({mySector.name} / {mySector.etf}) is {mySector.trend} with {mySector.mom5d >= 0 ? '+' : ''}{mySector.mom5d.toFixed(2)}% (5d).{' '}
                         {sectorAligned
@@ -1819,18 +1823,18 @@ export default function EODJournalPage() {
                         </ul>
                       </div>
                       {/* Perception */}
-                      <div style={{ background: bearPct > bullPct ? '#200d0d' : '#0d2011', border: `1px solid ${bearPct > bullPct ? '#5a1a1a' : '#1a4a1f'}`, borderRadius: 8, padding: '12px 14px' }}>
+                      <div style={{ background: bearPct > bullPct ? eodBearBg(isDark) : eodBullBg(isDark), border: `1px solid ${bearPct > bullPct ? (isDark ? '#5a1a1a' : '#b91c1c') : (isDark ? '#1a4a1f' : '#3d7a0f')}`, borderRadius: 8, padding: '12px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: domColor }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: domColor }} />
                           Tomorrow's Perception
                         </div>
                         <div style={{ fontSize: 18, fontWeight: 800, color: domColor, marginBottom: 6 }}>{primaryBias} BIAS</div>
-                        <div style={{ fontSize: 11, color: '#8b949e', lineHeight: 1.7 }}>
+                        <div style={{ fontSize: 11, color: eodTxMuted(isDark), lineHeight: 1.7 }}>
                           Primary watch: <strong style={{ color: tx }}>{domScenario?.trigger}</strong><br />
                           If triggered → enter <strong style={{ color: domColor }}>{domScenario?.entry}</strong><br />
-                          Stop at <strong style={{ color: '#f85149' }}>{domScenario?.stop}</strong> · T1 <strong style={{ color: '#3fb950' }}>{domScenario?.t1}</strong>
+                          Stop at <strong style={{ color: isDark ? '#f85149' : '#b91c1c' }}>{domScenario?.stop}</strong> · T1 <strong style={{ color: isDark ? '#3fb950' : '#15803d' }}>{domScenario?.t1}</strong>
                         </div>
-                        <div style={{ marginTop: 8, padding: '7px 9px', background: 'rgba(0,0,0,.25)', borderRadius: 5, fontSize: 11, color: '#6e7681' }}>
+                        <div style={{ marginTop: 8, padding: '7px 9px', background: eodOverlay(isDark), borderRadius: 5, fontSize: 11, color: eodTxFaint(isDark) }}>
                           If opposite case triggers → flip or stay flat. Never force the primary scenario.
                         </div>
                       </div>
@@ -1852,7 +1856,7 @@ export default function EODJournalPage() {
                       <div style={{ height: 8, background: isDark ? '#21262d' : '#e0e0e0', borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
                         <div style={{ height: '100%', width: `${conf}%`, background: conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149', borderRadius: 4, transition: 'width 0.4s' }} />
                       </div>
-                      <div style={{ borderRadius: 7, padding: '8px 12px', fontSize: 12, borderLeft: `3px solid ${conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149'}`, background: conf >= 70 ? '#0d2011' : conf >= 50 ? '#1a1200' : '#200d0d', color: conf >= 70 ? '#7ee787' : conf >= 50 ? '#f0c040' : '#ffa29e', lineHeight: 1.7 }}>
+                      <div style={{ borderRadius: 7, padding: '8px 12px', fontSize: 12, borderLeft: `3px solid ${conf >= 70 ? '#3fb950' : conf >= 50 ? '#d29922' : '#f85149'}`, background: conf >= 70 ? eodBullBg(isDark) : conf >= 50 ? eodNeutBg(isDark) : eodBearBg(isDark), color: conf >= 70 ? (isDark ? '#7ee787' : '#15803d') : conf >= 50 ? (isDark ? '#f0c040' : '#9a6700') : (isDark ? '#ffa29e' : '#b91c1c'), lineHeight: 1.7 }}>
                         <strong>{conf >= 70 ? 'High conviction:' : conf >= 50 ? 'Moderate conviction:' : 'Low conviction — caution:'}</strong>{' '}
                         {conf >= 70
                           ? 'Structure, sector, and indicators aligned. Trade the plan. Standard size.'

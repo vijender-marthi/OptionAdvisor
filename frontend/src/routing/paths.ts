@@ -77,10 +77,7 @@ export function locationToPage(pathname: string): Page {
       return 'day-trade-session'
     case 'option-chain':
       return 'option-chain'
-    case 'eod-journal':
-      return 'eod-journal'
-    case 'journal-tool':
-      return 'journal-tool'
+
     default:
       return 'trade-command-center'
   }
@@ -156,10 +153,7 @@ export function pageToLocation(p: Page): string {
       return '/day-trade-session'
     case 'option-chain':
       return '/option-chain'
-    case 'eod-journal':
-      return '/eod-journal'
-    case 'journal-tool':
-      return '/journal-tool'
+
     default:
       return '/trade-command-center'
   }

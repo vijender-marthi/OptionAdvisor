@@ -1312,18 +1312,20 @@ def save_user_data(email: str, payload: UserDataRequest, auth_email: str = Depen
     dt_wl = payload.day_trade_watchlist if role == "admin" else None
     sw_wl = payload.swing_trade_watchlist if role == "admin" else None
     try:
-        # Portfolio is intentionally preserved from the existing DB state.
-        # Every portfolio mutation goes through dedicated endpoints:
-        #   POST /portfolio/add, /portfolio/update, /portfolio/close
+        # Portfolio is intentionally preserved from the existing DB state and
+        # NEVER taken from this request's payload. Every portfolio mutation goes
+        # through a dedicated endpoint:
+        #   POST /portfolio/add, /portfolio/update, /portfolio/close, /portfolio/remove
         # Those are the only paths that write portfolio to the DB.
-        # Accepting portfolio here caused a race: a debounced bulk save
-        # with a stale client snapshot would silently overwrite positions
-        # that were just saved by a dedicated call.
+        # Accepting payload.portfolio here caused a race: a debounced bulk save
+        # carrying a stale client snapshot would silently overwrite positions a
+        # dedicated call had just added (making new positions disappear) or
+        # re-add positions a dedicated call had just removed/closed.
         current_portfolio = eff.get("portfolio") or []
         saved = save_user_state(
             normalized_email,
             payload.watchlist,
-            payload.portfolio if payload.portfolio else (eff.get("portfolio") or []),
+            current_portfolio,
             advisory_terms_version=payload.advisory_terms_version,
             advisory_accepted_at=payload.advisory_accepted_at,
             day_trade_watchlist=dt_wl,
