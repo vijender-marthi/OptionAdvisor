@@ -10,3 +10,5 @@ frontend/node_modules/
 .venv/
 .claude/worktrees/
 TODO/
+node_modules/
+/package.json

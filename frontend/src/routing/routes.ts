@@ -18,7 +18,7 @@ export const ROUTES = {
   dayTradeDashboard: '/day-trade-dashboard',
   tools: '/tools',
   optionChain: '/option-chain',
-
+  eodJournal: '/eod-journal',
 } as const
 
 export type EngineType = 'DAY' | 'SWING' | 'REGULAR'

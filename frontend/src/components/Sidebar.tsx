@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
-  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2, NotebookPen,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -179,6 +179,8 @@ export default function Sidebar() {
       label: 'Review',
       items: [
         { id: 'journal', label: 'Trade Journal', icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+        { id: 'eod-journal', label: 'EOD Journal', icon: <Monitor size={18} /> },
+        { id: 'journal-tool', label: 'EOD Trade Journal', icon: <NotebookPen size={18} /> },
         { id: 'backtest', label: 'Backtest Lab', icon: <FlaskConical size={18} /> },
       ],
     },
@@ -218,6 +220,7 @@ export default function Sidebar() {
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     // Review
     { id: 'journal',        label: 'Trade Journal',  icon: <BookOpen size={18} />, badge: journalEntryCount || undefined },
+    { id: 'journal-tool',   label: 'EOD Trade Journal', icon: <NotebookPen size={18} /> },
     { id: 'backtest',       label: 'Backtest Lab',   icon: <FlaskConical size={18} /> },
     // Support
     { id: 'help',           label: 'Help',           icon: <HelpCircle size={18} /> },
