@@ -102,9 +102,9 @@ _VERDICT_RANK: dict[str, int] = {
 }
 
 def _day_verdict(scan) -> str:
-    raw = scan.verdict or ""
+    raw = (scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict')) or ""
     base = Verdict.from_raw(raw).value
-    td = scan.trader_decision or {}
+    td = (scan.trader_decision if hasattr(scan, 'trader_decision') else scan.get('trader_decision')) or {}
     suggested = td.get("suggested_action", "") if isinstance(td, dict) else ""
     if suggested in _SA_VERDICT_OVERRIDE:
         override = Verdict.from_raw(_SA_VERDICT_OVERRIDE[suggested]).value
@@ -445,8 +445,8 @@ def serialize_day_trade(scan) -> dict:
             rr_str = None
 
         return {
-            "ticker": scan.ticker,
-            "company": getattr(scan, "company_name", scan.ticker),
+            "ticker": scan.ticker if hasattr(scan, 'ticker') else scan.get('ticker'),
+            "company": scan.company_name if hasattr(scan, 'company_name') else scan.get('company_name', scan.ticker if hasattr(scan, 'ticker') else scan.get('ticker')),
             "trade_type": "day",
             "price": m.get("last_price") or 0,
             "change_pct": m.get("change_pct") or m.get("session_change_pct"),
@@ -456,7 +456,7 @@ def serialize_day_trade(scan) -> dict:
             "reason": td.get("decision_message") or (_reasons[0] if _reasons else ""),
             "conditions": conditions,
             "entry_price": entry_price,
-            "entry_description": _entry_description(entry_price, eg, scan.verdict or ""),
+            "entry_description": _entry_description(entry_price, eg, (scan.verdict if hasattr(scan, 'verdict') else scan.get('verdict')) or ""),
             "stop_price": stop_price,
             "stop_description": _stop_description(m, "day"),
             "structure": structure,

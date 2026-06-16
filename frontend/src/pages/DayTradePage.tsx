@@ -1168,8 +1168,8 @@ export default function DayTradePage() {
           && !rtxtOec.includes('no clean edge')
           && !rtxtOec.includes('confirmation')
 
-        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' | 'HOLD' =
-          sessionState === 'hold' ? 'HOLD' :
+        const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' =
+          sessionState === 'hold' ? 'GO' :
           sessionState === 'entry' ? 'GO' :
           sessionState === 'exhausted' ? 'WAIT' :
           showGO ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
