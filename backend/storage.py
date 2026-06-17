@@ -1497,6 +1497,23 @@ def alert_center_resolve(email: str, alert_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def alert_center_resolve_all(email: str) -> int:
+    """Resolve every active/acknowledged alert for the user. Non-destructive —
+    rows are marked RESOLVED (kept for history), not deleted. Returns the count
+    of alerts cleared."""
+    normalized = normalize_email(email)
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE alert_center_items
+            SET status = 'RESOLVED', updated_at_ms = ?
+            WHERE email = ? AND status IN ('ACTIVE', 'ACKNOWLEDGED')
+            """,
+            (int(time.time() * 1000), normalized),
+        )
+        return cur.rowcount
+
+
 def alert_center_append_note(email: str, alert_id: str, text: str) -> bool:
     normalized = normalize_email(email)
     aid = str(alert_id).strip()

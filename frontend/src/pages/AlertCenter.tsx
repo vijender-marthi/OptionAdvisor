@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { acknowledgeAlert, fetchAlertCenterPage, resolveAlert } from '../api/commandCenter'
+import { acknowledgeAlert, clearAllAlerts, fetchAlertCenterPage, resolveAlert } from '../api/commandCenter'
 import type { AlertCenterPayload, UnifiedAlert } from '../types/commandCenter'
 import { deskApi } from '../api/client'
 import type { DeskAlert } from '../api/client'
@@ -113,6 +113,7 @@ export default function AlertCenter() {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [armedRules, setArmedRules] = useState<DeskAlert[]>([])
   const [rulesCollapsed, setRulesCollapsed] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const loadArmedRules = useCallback(async () => {
     try {
@@ -126,6 +127,18 @@ export default function AlertCenter() {
       await deskApi.deleteAlert(id)
       setArmedRules(prev => prev.filter(r => r.id !== id))
     } catch { /* ignore */ }
+  }
+
+  const clearAll = async () => {
+    if (clearing) return
+    if (!window.confirm('Clear all active alerts? They will be marked resolved and moved out of the active list.')) return
+    setClearing(true)
+    try {
+      await clearAllAlerts()
+      await load()
+    } finally {
+      setClearing(false)
+    }
   }
 
   const load = useCallback(async () => {
@@ -212,14 +225,26 @@ export default function AlertCenter() {
             One normalized stream for entry, exit, risk, and market alerts across all trading engines.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-semibold text-gray-200"
-        >
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void clearAll()}
+            disabled={clearing || (summary.active ?? 0) === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300"
+            title="Resolve all active alerts"
+          >
+            <Trash2 size={16} className={clearing ? 'animate-pulse' : ''} />
+            {clearing ? 'Clearing…' : 'Clear'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-semibold text-gray-200"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

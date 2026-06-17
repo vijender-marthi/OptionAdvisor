@@ -36,6 +36,7 @@ from storage import (
     alert_center_critical_count,
     alert_center_list,
     alert_center_resolve,
+    alert_center_resolve_all,
     ensure_demo_alert_center_rows,
     get_alert_center_summary,
     get_journal_entries,
@@ -434,6 +435,14 @@ def post_alert_resolve(alert_id: str, auth_email: str = Depends(require_access_e
     if not ok:
         raise HTTPException(status_code=404, detail="Alert not found")
     return api_envelope({"ok": True})
+
+
+@command_center_router.post("/alerts/clear")
+def post_alerts_clear(auth_email: str = Depends(require_access_email)):
+    """Clear all active/acknowledged alerts for the user (non-destructive —
+    marks them RESOLVED, keeping history). Returns the number cleared."""
+    cleared = alert_center_resolve_all(normalize_email(auth_email))
+    return api_envelope({"ok": True, "cleared": cleared})
 
 
 @command_center_router.post("/alerts/{alert_id}/note")

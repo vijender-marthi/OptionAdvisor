@@ -13,14 +13,14 @@ function qualityBadge(quality?: string, reason?: string) {
   const isUnreliable = quality === 'UNRELIABLE'
   const isModel = quality === 'MODEL'
   return (
-    <span
+      <span
       title={reason || quality}
       className={`ml-1.5 px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide cursor-help
         ${isUnreliable
-          ? 'bg-red-900/60 text-red-300 border border-red-700'
+          ? 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700'
           : isModel
-          ? 'bg-blue-900/60 text-blue-300 border border-blue-700'
-          : 'bg-yellow-900/60 text-yellow-300 border border-yellow-700'}`}
+          ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+          : 'bg-yellow-100 dark:bg-yellow-900/60 text-yellow-700 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700'}`}
     >
       {isUnreliable ? '⚠ Bad' : isModel ? 'Model' : '⚠ Stale'}
     </span>
@@ -49,14 +49,14 @@ function Table({ rows, currentPrice, type }: { rows: OptionRow[]; currentPrice: 
   return (
     <div className="overflow-x-auto">
       {staleCount > 0 && (
-        <div className="mb-2 px-2 py-1.5 bg-yellow-900/20 border border-yellow-700/40 rounded-lg text-xs text-yellow-300 flex items-center gap-1.5">
+        <div className="mb-2 px-2 py-1.5 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700/40 rounded-lg text-xs text-yellow-700 dark:text-yellow-300 flex items-center gap-1.5">
           <span>⚠</span>
           <span>{staleCount} row{staleCount > 1 ? 's' : ''} have stale or unreliable quotes — verify on your broker before trading.</span>
         </div>
       )}
       <table className="w-full min-w-[42rem] text-sm font-mono">
         <thead>
-          <tr className="text-gray-500 border-b border-gray-700 text-xs">
+          <tr className="text-slate-500 dark:text-gray-500 border-b border-slate-300 dark:border-gray-700 text-xs">
             <th className="text-right py-2 pr-4">Strike</th>
             <th className="text-right py-2 pr-4">Mid</th>
             <th className="text-right py-2 pr-4">Bid</th>
@@ -74,23 +74,23 @@ function Table({ rows, currentPrice, type }: { rows: OptionRow[]; currentPrice: 
             const mid = row.bid > 0 && row.ask > 0 ? (row.bid + row.ask) / 2 : row.last_price
             const isStale = row.data_quality && !['OK', 'MODEL'].includes(row.data_quality)
             return (
-              <tr key={i} className={`border-b border-gray-800/50 last:border-0 text-xs
-                ${isAtm ? 'bg-violet-900/20' : isItm ? 'bg-gray-800/30' : ''}
+              <tr key={i} className={`border-b border-slate-200 dark:border-gray-800/50 last:border-0 text-xs
+                ${isAtm ? 'bg-violet-100 dark:bg-violet-900/20' : isItm ? 'bg-slate-100 dark:bg-gray-800/30' : ''}
                 ${isStale ? 'opacity-60' : ''}`}>
-                <td className={`text-right py-1.5 pr-4 font-bold ${isAtm ? 'text-violet-300' : isItm ? 'text-gray-300' : 'text-gray-500'}`}>
+                <td className={`text-right py-1.5 pr-4 font-bold ${isAtm ? 'text-violet-600 dark:text-violet-300' : isItm ? 'text-slate-600 dark:text-gray-300' : 'text-slate-400 dark:text-gray-500'}`}>
                   ${row.strike.toFixed(1)}
-                  {isAtm && <span className="ml-1 text-xs text-violet-400">ATM</span>}
+                  {isAtm && <span className="ml-1 text-xs text-violet-500 dark:text-violet-400">ATM</span>}
                 </td>
-                <td className="text-right py-1.5 pr-4 text-white">
+                <td className="text-right py-1.5 pr-4 text-slate-800 dark:text-white">
                   ${mid.toFixed(2)}
                   {qualityBadge(row.data_quality, row.data_quality_reason)}
                 </td>
-                <td className="text-right py-1.5 pr-4 text-gray-300">{row.bid > 0 ? `$${row.bid.toFixed(2)}` : '—'}</td>
-                <td className="text-right py-1.5 pr-4 text-gray-300">{row.ask > 0 ? `$${row.ask.toFixed(2)}` : '—'}</td>
-                <td className="text-right py-1.5 pr-4 text-gray-400">{row.volume.toLocaleString()}</td>
-                <td className="text-right py-1.5 pr-4 text-gray-400">{row.open_interest.toLocaleString()}</td>
-                <td className="text-right py-1.5 pr-4 text-amber-400">{row.implied_volatility}</td>
-                <td className="text-right py-1.5 text-blue-400">{row.delta != null ? row.delta.toFixed(3) : '—'}</td>
+                <td className="text-right py-1.5 pr-4 text-slate-600 dark:text-gray-300">{row.bid > 0 ? `$${row.bid.toFixed(2)}` : '—'}</td>
+                <td className="text-right py-1.5 pr-4 text-slate-600 dark:text-gray-300">{row.ask > 0 ? `$${row.ask.toFixed(2)}` : '—'}</td>
+                <td className="text-right py-1.5 pr-4 text-slate-500 dark:text-gray-400">{row.volume.toLocaleString()}</td>
+                <td className="text-right py-1.5 pr-4 text-slate-500 dark:text-gray-400">{row.open_interest.toLocaleString()}</td>
+                <td className="text-right py-1.5 pr-4 text-amber-600 dark:text-amber-400">{row.implied_volatility}</td>
+                <td className="text-right py-1.5 text-blue-600 dark:text-blue-400">{row.delta != null ? row.delta.toFixed(3) : '—'}</td>
               </tr>
             )
           })}
@@ -105,19 +105,19 @@ export default function OptionsChainTable({ calls, puts, currentPrice, expiry }:
   const daysLeft = dte(expiry)
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <div className="bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl overflow-hidden">
       {/* Expiry date header */}
       {expiry && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pt-3 pb-2 border-b border-gray-800/60">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pt-3 pb-2 border-b border-slate-200 dark:border-gray-800/60">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500">Expiry</span>
-            <span className="text-xs font-bold text-white">{formatExpiry(expiry)}</span>
+            <span className="text-xs text-slate-500 dark:text-gray-500">Expiry</span>
+            <span className="text-xs font-bold text-slate-800 dark:text-white">{formatExpiry(expiry)}</span>
           </div>
           {daysLeft !== null && (
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-              ${daysLeft <= 7  ? 'bg-red-900/40 text-red-300' :
-                daysLeft <= 21 ? 'bg-amber-900/40 text-amber-300' :
-                                 'bg-gray-700 text-gray-300'}`}>
+              ${daysLeft <= 7  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300' :
+                daysLeft <= 21 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' :
+                                 'bg-slate-200 dark:bg-gray-700 text-slate-600 dark:text-gray-300'}`}>
               {daysLeft}d to expiry
             </span>
           )}
@@ -125,11 +125,11 @@ export default function OptionsChainTable({ calls, puts, currentPrice, expiry }:
       )}
 
       {/* Calls / Puts tabs */}
-      <div className="flex border-b border-gray-800">
+      <div className="flex border-b border-slate-200 dark:border-gray-800">
         {(['calls', 'puts'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-3 text-sm font-semibold capitalize transition-colors
-              ${tab === t ? 'text-white border-b-2 border-violet-500 bg-gray-800/50' : 'text-gray-400 hover:text-white'}`}>
+              ${tab === t ? 'text-violet-700 dark:text-white border-b-2 border-violet-500 bg-violet-50 dark:bg-gray-800/50' : 'text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-white'}`}>
             {t} ({t === 'calls' ? calls.length : puts.length})
           </button>
         ))}

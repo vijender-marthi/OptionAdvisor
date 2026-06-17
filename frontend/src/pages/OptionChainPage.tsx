@@ -53,10 +53,12 @@ function getVerdict(spreadPct: number, tt: TradeType): { label: string; tier: 'o
 
 // ── Tier styles (semantic — same in both themes) ─────────────────────────────
 
-const TIER_STYLES = {
-  ok:   { bg: 'rgba(99,153,34,0.20)',  color: '#a3cc6a' },
-  warn: { bg: 'rgba(232,123,58,0.20)', color: '#e8a06a' },
-  bad:  { bg: 'rgba(226,75,74,0.20)',  color: '#e07070' },
+function tierStyles(T: ThemeTokens) {
+  return {
+    ok:   { bg: T.greenBg,  color: T.green },
+    warn: { bg: T.amberBg,  color: T.amber },
+    bad:  { bg: T.redBg,    color: T.red },
+  }
 }
 
 // ── Theme token type ─────────────────────────────────────────────────────────
@@ -78,6 +80,14 @@ interface ThemeTokens {
   ctxLineBorder: string
   rowSelBg: string
   rowAtmBg: string
+  green: string
+  amber: string
+  red: string
+  greenBg: string
+  amberBg: string
+  redBg: string
+  atmBorder: string
+  selBorder: string
 }
 
 function makeTokens(isDark: boolean): ThemeTokens {
@@ -98,6 +108,14 @@ function makeTokens(isDark: boolean): ThemeTokens {
     ctxLineBorder:'#252C3A',
     rowSelBg:     'rgba(55,138,221,0.14)',
     rowAtmBg:     'rgba(99,153,34,0.10)',
+    green:        '#a3cc6a',
+    amber:        '#e8a06a',
+    red:          '#e07070',
+    greenBg:      'rgba(99,153,34,0.20)',
+    amberBg:      'rgba(232,123,58,0.20)',
+    redBg:        'rgba(226,75,74,0.20)',
+    atmBorder:    '#639922',
+    selBorder:    '#378ADD',
   } : {
     pageBg:       '#F3F4F6',
     cardBg:       '#FFFFFF',
@@ -113,15 +131,23 @@ function makeTokens(isDark: boolean): ThemeTokens {
     btnBorder:    'rgba(0,0,0,0.15)',
     ctxLineBg:    'rgba(0,0,0,0.03)',
     ctxLineBorder:'rgba(0,0,0,0.12)',
-    rowSelBg:     'rgba(55,138,221,0.10)',
-    rowAtmBg:     'rgba(99,153,34,0.08)',
+    rowSelBg:     'rgba(37,99,235,0.10)',
+    rowAtmBg:     'rgba(22,163,74,0.08)',
+    green:        '#15803d',
+    amber:        '#b45309',
+    red:          '#dc2626',
+    greenBg:      'rgba(22,163,74,0.10)',
+    amberBg:      'rgba(180,83,9,0.10)',
+    redBg:        'rgba(220,38,38,0.08)',
+    atmBorder:    '#16a34a',
+    selBorder:    '#2563eb',
   }
 }
 
 // ── Badge ────────────────────────────────────────────────────────────────────
 
-function Badge({ label, tier }: { label: string; tier: 'ok' | 'warn' | 'bad' }) {
-  const s = TIER_STYLES[tier]
+function Badge({ label, tier, T }: { label: string; tier: 'ok' | 'warn' | 'bad'; T: ThemeTokens }) {
+  const s = tierStyles(T)[tier]
   return (
     <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, fontWeight: 500, background: s.bg, color: s.color }}>
       {label}
@@ -138,7 +164,7 @@ function StatCards({ rows, atm, tradeType, T }: {
   const cfg = TT_CONFIG[tradeType]
   const liquidThresh = cfg.amber
   const enterCount = rows.filter(r => r.spread_pct <= liquidThresh).length
-  const liqColor = atm.spread_pct <= cfg.green ? '#a3cc6a' : atm.spread_pct <= cfg.amber ? '#e8a06a' : '#e07070'
+  const liqColor = atm.spread_pct <= cfg.green ? T.green : atm.spread_pct <= cfg.amber ? T.amber : T.red
   const liqLabel = atm.spread_pct <= cfg.green ? '✓ Good liquidity' : atm.spread_pct <= cfg.amber ? '⚠ Moderate' : '✗ Poor liquidity'
 
   return (
@@ -193,15 +219,15 @@ function DetailCard({ row, direction, expiry, ticker, tradeType, T }: {
     fontSize: 11,
   }
   const warnBlock = verdict.tier === 'bad' ? (
-    <div style={{ ...warnStyle, borderLeft: '3px solid #E24B4A', background: 'rgba(226,75,74,0.08)', color: '#e07070' }}>
+    <div style={{ ...warnStyle, borderLeft: `3px solid ${T.red}`, background: T.redBg, color: T.red }}>
       ✗ Spread is {row.spread_pct.toFixed(1)}% of premium — ${(row.spread * 100).toFixed(0)} gone per contract on entry. Skip this strike.
     </div>
   ) : verdict.tier === 'warn' ? (
-    <div style={{ ...warnStyle, borderLeft: '3px solid #E8A020', background: 'rgba(232,123,58,0.08)', color: '#e8a06a' }}>
+    <div style={{ ...warnStyle, borderLeft: `3px solid ${T.amber}`, background: T.amberBg, color: T.amber }}>
       ⚠ Spread {row.spread_pct.toFixed(1)}% — acceptable. Size down to 1 contract.
     </div>
   ) : (
-    <div style={{ ...warnStyle, borderLeft: '3px solid #639922', background: 'rgba(99,153,34,0.08)', color: '#a3cc6a' }}>
+    <div style={{ ...warnStyle, borderLeft: `3px solid ${T.green}`, background: T.greenBg, color: T.green }}>
       ✓ Spread clean at {row.spread_pct.toFixed(1)}% — good to enter 2 contracts.
     </div>
   )
@@ -214,16 +240,16 @@ function DetailCard({ row, direction, expiry, ticker, tradeType, T }: {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontWeight: 500 }}>${row.strike.toFixed(2)} {direction.toUpperCase()} · {expiry} · {ticker}</span>
-        <Badge label={verdict.label} tier={verdict.tier} />
+        <Badge label={verdict.label} tier={verdict.tier} T={T} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
         {[
           { label: 'Bid / Ask', val: `$${row.bid.toFixed(2)} / $${row.ask.toFixed(2)}` },
           { label: '2 contracts cost', val: `$${cost2}` },
-          { label: 'Max loss', val: `-$${cost2}`, color: '#e07070' },
+          { label: 'Max loss', val: `-$${cost2}`, color: T.red },
           { label: 'IV', val: row.iv > 200 ? '—' : `${row.iv.toFixed(0)}%` },
-          { label: '2× target price', val: `$${tgt}`, color: '#a3cc6a' },
-          { label: 'Spread / contract', val: `$${(row.spread * 100).toFixed(0)}`, color: verdict.tier === 'ok' ? '#a3cc6a' : verdict.tier === 'warn' ? '#e8a06a' : '#e07070' },
+          { label: '2× target price', val: `$${tgt}`, color: T.green },
+          { label: 'Spread / contract', val: `$${(row.spread * 100).toFixed(0)}`, color: verdict.tier === 'ok' ? T.green : verdict.tier === 'warn' ? T.amber : T.red },
         ].map(({ label, val, color }) => (
           <div key={label}>
             <div style={{ fontSize: 10, color: T.muted }}>{label}</div>
@@ -262,7 +288,7 @@ function ChainTable({ rows, tradeType, direction, expiry, ticker, selectedStrike
       </div>
       {rows.map(r => {
         const verdict = getVerdict(r.spread_pct, tradeType)
-        const spColor = r.spread_pct <= TT_CONFIG[tradeType].green ? '#a3cc6a' : r.spread_pct <= TT_CONFIG[tradeType].amber ? '#e8a06a' : '#e07070'
+        const spColor = r.spread_pct <= TT_CONFIG[tradeType].green ? T.green : r.spread_pct <= TT_CONFIG[tradeType].amber ? T.amber : T.red
         const isSelected = selectedStrike === r.strike
         const rowStyle: React.CSSProperties = {
           display: 'grid', gridTemplateColumns: COL_WIDTHS,
@@ -275,23 +301,23 @@ function ChainTable({ rows, tradeType, direction, expiry, ticker, selectedStrike
             : r.is_atm
             ? T.rowAtmBg
             : 'transparent',
-          borderLeft: isSelected ? '2px solid #378ADD' : r.is_atm ? '2px solid #639922' : '2px solid transparent',
+          borderLeft: isSelected ? `2px solid ${T.selBorder}` : r.is_atm ? `2px solid ${T.atmBorder}` : '2px solid transparent',
         }
         return (
           <Fragment key={r.strike}>
             <div style={rowStyle} onClick={() => onSelect(r.strike)}>
-              <span style={{ fontWeight: r.is_atm ? 500 : 400, color: r.is_atm ? '#a3cc6a' : T.text }}>
+              <span style={{ fontWeight: r.is_atm ? 500 : 400, color: r.is_atm ? T.green : T.text }}>
                 ${r.strike.toFixed(2)}{r.is_atm ? ' ATM' : ''}
               </span>
               <span>${r.bid.toFixed(2)}</span>
               <span>${r.ask.toFixed(2)}</span>
               <span style={{ color: spColor }}>${r.spread.toFixed(2)}</span>
               <span style={{ color: spColor }}>{r.spread_pct.toFixed(1)}%</span>
-              <span><Badge label={verdict.label} tier={verdict.tier} /></span>
+              <span><Badge label={verdict.label} tier={verdict.tier} T={T} /></span>
               <span style={{ color: T.muted }}>{r.iv > 200 ? '—' : `${r.iv.toFixed(0)}%`}</span>
             </div>
             {isSelected && (
-              <div style={{ background: T.rowSelBg, borderBottom: `0.5px solid ${T.rowBorder}`, borderLeft: '2px solid #378ADD', padding: '0 12px 12px' }}>
+              <div style={{ background: T.rowSelBg, borderBottom: `0.5px solid ${T.rowBorder}`, borderLeft: `2px solid ${T.selBorder}`, padding: '0 12px 12px' }}>
                 <DetailCard row={r} direction={direction} expiry={expiry} ticker={ticker} tradeType={tradeType} T={T} />
               </div>
             )}
@@ -388,17 +414,17 @@ export default function OptionChainPage() {
     background: T.btnBg, color: T.text, cursor: 'pointer',
   }
   const btnActive: React.CSSProperties = {
-    ...btnBase, background: 'rgba(99,153,34,0.20)', borderColor: '#639922', color: '#a3cc6a',
+    ...btnBase, background: T.greenBg, borderColor: T.atmBorder, color: T.green,
   }
 
   const dirBtnStyle = (d: 'call' | 'put'): React.CSSProperties => ({
     fontSize: 11, padding: '4px 12px', borderRadius: 5, cursor: 'pointer',
     border: `0.5px solid ${T.btnBorder}`, transition: 'all .12s',
     background: direction === d
-      ? (d === 'call' ? 'rgba(99,153,34,0.20)' : 'rgba(226,75,74,0.20)')
+      ? (d === 'call' ? T.greenBg : T.redBg)
       : 'transparent',
-    borderColor: direction === d ? (d === 'call' ? '#639922' : '#E24B4A') : T.btnBorder,
-    color: direction === d ? (d === 'call' ? '#a3cc6a' : '#e07070') : T.muted,
+    borderColor: direction === d ? (d === 'call' ? T.atmBorder : T.red) : T.btnBorder,
+    color: direction === d ? (d === 'call' ? T.green : T.red) : T.muted,
   })
 
   return (
@@ -480,14 +506,14 @@ export default function OptionChainPage() {
 
         {/* High-price warning */}
         {highPrice && (
-          <div style={{ fontSize: 11, padding: '5px 10px', borderLeft: '3px solid #E24B4A', borderRadius: '0 4px 4px 0', background: 'rgba(226,75,74,0.08)', color: '#e07070', marginBottom: 10 }}>
+          <div style={{ fontSize: 11, padding: '5px 10px', borderLeft: `3px solid ${T.red}`, borderRadius: '0 4px 4px 0', background: T.redBg, color: T.red, marginBottom: 10 }}>
             ⚠ Stock above $500 — dollar spread cost is high regardless of % · Day trade: 1 contract max · Swing/Long: normal sizing
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div style={{ fontSize: 12, color: '#e07070', marginBottom: 12, padding: '8px 12px', background: 'rgba(226,75,74,0.08)', borderRadius: 6 }}>
+          <div style={{ fontSize: 12, color: T.red, marginBottom: 12, padding: '8px 12px', background: T.redBg, borderRadius: 6 }}>
             {error}
           </div>
         )}

@@ -118,6 +118,14 @@ def _already_normalized(item: Any) -> Optional[Alert]:
     return None
 
 
+# Entry-bias alerts that are only worth surfacing on a GO / STRONG GO state.
+# While a setup is merely building (WATCH / WAIT), these are noise — suppress
+# them so the Alert Center fires entry alerts only on GO/STRONG_GO. Exit and
+# risk alerts (VWAP_LOST, OR_FAILED, MOMENTUM_FADE, *_AVOID, TREND_WEAKENING)
+# are unaffected and still fire.
+_NON_GO_ENTRY_TYPES = {"DAY_WAIT", "SWING_WATCH", "RELATIVE_STRENGTH", "LATE_DAY_STRENGTH"}
+
+
 def normalize_day_trade_alert(engine_result: dict[str, Any]) -> Optional[Alert]:
     normalized = _already_normalized(engine_result)
     if normalized is not None:
@@ -178,6 +186,11 @@ def normalize_day_trade_alert(engine_result: dict[str, Any]) -> Optional[Alert]:
         severity = "WARNING" if "RISK" in combined or "VOLAT" in combined else "INFO"
         signal = "GO"
         action = "Take entries only near the planned zone and keep intraday risk tight."
+
+    # Fire entry alerts only on GO / STRONG GO — suppress non-actionable
+    # WATCH/WAIT bias alerts. Exit & risk alerts pass through.
+    if alert_type in _NON_GO_ENTRY_TYPES:
+        return None
 
     message = _first_non_empty(
         engine_result.get("message"),
@@ -279,6 +292,11 @@ def normalize_swing_trade_alert(engine_result: dict[str, Any]) -> Optional[Alert
         severity = "INFO"
         signal = "GO"
         action = "Take the swing only if the breakout or pullback trigger stays intact."
+
+    # Fire entry alerts only on GO / STRONG GO — suppress non-actionable
+    # WATCH bias alerts. Exit & risk alerts (SWING_AVOID, TREND_WEAKENING) pass through.
+    if alert_type in _NON_GO_ENTRY_TYPES:
+        return None
 
     message = _first_non_empty(
         engine_result.get("message"),

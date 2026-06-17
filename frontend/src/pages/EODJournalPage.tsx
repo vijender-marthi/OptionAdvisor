@@ -807,7 +807,7 @@ function FibPanel({ fib, price, colors }: { fib: FibData; price: number; colors:
         Swing Low: <span style={{ color: tx, fontWeight: 700, fontFamily: 'monospace' }}>{fmt(fib.swingLow)}</span>{fib.swingLowDate ? ` (${fmtSwingDate(fib.swingLowDate)})` : ''}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+      <div className="eod-journal-fib-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         {/* Level rows */}
         <div>
           {FIB_PCTS.map(p => {
@@ -1307,6 +1307,7 @@ export default function EODJournalPage() {
         .eod-journal-two-col { grid-template-columns: 1fr !important; }
         .eod-journal-sector-grid { grid-template-columns: repeat(2,1fr) !important; }
         .eod-journal-three-col { grid-template-columns: 1fr !important; }
+        .eod-journal-fib-grid { grid-template-columns: 1fr !important; }
       }
       @media (max-width: 480px) {
         .eod-journal-stat-grid { grid-template-columns: 1fr !important; }

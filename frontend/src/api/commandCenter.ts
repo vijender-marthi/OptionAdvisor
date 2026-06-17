@@ -109,6 +109,19 @@ export async function resolveAlert(id: string): Promise<ApiEnvelope<{ ok: boolea
   return data
 }
 
+export async function clearAllAlerts(): Promise<ApiEnvelope<{ ok: boolean; cleared: number }>> {
+  if (USE_MOCK) {
+    return {
+      data: { ok: true, cleared: 0 },
+      error: null,
+      stale: false,
+      fetched_at: new Date().toISOString(),
+    }
+  }
+  const { data } = await api.post<ApiEnvelope<{ ok: boolean; cleared: number }>>(`/alerts/clear`)
+  return data
+}
+
 export async function noteAlert(id: string, text: string): Promise<ApiEnvelope<{ ok: boolean }>> {
   if (USE_MOCK) {
     return {
