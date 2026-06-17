@@ -1098,11 +1098,11 @@ function dayScenarios(t){
   const bearStop = t.orMid;
   const bearR = bearStop-bearEntry;
   return {
-    bull:{trigger:`5m close above ORH ${fmt(t.orHigh)}`, entry:bullEntry, stop:bullStop,
+    bull:{trigger:`5m close above prior-day ORH ${fmt(t.orHigh)}`, entry:bullEntry, stop:bullStop,
       t1:bullEntry+bullR, t2:bullEntry+2*bullR, rr:"1 : 2", prob:p.bull},
-    bear:{trigger:`5m close below ORL ${fmt(t.orLow)}`, entry:bearEntry, stop:bearStop,
+    bear:{trigger:`5m close below prior-day ORL ${fmt(t.orLow)}`, entry:bearEntry, stop:bearStop,
       t1:bearEntry-bearR, t2:bearEntry-2*bearR, rr:"1 : 2", prob:p.bear},
-    flat:{trigger:`No 5m close beyond ORH ${fmt(t.orHigh)} or ORL ${fmt(t.orLow)} by 7:30`, prob:p.flat}
+    flat:{trigger:`No 5m close beyond prior-day ORH ${fmt(t.orHigh)} or ORL ${fmt(t.orLow)} by 7:30`, prob:p.flat}
   };
 }
 
@@ -1124,18 +1124,23 @@ function dayScenTab(){
   const t = T(), s = dayScenarios(t);
   const lean = t.vwap>=t.orMid;
   return `
+  <div class="action-box action-flat" style="margin-bottom:14px">
+    <b>Plan for the next session.</b> The levels below (ORH, ORL, OR Mid, VWAP) are
+    <b>today's actual values</b>, used as tomorrow's reference support/resistance.
+    Tomorrow forms its <b>own</b> opening range — these are levels to watch, not tomorrow's OR.
+  </div>
   <div class="grid3">
     <div class="scen-card scen-bull">
       <div class="scen-title pos">BULL CASE</div><div class="scen-sub">Structure flips to HL / HH</div>
       ${scenRows(s.bull,true)}
       ${probBar(s.bull.prob,"var(--green)")}
-      <div class="action-box action-bull"><b>If this opens above ORH:</b> do NOT chase. Wait for the pullback that retests ORH ${fmt(t.orHigh)} as support and holds. Chasing the open print is paying the worst price of the day.</div>
+      <div class="action-box action-bull"><b>If this opens above prior-day ORH:</b> do NOT chase. Wait for the pullback that retests prior-day ORH ${fmt(t.orHigh)} as support and holds. Chasing the open print is paying the worst price of the day.</div>
     </div>
     <div class="scen-card scen-bear">
       <div class="scen-title neg">BEAR CASE</div><div class="scen-sub">Structure continues LL / LH</div>
       ${scenRows(s.bear,false)}
       ${probBar(s.bear.prob,"var(--red)")}
-      <div class="action-box action-bear"><b>If this opens below ORL:</b> do NOT market-sell into the hole. Wait for the weak bounce that fails at ORL ${fmt(t.orLow)} from below, then enter on the rejection.</div>
+      <div class="action-box action-bear"><b>If this opens below prior-day ORL:</b> do NOT market-sell into the hole. Wait for the weak bounce that fails at prior-day ORL ${fmt(t.orLow)} from below, then enter on the rejection.</div>
     </div>
     <div class="scen-card scen-flat">
       <div class="scen-title neu">FLAT / CHOP</div><div class="scen-sub">Range day — both sides get chopped</div>
