@@ -423,6 +423,7 @@ def init_db() -> None:
             ("enter_now_alerted",     "INTEGER NOT NULL DEFAULT 0"),
             ("entry_window_status",   "TEXT NOT NULL DEFAULT 'WAIT'"),
             ("entry_window_alerted",  "INTEGER NOT NULL DEFAULT 0"),
+            ("pullback_reset_alerted","INTEGER NOT NULL DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE ticker_state_last ADD COLUMN {_col} {_ddl}")
@@ -822,6 +823,7 @@ def upsert_ticker_state_last(
     enter_now_alerted: int = 0,
     entry_window_status: str = "WAIT",
     entry_window_alerted: int = 0,
+    pullback_reset_alerted: int = 0,
 ) -> None:
     normalized = normalize_email(email)
     t = ticker.upper().strip()
@@ -836,25 +838,26 @@ def upsert_ticker_state_last(
             INSERT INTO ticker_state_last
                 (email, ticker, engine, state_num, action, session_date, updated_at,
                  target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted,
-                 entry_window_status, entry_window_alerted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 entry_window_status, entry_window_alerted, pullback_reset_alerted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email, ticker, engine) DO UPDATE SET
-                state_num             = excluded.state_num,
-                action                = excluded.action,
-                session_date          = excluded.session_date,
-                updated_at            = excluded.updated_at,
-                target_hit            = excluded.target_hit,
-                inplay_since_ms       = excluded.inplay_since_ms,
-                weak_breakout_alerted = excluded.weak_breakout_alerted,
-                enter_now_alerted     = excluded.enter_now_alerted,
-                entry_window_status   = excluded.entry_window_status,
-                entry_window_alerted  = excluded.entry_window_alerted
+                state_num              = excluded.state_num,
+                action                 = excluded.action,
+                session_date           = excluded.session_date,
+                updated_at             = excluded.updated_at,
+                target_hit             = excluded.target_hit,
+                inplay_since_ms        = excluded.inplay_since_ms,
+                weak_breakout_alerted  = excluded.weak_breakout_alerted,
+                enter_now_alerted      = excluded.enter_now_alerted,
+                entry_window_status    = excluded.entry_window_status,
+                entry_window_alerted   = excluded.entry_window_alerted,
+                pullback_reset_alerted = excluded.pullback_reset_alerted
             """,
             (
                 normalized, t, eng, state_num, (action or "").upper().strip(), sd, now_ms,
                 int(target_hit), int(inplay_since_ms), int(weak_breakout_alerted),
                 int(enter_now_alerted), (entry_window_status or "WAIT").upper().strip(),
-                int(entry_window_alerted),
+                int(entry_window_alerted), int(pullback_reset_alerted),
             ),
         )
 
@@ -872,7 +875,7 @@ def get_ticker_state_last(
             """
             SELECT state_num, action, session_date, updated_at,
                    target_hit, inplay_since_ms, weak_breakout_alerted, enter_now_alerted,
-                   entry_window_status, entry_window_alerted
+                   entry_window_status, entry_window_alerted, pullback_reset_alerted
             FROM ticker_state_last
             WHERE email = ? AND ticker = ? AND engine = ?
             """,
@@ -891,6 +894,7 @@ def get_ticker_state_last(
         "enter_now_alerted":     int(row["enter_now_alerted"]     if row["enter_now_alerted"]     is not None else 0),
         "entry_window_status":   row["entry_window_status"]       if row["entry_window_status"]   is not None else "WAIT",
         "entry_window_alerted":  int(row["entry_window_alerted"]  if row["entry_window_alerted"]  is not None else 0),
+        "pullback_reset_alerted":int(row["pullback_reset_alerted"] if row["pullback_reset_alerted"] is not None else 0),
     }
 
 

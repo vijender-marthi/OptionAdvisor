@@ -283,6 +283,7 @@ export default function AlertCenter() {
             <option value="ENTER_NOW">Enter Now</option>
             <option value="TARGET_REACHED">Target Reached</option>
             <option value="WEAK_BREAKOUT">Weak Breakout</option>
+            <option value="PULLBACK_RESET">Pullback Reset</option>
             <option value="VERDICT_CHANGE">Verdict Change</option>
             <option value="DAY_GO">Day GO</option>
             <option value="DAY_WAIT">Day Wait</option>

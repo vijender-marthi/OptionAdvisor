@@ -795,6 +795,15 @@ function deriveActionAlert(
         reason: 'Day trade — market is closing. Exit now. Do not hold overnight; swing engine may not support this position.',
       }
     }
+    // Stop loss hit — a day trade down 25% has violated its risk budget. Exit now;
+    // never average down or "wait it out" on an intraday position.
+    if (pnlPct <= -25)
+      return {
+        type: 'EXIT_NOW',
+        label: 'EXIT NOW',
+        urgency: 'red',
+        reason: `Stop hit — down ${Math.abs(pnlPct).toFixed(0)}% intraday (≥25% loss). Exit now to preserve capital. Do not average down or hold a losing day trade.`,
+      }
     if (pnlPct >= 50)
       return { type: 'SELL_HALF', label: 'TAKE PROFIT', urgency: 'amber', reason: `${pnlPct.toFixed(0)}% gain intraday — take profit or scale out. Day trades do not carry overnight.` }
     return {
