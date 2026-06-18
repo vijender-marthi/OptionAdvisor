@@ -3505,6 +3505,9 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                     prev_ew_status    = prev.get("entry_window_status") or "WAIT"
                     carry_ew_alerted  = 0 if state_changed else int(prev.get("entry_window_alerted") or 0)
 
+                    # Pullback Reset fires at most once per session — carry across state changes
+                    carry_pullback    = int(prev.get("pullback_reset_alerted") or 0)
+
                     last_price_val = eg.get("current_price") or m.get("last_price")
                     orh_val        = eg.get("opening_range_high") or m.get("or_high")
                     orl_val        = eg.get("opening_range_low")  or m.get("or_low")
@@ -3725,6 +3728,42 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                             "decisionMsg":  f"Window moving to {now_ew_status}. {_ew_reason}",
                         })
 
+                    # ── Pullback Reset — DOUBLE GREEN reclaim alert ───────
+                    # Fires once per session when the engine detects a high-confidence
+                    # double-green VWAP reclaim (VWAP_DEFENSE_CONTINUATION setup).
+                    pullback_to_store = carry_pullback
+                    pb = m.get("pullback_entry") if isinstance(m, dict) else None
+                    if (isinstance(pb, dict) and pb.get("detected")
+                            and str(pb.get("reclaim_pattern") or "").upper() == "DOUBLE_GREEN"
+                            and not carry_pullback):
+                        pullback_to_store = 1
+                        _pb_price = pb.get("entry_price") or last_price_val
+                        _pb_vwap  = pb.get("vwap") or eg.get("vwap") or m.get("vwap")
+                        _pb_dir   = str(pb.get("direction") or "").upper()  # CALL / PUT
+                        _pb_side  = "LONG · CALL" if _pb_dir == "CALL" else "SHORT · PUT" if _pb_dir == "PUT" else bias_label
+                        _pb_reason = pb.get("reason") or "Double Green reclaim at VWAP — fresh continuation entry setting up."
+                        day_escalations.append({
+                            "id":           f"dt-pullback-{ticker}-{now_ms}",
+                            "alertType":    "PULLBACK_RESET",
+                            "ticker":       ticker,
+                            "companyName":  getattr(dr, "company_name", None) or ticker,
+                            "engine":       "DAY",
+                            "nowState":     now_state,
+                            "nowLabel":     _STATE_LABEL.get(now_state, str(now_state)),
+                            "direction":    _pb_side,
+                            "bias":         bias_label,
+                            "sessionDate":  sd,
+                            "currentPrice": _pb_price,
+                            "vwap":         _pb_vwap,
+                            "orh":          orh_val,
+                            "orl":          orl_val,
+                            "scalp_target": pb.get("target_1"),
+                            "riskBelow":    pb.get("stop"),
+                            "rrRatio":      pb.get("rr_t1"),
+                            "summary":      f"E4 Pullback Reset — {_pb_reason}",
+                            "decisionMsg":  f"E4 double-green VWAP reclaim ({_pb_side}). Confirm the setup on the chart before entering.",
+                        })
+
                     upsert_ticker_state_last(
                         email, ticker, "DAY", now_state, now_action, sd,
                         target_hit=target_to_store,
@@ -3733,6 +3772,7 @@ def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
                         enter_now_alerted=enter_now_to_store,
                         entry_window_status=now_ew_status,
                         entry_window_alerted=ew_alerted_to_store,
+                        pullback_reset_alerted=pullback_to_store,
                     )
         except Exception as exc:
             print(f"[state-scan] DAY {email} {ticker} failed: {exc}", flush=True)

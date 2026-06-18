@@ -465,7 +465,17 @@ function stubFromMyTicker(mt){
   const prev = px && mt.price_change!=null ? px - mt.price_change : px;
   const stub = makeTickerStub(px, prev);
   stub.earningsDays = mt.next_earnings_days!=null ? mt.next_earnings_days : null;
-  return finalizeTicker(stub);
+  const fin = finalizeTicker(stub);
+  fin.trade_types = Array.isArray(mt.trade_types) ? mt.trade_types : [];
+  return fin;
+}
+
+/* Watchlist symbols matching the active Day/Swing mode (by ticker trade_types). */
+function visibleSyms(){
+  return Object.keys(tickers).filter(sym=>{
+    const tt = (tickers[sym] && tickers[sym].trade_types) || [];
+    return tt.includes(state.mode);
+  });
 }
 
 async function loadWatchlist(){
@@ -474,7 +484,13 @@ async function loadWatchlist(){
   if(!list.length) return false;
   Object.keys(tickers).forEach(k=>delete tickers[k]);
   list.forEach(mt=>{ tickers[mt.symbol] = stubFromMyTicker(mt); });
-  state.ticker = list[0].symbol;
+  // Prefer a ticker in the active mode; if none, fall back to the first ticker's
+  // own mode so the user lands on a populated watchlist instead of an empty one.
+  state.ticker = visibleSyms()[0] || null;
+  if(!state.ticker){
+    const first = list.find(mt=>Array.isArray(mt.trade_types) && mt.trade_types.length);
+    if(first){ state.mode = first.trade_types[0]; state.ticker = visibleSyms()[0] || null; }
+  }
   trades = [];   // demo trades belong to demo tickers
   alerts = [];
   liveMode = true;
@@ -495,6 +511,7 @@ async function loadMarketPulse(){
 }
 
 async function loadTickerDetails(sym){
+  if(!sym) return;
   if(!liveMode || detailState[sym]==="loading" || detailState[sym]==="done") return;
   detailState[sym] = "loading";
   if(state.ticker===sym) renderMain();
@@ -575,7 +592,7 @@ async function loadTickerDetails(sym){
 
 async function addTickerLive(sym){
   try{
-    await apiCall("/my-tickers", {symbol:sym, trade_types:["swing"]});
+    await apiCall("/my-tickers", {symbol:sym, trade_types:[state.mode]});
   }catch(e){ /* duplicate or transient — verify via list below */ }
   try{
     const r = await apiCall("/my-tickers");
@@ -633,6 +650,7 @@ async function refreshAll(){
         list.forEach(mt=>{
           const t = tickers[mt.symbol];
           if(!t){ tickers[mt.symbol] = stubFromMyTicker(mt); return; }
+          if(Array.isArray(mt.trade_types)) t.trade_types = mt.trade_types;
           if(mt.last_price>0){
             t.close = mt.last_price;
             if(mt.price_change!=null) t.prevClose = mt.last_price - mt.price_change;
@@ -886,7 +904,8 @@ function levelsHTML(levels, close){
 
 /* ================= SIDEBAR ================= */
 function renderSidebar(){
-  const wl = Object.keys(tickers).map(sym=>{
+  const syms = visibleSyms();
+  const wl = syms.length ? syms.map(sym=>{
     const t = tickers[sym], c = chgOf(t);
     return `<div class="wl-card ${sym===state.ticker?"active":""}" data-act="select" data-tick="${sym}">
       <div class="wl-top">
@@ -896,7 +915,8 @@ function renderSidebar(){
       </div>
       <div class="wl-sub"><span class="num ${pctCls(c.p)}">${sign(c.p)}%</span><span>${t.structure}</span></div>
     </div>`;
-  }).join("");
+  }).join("")
+  : `<div class="small muted" style="padding:6px 2px 10px;line-height:1.5">No ${state.mode==="day"?"day-trade":"swing"} tickers yet. Add one below, or tag a ticker as &ldquo;${state.mode}&rdquo; in My Tickers.</div>`;
 
   const pulseHTML = pulse.map((p,i)=>`
     <div class="pulse-row" data-act="pulse" data-idx="${i}" title="Click to edit">
@@ -1540,6 +1560,11 @@ function swingOptionsTab(){
 /* ================= MAIN RENDER ================= */
 function renderMain(){
   const tab = state.tab[state.mode];
+  // Every tab except Rules Check needs a selected ticker.
+  if(tab!=="rules" && (!state.ticker || !tickers[state.ticker])){
+    $("#content").innerHTML = `<div class="card"><p class="small muted">No ${state.mode==="day"?"day-trade":"swing"} ticker selected. Add a ${state.mode} ticker to your watchlist to start journaling.</p></div>`;
+    return;
+  }
   let html = "";
   if(state.mode==="day"){
     if(tab==="eod") html = dayEodTab();
@@ -1626,7 +1651,13 @@ document.addEventListener("click", e=>{
   const act = el.dataset.act;
 
   if(act==="toggleSidebar"){ document.querySelector("aside").classList.toggle("open"); }
-  else if(act==="mode"){ state.mode = el.dataset.mode; renderAll(); }
+  else if(act==="mode"){
+    state.mode = el.dataset.mode;
+    const syms = visibleSyms();
+    if(!syms.includes(state.ticker)) state.ticker = syms[0] || null;
+    renderAll();
+    if(state.ticker) loadTickerDetails(state.ticker);
+  }
   else if(act==="tab"){ state.tab[state.mode] = el.dataset.tab; renderTabs(); renderMain(); }
   else if(act==="select"){ state.ticker = el.dataset.tick; renderSidebar(); renderMain(); loadTickerDetails(state.ticker); if(window.innerWidth<900) document.querySelector("aside").classList.remove("open"); }
   else if(act==="check"){

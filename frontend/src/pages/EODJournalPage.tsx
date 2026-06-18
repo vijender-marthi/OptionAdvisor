@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Plus, CheckSquare, Square, RefreshCw, Download, Save, ChevronDown, ChevronUp, X, Loader2, AlertCircle, Calendar } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import {
@@ -915,6 +915,9 @@ export default function EODJournalPage() {
   const { theme } = useApp()
   const isDark = theme !== 'light'
 
+  const [journalMode, setJournalMode] = useState<'day' | 'swing'>(() => {
+    try { return localStorage.getItem('eod_journal_mode') === 'day' ? 'day' : 'swing' } catch { return 'swing' }
+  })
   const [myTickers,   setMyTickers]   = useState<MyTickerEntry[]>([])
   const [selected,    setSelected]    = useState<string | null>(null)
   const [analysis,    setAnalysis]    = useState<StockAnalysis | null>(null)
@@ -949,6 +952,19 @@ export default function EODJournalPage() {
       }
     }).catch(() => {})
   }, [])
+
+  // ── Watchlist scoped to the active journal mode ───────────────────────────
+  // Day tab shows only tickers tagged 'day'; Swing tab only those tagged 'swing'.
+  const visibleTickers = useMemo(
+    () => myTickers.filter(t => (t.trade_types || []).includes(journalMode)),
+    [myTickers, journalMode],
+  )
+
+  // Persist the chosen mode and drop a selection that isn't in the active tab.
+  useEffect(() => {
+    try { localStorage.setItem('eod_journal_mode', journalMode) } catch { /* quota */ }
+    setSelected(prev => (prev && visibleTickers.some(t => t.symbol === prev) ? prev : null))
+  }, [journalMode, visibleTickers])
 
   // ── Live ticker search ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1143,14 +1159,14 @@ export default function EODJournalPage() {
   const handleAddTicker = useCallback(async (symbol: string, company: string) => {
     setAdding(true)
     try {
-      const r = await addMyTicker({ symbol, trade_types: ['swing'] })
+      const r = await addMyTicker({ symbol, trade_types: [journalMode] })
       setMyTickers(r.data?.tickers ?? myTickers)
       setSelected(symbol)
       setShowAddForm(false)
       setAddQuery('')
       setSearchRes([])
     } catch { /* duplicate */ } finally { setAdding(false) }
-  }, [myTickers])
+  }, [myTickers, journalMode])
 
   const toggleCheck = (i: number) => {
     setCheckState(prev => {
@@ -1323,7 +1339,7 @@ export default function EODJournalPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar" style={{ display: 'none', padding: '4px 8px', borderRadius: 5, border: `1px solid ${bdr}`, background: cardBg2, color: tx, cursor: 'pointer', fontSize: 16, lineHeight: 1 }} className="sidebar-toggle">☰</button>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>Swing EOD Journal · Next Day Prep</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: tx, letterSpacing: '-0.3px' }}>{journalMode === 'day' ? 'Day Trade' : 'Swing'} EOD Journal · Next Day Prep</div>
             <div style={{ fontSize: 11, color: txMuted, marginTop: 1 }}>End-of-session analysis → Tomorrow's game plan</div>
           </div>
         </div>
@@ -1374,8 +1390,27 @@ export default function EODJournalPage() {
           {/* Watchlist */}
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: txMuted, marginBottom: 8 }}>Watchlist</div>
+
+            {/* Day / Swing scope toggle */}
+            <div style={{ display: 'flex', gap: 4, background: cardBg2, border: `1px solid ${bdr}`, borderRadius: 7, padding: 3, marginBottom: 10 }}>
+              {(['day', 'swing'] as const).map(m => {
+                const active = journalMode === m
+                return (
+                  <button key={m} onClick={() => setJournalMode(m)} style={{
+                    flex: 1, padding: '5px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+                    background: active ? '#1f6feb' : 'transparent', color: active ? '#fff' : txMuted,
+                  }}>{m === 'day' ? '⚡ Day' : '📈 Swing'}</button>
+                )
+              })}
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {myTickers.map(t => {
+              {visibleTickers.length === 0 && (
+                <div style={{ fontSize: 11, color: txMuted, padding: '8px 2px', lineHeight: 1.5 }}>
+                  No {journalMode === 'day' ? 'day-trade' : 'swing'} tickers yet. Add one below or tag a ticker as “{journalMode}” in My Tickers.
+                </div>
+              )}
+              {visibleTickers.map(t => {
                 const isActive = selected === t.symbol
                 const pos = (t.price_change_pct ?? 0) >= 0
                 const biasColor = analysis?.ticker === t.symbol
