@@ -511,8 +511,12 @@ export default function DayTradeIntradayChart({
             })}
           </g>
 
-          <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={1.5}
+          <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={2.5}
             strokeLinejoin="round" strokeLinecap="round"
+            points={vwapPts} clipPath={`url(#${clipId})`} />
+          {/* VWAP glow shadow */}
+          <polyline fill="none" stroke="var(--chart-line-iv)" strokeWidth={6}
+            strokeLinejoin="round" strokeLinecap="round" opacity={0.12}
             points={vwapPts} clipPath={`url(#${clipId})`} />
 
           {/* ── VWAP bias-flip markers (full session) ── */}

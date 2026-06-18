@@ -103,6 +103,9 @@ export interface Signals {
 /** Unified verdict — single value shown on all cards and command center. */
 export type UnifiedVerdict = 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
 
+/** New state model — replaces WAIT/GO. Priority: NO_TRADE > MANAGE > EXECUTE > ARMED > WATCH */
+export type TradeEntryState = 'WATCH' | 'ARMED' | 'EXECUTE' | 'MANAGE' | 'NO_TRADE'
+
 export interface ResolvedTradeDecision {
   /** Unified verdict — the only verdict field the UI should display on cards. */
   verdict: UnifiedVerdict

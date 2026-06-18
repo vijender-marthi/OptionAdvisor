@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal, deriveUnifiedFromDayResult } from '../api/client'
 import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
-import type { DayTradeAlertEvent } from '../types'
+import type { DayTradeAlertEvent, TradeEntryState } from '../types'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
@@ -677,10 +677,76 @@ export default function DayTradePage() {
     })
   }, [scanCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── New state model (WATCH / ARMED / EXECUTE / MANAGE / NO_TRADE) ──────────
+  const [stateLockedUntil, setStateLockedUntil] = useState(0)
+  const prevEntryStateRef = useRef<TradeEntryState | null>(null)
+
+  const [signalFlipCount, setSignalFlipCount] = useState(0)
+  const noTradeZoneActive = useMemo(() => {
+    const m = result?.metrics as Record<string, unknown> | undefined
+    const bars = parseChartBars(m?.chart_bars)
+    if (!bars || bars.length < 3) return false
+    const last = bars[bars.length - 1]
+    const vwapDist = Math.abs(last.c - last.vwap) / (last.vwap || 1)
+    if (vwapDist >= 0.003) return false
+    const orH = typeof m?.or_high === 'number' ? m.or_high as number : 0
+    const orL = typeof m?.or_low === 'number' ? m.or_low as number : 0
+    if (!(orH > 0 && orL > 0 && last.c >= orL && last.c <= orH)) return false
+    return true
+  }, [result])
+
+  // Signal flip count: how many times momentum direction changed across bars
+  useEffect(() => {
+    const m = result?.metrics as Record<string, unknown> | undefined
+    const bars = parseChartBars(m?.chart_bars)
+    if (!bars || bars.length < 5) { setSignalFlipCount(0); return }
+    let flips = 0
+    for (let i = 2; i < bars.length; i++) {
+      const prevUp = bars[i - 1]!.c >= bars[i - 1]!.o
+      const curUp = bars[i]!.c >= bars[i]!.o
+      if (prevUp !== curUp) flips++
+    }
+    setSignalFlipCount(flips)
+  }, [result])
+
+  const entryState = useMemo((): TradeEntryState => {
+    if (sessionState === 'hold') return 'MANAGE'
+    if (sessionState === 'forming' || sessionState === 'exhausted') return 'NO_TRADE'
+    if (noTradeZoneActive) return 'NO_TRADE'
+    if (signalFlipCount >= 2) return 'NO_TRADE'
+    if (sessionState === 'entry') return 'EXECUTE'
+    const v = result?.verdict ?? ''
+    const isGo = /^(STRONG.?GO|GO)$/i.test(v)
+    const m = result?.metrics as Record<string, unknown> | undefined
+    const edgeExhausted = m?.edge_remaining === 'EXHAUSTED' || m?.edge_remaining === 'LATE' || !!m?.is_chasing
+    if (edgeExhausted) return 'NO_TRADE'
+    if (isGo) return 'ARMED'
+    return 'WATCH'
+  }, [sessionState, noTradeZoneActive, result, signalFlipCount])
+
+  // State cooldown: lock for 10 min after change, unless strong breakout
+  useEffect(() => {
+    if (prevEntryStateRef.current === null) {
+      prevEntryStateRef.current = entryState
+      return
+    }
+    if (prevEntryStateRef.current === entryState) return
+    const m = result?.metrics as Record<string, unknown> | undefined
+    const lastBar = m?.chart_bars ? parseChartBars(m.chart_bars)?.slice(-1)[0] : null
+    const breakout = lastBar ? Math.abs(lastBar.c - lastBar.o) / (lastBar.o || 1) * 100 > 0.75 : false
+    const volSurge = lastBar && m?.rvol ? (m.rvol as number) > 1.5 : false
+    if (!breakout || !volSurge) {
+      setStateLockedUntil(Date.now() + 600_000)
+    }
+    prevEntryStateRef.current = entryState
+  }, [entryState, result])
+
+  const stateLocked = Date.now() < stateLockedUntil
+
   const handleBannerEntered = useCallback(() => {
     setSessionState('hold')
   }, [])
-
+ 
   const handleBannerExpire = useCallback(() => {
     setSessionState(prev => prev === 'entry' ? 'watch' : prev)
   }, [])
@@ -843,10 +909,11 @@ export default function DayTradePage() {
               <button
                 type="button"
                 onClick={openEnterModal}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+                disabled={entryState === 'NO_TRADE'}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 text-gray-300 px-3 py-2 text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Activity size={14} />
-                Track Intraday
+                Track Intraday{entryState === 'NO_TRADE' ? ' (locked)' : ''}
               </button>
             )}
             <button
@@ -1010,45 +1077,202 @@ export default function DayTradePage() {
             </div>
           </div>
 
+          {/* ── MARKET STATE CARD (Part 2) ─────────────────────────────────── */}
+          {(() => {
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const momPct = m?.momentum_pct as number | undefined
+            const priceStructure = m?.price_structure as string | undefined
+            const vwapPos = m?.vwap_position as string | undefined
+            const orBO = m?.or_breakout as string | undefined
+            const vwapDistPct = m?.vwap_dist_pct as number | undefined
+            const confBlock = m?.confidence as Record<string, unknown> | undefined
+            const trendStr = confBlock?.trend_strength as string | undefined
+
+            // Map price_structure → display label
+            const structLabel = priceStructure === 'HH_HL' ? 'BULLISH ↑' :
+              priceStructure === 'LL_LH' ? 'BEARISH ↓' :
+              priceStructure === 'MIXED' ? 'MIXED ↔' :
+              priceStructure === 'FLAT' ? 'FLAT —' : (priceStructure ?? '—')
+
+            // Micro Momentum interpretation (Part 1)
+            let momLabel = '—'
+            let momDir: '↑' | '↓' | '—' = '—'
+            let momInterpretation = ''
+            let momColor = dt.muted
+            if (momPct != null && isFinite(momPct)) {
+              momDir = momPct > 0 ? '↑' : momPct < 0 ? '↓' : '—'
+              const absMom = Math.abs(momPct)
+              if (momPct > 1.0) { momInterpretation = 'Strong acceleration'; momColor = '#34d399' }
+              else if (momPct >= 0.3) { momInterpretation = 'Trend continuation'; momColor = '#34d399' }
+              else if (momPct >= -0.3) { momInterpretation = 'Neutral'; momColor = '#94a3b8' }
+              else if (momPct >= -1.0) { momInterpretation = 'Minor pullback'; momColor = '#E87B3A' }
+              else { momInterpretation = 'Short-term weakness'; momColor = '#EF4444' }
+              momLabel = `${momPct.toFixed(2)}%`
+            }
+
+            // Decision from matrix
+            const isBullStruct = priceStructure === 'HH_HL'
+            const isBearStruct = priceStructure === 'LL_LH'
+            const momPositive = momPct != null && momPct > 0.3
+            const momNegative = momPct != null && momPct < -0.3
+            const verdict = (result?.verdict ?? result?.final_decision ?? 'WAIT') as string
+
+            let matrixResult = verdict
+            let matrixReason = ''
+            if (isBullStruct && momNegative) { matrixResult = 'WAIT'; matrixReason = 'Pullback inside uptrend' }
+            else if (isBullStruct && momPositive) { matrixResult = 'EXECUTE LONG'; matrixReason = 'Structure + Momentum aligned' }
+            else if (isBearStruct && momPositive) { matrixResult = 'WATCH'; matrixReason = 'Countertrend bounce' }
+            else if (isBearStruct && momNegative) { matrixResult = 'EXECUTE SHORT'; matrixReason = 'Structure + Momentum aligned' }
+            else if (trendStr === 'HIGH' && momPct != null && Math.abs(momPct) < 0.3) { matrixReason = 'Strong structure, momentum neutral — wait for trigger' }
+            else { matrixReason = result?.reason ?? 'No clear edge' }
+
+            const stColor = isBullStruct ? '#34d399' : isBearStruct ? '#EF4444' : '#94a3b8'
+
+            return (
+              <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>Market State</div>
+                <div style={{ display: 'grid', gap: '6px 20px', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+                  {/* Structure */}
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Structure</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: stColor, fontFamily: 'monospace' }}>{structLabel}</div>
+                  </div>
+                  {/* Micro Momentum */}
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Micro Momentum</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: momColor, fontFamily: 'monospace' }}>{momDir} {momLabel}</div>
+                    {momInterpretation && <div style={{ fontSize: '0.65rem', color: momColor, marginTop: 1 }}>{momInterpretation}</div>}
+                  </div>
+                  {/* VWAP */}
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>VWAP</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: vwapPos === 'above' ? '#34d399' : vwapPos === 'below' ? '#EF4444' : '#94a3b8', fontFamily: 'monospace' }}>{(vwapPos ?? '—').toUpperCase()}</div>
+                    {vwapDistPct != null && <div style={{ fontSize: '0.65rem', color: dt.muted, marginTop: 1 }}>{vwapDistPct >= 0 ? '+' : ''}{vwapDistPct.toFixed(2)}%</div>}
+                  </div>
+                  {/* OR */}
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>OR</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: orBO === 'above' ? '#34d399' : orBO === 'below' ? '#EF4444' : '#94a3b8', fontFamily: 'monospace' }}>{(orBO ?? '—').toUpperCase()}</div>
+                  </div>
+                </div>
+                {/* Structure Context + Verdict row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${dt.border}`, flexWrap: 'wrap' }}>
+                  {/* Micro Momentum arrow */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: dt.muted }}>
+                    Micro Momentum <span style={{ fontWeight: 700, color: momColor, fontFamily: 'monospace' }}>{momDir === '↑' ? '↑' : momDir === '↓' ? '↓' : '—'}</span>
+                  </div>
+                  {/* Structure arrow */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', color: dt.muted }}>
+                    Structure <span style={{ fontWeight: 700, color: stColor, fontFamily: 'monospace' }}>{isBullStruct ? '↑' : isBearStruct ? '↓' : '—'}</span>
+                  </div>
+                  {/* Result */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                    <span style={{ fontSize: '0.65rem', color: dt.muted }}>→</span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: entryState === 'NO_TRADE' ? '#EF4444' : entryState === 'EXECUTE' ? '#34d399' : entryState === 'ARMED' ? '#E87B3A' : '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{matrixResult}</span>
+                    <span style={{ fontSize: '0.65rem', color: dt.muted }}>{matrixReason}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           <UnifiedVerdictCard analysis={unified} />
 
-          {/* Entry Plan / Risk Profile */}
-          <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-              {/* Entry Plan */}
-              <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Plan</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Entry</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.entry_price ? dt.green : dt.amber, fontSize: '0.82rem' }}>{unified.entry_price ? `$${unified.entry_price.toFixed(2)}` : '—'}</span>
+          {/* ── ENTRY CONFIRMATION (Part 5) + COUNTERTREND (Part 6) ──────── */}
+          {(() => {
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const eg = result?.entry_guidance as Record<string, unknown> | undefined
+            const isShort = result?.bias === 'short'
+            const momPct = m?.momentum_pct as number | undefined
+            const vwapPos = m?.vwap_position as string | undefined
+            const priceStructure = m?.price_structure as string | undefined
+            const rvol = m?.rvol as number | undefined
+            const entryRR = m?.entry_rr_ratio as number | undefined
+            const vwapValue = eg?.vwap as number | undefined
+            const orH = eg?.opening_range_high as number | undefined
+            const orL = eg?.opening_range_low as number | undefined
+            const lastPrice = m?.last_price as number | undefined
+            const volSpike = !!m?.volume_spike
+            const sien = String((eg as Record<string,unknown> | undefined)?.should_enter_now ?? '').toUpperCase()
+
+            // Entry trigger description
+            const triggerDesc = isShort
+              ? (lastPrice != null && orL != null && lastPrice < orL ? 'Close < ORL' : 'Close below ORL')
+              : (lastPrice != null && orH != null && lastPrice > orH ? 'Close > ORH' : 'Close above ORH')
+            const triggerMet = isShort ? (lastPrice != null && orL != null && lastPrice < orL) : (lastPrice != null && orH != null && lastPrice > orH)
+
+            // Confirmation: 2 candles
+            const confMet = sien === 'YES'
+            // Volume: 1.3× avg
+            const volMet = volSpike || (rvol != null && rvol > 1.3)
+            // Stop
+            const stopDesc = isShort ? 'Above VWAP' : 'Below VWAP'
+            // Risk
+            const riskMet = entryRR != null && entryRR >= 1.5
+            const riskDesc = entryRR != null ? `${entryRR.toFixed(1)}R` : '—'
+
+            const allMet = triggerMet && confMet && volMet && riskMet
+            const actionText = allMet ? 'EXECUTE' : sien === 'YES' ? 'ARMED' : 'WAIT'
+            const actionColor = allMet ? '#34d399' : sien === 'YES' ? '#E87B3A' : '#94a3b8'
+
+            // Countertrend protection (Part 6)
+            const higherLowsIntact = priceStructure === 'HH_HL'
+            const lowerHighsIntact = priceStructure === 'LL_LH'
+            const aboveVWAP = vwapPos === 'above'
+            const belowVWAP = vwapPos === 'below'
+            const trendStrength = (m?.confidence as Record<string, unknown> | undefined)?.trend_strength as string | undefined
+            const trendStrengthNum = trendStrength === 'HIGH' ? 80 : trendStrength === 'MEDIUM' ? 50 : 0
+            const blockPuts = aboveVWAP && higherLowsIntact && trendStrengthNum > 70
+            const blockCalls = belowVWAP && lowerHighsIntact
+            const countertrend = (isShort && blockCalls) || (!isShort && blockPuts)
+
+            return (
+              <div className="dt-card" style={{ background: dt.bg, border: allMet ? '1px solid rgba(52,211,153,0.3)' : countertrend ? '1px solid rgba(239,68,68,0.25)' : `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>Entry Confirmation</div>
+
+                {countertrend && (
+                  <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: '0.68rem', fontWeight: 600, color: '#EF4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                    ⚠ Countertrend — {isShort ? 'Trend still intact (higher lows).' : 'Trend still intact (lower highs).'} Consider waiting.
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gap: '5px 16px', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', fontSize: '0.75rem' }}>
+                  {/* Entry Trigger */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Entry Trigger</div>
+                    <div style={{ fontWeight: 600, color: triggerMet ? '#34d399' : '#94a3b8', fontFamily: 'monospace' }}>{triggerMet ? '✓ ' : '○ '}{triggerDesc}</div>
+                  </div>
+                  {/* Confirmation */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Confirmation</div>
+                    <div style={{ fontWeight: 600, color: confMet ? '#34d399' : '#94a3b8', fontFamily: 'monospace' }}>{confMet ? '✓ 2 candles hold' : '○ Pending trigger'}</div>
+                  </div>
+                  {/* Volume */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Volume</div>
+                    <div style={{ fontWeight: 600, color: volMet ? '#34d399' : '#94a3b8', fontFamily: 'monospace' }}>{volMet ? '✓ ' : '○ '}{rvol != null ? `${(rvol).toFixed(1)}×` : 'avg'}</div>
+                  </div>
+                  {/* Stop */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Stop</div>
+                    <div style={{ fontWeight: 600, color: '#94a3b8', fontFamily: 'monospace' }}>{stopDesc}</div>
+                  </div>
+                  {/* Risk */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Risk</div>
+                    <div style={{ fontWeight: 600, color: riskMet ? '#34d399' : '#94a3b8', fontFamily: 'monospace' }}>{riskMet ? '✓ ' : '○ '}{riskDesc}</div>
+                  </div>
+                  {/* Action */}
+                  <div style={{ padding: '4px 0', borderBottom: `1px solid ${dt.border}` }}>
+                    <div style={{ fontSize: '0.6rem', color: dt.muted, marginBottom: 1 }}>Action</div>
+                    <div style={{ fontWeight: 800, color: actionColor, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{actionText}</div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Structure</span>
-                  <span className="dt-primary" style={{ fontFamily: 'monospace', color: dt.text, fontSize: '0.82rem' }}>{unified.structure || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Stop Loss</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.stop_price ? dt.red : dt.muted, fontSize: '0.82rem' }}>{unified.stop_price ? `$${unified.stop_price.toFixed(2)}` : '—'}</span>
-                </div>
+
+                {allMet && <div style={{ marginTop: 6, padding: '4px 10px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 600, color: '#34d399', background: 'rgba(52,211,153,0.08)', textAlign: 'center' }}>All conditions met — ready to execute</div>}
               </div>
-              {/* Risk Profile */}
-              <div>
-                <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>R/R Ratio</span>
-                  <span className="dt-muted" style={{ fontFamily: 'monospace', color: dt.muted, fontSize: '0.82rem' }}>{unified.rr_ratio || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${dt.border}` }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>Risk Level</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: unified.risk_level === 'LOW' ? dt.green : unified.risk_level === 'MEDIUM' ? dt.amber : dt.red, fontSize: '0.82rem' }}>{unified.risk_level || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                  <span className="dt-muted" style={{ color: dt.muted, fontSize: '0.82rem' }}>RVOL</span>
-                  <span className="dt-muted" style={{ fontFamily: 'monospace', fontWeight: 700, color: dt.muted, fontSize: '0.82rem' }}>{unified.rvol || '—'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+            )
+          })()}
 
           {/* Exit Plan */}
           {(() => {
@@ -1180,10 +1404,10 @@ export default function DayTradePage() {
           && !rtxtOec.includes('confirmation')
 
         const chartTrigger: 'GO' | 'WAIT' | 'WATCHING' =
-          sessionState === 'hold' ? 'GO' :
-          sessionState === 'entry' ? 'GO' :
-          sessionState === 'exhausted' ? 'WAIT' :
-          showGO ? 'GO' : isWatch ? 'WATCHING' : 'WAIT'
+          entryState === 'MANAGE' || entryState === 'EXECUTE' ? 'GO' :
+          entryState === 'ARMED' ? 'GO' :
+          entryState === 'NO_TRADE' ? 'WAIT' :
+          'WATCHING'
         const direction: 'SHORT' | 'LONG' = isShort ? 'SHORT' : 'LONG'
         const stopPrice = (() => {
           const rb = typeof eg?.risk_below === 'number' ? eg.risk_below as number : null
@@ -1389,19 +1613,16 @@ export default function DayTradePage() {
         const conf       = typeof result.confidence === 'number' ? result.confidence : 0
         const extFlagged = (m.edge_remaining === 'EXHAUSTED' || m.edge_remaining === 'LATE') || !!m.is_chasing
         const reasonTxt  = [result.reason ?? '', ...(Array.isArray(result.reasons) ? result.reasons : [])].join(' ').toLowerCase()
-        // z2* = display values used only for Zone 2's card badge and colours
-        const z2ShowGO  = isGo && triggerConfirmed && conf > 80
-          && (rrRatio === null || rrRatio >= 1.5)
-          && !extFlagged
-          && !reasonTxt.includes('wait')
-          && !reasonTxt.includes('no clean edge')
-          && !reasonTxt.includes('confirmation')
-        const z2IsGo    = z2ShowGO
-        const z2IsAmber = !z2ShowGO && conf > 80   // setup present, conditions not fully met
-        const z2IsWatch = !z2IsGo && !z2IsAmber && (isWatch || isGo)
-        const z2Verdict   = z2IsGo ? verdict : (z2IsAmber || isGo ? 'WATCH' : verdict)
-        const z2BadgeText = sessionState === 'hold' ? 'MANAGING' : sessionState === 'exhausted' ? 'EXHAUSTED' : z2Verdict
-        const z2VColor    = z2IsGo ? '#34d399' : z2IsAmber ? '#E87B3A' : z2IsWatch ? '#38bdf8' : '#6b7280'
+        // State-based display values for Zone 2 card
+        const z2Verdict = entryState === 'WATCH' ? 'WATCH' : entryState === 'NO_TRADE' ? 'NO TRADE' : entryState
+        const z2BadgeText = entryState === 'MANAGE' ? 'MANAGING' : z2Verdict
+        const entryStateColor = (st: TradeEntryState): string =>
+          st === 'EXECUTE' ? '#34d399' :
+          st === 'ARMED' ? '#E87B3A' :
+          st === 'MANAGE' ? '#818CF8' :
+          st === 'NO_TRADE' ? '#EF4444' :
+          '#38bdf8'
+        const z2VColor = entryStateColor(entryState)
 
         // Theme-adaptive card helpers
         const cBg  = (d: string, l: string) => isDark ? d : l
@@ -1426,6 +1647,25 @@ export default function DayTradePage() {
           badgeBg: isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.22)',
           detail: `The first ${orN} minutes establish the opening range (ORH $${orHigh.toFixed(2)} / ORL $${orLow.toFixed(2)}). Wait for a confirmed break with volume expansion before entering.`,
         })
+
+        // ── NO TRADE ZONE annotation ────────────────────────────────────────
+        if (noTradeZoneActive && orN < chartBars.length && entryState === 'NO_TRADE') {
+          dayZones.push({
+            key: 'no-trade-zone',
+            from: orN,
+            to: chartBars.length - 1,
+            fill: 'rgba(239,68,68,0.08)',
+            label: 'NO TRADE ZONE',
+            sublabel: 'VWAP compression + Inside OR',
+            markerColor: '#EF4444',
+            cardBg:     cBg('rgba(20,4,4,0.92)',       'rgba(254,242,242,0.97)'),
+            cardBorder: cBdr('#7F1D1D',                 '#DC2626'),
+            textColor:  cTxt('#FCA5A5',                 '#991B1B'),
+            badgeText: 'NO TRADE',
+            badgeBg: isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.22)',
+            detail: 'No trade zone: price within 0.30% of VWAP and inside opening range. Wait for a clean break with volume before entering.',
+          })
+        }
 
         // ── Flip-to-GO condition (WAIT only) ────────────────────────────────
         let flipCondition: string | undefined
@@ -1468,29 +1708,62 @@ export default function DayTradePage() {
 
         // Zone 2 — Entry window (post-OR, up to 45 bars)
         if (orN < chartBars.length) {
+          const eFill =
+            entryState === 'EXECUTE' ? 'rgba(52,211,153,0.07)' :
+            entryState === 'ARMED' ? 'rgba(232,123,58,0.07)' :
+            entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.07)' :
+            entryState === 'MANAGE' ? 'rgba(99,102,241,0.07)' :
+            'rgba(56,189,248,0.07)'
+          const eBg = (d1: string, d2: string, d3: string, d4: string, l1: string, l2: string, l3: string, l4: string) =>
+            entryState === 'EXECUTE' ? (isDark ? d1 : l1) :
+            entryState === 'ARMED' ? (isDark ? d2 : l2) :
+            entryState === 'NO_TRADE' ? (isDark ? d3 : l3) :
+            entryState === 'MANAGE' ? (isDark ? d4 : l4) :
+            (isDark ? d1 : l1)
+          const eBdr = (d1: string, d2: string, d3: string, d4: string, l1: string, l2: string, l3: string, l4: string) =>
+            entryState === 'EXECUTE' ? (isDark ? d1 : l1) :
+            entryState === 'ARMED' ? (isDark ? d2 : l2) :
+            entryState === 'NO_TRADE' ? (isDark ? d3 : l3) :
+            entryState === 'MANAGE' ? (isDark ? d4 : l4) :
+            (isDark ? d1 : l1)
+          const eBgBadge = (d: string, l: string) => isDark ? d : l
           dayZones.push({
             key: 'entry',
             from: orN,
             to: Math.min(orN + 44, chartBars.length - 1),
-            fill: z2IsGo ? 'rgba(52,211,153,0.07)' : z2IsAmber ? 'rgba(232,123,58,0.07)' : z2IsWatch ? 'rgba(56,189,248,0.07)' : 'rgba(107,114,128,0.04)',
-            label: z2BadgeText,
+            fill: eFill,
+            label: entryState === 'NO_TRADE' ? 'NO TRADE' : z2BadgeText,
             sublabel: `${biasLabel} · post-OR`,
             markerColor: z2VColor,
-            cardBg:     cBg(
-              z2IsGo ? 'rgba(2,12,8,0.92)'      : z2IsAmber ? 'rgba(18,10,2,0.92)'     : z2IsWatch ? 'rgba(2,8,18,0.92)'      : 'rgba(10,10,12,0.92)',
-              z2IsGo ? 'rgba(240,253,244,0.97)' : z2IsAmber ? 'rgba(255,251,235,0.97)' : z2IsWatch ? 'rgba(240,249,255,0.97)' : 'rgba(249,250,251,0.97)',
+            cardBg: eBg(
+              'rgba(2,12,8,0.92)', 'rgba(18,10,2,0.92)', 'rgba(20,4,4,0.92)', 'rgba(4,4,18,0.92)',
+              'rgba(240,253,244,0.97)', 'rgba(255,251,235,0.97)', 'rgba(254,242,242,0.97)', 'rgba(245,243,255,0.97)',
             ),
-            cardBorder: cBdr(
-              z2IsGo ? '#065F46' : z2IsAmber ? '#78350F' : z2IsWatch ? '#0C4A6E' : '#374151',
-              z2IsGo ? '#059669' : z2IsAmber ? '#D97706' : z2IsWatch ? '#0284C7' : '#9CA3AF',
+            cardBorder: eBdr(
+              '#065F46', '#78350F', '#7F1D1D', '#312E81',
+              '#059669', '#D97706', '#DC2626', '#7C3AED',
             ),
-            textColor:  cTxt(z2VColor, z2IsGo ? '#065F46' : z2IsAmber ? '#92400E' : z2IsWatch ? '#0369A1' : '#374151'),
+            textColor: cTxt(z2VColor,
+              entryState === 'EXECUTE' ? '#065F46' :
+              entryState === 'ARMED' ? '#92400E' :
+              entryState === 'NO_TRADE' ? '#991B1B' :
+              entryState === 'MANAGE' ? '#4C1D95' :
+              '#0369A1'),
             badgeText: z2BadgeText,
-            badgeBg: isDark
-              ? (z2IsGo ? 'rgba(52,211,153,0.12)' : z2IsAmber ? 'rgba(232,123,58,0.12)'  : z2IsWatch ? 'rgba(56,189,248,0.12)'  : 'rgba(107,114,128,0.08)')
-              : (z2IsGo ? 'rgba(52,211,153,0.18)' : z2IsAmber ? 'rgba(232,123,58,0.18)'  : z2IsWatch ? 'rgba(56,189,248,0.18)'  : 'rgba(107,114,128,0.14)'),
+            badgeBg: eBgBadge(
+              entryState === 'EXECUTE' ? 'rgba(52,211,153,0.12)' :
+              entryState === 'ARMED' ? 'rgba(232,123,58,0.12)' :
+              entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.14)' :
+              entryState === 'MANAGE' ? 'rgba(99,102,241,0.12)' :
+              'rgba(56,189,248,0.12)',
+              entryState === 'EXECUTE' ? 'rgba(52,211,153,0.18)' :
+              entryState === 'ARMED' ? 'rgba(232,123,58,0.18)' :
+              entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.22)' :
+              entryState === 'MANAGE' ? 'rgba(99,102,241,0.16)' :
+              'rgba(56,189,248,0.18)',
+            ),
             price: t1 ? `T1 $${t1.toFixed(2)} · ${biasLabel}` : biasLabel,
-            detail: `${z2IsGo ? 'Entry window active' : z2IsAmber ? 'Setup present · conditions not met · wait for trigger' : z2IsWatch ? 'Setup developing' : `Verdict is ${z2Verdict} — no entry yet`}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
+            detail: `${entryState === 'EXECUTE' ? 'Entry window active' : entryState === 'ARMED' ? 'Setup present · conditions not met · wait for trigger' : entryState === 'NO_TRADE' ? 'No trade — VWAP compression inside OR' : entryState === 'MANAGE' ? 'Managing position' : 'Setup developing'}. ${biasLabel} bias confirmed. ${entryReadiness}${t1 ? ` First target T1: $${t1.toFixed(2)}.` : ''}`,
             flipCondition,
           })
         }
@@ -1710,6 +1983,26 @@ export default function DayTradePage() {
                   <button key={iv} onClick={() => setChartInterval(iv)} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}>{iv}</button>
                 ))}
               </div>
+            </div>
+            {/* State banner + rule */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${entryState === 'NO_TRADE' ? '#EF444480' : entryState === 'EXECUTE' ? '#34d39980' : entryState === 'ARMED' ? '#E87B3A80' : entryState === 'MANAGE' ? '#818CF880' : '#38bdf880'}`,
+              background: entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.08)' : entryState === 'EXECUTE' ? 'rgba(52,211,153,0.08)' : entryState === 'ARMED' ? 'rgba(232,123,58,0.08)' : entryState === 'MANAGE' ? 'rgba(129,140,248,0.08)' : 'rgba(56,189,248,0.08)'
+            }}>
+              <span style={{
+                fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                padding: '1px 8px', borderRadius: 12,
+                color: entryState === 'NO_TRADE' ? '#EF4444' : entryState === 'EXECUTE' ? '#34d399' : entryState === 'ARMED' ? '#E87B3A' : entryState === 'MANAGE' ? '#818CF8' : '#38bdf8',
+                background: entryState === 'NO_TRADE' ? 'rgba(239,68,68,0.15)' : entryState === 'EXECUTE' ? 'rgba(52,211,153,0.15)' : entryState === 'ARMED' ? 'rgba(232,123,58,0.15)' : entryState === 'MANAGE' ? 'rgba(129,140,248,0.15)' : 'rgba(56,189,248,0.15)',
+              }}>{entryState === 'NO_TRADE' ? '⛔ NO TRADE' : `◆ ${entryState}`}</span>
+              <span style={{ fontSize: '0.68rem', color: dt.muted, flex: 1, minWidth: 0 }}>
+                {entryState === 'NO_TRADE' && noTradeZoneActive ? 'Price inside OR + within 0.30% of VWAP — wait for breakout with volume.'
+                : entryState === 'NO_TRADE' ? 'Setup exhausted or no clean edge — check again next bar.'
+                : entryState === 'EXECUTE' ? 'All conditions met — execute within 1-2 candles.'
+                : entryState === 'ARMED' ? 'Setup present — wait for trigger confirmation before entering.'
+                : entryState === 'MANAGE' ? 'Managing position — hold stops and targets.'
+                : 'Setup developing — monitor for confluence.'}
+              </span>
+              {stateLocked && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#F59E0B' }}>⏳ {(stateLockedUntil - Date.now() > 0 ? Math.ceil((stateLockedUntil - Date.now()) / 60000) : 0)}m</span>}
             </div>
             <PCRatioStrip
               pcRatio={typeof m.put_call_ratio === 'number' ? m.put_call_ratio as number : null}
