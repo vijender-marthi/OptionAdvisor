@@ -10,7 +10,6 @@ import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import type { DayTradeAlertEvent, TradeEntryState } from '../types'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
-import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
 import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
@@ -1040,44 +1039,12 @@ export default function DayTradePage() {
                       {unified.session}
                     </span>
                   )}
-                  {(() => {
-                    const raw = result as unknown as Record<string, unknown> | undefined
-                    const eg = raw?.entry_guidance as Record<string, unknown> | undefined
-                    const vwap = eg?.vwap
-                    const orh = eg?.opening_range_high
-                    const orl = eg?.opening_range_low
-                    const m = raw?.metrics as Record<string, unknown> | undefined
-                    const vu1 = m?.vwap_upper1 as number | undefined
-                    const vl1 = m?.vwap_lower1 as number | undefined
-                    const vu2 = m?.vwap_upper2 as number | undefined
-                    const vl2 = m?.vwap_lower2 as number | undefined
-                    const vctx = m?.vwap_volatility_context as string | undefined
-                    const vstd = m?.vwap_std_dev as number | undefined
-                    if (!vwap && !orh && !vu1) return null
-                    return (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: '0.65rem', color: dt.muted, fontFamily: 'monospace' }}>
-                        {vwap != null && <span>VWAP <span style={{ color: dt.text }}>${(vwap as number).toFixed(2)}</span></span>}
-                        {vu1 != null && <span style={{ color: 'rgba(56,189,248,0.7)' }}>+1σ <span style={{ color: dt.text }}>${vu1.toFixed(2)}</span></span>}
-                        {vl1 != null && <span style={{ color: 'rgba(56,189,248,0.7)' }}>-1σ <span style={{ color: dt.text }}>${vl1.toFixed(2)}</span></span>}
-                        {vu2 != null && <span style={{ color: 'rgba(56,189,248,0.35)' }}>+2σ <span style={{ color: dt.text }}>${vu2.toFixed(2)}</span></span>}
-                        {vl2 != null && <span style={{ color: 'rgba(56,189,248,0.35)' }}>-2σ <span style={{ color: dt.text }}>${vl2.toFixed(2)}</span></span>}
-                        {vctx != null && vstd != null && (
-                          <span style={{
-                            color: vctx === 'NARROW' ? '#D4A017' : vctx === 'WIDE' ? '#D0312D' : '#6B7280',
-                            fontSize: '0.6rem', fontStyle: 'italic',
-                          }}>σ ${vstd.toFixed(2)} ({vctx})</span>
-                        )}
-                        {orh != null && <span>ORH <span style={{ color: dt.text }}>${(orh as number).toFixed(2)}</span></span>}
-                        {orl != null && <span>ORL <span style={{ color: dt.text }}>${(orl as number).toFixed(2)}</span></span>}
-                      </div>
-                    )
-                  })()}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── MARKET STATE CARD (Part 2) ─────────────────────────────────── */}
+          {/* ── MARKET STATE CARD ──────────────────────────────────────────── */}
           {(() => {
             const m = result?.metrics as Record<string, unknown> | undefined
             const momPct = m?.momentum_pct as number | undefined
@@ -1175,8 +1142,6 @@ export default function DayTradePage() {
               </div>
             )
           })()}
-
-          <UnifiedVerdictCard analysis={unified} />
 
           {/* ── ENTRY CONFIRMATION (Part 5) + COUNTERTREND (Part 6) ──────── */}
           {(() => {
@@ -2033,7 +1998,7 @@ export default function DayTradePage() {
         )
       })()}
 
-      {/* AI Coach Walkthrough */}
+      {/* AI Coach — compact summary */}
       {result && (() => {
         const raw = result as unknown as Record<string, unknown> | undefined
         const m = raw?.metrics as Record<string, unknown> | undefined
@@ -2042,60 +2007,23 @@ export default function DayTradePage() {
         const volSpike = !!m?.volume_spike
         const orBreakout = String(m?.or_breakout ?? '').toUpperCase()
         const isShortWalk = result.bias === 'short'
-        const optionRisk = result.option_risk_context
         const exec = String(result.entry_guidance?.should_enter_now || '').toUpperCase()
 
-        const steps: string[] = []
-        steps.push(marketBias ? `Market is ${marketBias}.` : 'Market context is mixed.')
-        steps.push(
+        const coachingLines: string[] = []
+        coachingLines.push(marketBias ? `Market: ${marketBias}.` : '')
+        coachingLines.push(
           isShortWalk
-            ? vwapDist != null && vwapDist <= 0
-              ? 'Price is below VWAP — bearish intraday structure is confirmed.'
-              : 'Price is still above VWAP, so the short structure is not yet confirmed.'
-            : vwapDist != null && vwapDist >= 0
-              ? 'Price is holding above VWAP, so intraday structure is constructive.'
-              : 'Price is not holding above VWAP yet, so structure is still fragile.'
+            ? (vwapDist != null && vwapDist <= 0 ? 'VWAP confirms bearish structure.' : 'VWAP not yet confirming short.')
+            : (vwapDist != null && vwapDist >= 0 ? 'VWAP confirms bullish structure.' : 'VWAP not yet confirming long.')
         )
-        steps.push(
-          orBreakout === 'ABOVE'
-            ? isShortWalk
-              ? 'Price broke above the opening range — watch for a rejection back inside before shorting.'
-              : 'The breakout is present, but it still needs continuation quality.'
-            : orBreakout === 'BELOW'
-              ? isShortWalk
-                ? 'Breakdown is confirmed below ORL — follow-through volume seals the entry.'
-                : 'Breakdown pressure exists below the opening range.'
-              : isShortWalk
-                ? 'Price is still inside the opening range — wait for a breakdown below ORL.'
-                : 'Opening-range confirmation is still missing.'
-        )
-        steps.push(
-          volSpike
-            ? 'Volume is confirming the move, so execution quality improves.'
-            : 'Volume is not expanding yet, so the safer entry comes after confirmation.'
-        )
-        if (optionRisk?.option_execution_warning) {
-          steps.push(optionRisk.option_execution_warning)
-        }
-        steps.push(
-          exec === 'YES'
-            ? 'Execution is allowed now, but intraday risk still requires a tight invalidation.'
-            : exec === 'CONDITIONAL'
-              ? 'Entry is conditional, so wait for the trigger candle before committing size.'
-              : 'Execution is not ready yet, so patience is the trade.'
-        )
+        if (volSpike) coachingLines.push('Volume spiking — execution quality improves.')
+        if (exec === 'YES') coachingLines.push('Entry trigger confirmed — execute on next bar.')
+        else if (exec === 'CONDITIONAL') coachingLines.push('Entry conditional — wait for trigger candle.')
+        else coachingLines.push('No entry trigger yet — patience.')
 
         return (
-          <div className="dt-card" style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
-            <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.accent, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>AI Coach Walkthrough</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {steps.map((step, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, fontSize: '12px', color: dt.muted, lineHeight: 1.5 }}>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: dt.accent, fontFamily: 'monospace', flexShrink: 0, width: 16, textAlign: 'right' }}>{i + 1}</span>
-                  {step}
-                </div>
-              ))}
-            </div>
+          <div style={{ padding: '8px 14px', borderRadius: 8, fontSize: '0.7rem', color: dt.muted, background: dt.bgDeep, border: `1px solid ${dt.border}`, marginBottom: 12 }}>
+            <span style={{ fontWeight: 700, color: dt.accent }}>Coach:</span> {coachingLines.filter(Boolean).join(' ')}
           </div>
         )
       })()}
