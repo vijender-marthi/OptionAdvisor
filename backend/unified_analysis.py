@@ -97,8 +97,8 @@ _SA_VERDICT_OVERRIDE = {
 }
 
 # Rank order: higher index = stronger verdict. Override only applies if it is LOWER.
-_VERDICT_RANK: dict[str, int] = {
-    "AVOID": 0, "NO_EDGE": 1, "WAIT": 2, "WATCH": 3, "GO": 4, "STRONG_GO": 5,
+_VERDICT_RANK: dict[str, float] = {
+    "AVOID": 0, "NO_EDGE": 1, "WAIT": 2, "TRIGGER_PENDING": 2.5, "WATCH": 3, "GO": 4, "STRONG_GO": 5,
 }
 
 def _day_verdict(scan) -> str:
@@ -420,9 +420,9 @@ def serialize_day_trade(scan) -> dict:
         spy_chg = m.get("spy_change_pct")
         qqq_chg = m.get("qqq_change_pct")
 
-        # Clear entry plan for non-actionable verdicts
+        # Clear entry plan for non-actionable verdicts (TRIGGER_PENDING = do not enter yet)
         normalized = _day_verdict(scan)
-        if normalized in ('AVOID', 'WAIT', 'NO_EDGE'):
+        if normalized in ('AVOID', 'WAIT', 'NO_EDGE', 'TRIGGER_PENDING'):
             entry_price = None
             stop_price = None
             structure = ""

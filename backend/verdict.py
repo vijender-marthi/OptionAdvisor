@@ -14,6 +14,7 @@ from typing import Optional
 class Verdict(str, Enum):
     STRONG_GO = "STRONG_GO"
     GO = "GO"
+    TRIGGER_PENDING = "TRIGGER_PENDING"  # bias confirmed, entry trigger not yet fired
     WATCH = "WATCH"
     WAIT = "WAIT"
     AVOID = "AVOID"
@@ -31,6 +32,8 @@ class Verdict(str, Enum):
             return cls.STRONG_GO
         if v in ("GO",):
             return cls.GO
+        if v in ("TRIGGER_PENDING", "PENDING", "WAITING_FOR_TRIGGER"):
+            return cls.TRIGGER_PENDING
         if v in ("WATCH",):
             return cls.WATCH
         if v in ("WAIT", "NO_TRADE_WAIT"):
@@ -58,6 +61,10 @@ class Verdict(str, Enum):
         return self == Verdict.WATCH
 
     @property
+    def is_pending(self) -> bool:
+        return self == Verdict.TRIGGER_PENDING
+
+    @property
     def is_wait(self) -> bool:
         return self == Verdict.WAIT
 
@@ -73,6 +80,7 @@ class Verdict(str, Enum):
 VERDICT_LABELS = {
     Verdict.STRONG_GO: "Strong Go",
     Verdict.GO: "Go",
+    Verdict.TRIGGER_PENDING: "Waiting for Trigger",
     Verdict.WATCH: "Watch",
     Verdict.WAIT: "Wait",
     Verdict.AVOID: "Avoid",
@@ -82,6 +90,7 @@ VERDICT_LABELS = {
 VERDICT_COLORS = {
     Verdict.STRONG_GO: "#00A86B",
     Verdict.GO: "#00A86B",
+    Verdict.TRIGGER_PENDING: "#D4A017",  # same amber as WAIT — not actionable yet
     Verdict.WATCH: "#D4A017",
     Verdict.WAIT: "#D4A017",
     Verdict.AVOID: "#D0312D",
@@ -89,21 +98,24 @@ VERDICT_COLORS = {
 }
 
 VERDICT_TONE: dict[str, str] = {
-    "STRONG_GO": "bullish",
-    "GO":        "bullish",
-    "WATCH":     "warning",
-    "WAIT":      "neutral",
-    "AVOID":     "bearish",
-    "NO_EDGE":   "neutral",
+    "STRONG_GO":       "bullish",
+    "GO":              "bullish",
+    "TRIGGER_PENDING": "warning",
+    "WATCH":           "warning",
+    "WAIT":            "neutral",
+    "AVOID":           "bearish",
+    "NO_EDGE":         "neutral",
 }
 
-VERDICT_RANK: dict[str, int] = {
-    "STRONG_GO": 5,
-    "GO":        4,
-    "WATCH":     3,
-    "WAIT":      2,
-    "AVOID":     1,
-    "NO_EDGE":   0,
+# Ranks are floats so TRIGGER_PENDING can sit between WAIT (2) and WATCH (3).
+VERDICT_RANK: dict[str, float] = {
+    "STRONG_GO":       5,
+    "GO":              4,
+    "WATCH":           3,
+    "TRIGGER_PENDING": 2.5,
+    "WAIT":            2,
+    "AVOID":           1,
+    "NO_EDGE":         0,
 }
 
 
@@ -116,5 +128,5 @@ def verdict_tone(v: str) -> str:
     return VERDICT_TONE.get(str(v).upper().replace(" ", "_"), "neutral")
 
 
-def verdict_rank(v: str) -> int:
+def verdict_rank(v: str) -> float:
     return VERDICT_RANK.get(str(v).upper().replace(" ", "_"), -1)

@@ -18,6 +18,8 @@ def resolve_verdict(
     rvol: Optional[float] = None,
     or_breakout: Optional[str] = None,
     price_structure: Optional[str] = None,
+    trigger_fired: bool = False,
+    trigger_requirement: Optional[str] = None,
 ) -> Verdict:
     """
     ONE function that produces the final verdict for any engine.
@@ -27,19 +29,27 @@ def resolve_verdict(
     1. VIX >= 35 → AVOID (any engine)
     2. raw_score < 3.0 → NO_EDGE
     3. raw_score < 5.0 → WAIT
-    4. raw_score >= 8.0 and volume_spike → STRONG_GO
-    5. raw_score >= 6.0 → GO
-    6. raw_score >= 4.5 → WATCH
-    7. Otherwise → WAIT
+    4. raw_score >= 6.0 but the entry trigger has NOT fired → TRIGGER_PENDING (day only)
+    5. raw_score >= 8.0 and volume_spike and trigger_fired → STRONG_GO
+    6. raw_score >= 6.0 and trigger_fired → GO
+    7. raw_score >= 4.5 → WATCH
+    8. Otherwise → WAIT
+
+    Trigger gating (`trigger_fired`) applies to the DAY engine only — intraday
+    entries require a confirmed candle trigger (2-candle break, no wick recovery,
+    pullback reset, etc.). Swing/regular engines do not use candle triggers, so
+    they are treated as trigger-satisfied to preserve their existing behavior.
 
     Swing-specific:
     - rvol < 0.7 → downgrade GO to WATCH
-    - price_structure mismatch → downgrade one level
 
     Day-specific:
     - or_breakout not in ("above","below") → cannot be STRONG_GO
     """
     eng = engine_type.lower().strip()
+
+    # Non-day engines have no candle-trigger concept — never gate them on it.
+    _trigger_ok = trigger_fired or eng != "day"
 
     # Rule 1: VIX hard veto
     if vix is not None and vix >= 35:
@@ -53,27 +63,32 @@ def resolve_verdict(
     if raw_score < 5.0:
         return Verdict.WAIT
 
+    # Rule 4: Score qualifies for GO but the entry trigger has not fired yet.
+    # Bias is real; the entry is not. Surface TRIGGER_PENDING instead of GO.
+    if raw_score >= 6.0 and not _trigger_ok:
+        return Verdict.TRIGGER_PENDING
+
     # Day-specific: cannot be STRONG_GO without OR breakout
     _can_be_strong = True
     if eng == "day" and or_breakout not in ("above", "below"):
         _can_be_strong = False
 
-    # Rule 4: STRONG_GO
-    if raw_score >= 8.0 and volume_spike and _can_be_strong:
+    # Rule 5: STRONG_GO — requires high score + volume + trigger fired
+    if raw_score >= 8.0 and volume_spike and _can_be_strong and _trigger_ok:
         return Verdict.STRONG_GO
 
-    # Rule 5: GO
-    if raw_score >= 6.0:
+    # Rule 6: GO — requires score >= 6 and trigger fired
+    if raw_score >= 6.0 and _trigger_ok:
         # Swing-specific: weak volume → downgrade GO to WATCH
         if eng == "swing" and rvol is not None and rvol < 0.7:
             return Verdict.WATCH
         return Verdict.GO
 
-    # Rule 6: WATCH
+    # Rule 7: WATCH
     if raw_score >= 4.5:
         return Verdict.WATCH
 
-    # Rule 7: WAIT
+    # Rule 8: WAIT
     return Verdict.WAIT
 
 
