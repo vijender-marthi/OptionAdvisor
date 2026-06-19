@@ -561,11 +561,16 @@ export default function RecommendationCard({
 
       {/* ── Legs row ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
-        {rec.legs.map((leg, i) => (
-          <span key={i} style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 500, padding: '2px 8px', borderRadius: 4, color: leg.action === 'BUY' ? C.green : C.red, background: leg.action === 'BUY' ? C.greenDim : C.redDim }}>
-            {leg.action} {leg.option_type} ${(leg.strike ?? 0).toFixed(0)}
-          </span>
-        ))}
+        {(() => {
+          // Calendar/diagonal spreads have legs on different expiries — show the
+          // expiry so same-strike legs aren't indistinguishable.
+          const multiExpiry = new Set(rec.legs.map(l => l.expiry)).size > 1
+          return rec.legs.map((leg, i) => (
+            <span key={i} style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 500, padding: '2px 8px', borderRadius: 4, color: leg.action === 'BUY' ? C.green : C.red, background: leg.action === 'BUY' ? C.greenDim : C.redDim }}>
+              {leg.action} {leg.option_type} ${(leg.strike ?? 0).toFixed(0)}{multiExpiry && leg.expiry ? ` ${leg.expiry.slice(5)}` : ''}
+            </span>
+          ))
+        })()}
         <span style={{ fontSize: 10, color: C.muted }}>{rec.dte} DTE</span>
       </div>
 
