@@ -25,6 +25,7 @@ from day_option_risk import build_day_option_risk_context, build_premium_targets
 from trader_decision import build_trader_decision
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
+import trigger_detector
 
 ET = ZoneInfo("America/New_York")
 
@@ -156,6 +157,34 @@ def _last_session_rth(df_et: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     session = rth.loc[day_mask]
     session_date = str(last_day.date())
     return session, session_date
+
+
+def _session_to_5m_candles(session: "pd.DataFrame", n: int = 6) -> list[dict]:
+    """
+    Resample the 1-minute RTH session to 5-minute OHLC candles and return the
+    last `n` as plain dicts for trigger_detector. Returns [] on any failure so
+    the caller treats the trigger as "not fired" (the safe, conservative default).
+    """
+    try:
+        if session is None or len(session) < 2:
+            return []
+        agg = session.resample("5min").agg(
+            {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+        ).dropna(subset=["Open", "High", "Low", "Close"])
+        if agg.empty:
+            return []
+        tail = agg.iloc[-n:]
+        out: list[dict] = []
+        for ts, row in tail.iterrows():
+            out.append({
+                "open": float(row["Open"]), "high": float(row["High"]),
+                "low": float(row["Low"]), "close": float(row["Close"]),
+                "volume": float(row.get("Volume", 0) or 0),
+                "time": ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts),
+            })
+        return out
+    except Exception:
+        return []
 
 
 def _rth_session_on_date(df_et: pd.DataFrame, session_date: str) -> pd.DataFrame:
@@ -3644,7 +3673,26 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         prefix = ["No clear intraday edge."]
 
-    _internal_verdict = resolve_verdict("day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol, or_breakout=or_state, price_structure=price_structure).value
+    # ── Entry-trigger detection (5m candle confirmation) ───────────────────
+    # A real directional bias does not mean the entry has triggered. Resolve the
+    # most relevant setup for the current context and confirm it on 5m candles.
+    # When no trigger has fired, resolve_verdict downgrades GO → TRIGGER_PENDING.
+    _5m = _session_to_5m_candles(session, n=6)
+    _trigger_setup = trigger_detector.setup_for_context(bias, or_state, vwap_position)
+    _trigger_fired = False
+    _trigger_requirement = ""
+    if _trigger_setup and bias:
+        _levels = {"orh": or_high, "or_high": or_high, "orl": or_low, "or_low": or_low,
+                   "vwap": float(vwap_ser.iloc[-1]) if vwap_ser is not None and len(vwap_ser) else None}
+        _trigger_fired, _trigger_requirement = trigger_detector.detect_trigger_fired(
+            _trigger_setup, _5m, _levels, bias,
+        )
+
+    _internal_verdict = resolve_verdict(
+        "day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol,
+        or_breakout=or_state, price_structure=price_structure,
+        trigger_fired=_trigger_fired, trigger_requirement=_trigger_requirement,
+    ).value
 
     conf = _confidence_block(
         momentum_pct=momentum_pct,
@@ -3742,6 +3790,13 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 "Wait for VWAP rejection before treating as a short entry."
             )
 
+    # TRIGGER_PENDING — bias qualifies for GO but the entry trigger has not fired.
+    if _internal_verdict == "TRIGGER_PENDING":
+        body.append(
+            f"Bias confirmed but entry trigger not yet fired — {_trigger_requirement or 'awaiting confirmation candle'}. "
+            "DO NOT ENTER until the trigger fires."
+        )
+
     risk_profile = _classify_risks(
         last_price=last,
         vwap=vwap_last,
@@ -3826,6 +3881,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     metrics = {
         "session_date": session_date,
         "bars_used": len(session),
+        "trigger_setup": _trigger_setup,
+        "trigger_fired": _trigger_fired,
+        "trigger_requirement": _trigger_requirement,
+        "candles_5m_tail": _5m,  # last ~6 5m OHLC candles — for exit monitoring / replay
         "last_price": round(last, 4),
         "prev_close": round(prev_close, 4) if prev_close > 0 else None,
         "change_pct": oda_change,

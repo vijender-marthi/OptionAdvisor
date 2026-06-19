@@ -6,24 +6,26 @@ export type PositionCategoryKind = 'day' | 'swing' | 'regular'
 // Single source of truth for verdict display across all cards and pages.
 // All three engines (day, swing, regular) emit one of these six values.
 
-export type UnifiedVerdict = 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
+export type UnifiedVerdict = 'STRONG_GO' | 'GO' | 'TRIGGER_PENDING' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
 
 const VERDICT_DISPLAY: Record<UnifiedVerdict, string> = {
-  STRONG_GO: 'Strong Go',
-  GO:        'Go',
-  WATCH:     'Watch',
-  WAIT:      'Wait',
-  AVOID:     'Avoid',
-  NO_EDGE:   'No Edge',
+  STRONG_GO:       'Strong Go',
+  GO:              'Go',
+  TRIGGER_PENDING: 'Waiting for Trigger',
+  WATCH:           'Watch',
+  WAIT:            'Wait',
+  AVOID:           'Avoid',
+  NO_EDGE:         'No Edge',
 }
 
 const VERDICT_TONE: Record<UnifiedVerdict, SemanticTone> = {
-  STRONG_GO: 'bullish',
-  GO:        'bullish',
-  WATCH:     'warning',
-  WAIT:      'warning',
-  AVOID:     'bearish',
-  NO_EDGE:   'neutral',
+  STRONG_GO:       'bullish',
+  GO:              'bullish',
+  TRIGGER_PENDING: 'warning',
+  WATCH:           'warning',
+  WAIT:            'warning',
+  AVOID:           'bearish',
+  NO_EDGE:         'neutral',
 }
 
 /** Display label for a unified verdict. */
@@ -41,6 +43,7 @@ export function verdictBadgeClass(v: string): string {
 export function normalizeToUnifiedVerdict(raw: string): UnifiedVerdict {
   const v = String(raw || '').trim().toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
   if (v === 'STRONG_GO')                          return 'STRONG_GO'
+  if (['TRIGGER_PENDING', 'PENDING', 'WAITING_FOR_TRIGGER'].includes(v)) return 'TRIGGER_PENDING'
   if (['GO', 'READY', 'ENTER', 'TRADE'].includes(v)) return 'GO'
   if (v === 'WATCH')                              return 'WATCH'
   if (v === 'WAIT')                               return 'WAIT'
@@ -88,6 +91,7 @@ function badgeToneClass(tone: SemanticTone): string {
 function normalizeDecisionTone(status: string): SemanticTone {
   const value = String(status || '').trim().toUpperCase()
   if (['READY', 'TRADE', 'GO', 'STRONG_GO', 'STRONG GO'].includes(value)) return 'bullish'
+  if (['TRIGGER_PENDING', 'PENDING', 'WAITING FOR TRIGGER', 'WAITING_FOR_TRIGGER'].includes(value)) return 'warning'
   if (['WATCH', 'WAIT', 'HOLD'].includes(value)) return 'warning'
   if (value === 'EXTENDED') return 'extended'
   if (['AVOID', 'EXIT', 'NO_EDGE', 'SKIP'].includes(value)) return 'bearish'

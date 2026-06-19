@@ -890,20 +890,20 @@ class TestAvoidAlwaysWins(unittest.TestCase):
 class TestDayStrongGoRequiresOrBreakout(unittest.TestCase):
 
     def test_strong_go_requires_or_breakout_above(self):
-        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="above")
+        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="above", trigger_fired=True)
         self.assertEqual(v, Verdict.STRONG_GO)
 
     def test_strong_go_requires_or_breakout_below(self):
-        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="below")
+        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="below", trigger_fired=True)
         self.assertEqual(v, Verdict.STRONG_GO)
 
     def test_no_or_breakout_caps_at_go(self):
-        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="inside")
+        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout="inside", trigger_fired=True)
         self.assertNotEqual(v, Verdict.STRONG_GO,
                             "Cannot be STRONG_GO without OR breakout")
 
     def test_no_or_breakout_none_caps_at_go(self):
-        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout=None)
+        v = resolve_verdict("day", raw_score=9.0, volume_spike=True, or_breakout=None, trigger_fired=True)
         self.assertNotEqual(v, Verdict.STRONG_GO)
 
 
@@ -1123,8 +1123,8 @@ class TestPostVerdictGate(unittest.TestCase):
         # EXTENSION tag is emitted when edge_state in EXHAUSTED/LATE
         # We verify that resolve_verdict would give GO for the raw score...
         v_go = resolve_verdict("day", raw_score=7.0, or_breakout="above",
-                               volume_spike=True, vix=18.0)
-        # score=7 with volume_spike → GO (STRONG_GO needs score>=8 AND spike AND OR breakout)
+                               volume_spike=True, vix=18.0, trigger_fired=True)
+        # score=7 with volume_spike + trigger → GO (STRONG_GO needs score>=8 AND spike AND OR breakout)
         self.assertIn(v_go, (Verdict.GO, Verdict.STRONG_GO),
                       "score=7 with spike and OR breakout should be GO or STRONG_GO")
 
