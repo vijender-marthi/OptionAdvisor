@@ -564,7 +564,7 @@ export default function TickerPage() {
               {lastMode === 'all' && displayData.signals.iv_rank >= 50 && (
                 <span style={{ fontSize: '0.65rem', color: C.amber, background: 'rgba(245,166,35,0.08)', border: `1px solid rgba(245,166,35,0.2)`, borderRadius: 20, padding: '2px 8px' }}
                   title="IV Rank ≥ 50% — Long Call/Put suppressed in All Strategies mode">
-                  ⚠️ IV {displayData.signals.iv_rank.toFixed(0)}%
+                  ⚠️ IV {(displayData.signals.iv_rank ?? 0).toFixed(0)}%
                 </span>
               )}
             </div>
@@ -696,10 +696,10 @@ export default function TickerPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span className="dt-primary" style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>{displayData.ticker}</span>
                   {displayData.company_name && <span className="dt-muted" style={{ fontSize: '0.78rem', color: C.muted }}>{displayData.company_name}</span>}
-                  <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${displayData.signals.current_price.toFixed(2)}</span>
+                  <span className="dt-primary" style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'monospace', color: C.text }}>${(displayData.signals.current_price ?? 0).toFixed(2)}</span>
                   {displayData.signals.price_change != null && (
                     <span style={{ fontSize: '0.82rem', fontWeight: 600, color: displayData.signals.price_change >= 0 ? '#00E5A0' : '#FF4D6D' }}>
-                      {displayData.signals.price_change >= 0 ? '▲' : '▼'} {Math.abs(displayData.signals.price_change).toFixed(2)} ({displayData.signals.price_change_pct > 0 ? '+' : ''}{displayData.signals.price_change_pct.toFixed(2)}%)
+                      {displayData.signals.price_change >= 0 ? '▲' : '▼'} {Math.abs(displayData.signals.price_change ?? 0).toFixed(2)} ({(displayData.signals.price_change_pct ?? 0) > 0 ? '+' : ''}{(displayData.signals.price_change_pct ?? 0).toFixed(2)}%)
                     </span>
                   )}
                   {!!displayData.signals.ext_market_price && (
@@ -761,22 +761,22 @@ export default function TickerPage() {
               <div className="dt-card" style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span style={{ ...pill, color: s.trend?.includes('Bullish') ? '#00A86B' : s.trend?.includes('Bearish') ? '#D0312D' : '#6B7280' }}>Trend: {s.trend}</span>
-                  <span style={{ ...pill, color: rsiColor }}>RSI: {s.rsi.toFixed(1)} {s.rsi_signal}</span>
-                  <span style={{ ...pill, color: ivColor }}>IV Rank: {s.iv_rank.toFixed(0)}% {s.iv_environment}</span>
-                  <span style={{ ...pill, color: s.iv_vs_hv > 0 ? '#D0312D' : '#00A86B' }}>IV/HV: {s.iv_vs_hv > 0 ? '+' : ''}{s.iv_vs_hv.toFixed(1)}% ({s.iv_vs_hv > 0 ? 'rich' : 'cheap'})</span>
-                  <span style={{ ...pill, color: s.pcr_signal === 'Bearish' ? '#D0312D' : s.pcr_signal === 'Bullish' ? '#00A86B' : '#6B7280' }}>P/C: {s.put_call_ratio.toFixed(2)} {s.pcr_signal}</span>
+                  <span style={{ ...pill, color: rsiColor }}>RSI: {(s.rsi ?? 0).toFixed(1)} {s.rsi_signal}</span>
+                  <span style={{ ...pill, color: ivColor }}>IV Rank: {(s.iv_rank ?? 0).toFixed(0)}% {s.iv_environment}</span>
+                  <span style={{ ...pill, color: s.iv_vs_hv > 0 ? '#D0312D' : '#00A86B' }}>IV/HV: {s.iv_vs_hv > 0 ? '+' : ''}{(s.iv_vs_hv ?? 0).toFixed(1)}% ({s.iv_vs_hv > 0 ? 'rich' : 'cheap'})</span>
+                  <span style={{ ...pill, color: s.pcr_signal === 'Bearish' ? '#D0312D' : s.pcr_signal === 'Bullish' ? '#00A86B' : '#6B7280' }}>P/C: {(s.put_call_ratio ?? 0).toFixed(2)} {s.pcr_signal}</span>
                   <span style={{ ...pill, color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : s.volatility_regime === 'Buy Premium' ? '#00A86B' : C.text }}>Vol: {s.volatility_regime}</span>
                 </div>
                 {s.volatility_regime && (
                   <div style={{ marginTop: 6, fontSize: '0.72rem', color: s.volatility_regime === 'Sell Premium' ? '#D4A017' : '#00A86B' }}>
-                    {s.volatility_regime === 'Sell Premium' ? '⚡' : '💰'} IV Rank {s.iv_rank.toFixed(0)}% · {s.volatility_regime === 'Sell Premium' ? `IV ${s.iv_vs_hv.toFixed(1)}% above HV · Credit strategies favored` : 'Options relatively cheap · Debit strategies favored'}
+                    {s.volatility_regime === 'Sell Premium' ? '⚡' : '💰'} IV Rank {(s.iv_rank ?? 0).toFixed(0)}% · {s.volatility_regime === 'Sell Premium' ? `IV ${(s.iv_vs_hv ?? 0).toFixed(1)}% above HV · Credit strategies favored` : 'Options relatively cheap · Debit strategies favored'}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
                   <span style={{ fontSize: '0.68rem', color: C.muted, alignSelf: 'center' }}>MAs:</span>
-                  <span style={{ ...pill, color: s.above_ma20 ? '#00A86B' : '#D0312D' }}>{s.above_ma20 ? '▲' : '▼'} MA20 ${s.ma20.toFixed(0)}</span>
-                  <span style={{ ...pill, color: s.above_ma50 ? '#00A86B' : '#D0312D' }}>{s.above_ma50 ? '▲' : '▼'} MA50 ${s.ma50.toFixed(0)}</span>
-                  <span style={{ ...pill, color: s.above_ma200 ? '#00A86B' : '#D0312D' }}>{s.above_ma200 ? '▲' : '▼'} MA200 ${s.ma200.toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma20 ? '#00A86B' : '#D0312D' }}>{s.above_ma20 ? '▲' : '▼'} MA20 ${(s.ma20 ?? 0).toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma50 ? '#00A86B' : '#D0312D' }}>{s.above_ma50 ? '▲' : '▼'} MA50 ${(s.ma50 ?? 0).toFixed(0)}</span>
+                  <span style={{ ...pill, color: s.above_ma200 ? '#00A86B' : '#D0312D' }}>{s.above_ma200 ? '▲' : '▼'} MA200 ${(s.ma200 ?? 0).toFixed(0)}</span>
                   <span style={{ ...pill, color: s.ma50_slope > 0 ? '#00A86B' : '#D0312D' }}>MA50 slope: {s.ma50_slope > 0 ? '↑' : '↓'} {Math.abs(s.ma50_slope).toFixed(2)}%</span>
                   <span style={{ ...pill, color: s.macd_crossover === 'Bullish' ? '#00A86B' : s.macd_crossover === 'Bearish' ? '#D0312D' : '#6B7280' }}>MACD: {s.macd_crossover === 'None' ? 'No crossover' : s.macd_crossover + ' crossover'}</span>
                 </div>
@@ -898,12 +898,12 @@ export default function TickerPage() {
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top', color: C.violet, fontWeight: 700, fontFamily: 'monospace' }}>{rec.rank}</td>)}
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', verticalAlign: 'top' }}>
                                   <div style={{ color: C.text, fontWeight: 600, fontSize: '0.82rem' }}>{rec.strategy}</div>
-                                  <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit!).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit!).toFixed(2)}`}</div>
+                                  <div style={{ color: isCredit ? C.green : C.red, fontSize: '0.7rem', fontFamily: 'monospace', marginTop: 2 }}>{isCredit ? `Credit $${Math.abs(rec.net_credit ?? 0).toFixed(2)}` : `Debit $${Math.abs(rec.net_credit ?? 0).toFixed(2)}`}</div>
                                   <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: 1 }}>{rec.expiry.slice(5)} · {rec.dte}dte</div>
                                 </td>)}
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600, color: leg.action === 'BUY' ? C.green : C.red }}>{leg.action}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.text }}>{leg.option_type}</td>
-                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: C.text, textAlign: 'right' }}>${leg.strike.toFixed(2)}</td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: C.text, textAlign: 'right' }}>${(leg.strike ?? 0).toFixed(2)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: C.muted, fontSize: '0.72rem' }}>{leg.expiry.slice(5)}</td>
                                 <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: leg.action === 'BUY' ? C.red : C.green, textAlign: 'right' }}>${(leg.mid_price * 100).toFixed(2)}</td>
                                 {li === 0 && (<td rowSpan={rec.legs.length} style={{ padding: '8px 10px', textAlign: 'right', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 700, color: C.green }}>${(rec.max_profit * 100).toFixed(2)}</td>)}

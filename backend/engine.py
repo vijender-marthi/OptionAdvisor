@@ -611,6 +611,7 @@ def score_signal_alignment(signals: MarketSignals, strategy: str) -> int:
         "Bull Put Spread":  (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
         "Bear Call Spread": (not BULLISH and SELL_REGIME, SELL_REGIME, not BULLISH),
         "Iron Condor":      (NEUTRAL and SELL_REGIME, SELL_REGIME, NEUTRAL),
+        "Call Calendar Spread": (NEUTRAL and LOW_IV, NEUTRAL, LOW_IV),
         "Long Straddle":    (NEUTRAL and BUY_REGIME, BUY_REGIME, NEUTRAL),
         "Covered Call":     (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
         "Cash-Secured Put": (not BEARISH and SELL_REGIME, SELL_REGIME, not BEARISH),
@@ -708,7 +709,7 @@ def score_iv_fit(signals: MarketSignals, strategy: str) -> int:
     iv_vs_hv = signals.iv_vs_hv
 
     SELLING_STRATS = {"Iron Condor", "Bull Put Spread", "Bear Call Spread", "Covered Call", "Cash-Secured Put", "Short Put", "Short Call"}
-    BUYING_STRATS  = {"Long Call", "Long Put", "Bull Call Spread", "Bear Put Spread", "Long Straddle"}
+    BUYING_STRATS  = {"Long Call", "Long Put", "Bull Call Spread", "Bear Put Spread", "Long Straddle", "Call Calendar Spread"}
 
     if strategy in SELLING_STRATS:
         if iv_rank >= 65 and iv_vs_hv > 5:
@@ -1032,6 +1033,117 @@ def _build_vertical_spread(signals, df_buy, df_sell, option_type, strategy_name,
         ),
         exit_plan=generate_exit_plan(strategy_name, max_profit, -net_debit, expiry, days_to_expiry(expiry)),
         exit_rules=generate_exit_rules(strategy_name, max_profit, -net_debit, expiry, days_to_expiry(expiry)),
+    )
+
+
+def _bs_price(S: float, K: float, t_years: float, sigma: float, option_type: str) -> float:
+    """Plain Black-Scholes (no rates) — used to value the calendar's back leg at front expiry."""
+    if S <= 0 or K <= 0 or t_years <= 0 or sigma <= 0:
+        return 0.0
+    vt = sigma * sqrt(t_years)
+    d1 = (log(S / K) + 0.5 * sigma * sigma * t_years) / vt
+    d2 = d1 - vt
+    if option_type == "CALL":
+        return max(S * normal_cdf(d1) - K * normal_cdf(d2), 0.0)
+    return max(K * normal_cdf(-d2) - S * normal_cdf(-d1), 0.0)
+
+
+def _calendar_breakevens(strike, t_remain, back_iv, net_debit, option_type, price):
+    """At front expiry, P&L(S) = back_value(S) - front_intrinsic(S) - net_debit.
+    Scan around the strike for the two zero-crossings (the profit zone of a calendar)."""
+    lo, hi = price * 0.5, price * 1.5
+    steps = 200
+    be_lower, be_upper = strike, strike
+    prev_s = lo
+    prev_pl = None
+    for i in range(steps + 1):
+        s = lo + (hi - lo) * i / steps
+        back_val = _bs_price(s, strike, t_remain, back_iv, option_type)
+        front_intrinsic = max(s - strike, 0.0) if option_type == "CALL" else max(strike - s, 0.0)
+        pl = back_val - front_intrinsic - net_debit
+        if prev_pl is not None and prev_pl <= 0 < pl:
+            be_lower = round((prev_s + s) / 2, 2)
+        if prev_pl is not None and prev_pl > 0 >= pl:
+            be_upper = round((prev_s + s) / 2, 2)
+        prev_s, prev_pl = s, pl
+    return be_lower, be_upper
+
+
+def _build_calendar_spread(signals, calls_all, exp_front, exp_back, price,
+                            option_type="CALL") -> Optional[dict]:
+    """
+    Long calendar (horizontal) spread: SELL the near-term option and BUY the
+    longer-term option at the SAME (ATM) strike. Neutral; profits from the front
+    leg decaying faster than the back. Max loss = net debit paid; max profit is
+    the back leg's residual value at front expiry (stock at the strike) minus the debit.
+    """
+    if "expiration" not in calls_all.columns:
+        return None
+    cf = calls_all[calls_all["expiration"] == exp_front]
+    cb = calls_all[calls_all["expiration"] == exp_back]
+    if cf.empty or cb.empty:
+        return None
+
+    # ATM strike that exists in both expiries
+    front_strikes = {round(float(s), 2) for s in cf["strike"]}
+    common = sorted({round(float(s), 2) for s in cb["strike"]} & front_strikes)
+    if not common:
+        return None
+    strike = min(common, key=lambda s: abs(s - price))
+
+    front_row = cf.loc[(cf["strike"] - strike).abs().idxmin()]
+    back_row = cb.loc[(cb["strike"] - strike).abs().idxmin()]
+    front_leg = build_option_leg(front_row, "SELL", option_type, exp_front, price)
+    back_leg = build_option_leg(back_row, "BUY", option_type, exp_back, price)
+
+    net_debit = round(back_leg.mid_price - front_leg.mid_price, 2)
+    if net_debit <= 0:
+        return None  # back leg must cost more than the front
+
+    front_dte = days_to_expiry(exp_front)
+    back_dte = days_to_expiry(exp_back)
+    if back_dte <= front_dte:
+        return None
+
+    back_iv = (back_leg.iv or 0) / 100.0
+    front_iv_pct = front_leg.iv or back_leg.iv or 0
+    t_remain = max((back_dte - front_dte) / 365.0, 1 / 365.0)
+    back_val_at_front = _bs_price(strike, strike, t_remain, back_iv, option_type)
+    max_profit = round(back_val_at_front - net_debit, 2)
+    if max_profit <= 0:
+        return None
+    max_loss = net_debit
+    rr = round(max_loss / max_profit, 2) if max_profit > 0 else 999
+
+    be_lower, be_upper = _calendar_breakevens(strike, t_remain, back_iv, net_debit, option_type, price)
+    # PoP ≈ probability the stock finishes inside the profit zone at front expiry
+    pop = round(max(0.05, min(0.95,
+        prob_above(price, be_lower, front_iv_pct, exp_front)
+        - prob_above(price, be_upper, front_iv_pct, exp_front))), 2)
+    ev = compute_ev(max_profit, max_loss, pop)
+
+    return dict(
+        strategy="Call Calendar Spread", bias="Neutral",
+        legs=[back_leg, front_leg], expiry=exp_front, dte=front_dte,
+        net_credit=-net_debit, spread_width=0,
+        max_profit=max_profit, max_loss=max_loss,
+        risk_reward_ratio=rr,
+        credit_pct_of_width=0,
+        breakeven_lower=be_lower, breakeven_upper=be_upper,
+        short_leg_delta=abs(front_leg.delta) if front_leg.delta else 0.5,
+        prob_of_profit=pop, prob_of_max_loss=round(1 - pop, 2),
+        expected_value=ev,
+        passes_rr_filter=rr <= MIN_RISK_REWARD_RATIO * 2,
+        passes_credit_filter=True,
+        passes_liquidity_filter=True,
+        rationale=(
+            f"Neutral calendar at ${strike:.0f}. Sell {exp_front} {option_type} / buy {exp_back} {option_type}. "
+            f"Net debit ${net_debit:.2f}/share — max profit ~${max_profit:.2f}/share if the stock pins ${strike:.0f} at front expiry. "
+            f"Profit zone ${be_lower:.2f}–${be_upper:.2f} (~{int(pop*100)}% PoP). Front decays faster than back. "
+            f"IV rank {signals.iv_rank:.0f}% — {'low IV favors owning the back leg.' if signals.iv_rank < 50 else 'elevated IV: prefer front IV > back IV.'}"
+        ),
+        exit_plan=generate_exit_plan("Call Calendar Spread", max_profit, -net_debit, exp_front, front_dte),
+        exit_rules=generate_exit_rules("Call Calendar Spread", max_profit, -net_debit, exp_front, front_dte),
     )
 
 
@@ -1750,6 +1862,17 @@ def run_engine(
         t = _build_short_call(signals, c, exp_credit)
         if t:
             candidates_raw.append(t)
+
+    # Calendar (horizontal) spread: neutral, favored in low IV. SELL near-term /
+    # BUY longer-term at the same ATM strike. Built when there is no directional
+    # conviction (the classic calendar use-case). Back leg ~3–8 weeks beyond front.
+    if BUILD_LONG and NEUTRAL and LONG_IV_OK:
+        front_dte = days_to_expiry(exp_debit)
+        exp_back = pick_expiry_by_dte(option_dates, front_dte + 21, front_dte + 60)
+        if exp_back and exp_back != exp_debit:
+            t = _build_calendar_spread(signals, calls_f, exp_debit, exp_back, price, "CALL")
+            if t:
+                candidates_raw.append(t)
 
     # ── FILTER PASS ──────────────────────────────────────────
     filtered = []

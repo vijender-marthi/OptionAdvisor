@@ -6,6 +6,7 @@ import AdvisoryDisclaimerModal from '../components/AdvisoryDisclaimerModal'
 import FirstLoginHelpModal from '../components/FirstLoginHelpModal'
 import HelpModal from '../components/HelpModal'
 import MarketStrip from '../components/MarketStrip'
+import ExitSignalOverlay from '../components/ExitSignalOverlay'
 
 import { useApp } from '../contexts/AppContext'
 import { X, Database } from 'lucide-react'
@@ -72,6 +73,7 @@ export default function AppLayout({ children }: { children?: ReactNode }) {
       <AdvisoryDisclaimerModal />
       <FirstLoginHelpModal />
       <HelpModal />
+      <ExitSignalOverlay />
     </div>
   )
 }

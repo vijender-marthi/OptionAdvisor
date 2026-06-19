@@ -503,6 +503,22 @@ export const listActiveTrades = async (): Promise<ActiveTradeListResult> => {
   }
 }
 
+export interface ExitSignal {
+  ticker: string
+  severity: 'critical' | 'warning' | 'info'
+  reason: string
+  recommended_action: string
+  current_price: number
+  current_premium: number
+  pnl_estimate: number
+  code: string
+}
+
+export const fetchExitSignals = async (): Promise<ExitSignal[]> => {
+  const { data } = await api.get<{ signals: ExitSignal[]; count: number }>('/exit-signals')
+  return data.signals ?? []
+}
+
 export const enterActiveTrade = async (body: {
   ticker: string
   side: 'CALL' | 'PUT'

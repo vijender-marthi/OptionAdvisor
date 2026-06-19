@@ -59,6 +59,7 @@ from quote_cache import get_quotes as _get_quotes
 from active_trade_decision import build_active_trade_decision
 from engine import run_engine, MIN_CREDIT_PCT_OF_WIDTH, TARGET_SHORT_DELTA_CREDIT, DTE_CREDIT_MIN, DTE_CREDIT_MAX
 from auth_routes import auth_router, ensure_same_user, require_access_email
+import exit_monitor
 from command_center_router import command_center_router, api_envelope, _seed_default_my_tickers
 from decision_resolver import resolve_trade_decision
 from storage import (
@@ -2958,6 +2959,23 @@ def active_trade_enter(
     )
 
 
+@app.get("/api/exit-signals")
+def exit_signals(auth_email: str = Depends(require_access_email)):
+    """
+    Live exit signals for the authenticated user's held day positions
+    (open active_trades + day-sourced portfolio positions). Client polls this to
+    drive the exit modal; the background scanner uses the same engine for alerts.
+    """
+    _require_admin_intraday_surfaces(auth_email)
+    email = normalize_email(auth_email)
+    try:
+        sigs = exit_monitor.scan_exit_signals_for_user(email)
+    except Exception as e:  # noqa: BLE001
+        log.warning("exit_signals scan error for %s: %s", email, e)
+        sigs = []
+    return {"signals": [s.to_dict() for s in sigs], "count": len(sigs)}
+
+
 @app.get("/api/trades/active", response_model=ActiveTradeListResponse)
 def active_trades_list(
     auth_email: str = Depends(require_access_email),
@@ -3417,6 +3435,48 @@ def _build_price_snapshot_summary(
             + (f" · {levels}" if levels else "")
             + " · Check extension before entering."
         )
+
+
+# In-memory de-dup for exit-signal alerts: (email, ticker, code, session_date).
+# Reset on restart — re-alerting a critical exit after a restart is acceptable.
+_EXIT_ALERTED: set[tuple[str, str, str, str]] = set()
+
+
+def _scan_exit_signals_for_state(user_state: dict) -> None:
+    """Run the exit engine for a user's held day positions and raise app alerts
+    for CRITICAL exits (VWAP break, stop hit, OR break, EOD). De-duped per
+    (ticker, code) per session day. Client also polls /api/exit-signals."""
+    email = normalize_email(user_state.get("email") or "")
+    if not email:
+        return
+    sigs = exit_monitor.scan_exit_signals_for_user(email)
+    if not sigs:
+        return
+    session_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    for s in sigs:
+        if s.severity != "critical":
+            continue
+        key = (email, s.ticker, s.code, session_date)
+        if key in _EXIT_ALERTED:
+            continue
+        _EXIT_ALERTED.add(key)
+        try:
+            alert_center_create(
+                email,
+                alert_group="day-trade",
+                severity="CRITICAL",
+                engine="DAY",
+                signal="EXIT_SIGNAL",
+                title=f"🚨 EXIT {s.ticker} — {s.reason}",
+                body=s.recommended_action,
+                meta={
+                    "ticker": s.ticker, "alertType": "EXIT_SIGNAL", "code": s.code,
+                    "currentPrice": s.current_price, "pnlEstimate": s.pnl_estimate,
+                    "severity": s.severity,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[exit-scan] alert create failed for {email}/{s.ticker}: {exc}", flush=True)
 
 
 def _scan_my_tickers_for_state_alerts(user_state: dict) -> None:
@@ -5095,6 +5155,10 @@ def _run_day_trade_alert_batch() -> None:
             _scan_my_tickers_for_state_alerts(user_state)
         except Exception as exc:
             print(f"[day-alert-batch] scan failed for {user_state.get('email')}: {exc}", flush=True)
+        try:
+            _scan_exit_signals_for_state(user_state)
+        except Exception as exc:
+            print(f"[exit-scan] failed for {user_state.get('email')}: {exc}", flush=True)
 
 
 def _day_alert_batch_loop() -> None:
