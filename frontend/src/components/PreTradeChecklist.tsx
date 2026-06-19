@@ -40,7 +40,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // ── 1. IV Environment ────────────────────────────────────────────────────
   // Credit: want rich premium → favor high IV, penalize very low IV
   // Debit:  want cheap premium → favor low IV, penalize high IV (crush risk)
-  const ivr = sig.iv_rank
+  const ivr = sig.iv_rank ?? 0
   if (isCredit) {
     if (ivr >= 45)
       items.push({ label: 'IV Environment', status: 'pass', hard: false, category: 'IV Environment',
@@ -69,20 +69,20 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // Directional credit (Bull Put, Bear Call): moderate confidence is fine;
   //   you just need the stock NOT to breach the short strike.
   // Debit/long: need stronger directional conviction to justify the premium.
-  const conf = sig.bias_confidence  // already 0–100 from backend
+  const conf = sig.bias_confidence ?? 0
   if (isNeutral && isCredit) {
     // Iron Condor — check range-bound conditions instead of directional confidence
     const slopeFlat = Math.abs(sig.ma50_slope) < 0.002
     const rsiMid    = sig.rsi >= 38 && sig.rsi <= 62
     if (slopeFlat && rsiMid)
       items.push({ label: 'Range Conditions', status: 'pass', hard: false, category: 'Directional Bias',
-        detail: `MA50 slope flat + RSI ${sig.rsi.toFixed(0)} in mid-range. Stock looks range-bound — ideal for iron condor.` })
+        detail: `MA50 slope flat + RSI ${(sig.rsi ?? 50).toFixed(0)} in mid-range. Stock looks range-bound — ideal for iron condor.` })
     else if (slopeFlat || rsiMid)
       items.push({ label: 'Range Conditions', status: 'warn', hard: false, category: 'Directional Bias',
-        detail: `Partial range support — MA50 slope ${sig.ma50_slope > 0 ? 'rising' : 'falling'}, RSI ${sig.rsi.toFixed(0)}. One side of the condor carries more risk.` })
+        detail: `Partial range support — MA50 slope ${sig.ma50_slope > 0 ? 'rising' : 'falling'}, RSI ${(sig.rsi ?? 50).toFixed(0)}. One side of the condor carries more risk.` })
     else
       items.push({ label: 'Range Conditions', status: 'fail', hard: false, category: 'Directional Bias',
-        detail: `Trending conditions with RSI ${sig.rsi.toFixed(0)}. A directional move is more likely; iron condor range may be breached.` })
+        detail: `Trending conditions with RSI ${(sig.rsi ?? 50).toFixed(0)}. A directional move is more likely; iron condor range may be breached.` })
   } else if (isCredit) {
     // Directional credit spread — moderate conviction is sufficient
     if (conf >= 40)
@@ -176,7 +176,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   //         that could breach your short strike.
   // Debit:  RSI extremes against your direction are BAD — entering overbought
   //         on a long call or oversold on a long put is poor timing.
-  const rsi = sig.rsi
+  const rsi = sig.rsi ?? 50
   if (isCredit) {
     if (isBullish) {
       // Bull Put Spread: oversold RSI means stock may keep falling through the put
@@ -237,7 +237,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   //   Bear Call → only warn if MACD strongly bullish (might rocket through the call).
   //   Iron Condor → warn if MACD is strongly directional either way.
   // Debit/long: MACD must CONFIRM the direction you're betting on.
-  const hist = sig.macd_histogram
+  const hist = sig.macd_histogram ?? 0
   if (isCredit) {
     if (isBullish) {
       if (hist < -0.5 && sig.macd < sig.macd_signal_line)
@@ -338,7 +338,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   // ── 8. Risk / Reward ──────────────────────────────────────────────────────
   const rr  = rec.passes_rr_filter
   const cr  = rec.passes_credit_filter
-  const pop = rec.prob_of_profit   // also used in sections 8 & 10
+  const pop = rec.prob_of_profit ?? 0
   if (isIncomeSell) {
     // Income-sell strategies: key metric is premium yield, not spread credit %
     const collateralLabel = rec.strategy === 'Covered Call'
@@ -351,35 +351,35 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
       : 0.50                    // Short Put / Short Call: 0.50% minimum yield
     if (cr)
       items.push({ label: 'Income Yield', status: 'pass', hard: false, category: 'Structure',
-        detail: `${rec.credit_pct_of_width.toFixed(2)}% yield on ${collateralLabel} — meets the minimum ${minYield.toFixed(2)}% income threshold. PoP ${(pop * 100).toFixed(0)}%.` })
+        detail: `${(rec.credit_pct_of_width ?? 0).toFixed(2)}% yield on ${collateralLabel} — meets the minimum ${minYield.toFixed(2)}% income threshold. PoP ${(pop * 100).toFixed(0)}%.` })
     else
       items.push({ label: 'Income Yield', status: 'fail', hard: false, category: 'Structure',
-        detail: `${rec.credit_pct_of_width.toFixed(2)}% yield on ${collateralLabel} — below minimum ${minYield.toFixed(2)}% threshold. Premium too thin to justify the capital requirement.` })
+        detail: `${(rec.credit_pct_of_width ?? 0).toFixed(2)}% yield on ${collateralLabel} — below minimum ${minYield.toFixed(2)}% threshold. Premium too thin to justify the capital requirement.` })
   } else if (isCredit) {
     // Standard credit spread: both R/R and minimum credit % matter
     if (rr && cr)
       items.push({ label: 'Trade Structure', status: 'pass', hard: false, category: 'Structure',
-        detail: `Credit ${rec.credit_pct_of_width.toFixed(0)}% of spread width — passes minimum 25% threshold. Risk/Reward: ${rec.risk_reward_ratio.toFixed(1)}x.` })
+        detail: `Credit ${(rec.credit_pct_of_width ?? 0).toFixed(0)}% of spread width — passes minimum 25% threshold. Risk/Reward: ${(rec.risk_reward_ratio ?? 0).toFixed(1)}x.` })
     else if (rr || cr)
       items.push({ label: 'Trade Structure', status: 'warn', hard: false, category: 'Structure',
-        detail: `Credit ${rec.credit_pct_of_width.toFixed(0)}% of width, R/R ${rec.risk_reward_ratio.toFixed(1)}x — one structure filter missed. Tighter than ideal.` })
+        detail: `Credit ${(rec.credit_pct_of_width ?? 0).toFixed(0)}% of width, R/R ${(rec.risk_reward_ratio ?? 0).toFixed(1)}x — one structure filter missed. Tighter than ideal.` })
     else
       items.push({ label: 'Trade Structure', status: 'fail', hard: false, category: 'Structure',
-        detail: `Credit ${rec.credit_pct_of_width.toFixed(0)}% of width, R/R ${rec.risk_reward_ratio.toFixed(1)}x — poor credit structure. Both minimum thresholds failed.` })
+        detail: `Credit ${(rec.credit_pct_of_width ?? 0).toFixed(0)}% of width, R/R ${(rec.risk_reward_ratio ?? 0).toFixed(1)}x — poor credit structure. Both minimum thresholds failed.` })
   } else {
     // Debit: R/R filter is the primary metric (credit filter doesn't apply)
     if (rr)
       items.push({ label: 'Trade Structure', status: 'pass', hard: false, category: 'Structure',
-        detail: `Risk/Reward ${rec.risk_reward_ratio.toFixed(1)}x — passes the R/R filter. Max profit ($${(rec.max_profit * 100).toFixed(0)}) justifies the premium paid.` })
+        detail: `Risk/Reward ${(rec.risk_reward_ratio ?? 0).toFixed(1)}x — passes the R/R filter. Max profit ($${(rec.max_profit * 100).toFixed(0)}) justifies the premium paid.` })
     else
       items.push({ label: 'Trade Structure', status: 'warn', hard: false, category: 'Structure',
-        detail: `Risk/Reward ${rec.risk_reward_ratio.toFixed(1)}x — below ideal. A large move is required to generate meaningful profit relative to premium paid.` })
+        detail: `Risk/Reward ${(rec.risk_reward_ratio ?? 0).toFixed(1)}x — below ideal. A large move is required to generate meaningful profit relative to premium paid.` })
   }
 
   // ── 9. Expected Value / Kelly Edge ────────────────────────────────────────
   // EV <= 0 is a hard NO GO for every strategy. Positive but very small
   // EV/max-loss is shown as a thin-edge warning because PoP estimation error can erase it.
-  const ev = rec.expected_value
+  const ev = rec.expected_value ?? 0
   const edge = rec.edge_ratio ?? (rec.max_loss > 0 ? ev / rec.max_loss : 0)
   if (ev <= 0)
     items.push({ label: 'Expected Value', status: 'fail', hard: true, category: 'Structure',
@@ -389,7 +389,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
       detail: `EV +$${(ev * 100).toFixed(2)}/contract, but edge is only ${(edge * 100).toFixed(1)}% of max loss. Size conservatively; estimation error could erase it.` })
   else if (isIncomeSell) {
     // Income-sell strategies: evaluate on yield vs. capital, not speculative EV
-    const yield_pct = rec.credit_pct_of_width   // yield % stored here for income-sell strategies
+    const yield_pct = rec.credit_pct_of_width ?? 0   // yield % stored here for income-sell strategies
     const collLabel = rec.strategy === 'Covered Call'
       ? 'stock position'
       : rec.strategy === 'Covered Put'

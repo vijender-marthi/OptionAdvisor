@@ -563,7 +563,7 @@ export default function RecommendationCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
         {rec.legs.map((leg, i) => (
           <span key={i} style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 500, padding: '2px 8px', borderRadius: 4, color: leg.action === 'BUY' ? C.green : C.red, background: leg.action === 'BUY' ? C.greenDim : C.redDim }}>
-            {leg.action} {leg.option_type} ${leg.strike.toFixed(0)}
+            {leg.action} {leg.option_type} ${(leg.strike ?? 0).toFixed(0)}
           </span>
         ))}
         <span style={{ fontSize: 10, color: C.muted }}>{rec.dte} DTE</span>
@@ -671,7 +671,7 @@ export default function RecommendationCard({
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 pb-3">
             <div className="flex gap-2 flex-wrap">
               <FilterBadge label="R:R Filter" pass={rec.passes_rr_filter} />
-              {isCredit && <FilterBadge label={`Credit ≥25% (${rec.credit_pct_of_width.toFixed(0)}%)`} pass={rec.passes_credit_filter} />}
+              {isCredit && <FilterBadge label={`Credit ≥25% (${(rec.credit_pct_of_width ?? 0).toFixed(0)}%)`} pass={rec.passes_credit_filter} />}
               <FilterBadge label="Liquidity OK" pass={rec.passes_liquidity_filter} />
             </div>
             <div className="grid grid-cols-2 sm:flex gap-2 sm:shrink-0">
@@ -1005,11 +1005,11 @@ export default function RecommendationCard({
               <tr key={i} className="border-b border-gray-700/50 last:border-0">
                 <td className={`pr-3 py-1 font-bold ${leg.action === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{leg.action}</td>
                 <td className="pr-3 py-1 text-white">{leg.option_type}</td>
-                <td className="pr-3 py-1 text-right text-white">${leg.strike.toFixed(1)}</td>
+                <td className="pr-3 py-1 text-right text-white">${(leg.strike ?? 0).toFixed(1)}</td>
                 <td className="pr-3 py-1 text-right text-gray-300">{leg.expiry}</td>
-                <td className="pr-3 py-1 text-right text-gray-300">{leg.delta !== 0 ? leg.delta.toFixed(3) : '—'}</td>
+                <td className="pr-3 py-1 text-right text-gray-300">{leg.delta !== 0 ? (leg.delta ?? 0).toFixed(3) : '—'}</td>
                 <td className="pr-3 py-1 text-right text-gray-400">
-                  ${leg.mid_price.toFixed(2)}
+                  ${(leg.mid_price ?? 0).toFixed(2)}
                   {leg.data_quality === 'MODEL' && (
                     <span
                       title={leg.data_quality_reason || 'Using IV-based model mark because the Yahoo quote looked stale'}
@@ -1022,10 +1022,10 @@ export default function RecommendationCard({
                 <td className={`pr-3 py-1 text-right font-bold ${leg.action === 'BUY' ? 'text-red-300' : 'text-green-300'}`}>
                   {leg.action === 'BUY' ? '-' : '+'}${fmt(c(leg.mid_price))}
                 </td>
-                <td className="pr-3 py-1 text-right text-gray-300">{leg.iv.toFixed(1)}%</td>
+                <td className="pr-3 py-1 text-right text-gray-300">{(leg.iv ?? 0).toFixed(1)}%</td>
                 <td className="pr-3 py-1 text-right text-gray-300">{leg.oi.toLocaleString()}</td>
                 <td className={`py-1 text-right ${leg.bid_ask_spread_pct > 10 ? 'text-amber-400' : 'text-gray-300'}`}>
-                  {leg.bid_ask_spread_pct.toFixed(1)}%
+                  {(leg.bid_ask_spread_pct ?? 0).toFixed(1)}%
                 </td>
               </tr>
             ))}
@@ -1061,16 +1061,16 @@ export default function RecommendationCard({
               <div className="text-gray-500">Breakeven</div>
               <div className="font-mono text-gray-200 truncate">
                 {rec.breakeven_upper < 990 && rec.breakeven_lower > 0
-                  ? `$${rec.breakeven_lower.toFixed(2)}–$${rec.breakeven_upper.toFixed(2)}`
+                  ? `$${(rec.breakeven_lower ?? 0).toFixed(2)}–$${(rec.breakeven_upper ?? 0).toFixed(2)}`
                   : rec.breakeven_lower > 0
-                  ? `$${rec.breakeven_lower.toFixed(2)} ↑`
-                  : `$${rec.breakeven_upper.toFixed(2)} ↓`}
+                  ? `$${(rec.breakeven_lower ?? 0).toFixed(2)} ↑`
+                  : `$${(rec.breakeven_upper ?? 0).toFixed(2)} ↓`}
               </div>
             </div>
           </div>
           {isCredit && (
             <div className={`mt-2 border-t border-gray-700/60 pt-2 text-xs font-mono ${rec.passes_credit_filter ? 'text-green-400' : 'text-amber-400'}`}>
-              {rec.passes_credit_filter ? '✅' : '⚠️'} ${fmt(c(rec.net_credit))} credit · {rec.credit_pct_of_width.toFixed(0)}% of ${rec.spread_width.toFixed(0)} width
+              {rec.passes_credit_filter ? '✅' : '⚠️'} ${fmt(c(rec.net_credit))} credit · {(rec.credit_pct_of_width ?? 0).toFixed(0)}% of ${(rec.spread_width ?? 0).toFixed(0)} width
               {!rec.passes_credit_filter && ' · below 25% minimum'}
             </div>
           )}
