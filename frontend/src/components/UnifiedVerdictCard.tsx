@@ -3,15 +3,16 @@ import { Info } from 'lucide-react'
 import type { UnifiedAnalysis } from '../api/client'
 
 const VERDICT_BG: Record<string, string> = {
-  GO:        'rgba(0,168,107,0.06)',
-  STRONG_GO: 'rgba(0,168,107,0.06)',
-  enter:     'rgba(0,168,107,0.06)',
-  WATCH:     'rgba(212,160,23,0.06)',
-  watch:     'rgba(212,160,23,0.06)',
-  WAIT:      'rgba(107,114,128,0.06)',
-  wait:      'rgba(107,114,128,0.06)',
-  AVOID:     'rgba(208,49,45,0.06)',
-  avoid:     'rgba(208,49,45,0.06)',
+  GO:             'rgba(0,168,107,0.06)',
+  STRONG_GO:      'rgba(0,168,107,0.06)',
+  enter:          'rgba(0,168,107,0.06)',
+  TRIGGER_PENDING: 'rgba(212,160,23,0.06)',
+  WATCH:          'rgba(212,160,23,0.06)',
+  watch:          'rgba(212,160,23,0.06)',
+  WAIT:           'rgba(107,114,128,0.06)',
+  wait:           'rgba(107,114,128,0.06)',
+  AVOID:          'rgba(208,49,45,0.06)',
+  avoid:          'rgba(208,49,45,0.06)',
 }
 
 const C = {

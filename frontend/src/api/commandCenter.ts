@@ -451,3 +451,30 @@ export async function fetchEarlyEntryTrigger(
   return data.data
 }
 
+export interface TrackModeItem {
+  ticker: string
+  current_price: number | null
+  added_at_ms: number
+  notes: string
+}
+
+export interface TrackModeListResponse {
+  tracked: TrackModeItem[]
+  count: number
+}
+
+export async function fetchTrackMode(): Promise<TrackModeListResponse> {
+  const { data } = await api.get<ApiEnvelope<TrackModeListResponse>>('/track-mode')
+  return data.data ?? { tracked: [], count: 0 }
+}
+
+export async function addTrackModeTicker(ticker: string, notes = ''): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>('/track-mode/add', { ticker, notes })
+  return data
+}
+
+export async function removeTrackModeTicker(ticker: string): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>('/track-mode/remove', { ticker })
+  return data
+}
+

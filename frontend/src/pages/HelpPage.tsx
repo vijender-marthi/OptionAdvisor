@@ -7,6 +7,7 @@ import {
   FlaskConical, NotebookPen, Scale, Sigma, Flame, ArrowDown, ArrowRight, Zap, LineChart,
   Menu, X, Search, Copy, LayoutDashboard, GitBranch, RefreshCw, Gauge,
   Activity, Layers, Target, Eye, ToggleLeft, Bell, List, ShieldAlert, Award, Ban, Users,
+  MoonStar, Sun,
 } from 'lucide-react'
 import { useApp } from '../contexts/AppContext'
 import { normalizeUserRole } from '../permissions'
@@ -38,6 +39,7 @@ const SEARCH_INDEX: { id: string; label: string; keywords: string[] }[] = [
   { id: 'portfolio',         label: 'Portfolio Philosophy',   keywords: ['portfolio', 'philosophy', 'diversification', 'sizing', 'risk management', 'drawdown', 'capital', 'allocation'] },
   { id: 'ui-ux-rules',       label: 'UI/UX Design Rules',     keywords: ['ui', 'ux', 'design', 'color', 'badge', 'card', 'layout', 'interface', 'dark mode', 'theme'] },
   { id: 'verdict-card',      label: 'Verdict Card Scoring',   keywords: ['verdict', 'score', 'card', 'recommendation card', 'entry button', 'avoid button', 'state badge', 'scoring', 'total score'] },
+  { id: 'day-trade-checklist', label: 'Day Trade Checklist',   keywords: ['checklist', 'day trade', 'pre market', 'premarket', 'vwap', 'amd', 'earnings', 'iv rank', 'iv percentile', 'macro', 'options flow', 'first candle', 'stop loss', 'position sizing', 'night before'] },
   { id: 'faq',               label: 'FAQ',                    keywords: ['faq', 'frequently asked', 'question', 'why', 'how', 'common question', 'troubleshoot'] },
 ]
 
@@ -65,6 +67,7 @@ const NAV_SECTIONS = [
   { id: 'portfolio',        label: 'Portfolio Philosophy',      icon: ShieldCheck },
   { id: 'ui-ux-rules',      label: 'UI/UX Design Rules',        icon: Eye },
   { id: 'verdict-card',      label: 'Verdict Card Scoring',       icon: Award },
+  { id: 'day-trade-checklist', label: 'Day Trade Checklist',      icon: CheckCircle2 },
   { id: 'faq',              label: 'FAQ',                        icon: HelpCircle },
 ]
 
@@ -5071,7 +5074,166 @@ export default function HelpPage({ embedded }: { embedded?: boolean }) {
           </section>
 
           {/* ═══════════════════════════════════════════════════════
-             SECTION 19 — FAQ
+             SECTION 19 — DAY TRADE CHECKLIST
+             ═══════════════════════════════════════════════════════ */}
+          <section id="day-trade-checklist" className="scroll-mt-24">
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <CheckCircle2 size={18} className="text-violet-400" />
+              Day Trade Checklist — AMD Example
+            </h2>
+            <div className="text-xs text-gray-400 leading-relaxed mb-3">
+              Reference checklist for a day-trade on AMD from the night before through market open. Links open in a new tab.
+            </div>
+
+            {/* ── NIGHT BEFORE ── */}
+            <h3 className="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2">
+              <MoonStar size={14} className="text-indigo-400" />
+              NIGHT BEFORE — 8:00 PM – 11:00 PM ET
+            </h3>
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                    <th className="px-2.5 py-2 font-semibold w-16">Time</th>
+                    <th className="px-2.5 py-2 font-semibold">Task</th>
+                    <th className="px-2.5 py-2 font-semibold">Detail</th>
+                    <th className="px-2.5 py-2 font-semibold w-44">Resources</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/40">
+                  {[
+                    { time: 'Tonight', task: 'Check AMD earnings date', detail: 'Verify next earnings is more than 10 days away. If within 10 days, avoid buying calls — IV will spike and crush value post-report.', links: [{ label: 'Yahoo Finance', url: 'https://finance.yahoo.com/quote/AMD/' }, { label: 'EarningsWhispers', url: 'https://www.earningswhispers.com/stocks/amd' }] },
+                    { time: 'Tonight', task: 'Mark key price levels on chart', detail: 'Identify: prior day high/low, prior week high, round numbers ($330, $340, $350, $360). These become your targets and stop zones.', links: [{ label: 'TradingView', url: 'https://www.tradingview.com/symbols/NASDAQ-AMD/' }, { label: 'thinkorswim', url: 'https://www.schwab.com/thinkorswim' }] },
+                    { time: 'Tonight', task: 'Check AMD IV Rank & IV Percentile', detail: 'IV Rank below 30 = cheap options, good to buy calls. IV Rank above 50 = expensive options, wait or use a spread instead of a naked call.', links: [{ label: 'Market Chameleon', url: 'https://marketchameleon.com/Overview/AMD' }, { label: 'Barchart', url: 'https://www.barchart.com/stocks/quotes/AMD/options' }] },
+                    { time: 'Tonight', task: 'Scan daily chart — trend direction', detail: 'Is AMD above its 20-day EMA? Is the 9 EMA above the 20 EMA? If yes, daily trend is bullish — long calls are aligned with trend. If below, wait.', links: [{ label: 'TradingView', url: 'https://www.tradingview.com/symbols/NASDAQ-AMD/' }] },
+                  ].map((r, i) => (
+                    <tr key={i} className="text-[11px] hover:bg-gray-800/20">
+                      <td className="px-2.5 py-2 font-mono text-violet-300 align-top">{r.time}</td>
+                      <td className="px-2.5 py-2 font-semibold text-gray-200 align-top">{r.task}</td>
+                      <td className="px-2.5 py-2 text-gray-400 align-top leading-relaxed">{r.detail}</td>
+                      <td className="px-2.5 py-2 align-top">
+                        <div className="flex flex-wrap gap-1.5">
+                          {r.links.map((lnk, j) => (
+                            <a key={j} href={lnk.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-gray-700 bg-gray-800/60 px-2 py-0.5 text-[10px] font-medium text-sky-300 hover:text-sky-200 hover:bg-gray-700/60 transition-colors">
+                              {lnk.label}
+                              <ArrowRight size={9} className="shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── PRE-MARKET ── */}
+            <h3 className="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2">
+              <Sun size={14} className="text-amber-400" />
+              PRE-MARKET — 7:00 AM – 9:15 AM ET
+            </h3>
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                    <th className="px-2.5 py-2 font-semibold w-16">Time</th>
+                    <th className="px-2.5 py-2 font-semibold">Task</th>
+                    <th className="px-2.5 py-2 font-semibold">Detail</th>
+                    <th className="px-2.5 py-2 font-semibold w-44">Resources</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/40">
+                  {[
+                    { time: '7:00 AM', task: 'Check macro calendar', detail: 'CPI, FOMC, Jobs report, PPI — any major macro release can whipsaw the entire market. Avoid opening call positions on high-impact days until after the number prints.', links: [{ label: 'Forex Factory', url: 'https://www.forexfactory.com/calendar' }, { label: 'Yahoo Calendar', url: 'https://finance.yahoo.com/calendar/' }] },
+                    { time: '7:30 AM', task: 'Read AMD-specific news', detail: 'Check for: AI/GPU news, datacenter announcements, analyst upgrades/downgrades, competitor moves (NVDA, INTC). A fresh catalyst = higher conviction for the call entry.', links: [{ label: 'Seeking Alpha', url: 'https://seekingalpha.com/symbol/AMD' }, { label: 'Yahoo Finance', url: 'https://finance.yahoo.com/quote/AMD/' }, { label: 'Reuters Tech', url: 'https://www.reuters.com/technology/' }] },
+                    { time: '8:00 AM', task: 'Check SPY & QQQ futures', detail: 'AMD is a QQQ component. If QQQ futures are down 1%+ pre-market, AMD calls are risky regardless of the setup. Go with index direction — don\'t fight the market.', links: [{ label: 'QQQ', url: 'https://finance.yahoo.com/quote/QQQ/' }, { label: 'CNBC Futures', url: 'https://www.cnbc.com/futures/' }] },
+                    { time: '8:30 AM', task: 'Scan AMD options flow', detail: 'Look for large call sweeps above current price. If smart money bought $355 calls yesterday in size, that signals expected upside. This is your leading indicator.', links: [{ label: 'Unusual Whales', url: 'https://unusualwhales.com/flow/AMD' }, { label: 'Cheddar Flow', url: 'https://www.cheddarflow.com/' }, { label: 'Market Chameleon', url: 'https://marketchameleon.com/Overview/AMD' }] },
+                    { time: '9:00 AM', task: 'Check pre-market price vs key levels', detail: 'Is AMD holding above a key level pre-market? Is it gapping up or down? A gap-up above prior high with volume = bullish. Gap-up into resistance = caution, wait for confirmation.', links: [{ label: 'TradingView', url: 'https://www.tradingview.com/symbols/NASDAQ-AMD/' }, { label: 'Yahoo Finance', url: 'https://finance.yahoo.com/quote/AMD/' }] },
+                    { time: '9:15 AM', task: 'Select your call strike & expiry', detail: 'Day trade: ATM strike, same or next day expiry. Swing (2–3 wks): 1–2 strikes OTM, 14–21 DTE. Check bid-ask spread — if spread is wider than $0.30, liquidity is poor, move to the next strike.', links: [{ label: 'Barchart Options', url: 'https://www.barchart.com/stocks/quotes/AMD/options' }, { label: 'Yahoo Options Chain', url: 'https://finance.yahoo.com/quote/AMD/options/' }] },
+                  ].map((r, i) => (
+                    <tr key={i} className="text-[11px] hover:bg-gray-800/20">
+                      <td className="px-2.5 py-2 font-mono text-amber-300 align-top">{r.time}</td>
+                      <td className="px-2.5 py-2 font-semibold text-gray-200 align-top">{r.task}</td>
+                      <td className="px-2.5 py-2 text-gray-400 align-top leading-relaxed">{r.detail}</td>
+                      <td className="px-2.5 py-2 align-top">
+                        <div className="flex flex-wrap gap-1.5">
+                          {r.links.map((lnk, j) => (
+                            <a key={j} href={lnk.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-gray-700 bg-gray-800/60 px-2 py-0.5 text-[10px] font-medium text-sky-300 hover:text-sky-200 hover:bg-gray-700/60 transition-colors">
+                              {lnk.label}
+                              <ArrowRight size={9} className="shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── MARKET OPEN ── */}
+            <h3 className="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2">
+              <Activity size={14} className="text-emerald-400" />
+              MARKET OPEN — 9:30 AM – 10:15 AM ET
+            </h3>
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-800">
+                    <th className="px-2.5 py-2 font-semibold w-16">Time</th>
+                    <th className="px-2.5 py-2 font-semibold">Task</th>
+                    <th className="px-2.5 py-2 font-semibold">Detail</th>
+                    <th className="px-2.5 py-2 font-semibold w-44">Resources</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/40">
+                  {[
+                    { time: '9:30 AM', task: 'Watch first 5-min candle — do NOT buy yet', detail: 'The first candle is almost always a fake. Market makers test both sides. Watch the direction, note the high and low of the first candle — these become your reference points.', links: [] },
+                    { time: '9:35–9:45', task: 'Wait for VWAP to establish, look for reclaim', detail: 'After a few candles, VWAP is meaningful. If AMD pulls back to VWAP and bounces with a green candle closing above it — that is your call entry signal. Confirm QQQ is also green.', links: [{ label: 'TradingView (5-min)', url: 'https://www.tradingview.com/symbols/NASDAQ-AMD/' }] },
+                    { time: 'Ongoing', task: 'Set your stop loss before entering', detail: 'Rule: if the call loses 30–40% of purchase price, exit immediately. Set a mental stop or an alert. Example: bought call for $8.00 — exit if it hits $4.80. No exceptions.', links: [] },
+                  ].map((r, i) => (
+                    <tr key={i} className="text-[11px] hover:bg-gray-800/20">
+                      <td className="px-2.5 py-2 font-mono text-emerald-300 align-top">{r.time}</td>
+                      <td className="px-2.5 py-2 font-semibold text-gray-200 align-top">{r.task}</td>
+                      <td className="px-2.5 py-2 text-gray-400 align-top leading-relaxed">{r.detail}</td>
+                      <td className="px-2.5 py-2 align-top">
+                        {r.links.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {r.links.map((lnk, j) => (
+                              <a key={j} href={lnk.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md border border-gray-700 bg-gray-800/60 px-2 py-0.5 text-[10px] font-medium text-sky-300 hover:text-sky-200 hover:bg-gray-700/60 transition-colors">
+                                {lnk.label}
+                                <ArrowRight size={9} className="shrink-0" />
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── HARD RULE ── */}
+            <div className="rounded-xl border border-rose-800/40 bg-rose-950/20 px-4 py-3 mb-4">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-xs mb-2">
+                <ShieldAlert size={14} />
+                Hard rule — Position Sizing
+              </div>
+              <p className="text-[11px] text-rose-200/80 leading-relaxed">
+                Long calls can go to zero. Never risk more than <strong>2–3% of your trading account</strong> on a single call position. Size accordingly — this is what keeps you in the game long-term.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+              <strong className="text-amber-300">Pro tip:</strong> Bookmark this page and run through every item before placing a day trade. Skip no step. Consistency over conviction.
+            </div>
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════
+             SECTION 20 — FAQ
              ═══════════════════════════════════════════════════════ */}
           <section id="faq" className="scroll-mt-24">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">

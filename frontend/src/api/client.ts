@@ -759,7 +759,7 @@ export interface UnifiedAnalysis {
   trade_type: 'day' | 'swing' | 'regular'
   price: number
   change_pct: number | null
-  verdict: 'STRONG_GO' | 'GO' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
+  verdict: 'STRONG_GO' | 'GO' | 'TRIGGER_PENDING' | 'WATCH' | 'WAIT' | 'AVOID' | 'NO_EDGE'
   verdict_raw: string
   confidence: number
   reason: string
@@ -1204,7 +1204,7 @@ export function deriveUnifiedFromDayResult(
 
   const rawVerdict = (result.verdict ?? '').toString().toUpperCase().replace(/ /g, '_').replace(/-/g, '_')
   const verdict: UnifiedAnalysis['verdict'] =
-    (rawVerdict === 'STRONG_GO' || rawVerdict === 'GO' || rawVerdict === 'WATCH' || rawVerdict === 'WAIT' || rawVerdict === 'AVOID' || rawVerdict === 'NO_EDGE')
+    (rawVerdict === 'STRONG_GO' || rawVerdict === 'GO' || rawVerdict === 'TRIGGER_PENDING' || rawVerdict === 'WATCH' || rawVerdict === 'WAIT' || rawVerdict === 'AVOID' || rawVerdict === 'NO_EDGE')
       ? rawVerdict as UnifiedAnalysis['verdict']
       : (actionToVerdict[td.suggested_action] as UnifiedAnalysis['verdict'])
         ?? (rawVerdict === 'STRONG_GO' ? 'STRONG_GO' : rawVerdict === 'GO' ? 'GO' : 'WAIT')

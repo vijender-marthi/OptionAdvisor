@@ -81,6 +81,8 @@ export function locationToPage(pathname: string): Page {
       return 'eod-journal'
     case 'journal-tool':
       return 'journal-tool'
+    case 'track-mode':
+      return 'track-mode'
     default:
       return 'trade-command-center'
   }
@@ -160,6 +162,8 @@ export function pageToLocation(p: Page): string {
       return '/eod-journal'
     case 'journal-tool':
       return '/journal-tool'
+    case 'track-mode':
+      return '/track-mode'
     default:
       return '/trade-command-center'
   }

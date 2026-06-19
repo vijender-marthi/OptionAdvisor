@@ -47,6 +47,9 @@ from storage import (
     save_journal_entry,
     save_user_state,
     sync_user_alerts_to_alert_center,
+    track_mode_add,
+    track_mode_list,
+    track_mode_remove,
     update_journal_entry,
 )
 from trade_aggregator import build_command_center_payload
@@ -409,6 +412,25 @@ def list_alerts_center(
         ticker=ticker,
         active_only=active_only,
         today_only=today_only,
+        page=1,
+        page_size=250,
+    )
+    data = build_alert_center_payload(items)
+    data["summary"]["total"] = total
+    return api_envelope(data, stale=False)
+
+
+@command_center_router.post("/alerts/scan")
+def scan_alerts_center(
+    auth_email: str = Depends(require_access_email),
+):
+    email = normalize_email(auth_email)
+    ensure_demo_alert_center_rows(email)
+    sync_user_alerts_to_alert_center(email, retention_ms=LEGACY_USER_ALERT_RETENTION_MS, now_ms=int(time.time() * 1000))
+    prune_alert_center_items(email)
+    items, total = alert_center_list(
+        email,
+        active_only=True,
         page=1,
         page_size=250,
     )
@@ -2208,3 +2230,55 @@ def post_overnight_runner(body: OvernightRunnerRequest, auth_email: str = Depend
         recommended_stop=stop,
         recommended_size_pct=recommended_size_pct,
     )
+
+
+# ─── Track Mode (post-exit re-entry monitoring) ──────────────────────────────
+
+
+class TrackModeAddBody(BaseModel):
+    ticker: str
+    notes: str = ""
+
+
+class TrackModeRemoveBody(BaseModel):
+    ticker: str
+
+
+@command_center_router.get("/track-mode")
+def get_track_mode(auth_email: str = Depends(require_access_email)):
+    """List tracked tickers with current prices."""
+    email = normalize_email(auth_email)
+    items = track_mode_list(email)
+    out = []
+    for item in items:
+        ticker = item["ticker"]
+        price = None
+        try:
+            tk = yf.Ticker(ticker)
+            fast = tk.fast_info
+            price = round(float(fast.last_price), 2) if fast.last_price else None
+        except Exception:
+            pass
+        out.append({
+            "ticker": ticker,
+            "current_price": price,
+            "added_at_ms": item["added_at_ms"],
+            "notes": item.get("notes", ""),
+        })
+    return {"tracked": out, "count": len(out)}
+
+
+@command_center_router.post("/track-mode/add")
+def post_track_mode_add(body: TrackModeAddBody, auth_email: str = Depends(require_access_email)):
+    """Start tracking a ticker for post-exit re-entry monitoring."""
+    email = normalize_email(auth_email)
+    ok = track_mode_add(email, body.ticker.upper().strip(), body.notes)
+    return {"ok": ok, "ticker": body.ticker.upper().strip()}
+
+
+@command_center_router.post("/track-mode/remove")
+def post_track_mode_remove(body: TrackModeRemoveBody, auth_email: str = Depends(require_access_email)):
+    """Stop tracking a ticker."""
+    email = normalize_email(auth_email)
+    ok = track_mode_remove(email, body.ticker.upper().strip())
+    return {"ok": ok, "ticker": body.ticker.upper().strip()}

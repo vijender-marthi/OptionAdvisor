@@ -40,6 +40,7 @@ const DayTradeSessionPage    = lazy(() => import('./pages/DayTradeSessionPage'))
 const OptionChainPage        = lazy(() => import('./pages/OptionChainPage'))
 const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
+const TrackModePage          = lazy(() => import('./pages/TrackModePage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -184,6 +185,7 @@ function ShellRoutes() {
               <Route path="/option-chain" element={<OptionChainPage />} />
               <Route path="/eod-journal" element={<EODJournalPage />} />
               <Route path="/journal-tool" element={<JournalToolPage />} />
+              <Route path="/track-mode" element={<TrackModePage />} />
             </Route>
           </Route>
         </Route>

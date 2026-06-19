@@ -226,6 +226,7 @@ export type Page =
   | 'option-chain'
   | 'eod-journal'
   | 'journal-tool'
+  | 'track-mode'
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
 export type TradeIdeaEngine = 'DAY' | 'SWING'

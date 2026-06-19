@@ -401,6 +401,17 @@ def init_db() -> None:
         _seed_known_super_users(conn)
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS tracked_tickers (
+                email       TEXT NOT NULL,
+                ticker      TEXT NOT NULL,
+                added_at_ms INTEGER NOT NULL,
+                notes       TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (email, ticker)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS ticker_state_last (
                 email                 TEXT NOT NULL,
                 ticker                TEXT NOT NULL,
@@ -2703,6 +2714,48 @@ def desk_count_daily_fires(user_id: str, ticker: str, trade_type: str, today: st
             (em, ticker.upper(), trade_type.lower(), today),
         ).fetchone()
     return int(row["c"]) if row else 0
+
+
+# ─── Track Mode (post-exit re-entry monitoring) ─────────────────────────────────
+
+
+def track_mode_list(email: str) -> list[dict]:
+    """List all tracked tickers for a user."""
+    em = normalize_email(email)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT ticker, added_at_ms, notes FROM tracked_tickers WHERE email = ? ORDER BY added_at_ms DESC",
+            (em,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def track_mode_add(email: str, ticker: str, notes: str = "") -> bool:
+    """Add a ticker to the track list. Returns False if already tracked."""
+    em = normalize_email(email)
+    ticker = ticker.upper().strip()
+    with _connect() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM tracked_tickers WHERE email = ? AND ticker = ?", (em, ticker)
+        ).fetchone()
+        if existing:
+            return False
+        conn.execute(
+            "INSERT INTO tracked_tickers (email, ticker, added_at_ms, notes) VALUES (?, ?, ?, ?)",
+            (em, ticker, int(time.time() * 1000), notes),
+        )
+    return True
+
+
+def track_mode_remove(email: str, ticker: str) -> bool:
+    """Remove a ticker from the track list. Returns False if not found."""
+    em = normalize_email(email)
+    ticker = ticker.upper().strip()
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM tracked_tickers WHERE email = ? AND ticker = ?", (em, ticker)
+        )
+    return cur.rowcount > 0
 
 
 def desk_get_alert_count(user_id: str) -> int:

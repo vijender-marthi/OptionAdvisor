@@ -1122,6 +1122,9 @@ def _build_calendar_spread(signals, calls_all, exp_front, exp_back, price,
         - prob_above(price, be_upper, front_iv_pct, exp_front))), 2)
     ev = compute_ev(max_profit, max_loss, pop)
 
+    ivr = signals.iv_rank if signals.iv_rank is not None else 50.0
+    iv_note = "low IV favors owning the back leg." if ivr < 50 else "elevated IV: prefer front IV > back IV."
+
     return dict(
         strategy="Call Calendar Spread", bias="Neutral",
         legs=[back_leg, front_leg], expiry=exp_front, dte=front_dte,
@@ -1140,7 +1143,7 @@ def _build_calendar_spread(signals, calls_all, exp_front, exp_back, price,
             f"Neutral calendar at ${strike:.0f}. Sell {exp_front} {option_type} / buy {exp_back} {option_type}. "
             f"Net debit ${net_debit:.2f}/share — max profit ~${max_profit:.2f}/share if the stock pins ${strike:.0f} at front expiry. "
             f"Profit zone ${be_lower:.2f}–${be_upper:.2f} (~{int(pop*100)}% PoP). Front decays faster than back. "
-            f"IV rank {signals.iv_rank:.0f}% — {'low IV favors owning the back leg.' if signals.iv_rank < 50 else 'elevated IV: prefer front IV > back IV.'}"
+            f"IV rank {ivr:.0f}% — {iv_note}"
         ),
         exit_plan=generate_exit_plan("Call Calendar Spread", max_profit, -net_debit, exp_front, front_dte),
         exit_rules=generate_exit_rules("Call Calendar Spread", max_profit, -net_debit, exp_front, front_dte),

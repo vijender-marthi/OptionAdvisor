@@ -103,6 +103,9 @@ function buildSituationRead(u: UnifiedAnalysis, r: SwingTradeScanResult | null):
     case 'GO':
       instruction = `Execute the plan: enter at/near ${entryStr}, hard stop ${stopStr}, scale out into ${targetStr}. ${aligned === false ? 'Use reduced size — the market is against you.' : 'Standard size.'}`
       instructionTone = 'good'; break
+    case 'TRIGGER_PENDING':
+      instruction = `Trigger not yet fired. The bias is confirmed but wait for the entry trigger (e.g., VWAP reclaim, candle confirmation) before acting. Set an alert at ${entryStr}.`
+      instructionTone = 'warn'; break
     case 'WATCH':
       instruction = `Not triggered yet. Set an alert at ${entryStr} and only enter once price confirms the move — do not anticipate.`
       instructionTone = 'warn'; break
@@ -118,6 +121,7 @@ function buildSituationRead(u: UnifiedAnalysis, r: SwingTradeScanResult | null):
   }
 
   const verdictPhrase = (u.verdict === 'GO' || u.verdict === 'STRONG_GO') ? 'execute the plan'
+    : u.verdict === 'TRIGGER_PENDING' ? 'wait for the trigger'
     : u.verdict === 'WATCH' ? 'wait for the trigger'
     : u.verdict === 'WAIT' ? 'stand by'
     : u.verdict === 'AVOID' ? 'stand aside'

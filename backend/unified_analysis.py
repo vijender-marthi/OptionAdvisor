@@ -15,29 +15,31 @@ log = logging.getLogger(__name__)
 # Frontend renders these fields directly — no derivation on the UI.
 
 _VERDICT_STATUS: dict[str, str] = {
-    "STRONG_GO": "STRONG GO",
-    "GO":        "GO",
-    "enter":     "GO",
-    "WATCH":     "WATCH",
-    "watch":     "WATCH",
-    "WAIT":      "WAIT",
-    "wait":      "WAIT",
-    "AVOID":     "AVOID",
-    "avoid":     "AVOID",
-    "NO_EDGE":   "NO EDGE",
+    "STRONG_GO":       "STRONG GO",
+    "GO":              "GO",
+    "enter":           "GO",
+    "TRIGGER_PENDING": "WAITING FOR TRIGGER",
+    "WATCH":           "WATCH",
+    "watch":           "WATCH",
+    "WAIT":            "WAIT",
+    "wait":            "WAIT",
+    "AVOID":           "AVOID",
+    "avoid":           "AVOID",
+    "NO_EDGE":         "NO EDGE",
 }
 
 _VERDICT_COLOR: dict[str, str] = {
-    "STRONG_GO": "#00A86B",
-    "GO":        "#00A86B",
-    "enter":     "#00A86B",
-    "WATCH":     "#D4A017",
-    "watch":     "#D4A017",
-    "WAIT":      "#D4A017",
-    "wait":      "#D4A017",
-    "AVOID":     "#D0312D",
-    "avoid":     "#D0312D",
-    "NO_EDGE":   "#6B7280",
+    "STRONG_GO":       "#00A86B",
+    "GO":              "#00A86B",
+    "enter":           "#00A86B",
+    "TRIGGER_PENDING": "#D4A017",
+    "WATCH":           "#D4A017",
+    "watch":           "#D4A017",
+    "WAIT":            "#D4A017",
+    "wait":            "#D4A017",
+    "AVOID":           "#D0312D",
+    "avoid":           "#D0312D",
+    "NO_EDGE":         "#6B7280",
 }
 
 
