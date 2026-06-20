@@ -611,8 +611,8 @@ def _vwap_hold_state(
             vol_confirm = volumes[-1] >= volumes[-2] * 0.8 if len(volumes) >= 2 else True
             if prior_touched and vol_confirm:
                 return "CONFIRMED"
-            # Weaker confirmation: just above VWAP and moving away
-            return "CONFIRMED"
+            # Weaker confirmation: above VWAP but volume doesn't confirm
+            return "CONFIRMED_WEAK"
 
         return "TESTING"
 
@@ -639,7 +639,7 @@ def _vwap_hold_state(
             vol_confirm = volumes[-1] >= volumes[-2] * 0.8 if len(volumes) >= 2 else True
             if prior_touched and vol_confirm:
                 return "CONFIRMED"
-            return "CONFIRMED"
+            return "CONFIRMED_WEAK"
 
         return "TESTING"
 
@@ -1435,7 +1435,7 @@ def _compute_entry_window(
     )
 
 
-def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str]) -> dict:
+def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optional[str], ticker: Optional[str] = None) -> dict:
     last_price = metrics.get("last_price")
     vwap = metrics.get("vwap")
     vwap_upper1 = metrics.get("vwap_upper1")
@@ -2022,7 +2022,7 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             or_historical == "broke_down" and or_breakout == "inside" and bidir == "short"
     )
 
-    return {
+    _result = {
         "state": state,
         "summary": summary,
         "action": action,
@@ -2073,21 +2073,23 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     # ── Premium conversion layer ──────────────────────────────────────────
     # Converts stop/T1/T2 stock price targets → estimated option premiums
     # using ATM delta from the nearest expiry chain. Delta = 0.5 fallback.
-    try:
-        _is_put = bias == "short"
-        _prem = build_premium_targets(
-            ticker=ticker,
-            current_stock_price=last_price,
-            stop_price=risk_below,
-            target1_price=scalp_target,
-            target2_price=scalp_target_2,
-            is_put=_is_put,
-        )
-        entry_guidance["premium_targets"] = _prem
-    except Exception:
-        entry_guidance["premium_targets"] = {}
+    if ticker:
+        try:
+            _is_put = bidir == "short"
+            _result["premium_targets"] = build_premium_targets(
+                ticker=ticker,
+                current_stock_price=last_price or 0.0,
+                stop_price=risk_below,
+                target1_price=scalp_target,
+                target2_price=scalp_target_2,
+                is_put=_is_put,
+            )
+        except Exception:
+            _result["premium_targets"] = {}
+    else:
+        _result["premium_targets"] = {}
 
-    return entry_guidance
+    return _result
 
 
 def _check_vwap_retest_entry(
@@ -2990,12 +2992,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         rvol = round(cumulative_vol / synthetic_expected, 2)
 
     # HH/HL (bull) / LL/LH (bear) structure over recent 5-bar swing points.
-    def _swing_structure(closes: np.ndarray, window: int = 5) -> str:
+    def _swing_structure(highs_arr: np.ndarray, lows_arr: np.ndarray, window: int = 5) -> str:
         """Return 'HH_HL', 'LL_LH', 'MIXED', or 'FLAT' for recent price structure."""
-        if len(closes) < window * 2 + 1:
+        if len(highs_arr) < window * 2 + 1 or len(lows_arr) < window * 2 + 1:
             return "FLAT"
-        highs = list(closes)
-        lows  = list(closes)
+        highs = list(highs_arr)
+        lows  = list(lows_arr)
         swing_highs, swing_lows = [], []
         for i in range(window, len(highs) - window):
             if highs[i] == max(highs[i - window: i + window + 1]):
@@ -3014,8 +3016,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             return "MIXED"
         return "FLAT"
 
-    close_arr = session["Close"].values.astype(float)
-    price_structure = _swing_structure(close_arr)
+    _high_arr = session["High"].values.astype(float)
+    _low_arr  = session["Low"].values.astype(float)
+    price_structure = _swing_structure(_high_arr, _low_arr)
 
     # Current price position vs OR bounds (need or_state before secondary breakout check).
     if last > or_high:
@@ -3760,15 +3763,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                     "Entry here means buying/selling the move after it has already happened."
                 )
         # Pending confirmations on an entry-critical state → not GO yet
-        if _internal_verdict in ("GO", "STRONG_GO"):
-            _eg_state = eg_state if 'eg_state' in dir() else None  # type: ignore[name-defined]
-            _pending = entry_guidance.get("pending_confirmations", []) if 'entry_guidance' in dir() else []  # type: ignore[name-defined]
-            if len(_pending) > 0 and not soft_edge:
-                _internal_verdict = "WATCH"
-                body.append(
-                    "Verdict downgraded GO→WATCH: confirmation conditions not yet met. "
-                    "Wait for pending signals before treating this as an entry."
-                )
+        # (moved below — needs entry_guidance which is built later)
         # No soft edge (bull/bear scores too close) → cannot be GO
         if not soft_edge and _internal_verdict in ("GO", "STRONG_GO"):
             _internal_verdict = "WAIT"
@@ -4021,7 +4016,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         vix=vix_level,
     )
 
-    entry_guidance = build_day_entry_guidance(metrics, trader_decision, bias)
+    entry_guidance = build_day_entry_guidance(metrics, trader_decision, bias, ticker=t)
 
     # ── Entry R/R ratio ───────────────────────────────────────────────
     _eg_scalp   = entry_guidance.get("scalp_target")
@@ -4033,6 +4028,17 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         metrics["entry_rr_ratio"] = round(_reward / _risk, 2) if _risk > 0 else None
     else:
         metrics["entry_rr_ratio"] = None
+
+    # ── Pending confirmations gate (moved here — needs entry_guidance) ──
+    # An entry-critical state with unmet confirmation conditions is not GO yet.
+    if _internal_verdict in ("GO", "STRONG_GO"):
+        _pending = entry_guidance.get("pending_confirmations", []) or []
+        if len(_pending) > 0 and not soft_edge:
+            _internal_verdict = "WATCH"
+            body.append(
+                "Verdict downgraded GO→WATCH: confirmation conditions not yet met. "
+                "Wait for pending signals before treating this as an entry."
+            )
 
     # ── Adaptive R/R — setup-type-aware calculation ───────────────────────
     _adaptive_rr_result: Optional[dict] = None

@@ -250,7 +250,7 @@ def _base_risk_level(
     ext_short = not is_bullish and (rsi_val < RSI_OVERSOLD or dist_ma20_pct < -12 or mom_5d_pct < -12)
     if ext_long or ext_short:
         return "HIGH"
-    if vix_level is not None and vix_level >= VIX_CAUTION:
+    if vix_level is not None and vix_level >= VIX_CAUTION * 0.8:
         return "MEDIUM"
     mod_long  = is_bullish  and (rsi_val > 68 or dist_ma20_pct > 5 or mom_5d_pct > 5)
     mod_short = not is_bullish and (rsi_val < 32 or dist_ma20_pct < -5 or mom_5d_pct < -5)
@@ -642,6 +642,24 @@ def build_swing_trade_decision(
 
     trade_quality_score = round(min(10.0, max(0.0, score)), 1)
 
+    # ── 6b. DTE penalty — applied BEFORE the decision cascade so thresholds see the penalized score.
+    # >15 DTE for a 5-day hold is too long; penalize proportionally.
+    _pre_quality_est = "GOOD_ENTRY" if trade_quality_score >= 6.5 and risk_level in ("LOW", "MEDIUM") else "OTHER"
+    _pre_dur = ""
+    if risk_level in ("HIGH", "VERY_HIGH") or "EARNINGS_SOON" in risk_flags:
+        _pre_dur = "14-21"
+    elif trade_quality_score >= 7.0 and _pre_quality_est == "GOOD_ENTRY":
+        _pre_dur = "7-14"
+    else:
+        _pre_dur = "10-21"
+    _pre_parts = _pre_dur.replace("–", "-").split("-")
+    _pre_nums = [int(p.strip()) for p in _pre_parts if p.strip().isdigit()]
+    _pre_avg_dte = (sum(_pre_nums) // len(_pre_nums)) if _pre_nums else 0
+    if _pre_avg_dte > 15:
+        _penalty = round((_pre_avg_dte - 15) * 0.05, 2)
+        trade_quality_score = max(0.0, trade_quality_score - _penalty)
+        risk_flags.append(f"DTE_TOO_LONG({_pre_avg_dte}d)")
+
     # ── 7. Entry quality + decision label + final action ──────────────
     # Hard overrides evaluated in priority order
     if "LOW_OPTION_LIQUIDITY" in risk_flags:
@@ -817,20 +835,7 @@ def build_swing_trade_decision(
     else:
         recommended_contract_duration = "10-21"
 
-    # ── 11b. DTE penalty — >15 DTE for a 5-day hold is too long ────────
-    if recommended_contract_duration:
-        _parts = recommended_contract_duration.replace("–", "-").split("-")
-        _nums = [int(p.strip()) for p in _parts if p.strip().isdigit()]
-        if len(_nums) == 2:
-            _avg_dte = (_nums[0] + _nums[1]) // 2
-        elif len(_nums) == 1:
-            _avg_dte = _nums[0]
-        else:
-            _avg_dte = 0
-        if _avg_dte > 15:
-            _penalty = round((_avg_dte - 15) * 0.05, 2)
-            trade_quality_score = max(0.0, trade_quality_score - _penalty)
-            risk_flags.append(f"DTE_TOO_LONG({_avg_dte}d)")
+    # ── 11b. DTE penalty already applied pre-cascade (see §6b) ─────────
 
     # ── 12. Decision message ───────────────────────────────────────────
     decision_message = _build_decision_message(
@@ -1916,7 +1921,7 @@ def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Opti
         brk  = round(last * 1.005, 2)    # 0.5% above current — breakout confirmation level
         t1   = round(last + measured_move * 0.5, 2)  # half measured move extension
         t2   = round(last + measured_move * 1.0, 2)  # full measured move extension
-        stop = round(ma20 * 0.998, 2)                # just below MA20 structural support
+        stop = round(ma20 * 0.98, 2)                # 2% below MA20 — structural support with volatility buffer
         pb_lo = round(ma20 * 0.99, 2)
         pb_hi = round(ma20 * 1.01, 2)
         if not (t1 > last):
@@ -1943,7 +1948,7 @@ def _compute_exec_levels(last: float, ma20: float, mom_5d_pct: float, bias: Opti
         brk  = round(last * 0.995, 2)    # 0.5% below current — breakdown confirmation level
         t1   = round(last - measured_move * 0.5, 2)  # half measured move extension
         t2   = round(last - measured_move * 1.0, 2)  # full measured move extension
-        stop = round(ma20 * 1.002, 2)                # just above MA20 structural resistance
+        stop = round(ma20 * 1.02, 2)                # 2% above MA20 — structural resistance with volatility buffer
         pb_lo = round(ma20 * 0.99, 2)
         pb_hi = round(ma20 * 1.01, 2)
         if not (t1 < last):
@@ -2338,6 +2343,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     # ── Unified verdict via resolve_verdict ─────────────────────────────
     raw_score = max(bull, bear)
     verdict = resolve_verdict("swing", raw_score, vix=vix_level, rvol=vol_ratio, volume_spike=False).value
+    _prefix_strong = False  # set True when prefix logic determines STRONG GO alignment
 
     # ── Bias + prefix (human-readable reasons, not verdict override) ────
     diff       = bull - bear
@@ -2381,6 +2387,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         else:
             strong_ok = bull >= STRONG_THRESHOLD and abs(diff) >= STRONG_DIFF
             if strong_ok:
+                _prefix_strong = True
                 prefix  = [
                     "STRONG GO — multiple daily signals aligning: trend structure, momentum, "
                     "and volume confirm the directional thesis.",
@@ -2422,6 +2429,7 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         else:
             strong_ok = bear >= STRONG_THRESHOLD and abs(diff) >= STRONG_DIFF
             if strong_ok:
+                _prefix_strong = True
                 prefix  = [
                     "STRONG GO — bearish stack confirmed: trend, momentum, and volume "
                     "align for a multi-day move.",
@@ -2435,6 +2443,10 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
 
     else:
         prefix  = ["No clear swing edge — scores too close or too low."]
+
+    # ── Verdict/prefix consistency — upgrade GO → STRONG_GO when prefix says STRONG GO ──
+    if _prefix_strong and verdict == "GO":
+        verdict = "STRONG_GO"
 
     # ── Confidence block (v1 metadata) ────────────────────────────────
     ma_aligned   = (ma20 > ma50) if (bias == "long" or (bias is None and bull > bear)) else (ma20 < ma50)

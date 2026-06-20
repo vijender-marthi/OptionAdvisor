@@ -50,12 +50,15 @@ class TestHeldPositions(unittest.TestCase):
         ]}
         held = exit_monitor.held_positions_for_user("a@b.com")
         tickers = {h.ticker for h in held}
-        self.assertEqual(tickers, {"AMD", "INTC"})  # swing + closed excluded
+        self.assertEqual(tickers, {"AMD", "INTC", "NVDA"})  # closed excluded; swing now included
         amd = next(h for h in held if h.ticker == "AMD")
         intc = next(h for h in held if h.ticker == "INTC")
+        nvda = next(h for h in held if h.ticker == "NVDA")
         self.assertEqual(amd.direction, "long")
         self.assertEqual(intc.direction, "short")
         self.assertEqual(amd.stop_price, 147.0)
+        self.assertEqual(amd.position_type, "day")
+        self.assertEqual(nvda.position_type, "swing")
 
     def test_scan_fires_vwap_break_for_held_long(self):
         storage.list_active_trades_open = lambda e: [

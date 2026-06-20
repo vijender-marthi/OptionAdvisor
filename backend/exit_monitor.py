@@ -1,9 +1,14 @@
 """
-Exit monitor — gathers a user's held day positions and runs the ExitSignalEngine.
+Exit monitor — gathers a user's held positions and runs the ExitSignalEngine.
 
 Held positions come from two sources:
   1. Open rows in `active_trades` (intraday option trades; side CALL→long, PUT→short)
-  2. Open day-sourced portfolio positions (source == 'day')
+  2. Open portfolio positions (source == 'day' or 'swing')
+
+Day-sourced positions get full intraday monitoring (VWAP break, OR break, stop hit,
+EOD time stop). Swing-sourced positions get stop-hit monitoring (the most critical
+safety check) plus target-hit warnings; VWAP/OR/EOD are intraday concepts that don't
+apply to multi-day holds but the stop check is universal.
 
 Market data per ticker is sourced from the day-trade intraday snapshot, which now
 exposes `candles_5m_tail` in metrics (added with the trigger work). `snapshot_fn`
@@ -54,7 +59,7 @@ def _minutes_to_close(now: Optional[datetime] = None) -> float:
 
 
 def held_positions_for_user(email: str) -> list[HeldPosition]:
-    """Open active_trades + open day-sourced portfolio positions → HeldPosition list."""
+    """Open active_trades + open portfolio positions (day + swing) → HeldPosition list."""
     out: list[HeldPosition] = []
 
     for t in storage.list_active_trades_open(email):
@@ -89,7 +94,8 @@ def held_positions_for_user(email: str) -> list[HeldPosition]:
     for p in portfolio:
         if str(p.get("status") or "").lower() != "open":
             continue
-        if str(p.get("source") or "").lower() != "day":
+        _src = str(p.get("source") or "").lower()
+        if _src not in ("day", "swing", ""):
             continue
         ticker = str(p.get("ticker") or "").upper().strip()
         if not ticker:
@@ -102,6 +108,7 @@ def held_positions_for_user(email: str) -> list[HeldPosition]:
             stop_price=_num(p.get("stopLoss")),
             target_price=_num(p.get("target1")),
             contracts=int(_num(p.get("contracts")) or 1),
+            position_type=_src if _src in ("day", "swing") else "day",
         ))
 
     return out

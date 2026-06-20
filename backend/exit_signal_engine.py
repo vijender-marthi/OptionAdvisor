@@ -32,6 +32,9 @@ class HeldPosition:
     target_price: Optional[float] = None
     contracts: int = 1
     entry_time: Optional[datetime] = None
+    position_type: str = "day"  # "day" or "swing" — swing skips intraday-only checks (VWAP/OR/EOD)
+    high_water_mark: Optional[float] = None  # max price since entry (for trailing stop)
+    low_water_mark: Optional[float] = None   # min price since entry (for trailing stop)
 
 
 @dataclass
@@ -64,6 +67,8 @@ _CONFIRM_BARS = 2
 _APPROACH_BAND = 0.005
 # Minutes before the close to fire the EOD time-stop warning.
 _EOD_WARN_MINUTES = 15
+# Trailing stop: retracement fraction from high/low water mark that triggers a warning.
+_TRAIL_RETRACEMENT = 0.01  # 1% pullback from peak → tighten/exit
 
 
 @dataclass
@@ -115,20 +120,21 @@ class ExitSignalEngine:
         pnl = self._estimate_pnl(pos, data)
         prem = float(data.get("premium") or 0)
         closes = self._last_closes(data)
+        _is_day = pos.position_type == "day"
 
         # CRITICAL: stop hit
         if price is not None and pos.stop_price is not None and float(price) <= pos.stop_price:
             out.append(ExitSignal(pos.ticker, CRITICAL, f"Stop hit at ${pos.stop_price:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price), prem, pnl, "STOP_HIT"))
 
-        # CRITICAL: VWAP broken (N consecutive 5m closes below VWAP)
-        if vwap is not None and len(closes) >= self.confirm_bars and all(c < vwap for c in closes):
+        # CRITICAL: VWAP broken (N consecutive 5m closes below VWAP) — day trades only
+        if _is_day and vwap is not None and len(closes) >= self.confirm_bars and all(c < vwap for c in closes):
             out.append(ExitSignal(pos.ticker, CRITICAL,
                                   f"VWAP broken: {self.confirm_bars} consecutive 5m closes below VWAP ${vwap:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price or closes[-1]), prem, pnl, "VWAP_BREAK"))
 
-        # CRITICAL: OR low broken against the long
-        if orl is not None and len(closes) >= self.confirm_bars and all(c < orl for c in closes):
+        # CRITICAL: OR low broken against the long — day trades only
+        if _is_day and orl is not None and len(closes) >= self.confirm_bars and all(c < orl for c in closes):
             out.append(ExitSignal(pos.ticker, CRITICAL,
                                   f"OR low broken: {self.confirm_bars} consecutive 5m closes below ORL ${orl:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price or closes[-1]), prem, pnl, "OR_BREAK"))
@@ -145,20 +151,21 @@ class ExitSignalEngine:
         pnl = self._estimate_pnl(pos, data)
         prem = float(data.get("premium") or 0)
         closes = self._last_closes(data)
+        _is_day = pos.position_type == "day"
 
         # CRITICAL: stop hit (short stop is above entry)
         if price is not None and pos.stop_price is not None and float(price) >= pos.stop_price:
             out.append(ExitSignal(pos.ticker, CRITICAL, f"Stop hit at ${pos.stop_price:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price), prem, pnl, "STOP_HIT"))
 
-        # CRITICAL: VWAP reclaimed against the short (N consecutive 5m closes above VWAP)
-        if vwap is not None and len(closes) >= self.confirm_bars and all(c > vwap for c in closes):
+        # CRITICAL: VWAP reclaimed against the short (N consecutive 5m closes above VWAP) — day trades only
+        if _is_day and vwap is not None and len(closes) >= self.confirm_bars and all(c > vwap for c in closes):
             out.append(ExitSignal(pos.ticker, CRITICAL,
                                   f"VWAP reclaimed: {self.confirm_bars} consecutive 5m closes above VWAP ${vwap:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price or closes[-1]), prem, pnl, "VWAP_BREAK"))
 
-        # CRITICAL: OR high reclaimed against the short
-        if orh is not None and len(closes) >= self.confirm_bars and all(c > orh for c in closes):
+        # CRITICAL: OR high reclaimed against the short — day trades only
+        if _is_day and orh is not None and len(closes) >= self.confirm_bars and all(c > orh for c in closes):
             out.append(ExitSignal(pos.ticker, CRITICAL,
                                   f"OR high reclaimed: {self.confirm_bars} consecutive 5m closes above ORH ${orh:.2f}",
                                   "EXIT IMMEDIATELY at market", float(price or closes[-1]), prem, pnl, "OR_BREAK"))
@@ -169,27 +176,47 @@ class ExitSignalEngine:
     # ── shared warning/info exits ──────────────────────────────────────────
     def _common_exits(self, pos, data, price, vwap, pnl, prem, *, above: bool) -> list[ExitSignal]:
         out: list[ExitSignal] = []
+        _is_day = pos.position_type == "day"
 
-        # WARNING: approaching VWAP from the favorable side
-        if price is not None and vwap and vwap > 0:
+        # WARNING: approaching VWAP from the favorable side — day trades only
+        if _is_day and price is not None and vwap and vwap > 0:
             dist = (float(price) - vwap) / vwap if above else (vwap - float(price)) / vwap
             if 0 < dist < self.approach_band:
                 out.append(ExitSignal(pos.ticker, WARNING,
                                       f"Approaching VWAP support ${vwap:.2f} ({dist*100:.2f}% away)",
                                       "Prepare to exit if VWAP breaks", float(price), prem, pnl, "APPROACH_VWAP"))
 
-        # WARNING: target reached
+        # WARNING: target reached (applies to both day and swing)
         if price is not None and pos.target_price is not None:
             hit = float(price) >= pos.target_price if above else float(price) <= pos.target_price
             if hit:
                 out.append(ExitSignal(pos.ticker, WARNING, f"Target ${pos.target_price:.2f} reached",
                                       "Take profit — sell ½, trail the rest", float(price), prem, pnl, "TARGET"))
 
-        # WARNING: EOD time stop — never carry a day trade overnight
-        mins = self._eod_minutes_left(data)
-        if mins is not None and 0 < mins <= _EOD_WARN_MINUTES:
-            out.append(ExitSignal(pos.ticker, WARNING,
-                                  f"Market closes in {int(mins)} min — day trade must be flat",
-                                  "Close before the bell — do not hold overnight",
-                                  float(price or 0), prem, pnl, "TIME_STOP"))
+        # WARNING: trailing stop — price retraced from high/low water mark
+        if price is not None:
+            if above and pos.high_water_mark and pos.high_water_mark > 0:
+                _retrace = (pos.high_water_mark - float(price)) / pos.high_water_mark
+                if _retrace >= _TRAIL_RETRACEMENT:
+                    out.append(ExitSignal(pos.ticker, WARNING,
+                                          f"Trailing stop: price pulled back {_retrace*100:.1f}% from peak ${pos.high_water_mark:.2f}",
+                                          "Tighten stop to recent swing low or exit the trailing portion",
+                                          float(price), prem, pnl, "TRAILING_STOP"))
+            elif not above and pos.low_water_mark and pos.low_water_mark > 0:
+                _retrace = (float(price) - pos.low_water_mark) / pos.low_water_mark
+                if _retrace >= _TRAIL_RETRACEMENT:
+                    out.append(ExitSignal(pos.ticker, WARNING,
+                                          f"Trailing stop: price bounced {_retrace*100:.1f}% from trough ${pos.low_water_mark:.2f}",
+                                          "Tighten stop to recent swing high or exit the trailing portion",
+                                          float(price), prem, pnl, "TRAILING_STOP"))
+
+        # WARNING: EOD time stop — never carry a day trade overnight (day trades only)
+        if _is_day:
+            mins = self._eod_minutes_left(data)
+            if mins is not None and 0 < mins <= _EOD_WARN_MINUTES:
+                severity = CRITICAL if mins <= 5 else WARNING
+                out.append(ExitSignal(pos.ticker, severity,
+                                      f"Market closes in {int(mins)} min — day trade must be flat",
+                                      "Close before the bell — do not hold overnight",
+                                      float(price or 0), prem, pnl, "TIME_STOP"))
         return out
