@@ -2962,9 +2962,10 @@ def active_trade_enter(
 @app.get("/api/exit-signals")
 def exit_signals(auth_email: str = Depends(require_access_email)):
     """
-    Live exit signals for the authenticated user's held day positions
-    (open active_trades + day-sourced portfolio positions). Client polls this to
-    drive the exit modal; the background scanner uses the same engine for alerts.
+    Live exit signals for the authenticated user's held positions
+    (open active_trades opened today + day/swing portfolio positions). Client polls
+    this to drive the exit modal; the background scanner uses the same engine for alerts.
+    Acknowledged signals (via POST /api/exit-signals/acknowledge) are excluded.
     """
     _require_admin_intraday_surfaces(auth_email)
     email = normalize_email(auth_email)
@@ -2973,7 +2974,30 @@ def exit_signals(auth_email: str = Depends(require_access_email)):
     except Exception as e:  # noqa: BLE001
         log.warning("exit_signals scan error for %s: %s", email, e)
         sigs = []
+    # Filter out acknowledged signals for today
+    _today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    sigs = [s for s in sigs if (email, s.ticker, s.code, _today) not in _ACKED_EXIT_SIGNALS]
     return {"signals": [s.to_dict() for s in sigs], "count": len(sigs)}
+
+
+# In-memory acknowledged exit signals: (email, ticker, code, session_date).
+# Persists for the process lifetime; cleared on restart (acceptable — fresh scan
+# will re-fire if the condition still holds, which is the correct safety behavior).
+_ACKED_EXIT_SIGNALS: set[tuple[str, str, str, str]] = set()
+
+
+class ExitSignalAckBody(BaseModel):
+    ticker: str
+    code: str
+
+
+@app.post("/api/exit-signals/acknowledge")
+def acknowledge_exit_signal(body: ExitSignalAckBody, auth_email: str = Depends(require_access_email)):
+    """Acknowledge an exit signal so it stops reappearing in the modal for today."""
+    email = normalize_email(auth_email)
+    _today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    _ACKED_EXIT_SIGNALS.add((email, body.ticker.upper().strip(), body.code.strip(), _today))
+    return {"ok": True}
 
 
 @app.get("/api/trades/active", response_model=ActiveTradeListResponse)
@@ -3072,9 +3096,18 @@ def active_trade_exit_api(
 ):
     _require_admin_intraday_surfaces(auth_email)
     email = normalize_email(auth_email)
+    # Get the ticker before exiting so we can clean up alerts
+    row = get_active_trade(email, trade_id)
     ok = exit_active_trade(email, trade_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Active trade not found or already exited")
+    # Auto-resolve EXIT_SIGNAL alerts for this ticker
+    if row:
+        try:
+            from storage import alert_center_resolve_by_ticker
+            alert_center_resolve_by_ticker(email, str(row.get("ticker") or ""))
+        except Exception:  # noqa: BLE001
+            pass
     return {"ok": True}
 
 
@@ -3458,6 +3491,8 @@ def _scan_exit_signals_for_state(user_state: dict) -> None:
             continue
         key = (email, s.ticker, s.code, session_date)
         if key in _EXIT_ALERTED:
+            continue
+        if key in _ACKED_EXIT_SIGNALS:
             continue
         _EXIT_ALERTED.add(key)
         try:

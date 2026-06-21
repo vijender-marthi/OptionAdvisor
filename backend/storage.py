@@ -1529,6 +1529,24 @@ def alert_center_resolve_all(email: str) -> int:
         return cur.rowcount
 
 
+def alert_center_resolve_by_ticker(email: str, ticker: str, signal_type: str = "EXIT_SIGNAL") -> int:
+    """Resolve all active/acknowledged alerts for a given ticker + signal type.
+    Used to auto-clean EXIT_SIGNAL alerts when a position is closed/exited."""
+    normalized = normalize_email(email)
+    tk = ticker.upper().strip()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE alert_center_items
+            SET status = 'RESOLVED', updated_at_ms = ?
+            WHERE email = ? AND signal = ? AND status IN ('ACTIVE', 'ACKNOWLEDGED')
+              AND json_extract(meta, '$.ticker') = ?
+            """,
+            (int(time.time() * 1000), normalized, signal_type, tk),
+        )
+        return cur.rowcount
+
+
 def alert_center_append_note(email: str, alert_id: str, text: str) -> bool:
     normalized = normalize_email(email)
     aid = str(alert_id).strip()

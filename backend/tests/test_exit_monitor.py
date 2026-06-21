@@ -13,15 +13,15 @@ import storage
 
 class TestHeldPositions(unittest.TestCase):
     def setUp(self):
-        self._orig_active = storage.list_active_trades_open
+        self._orig_active_today = storage.list_active_trades_open_opened_today_et
         self._orig_state = storage.get_user_state
 
     def tearDown(self):
-        storage.list_active_trades_open = self._orig_active
+        storage.list_active_trades_open_opened_today_et = self._orig_active_today
         storage.get_user_state = self._orig_state
 
     def test_active_trade_call_is_long_put_is_short(self):
-        storage.list_active_trades_open = lambda e: [
+        storage.list_active_trades_open_opened_today_et = lambda e: [
             {"ticker": "ARM", "side": "CALL", "entry_price": 2.0, "entry_underlying_px": 100.0,
              "contracts": 2, "opened_at_ms": 1_700_000_000_000, "stop": 98.0},
             {"ticker": "MRVL", "side": "PUT", "entry_price": 7.0, "entry_underlying_px": 318.0,
@@ -39,7 +39,7 @@ class TestHeldPositions(unittest.TestCase):
         self.assertEqual(mrvl.entry_price, 318.0)
 
     def test_portfolio_only_open_day_positions(self):
-        storage.list_active_trades_open = lambda e: []
+        storage.list_active_trades_open_opened_today_et = lambda e: []
         storage.get_user_state = lambda e: {"portfolio": [
             {"ticker": "AMD", "status": "open", "source": "day", "bias": "bullish",
              "strategy": "Long Call", "entryPrice": 150.0, "stopLoss": 147.0, "contracts": 3},
@@ -61,7 +61,7 @@ class TestHeldPositions(unittest.TestCase):
         self.assertEqual(nvda.position_type, "swing")
 
     def test_scan_fires_vwap_break_for_held_long(self):
-        storage.list_active_trades_open = lambda e: [
+        storage.list_active_trades_open_opened_today_et = lambda e: [
             {"ticker": "MRVL", "side": "CALL", "entry_price": 2.0, "entry_underlying_px": 100.0,
              "contracts": 1, "opened_at_ms": 1_700_000_000_000, "stop": 96.0},
         ]
@@ -77,12 +77,12 @@ class TestHeldPositions(unittest.TestCase):
         self.assertTrue(any(s.severity == "critical" for s in sigs))
 
     def test_scan_empty_when_no_positions(self):
-        storage.list_active_trades_open = lambda e: []
+        storage.list_active_trades_open_opened_today_et = lambda e: []
         storage.get_user_state = lambda e: {"portfolio": []}
         self.assertEqual(exit_monitor.scan_exit_signals_for_user("a@b.com", snapshot_fn=lambda t: {}), [])
 
     def test_snapshot_failure_skips_ticker(self):
-        storage.list_active_trades_open = lambda e: [
+        storage.list_active_trades_open_opened_today_et = lambda e: [
             {"ticker": "BAD", "side": "CALL", "entry_price": 1.0, "entry_underlying_px": 10.0,
              "contracts": 1, "opened_at_ms": 1_700_000_000_000},
         ]

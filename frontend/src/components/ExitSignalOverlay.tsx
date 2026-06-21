@@ -1,18 +1,40 @@
 /**
  * Global exit-signal overlay. Polls /api/exit-signals on an interval and, for any
- * CRITICAL signal on a held day position, throws a screen-covering modal with an
+ * CRITICAL signal on a held position, throws a screen-covering modal with an
  * audio alert that must be explicitly acknowledged. Mirrors the spec's
  * "impossible to miss" exit alert. Server-side alerts (Alert Center) fire in
  * parallel so the signal isn't lost when the app is closed.
+ *
+ * Acknowledgment is persisted in two layers:
+ *   1. localStorage — survives page refresh within the same session day
+ *   2. POST /api/exit-signals/acknowledge — server-side filter stops re-firing
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertOctagon, X } from 'lucide-react'
-import { fetchExitSignals, type ExitSignal } from '../api/client'
+import { fetchExitSignals, acknowledgeExitSignal, type ExitSignal } from '../api/client'
 import { ROUTES } from '../routing/routes'
 
 const POLL_MS = 45_000
+const ACK_STORAGE_KEY = 'oa_exit_signal_acked'
 const sigKey = (s: ExitSignal) => `${new Date().toISOString().slice(0, 10)}|${s.ticker}|${s.code}`
+
+function loadAckedSet(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ACK_STORAGE_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as string[]
+    return new Set(parsed)
+  } catch {
+    return new Set()
+  }
+}
+
+function saveAckedSet(s: Set<string>) {
+  try {
+    localStorage.setItem(ACK_STORAGE_KEY, JSON.stringify([...s]))
+  } catch { /* ignore quota errors */ }
+}
 
 function beep() {
   try {
@@ -33,7 +55,7 @@ function beep() {
 export default function ExitSignalOverlay() {
   const navigate = useNavigate()
   const [active, setActive] = useState<ExitSignal | null>(null)
-  const ackedRef = useRef<Set<string>>(new Set())
+  const ackedRef = useRef<Set<string>>(loadAckedSet())
 
   const poll = useCallback(async () => {
     let signals: ExitSignal[]
@@ -73,11 +95,18 @@ export default function ExitSignalOverlay() {
   if (!active) return null
 
   const acknowledge = () => {
-    ackedRef.current.add(sigKey(active))
+    const key = sigKey(active)
+    ackedRef.current.add(key)
+    saveAckedSet(ackedRef.current)
+    // Fire-and-forget backend ack so the server stops returning this signal
+    void acknowledgeExitSignal(active.ticker, active.code).catch(() => {})
     setActive(null)
   }
   const closePosition = () => {
-    ackedRef.current.add(sigKey(active))
+    const key = sigKey(active)
+    ackedRef.current.add(key)
+    saveAckedSet(ackedRef.current)
+    void acknowledgeExitSignal(active.ticker, active.code).catch(() => {})
     setActive(null)
     navigate(ROUTES.positions ?? '/positions')
   }

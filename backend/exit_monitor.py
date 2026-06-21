@@ -59,10 +59,14 @@ def _minutes_to_close(now: Optional[datetime] = None) -> float:
 
 
 def held_positions_for_user(email: str) -> list[HeldPosition]:
-    """Open active_trades + open portfolio positions (day + swing) → HeldPosition list."""
+    """Open active_trades (opened today ET only) + open portfolio positions (day + swing) → HeldPosition list.
+
+    Active trades are filtered to today's ET calendar date to prevent stale rows
+    from prior sessions (never explicitly exited) from generating phantom exit signals.
+    """
     out: list[HeldPosition] = []
 
-    for t in storage.list_active_trades_open(email):
+    for t in storage.list_active_trades_open_opened_today_et(email):
         entry_under = _num(t.get("entry_underlying_px")) or _num(t.get("entry_price")) or 0.0
         stop = _num(t.get("stop_price")) or _num(t.get("stop")) or _num(t.get("stopLoss"))
         target = _num(t.get("target_price")) or _num(t.get("target")) or _num(t.get("target1"))

@@ -37,6 +37,7 @@ from storage import (
     alert_center_list,
     alert_center_resolve,
     alert_center_resolve_all,
+    alert_center_resolve_by_ticker,
     ensure_demo_alert_center_rows,
     get_alert_center_summary,
     get_journal_entries,
@@ -1795,6 +1796,11 @@ def post_portfolio_close(body: PortfolioCloseBody, auth_email: str = Depends(req
                 break
     except Exception:  # noqa: BLE001
         log.warning("journal close-sync failed for %s / %s", email, closed_pos.get("ticker"))
+    # Auto-resolve EXIT_SIGNAL alerts for this ticker
+    try:
+        alert_center_resolve_by_ticker(email, str(closed_pos.get("ticker") or ""))
+    except Exception:  # noqa: BLE001
+        pass
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
 
 
@@ -1813,14 +1819,22 @@ def post_portfolio_remove(body: PortfolioRemoveBody, auth_email: str = Depends(r
     state = get_user_state(email)
     port = list(state.get("portfolio") or [])
     found = False
+    _removed_ticker = ""
     for p in port:
         if isinstance(p, dict) and str(p.get("id")) == body.id:
+            _removed_ticker = str(p.get("ticker") or "")
             port.remove(p)
             found = True
             break
     if not found:
         raise HTTPException(status_code=404, detail="Position not found")
     saved = save_user_state(email, state.get("watchlist") or [], port)
+    # Auto-resolve EXIT_SIGNAL alerts for this ticker
+    if _removed_ticker:
+        try:
+            alert_center_resolve_by_ticker(email, _removed_ticker)
+        except Exception:  # noqa: BLE001
+            pass
     return api_envelope({"ok": True, "portfolio": saved.get("portfolio")})
 
 

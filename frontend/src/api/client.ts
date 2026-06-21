@@ -519,6 +519,10 @@ export const fetchExitSignals = async (): Promise<ExitSignal[]> => {
   return data.signals ?? []
 }
 
+export const acknowledgeExitSignal = async (ticker: string, code: string): Promise<void> => {
+  await api.post('/exit-signals/acknowledge', { ticker, code })
+}
+
 export const enterActiveTrade = async (body: {
   ticker: string
   side: 'CALL' | 'PUT'
