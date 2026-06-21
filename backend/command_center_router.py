@@ -1173,6 +1173,129 @@ def _float_or(x: Any, default: float = 0.0) -> float:
         return default
 
 
+# ── Sector + P&L aggregation helpers (Dashboard tab) ──────────────────────────
+
+_TICKER_SECTOR_MAP: dict[str, str] | None = None
+
+def _load_ticker_sector_map() -> dict[str, str]:
+    global _TICKER_SECTOR_MAP
+    if _TICKER_SECTOR_MAP is not None:
+        return _TICKER_SECTOR_MAP
+    import json as _json
+    from pathlib import Path as _Path
+    try:
+        p = _Path(__file__).with_name("data") / "ticker_universe.json"
+        data = _json.loads(p.read_text())
+        _TICKER_SECTOR_MAP = {item["symbol"].upper(): item.get("sector", "Other") for item in data if item.get("symbol")}
+    except Exception:
+        _TICKER_SECTOR_MAP = {}
+    return _TICKER_SECTOR_MAP
+
+
+def _sector_for_ticker(ticker: str) -> str:
+    sm = _load_ticker_sector_map()
+    return sm.get(ticker.upper().strip(), "Other")
+
+
+def _aggregate_pnl_by_sector(open_pos: list, closed: list, per_position_pnl: dict) -> list[dict]:
+    """Aggregate realized + unrealized P&L by sector."""
+    sector_data: dict[str, dict] = {}
+    for p in closed:
+        if not isinstance(p, dict):
+            continue
+        t = str(p.get("ticker", "")).upper()
+        sec = _sector_for_ticker(t)
+        rpn = _float_or(p.get("realized_pnl"), 0.0)
+        entry = sector_data.setdefault(sec, {"sector": sec, "realized_pnl": 0.0, "unrealized_pnl": 0.0, "open_count": 0, "closed_count": 0, "capital": 0.0})
+        entry["realized_pnl"] += rpn
+        entry["closed_count"] += 1
+    for p in open_pos:
+        if not isinstance(p, dict):
+            continue
+        t = str(p.get("ticker", "")).upper()
+        sec = _sector_for_ticker(t)
+        pid = str(p.get("id", ""))
+        upn = 0.0
+        if pid and pid in per_position_pnl:
+            upn = _float_or(per_position_pnl[pid].get("pnl"), 0.0)
+        cx = _float_or(p.get("capital_at_risk"), 0.0)
+        if cx <= 0 and p.get("max_loss") is not None:
+            cx = abs(_float_or(p.get("max_loss"), 0.0)) * max(_float_or(p.get("contracts"), 1.0), 1.0) * 100.0
+        if _is_stock_position(p):
+            cx = _float_or(p.get("entryPrice"), 0.0) * max(_float_or(p.get("shares"), 1.0), 1.0)
+        entry = sector_data.setdefault(sec, {"sector": sec, "realized_pnl": 0.0, "unrealized_pnl": 0.0, "open_count": 0, "closed_count": 0, "capital": 0.0})
+        entry["unrealized_pnl"] += upn
+        entry["open_count"] += 1
+        entry["capital"] += cx
+    out = []
+    for sec, d in sector_data.items():
+        out.append({
+            "sector": sec,
+            "realized_pnl": round(d["realized_pnl"], 2),
+            "unrealized_pnl": round(d["unrealized_pnl"], 2),
+            "total_pnl": round(d["realized_pnl"] + d["unrealized_pnl"], 2),
+            "open_count": d["open_count"],
+            "closed_count": d["closed_count"],
+            "capital": round(d["capital"], 2),
+        })
+    out.sort(key=lambda x: x["total_pnl"], reverse=True)
+    return out
+
+
+def _aggregate_pnl_by_period(closed: list) -> list[dict]:
+    """Aggregate realized P&L by time period (week buckets for last 8 weeks)."""
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    buckets: dict[str, float] = {}
+    for i in range(8, -1, -1):
+        wk = now - timedelta(weeks=i)
+        label = wk.strftime("W%U")
+        buckets[label] = 0.0
+    for p in closed:
+        if not isinstance(p, dict):
+            continue
+        exit_date = p.get("exitDate") or p.get("exit_date")
+        if not exit_date:
+            continue
+        try:
+            ed = datetime.fromisoformat(str(exit_date).split("T")[0])
+        except (TypeError, ValueError):
+            continue
+        rpn = _float_or(p.get("realized_pnl"), 0.0)
+        label = ed.strftime("W%U")
+        if label in buckets:
+            buckets[label] += rpn
+        else:
+            buckets[label] = buckets.get(label, 0.0) + rpn
+    return [{"label": k, "pnl": round(v, 2)} for k, v in buckets.items()]
+
+
+def _aggregate_pnl_by_strategy(closed: list) -> list[dict]:
+    """Aggregate realized P&L by strategy type."""
+    strat_data: dict[str, dict] = {}
+    for p in closed:
+        if not isinstance(p, dict):
+            continue
+        strat = str(p.get("strategy", "")) or "Unknown"
+        rpn = _float_or(p.get("realized_pnl"), 0.0)
+        entry = strat_data.setdefault(strat, {"strategy": strat, "pnl": 0.0, "count": 0, "wins": 0})
+        entry["pnl"] += rpn
+        entry["count"] += 1
+        if rpn > 0:
+            entry["wins"] += 1
+    out = []
+    for strat, d in strat_data.items():
+        out.append({
+            "strategy": strat,
+            "pnl": round(d["pnl"], 2),
+            "count": d["count"],
+            "wins": d["wins"],
+            "win_rate": round(d["wins"] / d["count"] * 100, 1) if d["count"] > 0 else 0.0,
+        })
+    out.sort(key=lambda x: x["pnl"], reverse=True)
+    return out
+
+
 def _portfolio_position_row(p: dict[str, Any], *, closed: bool) -> dict[str, Any]:
     is_stock = _is_stock_position(p)
     contracts = _float_or(p.get("contracts"), 0.0)
@@ -1461,6 +1584,10 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
             "note": "Theta estimates require live greeks — not computed here.",
         },
     }
+    # ── Sector + P&L aggregations for Dashboard tab ──────────────────────
+    sector_pnl = _aggregate_pnl_by_sector(open_pos, closed, pnl_data.get("per_position", {}))
+    pnl_by_period = _aggregate_pnl_by_period(closed)
+    pnl_by_strategy = _aggregate_pnl_by_strategy(closed)
 
     market_snapshot = _fetch_market_snapshot()
 
@@ -1477,6 +1604,9 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "per_position_pnl":      pnl_data.get("per_position", {}),
         "ai_analyses":           ai_analyses,
         "stock_analyses":        stock_analyses,
+        "sector_pnl":            sector_pnl,
+        "pnl_by_period":         pnl_by_period,
+        "pnl_by_strategy":       pnl_by_strategy,
     }
 
 

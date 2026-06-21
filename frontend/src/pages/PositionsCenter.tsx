@@ -36,8 +36,10 @@ import {
   getPositionCategoryClass,
 } from '../utils/semanticTrading'
 import * as XLSX from 'xlsx'
+import PositionsDashboardTab from '../components/PositionsDashboardTab'
 
 const TABS = [
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'all',    label: 'All Positions' },
   { id: 'open',   label: 'Open Positions' },
   { id: 'closed', label: 'Closed Positions' },
@@ -1473,7 +1475,8 @@ function KpiCard({
 export default function PositionsCenter() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigateRouter = useNavigate()
-  const { positionsTab, navigatePositionsTab, navigate, portfolio, accountSize, portfolioRefreshKey, closePosition, updatePortfolioPosition, removeFromPortfolio, addManualPosition, canAccessPage } = useApp()
+  const { positionsTab, navigatePositionsTab, navigate, portfolio, accountSize, portfolioRefreshKey, closePosition, updatePortfolioPosition, removeFromPortfolio, addManualPosition, canAccessPage, theme } = useApp()
+  const isDark = theme !== 'light'
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<Record<string, unknown>> | null>(null)
@@ -1802,6 +1805,7 @@ export default function PositionsCenter() {
         </div>
       </header>
 
+      {tab !== 'dashboard' && (
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         {/* 1. Contract Results */}
         <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
@@ -1854,6 +1858,7 @@ export default function PositionsCenter() {
         <KpiCard label="Buying Power" value={fmtUsd(buyingPower)} sub={<span className="text-tertiary">Available</span>} />
         <KpiCard label="Capital in Use" value={fmtUsd(capitalUsed)} sub={<span className="text-tertiary">{utilPct > 0 ? `${utilPct.toFixed(1)}%` : '—'}</span>} />
       </section>
+      )}
 
       {notice && (
         <div className="flex items-center justify-between rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-200">
@@ -1880,6 +1885,7 @@ export default function PositionsCenter() {
               </button>
             ))}
           </div>
+          {tab !== 'dashboard' && (
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm">
               <Filter size={14} className="shrink-0 text-secondary" />
@@ -1917,9 +1923,10 @@ export default function PositionsCenter() {
               </button>
             </label>
           </div>
+          )}
         </div>
 
-        {filterOpen && (
+        {filterOpen && tab !== 'dashboard' && (
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -1972,7 +1979,17 @@ export default function PositionsCenter() {
         )}
       </div>
 
-      {tab === 'stocks' ? (
+      {tab === 'dashboard' ? (
+        <PositionsDashboardTab
+          portfolio={portfolio}
+          sectorPnl={(d.sector_pnl ?? []) as any[]}
+          pnlByPeriod={(d.pnl_by_period ?? []) as any[]}
+          pnlByStrategy={(d.pnl_by_strategy ?? []) as any[]}
+          risk={(d.risk ?? null) as any}
+          summary={summary as any}
+          isDark={isDark}
+        />
+      ) : tab === 'stocks' ? (
         <StocksTabContent
           positions={openPortfolio}
           stockAnalyses={stockAnalyses}
