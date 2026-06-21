@@ -4,8 +4,10 @@
  *
  * Covers both intraday (flat by close) and multi-day hold (overnight runners up to 5 sessions)
  * strategies, reflecting volatile environments where holding 1-5 days captures bigger moves.
+ *
+ * All times are converted from ET (market time) to the user's selected timezone from Settings.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Activity, AlertTriangle, ArrowDown, ArrowUp, BarChart2, Clock, Flame,
   Gauge, Layers, Target, TrendingUp, Shield, Zap, Calendar, Eye, CheckCircle2, XCircle,
@@ -18,8 +20,66 @@ type DtTokens = {
 
 type SubTab = 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes'
 
+const TZ_LABEL: Record<string, string> = {
+  'America/New_York': 'ET',
+  'America/Chicago': 'CT',
+  'America/Denver': 'MT',
+  'America/Los_Angeles': 'PT',
+}
+
+/**
+ * Convert a market-hours time (expressed as minutes from 9:30 ET) to the user's
+ * timezone, returning a formatted "H:MM AM/PM" string.
+ * Market open is always 9:30 AM ET / 4:00 PM ET close — we convert those absolute
+ * wall-clock times to the user's tz.
+ */
+function etTimeToUserTz(etHour: number, etMinute: number, userTz: string): string {
+  // Build a reference date (today) with the ET time, then format in user tz
+  const now = new Date()
+  // Create the date as ET by using America/New_York, then read it in userTz
+  const etDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const userDate = new Date(now.toLocaleString('en-US', { timeZone: userTz }))
+  // Compute the offset difference between ET and user tz in minutes
+  const etOffset = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getTime()
+  const userOffset = new Date(now.toLocaleString('en-US', { timeZone: userTz })).getTime()
+  const diffMinutes = Math.round((userOffset - etOffset) / 60000)
+  // Convert ET time to user time
+  let userHour = etHour
+  let userMinute = etMinute + diffMinutes
+  // Normalize
+  while (userMinute < 0) { userMinute += 60; userHour -= 1 }
+  while (userMinute >= 60) { userMinute -= 60; userHour += 1 }
+  userHour = ((userHour % 24) + 24) % 24
+  const period = userHour < 12 ? 'AM' : 'PM'
+  const displayHour = userHour === 0 ? 12 : userHour > 12 ? userHour - 12 : userHour
+  return `${displayHour}:${String(userMinute).padStart(2, '0')} ${period}`
+}
+
+/** Convert a time range from ET to the user's timezone. */
+function etRangeToUserTz(etStartHour: number, etStartMin: number, etEndHour: number, etEndMin: number, userTz: string): string {
+  return `${etTimeToUserTz(etStartHour, etStartMin, userTz)}–${etTimeToUserTz(etEndHour, etEndMin, userTz)}`
+}
+
+/** Get the short label (ET/CT/MT/PT) for a timezone. */
+function tzLabel(tz: string): string {
+  return TZ_LABEL[tz] || 'local'
+}
+
 export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
   const [subTab, setSubTab] = useState<SubTab>('entry')
+  const [userTz, setUserTz] = useState<string>(() => {
+    try { return localStorage.getItem('oa_timezone') || 'America/New_York' }
+    catch { return 'America/New_York' }
+  })
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tz = (e as CustomEvent<string>).detail
+      if (tz) setUserTz(tz)
+    }
+    window.addEventListener('oa-timezone-changed', handler)
+    return () => window.removeEventListener('oa-timezone-changed', handler)
+  }, [])
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'entry',    label: 'Entry Strategies',    icon: <ArrowUp size={13} /> },
@@ -48,10 +108,10 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
         })}
       </div>
 
-      {subTab === 'entry'    && <EntryStrategies dt={dt} />}
-      {subTab === 'exit'     && <ExitRules dt={dt} />}
+      {subTab === 'entry'    && <EntryStrategies dt={dt} tz={userTz} />}
+      {subTab === 'exit'     && <ExitRules dt={dt} tz={userTz} />}
       {subTab === 'signals'  && <SignalsToWatch dt={dt} />}
-      {subTab === 'timing'   && <TimingPhases dt={dt} />}
+      {subTab === 'timing'   && <TimingPhases dt={dt} tz={userTz} />}
       {subTab === 'risk'     && <RiskManagement dt={dt} />}
       {subTab === 'mistakes' && <CommonMistakes dt={dt} />}
     </div>
@@ -98,7 +158,7 @@ function CheckItem({ text, ok, dt }: { text: string; ok: boolean; dt: DtTokens }
 
 // ─── Entry Strategies ──────────────────────────────────────────────────────────
 
-function EntryStrategies({ dt }: { dt: DtTokens }) {
+function EntryStrategies({ dt, tz }: { dt: DtTokens; tz: string }) {
   return (
     <div>
       <div style={{ fontSize: 12, color: dt.muted, marginBottom: 14, lineHeight: 1.55 }}>
@@ -170,7 +230,7 @@ function EntryStrategies({ dt }: { dt: DtTokens }) {
         <Row label="Green Hold (MEDIUM)" value="50% size · 0.20σ stop · 1.0× R/R min" color={dt.amber} dt={dt} />
         <Row label="Volume Surge (MEDIUM)" value="50% size · 0.20σ stop · 1.0× R/R min" color={dt.amber} dt={dt} />
         <div style={{ marginTop: 8, fontSize: 11, color: dt.red }}>
-          Skip if ≥3 wick failures in prior 10 bars. Skip after 3:00 PM ET.
+          Skip if ≥3 wick failures in prior 10 bars. Skip after {etTimeToUserTz(15, 0, tz)} {tzLabel(tz)}.
         </div>
       </Card>
 
@@ -224,7 +284,7 @@ function EntryStrategies({ dt }: { dt: DtTokens }) {
 
 // ─── Exit Rules ────────────────────────────────────────────────────────────────
 
-function ExitRules({ dt }: { dt: DtTokens }) {
+function ExitRules({ dt, tz }: { dt: DtTokens; tz: string }) {
   return (
     <div>
       <div style={{ fontSize: 12, color: dt.muted, marginBottom: 14, lineHeight: 1.55 }}>
@@ -253,8 +313,8 @@ function ExitRules({ dt }: { dt: DtTokens }) {
       </Card>
 
       <Card dt={dt} title="EOD Exit Timeline" icon={<Clock size={15} />} accent={dt.amber}>
-        <Row label="Normal session" value="Exit by 3:55 PM ET" color={dt.text} dt={dt} />
-        <Row label="Power hour entry" value="Exit by 3:50 PM ET" color={dt.amber} dt={dt} />
+        <Row label="Normal session" value={`Exit by ${etTimeToUserTz(15, 55, tz)} ${tzLabel(tz)}`} color={dt.text} dt={dt} />
+        <Row label="Power hour entry" value={`Exit by ${etTimeToUserTz(15, 50, tz)} ${tzLabel(tz)}`} color={dt.amber} dt={dt} />
         <Row label="EOD closing (last 10 min)" value="EXIT NOW — do not wait" color={dt.red} dt={dt} />
         <div style={{ marginTop: 8, fontSize: 11, color: dt.red, fontStyle: 'italic' }}>
           Never carry an intraday position overnight unless you've consciously decided to hold a runner (see Multi-Day Hold Strategy).
@@ -323,24 +383,26 @@ function SignalsToWatch({ dt }: { dt: DtTokens }) {
 
 // ─── Timing & Phases ───────────────────────────────────────────────────────────
 
-function TimingPhases({ dt }: { dt: DtTokens }) {
+function TimingPhases({ dt, tz }: { dt: DtTokens; tz: string }) {
+  const tl = tzLabel(tz)
   return (
     <div>
       <div style={{ fontSize: 12, color: dt.muted, marginBottom: 14, lineHeight: 1.55 }}>
         The session has distinct phases with different scoring penalties. Timing is critical —
-        the same setup at 10:00 AM is a GO; at 3:50 PM it's an AVOID.
+        the same setup at {etTimeToUserTz(10, 0, tz)} {tl} is a GO; at {etTimeToUserTz(15, 50, tz)} {tl} it's an AVOID.
+        <br/><span style={{ fontSize: 11, color: dt.muted }}>All times shown in your timezone ({tl}). Market hours are 9:30 AM – 4:00 PM ET.</span>
       </div>
 
-      <Card dt={dt} title="Session Phases (ET)" icon={<Clock size={15} />} accent={dt.accent}>
-        <Row label="9:30–10:00 (OPENING)" value="OR forming — no entries until OR set" color={dt.muted} dt={dt} />
-        <Row label="10:00–11:30 (MID_MORNING)" value="Primary breakout window — best entries" color={dt.green} dt={dt} />
-        <Row label="11:30–15:00 (MIDDAY)" value="Lower liquidity — breakout follow-through weaker (−0.25)" color={dt.amber} dt={dt} />
-        <Row label="15:00–15:50 (POWER_HOUR)" value="Size down (−0.5), mandatory EOD exit" color={dt.amber} dt={dt} />
-        <Row label="15:50–16:00 (EOD_CLOSING)" value="EXIT ONLY (−1.0) — no new entries" color={dt.red} dt={dt} />
+      <Card dt={dt} title={`Session Phases (${tl})`} icon={<Clock size={15} />} accent={dt.accent}>
+        <Row label={`${etRangeToUserTz(9, 30, 10, 0, tz)} (OPENING)`} value="OR forming — no entries until OR set" color={dt.muted} dt={dt} />
+        <Row label={`${etRangeToUserTz(10, 0, 11, 30, tz)} (MID_MORNING)`} value="Primary breakout window — best entries" color={dt.green} dt={dt} />
+        <Row label={`${etRangeToUserTz(11, 30, 15, 0, tz)} (MIDDAY)`} value="Lower liquidity — breakout follow-through weaker (−0.25)" color={dt.amber} dt={dt} />
+        <Row label={`${etRangeToUserTz(15, 0, 15, 50, tz)} (POWER_HOUR)`} value="Size down (−0.5), mandatory EOD exit" color={dt.amber} dt={dt} />
+        <Row label={`${etRangeToUserTz(15, 50, 16, 0, tz)} (EOD_CLOSING)`} value="EXIT ONLY (−1.0) — no new entries" color={dt.red} dt={dt} />
       </Card>
 
       <Card dt={dt} title="Opening Range" icon={<Layers size={15} />} accent={dt.violet}>
-        <Row label="OR window" value="First 15 1-minute bars of RTH (9:30–9:45)" color={dt.text} dt={dt} />
+        <Row label="OR window" value={`First 15 1-minute bars of RTH (${etRangeToUserTz(9, 30, 9, 45, tz)})`} color={dt.text} dt={dt} />
         <Row label="Narrow OR (<0.40%)" value="Coiling setup — breakout likely sharp" color={dt.green} dt={dt} />
         <Row label="Wide OR (>1.50%)" value="Chaotic open — levels loose, risk elevated" color={dt.red} dt={dt} />
         <Row label="Valid breakout" value="Bar CLOSES beyond OR + volume spike on same bar" color={dt.text} dt={dt} />
@@ -352,8 +414,8 @@ function TimingPhases({ dt }: { dt: DtTokens }) {
       <Card dt={dt} title="Critical Timing Gates" icon={<AlertTriangle size={15} />} accent={dt.amber}>
         <Row label="< 5 min elapsed" value="No entries — OR not established" color={dt.muted} dt={dt} />
         <Row label="> 45 min after OR break" value="Late to the move — chase risk flagged" color={dt.amber} dt={dt} />
-        <Row label="> 210 bars (~12:30+)" value="Exhausted unless trend day detected" color={dt.amber} dt={dt} />
-        <Row label="> 330 bars (~3:00 PM)" value="Pullback reset detection disabled" color={dt.red} dt={dt} />
+        <Row label={`> 210 bars (~${etTimeToUserTz(12, 30, tz)} ${tl}+)`} value="Exhausted unless trend day detected" color={dt.amber} dt={dt} />
+        <Row label={`> 330 bars (~${etTimeToUserTz(15, 0, tz)} ${tl})`} value="Pullback reset detection disabled" color={dt.red} dt={dt} />
       </Card>
 
       <Card dt={dt} title="Trend Day Exception" icon={<TrendingUp size={15} />} accent={dt.green}>

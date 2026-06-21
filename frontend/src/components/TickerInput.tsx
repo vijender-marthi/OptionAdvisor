@@ -36,6 +36,7 @@ const STRATEGY_MODES: { label: string; sub: string; value: StrategyMode }[] = [
   { label: 'All Strategies',  sub: 'Engine picks best fit',           value: 'all'               },
   { label: 'Long Options',    sub: 'Long calls, puts, spreads',       value: 'long_only'         },
   { label: 'Credit Spreads',  sub: 'Defined-risk spreads only',       value: 'credit_only'       },
+  { label: 'Calendar Spreads',sub: 'Sell near-term / buy longer-term',value: 'calendar_only'     },
   { label: 'Straddles',       sub: 'Buy vol · ATM call + put',        value: 'straddle_only'     },
   { label: 'Short / Covered', sub: 'Naked short & covered plays',     value: 'short_or_covered'  },
 ]

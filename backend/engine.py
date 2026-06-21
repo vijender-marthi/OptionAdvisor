@@ -1722,8 +1722,9 @@ def run_engine(
     # Naked / covered single-leg sells (Short Put, Short Call, Covered Call, Covered Put)
     BUILD_SHORT_COVERED = strategy_mode in ('all', 'short_or_covered')
     BUILD_STRADDLE_ONLY = strategy_mode == 'straddle_only'
+    BUILD_CALENDAR_ONLY = strategy_mode == 'calendar_only'
     # In dedicated modes, relax IV gates so users always see their preferred type
-    LONG_IV_OK   = LOW_IV  or strategy_mode in ('long_only', 'straddle_only')
+    LONG_IV_OK   = LOW_IV  or strategy_mode in ('long_only', 'straddle_only', 'calendar_only')
     CREDIT_IV_OK = HIGH_IV or strategy_mode in ('credit_only', 'short_or_covered')
 
     # Near-money strikes with a usable mid (NaN-safe — matches get_mid semantics).
@@ -1869,7 +1870,8 @@ def run_engine(
     # Calendar (horizontal) spread: neutral, favored in low IV. SELL near-term /
     # BUY longer-term at the same ATM strike. Built when there is no directional
     # conviction (the classic calendar use-case). Back leg ~3–8 weeks beyond front.
-    if BUILD_LONG and NEUTRAL and LONG_IV_OK:
+    # In calendar_only mode: always build regardless of bias (user explicitly requesting calendars).
+    if (BUILD_LONG and NEUTRAL and LONG_IV_OK) or BUILD_CALENDAR_ONLY:
         front_dte = days_to_expiry(exp_debit)
         exp_back = pick_expiry_by_dte(option_dates, front_dte + 21, front_dte + 60)
         if exp_back and exp_back != exp_debit:

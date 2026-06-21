@@ -87,7 +87,7 @@ function normalizeLastAnalysisRequest(raw: unknown): LastAnalysisRequest | null 
   const weeksOut = Number(value.weeksOut)
   const strategyMode = value.strategyMode ?? 'all'
   if (!ticker || !Number.isFinite(weeksOut) || !VALID_SAVED_WEEKS.has(weeksOut)) return null
-  if (!['all', 'long_only', 'credit_only', 'short_or_covered', 'straddle_only'].includes(strategyMode)) return null
+  if (!['all', 'long_only', 'credit_only', 'short_or_covered', 'straddle_only', 'calendar_only'].includes(strategyMode)) return null
   let chainExpiry: string | undefined
   const ceRaw = value.chainExpiry
   if (typeof ceRaw === 'string' && ceRaw.trim()) {

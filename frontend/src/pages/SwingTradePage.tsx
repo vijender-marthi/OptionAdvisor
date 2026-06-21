@@ -15,6 +15,7 @@ import {
 } from '../utils/fibConfluence'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
 import UnifiedVerdictCard from '../components/UnifiedVerdictCard'
+import SwingTradeStrategiesTab from '../components/SwingTradeStrategiesTab'
 import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { useApp } from '../contexts/AppContext'
@@ -473,6 +474,7 @@ export default function SwingTradePage() {
   }, [result, addManualPosition])
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'overview' | 'strategies'>('overview')
 
   return (
     <div className="swing-trade-page min-h-screen p-4 md:p-6" style={{ background: isDark ? '#0A0C10' : '#F3F4F6', color: st.text }}>
@@ -657,7 +659,31 @@ export default function SwingTradePage() {
         {/* Right: Content */}
         <div className="flex-1 min-w-0 space-y-4">
 
+        {/* Tab strip */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: `1px solid ${st.border}` }}>
+          {([
+            { id: 'overview' as const,   label: 'Overview',   icon: <Activity size={14} />,   accent: st.accent },
+            { id: 'strategies' as const, label: 'Strategies', icon: <BarChart2 size={14} />,  accent: st.violet },
+          ]).map(({ id, label, icon, accent }) => {
+            const active = activeTab === id
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
+                fontSize: 13, fontWeight: active ? 700 : 500,
+                color: active ? accent : st.muted, background: 'none', border: 'none',
+                borderBottom: active ? `2px solid ${accent}` : '2px solid transparent',
+                marginBottom: -1, cursor: 'pointer', transition: 'color 0.15s',
+              }}>{icon} {label}</button>
+            )
+          })}
+        </div>
 
+        {activeTab === 'strategies' && (
+          <SwingTradeStrategiesTab st={st} />
+        )}
+
+        {activeTab === 'overview' && (
+        <>
 
         {/* Error */}
         {error && (
@@ -1157,6 +1183,8 @@ export default function SwingTradePage() {
       {/* Step-by-step walkthrough */}
       {unified && result && (
         <SwingTradeWalkthrough unified={unified} result={result} />
+      )}
+      </>
       )}
 
       {/* Add to Positions modal */}
