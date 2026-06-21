@@ -17,6 +17,7 @@ import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import EntryWindowBanner from '../components/EntryWindowBanner'
 import TrendDayBanner from '../components/TrendDayBanner'
+import DayTradeStrategiesTab from '../components/DayTradeStrategiesTab'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -267,6 +268,7 @@ export default function DayTradePage() {
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const [myTickers, setMyTickers] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<'overview' | 'strategies'>('overview')
   const [myTickerFull, setMyTickerFull] = useState<MyTickerEntry[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
@@ -964,6 +966,31 @@ export default function DayTradePage() {
         {/* Right: Content */}
         <div className="flex-1 min-w-0 space-y-4" style={{ maxWidth: '100%' }}>
 
+        {/* Tab strip */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: `1px solid ${dt.border}` }}>
+          {([
+            { id: 'overview' as const,   label: 'Overview',   icon: <Activity size={14} />,   accent: dt.accent },
+            { id: 'strategies' as const, label: 'Strategies', icon: <BarChart2 size={14} />,  accent: dt.violet },
+          ]).map(({ id, label, icon, accent }) => {
+            const active = activeTab === id
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
+                fontSize: 13, fontWeight: active ? 700 : 500,
+                color: active ? accent : dt.muted, background: 'none', border: 'none',
+                borderBottom: active ? `2px solid ${accent}` : '2px solid transparent',
+                marginBottom: -1, cursor: 'pointer', transition: 'color 0.15s',
+              }}>{icon} {label}</button>
+            )
+          })}
+        </div>
+
+        {activeTab === 'strategies' && (
+          <DayTradeStrategiesTab dt={dt} />
+        )}
+
+        {activeTab === 'overview' && (
+        <>
         {error && (
         <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 px-4 py-3 text-sm text-rose-200 flex gap-2">
           <ShieldAlert className="shrink-0 mt-0.5" size={16} />
@@ -2105,6 +2132,8 @@ export default function DayTradePage() {
           </ul>
         </div>
       </details>
+      </>
+      )}
 
       {portfolioOpen && result && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal>
