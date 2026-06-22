@@ -1166,9 +1166,9 @@ function dayScenarios(t){
   const bearStop = t.orMid;
   const bearR = bearStop-bearEntry;
   return {
-    bull:{trigger:`5m close above prior-day ORH ${fmt(t.orHigh)}`, entry:bullEntry, stop:bullStop,
+    bull:{trigger:`5m close above prior-day ORH ${fmt(t.orHigh)} — AND price above VWAP`, entry:bullEntry, stop:bullStop,
       t1:bullEntry+bullR, t2:bullEntry+2*bullR, rr:"1 : 2", prob:p.bull},
-    bear:{trigger:`5m close below prior-day ORL ${fmt(t.orLow)}`, entry:bearEntry, stop:bearStop,
+    bear:{trigger:`5m close below prior-day ORL ${fmt(t.orLow)} — AND price below VWAP`, entry:bearEntry, stop:bearStop,
       t1:bearEntry-bearR, t2:bearEntry-2*bearR, rr:"1 : 2", prob:p.bear},
     flat:{trigger:`No 5m close beyond prior-day ORH ${fmt(t.orHigh)} or ORL ${fmt(t.orLow)} by 7:30`, prob:p.flat}
   };
@@ -1205,13 +1205,37 @@ function dayScenTab(){
       <div class="scen-title pos">BULL CASE</div><div class="scen-sub">Structure flips to HL / HH</div>
       ${scenRows(s.bull,true)}
       ${probBar(s.bull.prob,"var(--green)")}
-      <div class="action-box action-bull"><b>If this opens above prior-day ORH:</b> do NOT chase. Wait for the pullback that retests prior-day ORH ${fmt(t.orHigh)} as support and holds. Chasing the open print is paying the worst price of the day.</div>
+      <div class="action-box action-bull">
+        <b>All 5 must be true before entering long:</b>
+        <div style="margin-top:7px;font-size:11.5px;line-height:1.9">
+          <b>1. No gap veto:</b> If tomorrow opens 2%+ above ${fmt(t.orHigh)}, skip this trigger entirely — use tomorrow's own OR instead.<br>
+          <b>2. 6:45 VWAP lean:</b> VWAP must be above OR Mid at 6:45 (bull lean locked). If VWAP is below OR Mid, this trade is off regardless of the level break.<br>
+          <b>3. VWAP position at entry:</b> Price must be above VWAP when the 5m candle closes above ${fmt(t.orHigh)}. Above prior-day ORH but below VWAP = gap fade = SHORT setup, not long.<br>
+          <b>4. Volume:</b> The breakout candle must have above-average volume (vol ratio &gt; 1.0). A low-volume break is a head-fake.<br>
+          <b>5. Market alignment:</b> SPY/QQQ must not be in a hard bear lean. A lone stock long against the broad market needs a much stronger setup.
+        </div>
+        <div style="margin-top:9px;padding-top:8px;border-top:1px dashed rgba(63,185,80,.3);font-size:11.5px;color:var(--muted)">
+          <b style="color:var(--text)">Gap-up scenario (e.g. ARM +6%):</b> Opens well above prior-day ORH, then trades below VWAP all day → that is a gap fade short, not a long. Drop the bull bias from last night the moment price cannot hold above VWAP.
+        </div>
+      </div>
     </div>
     <div class="scen-card scen-bear">
       <div class="scen-title neg">BEAR CASE</div><div class="scen-sub">Structure continues LL / LH</div>
       ${scenRows(s.bear,false)}
       ${probBar(s.bear.prob,"var(--red)")}
-      <div class="action-box action-bear"><b>If this opens below prior-day ORL:</b> do NOT market-sell into the hole. Wait for the weak bounce that fails at prior-day ORL ${fmt(t.orLow)} from below, then enter on the rejection.</div>
+      <div class="action-box action-bear">
+        <b>All 5 must be true before entering short:</b>
+        <div style="margin-top:7px;font-size:11.5px;line-height:1.9">
+          <b>1. No gap veto:</b> If tomorrow opens 2%+ below ${fmt(t.orLow)}, skip this trigger — use tomorrow's own OR instead.<br>
+          <b>2. 6:45 VWAP lean:</b> VWAP must be below OR Mid at 6:45 (bear lean locked). If VWAP is above OR Mid, this trade is off.<br>
+          <b>3. VWAP position at entry:</b> Price must be below VWAP when the 5m candle closes below ${fmt(t.orLow)}. Below prior-day ORL but above VWAP = exhaustion bounce = potentially long, not short.<br>
+          <b>4. Volume:</b> The breakdown candle must have above-average volume (vol ratio &gt; 1.0). A low-volume break is a trap.<br>
+          <b>5. Market alignment:</b> SPY/QQQ should also be in a bear lean. Shorting a stock in a rising market is fighting the tide.
+        </div>
+        <div style="margin-top:9px;padding-top:8px;border-top:1px dashed rgba(248,81,73,.3);font-size:11.5px;color:var(--muted)">
+          <b style="color:var(--text)">Gap-down scenario:</b> Opens well below prior-day ORL, then bounces above VWAP → that is a gap-fill long, not a short. Do not market-sell into the hole.
+        </div>
+      </div>
     </div>
     <div class="scen-card scen-flat">
       <div class="scen-title neu">FLAT / CHOP</div><div class="scen-sub">Range day — both sides get chopped</div>
@@ -1227,7 +1251,7 @@ function dayScenTab(){
       `Calculate <b>OR Mid = (ORH + ORL) ÷ 2</b>.`,
       `Locate <b>VWAP</b> relative to OR Mid.`,
       `VWAP <b>above</b> OR Mid → bull lean. VWAP <b>below</b> → bear lean. This is the bias — lock it.`,
-      `Wait for a <b>5m close</b> through ORH (bull) or ORL (bear). A wick through the level is not a break.`,
+      `Wait for a <b>5m close</b> through ORH (bull) or ORL (bear) <b>with price also on the correct side of VWAP</b>. A wick through the level — or a close through the level while on the wrong side of VWAP — is not a valid trigger.`,
       `<b>Execute the matching scenario</b> — entry, stop, targets as written. No break by 7:30 → flat case → no trade.`
     ].map((txt,i,arr)=>`
       <div class="tree-step"><div class="tree-n">${i+1}</div><div class="tree-node">${txt}</div></div>

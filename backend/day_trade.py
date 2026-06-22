@@ -2932,11 +2932,27 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     pre_mkt_p   = info.get("preMarketPrice")
     gap_pct: Optional[float] = None
     gap_fill_risk = False
+    prior_day_high: Optional[float] = None
+    prior_day_low: Optional[float] = None
+    gap_above_prior_high = False
+    gap_below_prior_low = False
     if prior_close and float(prior_close) > 0:
         open_price = float(session["Open"].iloc[0])
         gap_pct = round((open_price / float(prior_close) - 1.0) * 100, 3)
         # Gap fill: price has retraced back near prior close.
         gap_fill_risk = abs(last / float(prior_close) - 1.0) * 100 < GAP_FILL_PROXIMITY and abs(gap_pct) >= GAP_SIGNIFICANT_PCT
+        # Prior day high/low from daily bars (second-to-last row = prior session)
+        try:
+            _pd_bars = bar_cache.get_history(t, period="5d", interval="1d", force_refresh=_fr)
+            if _pd_bars is not None and len(_pd_bars) >= 2:
+                prior_day_high = float(_pd_bars["High"].iloc[-2])
+                prior_day_low  = float(_pd_bars["Low"].iloc[-2])
+                if prior_day_high > 0:
+                    gap_above_prior_high = open_price > prior_day_high and gap_pct is not None and gap_pct > 0
+                if prior_day_low > 0:
+                    gap_below_prior_low = open_price < prior_day_low and gap_pct is not None and gap_pct < 0
+        except Exception:
+            pass
 
     # Volume spike baseline: use median (more robust than mean against mid-session bursts).
     # Computed BEFORE rvol so the synthetic fallback can use avg_vol.
@@ -3451,6 +3467,42 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 _g("gap", bear_delta=0.5)
                 body.append(f"Gap down {gap_pct:.2f}% from prior close — bearish pre-market context.")
 
+    # ── Gap vs prior day high/low — gap-fade detection ──────────────────────
+    # When price gaps above prior day high but trades below VWAP, the gap is
+    # failing. This is a SHORT setup (gap fade), not a long. The simple logic
+    # of "buy above prior day high" is dangerous here because the move already
+    # happened at the open — chasing it is statistically losing.
+    if gap_above_prior_high and prior_day_high and prior_day_high > 0:
+        _below_vwap_now = vwap_last > 0 and last < vwap_last
+        if _below_vwap_now:
+            # Gap above prior high but BELOW VWAP = gap fade → bearish
+            _g("gap", bear_delta=1.0)
+            body.append(
+                f"⚠️ Gap-fade signal: opened above prior-day high (${prior_day_high:.2f}) but price is now "
+                f"below VWAP (${vwap_last:.2f}). The gap is failing — this is a SHORT setup (gap fade), "
+                f"NOT a long. Do NOT buy above prior-day high when price cannot hold VWAP."
+            )
+        else:
+            body.append(
+                f"Gap above prior-day high (${prior_day_high:.2f}) and holding above VWAP — "
+                f"prior-day high is now support. Long valid only if VWAP holds."
+            )
+    if gap_below_prior_low and prior_day_low and prior_day_low > 0:
+        _above_vwap_now = vwap_last > 0 and last > vwap_last
+        if _above_vwap_now:
+            # Gap below prior low but ABOVE VWAP = gap-fill long
+            _g("gap", bull_delta=1.0)
+            body.append(
+                f"⚠️ Gap-fill signal: opened below prior-day low (${prior_day_low:.2f}) but price is now "
+                f"above VWAP (${vwap_last:.2f}). The gap is filling — this is a LONG setup (gap fill), "
+                f"NOT a short. Do not short into the hole when price is reclaiming VWAP."
+            )
+        else:
+            body.append(
+                f"Gap below prior-day low (${prior_day_low:.2f}) and still below VWAP — "
+                f"gap holding, bearish. Short valid only if VWAP rejection confirms."
+            )
+
     # ── OR width (or_width group) ──────────────────────────────────────────
     if or_width_label == "NARROW":
         body.append(
@@ -3920,6 +3972,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "rvol": rvol,
         "gap_pct": gap_pct,
         "gap_fill_risk": gap_fill_risk,
+        "prior_day_high": prior_day_high,
+        "prior_day_low": prior_day_low,
+        "gap_above_prior_high": gap_above_prior_high,
+        "gap_below_prior_low": gap_below_prior_low,
         "session_phase": session_phase,
         "session_minutes_elapsed": session_minutes_elapsed,
         "bar_data_age_minutes": _bar_age_minutes,

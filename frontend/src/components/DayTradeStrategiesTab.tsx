@@ -18,7 +18,7 @@ type DtTokens = {
   green: string; red: string; amber: string; accent: string; violet: string
 }
 
-type SubTab = 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes'
+type SubTab = 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes' | 'gap'
 
 const TZ_LABEL: Record<string, string> = {
   'America/New_York': 'ET',
@@ -83,6 +83,7 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'entry',    label: 'Entry Strategies',    icon: <ArrowUp size={13} /> },
+    { id: 'gap',      label: 'Gap Scenarios',       icon: <Flame size={13} /> },
     { id: 'exit',     label: 'Exit Rules',          icon: <Target size={13} /> },
     { id: 'signals',  label: 'Signals to Watch',    icon: <Eye size={13} /> },
     { id: 'timing',   label: 'Timing & Phases',     icon: <Clock size={13} /> },
@@ -109,6 +110,7 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
       </div>
 
       {subTab === 'entry'    && <EntryStrategies dt={dt} tz={userTz} />}
+      {subTab === 'gap'      && <GapScenarios dt={dt} />}
       {subTab === 'exit'     && <ExitRules dt={dt} tz={userTz} />}
       {subTab === 'signals'  && <SignalsToWatch dt={dt} />}
       {subTab === 'timing'   && <TimingPhases dt={dt} tz={userTz} />}
@@ -278,6 +280,172 @@ function EntryStrategies({ dt, tz }: { dt: DtTokens; tz: string }) {
           <CheckItem text="Set a mental stop for the gap open — if it gaps below stop, exit at open" ok={true} dt={dt} />
         </div>
       </Card>
+    </div>
+  )
+}
+
+// ─── Gap Scenarios ────────────────────────────────────────────────────────────
+
+function GapScenarios({ dt }: { dt: DtTokens }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: dt.muted, marginBottom: 14, lineHeight: 1.55 }}>
+        Gap scenarios are the #1 source of avoidable losses for day traders. The engine now tracks
+        <strong style={{ color: dt.text }}> prior day high/low</strong> and detects gap-fade patterns.
+        The simple logic of "buy when 5m closes above prior day high" is <strong style={{ color: dt.red }}>dangerous</strong> —
+        the move already happened at the open. What matters is whether the gap <em>holds</em> or <em>fades</em>.
+      </div>
+
+      {/* Scenario 1: Gap-Up Above Prior Day High — Holds (Bullish) */}
+      <Card dt={dt} title="Gap-Up Above Prior Day High — HOLDS (Long)" icon={<ArrowUp size={15} />} accent={dt.green}>
+        <Pill text="Valid long" color={dt.green} bg={`${dt.green}15`} />
+        <div style={{ marginTop: 8 }}>
+          <CheckItem text="Stock gaps up above prior day high at the open" ok={true} dt={dt} />
+          <CheckItem text="Price HOLDS above VWAP after the first 15 minutes (OR window)" ok={true} dt={dt} />
+          <CheckItem text="Prior day high now acts as SUPPORT — price bounces off it" ok={true} dt={dt} />
+          <CheckItem text="Volume is expanding (≥1.55× median) — not a thin gap" ok={true} dt={dt} />
+          <CheckItem text="SPY/QQQ are aligned (both green or at least not down >0.5%)" ok={true} dt={dt} />
+          <CheckItem text="Entry: on the first 5m green candle that holds above VWAP after OR" ok={true} dt={dt} />
+          <CheckItem text="Stop: below VWAP or prior day high (whichever is closer)" ok={true} dt={dt} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <Row label="Example" value="ARM gaps from $422 prior high to $449 open, holds $445+ above VWAP all day" color={dt.text} dt={dt} />
+          <Row label="R/R" value="T1 = ORH + 50% OR range, T2 = ORH + 100% OR range" color={dt.green} dt={dt} />
+        </div>
+      </Card>
+
+      {/* Scenario 2: Gap-Up Above Prior Day High — FADES (Short!) */}
+      <Card dt={dt} title="Gap-Up Above Prior Day High — FADES (SHORT!)" icon={<ArrowDown size={15} />} accent={dt.red}>
+        <Pill text="Gap fade short" color={dt.red} bg={`${dt.red}15`} />
+        <div style={{ marginTop: 8, marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: `${dt.red}10`, border: `1px solid ${dt.red}30` }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: dt.red }}>THIS IS THE ARM SCENARIO</span>
+          <span style={{ fontSize: 11, color: dt.text }}>: Prior ORH $422 → gap to $439-$449 → price stays BELOW VWAP all day. The gap is failing. Buying long here is chasing a failed gap — statistically losing.</span>
+        </div>
+        <CheckItem text="Stock gaps up above prior day high at the open" ok={true} dt={dt} />
+        <CheckItem text="Price drops BELOW VWAP within the first 15-30 minutes" ok={true} dt={dt} />
+        <CheckItem text="Price stays below VWAP — cannot reclaim it" ok={true} dt={dt} />
+        <CheckItem text="Prior day high acts as RESISTANCE — price rejected when testing it" ok={true} dt={dt} />
+        <CheckItem text="Volume may be high but selling pressure dominates (red candles, lower highs)" ok={true} dt={dt} />
+        <CheckItem text="Entry: on 2 consecutive red 5m candles below VWAP (trigger detector: VWAP_BREAK)" ok={true} dt={dt} />
+        <CheckItem text="Stop: above VWAP or the session high (whichever is tighter)" ok={true} dt={dt} />
+        <div style={{ marginTop: 8 }}>
+          <Row label="Engine signal" value="⚠️ Gap-fade: bear_delta +1.0 (double weight)" color={dt.red} dt={dt} />
+          <Row label="Targets" value="T1 = prior close, T2 = prior day low" color={dt.green} dt={dt} />
+        </div>
+      </Card>
+
+      {/* Scenario 3: Gap-Down Below Prior Day Low — Bounces (Long) */}
+      <Card dt={dt} title="Gap-Down Below Prior Day Low — BOUNCES (Long)" icon={<ArrowUp size={15} />} accent={dt.green}>
+        <Pill text="Gap-fill long" color={dt.green} bg={`${dt.green}15`} />
+        <div style={{ marginTop: 8 }}>
+          <CheckItem text="Stock gaps down below prior day low at the open" ok={true} dt={dt} />
+          <CheckItem text="Price bounces ABOVE VWAP within 15-30 minutes" ok={true} dt={dt} />
+          <CheckItem text="Prior day low acts as SUPPORT — price holds above it" ok={true} dt={dt} />
+          <CheckItem text="Volume expanding on the bounce (buyers stepping in)" ok={true} dt={dt} />
+          <CheckItem text="Entry: 2 green 5m candles above VWAP (trigger: VWAP_RECLAIM)" ok={true} dt={dt} />
+          <CheckItem text="Stop: below the session low or prior day low" ok={true} dt={dt} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <Row label="Engine signal" value="⚠️ Gap-fill: bull_delta +1.0 (double weight)" color={dt.green} dt={dt} />
+          <Row label="Targets" value="T1 = prior close, T2 = prior day high" color={dt.green} dt={dt} />
+        </div>
+      </Card>
+
+      {/* Scenario 4: Gap-Down Below Prior Day Low — Holds (Short) */}
+      <Card dt={dt} title="Gap-Down Below Prior Day Low — HOLDS (Short)" icon={<ArrowDown size={15} />} accent={dt.red}>
+        <Pill text="Valid short" color={dt.red} bg={`${dt.red}15`} />
+        <div style={{ marginTop: 8 }}>
+          <CheckItem text="Stock gaps down below prior day low at the open" ok={true} dt={dt} />
+          <CheckItem text="Price stays BELOW VWAP — cannot reclaim it" ok={true} dt={dt} />
+          <CheckItem text="Prior day low acts as RESISTANCE — rejected when testing from below" ok={true} dt={dt} />
+          <CheckItem text="Selling pressure dominates (red candles, lower highs)" ok={true} dt={dt} />
+          <CheckItem text="Entry: 2 red 5m candles below VWAP (trigger: VWAP_BREAK)" ok={true} dt={dt} />
+          <CheckItem text="Stop: above VWAP or prior day low" ok={true} dt={dt} />
+        </div>
+      </Card>
+
+      {/* What else to consider */}
+      <Card dt={dt} title="What Else to Consider Before Entering a Gap Trade" icon={<Eye size={15} />} accent={dt.amber}>
+        <div style={{ fontSize: 11.5, color: dt.muted, marginBottom: 10 }}>
+          The simple "buy above prior day high" logic ignores these critical factors. The engine evaluates all of them:
+        </div>
+        <Row label="1. Gap size" value=">3% gap = volatile, wider stops, smaller size" color={dt.amber} dt={dt} />
+        <Row label="2. VWAP position" value="Above VWAP = gap holding. Below VWAP = gap fading" color={dt.text} dt={dt} />
+        <Row label="3. Volume on gap" value="Thin gap = likely fade. High volume = more conviction" color={dt.text} dt={dt} />
+        <Row label="4. Market context" value="SPY/QQQ aligned? VIX elevated? Broad market matters" color={dt.text} dt={dt} />
+        <Row label="5. News/earnings catalyst" value="Was the gap news-driven? Earnings gaps behave differently" color={dt.text} dt={dt} />
+        <Row label="6. OR behavior" value="Did OR form above or below prior high? OR is the real setup" color={dt.text} dt={dt} />
+        <Row label="7. Time of day" value="Morning gap behavior ≠ afternoon. Most gaps resolve by 11 AM" color={dt.text} dt={dt} />
+        <Row label="8. Gap fill probability" value="Large gaps fill ~60% of the time within 1-3 days" color={dt.amber} dt={dt} />
+        <Row label="9. Prior day level as S/R" value="Prior high = support if holding, resistance if fading" color={dt.text} dt={dt} />
+        <Row label="10. R/R from current price" value="If gap is +6%, R/R to prior close is compressed — don't chase" color={dt.red} dt={dt} />
+      </Card>
+
+      {/* Decision Framework */}
+      <Card dt={dt} title="Gap Decision Framework" icon={<Layers size={15} />} accent={dt.violet}>
+        <div style={{ fontSize: 11.5, color: dt.muted, marginBottom: 10 }}>
+          Use this framework instead of the simple "buy above prior high" logic:
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: `${dt.green}10`, border: `1px solid ${dt.green}30` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: dt.green, marginBottom: 4 }}>✓ GO LONG if ALL true:</div>
+            <div style={{ fontSize: 10.5, color: dt.text, lineHeight: 1.5 }}>
+              • Gapped up + above VWAP<br/>
+              • Prior high holds as support<br/>
+              • Volume expanding<br/>
+              • SPY/QQQ aligned<br/>
+              • 5m green candle confirms
+            </div>
+          </div>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: `${dt.red}10`, border: `1px solid ${dt.red}30` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: dt.red, marginBottom: 4 }}>✗ AVOID LONG if ANY true:</div>
+            <div style={{ fontSize: 10.5, color: dt.text, lineHeight: 1.5 }}>
+              • Below VWAP (gap fading)<br/>
+              • Prior high acts as resistance<br/>
+              • No volume confirmation<br/>
+              • SPY/QQQ down {'>'} 0.5%<br/>
+              • Gap {'>'} 3% (overextended)
+            </div>
+          </div>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: `${dt.red}10`, border: `1px solid ${dt.red}30` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: dt.red, marginBottom: 4 }}>↓ GO SHORT if ALL true:</div>
+            <div style={{ fontSize: 10.5, color: dt.text, lineHeight: 1.5 }}>
+              • Gapped up but below VWAP<br/>
+              • Prior high rejected as resistance<br/>
+              • 2 red 5m candles below VWAP<br/>
+              • Lower highs forming<br/>
+              • Volume on selling pressure
+            </div>
+          </div>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: `${dt.amber}10`, border: `1px solid ${dt.amber}30` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: dt.amber, marginBottom: 4 }}>○ WAIT if:</div>
+            <div style={{ fontSize: 10.5, color: dt.text, lineHeight: 1.5 }}>
+              • Price is at VWAP (testing)<br/>
+              • OR not yet formed ({'<'} 15 min)<br/>
+              • Mixed signals (gap up + SPY down)<br/>
+              • Gap {'<'} 1% (insignificant)<br/>
+              • No clear direction = NO TRADE
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Key rule */}
+      <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 10, background: `${dt.red}10`, border: `1px solid ${dt.red}30` }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <AlertTriangle size={16} style={{ color: dt.red, flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: dt.red, marginBottom: 4 }}>The #1 Gap Rule</div>
+            <div style={{ fontSize: 11.5, color: dt.text, lineHeight: 1.55 }}>
+              <strong>Above prior-day high but below VWAP = gap fade = SHORT, not long.</strong>{' '}
+              <strong>Below prior-day low but above VWAP = gap fill = LONG, not short.</strong>{' '}
+              The VWAP position determines whether the gap is holding or fading — not the prior day level.
+              The prior day level tells you WHERE the gap is; VWAP tells you WHAT the gap is doing.
+              Always check VWAP before acting on a prior day level.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
