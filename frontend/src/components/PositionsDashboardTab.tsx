@@ -101,16 +101,51 @@ export default function PositionsDashboardTab({
 
   // ─── P&L by Ticker (from closed positions) ───────────────────────────────
   const pnlByTicker = useMemo(() => {
-    const map: Record<string, { ticker: string; pnl: number; count: number; wins: number }> = {}
+    const map: Record<string, { ticker: string; pnl: number; count: number; wins: number; gain: number; loss: number }> = {}
     for (const p of closedPositions) {
       const t = (p.ticker || '').toUpperCase()
       if (!t) continue
-      if (!map[t]) map[t] = { ticker: t, pnl: 0, count: 0, wins: 0 }
-      map[t].pnl += p.realized_pnl ?? 0
+      if (!map[t]) map[t] = { ticker: t, pnl: 0, count: 0, wins: 0, gain: 0, loss: 0 }
+      const realized = p.realized_pnl ?? 0
+      map[t].pnl += realized
       map[t].count += 1
-      if ((p.realized_pnl ?? 0) > 0) map[t].wins += 1
+      if (realized > 0) { map[t].wins += 1; map[t].gain += realized }
+      else if (realized < 0) { map[t].loss += realized }
     }
     return Object.values(map).sort((a, b) => b.pnl - a.pnl)
+  }, [closedPositions])
+
+  // ─── P&L by Ticker × Week ─────────────────────────────────────────────────
+  const pnlByTickerWeek = useMemo(() => {
+    const weekMap: Record<string, Record<string, number>> = {}  // ticker -> weekKey -> pnl
+    const weekSet = new Map<string, string>()                    // weekKey -> weekLabel
+    const allTickers = new Set<string>()
+
+    for (const p of closedPositions) {
+      const t = (p.ticker || '').toUpperCase()
+      const ed = p.exitDate
+      if (!t || !ed) continue
+      const d = new Date(ed)
+      if (isNaN(d.getTime())) continue
+      const day = d.getDay()
+      const monday = new Date(d)
+      monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+      const weekKey = monday.toISOString().slice(0, 10)
+      const weekLabel = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      weekSet.set(weekKey, weekLabel)
+      allTickers.add(t)
+      if (!weekMap[t]) weekMap[t] = {}
+      weekMap[t][weekKey] = (weekMap[t][weekKey] ?? 0) + (p.realized_pnl ?? 0)
+    }
+
+    const sortedWeeks = [...weekSet.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    const sortedTickers = [...allTickers].sort((a, b) => {
+      const ta = Object.values(weekMap[a] || {}).reduce((s, v) => s + v, 0)
+      const tb = Object.values(weekMap[b] || {}).reduce((s, v) => s + v, 0)
+      return tb - ta
+    })
+
+    return { weekMap, sortedWeeks, sortedTickers }
   }, [closedPositions])
 
   // ─── P&L by Month (computed from closed positions) ───────────────────────
@@ -428,6 +463,27 @@ export default function PositionsDashboardTab({
               {pnlByTicker.length > 15 && (
                 <div className="text-[10px] mt-1" style={{ color: st.muted }}>Showing top 15 of {pnlByTicker.length} tickers</div>
               )}
+              {/* Gain / Loss breakdown table */}
+              <div className="mt-3 border-t pt-3" style={{ borderColor: st.border }}>
+                <div className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: st.muted }}>Gain / Loss Breakdown</div>
+                <div className="grid text-[10px] font-semibold mb-1 px-1" style={{ gridTemplateColumns: '56px 1fr 1fr 1fr 40px', color: st.muted }}>
+                  <span>Ticker</span><span className="text-right">Gain</span><span className="text-right">Loss</span><span className="text-right">Net</span><span className="text-right">W/L</span>
+                </div>
+                <div className="space-y-0.5">
+                  {pnlByTicker.slice(0, 15).map((t, ri) => (
+                    <div key={t.ticker} className="grid text-[10px] rounded px-1 py-0.5" style={{
+                      gridTemplateColumns: '56px 1fr 1fr 1fr 40px',
+                      background: ri % 2 === 0 ? `${st.bgDeep}` : 'transparent',
+                    }}>
+                      <span className="font-mono font-bold" style={{ color: st.text }}>{t.ticker}</span>
+                      <span className="text-right font-mono" style={{ color: st.green }}>{t.gain > 0 ? `+$${t.gain.toFixed(0)}` : '—'}</span>
+                      <span className="text-right font-mono" style={{ color: st.red }}>{t.loss < 0 ? `-$${Math.abs(t.loss).toFixed(0)}` : '—'}</span>
+                      <span className="text-right font-mono font-bold" style={{ color: t.pnl >= 0 ? st.green : st.red }}>{t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(0)}</span>
+                      <span className="text-right" style={{ color: st.muted }}>{t.wins}/{t.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </>
           )}
         </ChartCard>
@@ -473,6 +529,82 @@ export default function PositionsDashboardTab({
           )}
         </ChartCard>
       </div>
+
+      {/* Ticker × Week P&L Matrix */}
+      {pnlByTickerWeek.sortedTickers.length > 0 && (
+        <div className="rounded-xl border p-4 overflow-x-auto" style={{ background: st.bg, borderColor: st.border }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar size={15} style={{ color: st.muted }} />
+            <span className="text-sm font-bold" style={{ color: st.text }}>P&L by Ticker × Week</span>
+            <span className="text-[10px] rounded-full px-2 py-0.5" style={{ background: `${BLUE}15`, color: BLUE, border: `1px solid ${BLUE}30` }}>
+              {pnlByTickerWeek.sortedTickers.length} tickers · {pnlByTickerWeek.sortedWeeks.length} weeks
+            </span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${st.border}` }}>
+                <th style={{ textAlign: 'left', padding: '5px 8px', color: st.muted, fontWeight: 600, position: 'sticky', left: 0, background: st.bg, minWidth: 64, whiteSpace: 'nowrap' }}>Ticker</th>
+                {pnlByTickerWeek.sortedWeeks.map(([key, label]) => (
+                  <th key={key} style={{ textAlign: 'right', padding: '5px 8px', color: st.muted, fontWeight: 600, whiteSpace: 'nowrap', minWidth: 78 }}>
+                    {label}
+                  </th>
+                ))}
+                <th style={{ textAlign: 'right', padding: '5px 8px', color: st.text, fontWeight: 700, whiteSpace: 'nowrap', minWidth: 78 }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pnlByTickerWeek.sortedTickers.map((ticker, ri) => {
+                const row = pnlByTickerWeek.weekMap[ticker] || {}
+                const total = Object.values(row).reduce((s, v) => s + v, 0)
+                const rowBg = ri % 2 === 0 ? st.bgDeep : st.bg
+                return (
+                  <tr key={ticker} style={{ background: rowBg }}>
+                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700, color: st.text, position: 'sticky', left: 0, background: rowBg, whiteSpace: 'nowrap' }}>
+                      {ticker}
+                    </td>
+                    {pnlByTickerWeek.sortedWeeks.map(([key]) => {
+                      const v = row[key]
+                      if (v == null) return (
+                        <td key={key} style={{ textAlign: 'right', padding: '5px 8px', color: st.muted }}>—</td>
+                      )
+                      const cellColor = v >= 0 ? st.green : st.red
+                      const cellBg = v >= 0 ? `${st.green}12` : `${st.red}12`
+                      return (
+                        <td key={key} style={{ textAlign: 'right', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600, color: cellColor, background: cellBg, borderRadius: 4 }}>
+                          {v >= 0 ? '+' : ''}${Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0)}
+                        </td>
+                      )
+                    })}
+                    <td style={{ textAlign: 'right', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700, color: total >= 0 ? st.green : st.red, borderLeft: `1px solid ${st.border}` }}>
+                      {total >= 0 ? '+' : ''}${total.toFixed(0)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {/* Totals row */}
+            <tfoot>
+              <tr style={{ borderTop: `1px solid ${st.border}` }}>
+                <td style={{ padding: '5px 8px', fontWeight: 700, color: st.muted, fontSize: 10, position: 'sticky', left: 0, background: st.bg }}>Week total</td>
+                {pnlByTickerWeek.sortedWeeks.map(([key]) => {
+                  const weekTotal = pnlByTickerWeek.sortedTickers.reduce((s, t) => s + (pnlByTickerWeek.weekMap[t]?.[key] ?? 0), 0)
+                  return (
+                    <td key={key} style={{ textAlign: 'right', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700, color: weekTotal >= 0 ? st.green : st.red }}>
+                      {weekTotal >= 0 ? '+' : ''}${weekTotal.toFixed(0)}
+                    </td>
+                  )
+                })}
+                <td style={{ textAlign: 'right', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700,
+                  color: pnlByTickerWeek.sortedTickers.reduce((s, t) => s + Object.values(pnlByTickerWeek.weekMap[t] || {}).reduce((a, v) => a + v, 0), 0) >= 0 ? st.green : st.red,
+                  borderLeft: `1px solid ${st.border}`,
+                }}>
+                  {(() => { const g = pnlByTickerWeek.sortedTickers.reduce((s, t) => s + Object.values(pnlByTickerWeek.weekMap[t] || {}).reduce((a, v) => a + v, 0), 0); return `${g >= 0 ? '+' : ''}$${g.toFixed(0)}` })()}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       {/* Charts Row 2: P&L by Sector + P&L by Option Category */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
