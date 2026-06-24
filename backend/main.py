@@ -2805,6 +2805,296 @@ def day_trade_scan(
         raise HTTPException(status_code=502, detail=str(e)) from None
 
 
+class TradeCheckRequest(BaseModel):
+    message: str
+    ticker: str | None = None  # override ticker if parsed from message
+
+class TradeCheckResult(BaseModel):
+    overall: str
+    overall_msg: str
+    checks: list[dict]
+    ticker: str
+    option_type: str
+    strike: float
+    dte: int
+    contracts: int
+    last_price: float
+    verdict: str
+    confidence: int
+    parse_error: str = ""
+
+def _parse_trade_intent(message: str, default_ticker: str | None = None) -> dict:
+    """Extract ticker/type/strike/DTE/contracts from natural language."""
+    import re
+    msg = message.strip()
+    upper = msg.upper()
+
+    # Ticker: explicit 1-5 letter cap word, skip common words
+    skip = {"DTE", "CALL", "PUT", "THE", "NOW", "FOR", "BUY", "SELL", "SHOULD", "I", "TRADE", "STRIKE", "PRICE", "CONTRACT", "CONTRACTS", "A"}
+    ticker = default_ticker or ""
+    m = re.search(r'\b([A-Z]{1,5})\b', upper)
+    while m:
+        candidate = m.group(1)
+        if candidate not in skip:
+            ticker = candidate
+            break
+        m = re.search(r'\b([A-Z]{1,5})\b', upper, m.end())
+
+    # Option type
+    option_type = "call"
+    if re.search(r'\bput\b', msg, re.I):
+        option_type = "put"
+    elif re.search(r'\bcall\b', msg, re.I):
+        option_type = "call"
+
+    # DTE: number before/after "dte"
+    dte = 0
+    m = re.search(r'(\d+)\s*dte', msg, re.I)
+    if not m:
+        m = re.search(r'dte\s*(\d+)', msg, re.I)
+    if m:
+        dte = int(m.group(1))
+
+    # Strike: number near "strike" or adjacent to call/put keyword
+    strike = 0.0
+    m = re.search(r'(\d+(?:\.\d+)?)\s*(?:strike|call|put)', msg, re.I)
+    if not m:
+        m = re.search(r'(?:strike|call|put)\s*(?:price\s*)?(\d+(?:\.\d+)?)', msg, re.I)
+    if m:
+        strike = float(m.group(1))
+
+    # Contracts
+    contracts = 1
+    m = re.search(r'(\d+)\s*contracts?', msg, re.I)
+    if m:
+        contracts = int(m.group(1))
+
+    return {"ticker": ticker, "option_type": option_type, "strike": strike, "dte": dte, "contracts": contracts}
+
+
+def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, contracts: int, r) -> dict:
+    """Rule-based option trade evaluation against day-trade scan result."""
+    m = r.metrics or {}
+    verdict    = r.verdict or "WAIT"
+    bias       = (r.bias or "").lower()
+    confidence = int(getattr(r, "confidence", 0) or 0)
+
+    last_price    = float(m.get("last_price") or m.get("regular_market_price") or 0)
+    vwap          = float(m.get("vwap") or 0)
+    vwap_position = str(m.get("vwap_position") or "")
+    or_high       = float(m.get("or_high") or 0)
+    or_low        = float(m.get("or_low") or 0)
+    or_breakout   = str(m.get("or_breakout") or "")
+    rvol          = float(m.get("rvol") or 0)
+    momentum_pct  = float(m.get("momentum_pct") or 0)
+    atr14         = float(m.get("atr14") or 0)
+    vix           = float(m.get("vix") or 0)
+    spy_chg       = float(m.get("spy_change_pct") or 0)
+    qqq_chg       = float(m.get("qqq_change_pct") or 0)
+    session_phase = str(m.get("session_phase") or "")
+    put_call_ratio= m.get("put_call_ratio")
+    price_struct  = str(m.get("price_structure") or "")
+
+    is_call = option_type.lower() == "call"
+    checks: list[dict] = []
+    hard_fails = 0
+
+    def chk(passed, label: str, msg: str):
+        nonlocal hard_fails
+        if passed is False:
+            hard_fails += 1
+        checks.append({"pass": passed, "label": label, "msg": msg})
+
+    # ── 1. Engine verdict vs direction ──────────────────────────────────────
+    go_verdicts = {"STRONG GO", "GO"}
+    if verdict in go_verdicts and ((is_call and bias == "long") or (not is_call and bias == "short")):
+        chk(True,  "Verdict", f"{verdict} with {bias} bias — engine aligns with your direction")
+    elif verdict in go_verdicts:
+        chk(False, "Verdict", f"{verdict} but bias is {bias or 'unknown'} — engine favors the opposite side. {'Put' if is_call else 'Call'} would align, not {'Call' if is_call else 'Put'}")
+    else:
+        chk(False, "Verdict", f"{verdict} — engine does not confirm a trade right now. Wait for GO or STRONG GO")
+
+    # ── 2. VWAP position ────────────────────────────────────────────────────
+    if is_call and vwap_position == "above":
+        chk(True, "VWAP", f"Price ${last_price:.2f} above VWAP ${vwap:.2f} — bullish VWAP structure for calls")
+    elif not is_call and vwap_position == "below":
+        chk(True, "VWAP", f"Price ${last_price:.2f} below VWAP ${vwap:.2f} — bearish VWAP structure for puts")
+    else:
+        need = "above" if is_call else "below"
+        chk(False, "VWAP", f"Price ${last_price:.2f} is {vwap_position} VWAP ${vwap:.2f} — {'calls' if is_call else 'puts'} need price {need} VWAP. Gap: {abs(last_price - vwap):.2f}")
+
+    # ── 3. Opening range confirmation ────────────────────────────────────────
+    if is_call and or_breakout == "above":
+        chk(True, "Opening Range", f"Confirmed breakout above OR High ${or_high:.2f} — bull structure locked in")
+    elif not is_call and or_breakout == "below":
+        chk(True, "Opening Range", f"Confirmed breakdown below OR Low ${or_low:.2f} — bear structure locked in")
+    else:
+        level = f"OR High ${or_high:.2f}" if is_call else f"OR Low ${or_low:.2f}"
+        chk(None, "Opening Range", f"No confirmed OR {'breakout' if is_call else 'breakdown'} yet — watching {level}")
+
+    # ── 4. Volume ───────────────────────────────────────────────────────────
+    if rvol >= 1.2:
+        chk(True, "Volume", f"RVOL {rvol:.1f}x — strong above-average volume confirms momentum")
+    elif rvol >= 0.85:
+        chk(None, "Volume", f"RVOL {rvol:.1f}x — average volume, prefer ≥ 1.2x for high-conviction entry")
+    else:
+        chk(False, "Volume", f"RVOL {rvol:.1f}x — low volume. Moves on thin volume frequently reverse")
+
+    # ── 5. Momentum ─────────────────────────────────────────────────────────
+    if is_call and momentum_pct > 0.2:
+        chk(True, "Momentum", f"+{momentum_pct:.2f}% recent momentum — price is moving in your direction")
+    elif not is_call and momentum_pct < -0.2:
+        chk(True, "Momentum", f"{momentum_pct:.2f}% recent momentum — price is moving in your direction")
+    else:
+        chk(None, "Momentum", f"{momentum_pct:+.2f}% recent momentum — no strong directional push yet")
+
+    # ── 6. Strike moneyness ─────────────────────────────────────────────────
+    if last_price > 0 and strike > 0:
+        pct_otm = ((strike - last_price) / last_price * 100) if is_call else ((last_price - strike) / last_price * 100)
+        dollars_to_profit = abs(strike - last_price)
+        if pct_otm < -1:
+            chk(True, "Strike", f"${strike} is {abs(pct_otm):.1f}% ITM (price ${last_price:.2f}) — positive delta working for you from entry")
+        elif pct_otm <= 1:
+            chk(True, "Strike", f"${strike} is near ATM (price ${last_price:.2f}, {pct_otm:.1f}% OTM) — high delta, responsive to price moves")
+        elif pct_otm <= 3:
+            chk(None, "Strike", f"${strike} is {pct_otm:.1f}% OTM — needs ${dollars_to_profit:.2f} move to reach breakeven at expiry. Feasible for day-trade if momentum is strong")
+        else:
+            chk(False, "Strike", f"${strike} is {pct_otm:.1f}% OTM (${dollars_to_profit:.2f} away at ${last_price:.2f}) — deep OTM. Probability of profit is low unless a large move occurs today")
+
+    # ── 7. DTE risk ─────────────────────────────────────────────────────────
+    if dte <= 0:
+        chk(False, "DTE", "0 DTE — expiring today. Gamma is maximum, any reversal = total loss. Avoid unless scalping with tight stops and strong GO conviction")
+    elif dte <= 3:
+        chk(False, "DTE", f"{dte} DTE — extreme gamma risk. Premium decays by the hour. Only viable with STRONG GO + price already moving your way")
+    elif dte <= 7:
+        if verdict == "STRONG GO":
+            chk(None, "DTE", f"{dte} DTE — high gamma risk, but STRONG GO verdict provides minimum justification. Manage tightly: stop at VWAP break")
+        else:
+            chk(False, "DTE", f"{dte} DTE with {verdict} verdict — too short for this setup quality. Short DTE needs STRONG GO minimum. Prefer 7–14 DTE instead")
+    elif dte <= 14:
+        chk(None, "DTE", f"{dte} DTE — moderate gamma risk, acceptable window for day/swing trade options")
+    else:
+        chk(True, "DTE", f"{dte} DTE — comfortable time buffer, reduced theta pressure")
+
+    # ── 8. Session timing ───────────────────────────────────────────────────
+    if session_phase in ("EOD_CLOSING",):
+        chk(False, "Session", f"Market is closing ({session_phase}). Entering a short-DTE option in the last 30 min risks max loss or holding overnight")
+    elif session_phase in ("LUNCH_DOLDRUMS",):
+        chk(None, "Session", "Lunch session — low conviction, drifting price action. Wait for 1:30–2:00 PM ET reactivation before entering")
+    elif session_phase in ("MORNING_PRIME", "OPEN_MOMENTUM"):
+        chk(True, "Session", f"Prime trading window ({session_phase}) — best time for momentum plays")
+    else:
+        chk(None, "Session", f"Session: {session_phase or 'unknown'}")
+
+    # ── 9. Market context ────────────────────────────────────────────────────
+    if vix > 35:
+        chk(False, "VIX", f"VIX {vix:.1f} — extreme fear. Options are very expensive (high IV premium). You risk buying at peak volatility")
+    elif vix > 25:
+        chk(None, "VIX", f"VIX {vix:.1f} — elevated. Option premiums inflated. Size down or use spreads")
+    else:
+        chk(True, "VIX", f"VIX {vix:.1f} — normal, option premiums are fair")
+
+    broad_chg = qqq_chg
+    if is_call and qqq_chg < -2.0:
+        chk(False, "Market", f"QQQ down {qqq_chg:.1f}%, SPY {spy_chg:+.1f}% — buying calls into a falling market. Need extra conviction to fight the tape")
+    elif not is_call and qqq_chg > 2.0:
+        chk(False, "Market", f"QQQ up {qqq_chg:.1f}%, SPY {spy_chg:+.1f}% — buying puts into a rising market. Strong headwind")
+    else:
+        direction = "supporting" if (is_call and qqq_chg > 0) or (not is_call and qqq_chg < 0) else "neutral"
+        chk(True if direction == "supporting" else None, "Market", f"QQQ {qqq_chg:+.1f}%, SPY {spy_chg:+.1f}% — market is {direction} for your direction")
+
+    # ── 10. Confidence ──────────────────────────────────────────────────────
+    if confidence >= 70:
+        chk(True, "Confidence", f"Engine confidence {confidence}% — strong signal, higher edge")
+    elif confidence >= 50:
+        chk(None, "Confidence", f"Engine confidence {confidence}% — moderate. Tighten stops, reduce size")
+    else:
+        chk(False, "Confidence", f"Engine confidence {confidence}% — low signal quality. Wait for cleaner setup")
+
+    # ── Put/Call ratio insight (no hard fail, just context) ─────────────────
+    if put_call_ratio is not None:
+        if is_call and put_call_ratio > 1.5:
+            chk(None, "Options Flow", f"Put/Call ratio {put_call_ratio:.2f} — market leaning bearish in options flow. Calls are contrarian here")
+        elif not is_call and put_call_ratio < 0.5:
+            chk(None, "Options Flow", f"Put/Call ratio {put_call_ratio:.2f} — market leaning bullish in options flow. Puts are contrarian here")
+        else:
+            chk(True, "Options Flow", f"Put/Call ratio {put_call_ratio:.2f} — options flow aligns with your direction")
+
+    # ── ATR risk sizing context ──────────────────────────────────────────────
+    if atr14 > 0:
+        daily_move = atr14
+        chk(None, "Risk/Size", f"ATR14 ${atr14:.2f} — expect ±${daily_move:.2f}/day typical range. {contracts} contract(s) = ~${daily_move * 100 * contracts:.0f} exposure to a full-ATR move")
+
+    # ── Overall ─────────────────────────────────────────────────────────────
+    warn_count = sum(1 for c in checks if c["pass"] is None)
+    pass_count = sum(1 for c in checks if c["pass"] is True)
+    total = len(checks)
+
+    if hard_fails == 0 and pass_count >= total * 0.6:
+        overall, overall_msg = "TRADE", f"{pass_count}/{total} checks passed — setup is favorable. Manage risk: stop at VWAP break."
+    elif hard_fails <= 1 and pass_count > warn_count:
+        overall, overall_msg = "CAUTION", f"{hard_fails} critical issue — setup is marginal. Reduce size or wait for the failing check to resolve before entering."
+    else:
+        overall, overall_msg = "NO TRADE", f"{hard_fails} critical issue(s) block this trade. Wait for a cleaner setup."
+
+    return {
+        "overall": overall,
+        "overall_msg": overall_msg,
+        "checks": checks,
+        "ticker": ticker,
+        "option_type": option_type,
+        "strike": strike,
+        "dte": dte,
+        "contracts": contracts,
+        "last_price": last_price,
+        "verdict": verdict,
+        "confidence": confidence,
+        "parse_error": "",
+    }
+
+
+@app.post("/api/day-trade/check")
+def day_trade_check(
+    req: TradeCheckRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Rule-based option trade evaluator. Parses the user's natural-language message
+    (ticker, call/put, strike, DTE, contracts), runs the day-trade scan, and applies
+    deterministic rules to return a pass/warn/fail checklist — no AI/LLM involved.
+    """
+    parsed = _parse_trade_intent(req.message, req.ticker)
+    ticker    = parsed["ticker"]
+    option_type = parsed["option_type"]
+    strike    = parsed["strike"]
+    dte       = parsed["dte"]
+    contracts = parsed["contracts"]
+
+    if not ticker:
+        return {"overall": "ERROR", "overall_msg": "Could not identify a ticker. Example: 'Should I buy AMD 368 call, 5 DTE, 1 contract?'",
+                "checks": [], "ticker": "", "option_type": option_type, "strike": strike,
+                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_ticker"}
+
+    if strike == 0:
+        return {"overall": "ERROR", "overall_msg": f"Could not find a strike price. Example: '{ticker} 368 call 5 DTE 1 contract'",
+                "checks": [], "ticker": ticker, "option_type": option_type, "strike": 0,
+                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_strike"}
+
+    if dte == 0:
+        return {"overall": "ERROR", "overall_msg": f"Could not find DTE. Example: '{ticker} {strike} {option_type} 5 DTE 1 contract'",
+                "checks": [], "ticker": ticker, "option_type": option_type, "strike": strike,
+                "dte": 0, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_dte"}
+
+    try:
+        r = run_day_trade_scan(ticker)
+    except Exception as e:
+        return {"overall": "ERROR", "overall_msg": f"Could not fetch data for {ticker}: {e}",
+                "checks": [], "ticker": ticker, "option_type": option_type, "strike": strike,
+                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "scan_error"}
+
+    return _evaluate_trade(ticker, option_type, strike, dte, contracts, r)
+
+
 @app.post("/api/swing-trade", response_model=SwingTradeResponse)
 def swing_trade_scan(
     req: SwingTradeRequest,

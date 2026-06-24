@@ -357,7 +357,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const positionsTab = useMemo(() => {
     if (location.pathname !== '/positions') return 'open'
     const t = new URLSearchParams(location.search).get('tab')?.trim()
-    if (t === 'open' || t === 'closed' || t === 'all') return t
+    if (t === 'open' || t === 'closed' || t === 'all' || t === 'dashboard' || t === 'stocks') return t
     return 'open'
   }, [location.pathname, location.search])
 

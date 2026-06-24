@@ -108,6 +108,103 @@ function watchlistBannerQuote(metrics: Record<string, unknown>): {
   return null
 }
 
+function RelativeStrengthTable({
+  tickers,
+  rows,
+}: {
+  tickers: string[]
+  rows: Record<string, DayTradeWatchlistRowState>
+}) {
+  const scanned = tickers.filter(t => rows[t]?.status === 'ok')
+  if (scanned.length === 0) return null
+
+  const tableRows = scanned.map(t => {
+    const row = rows[t]!
+    if (row.status !== 'ok') return null
+    const m = row.result.metrics as Record<string, unknown>
+    const banner = watchlistBannerQuote(m)
+    const stockPct = banner?.pct ?? null
+    const qqqPct = metricNum(m.qqq_change_pct)
+    const rsScore = stockPct !== null && qqqPct !== null ? stockPct - qqqPct : null
+    const lastPrice = metricNum(m.last_price)
+    const vwap = metricNum(m.vwap)
+    const vwapPos = lastPrice !== null && vwap !== null
+      ? lastPrice >= vwap ? 'Above' : 'Below'
+      : (String(m.vwap_position ?? '').toLowerCase().includes('above') ? 'Above'
+        : String(m.vwap_position ?? '').toLowerCase().includes('below') ? 'Below' : '—')
+
+    let rsLabel: 'STRONG' | 'NEUTRAL' | 'WEAK' = 'NEUTRAL'
+    if (rsScore !== null && rsScore >= 1.5) rsLabel = 'STRONG'
+    else if (rsScore !== null && rsScore <= -1.5) rsLabel = 'WEAK'
+
+    return { t, stockPct, qqqPct, rsScore, rsLabel, vwapPos }
+  }).filter(Boolean) as Array<{
+    t: string; stockPct: number | null; qqqPct: number | null
+    rsScore: number | null; rsLabel: 'STRONG' | 'NEUTRAL' | 'WEAK'; vwapPos: string
+  }>
+
+  if (tableRows.length === 0) return null
+
+  return (
+    <div className="rounded-2xl border border-gray-700/50 bg-gray-900/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-700/50">
+        <TrendingUp size={14} className="text-violet-400" />
+        <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest">Relative Strength / Weakness</span>
+        <span className="ml-auto text-[11px] text-gray-500">RS = Stock Δ − QQQ Δ · Best window: first 90 min</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-gray-800/70 text-gray-500 uppercase tracking-wide text-[10px]">
+            <th className="px-4 py-2 text-left font-semibold">Ticker</th>
+            <th className="px-3 py-2 text-right font-semibold">Change</th>
+            <th className="px-3 py-2 text-right font-semibold">QQQ Δ</th>
+            <th className="px-3 py-2 text-right font-semibold">RS Score</th>
+            <th className="px-3 py-2 text-left font-semibold">VWAP Position</th>
+            <th className="px-3 py-2 text-left font-semibold">Signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tableRows.map((r, i) => {
+            const rsBg = r.rsLabel === 'STRONG' ? 'bg-emerald-500/8' : r.rsLabel === 'WEAK' ? 'bg-rose-500/8' : ''
+            const rsColor = r.rsLabel === 'STRONG' ? 'text-emerald-400' : r.rsLabel === 'WEAK' ? 'text-rose-400' : 'text-gray-400'
+            const rsBadgeClass = r.rsLabel === 'STRONG'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+              : r.rsLabel === 'WEAK'
+              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+              : 'bg-gray-700/40 text-gray-400 border border-gray-600/30'
+            const vwapAbove = r.vwapPos === 'Above'
+
+            return (
+              <tr key={r.t} className={`border-b border-gray-800/40 last:border-0 ${i % 2 === 0 ? 'bg-transparent' : 'bg-gray-800/20'} ${rsBg}`}>
+                <td className="px-4 py-2.5 font-mono font-bold text-white">{r.t}</td>
+                <td className={`px-3 py-2.5 text-right tabular-nums ${pctChangeClass(r.stockPct)}`}>
+                  {fmtPctSigned(r.stockPct)}
+                </td>
+                <td className={`px-3 py-2.5 text-right tabular-nums ${pctChangeClass(r.qqqPct)}`}>
+                  {fmtPctSigned(r.qqqPct)}
+                </td>
+                <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${rsColor}`}>
+                  {r.rsScore !== null ? fmtPctSigned(r.rsScore) : '—'}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`font-semibold ${vwapAbove ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {r.vwapPos}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${rsBadgeClass}`}>
+                    {r.rsLabel === 'STRONG' ? '▲ RS Long' : r.rsLabel === 'WEAK' ? '▼ RW Short' : '— Neutral'}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function DayTradeWatchlistPanel({ embedInHub = false }: { embedInHub?: boolean }) {
   const {
     dayTradeWatchlist: tickers,
@@ -387,6 +484,11 @@ export function DayTradeWatchlistPanel({ embedInHub = false }: { embedInHub?: bo
             ? 'Click Add in the tab bar to enter a symbol, then confirm here.'
             : 'Add tickers above to track resolved day-trade decisions side by side.'}
         </div>
+      )}
+
+      {/* ── Relative Strength / Weakness Summary ───────────────────────────────── */}
+      {tickers.some(t => rows[t]?.status === 'ok') && (
+        <RelativeStrengthTable tickers={tickers} rows={rows} />
       )}
 
       <div className="space-y-2">

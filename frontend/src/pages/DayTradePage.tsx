@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
-  Clock, Flame, Loader2, RefreshCw, Search, ShieldAlert, X, Zap,
+  Clock, Flame, Loader2, MessageSquare, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check, Gauge,
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal, deriveUnifiedFromDayResult } from '../api/client'
@@ -18,6 +18,7 @@ import { MarketTimeGateBanner } from '../components/MarketTimeGate'
 import EntryWindowBanner from '../components/EntryWindowBanner'
 import TrendDayBanner from '../components/TrendDayBanner'
 import DayTradeStrategiesTab from '../components/DayTradeStrategiesTab'
+import DayTradeChat from '../components/DayTradeChat'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
@@ -268,7 +269,7 @@ export default function DayTradePage() {
   const [enterSubmitting, setEnterSubmitting] = useState(false)
   const [enterErr, setEnterErr] = useState<string | null>(null)
   const [myTickers, setMyTickers] = useState<string[]>([])
-  const [activeTab, setActiveTab] = useState<'overview' | 'strategies'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'strategies' | 'chat'>('overview')
   const [myTickerFull, setMyTickerFull] = useState<MyTickerEntry[]>([])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
@@ -969,8 +970,9 @@ export default function DayTradePage() {
         {/* Tab strip */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: `1px solid ${dt.border}` }}>
           {([
-            { id: 'overview' as const,   label: 'Overview',   icon: <Activity size={14} />,   accent: dt.accent },
-            { id: 'strategies' as const, label: 'Strategies', icon: <BarChart2 size={14} />,  accent: dt.violet },
+            { id: 'overview'    as const, label: 'Overview',    icon: <Activity size={14} />,            accent: dt.accent },
+            { id: 'strategies'  as const, label: 'Strategies',  icon: <BarChart2 size={14} />,           accent: dt.violet },
+            { id: 'chat'        as const, label: 'Trade Check',  icon: <MessageSquare size={14} />,       accent: dt.green  },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
             return (
@@ -987,6 +989,10 @@ export default function DayTradePage() {
 
         {activeTab === 'strategies' && (
           <DayTradeStrategiesTab dt={dt} />
+        )}
+
+        {activeTab === 'chat' && (
+          <DayTradeChat dt={dt} currentTicker={result?.ticker || ticker || undefined} />
         )}
 
         {activeTab === 'overview' && (
