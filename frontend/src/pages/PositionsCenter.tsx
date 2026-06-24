@@ -54,8 +54,8 @@ type SortKey = 'ticker' | 'dte' | 'entryPrice' | 'max_profit' | 'max_loss' | 'pn
 
 const SHARES_PER_OPTION_CONTRACT = 100
 
-interface LegTemplate { action: 'BUY' | 'SELL'; option_type: 'CALL' | 'PUT'; label: string }
-interface StrategyDef { bias: string; legs: LegTemplate[] }
+interface LegTemplate { action: 'BUY' | 'SELL'; option_type: 'CALL' | 'PUT'; label: string; expirySlot?: 'front' | 'back' }
+interface StrategyDef { bias: string; legs: LegTemplate[]; isCalendar?: boolean }
 
 const STRATEGY_DEFS: Record<string, StrategyDef> = {
   'Stock':            { bias: 'Neutral',          legs: [] },
@@ -84,6 +84,14 @@ const STRATEGY_DEFS: Record<string, StrategyDef> = {
     { action: 'BUY',  option_type: 'PUT',  label: 'Buy Put (lower put)' },
     { action: 'SELL', option_type: 'CALL', label: 'Sell Call (lower call)' },
     { action: 'BUY',  option_type: 'CALL', label: 'Buy Call (higher call)' },
+  ]},
+  'Call Calendar Spread': { bias: 'Neutral', isCalendar: true, legs: [
+    { action: 'SELL', option_type: 'CALL', label: 'Sell Call (front / near-term)', expirySlot: 'front' },
+    { action: 'BUY',  option_type: 'CALL', label: 'Buy Call (back / far-term)',    expirySlot: 'back'  },
+  ]},
+  'Put Calendar Spread': { bias: 'Neutral', isCalendar: true, legs: [
+    { action: 'SELL', option_type: 'PUT', label: 'Sell Put (front / near-term)', expirySlot: 'front' },
+    { action: 'BUY',  option_type: 'PUT', label: 'Buy Put (back / far-term)',    expirySlot: 'back'  },
   ]},
 }
 
@@ -118,10 +126,19 @@ function computeMetrics(
       beLower = Math.round((sellStrike0 - netCredit) * 100) / 100
       beUpper = Math.round((sellStrike2 + netCredit) * 100) / 100
     }
+  } else if (def.isCalendar) {
+    // Calendar spread: net debit = back_premium - front_premium
+    // Max loss = net debit. Max profit ≈ net debit (conservative 1:1 estimate).
+    // Breakevens ≈ strike ± net_debit for a rough display.
+    const netDebit = Math.abs(netCredit)
+    const strike = legStrikes[0] || entryStockPrice   // same strike on both legs
+    maxLoss   = netDebit
+    maxProfit = Math.round(netDebit * 100) / 100       // conservative 1:1 estimate
+    beLower   = Math.round((strike - netDebit * 2) * 100) / 100
+    beUpper   = Math.round((strike + netDebit * 2) * 100) / 100
   } else {
     const premium = Math.abs(netCredit)
     const s0 = legStrikes[0] || 0
-    const s1 = legStrikes[1] || 0
     if (['Long Call', 'Long Put'].includes(strategy)) {
       maxLoss   = premium
       maxProfit = Math.round(premium * 10 * 100) / 100
@@ -148,6 +165,12 @@ function normalizeExpiryForDateInput(expiry: string): string {
 }
 
 function guessStrategyFromLegs(legs: OptionLeg[]): string | null {
+  // Calendar: same strike, different expiries
+  if (legs.length === 2 && legs[0].strike === legs[1].strike && legs[0].expiry !== legs[1].expiry) {
+    const sellLeg = legs.find(l => l.action === 'SELL')
+    if (sellLeg?.option_type === 'CALL') return 'Call Calendar Spread'
+    if (sellLeg?.option_type === 'PUT')  return 'Put Calendar Spread'
+  }
   const sig = legs.map(l => `${l.action}:${l.option_type}`).join('|')
   for (const [name, d] of Object.entries(STRATEGY_DEFS)) {
     if (d.legs.length !== legs.length) continue
@@ -426,6 +449,7 @@ interface FormState {
   tradeSource: 'day' | 'swing' | 'regular'
   strategy: string
   expiry: string
+  backExpiry: string   // calendar spreads only — back-month (long) leg expiry
   contractCount: string
   entryStockPrice: string
   notes: string
@@ -446,6 +470,7 @@ function emptyForm(): FormState {
     tradeSource: 'regular',
     strategy: 'Stock',
     expiry: '',
+    backExpiry: '',
     contractCount: '1',
     entryStockPrice: '',
     notes: '',
@@ -671,10 +696,23 @@ function PositionFormFields({
               <input type="number" step="any" value={form.entryStockPrice}
                 onChange={e => onChange({ entryStockPrice: e.target.value })} className={inputCls} />
             </label>
-            <label className={labelCls}>Expiry *
-              <input type="date" value={form.expiry}
-                onChange={e => onChange({ expiry: e.target.value })} className={inputCls} />
-            </label>
+            {STRATEGY_DEFS[form.strategy]?.isCalendar ? (
+              <div className="space-y-2">
+                <label className={labelCls}>Front Expiry (short leg) *
+                  <input type="date" value={form.expiry}
+                    onChange={e => onChange({ expiry: e.target.value })} className={inputCls} />
+                </label>
+                <label className={labelCls}>Back Expiry (long leg) *
+                  <input type="date" value={form.backExpiry}
+                    onChange={e => onChange({ backExpiry: e.target.value })} className={inputCls} />
+                </label>
+              </div>
+            ) : (
+              <label className={labelCls}>Expiry *
+                <input type="date" value={form.expiry}
+                  onChange={e => onChange({ expiry: e.target.value })} className={inputCls} />
+              </label>
+            )}
           </div>
 
           {def && def.legs.length > 0 && (
@@ -2624,20 +2662,25 @@ function AddPositionModal({
     const premiumsNum = form.legPremiums.map(p => parseFloat(p) || 0)
     const metrics = computeMetrics(form.strategy, strikesNum, premiumsNum, entryPrice)
 
-    const legs: OptionLeg[] = def.legs.map((tmpl, i) => ({
-      action: tmpl.action,
-      option_type: tmpl.option_type,
-      strike: strikesNum[i],
-      expiry: form.expiry,
-      delta: 0,
-      mid_price: premiumsNum[i],
-      bid: premiumsNum[i] * 0.95,
-      ask: premiumsNum[i] * 1.05,
-      iv: 0,
-      oi: 0,
-      volume: 0,
-      bid_ask_spread_pct: 0,
-    }))
+    const legs: OptionLeg[] = def.legs.map((tmpl, i) => {
+      const legExpiry = def.isCalendar
+        ? (tmpl.expirySlot === 'back' ? form.backExpiry : form.expiry)
+        : form.expiry
+      return {
+        action: tmpl.action,
+        option_type: tmpl.option_type,
+        strike: strikesNum[i],
+        expiry: legExpiry,
+        delta: 0,
+        mid_price: premiumsNum[i],
+        bid: premiumsNum[i] * 0.95,
+        ask: premiumsNum[i] * 1.05,
+        iv: 0,
+        oi: 0,
+        volume: 0,
+        bid_ask_spread_pct: 0,
+      }
+    })
 
     onSave({
       ticker: form.ticker.trim().toUpperCase(),
@@ -2666,7 +2709,8 @@ function AddPositionModal({
 
   const canSubmit = form.ticker.trim() && (form.strategy === 'Stock'
     ? form.entryStockPrice && (parseFloat(form.entryStockPrice) || 0) > 0 && (parseInt(form.contractCount) || 0) >= 1
-    : form.expiry && form.entryStockPrice && (parseInt(form.contractCount) || 0) >= 1
+    : form.expiry && (STRATEGY_DEFS[form.strategy]?.isCalendar ? !!form.backExpiry : true)
+      && form.entryStockPrice && (parseInt(form.contractCount) || 0) >= 1
   )
 
   return (
@@ -2970,6 +3014,9 @@ function EditPositionModal({
       tradeSource: src,
       strategy: strat,
       expiry: normalizeExpiryForDateInput(pos.expiry),
+      backExpiry: STRATEGY_DEFS[strat]?.isCalendar
+        ? normalizeExpiryForDateInput(pos.legs.find(l => l.action === 'BUY')?.expiry ?? '')
+        : '',
       contractCount: String(pos.contracts),
       entryStockPrice: String(pos.entryPrice),
       notes: pos.notes ?? '',
@@ -3077,11 +3124,17 @@ function EditPositionModal({
     const userEnteredPremiums = premiumsNum.some(p => p > 0)
     const metrics = computeMetrics(form.strategy, strikesNum, premiumsNum, entryPrice)
 
-    const legs: OptionLeg[] = def.legs.map((tmpl, i) => ({
+    const legs: OptionLeg[] = def.legs.map((tmpl, i) => {
+      const legExpiry = def.isCalendar
+        ? (tmpl.expirySlot === 'back'
+            ? (form.backExpiry || pos.legs.find(l => l.action === 'BUY')?.expiry || '')
+            : (form.expiry || pos.expiry || ''))
+        : (form.expiry || pos.legs[i]?.expiry || '')
+      return {
       action: tmpl.action,
       option_type: tmpl.option_type,
       strike: strikesNum[i] > 0 ? strikesNum[i] : (pos.legs[i]?.strike ?? 0),
-      expiry: form.expiry || pos.legs[i]?.expiry || '',
+      expiry: legExpiry,
       delta: pos.legs[i]?.delta ?? 0,
       mid_price: premiumsNum[i] > 0 ? premiumsNum[i] : (pos.legs[i]?.mid_price ?? 0),
       bid: premiumsNum[i] > 0 ? premiumsNum[i] * 0.95 : (pos.legs[i]?.bid ?? 0),
@@ -3090,7 +3143,8 @@ function EditPositionModal({
       oi: pos.legs[i]?.oi ?? 0,
       volume: pos.legs[i]?.volume ?? 0,
       bid_ask_spread_pct: pos.legs[i]?.bid_ask_spread_pct ?? 0,
-    }))
+      }
+    })
 
     onSave(pos.id, {
       ticker: form.ticker.trim().toUpperCase(),
