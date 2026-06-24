@@ -1768,37 +1768,34 @@ export default function DayTradeEnginePanel({
               </div>
 
               {(chartTab === 'session' || chartTab === 'vwap') && chartBars && orChartHigh != null && orChartLow != null ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Candle</span>
-                    {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
-                      <button
-                        key={iv}
-                        type="button"
-                        onClick={() => setChartInterval(iv)}
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors ${
-                          chartInterval === iv
-                            ? 'border border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
-                            : 'border border-border bg-gray-800 text-secondary hover:bg-gray-700'
-                        }`}
-                      >{iv}</button>
-                    ))}
-                  </div>
-                  <DayTradeIntradayChart
-                    bars={resampleBars(chartBars, chartInterval)}
-                    orHigh={orChartHigh}
-                    orLow={orChartLow}
-                    orMinutes={orMinutesForInterval(orMinN, chartInterval)}
-                    sessionDate={String(m.session_date ?? '')}
-                    entryPoints={chartEntryPoints}
-                    dimEntries={dimEntries}
-                  />
+                <div className="space-y-4">
+                  {([
+                    { iv: '1h'  as ChartInterval, label: '1h', sub: 'Trend / Context' },
+                    { iv: '15m' as ChartInterval, label: '15m', sub: 'Setup / Confirmation' },
+                    { iv: '1m'  as ChartInterval, label: '1m', sub: 'Entry / Execution' },
+                  ] as const).map(({ iv, label, sub }) => (
+                    <div key={iv} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-gray-300 font-mono">{label}</span>
+                        <span className="text-[10px] text-gray-500">{sub}</span>
+                      </div>
+                      <DayTradeIntradayChart
+                        bars={resampleBars(chartBars!, iv)}
+                        orHigh={orChartHigh!}
+                        orLow={orChartLow!}
+                        orMinutes={orMinutesForInterval(orMinN, iv)}
+                        sessionDate={String(m.session_date ?? '')}
+                        entryPoints={iv === '1m' ? chartEntryPoints : undefined}
+                        dimEntries={dimEntries}
+                      />
+                    </div>
+                  ))}
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
-                      ? 'Session view: watch the relationship between price, VWAP, and the opening range before forcing an entry.'
+                      ? 'Multi-timeframe: use 1h for trend direction, 15m for setup confirmation, 1m for precise entry.'
                       : result.bias === 'short'
-                        ? 'VWAP + OR view: the cleanest short setups stay below VWAP and break through ORL with real participation — not just a wick.'
-                        : 'VWAP + OR view: the cleanest continuation trades hold above VWAP and clear ORH with real participation — not just a wick.'}
+                        ? 'VWAP + OR: short setups should stay below VWAP on all timeframes — one-timeframe alignment is not enough.'
+                        : 'VWAP + OR: long setups should hold above VWAP on all timeframes — one-timeframe alignment is not enough.'}
                   </div>
                 </div>
               ) : null}
