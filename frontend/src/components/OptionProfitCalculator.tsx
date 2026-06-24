@@ -24,7 +24,43 @@ function legPnl(
   return action === 'BUY' ? intrinsic - premium : premium - intrinsic
 }
 
+function buildCalendarCurve(rec: Recommendation, currentPrice: number) {
+  // Calendar P&L at front-expiry is a tent: back-month still has time value.
+  // Use the backend's pre-computed breakevens + max_profit to draw the correct shape.
+  const atm = rec.legs[0]?.strike ?? currentPrice
+  const maxProfit = rec.max_profit ?? 0
+  const maxLoss = -(rec.max_loss ?? Math.abs(rec.net_credit ?? 0))
+  const beLo = rec.breakeven_lower ?? (atm * 0.95)
+  const beHi = rec.breakeven_upper ?? (atm * 1.05)
+  const lo = currentPrice * 0.65
+  const hi = currentPrice * 1.35
+  const steps = 120
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const price = lo + i * (hi - lo) / steps
+    let pnl: number
+    if (price <= beLo) {
+      // Below profit zone: slope from maxLoss at lo toward 0 at beLo
+      const frac = beLo > lo ? (price - lo) / (beLo - lo) : 1
+      pnl = maxLoss * (1 - frac)
+    } else if (price >= beHi) {
+      // Above profit zone: slope from 0 at beHi toward maxLoss at hi
+      const frac = hi > beHi ? (price - beHi) / (hi - beHi) : 0
+      pnl = maxLoss * frac
+    } else if (price <= atm) {
+      pnl = maxProfit * (price - beLo) / Math.max(atm - beLo, 0.01)
+    } else {
+      pnl = maxProfit * (beHi - price) / Math.max(beHi - atm, 0.01)
+    }
+    return { price: parseFloat(price.toFixed(2)), pnl: parseFloat(pnl.toFixed(2)) }
+  })
+}
+
 function buildCurve(rec: Recommendation, currentPrice: number) {
+  // Calendar/diagonal spreads: back-month leg retains time value at front expiry —
+  // intrinsic-only calculation yields a flat loss line, so use tent-shape instead.
+  if (rec.strategy?.toLowerCase().includes('calendar')) {
+    return buildCalendarCurve(rec, currentPrice)
+  }
   const lo = currentPrice * 0.65
   const hi = currentPrice * 1.35
   const steps = 120
