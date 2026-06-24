@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import type { AiCoachResult, DayTradeScanResult } from '../api/client'
 import type { PortfolioPosition } from '../types'
-import DayTradeIntradayChart, { parseChartBars, type ChartEntryPoint } from './DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartInterval, type ChartEntryPoint } from './DayTradeIntradayChart'
 import { coerceTraderDecision, DayTradeTraderDecisionExpanded } from './DayTradeTraderDecision'
 import { getActionButtonClass, getDecisionBadgeClass, getMarketContextBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
@@ -733,6 +733,7 @@ export default function DayTradeEnginePanel({
   const [decisionOpen, setDecisionOpen] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 768))
   const [chartTab, setChartTab] = useState<'session' | 'vwap' | 'volume' | 'momentum' | 'relative'>('session')
+  const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
   const signalsSectionRef = useRef<HTMLDivElement | null>(null)
 
   const m = result.metrics ?? {}
@@ -1760,11 +1761,26 @@ export default function DayTradeEnginePanel({
 
               {(chartTab === 'session' || chartTab === 'vwap') && chartBars && orChartHigh != null && orChartLow != null ? (
                 <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Candle</span>
+                    {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
+                      <button
+                        key={iv}
+                        type="button"
+                        onClick={() => setChartInterval(iv)}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors ${
+                          chartInterval === iv
+                            ? 'border border-semantic-accent-border bg-semantic-accent-bg text-semantic-accent'
+                            : 'border border-border bg-gray-800 text-secondary hover:bg-gray-700'
+                        }`}
+                      >{iv}</button>
+                    ))}
+                  </div>
                   <DayTradeIntradayChart
-                    bars={chartBars}
+                    bars={resampleBars(chartBars, chartInterval)}
                     orHigh={orChartHigh}
                     orLow={orChartLow}
-                    orMinutes={orMinN}
+                    orMinutes={orMinutesForInterval(orMinN, chartInterval)}
                     sessionDate={String(m.session_date ?? '')}
                     entryPoints={chartEntryPoints}
                     dimEntries={dimEntries}

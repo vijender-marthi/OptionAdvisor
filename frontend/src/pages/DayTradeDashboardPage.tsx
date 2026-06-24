@@ -4,7 +4,7 @@ import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp,
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
-import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartInterval, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -311,7 +311,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   isDark: boolean
 }) {
   const [expandedSyms, setExpandedSyms] = useState<Set<string>>(new Set())
-  const [chartIntervals, setChartIntervals] = useState<Record<string, '1m' | '5m'>>({})
+  const [chartIntervals, setChartIntervals] = useState<Record<string, ChartInterval>>({})
   const toggleExpanded = (sym: string) => {
     setExpandedSyms(prev => {
       const next = new Set(prev)
@@ -468,16 +468,16 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                     <td colSpan={13} style={{ padding: 0, background: dt.bg2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 0' }}>
                         <span style={{ fontSize: 10, color: dt.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Candle</span>
-                        {(['1m', '5m'] as const).map(iv => (
+                        {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
                           <button key={iv} onClick={() => setChartIntervals(prev => ({ ...prev, [sym]: iv }))} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${(chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.border}`, background: (chartIntervals[sym] ?? '1m') === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: (chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.muted }}>{iv}</button>
                         ))}
                       </div>
                       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
                         <DayTradeIntradayChart
-                          bars={(chartIntervals[sym] ?? '1m') === '5m' ? aggregate5mBars(chartBars!) : chartBars!}
+                          bars={resampleBars(chartBars!, chartIntervals[sym] ?? '1m')}
                           orHigh={orHigh!}
                           orLow={orLow!}
-                          orMinutes={(chartIntervals[sym] ?? '1m') === '5m' ? Math.max(1, Math.ceil(((m.or_minutes as number | undefined) ?? 15) / 5)) : ((m.or_minutes as number | undefined) ?? 15)}
+                          orMinutes={orMinutesForInterval((m.or_minutes as number | undefined) ?? 15, chartIntervals[sym] ?? '1m')}
                           sessionDate={String(m.session_date ?? '')}
                           entryPoints={pts.length > 0 ? pts : undefined}
                           dimEntries={false}
@@ -506,9 +506,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const orLow      = data.metrics.or_low  as number | undefined
   const orMin      = (data.metrics.or_minutes as number | undefined) ?? 15
   const sessionDate = String(data.metrics.session_date ?? '')
-  const [chartInterval, setChartInterval] = useState<'1m' | '5m'>('1m')
-  const displayBars = !isSwing && chartBars ? (chartInterval === '5m' ? aggregate5mBars(chartBars) : chartBars) : null
-  const displayOrMin = chartInterval === '5m' ? Math.max(1, Math.ceil(orMin / 5)) : orMin
+  const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
+  const displayBars = !isSwing && chartBars ? resampleBars(chartBars, chartInterval) : null
+  const displayOrMin = orMinutesForInterval(orMin, chartInterval)
   const verdict    = data.unified?.verdict ?? ''
   const statusColor = data.unified?.verdict_presentation?.status_color
   const dimEntries = (() => {
@@ -548,7 +548,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
             </span>
             {!isSwing && (
               <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
-                {(['1m', '5m'] as const).map(iv => (
+                {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
                   <button key={iv} onClick={() => setChartInterval(iv)} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}>{iv}</button>
                 ))}
               </div>

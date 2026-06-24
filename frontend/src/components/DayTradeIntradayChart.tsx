@@ -50,15 +50,15 @@ export function parseChartBars(raw: unknown): DayTradeChartBar[] | null {
   return out
 }
 
-/** Aggregate 1-minute bars into 5-minute bars. */
-export function aggregate5mBars(bars: DayTradeChartBar[]): DayTradeChartBar[] {
-  if (bars.length === 0) return bars
+/** Aggregate 1-minute bars into N-minute bars (N = 5, 15, 60, etc.). */
+export function aggregateNmBars(bars: DayTradeChartBar[], n: number): DayTradeChartBar[] {
+  if (bars.length === 0 || n <= 1) return bars
   const t0 = new Date(bars[0].t).getTime()
   const buckets = new Map<number, DayTradeChartBar>()
   const bucketOrder: number[] = []
   for (const bar of bars) {
     const elapsed = (new Date(bar.t).getTime() - t0) / 60000
-    const key = Math.floor(elapsed / 5)
+    const key = Math.floor(elapsed / n)
     const existing = buckets.get(key)
     if (!existing) {
       buckets.set(key, { ...bar })
@@ -76,6 +76,27 @@ export function aggregate5mBars(bars: DayTradeChartBar[]): DayTradeChartBar[] {
     }
   }
   return bucketOrder.map(k => buckets.get(k)!)
+}
+
+/** Aggregate 1-minute bars into 5-minute bars. */
+export function aggregate5mBars(bars: DayTradeChartBar[]): DayTradeChartBar[] {
+  return aggregateNmBars(bars, 5)
+}
+
+export type ChartInterval = '1m' | '5m' | '15m' | '1h'
+
+export function resampleBars(bars: DayTradeChartBar[], interval: ChartInterval): DayTradeChartBar[] {
+  if (interval === '1m') return bars
+  if (interval === '5m') return aggregateNmBars(bars, 5)
+  if (interval === '15m') return aggregateNmBars(bars, 15)
+  return aggregateNmBars(bars, 60)
+}
+
+export function orMinutesForInterval(orMin: number, interval: ChartInterval): number {
+  if (interval === '1m') return orMin
+  if (interval === '5m') return Math.max(1, Math.ceil(orMin / 5))
+  if (interval === '15m') return Math.max(1, Math.ceil(orMin / 15))
+  return Math.max(1, Math.ceil(orMin / 60))
 }
 
 const PAD = { l: 56, r: 12, t: 18, b: 34 }
