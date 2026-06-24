@@ -1050,6 +1050,14 @@ export default function DayTradeEnginePanel({
             </div>
           </div>
           <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{bestNextStep}</div>
+          {(() => {
+            const fd = String(result.final_decision || '').toUpperCase()
+            if (fd === 'WAIT' || fd === 'WATCH')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold"><span>⏱</span> Check 15m chart before any entry</div>
+            if (fd === 'GO' || fd === 'STRONG GO' || fd === 'READY')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 font-semibold"><span>▶</span> Confirm on 5m, execute on 1m</div>
+            return null
+          })()}
         </div>
       </div>
 
