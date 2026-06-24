@@ -365,6 +365,11 @@ function buildIntradaySubtitle(
 function normalizedActionState(value: string | null | undefined): string {
   const v = String(value || '').toUpperCase()
   if (!v) return 'WAIT'
+  if (v === 'GO') return 'READY'
+  if (v === 'TRACK_ONLY') return 'WATCH'
+  if (v === 'WAIT_ENTRY') return 'WAIT'
+  if (v === 'DO_NOT_CHASE') return 'EXTENDED'
+  if (v === 'NO_TRADE') return 'AVOID'
   if (v.includes('READY') || v.includes('STRONG GO') || v === 'GO') return 'READY'
   if (v.includes('WATCH')) return 'WATCH'
   if (v.includes('WAIT') || v.includes('CONDITIONAL')) return 'WAIT'
@@ -372,6 +377,21 @@ function normalizedActionState(value: string | null | undefined): string {
   if (v.includes('EXIT') || v.includes('AVOID') || v.includes('NO GO') || v.includes('NO-GO') || v.includes('NO_EDGE')) return 'AVOID'
   if (v.includes('MANAGE')) return 'MANAGE'
   return 'WAIT'
+}
+
+function timeframeStatusTone(status: string | null | undefined): Tone {
+  const s = String(status || '').toUpperCase()
+  if (s === 'SETUP_ACTIVE' || s === 'CONFIRMED' || s === 'READY') return 'green'
+  if (s === 'PENDING' || s === 'WAIT_ENTRY') return 'orange'
+  if (s === 'DO_NOT_CHASE') return 'orange'
+  if (s === 'NO_SETUP' || s === 'FAILED' || s === 'DISABLED' || s === 'BLOCKED') return 'red'
+  return 'gray'
+}
+
+function fmtMaybePrice(v: unknown): string {
+  const n = asFiniteNum(v)
+  if (n == null) return typeof v === 'string' && v ? v : '—'
+  return `$${n.toFixed(2)}`
 }
 
 function actionTone(value: string | null | undefined): Tone {
@@ -745,6 +765,7 @@ export default function DayTradeEnginePanel({
   const dayDollarChange = lastPrice != null && sessionChangePct != null ? lastPrice * sessionChangePct / 100 : null
   const vwapValue = asFiniteNum(m.vwap)
   const rvol = asFiniteNum(m.rvol)
+  const entryRrRatio = asFiniteNum(m.entry_rr_ratio)
   const gapPct = asFiniteNum(m.gap_pct)
   const gapFillRisk = Boolean(m.gap_fill_risk)
   const orWidthLabel = typeof m.or_width_label === 'string' ? m.or_width_label : null
@@ -767,6 +788,9 @@ export default function DayTradeEnginePanel({
   const orMinN = typeof m.or_minutes === 'number' && m.or_minutes > 0 ? m.or_minutes : 15
   const td = coerceTraderDecision(result.trader_decision ?? null)
   const eg = result.entry_guidance
+  const timeframeState = result.timeframe_state ?? ((m.timeframe_state ?? null) as DayTradeScanResult['timeframe_state'] | null)
+  const timeframeDecision = String(timeframeState?.final_decision || result.final_decision || '').toUpperCase()
+  const displayFinalDecision = timeframeDecision || result.final_decision
 
   // ── Derive entry points from available signal sources ───────────────────────
   const chartEntryPoints = (() => {
@@ -861,7 +885,7 @@ export default function DayTradeEnginePanel({
   const reasoning = computeReasoning(result, m)
   const riskPanel = computeRiskPanel(result, m)
   const isChasing = result.is_chasing === true
-  const decisionTone = isChasing ? 'orange' : actionTone(result.final_decision)
+  const decisionTone = isChasing ? 'orange' : actionTone(displayFinalDecision)
   const execTone = actionTone(result.execution_readiness || result.execution_timing)
   const optionRisk = result.option_risk_context
   const hasOptionOverlay = !!optionRisk
@@ -912,11 +936,11 @@ export default function DayTradeEnginePanel({
   const chaseRisk = mom != null && Math.abs(mom) > 2 ? 'HIGH' : mom != null && Math.abs(mom) > 1.2 ? 'MODERATE' : 'LOW'
   // When the engine is fully READY (all gates passed), treat any residual
   // aspirational confirmations from trader_decision as already satisfied.
-  const entryGated = result.final_decision === 'READY' && eg?.should_enter_now === 'YES'
+  const entryGated = displayFinalDecision === 'READY' && eg?.should_enter_now === 'YES'
   const activePendingConfirmations = entryGated ? [] : (eg?.pending_confirmations ?? [])
   const confirmationState = activePendingConfirmations.length ? 'PENDING' : 'CLEAR'
   const dimEntries = (() => {
-    const fd = String(result.final_decision || '').toUpperCase()
+    const fd = String(displayFinalDecision || '').toUpperCase()
     return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID'
   })()
 
@@ -928,7 +952,7 @@ export default function DayTradeEnginePanel({
   const focusStep = ((): number => {
     const state = eg?.state || ''
     if (state === 'ENTRY_ACTIVE' || state === 'ENTRY_RETEST') return 6
-    const fd = String(result.final_decision || '').toUpperCase()
+    const fd = String(displayFinalDecision || '').toUpperCase()
     if (fd === 'READY')                       return 5
     if (fd === 'WAIT')                        return 3
     if (fd === 'WATCH')                       return 2
@@ -938,7 +962,7 @@ export default function DayTradeEnginePanel({
   const focusBadgeText = (() => {
     const state = eg?.state || ''
     if (state === 'ENTRY_ACTIVE' || state === 'ENTRY_RETEST') return 'Manage'
-    const fd = String(result.final_decision || '').toUpperCase()
+    const fd = String(displayFinalDecision || '').toUpperCase()
     if (fd === 'READY') return 'Enter'
     if (fd === 'WAIT')  return 'Wait'
     if (fd === 'WATCH') return 'Watch'
@@ -1026,9 +1050,9 @@ export default function DayTradeEnginePanel({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[15px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>
-                {isChasing ? 'EXTENDED' : formatLabel(result.final_decision)}
+                {isChasing ? 'EXTENDED' : formatLabel(displayFinalDecision)}
               </span>
-              {result.final_decision === 'WAIT' && (() => {
+              {displayFinalDecision === 'WAIT' && (() => {
                 const missing = Array.isArray(eg?.pending_confirmations) ? (eg.pending_confirmations as string[]) : []
                 if (missing.length === 0) return null
                 return (
@@ -1051,15 +1075,134 @@ export default function DayTradeEnginePanel({
           </div>
           <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{bestNextStep}</div>
           {(() => {
-            const fd = String(result.final_decision || '').toUpperCase()
+            const fd = String(displayFinalDecision || '').toUpperCase()
+            if (fd === 'TRACK_ONLY')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-sky-400 font-semibold"><span>15m</span> Setup exists. Track only until 5m confirmation fires.</div>
+            if (fd === 'WAIT_ENTRY')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold"><span>1m</span> 5m confirmed. Wait for a clean 1m entry.</div>
+            if (fd === 'DO_NOT_CHASE')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold"><span>!</span> 5m confirmed but price is extended. Do not chase.</div>
+            if (fd === 'NO_TRADE')
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-rose-400 font-semibold"><span>×</span> 15m/5m hierarchy blocks this trade.</div>
             if (fd === 'WAIT' || fd === 'WATCH')
-              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold"><span>⏱</span> Check 15m chart before any entry</div>
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold"><span>15m</span> Check setup before any entry</div>
             if (fd === 'GO' || fd === 'STRONG GO' || fd === 'READY')
-              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 font-semibold"><span>▶</span> Confirm on 5m, execute on 1m</div>
+              return <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 font-semibold"><span>▶</span> 15m setup + 5m confirmation aligned. Execute only on clean 1m.</div>
             return null
           })()}
         </div>
       </div>
+
+      {/* Multi-timeframe Decision Panel */}
+      {timeframeState && (
+        <div className="px-4 py-3 border-b border-gray-800">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-semantic-accent mb-2">
+            <Layers size={12} />
+            Multi-Timeframe Decision
+          </div>
+          <div className="grid gap-2 lg:grid-cols-3">
+            {[
+              {
+                title: '15m Setup',
+                state: timeframeState.setup_15m,
+                status: timeframeState.setup_15m?.status,
+                reason: timeframeState.setup_15m?.reason,
+                next: timeframeState.setup_15m?.next_action,
+                levels: timeframeState.setup_15m?.key_levels,
+              },
+              {
+                title: '5m Confirmation',
+                state: timeframeState.confirmation_5m,
+                status: timeframeState.confirmation_5m?.status,
+                reason: timeframeState.confirmation_5m?.reason,
+                next: timeframeState.confirmation_5m?.next_action,
+                levels: {
+                  trigger: timeframeState.confirmation_5m?.trigger_requirement,
+                  volume: timeframeState.confirmation_5m?.volume_confirmed ? 'Confirmed' : 'Not confirmed',
+                },
+              },
+              {
+                title: '1m Execution',
+                state: timeframeState.execution_1m,
+                status: timeframeState.execution_1m?.status,
+                reason: timeframeState.execution_1m?.reason,
+                next: timeframeState.execution_1m?.next_action,
+                levels: {
+                  entry: timeframeState.execution_1m?.entry_zone ?? null,
+                  stop: timeframeState.execution_1m?.stop_level ?? null,
+                },
+              },
+            ].map(card => {
+              const tone = timeframeStatusTone(card.status)
+              return (
+                <div key={card.title} className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{card.title}</div>
+                    <Badge text={formatLabel(card.status)} tone={tone} />
+                  </div>
+                  <div className="mt-2 text-[11px] text-gray-200 leading-relaxed">{card.reason || '—'}</div>
+                  <div className="mt-2 text-[10px] text-gray-500 leading-snug">{card.next || '—'}</div>
+                  {card.levels && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {Object.entries(card.levels).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+                        <span key={k} className="rounded-full border border-gray-800 bg-black/20 px-2 py-0.5 text-[10px] text-gray-300">
+                          {formatLabel(k)} <span className="font-mono text-gray-100">{fmtMaybePrice(v)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {timeframeState.confirmation_5m?.candle_checks?.length ? (
+            <div className="mt-3 rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">5m Confirmation Candles</div>
+                <Badge
+                  text={timeframeState.confirmation_5m.trigger_fired ? 'Fired' : 'Not Fired'}
+                  tone={timeframeState.confirmation_5m.trigger_fired ? 'green' : 'orange'}
+                />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-[10px] uppercase tracking-widest text-gray-500">
+                      <th className="py-1.5 text-left font-medium">Candle</th>
+                      <th className="py-1.5 text-right font-medium">O</th>
+                      <th className="py-1.5 text-right font-medium">H</th>
+                      <th className="py-1.5 text-right font-medium">L</th>
+                      <th className="py-1.5 text-right font-medium">C</th>
+                      <th className="py-1.5 text-left font-medium pl-3">Check</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/60">
+                    {timeframeState.confirmation_5m.candle_checks.map((check, i) => {
+                      const passed = Boolean(check.passed)
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 pr-2 text-gray-400">{String(check.time || check.label || `5m ${i + 1}`)}</td>
+                          {(['open', 'high', 'low', 'close'] as const).map(k => (
+                            <td key={k} className="py-2 text-right font-mono tabular-nums text-gray-300">{fmtMaybePrice(check[k])}</td>
+                          ))}
+                          <td className={`py-2 pl-3 leading-snug ${passed ? 'text-emerald-300' : 'text-amber-300'}`}>
+                            {passed ? 'Pass' : 'Pending'} · {String(check.detail || '')}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {!timeframeState.confirmation_5m.trigger_fired && (
+                <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-300">
+                  1m execution is disabled until this 5m confirmation fires.
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Entry Plan / Risk Profile */}
       <div className="px-4 py-3 border-b border-gray-800">
@@ -1069,7 +1212,7 @@ export default function DayTradeEnginePanel({
             {[
               { label: 'Entry', value: eg?.breakout_level != null ? <span className="font-mono font-bold text-emerald-400 text-sm">${eg.breakout_level.toFixed(2)}</span> : <span className="font-mono text-amber-400 text-xs">Wait — no valid entry yet</span> },
               { label: 'Structure', value: (() => {
-                const fd = String(result.final_decision || '').toUpperCase()
+                const fd = String(displayFinalDecision || '').toUpperCase()
                 const dir = result.bias === 'short' ? 'SHORT' : 'LONG'
                 if (isChasing) return <span className="font-mono font-semibold text-amber-400 text-xs">{dir + ' · Extended'}</span>
                 if (fd === 'READY' || fd === 'GO') return <span className="font-mono font-semibold text-emerald-400 text-xs">{dir + ' · Ready'}</span>
@@ -1089,9 +1232,22 @@ export default function DayTradeEnginePanel({
           <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-600 mb-2">Risk Profile</div>
             {[
-              { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-xs">—</span> },
-              { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-xs">{result.risk_state || 'HIGH'}</span> },
-              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-xs">0.8x</span> },
+              {
+                label: 'R/R Ratio',
+                value: entryRrRatio != null
+                  ? <span className={`font-mono font-bold text-xs ${entryRrRatio >= 2 ? 'text-emerald-400' : entryRrRatio >= 1.5 ? 'text-sky-400' : 'text-amber-400'}`}>{entryRrRatio.toFixed(1)}:1</span>
+                  : <span className="font-mono text-gray-400 text-xs">—</span>,
+              },
+              {
+                label: 'Risk Level',
+                value: <span className={`font-mono font-bold text-xs ${toneForRisk(result.risk_state || 'MEDIUM') === 'red' ? 'text-red-400' : toneForRisk(result.risk_state || 'MEDIUM') === 'orange' ? 'text-amber-400' : 'text-emerald-400'}`}>{result.risk_state || 'MEDIUM'}</span>,
+              },
+              {
+                label: 'RVOL',
+                value: rvol != null
+                  ? <span className={`font-mono font-bold text-xs ${rvol >= 2 ? 'text-emerald-400' : rvol >= 1.25 ? 'text-sky-400' : rvol >= 0.75 ? 'text-gray-300' : 'text-amber-400'}`}>{rvol.toFixed(1)}x</span>
+                  : <span className="font-mono text-gray-400 text-xs">—</span>,
+              },
             ].map((row, i) => (
               <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
                 <span className="text-xs text-gray-500">{row.label}</span>
@@ -1598,7 +1754,7 @@ export default function DayTradeEnginePanel({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
                 <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Decision</div>
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>{formatLabel(result.final_decision)}</span>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${TONE_BADGE[decisionTone]}`}>{formatLabel(displayFinalDecision)}</span>
               </div>
               <div className="rounded-lg border border-gray-800/90 bg-black/15 px-3 py-2 text-center">
                 <div className="text-[9px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Timing</div>
@@ -1771,7 +1927,8 @@ export default function DayTradeEnginePanel({
                 <div className="space-y-4">
                   {([
                     { iv: '1h'  as ChartInterval, label: '1h', sub: 'Trend / Context' },
-                    { iv: '15m' as ChartInterval, label: '15m', sub: 'Setup / Confirmation' },
+                    { iv: '15m' as ChartInterval, label: '15m', sub: 'Setup' },
+                    { iv: '5m'  as ChartInterval, label: '5m', sub: 'Confirmation' },
                     { iv: '1m'  as ChartInterval, label: '1m', sub: 'Entry / Execution' },
                   ] as const).map(({ iv, label, sub }) => (
                     <div key={iv} className="space-y-1">
@@ -1792,7 +1949,7 @@ export default function DayTradeEnginePanel({
                   ))}
                   <div className="text-xs text-gray-400">
                     {chartTab === 'session'
-                      ? 'Multi-timeframe: use 1h for trend direction, 15m for setup confirmation, 1m for precise entry.'
+                      ? 'Multi-timeframe: 15m creates the setup, 5m confirms it, and 1m is execution only.'
                       : result.bias === 'short'
                         ? 'VWAP + OR: short setups should stay below VWAP on all timeframes — one-timeframe alignment is not enough.'
                         : 'VWAP + OR: long setups should hold above VWAP on all timeframes — one-timeframe alignment is not enough.'}

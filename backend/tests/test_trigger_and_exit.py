@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
 import trigger_detector as td
+from day_trade import build_timeframe_state
 from exit_signal_engine import ExitSignalEngine, HeldPosition
 
 
@@ -113,6 +114,68 @@ class TestTriggerDetector(unittest.TestCase):
         self.assertFalse(fired)
 
 
+# ── Explicit multi-timeframe day-trade hierarchy ─────────────────────────────
+class TestDayTradeTimeframeState(unittest.TestCase):
+    def _state(self, **overrides):
+        base = {
+            "bias": "long",
+            "soft_edge": True,
+            "or_state": "above",
+            "or_historical": "broke_up",
+            "or_high": 100.0,
+            "or_low": 98.0,
+            "vwap": 99.0,
+            "trigger_setup": td.ORH_BREAKOUT,
+            "trigger_fired": False,
+            "trigger_requirement": "Need 2 green candles above $100.00",
+            "candles_5m": [_green(100.1, 100.4, lo=100.05), _red(100.4, 100.2, lo=100.1)],
+            "volume_spike": True,
+            "entry_guidance": {"should_enter_now": "NO", "summary": "Waiting", "action": "Wait"},
+            "is_chasing": False,
+            "edge_state": "DEVELOPING",
+        }
+        base.update(overrides)
+        return build_timeframe_state(**base)
+
+    def test_15m_setup_but_5m_pending_is_track_only(self):
+        state = self._state()
+        self.assertEqual(state["setup_15m"]["status"], "SETUP_ACTIVE")
+        self.assertEqual(state["confirmation_5m"]["status"], "PENDING")
+        self.assertEqual(state["final_decision"], "TRACK_ONLY")
+
+    def test_5m_failed_is_no_trade(self):
+        state = self._state(
+            candles_5m=[_red(100.5, 100.1, hi=100.6), _red(100.1, 99.8, hi=100.2)],
+            trigger_requirement="5m candles failed",
+        )
+        self.assertEqual(state["confirmation_5m"]["status"], "FAILED")
+        self.assertEqual(state["final_decision"], "NO_TRADE")
+
+    def test_5m_confirmed_but_1m_chase_is_do_not_chase(self):
+        state = self._state(
+            trigger_fired=True,
+            trigger_requirement="ORH break confirmed",
+            candles_5m=[_green(100.1, 100.5, lo=100.05), _green(100.5, 101.0, lo=100.4)],
+            entry_guidance={"should_enter_now": "YES", "action": "Enter"},
+            is_chasing=True,
+            edge_state="LATE",
+            chase_reason="Price extended from ORH",
+        )
+        self.assertEqual(state["confirmation_5m"]["status"], "CONFIRMED")
+        self.assertEqual(state["execution_1m"]["status"], "DO_NOT_CHASE")
+        self.assertEqual(state["final_decision"], "DO_NOT_CHASE")
+
+    def test_all_aligned_is_go(self):
+        state = self._state(
+            trigger_fired=True,
+            trigger_requirement="ORH break confirmed",
+            candles_5m=[_green(100.1, 100.5, lo=100.05), _green(100.5, 101.0, lo=100.4)],
+            entry_guidance={"should_enter_now": "YES", "action": "Execute with stop"},
+        )
+        self.assertEqual(state["execution_1m"]["status"], "READY")
+        self.assertEqual(state["final_decision"], "GO")
+
+
 # ── Fix 4: exit signal engine ───────────────────────────────────────────────
 class TestExitSignalEngine(unittest.TestCase):
     def setUp(self):
@@ -126,6 +189,15 @@ class TestExitSignalEngine(unittest.TestCase):
         codes = {s.code for s in sigs}
         self.assertIn("VWAP_BREAK", codes)
         self.assertTrue(any(s.severity == "critical" for s in sigs))
+
+    def test_open_day_position_with_vwap_failure_is_exit_now(self):
+        pos = HeldPosition("MRVL", "long", entry_price=100.0, stop_price=98.0, position_type="day")
+        data = {"MRVL": {"price": 99.0, "vwap": 99.5,
+                         "candles_5m": [{"close": 99.3}, {"close": 99.1}]}}
+        sigs = self.eng.check_positions([pos], data)
+        vwap = next(s for s in sigs if s.code == "VWAP_BREAK")
+        self.assertEqual(vwap.severity, "critical")
+        self.assertIn("EXIT IMMEDIATELY", vwap.recommended_action)
 
     def test_long_stop_hit_critical(self):
         pos = HeldPosition("ARM", "long", entry_price=100.0, stop_price=98.0)
@@ -167,6 +239,13 @@ class TestExitSignalEngine(unittest.TestCase):
         sigs = self.eng.check_positions([pos], data)
         stop = next(s for s in sigs if s.code == "STOP_HIT")
         self.assertAlmostEqual(stop.pnl_estimate, (1.2 - 2.0) * 100 * 3, places=2)
+
+    def test_day_option_premium_loss_critical(self):
+        pos = HeldPosition("ARM", "long", entry_price=100.0, entry_premium=2.0, contracts=1)
+        data = {"ARM": {"price": 99.0, "vwap": 98.0, "premium": 1.35,
+                        "candles_5m": [{"close": 99.2}, {"close": 99.0}]}}
+        sigs = self.eng.check_positions([pos], data)
+        self.assertIn("PREMIUM_LOSS", {s.code for s in sigs})
 
     def test_eod_time_stop_warning(self):
         pos = HeldPosition("AMD", "long", entry_price=100.0, stop_price=98.0)

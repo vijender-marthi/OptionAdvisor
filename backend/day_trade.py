@@ -131,6 +131,13 @@ class DayTradeScan:
     entry_window: EntryWindow | None = None
 
 
+def _fmt_level(x: Optional[float]) -> str:
+    try:
+        return f"${float(x):.2f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def _ensure_et_index(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -185,6 +192,228 @@ def _session_to_5m_candles(session: "pd.DataFrame", n: int = 6) -> list[dict]:
         return out
     except Exception:
         return []
+
+
+def _five_min_candle_checks(
+    setup_type: str | None,
+    candles: list[dict],
+    levels: dict,
+    direction: str | None,
+) -> list[dict[str, Any]]:
+    """Return displayable checks for the two 5m confirmation candles."""
+    st = str(setup_type or "").upper()
+    d = str(direction or "").lower()
+    if st in ("ORH_BREAKOUT",):
+        level = levels.get("orh") or levels.get("or_high")
+        level_name = "ORH"
+        need_color = "green"
+        side = "above"
+    elif st in ("ORL_BREAKDOWN",):
+        level = levels.get("orl") or levels.get("or_low")
+        level_name = "ORL"
+        need_color = "red"
+        side = "below"
+    elif st in ("VWAP_RECLAIM",) or (st == "PULLBACK_RESET" and d == "long"):
+        level = levels.get("vwap")
+        level_name = "VWAP"
+        need_color = "green"
+        side = "above"
+    elif st in ("VWAP_BREAK",) or (st == "PULLBACK_RESET" and d == "short"):
+        level = levels.get("vwap")
+        level_name = "VWAP"
+        need_color = "red"
+        side = "below"
+    else:
+        return []
+
+    if level is None or level <= 0:
+        return [{
+            "label": f"{level_name} level",
+            "passed": False,
+            "detail": f"{level_name} unavailable",
+        }]
+
+    out: list[dict[str, Any]] = []
+    tail = candles[-2:] if candles else []
+    for idx in range(2):
+        c = tail[idx] if idx < len(tail) else None
+        label = "Prior 5m candle" if idx == 0 else "Current 5m candle"
+        if not c:
+            out.append({"label": label, "passed": False, "detail": "Missing candle"})
+            continue
+        try:
+            o = float(c["open"])
+            h = float(c["high"])
+            l = float(c["low"])
+            close = float(c["close"])
+        except (TypeError, ValueError, KeyError):
+            out.append({"label": label, "passed": False, "detail": "Invalid candle data"})
+            continue
+        color_ok = close > o if need_color == "green" else close < o
+        close_ok = close > level if side == "above" else close < level
+        wick_ok = l >= level if side == "above" else h <= level
+        passed = bool(color_ok and close_ok and wick_ok)
+        color_word = "green" if close > o else "red" if close < o else "flat"
+        wick_text = "held above" if side == "above" else "held below"
+        out.append({
+            "label": label,
+            "passed": passed,
+            "time": c.get("time"),
+            "open": round(o, 4),
+            "high": round(h, 4),
+            "low": round(l, 4),
+            "close": round(close, 4),
+            "detail": (
+                f"{color_word} close {side} {level_name} {_fmt_level(level)}; "
+                f"wick {wick_text} level" if passed else
+                f"Needs {need_color} close {side} {level_name} {_fmt_level(level)} with no wick recovery"
+            ),
+        })
+    return out
+
+
+def build_timeframe_state(
+    *,
+    bias: Optional[str],
+    soft_edge: bool,
+    or_state: str,
+    or_historical: str,
+    or_high: float,
+    or_low: float,
+    vwap: float,
+    trigger_setup: Optional[str],
+    trigger_fired: bool,
+    trigger_requirement: str,
+    candles_5m: list[dict],
+    volume_spike: bool,
+    entry_guidance: dict[str, Any],
+    is_chasing: bool,
+    edge_state: str,
+    chase_reason: str = "",
+    no_setup_reason: str = "No clean 15m setup.",
+) -> dict[str, Any]:
+    """
+    Explicit hierarchy for day trades:
+    15m setup -> 5m confirmation -> 1m execution.
+
+    This is intentionally deterministic and side-effect free so tests can cover
+    hard gating without depending on market data.
+    """
+    direction = bias if bias in ("long", "short") else None
+    setup_exists = bool(direction and soft_edge and or_state in ("above", "below"))
+    if not setup_exists and direction and soft_edge and or_historical in ("broke_up", "broke_down"):
+        setup_exists = True
+
+    setup_status = "SETUP_ACTIVE" if setup_exists else "NO_SETUP"
+    if setup_exists:
+        if direction == "long":
+            setup_reason = (
+                f"15m opening range supports long setup: price is {or_state} ORH {_fmt_level(or_high)}."
+                if or_state == "above" else
+                f"Earlier 15m ORH break detected; price is retesting ORH {_fmt_level(or_high)}."
+            )
+            setup_next = "Confirm continuation on 5m candles above ORH/VWAP."
+            setup_levels = {"or_high": round(or_high, 4), "vwap": round(vwap, 4) if vwap else None}
+        else:
+            setup_reason = (
+                f"15m opening range supports short setup: price is {or_state} ORL {_fmt_level(or_low)}."
+                if or_state == "below" else
+                f"Earlier 15m ORL break detected; price is retesting ORL {_fmt_level(or_low)}."
+            )
+            setup_next = "Confirm continuation on 5m candles below ORL/VWAP."
+            setup_levels = {"or_low": round(or_low, 4), "vwap": round(vwap, 4) if vwap else None}
+    else:
+        setup_reason = no_setup_reason
+        setup_next = "Track only. Wait for a 15m opening-range break before using 5m/1m entries."
+        setup_levels = {"or_high": round(or_high, 4) if or_high else None, "or_low": round(or_low, 4) if or_low else None, "vwap": round(vwap, 4) if vwap else None}
+
+    levels = {"orh": or_high, "or_high": or_high, "orl": or_low, "or_low": or_low, "vwap": vwap}
+    candle_checks = _five_min_candle_checks(trigger_setup, candles_5m, levels, direction)
+    failed_checks = bool(candle_checks) and len(candle_checks) >= 2 and all(not c.get("passed") for c in candle_checks[-2:])
+    if not setup_exists:
+        conf_status = "BLOCKED"
+        conf_reason = "5m confirmation is disabled until the 15m setup exists."
+        conf_next = "Wait for 15m setup."
+    elif trigger_fired:
+        conf_status = "CONFIRMED"
+        conf_reason = trigger_requirement or "5m confirmation fired."
+        conf_next = "Use 1m chart for execution only."
+    elif failed_checks:
+        conf_status = "FAILED"
+        conf_reason = trigger_requirement or "5m candles failed to confirm the setup."
+        conf_next = "No trade. Wait for a new 15m setup."
+    else:
+        conf_status = "PENDING"
+        conf_reason = trigger_requirement or "Waiting for 5m confirmation."
+        conf_next = "Track only. Do not execute from the 1m chart yet."
+
+    should_now = str(entry_guidance.get("should_enter_now") or "").upper()
+    entry_zone = entry_guidance.get("pullback_zone") or entry_guidance.get("breakout_level")
+    stop_level = entry_guidance.get("risk_below")
+    if not setup_exists:
+        exec_status = "DISABLED"
+        exec_reason = "1m execution is disabled because there is no 15m setup."
+        exec_next = "Wait for 15m setup."
+    elif conf_status != "CONFIRMED":
+        exec_status = "DISABLED"
+        exec_reason = "1m execution is disabled until 5m confirmation fires."
+        exec_next = "Track on 5m. Do not enter from 1m."
+    elif is_chasing or edge_state in ("LATE", "EXHAUSTED"):
+        exec_status = "DO_NOT_CHASE"
+        exec_reason = chase_reason or entry_guidance.get("avoid") or "Price is extended from value."
+        exec_next = "Wait for pullback/reset. Do not enter now."
+    elif should_now == "YES":
+        exec_status = "READY"
+        exec_reason = entry_guidance.get("action") or "1m execution window is clean."
+        exec_next = "Execute only with predefined stop and target."
+    else:
+        exec_status = "WAIT_ENTRY"
+        exec_reason = entry_guidance.get("summary") or "5m is confirmed, but 1m entry is not clean yet."
+        exec_next = entry_guidance.get("action") or "Wait for a clean 1m entry zone."
+
+    if not setup_exists:
+        final_decision = "NO_TRADE"
+    elif conf_status == "PENDING":
+        final_decision = "TRACK_ONLY"
+    elif conf_status == "FAILED":
+        final_decision = "NO_TRADE"
+    elif exec_status == "DO_NOT_CHASE":
+        final_decision = "DO_NOT_CHASE"
+    elif conf_status == "CONFIRMED" and exec_status == "READY":
+        final_decision = "GO"
+    elif conf_status == "CONFIRMED":
+        final_decision = "WAIT_ENTRY"
+    else:
+        final_decision = "TRACK_ONLY"
+
+    return {
+        "setup_15m": {
+            "status": setup_status,
+            "direction": direction,
+            "reason": setup_reason,
+            "next_action": setup_next,
+            "key_levels": setup_levels,
+        },
+        "confirmation_5m": {
+            "status": conf_status,
+            "direction": direction,
+            "trigger_requirement": trigger_requirement,
+            "trigger_fired": bool(trigger_fired),
+            "candle_checks": candle_checks,
+            "volume_confirmed": bool(volume_spike),
+            "reason": conf_reason,
+            "next_action": conf_next,
+        },
+        "execution_1m": {
+            "status": exec_status,
+            "entry_zone": entry_zone,
+            "stop_level": stop_level,
+            "chase_warning": chase_reason if is_chasing else "",
+            "reason": exec_reason,
+            "next_action": exec_next,
+        },
+        "final_decision": final_decision,
+    }
 
 
 def _rth_session_on_date(df_et: pd.DataFrame, session_date: str) -> pd.DataFrame:
@@ -4095,6 +4324,34 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 "Verdict downgraded GO→WATCH: confirmation conditions not yet met. "
                 "Wait for pending signals before treating this as an entry."
             )
+
+    timeframe_state = build_timeframe_state(
+        bias=bias,
+        soft_edge=soft_edge,
+        or_state=or_state,
+        or_historical=or_historical,
+        or_high=or_high,
+        or_low=or_low,
+        vwap=vwap_last,
+        trigger_setup=_trigger_setup,
+        trigger_fired=_trigger_fired,
+        trigger_requirement=_trigger_requirement,
+        candles_5m=_5m,
+        volume_spike=vol_spike,
+        entry_guidance=entry_guidance,
+        is_chasing=is_chasing,
+        edge_state=edge_state,
+        chase_reason=chase_reason,
+        no_setup_reason=prefix[0] if prefix else "No clean 15m setup.",
+    )
+    metrics["timeframe_state"] = timeframe_state
+    metrics["timeframe_final_decision"] = timeframe_state.get("final_decision")
+    if timeframe_state.get("final_decision") in ("NO_TRADE", "DO_NOT_CHASE"):
+        entry_guidance["should_enter_now"] = "NO"
+    elif timeframe_state.get("final_decision") == "TRACK_ONLY":
+        entry_guidance["should_enter_now"] = "NO"
+    elif timeframe_state.get("final_decision") == "WAIT_ENTRY":
+        entry_guidance["should_enter_now"] = "CONDITIONAL"
 
     # ── Adaptive R/R — setup-type-aware calculation ───────────────────────
     _adaptive_rr_result: Optional[dict] = None

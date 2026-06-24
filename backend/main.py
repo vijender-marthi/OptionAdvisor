@@ -2825,6 +2825,15 @@ def day_trade_scan(
             log.warning("AI coach error for %s: %s", r.ticker, _coach_exc)
             ai_coach_result = {}
 
+        timeframe_state = dict((r.metrics or {}).get("timeframe_state") or {})
+        timeframe_final = str(timeframe_state.get("final_decision") or (r.metrics or {}).get("timeframe_final_decision") or "").upper()
+        final_decision = timeframe_final or str(resolved.verdict or "WAIT").upper()
+        if timeframe_final in {"NO_TRADE", "TRACK_ONLY", "WAIT_ENTRY", "DO_NOT_CHASE", "GO"}:
+            # The explicit 15m→5m→1m hierarchy is the authoritative day-trade
+            # execution gate. Keep the resolver fields for context, but expose
+            # the gated decision as final_decision.
+            final_decision = timeframe_final
+
         return DayTradeResponse(
             ticker=r.ticker,
             company_name=r.company_name,
@@ -2837,6 +2846,7 @@ def day_trade_scan(
             trader_decision=r.trader_decision,
             market_bias=resolved.market_bias,
             setup_quality=resolved.setup_quality,
+            final_decision=final_decision,
             confidence=resolved.confidence,
             reason=resolved.reason,
             supporting_factors=resolved.supporting_factors,
@@ -2847,6 +2857,7 @@ def day_trade_scan(
             display_confidence=int(resolved.display_confidence or 0),
             execution_fields=list(resolved.execution_fields or []),
             entry_guidance=dict(r.entry_guidance or {}),
+            timeframe_state=timeframe_state,
             option_risk_context=dict(r.option_risk_context or {}),
             ai_coach=ai_coach_result,
         )

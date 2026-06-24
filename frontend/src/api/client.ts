@@ -302,6 +302,34 @@ export interface DayTradeScanResult {
   display_confidence?: number
   /** Execution-level fields (VWAP, breakout level, etc.) */
   execution_fields?: Array<{ label: string; value: string }>
+  timeframe_state?: {
+    setup_15m?: {
+      status: string
+      direction: string | null
+      reason: string
+      next_action: string
+      key_levels: Record<string, number | null>
+    }
+    confirmation_5m?: {
+      status: string
+      direction: string | null
+      trigger_requirement: string
+      trigger_fired: boolean
+      candle_checks: Array<Record<string, unknown>>
+      volume_confirmed: boolean
+      reason: string
+      next_action: string
+    }
+    execution_1m?: {
+      status: string
+      entry_zone?: string | number | null
+      stop_level?: number | null
+      chase_warning?: string
+      reason: string
+      next_action: string
+    }
+    final_decision?: string
+  }
   /** VWAP-based entry guidance with pending confirmations, breakout levels, and human-readable action text */
   entry_guidance?: {
     state: string

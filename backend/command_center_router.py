@@ -56,6 +56,7 @@ from storage import (
 from trade_aggregator import build_command_center_payload
 from position_analyzer import analyze_active_position
 from stock_decision_engine import analyze_stock_position
+import exit_monitor
 
 command_center_router = APIRouter(tags=["command-center"])
 
@@ -1372,6 +1373,39 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
     closed = [p for p in port if isinstance(p, dict) and p.get("status") == "closed"]
     open_rows = [_portfolio_position_row(p, closed=False) for p in open_pos]
     closed_rows = [_portfolio_position_row(p, closed=True) for p in closed[:200]]
+    try:
+        live_exit_signals = [s.to_dict() for s in exit_monitor.scan_exit_signals_for_user(email)]
+    except Exception as exc:
+        log.warning("positions-center exit signal scan failed for %s: %s", email, exc)
+        live_exit_signals = []
+
+    def _exit_badge_for_signal(sig: dict[str, Any]) -> str:
+        code = str(sig.get("code") or "").upper()
+        severity = str(sig.get("severity") or "").lower()
+        if code == "TIME_STOP":
+            return "TIME_STOP"
+        if code == "TARGET":
+            return "TARGET_HIT"
+        if code in {"VWAP_BREAK", "OR_BREAK"}:
+            return "THESIS_INVALIDATED"
+        if severity == "critical" or code in {"STOP_HIT", "PREMIUM_LOSS"}:
+            return "EXIT_NOW"
+        if code in {"APPROACH_VWAP", "TRAILING_STOP", "NO_PROGRESS"}:
+            return "REDUCE"
+        return "HOLD"
+
+    exit_signal_by_ticker: dict[str, list[dict[str, Any]]] = {}
+    exit_badge_by_ticker: dict[str, str] = {}
+    _badge_rank = {"HOLD": 0, "REDUCE": 1, "TARGET_HIT": 2, "TIME_STOP": 3, "THESIS_INVALIDATED": 4, "EXIT_NOW": 5}
+    for sig in live_exit_signals:
+        tk = str(sig.get("ticker") or "").upper()
+        if not tk:
+            continue
+        badge = _exit_badge_for_signal(sig)
+        enriched = {**sig, "badge": badge}
+        exit_signal_by_ticker.setdefault(tk, []).append(enriched)
+        if _badge_rank.get(badge, 0) > _badge_rank.get(exit_badge_by_ticker.get(tk, "HOLD"), 0):
+            exit_badge_by_ticker[tk] = badge
 
     exposure: dict[str, float] = {}
     capital_by_strategy: dict[str, float] = {}
@@ -1604,6 +1638,9 @@ def _positions_center_payload(state: dict[str, Any], *, email: str) -> dict[str,
         "per_position_pnl":      pnl_data.get("per_position", {}),
         "ai_analyses":           ai_analyses,
         "stock_analyses":        stock_analyses,
+        "exit_signals":          live_exit_signals,
+        "exit_signal_by_ticker": exit_signal_by_ticker,
+        "exit_badge_by_ticker":  exit_badge_by_ticker,
         "sector_pnl":            sector_pnl,
         "pnl_by_period":         pnl_by_period,
         "pnl_by_strategy":       pnl_by_strategy,

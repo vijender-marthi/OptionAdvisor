@@ -286,6 +286,7 @@ class DayTradeResponse(BaseModel):
     trader_decision: dict = Field(default_factory=dict)
     market_bias: str = "NEUTRAL"
     setup_quality: str = "WEAK"
+    final_decision: str = "WAIT"
     confidence: int = 0
     reason: str = ""
     supporting_factors: list[str] = Field(default_factory=list)
@@ -296,6 +297,7 @@ class DayTradeResponse(BaseModel):
     display_confidence: int = 0
     execution_fields: list[dict] = Field(default_factory=list)
     entry_guidance: dict = Field(default_factory=dict)
+    timeframe_state: dict = Field(default_factory=dict)
     option_risk_context: dict = Field(default_factory=dict)
     # Structured AI coaching summary (Anthropic / OpenAI / deterministic fallback)
     ai_coach: dict = Field(default_factory=dict)

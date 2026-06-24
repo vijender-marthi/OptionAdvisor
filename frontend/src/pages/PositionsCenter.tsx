@@ -419,6 +419,17 @@ function AIStatusBadge({ status }: { status: string }) {
   )
 }
 
+function normalizeExitBadgeLabel(badge?: string | null): string | null {
+  const b = String(badge || '').toUpperCase()
+  if (!b || b === 'HOLD') return null
+  if (b === 'EXIT_NOW') return 'EXIT NOW'
+  if (b === 'TIME_STOP') return 'TIME STOP'
+  if (b === 'THESIS_INVALIDATED') return 'THESIS INVALID'
+  if (b === 'TARGET_HIT') return 'TARGET HIT'
+  if (b === 'REDUCE') return 'REDUCE'
+  return b.replace(/_/g, ' ')
+}
+
 function sourceStyleBadge(kind: 'day' | 'swing' | 'regular') {
   const cls = getPositionCategoryClass(kind)
   return (
@@ -890,6 +901,7 @@ function TradingPositionCard({
   expanded,
   pnlData,
   aiAnalysis,
+  exitBadge,
   onToggle,
   onClose,
   onManage,
@@ -906,6 +918,7 @@ function TradingPositionCard({
     mark_source?: 'live' | 'bs_theoretical' | 'stale'
   } | null
   aiAnalysis?: AiPositionAnalysis | null
+  exitBadge?: string | null
   onToggle: () => void
   onClose: () => void
   onManage: () => void
@@ -914,12 +927,15 @@ function TradingPositionCard({
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const actionAlert = deriveActionAlert(pos, pnlData, aiAnalysis)
+  const liveExitLabel = normalizeExitBadgeLabel(exitBadge)
   // Header badge is always driven by actionAlert so it can't contradict the action strip.
   const aiStatus = pos.status !== 'open'
     ? deriveAiStatus(pos)
-    : actionAlert.type === 'EXIT_NOW'  ? 'EXIT NOW'
-    : actionAlert.type === 'SELL_HALF' ? 'TAKE PROFIT'
-    : actionAlert.label
+    : liveExitLabel || (
+      actionAlert.type === 'EXIT_NOW'  ? 'EXIT NOW'
+      : actionAlert.type === 'SELL_HALF' ? 'TAKE PROFIT'
+      : actionAlert.label
+    )
   const sourceKind = deriveEngineSource(pos)
   const guidance = deriveAiGuidance(pos)
   const isExpiringSoon = (safeDte(pos.dte, 99)) <= 7
@@ -984,11 +1000,11 @@ function TradingPositionCard({
   const creditPer = creditPerContract(pos)
 
   const accentBorder =
-    aiStatus === 'EXIT NOW'
+    aiStatus === 'EXIT NOW' || aiStatus === 'THESIS INVALID' || aiStatus === 'TIME STOP'
       ? 'border-l-red-500'
       : aiStatus === 'HOLD' || aiStatus === 'EXIT'
         ? 'border-l-emerald-500'
-        : aiStatus === 'WATCH' || aiStatus === 'EXIT SOON' || aiStatus === 'TAKE PROFIT'
+        : aiStatus === 'WATCH' || aiStatus === 'EXIT SOON' || aiStatus === 'TAKE PROFIT' || aiStatus === 'TARGET HIT' || aiStatus === 'REDUCE'
           ? 'border-l-amber-400'
           : aiStatus === 'CONFLICT'
             ? 'border-l-fuchsia-500'
@@ -1589,6 +1605,7 @@ export default function PositionsCenter() {
   }>
   const aiAnalyses    = (d.ai_analyses    ?? {}) as Record<string, AiPositionAnalysis>
   const stockAnalyses = (d.stock_analyses ?? {}) as Record<string, StockPositionAnalysis>
+  const exitBadgeByTicker = (d.exit_badge_by_ticker ?? {}) as Record<string, string>
   const rawTab = positionsTab as string
   const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'open'
 
@@ -2060,6 +2077,7 @@ export default function PositionsCenter() {
               pos={pos}
               pnlData={perPositionPnl[pos.id] ?? null}
               aiAnalysis={aiAnalyses[pos.id] ?? null}
+              exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
               expanded={expandedId === pos.id}
               onToggle={() => toggleExpanded(pos.id)}
               onClose={() => handleClose(pos)}

@@ -69,6 +69,11 @@ _APPROACH_BAND = 0.005
 _EOD_WARN_MINUTES = 15
 # Trailing stop: retracement fraction from high/low water mark that triggers a warning.
 _TRAIL_RETRACEMENT = 0.01  # 1% pullback from peak → tighten/exit
+# Option premium hard stop for day trades.
+_PREMIUM_LOSS_PCT = 0.30
+# No-progress warning after entry.
+_NO_PROGRESS_MINUTES = 15
+_NO_PROGRESS_MIN_FAVORABLE = 0.0015  # 0.15% underlying progress
 
 
 @dataclass
@@ -110,6 +115,16 @@ class ExitSignalEngine:
     def _eod_minutes_left(self, data: dict) -> Optional[float]:
         m = data.get("minutes_to_close")
         return float(m) if m is not None else None
+
+    def _minutes_since_entry(self, pos: HeldPosition, data: dict) -> Optional[float]:
+        if data.get("minutes_since_entry") is not None:
+            return float(data["minutes_since_entry"])
+        if pos.entry_time is None:
+            return None
+        try:
+            return max(0.0, (datetime.now(pos.entry_time.tzinfo) - pos.entry_time).total_seconds() / 60.0)
+        except Exception:
+            return None
 
     # ── long exits ─────────────────────────────────────────────────────────
     def _check_long_exits(self, pos: HeldPosition, data: dict) -> list[ExitSignal]:
@@ -192,6 +207,27 @@ class ExitSignalEngine:
             if hit:
                 out.append(ExitSignal(pos.ticker, WARNING, f"Target ${pos.target_price:.2f} reached",
                                       "Take profit — sell ½, trail the rest", float(price), prem, pnl, "TARGET"))
+
+        # CRITICAL: option premium loss >= 30% for day trades
+        if _is_day and pos.entry_premium and prem > 0:
+            loss_pct = (pos.entry_premium - prem) / pos.entry_premium
+            if loss_pct >= _PREMIUM_LOSS_PCT:
+                out.append(ExitSignal(pos.ticker, CRITICAL,
+                                      f"Option premium down {loss_pct*100:.0f}% from entry",
+                                      "EXIT IMMEDIATELY — day option premium stop hit",
+                                      float(price or 0), prem, pnl, "PREMIUM_LOSS"))
+
+        # WARNING: no progress after 15 minutes
+        mins_since_entry = self._minutes_since_entry(pos, data)
+        if _is_day and price is not None and mins_since_entry is not None and mins_since_entry >= _NO_PROGRESS_MINUTES:
+            px = float(price)
+            if pos.entry_price > 0:
+                favorable = (px - pos.entry_price) / pos.entry_price if above else (pos.entry_price - px) / pos.entry_price
+                if favorable < _NO_PROGRESS_MIN_FAVORABLE:
+                    out.append(ExitSignal(pos.ticker, WARNING,
+                                          f"No meaningful progress after {int(mins_since_entry)} min",
+                                          "Reduce or exit unless the next 5m candle confirms continuation",
+                                          px, prem, pnl, "NO_PROGRESS"))
 
         # WARNING: trailing stop — price retraced from high/low water mark
         if price is not None:
