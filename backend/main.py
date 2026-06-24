@@ -1466,9 +1466,39 @@ def _analyze_ticker(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
 
+    # Calendar spreads need a multi-expiry chain with an 'expiration' column so
+    # _build_calendar_spread can split front vs back leg rows.  We always tag the
+    # front-leg chain and, when calendars are in scope, fetch and append the back leg.
+    calls_engine = calls_f.copy()
+    puts_engine  = puts_f.copy()
+    calls_engine["expiration"] = target_expiry
+    puts_engine["expiration"]  = target_expiry
+
+    if strategy_mode in ("all", "calendar_only"):
+        try:
+            from engine import pick_expiry_by_dte as _pick_exp_cal
+            front_dte_cal = max(0, (datetime.strptime(target_expiry, "%Y-%m-%d").date() - datetime.now().date()).days)
+            back_exp = _pick_exp_cal(list(opt_dates), front_dte_cal + 21, front_dte_cal + 60)
+            if back_exp and back_exp != target_expiry:
+                c_back_raw, p_back_raw = _bc_chain(ticker, back_exp)
+                c_back = c_back_raw[
+                    (c_back_raw["strike"] >= price_approx * 0.75) &
+                    (c_back_raw["strike"] <= price_approx * 1.30)
+                ].copy()
+                p_back = p_back_raw[
+                    (p_back_raw["strike"] >= price_approx * 0.75) &
+                    (p_back_raw["strike"] <= price_approx * 1.30)
+                ].copy()
+                c_back["expiration"] = back_exp
+                p_back["expiration"] = back_exp
+                calls_engine = pd.concat([calls_engine, c_back], ignore_index=True)
+                puts_engine  = pd.concat([puts_engine,  p_back], ignore_index=True)
+        except Exception:
+            pass  # back-leg fetch failure: calendars won't build but other strategies still work
+
     # Run engine
     try:
-        trades = run_engine(signals, calls_f, puts_f, list(opt_dates),
+        trades = run_engine(signals, calls_engine, puts_engine, list(opt_dates),
                             spread_width_override=spread_width,
                             weeks_out=weeks_for_engine,
                             strategy_mode=strategy_mode)
@@ -2083,9 +2113,30 @@ async def unified_analyze(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
 
+    calls_engine_v2 = calls_f.copy()
+    puts_engine_v2  = puts_f.copy()
+    calls_engine_v2["expiration"] = target_expiry
+    puts_engine_v2["expiration"]  = target_expiry
+
+    if strategy_mode in ("all", "calendar_only"):
+        try:
+            from engine import pick_expiry_by_dte as _pick_exp_cal_v2
+            _front_dte = max(0, (datetime.strptime(target_expiry, "%Y-%m-%d").date() - datetime.now().date()).days)
+            _back_exp = _pick_exp_cal_v2(list(opt_dates), _front_dte + 21, _front_dte + 60)
+            if _back_exp and _back_exp != target_expiry:
+                _cb, _pb = _bc_chain(ticker, _back_exp)
+                _cb = _cb[(_cb["strike"] >= price_approx * 0.75) & (_cb["strike"] <= price_approx * 1.30)].copy()
+                _pb = _pb[(_pb["strike"] >= price_approx * 0.75) & (_pb["strike"] <= price_approx * 1.30)].copy()
+                _cb["expiration"] = _back_exp
+                _pb["expiration"] = _back_exp
+                calls_engine_v2 = pd.concat([calls_engine_v2, _cb], ignore_index=True)
+                puts_engine_v2  = pd.concat([puts_engine_v2,  _pb], ignore_index=True)
+        except Exception:
+            pass
+
     try:
         trades = run_engine(
-            signals, calls_f, puts_f, list(opt_dates),
+            signals, calls_engine_v2, puts_engine_v2, list(opt_dates),
             spread_width_override=spread_width,
             weeks_out=weeks_for_engine,
             strategy_mode=strategy_mode,

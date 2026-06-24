@@ -1908,13 +1908,24 @@ def run_engine(
         filtered.append(t)
 
     # ── EV / KELLY PASS ──────────────────────────────────────
+    # In dedicated single-strategy modes the user explicitly wants that structure —
+    # relax the hard EV > 0 gate so we always surface at least one result.
+    # A warning is appended below when EV < 0.
+    _ev_floor = -999 if strategy_mode in ("calendar_only", "straddle_only") else 0
+
     ev_positive = []
     for t in filtered:
         t["prob_of_profit"] = clamp_probability(t["prob_of_profit"])
         t["prob_of_max_loss"] = clamp_probability(t["prob_of_max_loss"])
 
-        if t["expected_value"] <= 0:
+        if t["expected_value"] <= _ev_floor:
             continue
+
+        if t["expected_value"] <= 0:
+            t.setdefault("warnings", []).append(
+                f"Negative expected value ({t['expected_value']:.2f}): current market conditions "
+                "are not ideal for this structure. Review carefully before trading."
+            )
 
         kelly_fraction, half_kelly_fraction, edge_ratio = compute_kelly_metrics(
             t["expected_value"],
