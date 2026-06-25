@@ -173,6 +173,7 @@ export default function DayTradeIntradayChart({
   dimEntries,
   zones,
   supportResistanceLevels,
+  showScalpStudy = false,
   isDark = false,
 }: {
   bars: DayTradeChartBar[]
@@ -185,6 +186,7 @@ export default function DayTradeIntradayChart({
   dimEntries?: boolean
   zones?: ZoneAnnotation[]
   supportResistanceLevels?: SupportResistanceLevel[]
+  showScalpStudy?: boolean
   isDark?: boolean
 }) {
   const entryColors = isDark ? EC_DARK : EC_LIGHT
@@ -308,10 +310,12 @@ export default function DayTradeIntradayChart({
     const innerH = 220
     const volumeGap = 14
     const volumeH = 72
+    const scalpGap = showScalpStudy ? 12 : 0
+    const scalpH = showScalpStudy ? 76 : 0
     /** Wide enough for ~2px per bar minimum; parent can scroll horizontally. */
     const innerW = Math.max(n * 2.2, cw - PAD.l - PAD.r)
     const W = PAD.l + PAD.r + innerW
-    const H = PAD.t + innerH + volumeGap + volumeH + PAD.b
+    const H = PAD.t + innerH + volumeGap + volumeH + scalpGap + scalpH + PAD.b
 
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
@@ -323,6 +327,8 @@ export default function DayTradeIntradayChart({
     const volumeTop = PAD.t + innerH + volumeGap
     const volumeMax = Math.max(1, ...bars.map(b => b.v || 0))
     const volumeYAt = (v: number) => volumeTop + volumeH - (Math.max(0, v) / volumeMax) * volumeH
+    const scalpTop = volumeTop + volumeH + scalpGap
+    const stochYAt = (v: number) => scalpTop + scalpH - (Math.max(0, Math.min(100, v)) / 100) * scalpH
 
     const lastOrI = Math.max(0, Math.min(orMinutes, n) - 1)
     const orStartX = xAt(times[0]!)
@@ -345,9 +351,9 @@ export default function DayTradeIntradayChart({
     return {
       W, H, innerW, innerH, xAt, yAt, bodyW, slot,
       yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xTicks, times,
-      volumeTop, volumeH, volumeMax, volumeYAt, srLevels,
+      volumeTop, volumeH, volumeMax, volumeYAt, scalpTop, scalpH, stochYAt, srLevels,
     }
-  }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels])
+  }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels, showScalpStudy])
 
   // Don't render until container width is known — avoids the wrong-width flash
   if (cw === 0) {
@@ -363,7 +369,7 @@ export default function DayTradeIntradayChart({
   }
 
   const { W, H, innerW, innerH, xAt, yAt, bodyW, slot, yMin, yMax, yTicks,
-          orStartX, orEndX, tMin, times, xTicks, volumeTop, volumeH, volumeYAt, srLevels } = layout
+          orStartX, orEndX, tMin, times, xTicks, volumeTop, volumeH, volumeYAt, scalpTop, scalpH, stochYAt, srLevels } = layout
   const orMid = (orHigh + orLow) / 2
   const latestBandBar = [...bars].reverse().find(b =>
     b.vwap_upper1 != null || b.vwap_lower1 != null || b.vwap_upper2 != null || b.vwap_lower2 != null
@@ -381,6 +387,25 @@ export default function DayTradeIntradayChart({
   const vwapPts = bars
     .map((b, i) => `${xAt(times[i]!)},${yAt(b.vwap)}`)
     .join(' ')
+  const ema50Pts = bars
+    .map((b, i) => b.ema50 != null ? `${xAt(times[i]!)},${yAt(b.ema50)}` : '')
+    .filter(Boolean)
+    .join(' ')
+  const ema150Pts = bars
+    .map((b, i) => b.ema150 != null ? `${xAt(times[i]!)},${yAt(b.ema150)}` : '')
+    .filter(Boolean)
+    .join(' ')
+  const stochPts = bars
+    .map((b, i) => b.stoch5 != null ? `${xAt(times[i]!)},${stochYAt(b.stoch5)}` : '')
+    .filter(Boolean)
+    .join(' ')
+  const trendPts = bars
+    .map((b, i) => b.trend_confirmation != null ? `${xAt(times[i]!)},${stochYAt(b.trend_confirmation)}` : '')
+    .filter(Boolean)
+    .join(' ')
+  const latestScalpBar = [...bars].reverse().find(b =>
+    b.ema50 != null || b.ema150 != null || b.stoch5 != null || b.trend_confirmation != null
+  )
 
   const toggleEntry = (idx: number) => {
     setHidden(prev => {
@@ -404,6 +429,16 @@ export default function DayTradeIntradayChart({
           {' · '}
           <span style={{ color: 'var(--chart-line-rsi)' }}>Volume</span>
           {' · '}
+          {showScalpStudy && (
+            <>
+              <span style={{ color: '#ef4444' }}>EMA50</span>
+              {' · '}
+              <span style={{ color: '#22c55e' }}>EMA150</span>
+              {' · '}
+              <span style={{ color: '#38bdf8' }}>Stoch(5)</span>
+              {' · '}
+            </>
+          )}
           <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
           {' · '}
           <span style={{ color: 'var(--bullish)' }}>▲</span>
@@ -415,6 +450,35 @@ export default function DayTradeIntradayChart({
           )}
         </div>
       </div>
+
+      {showScalpStudy && (
+        <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">EMA50</div>
+            <div className="mt-0.5 font-mono text-xs font-bold tabular-nums text-rose-600 dark:text-rose-300">
+              {latestScalpBar?.ema50 != null ? `$${fmtPrice(latestScalpBar.ema50)}` : '—'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">EMA150</div>
+            <div className="mt-0.5 font-mono text-xs font-bold tabular-nums text-emerald-600 dark:text-emerald-300">
+              {latestScalpBar?.ema150 != null ? `$${fmtPrice(latestScalpBar.ema150)}` : '—'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Stoch(5)</div>
+            <div className="mt-0.5 font-mono text-xs font-bold tabular-nums text-sky-700 dark:text-sky-300">
+              {latestScalpBar?.stoch5 != null ? latestScalpBar.stoch5.toFixed(1) : '—'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Trend Confirm</div>
+            <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${latestScalpBar?.trend_confirmation === 100 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+              {latestScalpBar?.trend_confirmation === 100 ? 'BULLISH' : latestScalpBar?.trend_confirmation === 0 ? 'BEARISH' : '—'}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-7">
         {sessionLevelValues.map(level => (
@@ -637,6 +701,17 @@ export default function DayTradeIntradayChart({
             strokeLinejoin="round" strokeLinecap="round" opacity={0.12}
             points={vwapPts} clipPath={`url(#${clipId})`} />
 
+          {showScalpStudy && ema50Pts && (
+            <polyline fill="none" stroke="#ef4444" strokeWidth={1.6}
+              strokeLinejoin="round" strokeLinecap="round"
+              points={ema50Pts} clipPath={`url(#${clipId})`} />
+          )}
+          {showScalpStudy && ema150Pts && (
+            <polyline fill="none" stroke="#22c55e" strokeWidth={1.6}
+              strokeLinejoin="round" strokeLinecap="round"
+              points={ema150Pts} clipPath={`url(#${clipId})`} />
+          )}
+
           {/* ── VWAP bias-flip markers (full session) ── */}
           {bars.map((b, i) => {
             if (i === 0) return null
@@ -744,6 +819,57 @@ export default function DayTradeIntradayChart({
               Volume
             </text>
           </g>
+
+          {showScalpStudy && (
+            <g>
+              <rect
+                x={PAD.l}
+                y={scalpTop}
+                width={innerW}
+                height={scalpH}
+                fill={isDark ? 'rgba(15,23,42,0.38)' : 'rgba(248,250,252,0.9)'}
+                stroke="var(--chart-grid)"
+                strokeOpacity={0.45}
+              />
+              {[20, 50, 80].map(level => (
+                <line
+                  key={`stoch-ref-${level}`}
+                  x1={PAD.l}
+                  x2={PAD.l + innerW}
+                  y1={stochYAt(level)}
+                  y2={stochYAt(level)}
+                  stroke={level === 50 ? 'var(--chart-axis)' : 'var(--chart-grid)'}
+                  strokeDasharray={level === 50 ? '4 4' : '2 5'}
+                  strokeOpacity={level === 50 ? 0.42 : 0.55}
+                />
+              ))}
+              {trendPts && (
+                <polyline
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth={1.3}
+                  strokeDasharray="6 4"
+                  strokeLinejoin="round"
+                  points={trendPts}
+                />
+              )}
+              {stochPts && (
+                <polyline
+                  fill="none"
+                  stroke="#38bdf8"
+                  strokeWidth={1.7}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  points={stochPts}
+                />
+              )}
+              <text x={PAD.l + 4} y={scalpTop + 12} fill="var(--chart-axis)" fontSize={10} fontWeight={600}>
+                Stoch(5) · trend confirmation
+              </text>
+              <text x={PAD.l + innerW - 4} y={stochYAt(80) - 3} textAnchor="end" fill="var(--chart-axis)" fontSize={9} opacity={0.7}>80</text>
+              <text x={PAD.l + innerW - 4} y={stochYAt(20) + 10} textAnchor="end" fill="var(--chart-axis)" fontSize={9} opacity={0.7}>20</text>
+            </g>
+          )}
 
           {/* Session open label + 2-hour grid lines */}
           <text x={PAD.l} y={H - 10} textAnchor="start" fill="var(--chart-axis)" fontSize={10}>

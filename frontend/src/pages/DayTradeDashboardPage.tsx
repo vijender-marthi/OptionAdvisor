@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard, Activity } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
@@ -15,7 +15,7 @@ const SK_ACTIVE_TAB    = 'oa_dashboard_active_tab'
 const AUTO_REFRESH_MS  = 60 * 1000
 const MAX_TICKERS      = 8
 
-type Tab = 'day' | 'swing' | 'table'
+type Tab = 'day' | 'swing' | 'table' | 'scalp'
 /** Tabs share two data pools — the table tab reads the day pool. */
 type DataTab = 'day' | 'swing'
 
@@ -656,7 +656,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
             )}
             {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}
             <span style={{ fontSize: 11, color: dt.muted }}>
-              {isSwing ? 'Swing · Daily Chart' : 'Intraday · 6:30 AM – 1:00 PM PT'}
+              {isSwing ? 'Swing · Daily Chart' : data.tab === 'scalp' ? 'Scalp · EMA50 / EMA150 / Stoch(5)' : 'Intraday · 6:30 AM – 1:00 PM PT'}
             </span>
             {!isSwing && (
               <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
@@ -677,7 +677,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
           ) : displayBars && displayBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-              <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} />
+              <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} showScalpStudy={data.tab === 'scalp'} isDark={isDark} />
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: dt.muted }}>No chart data</div>
@@ -888,7 +888,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
                     ))}
                   </div>
                   <div onClick={onExpand} style={{ cursor: 'zoom-in' }}>
-                    <DayTradeIntradayChart bars={displayChartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} isDark={isDark} />
+                    <DayTradeIntradayChart bars={displayChartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} showScalpStudy={tab === 'scalp'} isDark={isDark} />
                   </div>
                 </div>
               )}
@@ -1066,15 +1066,16 @@ export default function DayTradeDashboardPage() {
   }, [tickers, dataTab, scanAll])
 
   // Expand chart — force fresh scan first
-  const handleExpand = useCallback(async (sym: string, tab: DataTab) => {
-    await scanTicker(sym, tab, true)
-    const setter = tab === 'day' ? setDayTiles : setSwingTiles
+  const handleExpand = useCallback(async (sym: string, tab: Tab) => {
+    const scanTab: DataTab = tab === 'swing' ? 'swing' : 'day'
+    await scanTicker(sym, scanTab, true)
+    const setter = scanTab === 'day' ? setDayTiles : setSwingTiles
     setter(prev => {
       const tile = prev[sym]
       if (!tile?.result) return prev
       const metrics = tile.result.metrics as Record<string, unknown> | undefined
       if (!metrics) return prev
-      const isSwing = tab === 'swing'
+      const isSwing = scanTab === 'swing'
       const entryPoints = !isSwing
         ? buildEntryPoints(tile.result as DayTradeScanResult, metrics)
         : undefined
@@ -1154,8 +1155,8 @@ export default function DayTradeDashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
           <DashboardStatCard dt={dt} label="Intraday Symbols" value={String(dayTickers.length)} sub="Session chart + MTF gates" tone={dt.accent} />
           <DashboardStatCard dt={dt} label="Swing Symbols" value={String(swingTickers.length)} sub="Daily trend workspace" tone={dt.violet} />
-          <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'table' ? 'Intraday Table' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
-          <DashboardStatCard dt={dt} label="Chart Engine" value="Session" sub="VWAP · OR · sigma bands" tone={dt.green} />
+          <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'table' ? 'Intraday Table' : activeTab === 'scalp' ? 'Scalp' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
+          <DashboardStatCard dt={dt} label="Chart Engine" value={activeTab === 'scalp' ? 'Scalp' : 'Session'} sub={activeTab === 'scalp' ? 'EMA50 · EMA150 · Stoch(5)' : 'VWAP · OR · sigma bands'} tone={dt.green} />
         </div>
 
         {/* Tabs */}
@@ -1163,6 +1164,7 @@ export default function DayTradeDashboardPage() {
           {([
             { id: 'table' as Tab, label: 'Intraday Table', icon: <Table2 size={14} />,  accent: dt.accent },
             { id: 'day'   as Tab, label: 'Intraday Charts', icon: <CandlestickChart size={14} />, accent: dt.accent },
+            { id: 'scalp' as Tab, label: 'Scalp Trading', icon: <Activity size={14} />, accent: dt.green },
             { id: 'swing' as Tab, label: 'Swing Trade',     icon: <TrendingUp size={14} />, accent: dt.violet },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
@@ -1183,7 +1185,7 @@ export default function DayTradeDashboardPage() {
         {/* Tile grid / ticker table */}
         {tickers.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '60px 20px', border: `2px dashed ${dt.border}`, borderRadius: 16, color: dt.muted, textAlign: 'center' }}>
-            <div style={{ fontSize: 40 }}>{activeTab === 'swing' ? '📈' : activeTab === 'table' ? '📋' : '⚡'}</div>
+            <div style={{ fontSize: 40 }}>{activeTab === 'swing' ? '📈' : activeTab === 'table' ? '📋' : activeTab === 'scalp' ? '🎯' : '⚡'}</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: dt.text }}>No tickers added yet</div>
             <div style={{ fontSize: 13 }}>Add up to {MAX_TICKERS} tickers above to monitor them all at once</div>
           </div>
@@ -1201,9 +1203,9 @@ export default function DayTradeDashboardPage() {
               >
                 <TickerTile
                   tile={tiles[sym] ?? { ticker: sym, result: null, unified: null, loading: true, error: null }}
-                  tab={dataTab} dt={dt} isDark={isDark}
+                  tab={activeTab} dt={dt} isDark={isDark}
                   onRemove={() => removeTicker(sym)}
-                  onExpand={() => void handleExpand(sym, dataTab)}
+                  onExpand={() => void handleExpand(sym, activeTab)}
                   dragHandleProps={makeHandleProps(sym)}
                   isDragging={dragging === sym}
                   isDropTarget={dropTarget === sym}

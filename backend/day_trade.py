@@ -4120,6 +4120,17 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     reasons = prefix + body
 
+    close_ser = session["Close"].astype(float)
+    high_ser = session["High"].astype(float)
+    low_ser = session["Low"].astype(float)
+    ema50_ser = close_ser.ewm(span=50, adjust=False).mean()
+    ema150_ser = close_ser.ewm(span=150, adjust=False).mean()
+    stoch_low5 = low_ser.rolling(5, min_periods=1).min()
+    stoch_high5 = high_ser.rolling(5, min_periods=1).max()
+    stoch_range5 = (stoch_high5 - stoch_low5).replace(0, math.nan)
+    stoch5_ser = ((close_ser - stoch_low5) / stoch_range5 * 100.0).fillna(50.0).clip(0.0, 100.0)
+    trend_confirm_ser = (ema50_ser > ema150_ser).astype(float) * 100.0
+
     chart_bars: list[dict[str, Any]] = []
     for i in range(len(session)):
         row = session.iloc[i]
@@ -4139,6 +4150,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
                 "vwap_lower1": round(float(vwap_lower1_ser.iloc[i]), 4),
                 "vwap_upper2": round(float(vwap_upper2_ser.iloc[i]), 4),
                 "vwap_lower2": round(float(vwap_lower2_ser.iloc[i]), 4),
+                "ema50": round(float(ema50_ser.iloc[i]), 4),
+                "ema150": round(float(ema150_ser.iloc[i]), 4),
+                "stoch5": round(float(stoch5_ser.iloc[i]), 2),
+                "trend_confirmation": round(float(trend_confirm_ser.iloc[i]), 2),
             }
         )
 

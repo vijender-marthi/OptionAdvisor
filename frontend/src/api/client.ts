@@ -122,6 +122,10 @@ export interface DayTradeChartBar {
   vwap_lower1?: number
   vwap_upper2?: number
   vwap_lower2?: number
+  ema50?: number
+  ema150?: number
+  stoch5?: number
+  trend_confirmation?: number
 }
 
 export interface DayTraderDecision {
