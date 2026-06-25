@@ -439,6 +439,101 @@ function sourceStyleBadge(kind: 'day' | 'swing' | 'regular') {
   )
 }
 
+type OvernightCheckStatus = 'pass' | 'fail' | 'missing'
+type OvernightCheck = { label: string; status: OvernightCheckStatus; detail: string }
+
+function checkStatus(ok: boolean | null, detail: string): { status: OvernightCheckStatus; detail: string } {
+  if (ok == null) return { status: 'missing', detail }
+  return { status: ok ? 'pass' : 'fail', detail }
+}
+
+function deriveOvernightHoldChecks(pos: PortfolioPosition, aiAnalysis?: AiPositionAnalysis | null): {
+  verdict: 'KEEP' | 'CLOSE'
+  checks: OvernightCheck[]
+  summary: string
+} {
+  const price = aiAnalysis?.current_price ?? null
+  const vwap = aiAnalysis?.vwap ?? null
+  const orh = aiAnalysis?.orh ?? null
+  const ema20 = aiAnalysis?.ema20 ?? aiAnalysis?.ma20 ?? null
+  const dte = safeDte(pos.dte, 0)
+  const dailyTrend = String(aiAnalysis?.daily_trend ?? aiAnalysis?.momentum_quality ?? '').toUpperCase()
+  const spyAligned = aiAnalysis?.spy_aligned
+  const qqqAligned = aiAnalysis?.qqq_aligned
+  const marketAligned = spyAligned == null && qqqAligned == null
+    ? null
+    : Boolean(spyAligned) && Boolean(qqqAligned)
+  const dailyBullish = dailyTrend
+    ? dailyTrend.includes('BULL') || dailyTrend.includes('STRONG') || dailyTrend.includes('HEALTHY')
+    : null
+
+  const vwapCheck = checkStatus(price != null && vwap != null ? price > vwap : null, price != null && vwap != null ? `$${price.toFixed(2)} vs VWAP $${vwap.toFixed(2)}` : 'VWAP level unavailable')
+  const orhCheck = checkStatus(price != null && orh != null ? price > orh : null, price != null && orh != null ? `$${price.toFixed(2)} vs ORH $${orh.toFixed(2)}` : 'ORH level unavailable')
+  const emaCheck = checkStatus(price != null && ema20 != null ? price > ema20 : null, price != null && ema20 != null ? `$${price.toFixed(2)} vs 20 EMA $${ema20.toFixed(2)}` : '20 EMA unavailable')
+  const trendCheck = checkStatus(dailyBullish, dailyTrend ? dailyTrend.replace(/_/g, ' ') : 'Daily trend unavailable')
+  const marketCheck = checkStatus(marketAligned, spyAligned == null && qqqAligned == null ? 'SPY/QQQ alignment unavailable' : `SPY ${spyAligned ? 'aligned' : 'not aligned'} · QQQ ${qqqAligned ? 'aligned' : 'not aligned'}`)
+  const dteCheck = checkStatus(dte > 5, dte > 0 ? `${dte} DTE remaining` : 'DTE unavailable')
+
+  const checks: OvernightCheck[] = [
+    { label: 'Above VWAP', ...vwapCheck },
+    { label: 'Above ORH', ...orhCheck },
+    { label: 'Above 20 EMA', ...emaCheck },
+    { label: 'Daily trend bullish', ...trendCheck },
+    { label: 'QQQ/SPY aligned', ...marketCheck },
+    { label: 'Expiry > 5 DTE', ...dteCheck },
+  ]
+  const allPassed = checks.every(check => check.status === 'pass')
+  const missing = checks.filter(check => check.status === 'missing').length
+  const failed = checks.filter(check => check.status === 'fail').length
+  return {
+    verdict: allPassed ? 'KEEP' : 'CLOSE',
+    checks,
+    summary: allPassed
+      ? 'Overnight hold allowed. Day trade can be converted to a multi-day position.'
+      : failed > 0
+        ? `${failed} required condition${failed === 1 ? '' : 's'} failed. Close the day trade instead of converting it.`
+        : `${missing} required condition${missing === 1 ? '' : 's'} missing. Do not convert without confirming these levels.`,
+  }
+}
+
+function OvernightHoldEngineCard({ pos, aiAnalysis }: { pos: PortfolioPosition; aiAnalysis?: AiPositionAnalysis | null }) {
+  const decision = deriveOvernightHoldChecks(pos, aiAnalysis)
+  const allow = decision.verdict === 'KEEP'
+  const rowClass = (status: OvernightCheckStatus) =>
+    status === 'pass'
+      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+      : status === 'fail'
+        ? 'border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+        : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  return (
+    <div className={`mt-5 rounded-xl border p-4 ${allow ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/30 bg-rose-500/10'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-heading">Overnight Hold Engine</div>
+          <p className="mt-1 text-xs leading-5 text-secondary">Prevents day-trade drift. A Day trade can become multi-day only when every checklist item passes.</p>
+        </div>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${allow ? 'border-emerald-500/40 text-emerald-400' : 'border-rose-500/40 text-rose-400'}`}>
+          {allow ? 'Keep Overnight' : 'Close Today'}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {decision.checks.map(check => (
+          <div key={check.label} className={`rounded-lg border px-3 py-2 ${rowClass(check.status)}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold">{check.label}</span>
+              <span className="text-[10px] font-black uppercase tracking-wide">{check.status === 'pass' ? 'Pass' : check.status === 'fail' ? 'Fail' : 'Missing'}</span>
+            </div>
+            <div className="mt-0.5 text-[11px] opacity-80">{check.detail}</div>
+          </div>
+        ))}
+      </div>
+      <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold ${allow ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/10 text-rose-700 dark:text-rose-300'}`}>
+        {decision.summary}
+      </div>
+    </div>
+  )
+}
+
 function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
@@ -1408,92 +1503,118 @@ function TradingPositionCard({
             </div>
           )}
 
-          {/* Metrics — position fundamentals */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
-            {pos.prob_of_profit != null && (
-              <div><div className="text-muted">PoP</div>
-                <div className={`font-semibold tabular-nums ${pos.prob_of_profit >= 60 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.prob_of_profit.toFixed(0)}%</div></div>
-            )}
-            {pos.edge_ratio != null && (
-              <div><div className="text-muted">Edge</div>
-                <div className={`font-semibold tabular-nums ${pos.edge_ratio >= 0.05 ? 'text-emerald-400' : 'text-secondary'}`}>{pos.edge_ratio.toFixed(2)}</div></div>
-            )}
-            {pos.kelly_fraction != null && (
-              <div><div className="text-muted">½ Kelly</div>
-                <div className="font-semibold tabular-nums text-sky-400">{((pos.half_kelly_fraction ?? pos.kelly_fraction) * 100).toFixed(1)}%</div></div>
-            )}
-            {pos.max_profit != null && pos.max_profit > 0 && (
-              <div><div className="text-muted">Max Profit (full expiry)</div>
-                <div className="font-semibold tabular-nums text-emerald-400">
-                  {pos.strategy === 'Long Call' || pos.strategy === 'Long Put'
-                    ? 'Unlimited'
-                    : fmtUsd(pos.max_profit * SHARES_PER_OPTION_CONTRACT * pos.contracts)}
-                </div></div>
-            )}
-            {pos.max_loss != null && pos.max_loss > 0 && (
-              <div><div className="text-muted">Max Loss / Capital at Risk</div>
-                <div className="font-semibold tabular-nums text-rose-400">{fmtUsd(pos.max_loss * SHARES_PER_OPTION_CONTRACT * pos.contracts)}</div></div>
-            )}
-            {pos.capital_at_risk != null && (
-              <div><div className="text-muted">At risk</div>
-                <div className="font-semibold tabular-nums text-amber-400">{fmtUsd(pos.capital_at_risk)}</div></div>
-            )}
-            {pos.net_credit != null && (
-              <div><div className="text-muted">Net {pos.net_credit >= 0 ? 'credit' : 'debit'}</div>
-                <div className="font-semibold tabular-nums text-secondary">{fmtUsd(Math.abs(pos.net_credit) * SHARES_PER_OPTION_CONTRACT * pos.contracts)}</div></div>
-            )}
-            {pos.breakeven_lower != null && pos.breakeven_lower > 0 && (
-              <div><div className="text-muted">Breakeven at Expiry</div>
-                <div className="font-semibold tabular-nums text-secondary">{fmtUsd(pos.breakeven_lower)}</div></div>
-            )}
-
-            <div><div className="text-muted">Added</div>
-              <div className="font-semibold text-secondary">{pos.addedAt ? new Date(pos.addedAt).toLocaleDateString() : '—'}</div></div>
-            {pos.status === 'closed' && pos.exitDate && (
-              <div><div className="text-muted">Closed</div>
-                <div className="font-semibold text-secondary">{new Date(pos.exitDate).toLocaleDateString()}</div></div>
-            )}
-            {pos.status === 'closed' && pos.exit_price != null && (
-              <div><div className="text-muted">Exit price</div>
-                <div className="font-semibold text-secondary">{fmtUsd(pos.exit_price)}</div></div>
-            )}
-            {pos.status === 'closed' && pos.realized_pnl != null && (
-              <div><div className="text-muted">Realized P&L ($)</div>
-                <div className={`font-semibold ${getProfitLossTextClass(pos.realized_pnl)}`}>{fmtUsd(pos.realized_pnl)}</div></div>
-            )}
-            {pos.status === 'closed' && pos.realized_pnl_percent != null && (
-              <div><div className="text-muted">Realized P&L (% of cost)</div>
-                <div className={`font-semibold ${getProfitLossTextClass(pos.realized_pnl_percent)}`}>{fmtPct(pos.realized_pnl_percent)}</div></div>
-            )}
-            {pos.status === 'closed' && pos.exit_reason && (
-              <div><div className="text-muted">Exit reason</div>
-                <div className="font-semibold text-secondary">{pos.exit_reason}</div></div>
-            )}
-            {pos.status === 'closed' && pos.pnl_overridden && (
-              <div><div className="text-muted">Override</div>
-                <div className="font-semibold text-amber-400">P&L Override (manual entry)</div></div>
-            )}
-            {displayPnl && pos.status === 'open' && (
-              <div><div className="text-muted">Live P&L (mark-to-market)</div>
-                <div className={`font-semibold tabular-nums ${pnlColor}`}>{fmtUsd(displayPnl.pnl)}</div></div>
-            )}
-          </div>
-
-          {/* Legs */}
-          {pos.legs && pos.legs.length > 0 && (
-            <div className="text-[11px] space-y-0.5">
-              <div className="text-muted mb-0.5">Legs</div>
-              {pos.legs.map((leg, i) => (
-                <div key={i} className="flex items-center gap-2 font-mono text-secondary">
-                  <span className={`font-bold ${leg.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>{leg.action}</span>
-                  <span>{leg.option_type === 'CALL' ? 'C' : 'P'}</span>
-                  <span>${leg.strike.toFixed(1)}</span>
-                  <span className="text-muted">{leg.expiry}</span>
-                  {leg.delta != null && <span className="text-muted">Δ{leg.delta.toFixed(2)}</span>}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Entry Criteria</div>
+                {sourceStyleBadge(sourceKind)}
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                <div>
+                  <div className="text-muted">Opened</div>
+                  <div className="font-semibold text-secondary">{pos.addedAt ? new Date(pos.addedAt).toLocaleDateString() : '—'}</div>
                 </div>
-              ))}
+                <div>
+                  <div className="text-muted">Entry Stock</div>
+                  <div className="font-mono font-semibold text-secondary">{fmtUsd(pos.entryPrice)}</div>
+                </div>
+                <div>
+                  <div className="text-muted">Size</div>
+                  <div className="font-semibold text-secondary">{pos.contracts} {pos.strategy === 'Stock' ? 'shares' : 'contracts'}</div>
+                </div>
+                <div>
+                  <div className="text-muted">Expiry</div>
+                  <div className="font-semibold text-secondary">{pos.expiry || '—'}</div>
+                </div>
+                {pos.target1 != null && (
+                  <div>
+                    <div className="text-muted">Target 1</div>
+                    <div className="font-mono font-semibold text-emerald-400">{fmtUsd(pos.target1)}</div>
+                  </div>
+                )}
+                {pos.target2 != null && (
+                  <div>
+                    <div className="text-muted">Target 2</div>
+                    <div className="font-mono font-semibold text-orange-300">{fmtUsd(pos.target2)}</div>
+                  </div>
+                )}
+                {pos.breakout != null && (
+                  <div>
+                    <div className="text-muted">Breakout</div>
+                    <div className="font-mono font-semibold text-sky-400">{fmtUsd(pos.breakout)}</div>
+                  </div>
+                )}
+                {pos.stopLoss != null && (
+                  <div>
+                    <div className="text-muted">Stop</div>
+                    <div className="font-mono font-semibold text-rose-400">{fmtUsd(pos.stopLoss)}</div>
+                  </div>
+                )}
+              </div>
+              {pos.legs && pos.legs.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Option Legs</div>
+                  {pos.legs.map((leg, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2 rounded-md bg-slate-50 dark:bg-slate-900/60 px-2 py-1 font-mono text-[11px] text-secondary">
+                      <span className={`font-bold ${leg.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>{leg.action}</span>
+                      <span>{leg.option_type === 'CALL' ? 'CALL' : 'PUT'}</span>
+                      <span>${leg.strike.toFixed(1)}</span>
+                      <span className="text-muted">{leg.expiry}</span>
+                      {leg.mid_price > 0 && <span className="text-muted">@ ${leg.mid_price.toFixed(2)}</span>}
+                      {leg.delta != null && <span className="text-muted">Δ{leg.delta.toFixed(2)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                {pos.status === 'closed' ? 'Exit Record' : 'Exit Criteria'}
+              </div>
+              {pos.status === 'closed' ? (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                  <div>
+                    <div className="text-muted">Closed</div>
+                    <div className="font-semibold text-secondary">{pos.exitDate ? new Date(pos.exitDate).toLocaleDateString() : '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted">Exit Price</div>
+                    <div className="font-mono font-semibold text-secondary">{fmtUsd(pos.exit_price)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted">Realized P&L</div>
+                    <div className={`font-mono font-semibold ${displayPnl && displayPnl.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{displayPnl ? fmtUsd(displayPnl.pnl) : fmtUsd(pos.realized_pnl)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted">Return</div>
+                    <div className={`font-mono font-semibold ${displayPnl && displayPnl.pnl_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{displayPnl ? fmtPct(displayPnl.pnl_pct) : fmtPct(pos.realized_pnl_percent ?? pos.pnlPct)}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-muted">Reason</div>
+                    <div className="font-semibold text-secondary">{pos.exit_reason || '—'}</div>
+                  </div>
+                  {pos.pnl_overridden && (
+                    <div className="col-span-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-amber-400">
+                      Manual P&L override was used for this close.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 text-[11px]">
+                  {deriveExitRules(pos).slice(0, 4).map((rule, i) => (
+                    <div key={i} className="rounded-md bg-slate-50 dark:bg-slate-900/60 px-2 py-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-secondary">{rule.trigger}</span>
+                        <span className="font-mono font-bold text-violet-400">{rule.price == null ? 'Time' : fmtUsd(rule.price)}</span>
+                      </div>
+                      <div className="mt-0.5 text-muted">{rule.action} · {rule.note}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
               {pos.notes && <p className="text-sm text-secondary italic">{pos.notes}</p>}
               </div>
@@ -2112,6 +2233,7 @@ export default function PositionsCenter() {
       {editingPos && (
         <EditPositionModal
           pos={editingPos}
+          aiAnalysis={aiAnalyses[editingPos.id] ?? null}
           onSave={handleSaveEdit}
           onClose={() => setEditingId(null)}
         />
@@ -3009,10 +3131,12 @@ function ClosePositionModal({
 
 function EditPositionModal({
   pos,
+  aiAnalysis,
   onSave,
   onClose,
 }: {
   pos: PortfolioPosition
+  aiAnalysis?: AiPositionAnalysis | null
   onSave: (id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   onClose: () => void
 }) {
@@ -3065,6 +3189,9 @@ function EditPositionModal({
 
   const exitPriceVal = closeExitPrice !== '' ? parseFloat(closeExitPrice) : null
   const exitDebitCreditVal = closeExitDebitCredit !== '' ? parseFloat(closeExitDebitCredit) : null
+  const isDayToMultiDayConversion = pos.status === 'open' && deriveEngineSource(pos) === 'day' && form.tradeSource !== 'day'
+  const overnightDecision = useMemo(() => deriveOvernightHoldChecks(pos, aiAnalysis), [aiAnalysis, pos])
+  const overnightHoldAllowed = overnightDecision.verdict === 'KEEP'
 
   const { realizedPnl: editComputedPnl, realizedPnlPct: editComputedPnlPct } = isClosed
     ? computeClosePnl(pos, exitPriceVal, exitDebitCreditVal)
@@ -3072,6 +3199,7 @@ function EditPositionModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isDayToMultiDayConversion && !overnightHoldAllowed) return
     const def = STRATEGY_DEFS[form.strategy]
     if (!def) return
 
@@ -3210,6 +3338,10 @@ function EditPositionModal({
         <div className="px-6 py-5">
           <PositionFormFields form={form} onChange={patch => setForm(f => ({ ...f, ...patch }))} readonlyTicker isEdit sourceOptions={sourceOptions} />
 
+          {isDayToMultiDayConversion && (
+            <OvernightHoldEngineCard pos={pos} aiAnalysis={aiAnalysis} />
+          )}
+
           {isClosed && (
             <div className="mt-6 border-t border-slate-100 dark:border-white/[0.05] pt-5 space-y-4">
               <div className="text-sm font-bold text-heading">Close Details</div>
@@ -3297,7 +3429,9 @@ function EditPositionModal({
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
           <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>
-          <button type="submit" className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold`}>Save Changes</button>
+          <button type="submit" disabled={isDayToMultiDayConversion && !overnightHoldAllowed} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50`}>
+            {isDayToMultiDayConversion && !overnightHoldAllowed ? 'Overnight Hold Blocked' : 'Save Changes'}
+          </button>
         </div>
       </form>
     </ModalOverlay>

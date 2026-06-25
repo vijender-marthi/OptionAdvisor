@@ -21,6 +21,7 @@ interface EvalResult {
   verdict: string
   confidence: number
   parse_error?: string
+  parse_notes?: string[]
 }
 
 interface Message {
@@ -69,12 +70,21 @@ export default function DayTradeChat({ dt, currentTicker }: Props) {
         },
         body: JSON.stringify({ message: q, ticker: currentTicker }),
       })
+      if (!res.ok) {
+        let detail = `Trade check failed with HTTP ${res.status}.`
+        try {
+          const err = await res.json()
+          detail = typeof err?.detail === 'string' ? err.detail : detail
+        } catch { /* ignore non-json error body */ }
+        throw new Error(detail)
+      }
       const data: EvalResult = await res.json()
       setMessages(m => [...m, { id: nextId(), role: 'result', text: q, result: data }])
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : 'Could not reach the server. Make sure the backend is running.'
       setMessages(m => [...m, {
         id: nextId(), role: 'result', text: q,
-        result: { overall: 'ERROR', overall_msg: 'Could not reach the server. Make sure the backend is running.', checks: [], ticker: '', option_type: '', strike: 0, dte: 0, contracts: 1, last_price: 0, verdict: '', confidence: 0 },
+        result: { overall: 'ERROR', overall_msg: msg, checks: [], ticker: '', option_type: '', strike: 0, dte: 0, contracts: 1, last_price: 0, verdict: '', confidence: 0 },
       }])
     } finally {
       setLoading(false)

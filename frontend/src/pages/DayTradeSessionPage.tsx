@@ -33,6 +33,8 @@ interface TooltipState {
   alert: SessionAlert
 }
 
+type SessionChartInterval = '1h' | '15m' | '5m' | '1m'
+
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -57,6 +59,15 @@ const TYPE_COLOR: Record<string, string> = {
 const CHART_PAD = { l: 56, r: 12, t: 18, b: 28 } as const
 const PA_H = 200  // Panel A inner height (px)
 const PB_H = 70   // Panel B inner height (px)
+
+const INTERVAL_MINUTES: Record<SessionChartInterval, number> = {
+  '1h': 60,
+  '15m': 15,
+  '5m': 5,
+  '1m': 1,
+}
+
+const SESSION_CHART_INTERVALS: SessionChartInterval[] = ['1h', '15m', '5m', '1m']
 
 /* ── Mock data ─────────────────────────────────────────────────────────── */
 
@@ -142,6 +153,44 @@ function ptTime(iso: string) {
       timeZone: 'America/Los_Angeles',
     })
   } catch { return '' }
+}
+
+function aggregateBars(bars: PriceBar[], minutes: number): PriceBar[] {
+  if (minutes <= 1) return bars
+  const result: PriceBar[] = []
+  for (let i = 0; i < bars.length; i += minutes) {
+    const chunk = bars.slice(i, i + minutes)
+    const first = chunk[0]
+    const last = chunk[chunk.length - 1]
+    if (!first || !last) continue
+    result.push({
+      t: first.t,
+      o: first.o,
+      h: Math.max(...chunk.map(b => b.h)),
+      l: Math.min(...chunk.map(b => b.l)),
+      c: last.c,
+      v: chunk.reduce((sum, b) => sum + b.v, 0),
+      vwap: last.vwap,
+    })
+  }
+  return result
+}
+
+function resampleBars(bars: PriceBar[], interval: SessionChartInterval) {
+  return aggregateBars(bars, INTERVAL_MINUTES[interval])
+}
+
+function resampleOpeningRangeBars(orN: number, interval: SessionChartInterval) {
+  return Math.max(1, Math.ceil(orN / INTERVAL_MINUTES[interval]))
+}
+
+function remapAlerts(alerts: SessionAlert[], interval: SessionChartInterval, displayBarCount: number): SessionAlert[] {
+  const minutes = INTERVAL_MINUTES[interval]
+  const maxIndex = Math.max(0, displayBarCount - 1)
+  return alerts.map(alert => ({
+    ...alert,
+    timeIndex: Math.min(maxIndex, Math.floor(alert.timeIndex / minutes)),
+  }))
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -252,6 +301,14 @@ function SessionChart({
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const [chartInterval, setChartInterval] = useState<SessionChartInterval>('1m')
+
+  const displayBars = useMemo(() => resampleBars(bars, chartInterval), [bars, chartInterval])
+  const displayOrN = useMemo(() => resampleOpeningRangeBars(orN, chartInterval), [orN, chartInterval])
+  const displayAlerts = useMemo(
+    () => remapAlerts(alerts, chartInterval, displayBars.length),
+    [alerts, chartInterval, displayBars.length],
+  )
 
   useLayoutEffect(() => {
     const el = wrapRef.current
@@ -263,14 +320,14 @@ function SessionChart({
   }, [])
 
   const layout = useMemo(() => {
-    if (!cw || bars.length < 2) return null
-    const n = bars.length
+    if (!cw || displayBars.length < 2) return null
+    const n = displayBars.length
     const innerW = cw - CHART_PAD.l - CHART_PAD.r
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(6, slot * 0.68))
 
-    let yMin = Math.min(...bars.map(b => b.l), orLow,  ...bars.map(b => b.vwap))
-    let yMax = Math.max(...bars.map(b => b.h), orHigh, ...bars.map(b => b.vwap))
+    let yMin = Math.min(...displayBars.map(b => b.l), orLow,  ...displayBars.map(b => b.vwap))
+    let yMax = Math.max(...displayBars.map(b => b.h), orHigh, ...displayBars.map(b => b.vwap))
     const pad = (yMax - yMin) * 0.065 || 0.02
     yMin -= pad; yMax += pad
 
@@ -279,10 +336,11 @@ function SessionChart({
 
     const yTicks = Array.from({ length: 5 }, (_, k) => yMin + ((yMax - yMin) * k) / 4)
     const xTicks: { i: number; label: string }[] = []
-    for (let i = 0; i < n; i += 15) xTicks.push({ i, label: ptTime(bars[i]!.t) })
+    const tickEvery = Math.max(1, Math.floor(n / 6))
+    for (let i = 0; i < n; i += tickEvery) xTicks.push({ i, label: ptTime(displayBars[i]!.t) })
 
     return { n, innerW, slot, bodyW, xAt, yAt, yMin, yMax, yTicks, xTicks }
-  }, [cw, bars, orHigh, orLow])
+  }, [cw, displayBars, orHigh, orLow])
 
   if (!cw) return <div ref={wrapRef} style={{ minHeight: 340, background: '#080808' }} />
   if (!layout) return null
@@ -292,7 +350,7 @@ function SessionChart({
   const PA_SVG_H = CHART_PAD.t + PA_H + CHART_PAD.b
   const PB_SVG_H = 4 + PB_H + CHART_PAD.b
 
-  const vwapPts = bars.map((b, i) => `${xAt(i).toFixed(1)},${yAt(b.vwap).toFixed(1)}`).join(' ')
+  const vwapPts = displayBars.map((b, i) => `${xAt(i).toFixed(1)},${yAt(b.vwap).toFixed(1)}`).join(' ')
 
   return (
     <section
@@ -303,16 +361,37 @@ function SessionChart({
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-800/40">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-          Session Chart · 1m · CIEN
+          Session Chart · {chartInterval} · CIEN
         </span>
         <div className="flex items-center gap-3 text-[9px] text-gray-600 select-none">
-          <span><span style={{ color: '#f472b6' }}>—</span> VWAP</span>
-          <span><span style={{ color: '#fbbf24' }}>- -</span> OR</span>
-          <span style={{ color: '#2dd4bf' }}>- -</span><span style={{ color: '#2dd4bf', marginLeft: -6 }}>Target</span>
-          <span><span style={{ color: '#34d399' }}>●</span> Best</span>
-          <span><span style={{ color: '#fbbf24' }}>○</span> Entry</span>
-          <span><span style={{ color: '#fb7185' }}>✕</span> Skip</span>
-          <span><span style={{ color: '#38bdf8' }}>◆</span> Watch</span>
+          <div className="flex items-center gap-1">
+            {SESSION_CHART_INTERVALS.map(interval => {
+              const active = chartInterval === interval
+              return (
+                <button
+                  key={interval}
+                  type="button"
+                  onClick={() => setChartInterval(interval)}
+                  className="rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold transition-colors"
+                  style={{
+                    background: active ? 'rgba(56,189,248,0.14)' : 'rgba(255,255,255,0.02)',
+                    borderColor: active ? 'rgba(56,189,248,0.55)' : 'rgba(255,255,255,0.08)',
+                    color: active ? '#38bdf8' : '#6b7280',
+                  }}
+                  title={`${interval} candles`}
+                >
+                  {interval}
+                </button>
+              )
+            })}
+          </div>
+          <span className="hidden lg:inline"><span style={{ color: '#f472b6' }}>—</span> VWAP</span>
+          <span className="hidden lg:inline"><span style={{ color: '#fbbf24' }}>- -</span> OR</span>
+          <span className="hidden xl:inline" style={{ color: '#2dd4bf' }}>- -</span><span className="hidden xl:inline" style={{ color: '#2dd4bf', marginLeft: -10 }}>Target</span>
+          <span className="hidden xl:inline"><span style={{ color: '#34d399' }}>●</span> Best</span>
+          <span className="hidden xl:inline"><span style={{ color: '#fbbf24' }}>○</span> Entry</span>
+          <span className="hidden xl:inline"><span style={{ color: '#fb7185' }}>✕</span> Skip</span>
+          <span className="hidden xl:inline"><span style={{ color: '#38bdf8' }}>◆</span> Watch</span>
         </div>
       </div>
 
@@ -340,7 +419,7 @@ function SessionChart({
 
         {/* OR shading */}
         <rect x={CHART_PAD.l} y={CHART_PAD.t}
-          width={slot * orN} height={PA_H}
+          width={slot * displayOrN} height={PA_H}
           fill="rgba(251,191,36,0.055)" clipPath="url(#pa-clip)" />
 
         {/* OR high / low dashed lines */}
@@ -363,7 +442,7 @@ function SessionChart({
 
         {/* Candles */}
         <g clipPath="url(#pa-clip)">
-          {bars.map((b, i) => {
+          {displayBars.map((b, i) => {
             const cx = xAt(i)
             const up = b.c >= b.o
             const col = up ? '#34d399' : '#fb7185'
@@ -387,7 +466,7 @@ function SessionChart({
           points={vwapPts} clipPath="url(#pa-clip)" />
 
         {/* Target lines (selected alert or best verdict) */}
-        {alerts.map(alert => {
+        {displayAlerts.map(alert => {
           const show = alert.id === selectedId || alert.verdict === 'best'
           if (!show) return null
           const ty = yAt(alert.target)
@@ -403,7 +482,7 @@ function SessionChart({
         })}
 
         {/* Alert markers */}
-        {alerts.map(alert => {
+        {displayAlerts.map(alert => {
           const x = xAt(alert.timeIndex)
           const y = yAt(alert.entryPrice)
           const vc = VERDICT_COLOR[alert.verdict]!
@@ -480,7 +559,7 @@ function SessionChart({
             fill="rgba(0,0,0,0.45)" />
 
           {/* Vertical bands */}
-          {alerts.map(alert => {
+          {displayAlerts.map(alert => {
             const bx = xAt(alert.timeIndex)
             const vc = VERDICT_COLOR[alert.verdict]!
             const sel = alert.id === selectedId

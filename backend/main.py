@@ -2884,6 +2884,7 @@ class TradeCheckResult(BaseModel):
     verdict: str
     confidence: int
     parse_error: str = ""
+    parse_notes: list[str] = []
 
 def _parse_trade_intent(message: str, default_ticker: str | None = None) -> dict:
     """Extract ticker/type/strike/DTE/contracts from natural language."""
@@ -2909,13 +2910,27 @@ def _parse_trade_intent(message: str, default_ticker: str | None = None) -> dict
     elif re.search(r'\bcall\b', msg, re.I):
         option_type = "call"
 
-    # DTE: number before/after "dte"
+    parse_notes: list[str] = []
+
+    # DTE: number before/after "dte", plus common plain-English windows.
     dte = 0
     m = re.search(r'(\d+)\s*dte', msg, re.I)
     if not m:
         m = re.search(r'dte\s*(\d+)', msg, re.I)
     if m:
         dte = int(m.group(1))
+    elif re.search(r'\bnext\s+week\b|\bweekly\b|\bweek\s*out\b', msg, re.I):
+        dte = 7
+        parse_notes.append("No numeric DTE found; interpreted 'next week' as 7 DTE.")
+    elif re.search(r'\btomorrow\b', msg, re.I):
+        dte = 1
+        parse_notes.append("No numeric DTE found; interpreted 'tomorrow' as 1 DTE.")
+    elif re.search(r'\btoday\b|\b0\s*dte\b', msg, re.I):
+        dte = 0
+        parse_notes.append("No numeric DTE found; interpreted 'today' as 0 DTE.")
+    elif re.search(r'\bswing\b', msg, re.I):
+        dte = 14
+        parse_notes.append("No numeric DTE found; interpreted 'swing' as 14 DTE.")
 
     # Strike: number near "strike" or adjacent to call/put keyword
     strike = 0.0
@@ -2931,10 +2946,21 @@ def _parse_trade_intent(message: str, default_ticker: str | None = None) -> dict
     if m:
         contracts = int(m.group(1))
 
-    return {"ticker": ticker, "option_type": option_type, "strike": strike, "dte": dte, "contracts": contracts}
+    return {"ticker": ticker, "option_type": option_type, "strike": strike, "dte": dte, "contracts": contracts, "parse_notes": parse_notes}
 
 
-def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, contracts: int, r) -> dict:
+def _infer_atm_strike(last_price: float, option_type: str) -> float:
+    """Use a sane listed-strike approximation when the user asks for CALL/PUT without a strike."""
+    import math
+    if last_price <= 0:
+        return 0.0
+    step = 1.0 if last_price < 50 else 2.5 if last_price < 250 else 5.0
+    if option_type.lower() == "call":
+        return math.ceil((last_price - 1e-9) / step) * step
+    return math.floor((last_price + 1e-9) / step) * step
+
+
+def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, contracts: int, r, parse_notes: list[str] | None = None) -> dict:
     """Rule-based option trade evaluation against day-trade scan result."""
     m = r.metrics or {}
     verdict    = r.verdict or "WAIT"
@@ -2957,6 +2983,11 @@ def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, cont
     put_call_ratio= m.get("put_call_ratio")
     price_struct  = str(m.get("price_structure") or "")
 
+    parse_notes = list(parse_notes or [])
+    if strike <= 0 and last_price > 0:
+        strike = _infer_atm_strike(last_price, option_type)
+        parse_notes.append(f"No strike found; used nearest ATM strike ${strike:g} from last price ${last_price:.2f}.")
+
     is_call = option_type.lower() == "call"
     checks: list[dict] = []
     hard_fails = 0
@@ -2966,6 +2997,25 @@ def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, cont
         if passed is False:
             hard_fails += 1
         checks.append({"pass": passed, "label": label, "msg": msg})
+
+    for note in parse_notes:
+        chk(None, "Parsed Trade", note)
+
+    timeframe_state = m.get("timeframe_state") if isinstance(m.get("timeframe_state"), dict) else {}
+    timeframe_final = str((timeframe_state or {}).get("final_decision") or "").upper()
+    if timeframe_final:
+        if timeframe_final == "GO":
+            chk(True, "Timeframe Gate", "15m setup, 5m confirmation, and 1m execution gate are aligned.")
+        elif timeframe_final == "TRACK_ONLY":
+            chk(False, "Timeframe Gate", "15m setup exists, but 5m confirmation is still pending. Track only; do not buy now.")
+        elif timeframe_final == "WAIT_ENTRY":
+            chk(False, "Timeframe Gate", "5m confirmation is present, but the 1m entry is not ready. Wait for execution.")
+        elif timeframe_final == "DO_NOT_CHASE":
+            chk(False, "Timeframe Gate", "Price is extended from VWAP/OR levels. Do not chase this option now.")
+        elif timeframe_final == "NO_TRADE":
+            chk(False, "Timeframe Gate", "15m/5m hierarchy blocks this trade right now.")
+        else:
+            chk(None, "Timeframe Gate", f"Backend timeframe decision: {timeframe_final}.")
 
     # ── 1. Engine verdict vs direction ──────────────────────────────────────
     go_verdicts = {"STRONG GO", "GO"}
@@ -3112,6 +3162,7 @@ def _evaluate_trade(ticker: str, option_type: str, strike: float, dte: int, cont
         "verdict": verdict,
         "confidence": confidence,
         "parse_error": "",
+        "parse_notes": parse_notes,
     }
 
 
@@ -3131,30 +3182,26 @@ def day_trade_check(
     strike    = parsed["strike"]
     dte       = parsed["dte"]
     contracts = parsed["contracts"]
+    parse_notes = parsed.get("parse_notes") or []
 
     if not ticker:
         return {"overall": "ERROR", "overall_msg": "Could not identify a ticker. Example: 'Should I buy AMD 368 call, 5 DTE, 1 contract?'",
                 "checks": [], "ticker": "", "option_type": option_type, "strike": strike,
-                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_ticker"}
-
-    if strike == 0:
-        return {"overall": "ERROR", "overall_msg": f"Could not find a strike price. Example: '{ticker} 368 call 5 DTE 1 contract'",
-                "checks": [], "ticker": ticker, "option_type": option_type, "strike": 0,
-                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_strike"}
+                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_ticker", "parse_notes": parse_notes}
 
     if dte == 0:
-        return {"overall": "ERROR", "overall_msg": f"Could not find DTE. Example: '{ticker} {strike} {option_type} 5 DTE 1 contract'",
+        return {"overall": "ERROR", "overall_msg": f"Could not find DTE. Example: '{ticker} {strike or 'ATM'} {option_type} 5 DTE 1 contract', or say 'next week'.",
                 "checks": [], "ticker": ticker, "option_type": option_type, "strike": strike,
-                "dte": 0, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_dte"}
+                "dte": 0, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "no_dte", "parse_notes": parse_notes}
 
     try:
         r = run_day_trade_scan(ticker)
     except Exception as e:
         return {"overall": "ERROR", "overall_msg": f"Could not fetch data for {ticker}: {e}",
                 "checks": [], "ticker": ticker, "option_type": option_type, "strike": strike,
-                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "scan_error"}
+                "dte": dte, "contracts": contracts, "last_price": 0, "verdict": "", "confidence": 0, "parse_error": "scan_error", "parse_notes": parse_notes}
 
-    return _evaluate_trade(ticker, option_type, strike, dte, contracts, r)
+    return _evaluate_trade(ticker, option_type, strike, dte, contracts, r, parse_notes=parse_notes)
 
 
 @app.post("/api/swing-trade", response_model=SwingTradeResponse)

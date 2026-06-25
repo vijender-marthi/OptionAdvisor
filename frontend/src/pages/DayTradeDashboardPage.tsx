@@ -39,6 +39,7 @@ interface ExpandedChart {
 const VERDICT_COLORS: Record<string, string> = {
   STRONG_GO: '#00A86B', GO: '#00A86B', WATCH: '#D97706',
   WAIT: '#6B7280', AVOID: '#DC2626', NO_EDGE: '#6B7280',
+  TRACK_ONLY: '#38BDF8', WAIT_ENTRY: '#D97706', DO_NOT_CHASE: '#D97706', NO_TRADE: '#DC2626',
 }
 
 function buildEntryPoints(result: DayTradeScanResult, metrics: Record<string, unknown>): ChartEntryPoint[] {
@@ -180,6 +181,10 @@ const VERDICT_TITLES: Record<string, string> = {
   WAIT: 'Wait — signal exists but conditions not aligned. Stand by.',
   AVOID: 'Avoid — hard failures present. Do not trade.',
   NO_EDGE: 'No Edge — insufficient signal. Skip.',
+  TRACK_ONLY: 'Track only — 15m setup exists but 5m confirmation is pending.',
+  WAIT_ENTRY: 'Wait entry — 5m confirmation exists but 1m execution is not ready.',
+  DO_NOT_CHASE: 'Do not chase — price is extended from VWAP / opening range levels.',
+  NO_TRADE: 'No trade — multi-timeframe hierarchy blocks this setup.',
 }
 
 function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?: string }) {
@@ -188,6 +193,47 @@ function VerdictBadge({ verdict, statusColor }: { verdict: string; statusColor?:
     <span title={VERDICT_TITLES[verdict] ?? verdict} style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 9px', borderRadius: 20, border: `1.5px solid ${c}`, color: c, background: `${c}18`, whiteSpace: 'nowrap' }}>
       {verdict.replace('_', ' ')}
     </span>
+  )
+}
+
+function timeframeStatusColor(status: unknown): string {
+  const s = String(status || '').toUpperCase()
+  if (s === 'SETUP_ACTIVE' || s === 'CONFIRMED' || s === 'READY') return '#00A86B'
+  if (s === 'PENDING' || s === 'WAIT_ENTRY' || s === 'DO_NOT_CHASE') return '#D97706'
+  if (s === 'NO_SETUP' || s === 'FAILED' || s === 'DISABLED' || s === 'BLOCKED') return '#DC2626'
+  return '#6B7280'
+}
+
+function timeframeLabel(status: unknown): string {
+  const s = String(status || '')
+  return s ? s.replace(/_/g, ' ') : '—'
+}
+
+function TimeframeCell({
+  title,
+  status,
+  direction,
+  reason,
+  next,
+}: {
+  title: string
+  status?: unknown
+  direction?: unknown
+  reason?: unknown
+  next?: unknown
+}) {
+  const color = timeframeStatusColor(status)
+  const label = timeframeLabel(status)
+  const dir = direction ? String(direction).toUpperCase() : ''
+  const detail = [reason, next].filter(Boolean).map(String).join(' · ')
+  return (
+    <div title={detail || `${title}: ${label}`} style={{ whiteSpace: 'normal', lineHeight: 1.35 }}>
+      <span style={{ display: 'inline-block', fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 20, border: `1px solid ${color}`, color, background: `${color}18`, whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+      {dir && <div style={{ marginTop: 3, fontSize: 10, fontFamily: 'ui-monospace, SFMono-Regular, monospace', color }}>{dir}</div>}
+      {reason != null && reason !== '' && <div style={{ marginTop: 3, fontSize: 10, color: '#6B7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(reason)}</div>}
+    </div>
   )
 }
 
@@ -353,22 +399,22 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
 
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1280, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1480, tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: '7%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
-          <col style={{ width: '7%' }} /><col style={{ width: '7%' }} /><col style={{ width: '7%' }} />
+          <col style={{ width: '7%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} />
+          <col style={{ width: '11%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} />
           <col style={{ width: '6%' }} /><col style={{ width: '6%' }} />
-          <col style={{ width: '9%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
-          <col style={{ width: '6%' }} />
+          <col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} />
+          <col style={{ width: '5%' }} />
         </colgroup>
         <thead>
           <tr>
             <th style={th}>Ticker</th>
             <th style={th}>Change</th>
             <th style={th}>Verdict</th>
-            <th style={th}>ORH</th>
-            <th style={th}>ORL</th>
-            <th style={th} title="Red when VWAP is below OR mid — bearish lean">VWAP</th>
+            <th style={th} title="15m = setup only">15m Setup</th>
+            <th style={th} title="5m = confirmation gate">5m Confirm</th>
+            <th style={th} title="1m = execution only">1m Execute</th>
             <th style={th} title="Put/Call ratio">P/C</th>
             <th style={th} title="Volume vs average (RVOL)">Volume</th>
             <th style={th} title="AI Coach entry gate (confluence zone)">E1</th>
@@ -413,16 +459,18 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
 
             const orHigh = num(m.or_high)
             const orLow  = num(m.or_low)
-            const vwap   = num(m.vwap) ?? num(result?.entry_guidance?.vwap)
-            const orMid  = orHigh != null && orLow != null ? (orHigh + orLow) / 2 : null
-            const vwapBelowMid = vwap != null && orMid != null && vwap < orMid
             const pcr    = num(m.put_call_ratio)
             const rvol   = num(m.rvol)
             const pts    = result ? buildEntryPoints(result, m) : []
-            const verdict = unified?.verdict ?? result?.verdict?.replace(' ', '_') ?? ''
+            const timeframeState = (result?.timeframe_state ?? (m.timeframe_state as DayTradeScanResult['timeframe_state'] | undefined) ?? null)
+            const gatedVerdict = String(timeframeState?.final_decision || result?.final_decision || '').toUpperCase()
+            const verdict = gatedVerdict || unified?.verdict || result?.verdict?.replace(' ', '_') || ''
             const isExpanded = expandedSyms.has(sym)
             const chartBars = parseChartBars(m.chart_bars)
             const hasChart = !!(chartBars && chartBars.length > 0 && orHigh != null && orLow != null)
+            const setup15 = timeframeState?.setup_15m
+            const confirm5 = timeframeState?.confirmation_5m
+            const exec1 = timeframeState?.execution_1m
 
             return (
               <Fragment key={sym}>
@@ -442,12 +490,32 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                       </div>
                     )}
                   </td>
-                  <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : '—'}</td>
-                  <td style={{ ...td, ...mono, color: dt.text }}>{orHigh != null ? orHigh.toFixed(2) : '—'}</td>
-                  <td style={{ ...td, ...mono, color: dt.text }}>{orLow != null ? orLow.toFixed(2) : '—'}</td>
-                  <td style={{ ...td, ...mono, color: vwap == null ? dt.muted : vwapBelowMid ? dt.red : dt.green }}
-                    title={vwap == null ? '' : vwapBelowMid ? 'VWAP below OR mid — bearish lean' : 'VWAP at/above OR mid — bullish lean'}>
-                    {vwap != null ? vwap.toFixed(2) : '—'}
+                  <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={gatedVerdict ? undefined : unified?.verdict_presentation?.status_color} /> : '—'}</td>
+                  <td style={td}>
+                    <TimeframeCell
+                      title="15m Setup"
+                      status={setup15?.status}
+                      direction={setup15?.direction}
+                      reason={setup15?.reason}
+                      next={setup15?.next_action}
+                    />
+                  </td>
+                  <td style={td}>
+                    <TimeframeCell
+                      title="5m Confirmation"
+                      status={confirm5?.status}
+                      direction={confirm5?.direction}
+                      reason={confirm5?.reason || confirm5?.trigger_requirement}
+                      next={confirm5?.trigger_fired ? 'Trigger fired' : confirm5?.next_action}
+                    />
+                  </td>
+                  <td style={td}>
+                    <TimeframeCell
+                      title="1m Execution"
+                      status={exec1?.status}
+                      reason={exec1?.chase_warning || exec1?.reason}
+                      next={exec1?.next_action}
+                    />
                   </td>
                   <td style={{ ...td, ...mono, color: dt.text }}>{pcr != null ? pcr.toFixed(2) : '—'}</td>
                   <td style={{ ...td, ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text }}>{rvol != null ? `${rvol.toFixed(2)}×` : '—'}</td>

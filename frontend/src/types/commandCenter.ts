@@ -378,6 +378,14 @@ export interface AiPositionAnalysis {
   rsi: number
   current_price: number
   ma20: number
+  vwap?: number | null
+  orh?: number | null
+  ema20?: number | null
+  daily_trend?: string | null
+  spy_bias?: string | null
+  qqq_bias?: string | null
+  spy_aligned?: boolean | null
+  qqq_aligned?: boolean | null
   value_capture_pct: number | null
   max_profit: number
   max_loss: number

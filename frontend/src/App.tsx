@@ -86,7 +86,7 @@ function LegacyHashRedirect() {
     const qs = qi >= 0 ? raw.slice(qi) : ''
     const redirects: Record<string, string> = {
       watchlist: '/signal-feed',
-      portfolio: '/positions?tab=open',
+      portfolio: '/positions?tab=dashboard',
       ticker: '/position-trading',
       dashboard: '/trade-command-center',
       alerts: '/alerts',

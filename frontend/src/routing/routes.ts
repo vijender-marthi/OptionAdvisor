@@ -10,7 +10,7 @@ export const ROUTES = {
   aiCoach: '/ai-coach',
   journal: '/journal',
   settings: '/settings',
-  positions: '/positions?tab=open',
+  positions: '/positions?tab=dashboard',
   watchlist: '/signal-feed',
   alerts: '/alerts',
   dayTradeAlerts: '/day-trade-alerts',

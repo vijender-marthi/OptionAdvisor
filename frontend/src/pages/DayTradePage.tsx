@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight,
-  Clock, Flame, Loader2, MessageSquare, RefreshCw, Search, ShieldAlert, X, Zap,
+  Clock, Flame, Layers, Loader2, MessageSquare, RefreshCw, Search, ShieldAlert, X, Zap,
   PlusCircle, Activity, Check, Gauge,
 } from 'lucide-react'
 import { analyzeDayTrade, analyzeV2, deskApi, enterActiveTrade, saveToJournal, deriveUnifiedFromDayResult } from '../api/client'
-import type { DeskAlertCreate, UnifiedAnalysis } from '../api/client'
+import type { DayTradeScanResult, DeskAlertCreate, UnifiedAnalysis } from '../api/client'
 import type { DayTradeAlertEvent, TradeEntryState } from '../types'
 import { fetchMyTickers, type MyTickerEntry } from '../api/commandCenter'
 import SetAlertDrawer from '../components/desk/SetAlertDrawer'
-import DayTradeIntradayChart, { parseChartBars, aggregate5mBars, type ChartEntryPoint, type ZoneAnnotation } from '../components/DayTradeIntradayChart'
+import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartEntryPoint, type ZoneAnnotation, type ChartInterval } from '../components/DayTradeIntradayChart'
 import DayTradeAlertOverlay from '../components/DayTradeAlertOverlay'
 import DayTradeWalkthrough from '../components/DayTradeWalkthrough'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
@@ -29,6 +29,153 @@ function fmtOptionsVol(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
   return String(v)
+}
+
+type DayTradeTimeframeState = NonNullable<DayTradeScanResult['timeframe_state']>
+
+function dtLabel(value: unknown): string {
+  if (value == null || value === '') return '—'
+  return String(value).replace(/_/g, ' ')
+}
+
+function dtMaybePrice(value: unknown): string {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : null
+  if (n == null) return typeof value === 'string' && value ? value : '—'
+  return `$${n.toFixed(2)}`
+}
+
+function dtStatusStyle(status: unknown) {
+  const s = String(status || '').toUpperCase()
+  if (s === 'SETUP_ACTIVE' || s === 'CONFIRMED' || s === 'READY') {
+    return { color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.35)' }
+  }
+  if (s === 'PENDING' || s === 'WAIT_ENTRY' || s === 'DO_NOT_CHASE') {
+    return { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' }
+  }
+  if (s === 'NO_SETUP' || s === 'FAILED' || s === 'DISABLED' || s === 'BLOCKED') {
+    return { color: '#fb7185', bg: 'rgba(251,113,133,0.12)', border: 'rgba(251,113,133,0.35)' }
+  }
+  return { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.25)' }
+}
+
+function dtDecisionStyle(decision: unknown) {
+  const d = String(decision || '').toUpperCase()
+  if (d === 'GO') return dtStatusStyle('READY')
+  if (d === 'TRACK_ONLY' || d === 'WAIT_ENTRY' || d === 'DO_NOT_CHASE') return dtStatusStyle('PENDING')
+  if (d === 'NO_TRADE') return dtStatusStyle('FAILED')
+  return dtStatusStyle(d)
+}
+
+function DayTradeTimeframeVerdictCards({
+  timeframeState,
+  finalDecision,
+  dt,
+}: {
+  timeframeState: DayTradeTimeframeState | null
+  finalDecision: string
+  dt: DtTokens
+}) {
+  if (!timeframeState) return null
+  const decisionStyle = dtDecisionStyle(timeframeState.final_decision || finalDecision)
+  const cards = [
+    {
+      title: '15m Setup',
+      sub: 'Setup',
+      state: timeframeState.setup_15m,
+      status: timeframeState.setup_15m?.status,
+      reason: timeframeState.setup_15m?.reason,
+      next: timeframeState.setup_15m?.next_action,
+      levels: timeframeState.setup_15m?.key_levels,
+    },
+    {
+      title: '5m Confirmation',
+      sub: 'Confirm',
+      state: timeframeState.confirmation_5m,
+      status: timeframeState.confirmation_5m?.status,
+      reason: timeframeState.confirmation_5m?.reason,
+      next: timeframeState.confirmation_5m?.next_action,
+      levels: {
+        trigger: timeframeState.confirmation_5m?.trigger_requirement,
+        volume: timeframeState.confirmation_5m?.volume_confirmed ? 'Confirmed' : 'Not confirmed',
+      },
+    },
+    {
+      title: '1m Execution',
+      sub: 'Execute only',
+      state: timeframeState.execution_1m,
+      status: timeframeState.execution_1m?.status,
+      reason: timeframeState.execution_1m?.reason,
+      next: timeframeState.execution_1m?.next_action,
+      levels: {
+        entry: timeframeState.execution_1m?.entry_zone,
+        stop: timeframeState.execution_1m?.stop_level,
+      },
+    },
+  ]
+
+  return (
+    <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <Layers size={15} style={{ color: dt.accent }} />
+          <div>
+            <div style={{ fontSize: '0.6rem', fontWeight: 800, color: dt.muted, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Multi-Timeframe Verdict</div>
+            <div style={{ fontSize: '0.72rem', color: dt.muted }}>15m setup → 5m confirmation → 1m execution only</div>
+          </div>
+        </div>
+        <span
+          className="font-mono"
+          style={{
+            border: `1px solid ${decisionStyle.border}`,
+            background: decisionStyle.bg,
+            color: decisionStyle.color,
+            borderRadius: 999,
+            padding: '4px 10px',
+            fontSize: '0.72rem',
+            fontWeight: 900,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {dtLabel(timeframeState.final_decision || finalDecision)}
+        </span>
+      </div>
+      <div className="grid gap-2 lg:grid-cols-3">
+        {cards.map(card => {
+          const statusStyle = dtStatusStyle(card.status)
+          return (
+            <div key={card.title} style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 10, padding: 12 }}>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, color: dt.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{card.title}</div>
+                  <div style={{ fontSize: '0.68rem', color: dt.muted }}>{card.sub}</div>
+                </div>
+                <span style={{ border: `1px solid ${statusStyle.border}`, background: statusStyle.bg, color: statusStyle.color, borderRadius: 999, padding: '3px 7px', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                  {dtLabel(card.status)}
+                </span>
+              </div>
+              <div style={{ color: dt.text, fontSize: '0.74rem', lineHeight: 1.45, marginTop: 9 }}>{card.reason || '—'}</div>
+              <div style={{ color: dt.muted, fontSize: '0.68rem', lineHeight: 1.35, marginTop: 7 }}>{card.next || '—'}</div>
+              {card.levels && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {Object.entries(card.levels).filter(([, value]) => value != null && value !== '').map(([key, value]) => (
+                    <span key={key} style={{ border: `1px solid ${dt.border}`, background: 'rgba(0,0,0,0.12)', borderRadius: 999, padding: '2px 7px', fontSize: '0.62rem', color: dt.muted }}>
+                      {dtLabel(key)} <span className="font-mono" style={{ color: dt.text }}>{dtMaybePrice(value)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {timeframeState.confirmation_5m?.trigger_fired === false && (
+        <div style={{ marginTop: 10, border: '1px solid rgba(251,191,36,0.30)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24', borderRadius: 10, padding: '8px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+          1m execution is disabled until the 5m confirmation fires.
+        </div>
+      )}
+    </div>
+  )
 }
 
 function PCRatioStrip({
@@ -131,7 +278,7 @@ function axiosDetail(e: unknown): string {
 // Where session VWAP sits relative to the opening-range midpoint tells you which
 // side controlled the auction. Rendered as a price ladder (Close/VWAP on the
 // left, the OR structure on the right) plus a plain-language read of the lean.
-interface DtTokens { bg: string; bgDeep: string; border: string; text: string; muted: string; green: string; red: string; amber: string }
+interface DtTokens { bg: string; bgDeep: string; border: string; text: string; muted: string; green: string; red: string; amber: string; accent: string }
 
 function VwapVsOrMidCard({
   close, vwap, orHigh, orLow, isDark, dt,
@@ -276,7 +423,7 @@ export default function DayTradePage() {
   const [ocKey, setOcKey]     = useState(0)
   const [scanCount, setScanCount] = useState(0)
   const [sessionState, setSessionState] = useState<'forming' | 'watch' | 'entry' | 'hold' | 'reentry' | 'exhausted'>('watch')
-  const [chartInterval, setChartInterval] = useState<'1m' | '5m'>('1m')
+  const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
   const prevScannedTickerRef = useRef('')
 
   useEffect(() => {
@@ -1126,6 +1273,13 @@ export default function DayTradePage() {
             else if (trendStr === 'HIGH' && momPct != null && Math.abs(momPct) < 0.3) { matrixReason = 'Strong structure, momentum neutral — wait for trigger' }
             else { matrixReason = result?.reason ?? 'No clear edge' }
 
+            const timeframeState = (result?.timeframe_state ?? m?.timeframe_state ?? null) as DayTradeTimeframeState | null
+            const timeframeDecision = String(timeframeState?.final_decision || result?.final_decision || '').toUpperCase()
+            if (timeframeDecision) {
+              matrixResult = timeframeDecision
+              matrixReason = 'Backend gate: 15m setup → 5m confirmation → 1m execution'
+            }
+
             const stColor = isBullStruct ? '#34d399' : isBearStruct ? '#EF4444' : '#94a3b8'
 
             return (
@@ -1175,6 +1329,12 @@ export default function DayTradePage() {
               </div>
             )
           })()}
+
+          <DayTradeTimeframeVerdictCards
+            timeframeState={(result?.timeframe_state ?? ((result?.metrics as Record<string, unknown> | undefined)?.timeframe_state as DayTradeTimeframeState | undefined) ?? null)}
+            finalDecision={result?.final_decision ?? result?.verdict ?? 'WAIT'}
+            dt={dt}
+          />
 
           {/* ── ENTRY CONFIRMATION (Part 5) + COUNTERTREND (Part 6) ──────── */}
           {(() => {
@@ -1960,8 +2120,8 @@ export default function DayTradePage() {
           } // end !isExhausted
         }
 
-        const displayBars = chartInterval === '5m' ? aggregate5mBars(chartBars) : chartBars
-        const displayOrMinutes = chartInterval === '5m' ? Math.max(1, Math.ceil(orN / 5)) : orN
+        const displayBars = resampleBars(chartBars, chartInterval)
+        const displayOrMinutes = orMinutesForInterval(orN, chartInterval)
 
         return (
          <>
@@ -1975,10 +2135,18 @@ export default function DayTradePage() {
           />
           <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Session Chart · OR &amp; VWAP</div>
+              <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: dt.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Session Chart · OR &amp; VWAP · {chartInterval}</div>
               <div style={{ display: 'flex', gap: 4 }}>
-                {(['1m', '5m'] as const).map(iv => (
-                  <button key={iv} onClick={() => setChartInterval(iv)} style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}>{iv}</button>
+                {(['1h', '15m', '5m', '1m'] as ChartInterval[]).map(iv => (
+                  <button
+                    key={iv}
+                    type="button"
+                    onClick={() => setChartInterval(iv)}
+                    title={`${iv} candles`}
+                    style={{ padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted, transition: 'all 0.15s' }}
+                  >
+                    {iv}
+                  </button>
                 ))}
               </div>
             </div>

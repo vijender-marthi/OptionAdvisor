@@ -333,6 +333,19 @@ export default function DayTradeIntradayChart({
 
   const { W, H, innerW, innerH, xAt, yAt, bodyW, slot, yMin, yMax, yTicks,
           orStartX, orEndX, tMin, times, xTicks } = layout
+  const orMid = (orHigh + orLow) / 2
+  const latestBandBar = [...bars].reverse().find(b =>
+    b.vwap_upper1 != null || b.vwap_lower1 != null || b.vwap_upper2 != null || b.vwap_lower2 != null
+  )
+  const sessionLevelValues: Array<{ label: string; value: number | null; tone: string; line?: string }> = [
+    { label: 'ORH', value: orHigh, tone: 'text-amber-600 dark:text-amber-300', line: 'border-amber-400' },
+    { label: 'ORL', value: orLow, tone: 'text-amber-600 dark:text-amber-300', line: 'border-amber-400' },
+    { label: 'ORMID', value: orMid, tone: 'text-slate-700 dark:text-gray-300', line: 'border-slate-400 dark:border-gray-500' },
+    { label: '+1σ', value: latestBandBar?.vwap_upper1 ?? null, tone: 'text-sky-700 dark:text-sky-300', line: 'border-sky-400' },
+    { label: '-1σ', value: latestBandBar?.vwap_lower1 ?? null, tone: 'text-sky-700 dark:text-sky-300', line: 'border-sky-400' },
+    { label: '+2σ', value: latestBandBar?.vwap_upper2 ?? null, tone: 'text-indigo-700 dark:text-indigo-300', line: 'border-indigo-400' },
+    { label: '-2σ', value: latestBandBar?.vwap_lower2 ?? null, tone: 'text-indigo-700 dark:text-indigo-300', line: 'border-indigo-400' },
+  ]
 
   const vwapPts = bars
     .map((b, i) => `${xAt(times[i]!)},${yAt(b.vwap)}`)
@@ -368,6 +381,23 @@ export default function DayTradeIntradayChart({
             <><span className="text-gray-500"> · </span><span className="text-info">±1σ</span><span className="text-gray-500"> · </span><span className="text-info" style={{ opacity: 0.5 }}>±2σ</span></>
           )}
         </div>
+      </div>
+
+      <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-7">
+        {sessionLevelValues.map(level => (
+          <div
+            key={level.label}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]"
+          >
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+              {level.line && <span className={`h-0 w-4 border-t border-dashed ${level.line}`} />}
+              {level.label}
+            </div>
+            <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${level.tone}`}>
+              {level.value != null && Number.isFinite(level.value) ? `$${fmtPrice(level.value)}` : '—'}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* ── Entry toggle chips ── */}
@@ -509,10 +539,19 @@ export default function DayTradeIntradayChart({
             strokeDasharray="6 4" strokeOpacity={0.95}
             clipPath={`url(#${clipId})`}
           />
+          <line
+            x1={PAD.l} x2={PAD.l + innerW}
+            y1={yAt(orMid)} y2={yAt(orMid)}
+            stroke="var(--chart-axis)" strokeWidth={1}
+            strokeDasharray="2 5" strokeOpacity={0.55}
+            clipPath={`url(#${clipId})`}
+          />
           <text x={PAD.l + innerW - 4} y={yAt(orHigh) - 4} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR high</text>
           <text x={PAD.l + innerW - 4} y={yAt(orLow) + 12} textAnchor="end"
             fill="var(--chart-line-ma50)" fontSize={9} fontWeight={600}>OR low</text>
+          <text x={PAD.l + innerW - 4} y={yAt(orMid) - 4} textAnchor="end"
+            fill="var(--chart-axis)" fontSize={9} fontWeight={600} opacity={0.75}>OR mid</text>
 
           <g clipPath={`url(#${clipId})`}>
             {bars.map((b, i) => {

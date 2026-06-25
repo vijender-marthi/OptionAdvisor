@@ -100,9 +100,9 @@ export function pageToLocation(p: Page): string {
     case 'my-watchlist':
       return '/watchlist'
     case 'portfolio':
-      return '/positions?tab=open'
+      return '/positions?tab=dashboard'
     case 'positions':
-      return '/positions?tab=open'
+      return '/positions?tab=dashboard'
     case 'trade-command-center':
       return '/trade-command-center'
     case 'alert-center':

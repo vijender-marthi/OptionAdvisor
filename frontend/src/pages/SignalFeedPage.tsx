@@ -51,6 +51,7 @@ type NoticeTone = 'info' | 'success' | 'warning'
 type StateFilter = 'all' | 'ready' | 'watch' | 'wait' | 'avoid' | 'conflict' | 'manage' | 'extended'
 type AgreementFilter = 'all' | 'strong_agreement' | 'partial_agreement' | 'conflict' | 'extended' | 'no_edge' | 'manage'
 type TrendFilter = 'all' | 'bullish' | 'neutral' | 'bearish'
+type EngineKey = 'day' | 'swing' | 'regular'
 
 const FAVORITES_KEY = 'oa_signal_feed_favorites_v1'
 const FILTERS_EXPANDED_KEY = 'oa_signal_feed_filters_expanded_v1'
@@ -126,6 +127,12 @@ const PRIMARY_SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
   { value: 'trend', label: 'Trend' },
   { value: 'rsi', label: 'RSI' },
   { value: 'volume', label: 'Volume' },
+]
+
+const SIGNAL_TABLE_GROUPS: Array<{ engine: EngineKey; title: string; subtitle: string }> = [
+  { engine: 'day', title: 'Day Trades', subtitle: 'Intraday setup, confirmation, and execution signals' },
+  { engine: 'swing', title: 'Swing Trades', subtitle: 'Multi-day trend and momentum setups' },
+  { engine: 'regular', title: 'Regular Trades', subtitle: 'Position trade and core option strategy signals' },
 ]
 
 function FilterPillGroup<T extends string>({
@@ -529,6 +536,205 @@ function OptionRiskPill({ label, value }: { label: string; value: string }) {
       {label}
       <span className="opacity-75">{value}</span>
     </span>
+  )
+}
+
+function engineDecisionBlock(row: SignalFeedRow, engine: EngineKey): SignalFeedDecisionBlock {
+  if (engine === 'day') return row.day
+  if (engine === 'swing') return row.swing
+  return row.regular
+}
+
+function engineDecisionValue(row: SignalFeedRow, engine: EngineKey): string {
+  const block = engineDecisionBlock(row, engine)
+  if (block.final_decision) return block.final_decision
+  if (engine === 'day') return row.day_decision
+  if (engine === 'swing') return row.swing_decision
+  return row.regular_decision
+}
+
+function engineTitle(engine: EngineKey): string {
+  if (engine === 'day') return 'Day'
+  if (engine === 'swing') return 'Swing'
+  return 'Regular'
+}
+
+function SignalMetric({ label, value, tone = 'text-secondary' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="min-w-[3.75rem]">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-0.5 font-mono text-xs font-semibold tabular-nums ${tone}`}>{value}</div>
+    </div>
+  )
+}
+
+function SignalFeedTableSection({
+  title,
+  subtitle,
+  engine,
+  sourceFilter,
+  rows,
+  favoriteSet,
+  ignoredSet,
+  alertBusy,
+  onOpenEngine,
+  onAnalyze,
+  onAddToPositions,
+  onOpenAlerts,
+  onCreateAlert,
+  onFavorite,
+  onIgnore,
+  onMonitor,
+}: {
+  title: string
+  subtitle: string
+  engine: EngineKey
+  sourceFilter: SourceFilter
+  rows: SignalFeedRow[]
+  favoriteSet: Set<string>
+  ignoredSet: Set<string>
+  alertBusy: Record<string, boolean>
+  onOpenEngine: (row: SignalFeedRow, engine: EngineKey) => void
+  onAnalyze: (ticker: string) => void
+  onAddToPositions: (row: SignalFeedRow) => void
+  onOpenAlerts: (row: SignalFeedRow) => void
+  onCreateAlert: (row: SignalFeedRow) => void
+  onFavorite: (ticker: string) => void
+  onIgnore: (ticker: string) => void
+  onMonitor: (row: SignalFeedRow) => void
+}) {
+  const actionable = rows.filter(row => ['READY', 'WATCH', 'MANAGE'].includes(engineDecisionValue(row, engine).toUpperCase())).length
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.06] px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-heading">{title}</h2>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${sourceChipClass(engine)}`}>
+              {engineTitle(engine)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
+        </div>
+        <div className="text-right text-xs text-muted">
+          <span className="font-semibold text-secondary">{rows.length}</span> rows
+          <span className="mx-1 text-slate-300 dark:text-slate-700">/</span>
+          <span className="font-semibold text-secondary">{actionable}</span> actionable
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-[1120px] w-full border-collapse text-left">
+          <thead className="bg-slate-50 dark:bg-slate-950/40">
+            <tr className="text-[10px] font-bold uppercase tracking-wide text-muted">
+              <th className="w-[18%] px-4 py-2">Ticker</th>
+              <th className="w-[10%] px-3 py-2">Price</th>
+              <th className="w-[12%] px-3 py-2">Verdict</th>
+              <th className="w-[18%] px-3 py-2">Setup</th>
+              <th className="w-[19%] px-3 py-2">Metrics</th>
+              <th className="w-[17%] px-3 py-2">Reason</th>
+              <th className="w-[6%] px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {rows.map(row => {
+              const block = engineDecisionBlock(row, engine)
+              const decision = engineDecisionValue(row, engine)
+              const metrics = row.metrics
+              const ticker = row.ticker.toUpperCase()
+              const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
+              const trendTone = trendClass(row.trend)
+              const isFavorite = favoriteSet.has(ticker)
+              const isIgnored = ignoredSet.has(ticker)
+              const reason = block.reason || block.normalized_reason || row.agreement_reason || row.ai_summary
+
+              return (
+                <tr key={`${engine}-${row.id}`} className="align-top hover:bg-slate-50/80 dark:hover:bg-white/[0.025]">
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onFavorite(row.ticker)}
+                        title={isFavorite ? 'Unfavorite' : 'Favorite'}
+                        className={`mt-0.5 shrink-0 ${isFavorite ? 'text-amber-400' : 'text-muted hover:text-amber-400'}`}
+                      >
+                        <Star size={13} className={isFavorite ? 'fill-current' : ''} />
+                      </button>
+                      <div className="min-w-0">
+                        <button type="button" onClick={() => onOpenEngine(row, engine)} className="font-mono text-sm font-bold text-heading hover:text-info">
+                          {ticker}
+                        </button>
+                        <div className="mt-0.5 truncate text-xs text-secondary">{row.company_name || ticker}</div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-muted">
+                          {row.sector && <span>{row.sector}</span>}
+                          {row.alerts_count > 0 && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">{row.alerts_count} alerts</span>}
+                          {isIgnored && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">ignored</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="font-mono text-sm font-bold tabular-nums text-heading">{fmtPrice(row.price)}</div>
+                    <div className={`mt-0.5 font-mono text-xs font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
+                    {row.price_change != null && row.price_change !== 0 && (
+                      <div className={`font-mono text-[10px] tabular-nums ${changeTone}`}>{fmtDayChange(row.price_change)}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      <StatusPill value={decision} />
+                      {sourceFilter !== engine && <StatusPill value={normalizeAgreementBadge(row)} agreement />}
+                    </div>
+                    {block.confidence != null && Number.isFinite(block.confidence) && (
+                      <div className="mt-1 text-[10px] text-muted">{fmtNumber(block.confidence, 0)} confidence</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      <SignalQualityBadge quality={block.signal_quality || block.setup_quality || ''} />
+                      <ExecTimingBadge timing={block.execution_timing || block.execution_readiness || ''} />
+                      <RiskCatBadge category={block.risk_category || block.risk_state || ''} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                      {block.expected_holding_period && <span>Hold <span className="font-semibold text-secondary">{block.expected_holding_period}</span></span>}
+                      {block.recommended_contract_duration && <span>DTE <span className="font-semibold text-secondary">{block.recommended_contract_duration}</span></span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="grid grid-cols-5 gap-2">
+                      <SignalMetric label="Trend" value={row.trend || 'Neutral'} tone={trendTone} />
+                      <SignalMetric label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} />
+                      <SignalMetric label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} />
+                      <SignalMetric label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} />
+                      <SignalMetric label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} />
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="line-clamp-3 text-xs leading-5 text-secondary">{reason || 'No engine note available.'}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <button type="button" onClick={() => onOpenEngine(row, engine)} className={`${getActionButtonClass('surface')} px-2 py-1 text-[10px]`}>Open</button>
+                      <button type="button" onClick={() => onAnalyze(row.ticker)} className={`${getActionButtonClass('analyze')} px-2 py-1 text-[10px]`}>Analyze</button>
+                      <button type="button" onClick={() => onAddToPositions(row)} className={`${getActionButtonClass('trade')} px-2 py-1 text-[10px]`}>Trade</button>
+                      <button type="button" onClick={() => onOpenAlerts(row)} className={`${getActionButtonClass('surface')} px-2 py-1 text-[10px]`}>Alerts</button>
+                      <button type="button" onClick={() => onCreateAlert(row)} disabled={Boolean(alertBusy[row.id])} className={`${getActionButtonClass('alert')} px-2 py-1 text-[10px]`}>
+                        {alertBusy[row.id] ? 'Creating' : 'New'}
+                      </button>
+                      <button type="button" onClick={() => onMonitor(row)} className={`${getActionButtonClass('surface')} px-2 py-1 text-[10px]`}>Watch</button>
+                      <button type="button" onClick={() => onIgnore(row.ticker)} className={`${getActionButtonClass('surface')} px-2 py-1 text-[10px]`}>
+                        {isIgnored ? 'Unhide' : 'Hide'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 
@@ -997,6 +1203,14 @@ export default function SignalFeedPage() {
 
   const engineLabel = sourceFilter === 'all' ? 'Overall' : sourceFilter.charAt(0).toUpperCase() + sourceFilter.slice(1)
   const sourceSubtitle = sourceFilter === 'all' ? 'All engines in one view' : `Filtering by ${sourceFilter} engine decision`
+  const tableGroups = useMemo(() => {
+    return SIGNAL_TABLE_GROUPS.filter(group => {
+      if (sourceFilter !== 'all' && group.engine !== sourceFilter) return false
+      if (group.engine === 'day') return canDay
+      if (group.engine === 'swing') return canSwing
+      return true
+    })
+  }, [canDay, canSwing, sourceFilter])
 
   const toggleExpanded = useCallback((id: string) => { setExpandedId(cur => (cur === id ? null : id)) }, [])
   const toggleFavorite = useCallback((ticker: string) => {
@@ -1005,6 +1219,11 @@ export default function SignalFeedPage() {
   }, [])
   const handleAnalyze = useCallback((ticker: string) => requestAnalysis(ticker), [requestAnalysis])
   const handleTickerDetail = useCallback((row: SignalFeedRow) => routerNavigate(row.actions.chart_url || row.actions.analyze_url || '/'), [routerNavigate])
+  const handleOpenEngine = useCallback((row: SignalFeedRow, engine: EngineKey) => {
+    const route = getEngineRoute(engine, row.ticker)
+    if (engine === 'regular') requestAnalysis(row.ticker)
+    routerNavigate(route || row.actions.chart_url || row.actions.analyze_url || '/')
+  }, [requestAnalysis, routerNavigate])
   const handleAddToPositions = useCallback((row: SignalFeedRow) => {
     if (!row.actions.positions_url) { setNotice({ tone: 'info', message: `${row.ticker} add-trade route is not wired yet.` }); return }
     routerNavigate(row.actions.positions_url)
@@ -1299,21 +1518,27 @@ export default function SignalFeedPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {visibleRows.map(row => {
-              const isFavorite = favoriteSet.has(row.ticker.toUpperCase())
-              const isCompact = compactIds.has(row.id)
-              return (
-                <SignalFeedCard key={row.id} row={row} canDay={canDay} canSwing={canSwing}
-                  isCompact={isCompact} isFavorite={isFavorite} isIgnored={ignoredSet.has(row.ticker.toUpperCase())} alertBusy={Boolean(alertBusy[row.id])}
-                  onToggleCompact={toggleCompact} onAnalyze={() => handleAnalyze(row.ticker)}
-                  onViewChart={() => handleTickerDetail(row)}
-                  onCreateAlert={() => void handleCreateAlert(row)}
-                  onAddToPositions={() => handleAddToPositions(row)}
-                  onFavorite={() => toggleFavorite(row.ticker)} onIgnore={() => toggleIgnore(row.ticker)}
-                  onMonitor={() => handleMonitor(row)}
-                />
-              )
-            })}
+            {tableGroups.map(group => (
+              <SignalFeedTableSection
+                key={group.engine}
+                title={group.title}
+                subtitle={group.subtitle}
+                engine={group.engine}
+                sourceFilter={sourceFilter}
+                rows={visibleRows}
+                favoriteSet={favoriteSet}
+                ignoredSet={ignoredSet}
+                alertBusy={alertBusy}
+                onOpenEngine={handleOpenEngine}
+                onAnalyze={handleAnalyze}
+                onAddToPositions={handleAddToPositions}
+                onOpenAlerts={handleOpenAlerts}
+                onCreateAlert={(row) => void handleCreateAlert(row)}
+                onFavorite={toggleFavorite}
+                onIgnore={toggleIgnore}
+                onMonitor={handleMonitor}
+              />
+            ))}
           </div>
         )}
 
