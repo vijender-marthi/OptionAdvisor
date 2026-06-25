@@ -209,6 +209,17 @@ class TestCallDebitSpreadSuccess(unittest.TestCase):
         self.assertLess(result["long_strike"], result["short_strike"])
 
     @patch("swing_trade.bar_cache")
+    def test_call_debit_spread_uses_next_short_strike_when_target_matches_long(self, mock_bc):
+        mock_bc.get_option_dates.return_value = self.opt_dates
+        mock_bc.get_option_chain.return_value = (self.call_chain, pd.DataFrame())
+        levels = {"breakout": 103.0, "target1": 105.0, "stop": 97.0}
+        result = _suggest_spread_entry("AAPL", "CALL_DEBIT_SPREAD", levels, "30-45")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["long_strike"], 105.0)
+        self.assertEqual(result["short_strike"], 110.0)
+        self.assertLess(result["long_strike"], result["short_strike"])
+
+    @patch("swing_trade.bar_cache")
     def test_est_debit_equals_long_mid_minus_short_mid(self, mock_bc):
         mock_bc.get_option_dates.return_value = self.opt_dates
         mock_bc.get_option_chain.return_value = (self.call_chain, pd.DataFrame())
@@ -291,6 +302,17 @@ class TestPutDebitSpreadSuccess(unittest.TestCase):
         mock_bc.get_option_chain.return_value = (pd.DataFrame(), self.put_chain)
         result = _suggest_spread_entry("SPY", "PUT_DEBIT_SPREAD", self.levels, "30-45")
         self.assertIsNotNone(result)
+        self.assertGreater(result["long_strike"], result["short_strike"])
+
+    @patch("swing_trade.bar_cache")
+    def test_put_debit_spread_uses_next_short_strike_when_target_matches_long(self, mock_bc):
+        mock_bc.get_option_dates.return_value = self.opt_dates
+        mock_bc.get_option_chain.return_value = (pd.DataFrame(), self.put_chain)
+        levels = {"breakout": 92.0, "target1": 90.0, "stop": 97.0}
+        result = _suggest_spread_entry("SPY", "PUT_DEBIT_SPREAD", levels, "30-45")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["long_strike"], 90.0)
+        self.assertEqual(result["short_strike"], 85.0)
         self.assertGreater(result["long_strike"], result["short_strike"])
 
     @patch("swing_trade.bar_cache")

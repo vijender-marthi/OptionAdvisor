@@ -882,6 +882,29 @@ export default function SwingTradeEnginePanel({
   const contextualAlerts = Array.isArray(m.contextual_alerts) ? m.contextual_alerts as Array<{ type?: string; message?: string; condition?: string }> : []
   const volumeRatio = typeof m.volume_ratio === 'number' ? m.volume_ratio : null
   const volumeLabel = typeof m.volume_label === 'string' ? m.volume_label : ''
+  const trendDirection = typeof m.trend_direction === 'string' ? m.trend_direction : result.bias === 'short' ? 'BEARISH' : result.bias === 'long' ? 'BULLISH' : 'NEUTRAL'
+  const trendScore = typeof m.trend_score === 'number' ? m.trend_score : null
+  const entryQualityScore = typeof m.entry_quality_score === 'number' ? m.entry_quality_score : null
+  const bounceRisk = typeof m.bounce_risk === 'string' ? m.bounce_risk : null
+  const extensionScore = typeof m.extension_score === 'number' ? m.extension_score : null
+  const extensionLabel = typeof m.extension_label === 'string' ? m.extension_label : null
+  const trendStage = typeof m.trend_stage === 'string' ? m.trend_stage : null
+  const tradeTimingVerdict = typeof m.trade_timing_verdict === 'string' ? m.trade_timing_verdict : null
+  const preferredEntryTrigger = Array.isArray(m.preferred_entry_trigger) ? m.preferred_entry_trigger.map(String) : []
+  const trendEntryWhy = Array.isArray(m.trend_entry_why) ? m.trend_entry_why.map(String) : []
+  const timingReady = (entryQualityScore ?? 0) >= 65 && !['High', 'Extreme'].includes(String(bounceRisk || ''))
+  const primaryTimingVerdict = trendDirection === 'BEARISH'
+    ? timingReady ? 'BEARISH TREND — PUT DEBIT SPREAD READY' : 'BEARISH TREND — WAIT FOR ENTRY'
+    : trendDirection === 'BULLISH'
+      ? timingReady ? 'BULLISH TREND — CALL DEBIT SPREAD READY' : 'BULLISH TREND — WAIT FOR ENTRY'
+      : 'NO CLEAR SWING TREND — WAIT'
+  const sizeGuidance = entryQualityScore == null
+    ? 'Wait for entry score.'
+    : entryQualityScore >= 70
+      ? 'Normal size if risk fits plan.'
+      : entryQualityScore >= 60
+        ? 'Reduced size until entry quality improves.'
+        : 'Do not open new swing risk yet.'
 
   // Which step is the trader's primary action point right now?
   const focusStep = ((): number => {
@@ -983,6 +1006,61 @@ export default function SwingTradeEnginePanel({
           <div className="mt-2 text-xs text-gray-300 leading-relaxed">{execSummary || formatSwingEngineLabel(result.final_action)}</div>
         </div>
 
+        {/* Trend vs Entry Timing */}
+        <div className="rounded-xl border border-gray-800/90 bg-black/15 px-3 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className={`text-sm font-black uppercase tracking-wide ${trendDirection === 'BEARISH' ? 'text-rose-300' : trendDirection === 'BULLISH' ? 'text-emerald-300' : 'text-gray-300'}`}>
+                {primaryTimingVerdict}
+              </div>
+              <div className="mt-1 text-xs text-gray-400 leading-relaxed">
+                {tradeTimingVerdict || (timingReady ? 'Direction and timing are both aligned.' : 'Direction may be right, but entry timing needs confirmation.')}
+              </div>
+            </div>
+            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+              timingReady ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+            }`}>
+              {timingReady ? 'Timing aligned' : 'Timing late'}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <ExecMapRow label="Trend Score" value={trendScore != null ? `${trendScore}/100` : '—'} tone={(trendScore ?? 0) >= 75 ? 'text-emerald-400' : (trendScore ?? 0) >= 55 ? 'text-amber-400' : 'text-red-400'} />
+            <ExecMapRow label="Entry Quality" value={entryQualityScore != null ? `${entryQualityScore}/100` : '—'} tone={(entryQualityScore ?? 0) >= 65 ? 'text-emerald-400' : (entryQualityScore ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400'} />
+            <ExecMapRow label="Bounce Risk" value={bounceRisk || '—'} tone={['High', 'Extreme'].includes(String(bounceRisk)) ? 'text-red-400' : String(bounceRisk).includes('Medium') ? 'text-amber-400' : 'text-emerald-400'} />
+            <ExecMapRow label="Trend Stage" value={trendStage || '—'} tone={String(trendStage).includes('Extended') || String(trendStage).includes('Reversal') ? 'text-amber-400' : 'text-gray-200'} />
+            <ExecMapRow label="Extension" value={extensionScore != null ? `${extensionScore.toFixed(1)}% · ${extensionLabel || ''}` : '—'} tone={extensionScore != null && extensionScore > 6 ? 'text-red-400' : extensionScore != null && extensionScore > 4 ? 'text-amber-400' : 'text-emerald-400'} />
+            <ExecMapRow label="Structure" value={formatSwingEngineLabel(result.suggested_strategy || 'NO_TRADE')} tone={result.suggested_strategy === 'NO_TRADE' ? 'text-gray-500' : 'text-gray-200'} />
+            <ExecMapRow label="DTE" value={result.recommended_contract_duration ? `${result.recommended_contract_duration} DTE` : '14-21 DTE'} tone="text-gray-200" />
+            <ExecMapRow label="Size" value={sizeGuidance} tone={(entryQualityScore ?? 0) >= 70 ? 'text-emerald-400' : (entryQualityScore ?? 0) >= 60 ? 'text-amber-400' : 'text-red-400'} />
+          </div>
+          {(trendEntryWhy.length > 0 || preferredEntryTrigger.length > 0) && (
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              {trendEntryWhy.length > 0 && (
+                <div className="rounded-lg border border-gray-800/70 bg-gray-950/40 px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Why</div>
+                  <div className="space-y-1">
+                    {trendEntryWhy.slice(0, 6).map((item, idx) => (
+                      <div key={`${item}-${idx}`} className={`text-[11px] leading-relaxed ${item.includes('extended') || item.includes('elevated') ? 'text-amber-300' : 'text-gray-300'}`}>
+                        {item.includes('extended') || item.includes('elevated') ? '⚠' : '✓'} {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {preferredEntryTrigger.length > 0 && (
+                <div className="rounded-lg border border-gray-800/70 bg-gray-950/40 px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Best Entry</div>
+                  <div className="space-y-1">
+                    {preferredEntryTrigger.map((item, idx) => (
+                      <div key={`${item}-${idx}`} className="text-[11px] leading-relaxed text-gray-300">{idx + 1}. {item}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
 
 
         {/* Entry Plan / Risk Profile */}
@@ -1005,7 +1083,7 @@ export default function SwingTradeEnginePanel({
             {[
               { label: 'R/R Ratio', value: <span className="font-mono text-gray-400 text-xs">—</span> },
               { label: 'Risk Level', value: <span className="font-mono font-bold text-red-400 text-xs">{result.risk_level}</span> },
-              { label: 'RVOL', value: <span className="font-mono text-gray-400 text-xs">0.8x</span> },
+              { label: 'RVOL', value: <span className={`font-mono text-xs ${volumeRatio != null && volumeRatio >= 1.2 ? 'text-emerald-400' : 'text-gray-400'}`}>{volumeRatio != null ? `${volumeRatio.toFixed(2)}x${volumeLabel ? ` · ${formatSwingEngineLabel(volumeLabel)}` : ''}` : '—'}</span> },
             ].map((row, i) => (
               <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
                 <span className="text-xs text-gray-500">{row.label}</span>

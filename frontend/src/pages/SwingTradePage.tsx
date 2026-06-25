@@ -790,6 +790,18 @@ export default function SwingTradePage() {
           {/* ── Trade Plan — Entry + Spread + Exit consolidated ── */}
           {(() => {
             const spread = unified.spread_entry
+            const m = result?.metrics as Record<string, unknown> | undefined
+            const volumeRatio = typeof m?.volume_ratio === 'number' ? m.volume_ratio : null
+            const volumeLabel = typeof m?.volume_label === 'string' ? m.volume_label.replace(/_/g, ' ') : ''
+            const rvolText = unified.rvol || (volumeRatio != null ? `${volumeRatio.toFixed(2)}x${volumeLabel ? ` · ${volumeLabel}` : ''}` : '—')
+            const impliedIv = typeof m?.implied_iv_pct === 'number' ? m.implied_iv_pct : null
+            const hv20 = typeof m?.hv_20 === 'number' ? m.hv_20 : null
+            const ivRank = typeof m?.iv_rank_hv_proxy === 'number' ? m.iv_rank_hv_proxy : null
+            const ivSource = typeof m?.implied_iv_source === 'string' ? m.implied_iv_source : ''
+            const ivExpiry = typeof m?.implied_iv_expiry === 'string' ? m.implied_iv_expiry : ''
+            const ivText = impliedIv != null
+              ? `${impliedIv.toFixed(1)}% IV${hv20 != null ? ` / ${hv20.toFixed(1)}% HV` : ''}${ivRank != null ? ` · rank ${ivRank.toFixed(0)}` : ''}${ivSource === 'option_chain_atm' && ivExpiry ? ` · chain ${ivExpiry.slice(5)}` : ''}`
+              : hv20 != null ? `HV20 ${hv20.toFixed(1)}% · IV unavailable` : 'IV unavailable'
             const exitOpacity = unified.entry_price ? 1 : 0.45
             const planRow = (label: string, value: ReactNode, valueColor: string, opts?: { bold?: boolean; last?: boolean }) => (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: opts?.last ? 'none' : `1px solid ${st.border}` }}>
@@ -823,8 +835,8 @@ export default function SwingTradePage() {
                     <div className="dt-muted" style={{ fontSize: '0.68rem', fontWeight: 700, color: st.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Risk Profile</div>
                     {planRow('R/R ratio', unified.rr_ratio || '—', unified.rr_ratio ? st.green : st.muted)}
                     {planRow('Risk level', unified.rr_ratio ? (unified.risk_level || '—') : '—', unified.risk_level === 'LOW' ? st.green : unified.risk_level === 'MEDIUM' ? st.amber : st.red, { bold: true })}
-                    {planRow('RVOL', unified.rvol || '—', st.muted)}
-                    {planRow('IV vs HV', 'Check platform', st.muted)}
+                    {planRow('RVOL', rvolText, rvolText === '—' ? st.muted : st.text)}
+                    {planRow('IV vs HV', ivText, impliedIv != null ? st.text : st.muted)}
                     {planRow('Holding period', result?.expected_holding_period || '3–5 days', st.text, { last: true })}
                   </div>
                 </div>

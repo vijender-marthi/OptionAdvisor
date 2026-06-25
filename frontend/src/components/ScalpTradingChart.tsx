@@ -34,6 +34,20 @@ type ScalpState = {
 }
 
 const PAD = { l: 54, r: 18, t: 18, b: 30 }
+const DEFAULT_LAYERS = {
+  candles: true,
+  volume: true,
+  ema50: true,
+  ema150: true,
+  riskZone: true,
+  rewardZone: true,
+  entryStopTargets: true,
+  expectedPath: true,
+  currentTrigger: true,
+  momentum: true,
+}
+
+type LayerKey = keyof typeof DEFAULT_LAYERS
 
 function fmtPrice(n: number) {
   if (!Number.isFinite(n)) return '-'
@@ -68,6 +82,7 @@ export default function ScalpTradingChart({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
+  const [layers, setLayers] = useState(DEFAULT_LAYERS)
 
   useLayoutEffect(() => {
     const el = wrapRef.current
@@ -160,6 +175,19 @@ export default function ScalpTradingChart({
   const grid = isDark ? 'rgba(148,163,184,0.20)' : 'rgba(100,116,139,0.22)'
   const axis = isDark ? '#94a3b8' : '#64748b'
   const actionColor = action === 'GO' ? '#22c55e' : action.includes('DO NOT') || action === 'NO TRADE' ? '#fb7185' : action === 'TRACK' ? '#38bdf8' : '#f59e0b'
+  const toggleLayer = (key: LayerKey) => setLayers(prev => ({ ...prev, [key]: !prev[key] }))
+  const layerButtons: Array<{ key: LayerKey; label: string; color: string }> = [
+    { key: 'candles', label: 'Bars', color: axis },
+    { key: 'volume', label: 'Volume', color: axis },
+    { key: 'ema50', label: 'EMA50', color: '#f59e0b' },
+    { key: 'ema150', label: 'EMA150', color: '#a855f7' },
+    { key: 'riskZone', label: 'Risk Zone', color: '#fb7185' },
+    { key: 'rewardZone', label: 'Reward to T1', color: '#22c55e' },
+    { key: 'entryStopTargets', label: 'Entry / Stop / Targets', color: '#38bdf8' },
+    { key: 'expectedPath', label: 'Path', color: '#22c55e' },
+    { key: 'currentTrigger', label: 'Current / Trigger', color: '#38bdf8' },
+    { key: 'momentum', label: 'Momentum', color: '#38bdf8' },
+  ]
 
   const lineLevel = (value: number | null, label: string, color: string, dashed = true) => {
     if (value == null) return null
@@ -223,15 +251,50 @@ export default function ScalpTradingChart({
         ))}
       </div>
 
+      <div className="mb-2 rounded-xl border px-2 py-2" style={{ borderColor: border, background: panel }}>
+        <div className="mb-1 px-1 text-[10px] font-black uppercase tracking-wider" style={{ color: axis }}>Chart Layers</div>
+        <div className="flex flex-wrap gap-1.5">
+          {layerButtons.map(button => {
+            const active = layers[button.key]
+            return (
+              <button
+                key={button.key}
+                type="button"
+                onClick={() => toggleLayer(button.key)}
+                title={`${active ? 'Hide' : 'Show'} ${button.label}`}
+                aria-pressed={active}
+                className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide"
+                style={{
+                  borderColor: active ? button.color : border,
+                  background: active ? `${button.color}18` : 'transparent',
+                  color: active ? button.color : axis,
+                  cursor: 'pointer',
+                }}
+              >
+                {active ? 'Hide' : 'Show'} {button.label}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setLayers(DEFAULT_LAYERS)}
+            className="rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide"
+            style={{ borderColor: border, background: 'transparent', color: axis, cursor: 'pointer' }}
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: border, background: surface }}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-none min-w-max" role="img" aria-label="Scalp trading chart with EMA, stochastic, volume, and entry levels">
           <rect x={PAD.l} y={PAD.t} width={innerW} height={priceH} fill={isDark ? 'rgba(15,23,42,0.32)' : 'rgba(248,250,252,0.92)'} stroke={border} />
-          {zoneRect(entry, stop, '#fb7185', 'RISK ZONE')}
-          {zoneRect(entry, t1, '#22c55e', 'REWARD TO T1')}
-          {currentX && (
+          {layers.riskZone && zoneRect(entry, stop, '#fb7185', 'RISK ZONE')}
+          {layers.rewardZone && zoneRect(entry, t1, '#22c55e', 'REWARD TO T1')}
+          {layers.currentTrigger && currentX && (
             <rect x={currentX - Math.max(5, bodyW * 1.3)} y={PAD.t} width={Math.max(10, bodyW * 2.6)} height={priceH} fill="#38bdf8" opacity={0.08} />
           )}
-          {entryX && (
+          {layers.currentTrigger && entryX && (
             <rect x={entryX - Math.max(5, bodyW * 1.2)} y={PAD.t} width={Math.max(10, bodyW * 2.4)} height={priceH} fill="#22c55e" opacity={0.10} />
           )}
           {yTicks.map((yt, i) => (
@@ -241,7 +304,7 @@ export default function ScalpTradingChart({
             </g>
           ))}
 
-          {chartBars.map((b, i) => {
+          {layers.candles && chartBars.map((b, i) => {
             const cx = xAt(times[i]!)
             const up = b.c >= b.o
             const yH = yAt(b.h)
@@ -258,9 +321,9 @@ export default function ScalpTradingChart({
             )
           })}
 
-          {ema50Pts && <polyline fill="none" points={ema50Pts} stroke="#f59e0b" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
-          {ema150Pts && <polyline fill="none" points={ema150Pts} stroke="#a855f7" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
-          {entry != null && t1 != null && (
+          {layers.ema50 && ema50Pts && <polyline fill="none" points={ema50Pts} stroke="#f59e0b" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
+          {layers.ema150 && ema150Pts && <polyline fill="none" points={ema150Pts} stroke="#a855f7" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
+          {layers.expectedPath && entry != null && t1 != null && (
             <polyline
               fill="none"
               points={`${entryX},${yAt(entry)} ${Math.min(PAD.l + innerW - 36, entryX + innerW * 0.22)},${yAt(t1)}${t2 != null ? ` ${Math.min(PAD.l + innerW - 12, entryX + innerW * 0.42)},${yAt(t2)}` : ''}`}
@@ -270,14 +333,14 @@ export default function ScalpTradingChart({
               strokeLinecap="round"
             />
           )}
-          {lineLevel(entry, 'ENTRY', '#22c55e', false)}
-          {lineLevel(stop, 'STOP', '#fb7185')}
-          {lineLevel(t1, 'T1', '#38bdf8')}
-          {lineLevel(t2, 'T2', '#818cf8')}
-          <text x={Math.min(PAD.l + innerW - 8, currentX + 8)} y={PAD.t + 15} fill="#38bdf8" fontSize={10} fontWeight={900} textAnchor="end">CURRENT</text>
-          {entry != null && <text x={Math.min(PAD.l + innerW - 8, entryX + 8)} y={PAD.t + 30} fill="#22c55e" fontSize={10} fontWeight={900} textAnchor="end">TRIGGER</text>}
-          {stop != null && <text x={PAD.l + 8} y={Math.min(PAD.t + priceH - 8, yAt(stop) + 16)} fill="#fb7185" fontSize={10} fontWeight={900}>INVALID BELOW/ABOVE STOP</text>}
-          {entry != null && (
+          {layers.entryStopTargets && lineLevel(entry, 'ENTRY', '#22c55e', false)}
+          {layers.entryStopTargets && lineLevel(stop, 'STOP', '#fb7185')}
+          {layers.entryStopTargets && lineLevel(t1, 'T1', '#38bdf8')}
+          {layers.entryStopTargets && lineLevel(t2, 'T2', '#818cf8')}
+          {layers.currentTrigger && <text x={Math.min(PAD.l + innerW - 8, currentX + 8)} y={PAD.t + 15} fill="#38bdf8" fontSize={10} fontWeight={900} textAnchor="end">CURRENT</text>}
+          {layers.currentTrigger && entry != null && <text x={Math.min(PAD.l + innerW - 8, entryX + 8)} y={PAD.t + 30} fill="#22c55e" fontSize={10} fontWeight={900} textAnchor="end">TRIGGER</text>}
+          {layers.entryStopTargets && stop != null && <text x={PAD.l + 8} y={Math.min(PAD.t + priceH - 8, yAt(stop) + 16)} fill="#fb7185" fontSize={10} fontWeight={900}>INVALID BELOW/ABOVE STOP</text>}
+          {layers.entryStopTargets && entry != null && (
             <polygon points={`${PAD.l + 12},${yAt(entry)} ${PAD.l + 2},${yAt(entry) - 6} ${PAD.l + 2},${yAt(entry) + 6}`} fill="#22c55e" />
           )}
 
@@ -293,7 +356,7 @@ export default function ScalpTradingChart({
           <text x={PAD.l} y={H - 10} fill={axis} fontSize={10}>{fmtTime(new Date(tMin).toISOString())}</text>
 
           <rect x={PAD.l} y={volTop} width={innerW} height={volH} fill={panel} stroke={border} />
-          {chartBars.map((b, i) => {
+          {layers.volume && chartBars.map((b, i) => {
             const cx = xAt(times[i]!)
             const top = volYAt(b.v || 0)
             const up = b.c >= b.o
@@ -308,8 +371,8 @@ export default function ScalpTradingChart({
               <text x={PAD.l + innerW - 4} y={stochYAt(level) - 3} textAnchor="end" fill={axis} fontSize={9}>{level}</text>
             </g>
           ))}
-          {trendPts && <polyline fill="none" points={trendPts} stroke="#f59e0b" strokeWidth={1.4} strokeDasharray="6 4" strokeLinejoin="round" />}
-          {stochPts && <polyline fill="none" points={stochPts} stroke="#38bdf8" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />}
+          {layers.momentum && trendPts && <polyline fill="none" points={trendPts} stroke="#f59e0b" strokeWidth={1.4} strokeDasharray="6 4" strokeLinejoin="round" />}
+          {layers.momentum && stochPts && <polyline fill="none" points={stochPts} stroke="#38bdf8" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />}
           <text x={PAD.l + 4} y={stochTop + 13} fill={axis} fontSize={10} fontWeight={700}>Momentum · trend confirmation</text>
         </svg>
       </div>

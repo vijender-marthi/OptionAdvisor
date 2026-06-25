@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Database, Layers, AlertTriangle } from 'lucide-react'
+import { Search, Database, Layers, AlertTriangle, BookOpen } from 'lucide-react'
 import { analyzeOptions, analyzeV2 } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
@@ -287,6 +287,197 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
   )
 }
 
+type StrategyGuideItem = {
+  title: string
+  bias: string
+  bestWhen: string
+  iv: string
+  earnings: string
+  dte: string
+  risk: string
+  avoid: string
+  diagram: 'longCall' | 'longPut' | 'debitSpread' | 'creditSpread' | 'calendar'
+  color: string
+}
+
+function StrategyPayoffDiagram({ type, color, C }: { type: StrategyGuideItem['diagram']; color: string; C: Palette }) {
+  const axis = C.muted
+  const stroke = color
+  const fill = `${color}18`
+  const path = (() => {
+    if (type === 'longCall') return 'M18 78 L72 78 L136 18'
+    if (type === 'longPut') return 'M18 18 L82 78 L136 78'
+    if (type === 'debitSpread') return 'M18 78 L62 78 L104 28 L136 28'
+    if (type === 'creditSpread') return 'M18 30 L58 30 L102 78 L136 78'
+    return 'M18 68 C46 34 72 22 92 34 C110 45 122 63 136 68'
+  })()
+  const label = type === 'longCall' ? 'Long Call'
+    : type === 'longPut' ? 'Long Put'
+    : type === 'debitSpread' ? 'Debit Spread'
+    : type === 'creditSpread' ? 'Credit Spread'
+    : 'Calendar'
+  return (
+    <svg viewBox="0 0 154 96" role="img" aria-label={`${label} payoff diagram`} style={{ width: '100%', height: 96, display: 'block' }}>
+      <rect x="1" y="1" width="152" height="94" rx="10" fill={C.bgCard} stroke={C.border} />
+      <line x1="16" x2="140" y1="78" y2="78" stroke={axis} strokeOpacity="0.45" />
+      <line x1="76" x2="76" y1="14" y2="84" stroke={axis} strokeOpacity="0.25" strokeDasharray="3 4" />
+      <path d={`${path} L136 78 L18 78 Z`} fill={fill} opacity="0.8" />
+      <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="12" y="16" fill={axis} fontSize="9" fontWeight="700">P/L</text>
+      <text x="112" y="91" fill={axis} fontSize="9" fontWeight="700">Price</text>
+    </svg>
+  )
+}
+
+function StrategyGuideTab({ C }: { C: Palette }) {
+  const strategies: StrategyGuideItem[] = [
+    {
+      title: 'Long Call',
+      bias: 'Bullish directional',
+      bestWhen: 'Price is above MA20/MA50, momentum is rising, and the setup needs unlimited upside participation.',
+      iv: 'Best when IV rank is low to moderate, ideally below 50. Avoid overpaying for inflated premium.',
+      earnings: 'Avoid right before earnings unless intentionally trading event risk. IV crush can erase gains even if direction is correct.',
+      dte: 'Use 21-45 DTE for multi-week regular trades. Use shorter only when catalyst timing is clear.',
+      risk: 'Defined risk: premium paid. Needs strong direction because theta works against you.',
+      avoid: 'Avoid in high IV, flat trend, weak volume, or when price is already extended far above MA20.',
+      diagram: 'longCall',
+      color: C.green,
+    },
+    {
+      title: 'Long Put',
+      bias: 'Bearish directional',
+      bestWhen: 'Price is below MA20/MA50, rallies reject resistance, and market/sector confirms downside pressure.',
+      iv: 'Best when IV rank is below 50. If IV is elevated, prefer a put debit spread.',
+      earnings: 'Avoid buying puts immediately before earnings unless event risk is the thesis.',
+      dte: 'Use 21-45 DTE. Give bearish trades enough time because downside often moves in bursts.',
+      risk: 'Defined risk: premium paid. Needs clean downside follow-through.',
+      avoid: 'Avoid after panic candles, at major support, or with RSI deeply oversold.',
+      diagram: 'longPut',
+      color: C.red,
+    },
+    {
+      title: 'Call / Put Debit Spread',
+      bias: 'Directional with controlled cost',
+      bestWhen: 'Directional thesis is good, but IV is moderate or the long option is expensive.',
+      iv: 'Works well in moderate IV, roughly 40-70. You buy one option and sell another to reduce cost.',
+      earnings: 'Safer than naked long options into earnings, but still exposed to gap and IV crush.',
+      dte: 'Use 21-45 DTE. Pick spread width that gives realistic target, not fantasy max profit.',
+      risk: 'Defined risk: net debit. Reward is capped, but breakeven is improved.',
+      avoid: 'Avoid when bid/ask spreads are wide or max profit depends on an unrealistic move.',
+      diagram: 'debitSpread',
+      color: C.violet,
+    },
+    {
+      title: 'Bull Put / Bear Call Credit Spread',
+      bias: 'Directional or range with premium selling',
+      bestWhen: 'IV is elevated, price respects support/resistance, and you want theta working for you.',
+      iv: 'Best when IV rank is elevated, usually 50+. Higher IV improves credit and cushion.',
+      earnings: 'Can work before earnings only with defined risk and small size. Event gaps can exceed expected move.',
+      dte: 'Use 14-45 DTE. Shorter DTE gives faster theta but higher gamma risk.',
+      risk: 'Defined risk: spread width minus credit. Win rate can be higher, but losses must be controlled.',
+      avoid: 'Avoid low credit, poor liquidity, binary events without edge, or selling too close to price.',
+      diagram: 'creditSpread',
+      color: C.amber,
+    },
+    {
+      title: 'Calendar Spread',
+      bias: 'Time/volatility structure',
+      bestWhen: 'You expect price to stay near a strike while front-month decay is faster than back-month decay.',
+      iv: 'Best when near-term IV is not wildly overpriced versus back-month IV, unless intentionally trading event skew.',
+      earnings: 'Useful around earnings only for advanced traders who understand term structure and gap risk.',
+      dte: 'Sell near expiry, buy farther expiry. Keep the short strike near the expected pin/target zone.',
+      risk: 'Defined risk: net debit. Sensitive to IV term structure and price moving away from strike.',
+      avoid: 'Avoid strong trend days, poor liquidity, or when price is likely to move far away from the short strike.',
+      diagram: 'calendar',
+      color: C.purple,
+    },
+  ]
+
+  const cell: React.CSSProperties = {
+    background: C.bgCard,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: 12,
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+        {[
+          ['Low IV', 'Favor long calls/puts or debit spreads. You are buying premium when it is relatively cheaper.', C.green],
+          ['High IV', 'Favor credit spreads or defined-risk premium selling. Avoid overpaying for long options.', C.amber],
+          ['Earnings Soon', 'Treat as event risk. Prefer defined-risk structures and reduce size.', C.red],
+          ['No Clear Trend', 'Use calendars only if price is expected to stay near a strike. Otherwise wait.', C.purple],
+        ].map(([label, text, color]) => (
+          <div key={label} style={cell}>
+            <div style={{ color: color as string, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
+            <div style={{ color: C.text, fontSize: 12, lineHeight: 1.45, marginTop: 6 }}>{text}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        {strategies.map(strategy => (
+          <div key={strategy.title} style={{ ...cell, padding: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 154px', gap: 12, alignItems: 'start' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ color: strategy.color, fontSize: 15, fontWeight: 800 }}>{strategy.title}</div>
+                  <span style={{ color: strategy.color, border: `1px solid ${strategy.color}55`, background: `${strategy.color}14`, borderRadius: 999, padding: '2px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>{strategy.bias}</span>
+                </div>
+                <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5, marginTop: 8 }}>{strategy.bestWhen}</div>
+              </div>
+              <StrategyPayoffDiagram type={strategy.diagram} color={strategy.color} C={C} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, marginTop: 12 }}>
+              <GuideFact C={C} label="IV" value={strategy.iv} />
+              <GuideFact C={C} label="Earnings" value={strategy.earnings} />
+              <GuideFact C={C} label="DTE" value={strategy.dte} />
+              <GuideFact C={C} label="Risk" value={strategy.risk} />
+            </div>
+            <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10, color: C.red, fontSize: 12, lineHeight: 1.45 }}>
+              Avoid: <span style={{ color: C.muted }}>{strategy.avoid}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...cell, display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={15} style={{ color: C.amber }} />
+          <span style={{ color: C.text, fontWeight: 800 }}>Quick Selection Rules</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+          <GuideRule C={C} label="Bullish + Low IV" value="Long Call or Call Debit Spread" color={C.green} />
+          <GuideRule C={C} label="Bearish + Low IV" value="Long Put or Put Debit Spread" color={C.red} />
+          <GuideRule C={C} label="Bullish + High IV" value="Bull Put Credit Spread" color={C.amber} />
+          <GuideRule C={C} label="Bearish + High IV" value="Bear Call Credit Spread" color={C.amber} />
+          <GuideRule C={C} label="Range + Time Decay" value="Calendar Spread near expected pin" color={C.purple} />
+          <GuideRule C={C} label="Earnings Imminent" value="Defined risk only; smaller size; avoid naked long premium" color={C.red} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GuideFact({ C, label, value }: { C: Palette; label: string; value: string }) {
+  return (
+    <div style={{ border: `1px solid ${C.border}`, background: C.bgPanel, borderRadius: 9, padding: '8px 10px' }}>
+      <div style={{ color: C.muted, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
+      <div style={{ color: C.text, fontSize: 11.5, lineHeight: 1.45, marginTop: 4 }}>{value}</div>
+    </div>
+  )
+}
+
+function GuideRule({ C, label, value, color }: { C: Palette; label: string; value: string; color: string }) {
+  return (
+    <div style={{ border: `1px solid ${C.border}`, background: C.bgPanel, borderRadius: 9, padding: '9px 10px' }}>
+      <div style={{ color, fontSize: 11, fontWeight: 800 }}>{label}</div>
+      <div style={{ color: C.text, fontSize: 12, marginTop: 3 }}>{value}</div>
+    </div>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 
 export default function TickerPage() {
@@ -303,7 +494,7 @@ export default function TickerPage() {
   const [unifiedAnalysis, setUnifiedAnalysis] = useState<UnifiedAnalysis | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
+  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | 'guide' | null>(null)
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
@@ -949,13 +1140,14 @@ export default function TickerPage() {
             }}>
               {activeTab ? (
                 <>
-                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-                  {(['chart', 'calculator'] as const).map(t => (
+                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+                  {(['chart', 'calculator', 'guide'] as const).map(t => (
                     <button
                       key={t}
                       onClick={() => setActiveTab(t)}
                       style={{
                         flex: 1,
+                        minWidth: 140,
                         padding: '10px 16px',
                         background: activeTab === t ? 'rgba(74,124,255,0.05)' : 'transparent',
                         border: 'none',
@@ -967,18 +1159,20 @@ export default function TickerPage() {
                         transition: 'all 0.15s',
                       }}
                     >
-                      {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
+                      {t === 'chart' ? '📉 Candlestick' : t === 'calculator' ? '📈 P&L Calculator' : '📚 Strategy Guide'}
                     </button>
                   ))}
                 </div>
                 <div style={{ padding: '16px 20px' }}>
                   {activeTab === 'chart' ? (
                     <PriceChart history={displayData.price_history} />
-                  ) : (
+                  ) : activeTab === 'calculator' ? (
                     <OptionProfitCalculator
                       recommendations={selectedData?.recommendations ?? []}
                       currentPrice={displayData.signals.current_price}
                     />
+                  ) : (
+                    <StrategyGuideTab C={C} />
                   )}
                 </div>
                 </>
@@ -994,7 +1188,7 @@ export default function TickerPage() {
                     justifyContent: 'center', gap: 6,
                   }}
                 >
-                  📊 Show Chart &amp; P&L Analysis
+                  📊 Show Chart, P&amp;L &amp; Strategy Guide
                 </button>
               )}
             </div>

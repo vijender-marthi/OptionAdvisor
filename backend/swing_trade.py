@@ -1352,6 +1352,311 @@ def _implied_iv_pct_from_info(info: dict[str, Any]) -> Optional[float]:
     return round(float(x), 2)
 
 
+def _implied_iv_pct_from_chain(
+    ticker: str,
+    last_price: float,
+    asof: date,
+    force_refresh: bool = False,
+) -> tuple[Optional[float], Optional[str]]:
+    """Fallback IV estimate from near-ATM options when Yahoo quote info omits IV."""
+    if last_price <= 0:
+        return None, None
+    try:
+        dates = bar_cache.get_option_dates(ticker, force_refresh=force_refresh)
+    except Exception:
+        return None, None
+    candidates: list[tuple[int, str]] = []
+    for exp in dates:
+        try:
+            exp_d = datetime.strptime(str(exp)[:10], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        dte = (exp_d - asof).days
+        if 21 <= dte <= 60:
+            candidates.append((dte, str(exp)[:10]))
+    if not candidates:
+        for exp in dates:
+            try:
+                exp_d = datetime.strptime(str(exp)[:10], "%Y-%m-%d").date()
+            except Exception:
+                continue
+            dte = (exp_d - asof).days
+            if 7 <= dte <= 90:
+                candidates.append((dte, str(exp)[:10]))
+    if not candidates:
+        return None, None
+    _, expiry = sorted(candidates, key=lambda item: (abs(item[0] - 35), item[0]))[0]
+    try:
+        calls, puts = bar_cache.get_option_chain(ticker, expiry, force_refresh=force_refresh)
+    except Exception:
+        return None, None
+    samples: list[float] = []
+    for df in (calls, puts):
+        if df is None or df.empty or "impliedVolatility" not in df.columns or "strike" not in df.columns:
+            continue
+        try:
+            tmp = df.copy()
+            tmp["strike_dist"] = (tmp["strike"].astype(float) - float(last_price)).abs()
+            tmp = tmp.sort_values("strike_dist").head(8)
+            for raw in tmp["impliedVolatility"].tolist():
+                try:
+                    iv = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(iv) or iv <= 0:
+                    continue
+                if iv < 1.0:
+                    iv *= 100.0
+                if 1.0 <= iv <= 300.0:
+                    samples.append(iv)
+        except Exception:
+            continue
+    if not samples:
+        return None, expiry
+    return round(float(pd.Series(samples).median()), 2), expiry
+
+
+def _consecutive_directional_candles(raw: pd.DataFrame, bearish: bool) -> int:
+    count = 0
+    for _, row in raw.tail(8).iloc[::-1].iterrows():
+        try:
+            o = float(row["Open"])
+            c = float(row["Close"])
+        except Exception:
+            break
+        if (bearish and c < o) or ((not bearish) and c > o):
+            count += 1
+        else:
+            break
+    return count
+
+
+def _trend_entry_timing_layer(
+    *,
+    raw: pd.DataFrame,
+    last: float,
+    ma20: float,
+    ma50: float,
+    rsi_val: float,
+    macd_val: float,
+    sig_val: float,
+    hv_20: Optional[float],
+    vol_label: str,
+    vol_ratio: float,
+    market_context: str,
+    bias: Bias,
+    bull_score: float,
+    bear_score: float,
+) -> dict[str, Any]:
+    """Separate trend direction quality from today's entry timing quality."""
+    if bias == "short":
+        direction = "BEARISH"
+        is_bearish = True
+    elif bias == "long":
+        direction = "BULLISH"
+        is_bearish = False
+    else:
+        direction = "BEARISH" if bear_score > bull_score else "BULLISH" if bull_score > bear_score else "NEUTRAL"
+        is_bearish = direction == "BEARISH"
+
+    if direction == "NEUTRAL" or ma20 <= 0 or ma50 <= 0 or last <= 0:
+        return {
+            "direction": "NEUTRAL",
+            "trend_score": 35,
+            "entry_quality_score": 25,
+            "bounce_risk": "Low",
+            "extension_score": 0.0,
+            "extension_label": "Normal",
+            "trend_stage": "No Trade Zone",
+            "preferred_entry_trigger": ["Wait for price to resolve above or below MA20/MA50."],
+            "trade_timing_verdict": "No clear trend. Wait.",
+            "why": ["Signals are mixed; trend direction is not reliable."],
+        }
+
+    trend = 0.0
+    why: list[str] = []
+    if is_bearish:
+        if last < ma20:
+            trend += 15; why.append(f"Price below MA20 (${ma20:.2f}).")
+        if last < ma50:
+            trend += 15; why.append(f"Price below MA50 (${ma50:.2f}).")
+        if ma20 < ma50:
+            trend += 15; why.append("MA20 below MA50.")
+        if rsi_val < 50:
+            trend += 10; why.append(f"RSI {rsi_val:.1f} is below 50.")
+        if macd_val < sig_val:
+            trend += 15; why.append("MACD bearish.")
+        highs = raw["High"].tail(8)
+        lows = raw["Low"].tail(8)
+        if len(highs) >= 5 and highs.iloc[-1] < highs.iloc[-3] and lows.iloc[-1] < lows.iloc[-3]:
+            trend += 15; why.append("Lower highs / lower lows are forming.")
+        if market_context == "MARKET_WEAK":
+            trend += 15; why.append("QQQ/SPY context aligns bearish.")
+        elif market_context == "MARKET_MIXED":
+            trend += 7
+        extension = max(0.0, (ma20 - last) / ma20 * 100.0)
+    else:
+        if last > ma20:
+            trend += 15; why.append(f"Price above MA20 (${ma20:.2f}).")
+        if last > ma50:
+            trend += 15; why.append(f"Price above MA50 (${ma50:.2f}).")
+        if ma20 > ma50:
+            trend += 15; why.append("MA20 above MA50.")
+        if rsi_val > 50:
+            trend += 10; why.append(f"RSI {rsi_val:.1f} is above 50.")
+        if macd_val > sig_val:
+            trend += 15; why.append("MACD bullish.")
+        highs = raw["High"].tail(8)
+        lows = raw["Low"].tail(8)
+        if len(highs) >= 5 and highs.iloc[-1] > highs.iloc[-3] and lows.iloc[-1] > lows.iloc[-3]:
+            trend += 15; why.append("Higher highs / higher lows are forming.")
+        if market_context == "MARKET_SUPPORTIVE":
+            trend += 15; why.append("QQQ/SPY context aligns bullish.")
+        elif market_context == "MARKET_MIXED":
+            trend += 7
+        extension = max(0.0, (last - ma20) / ma20 * 100.0)
+
+    trend_score = int(round(max(0.0, min(100.0, trend))))
+    if extension <= 2:
+        extension_label = "Normal"
+    elif extension <= 4:
+        extension_label = "Slightly Extended"
+    elif extension <= 6:
+        extension_label = "Extended"
+    else:
+        extension_label = "Very Extended"
+
+    entry = 72.0
+    if extension > 6:
+        entry -= 30
+    elif extension > 4:
+        entry -= 18
+    elif extension > 2:
+        entry -= 8
+
+    candle_run = _consecutive_directional_candles(raw, bearish=is_bearish)
+    if candle_run >= 4:
+        entry -= 14
+    elif candle_run >= 3:
+        entry -= 9
+
+    prior_raw = raw.iloc[:-1] if len(raw) > 1 else raw
+    support_window = prior_raw["Low"].tail(30)
+    resistance_window = prior_raw["High"].tail(30)
+    prior_support = float(support_window.min()) if len(support_window) else last
+    prior_resistance = float(resistance_window.max()) if len(resistance_window) else last
+    near_support = is_bearish and prior_support > 0 and abs(last - prior_support) / prior_support * 100 <= 2.0
+    near_resistance = (not is_bearish) and prior_resistance > 0 and abs(prior_resistance - last) / prior_resistance * 100 <= 2.0
+    if near_support or near_resistance:
+        entry -= 12
+
+    if is_bearish:
+        if rsi_val < 35:
+            entry -= 18
+        elif rsi_val < 42:
+            entry -= 8
+    else:
+        if rsi_val > 70:
+            entry -= 18
+        elif rsi_val > 63:
+            entry -= 8
+
+    if hv_20 is not None:
+        if hv_20 >= 55:
+            entry -= 12
+        elif hv_20 >= 40:
+            entry -= 7
+
+    aligned_volume = ("bear" in vol_label and is_bearish) or ("bull" in vol_label and not is_bearish)
+    if aligned_volume and vol_ratio >= 1.2:
+        entry += 10
+    if (is_bearish and market_context == "MARKET_WEAK") or ((not is_bearish) and market_context == "MARKET_SUPPORTIVE"):
+        entry += 8
+    elif market_context == "MARKET_MIXED":
+        entry -= 4
+    elif (is_bearish and market_context == "MARKET_SUPPORTIVE") or ((not is_bearish) and market_context == "MARKET_WEAK"):
+        entry -= 8
+
+    entry_quality_score = int(round(max(0.0, min(100.0, entry))))
+
+    risk_points = 0
+    if extension > 6: risk_points += 3
+    elif extension > 4: risk_points += 2
+    elif extension > 2: risk_points += 1
+    if is_bearish:
+        if rsi_val < 35: risk_points += 3
+        elif rsi_val < 42: risk_points += 2
+    else:
+        if rsi_val > 70: risk_points += 3
+        elif rsi_val > 63: risk_points += 2
+    if candle_run >= 3: risk_points += 2
+    if near_support or near_resistance: risk_points += 2
+    if hv_20 is not None and hv_20 >= 40: risk_points += 1
+    if risk_points >= 8:
+        bounce_risk = "Extreme"
+    elif risk_points >= 5:
+        bounce_risk = "High"
+    elif risk_points >= 3:
+        bounce_risk = "Medium-High"
+    elif risk_points >= 2:
+        bounce_risk = "Medium"
+    else:
+        bounce_risk = "Low"
+
+    if trend_score < 55:
+        trend_stage = "No Trade Zone"
+    elif extension > 6 and ((is_bearish and rsi_val <= 42) or ((not is_bearish) and rsi_val >= 63)) and candle_run >= 2:
+        trend_stage = "Extended Decline" if is_bearish else "Extended Advance"
+    elif (is_bearish and last < ma20 and last < ma50 and 40 <= rsi_val <= 50 and aligned_volume) or ((not is_bearish) and last > ma20 and last > ma50 and 50 <= rsi_val <= 60 and aligned_volume):
+        trend_stage = "Early Breakdown" if is_bearish else "Early Breakout"
+    elif bounce_risk in ("High", "Extreme") and (near_support or near_resistance):
+        trend_stage = "Reversal Risk"
+    elif extension <= 4 and trend_score >= 70:
+        trend_stage = "Trend Continuation"
+    else:
+        trend_stage = "Pullback to Resistance" if is_bearish else "Pullback to Support"
+
+    if is_bearish:
+        triggers = [
+            f"Failed bounce into MA20 / MA50 resistance (${ma20:.2f}-${ma50:.2f}).",
+            "Fresh breakdown below today's low with volume.",
+        ]
+        structure = "PUT Debit Spread"
+    else:
+        triggers = [
+            f"Pullback hold near MA20 / MA50 support (${ma20:.2f}-${ma50:.2f}).",
+            "Fresh breakout above today's high with volume.",
+        ]
+        structure = "CALL Debit Spread"
+
+    if trend_score >= 75 and entry_quality_score >= 65 and bounce_risk not in ("High", "Extreme"):
+        timing = f"{direction.title()} trend — {structure} ready."
+    elif trend_score >= 75 and entry_quality_score >= 50:
+        timing = f"{direction.title()} trend — wait for better entry."
+    elif trend_score >= 75:
+        timing = "Direction is right, but timing is late."
+    else:
+        timing = "Trend is not clean enough. Wait."
+
+    if extension > 6:
+        why.append(f"Price is {extension:.1f}% from MA20 — {extension_label.lower()}.")
+    if hv_20 is not None and hv_20 >= 40:
+        why.append(f"HV20 is elevated at {hv_20:.1f}%.")
+
+    return {
+        "direction": direction,
+        "trend_score": trend_score,
+        "entry_quality_score": entry_quality_score,
+        "bounce_risk": bounce_risk,
+        "extension_score": round(extension, 2),
+        "extension_label": extension_label,
+        "trend_stage": trend_stage,
+        "preferred_entry_trigger": triggers,
+        "trade_timing_verdict": timing,
+        "why": why[:8],
+    }
+
+
 def _next_earnings_calendar_days(ticker: str, asof: date, force_refresh: bool = False) -> Optional[int]:
     """
     Calendar days from `asof` (last daily bar date) to the next scheduled earnings date
@@ -1752,6 +2057,14 @@ def _suggest_spread_entry(
             below = [s for s in strikes if s <= level]
             return below[-1] if below else strikes[0]
 
+        def next_strike_above(level: float) -> Optional[float]:
+            above = [s for s in strikes if s > level]
+            return above[0] if above else None
+
+        def next_strike_below(level: float) -> Optional[float]:
+            below = [s for s in strikes if s < level]
+            return below[-1] if below else None
+
         def get_mid(strike: float) -> Optional[float]:
             row = chain[chain["strike"] == strike]
             if row.empty:
@@ -1766,7 +2079,9 @@ def _suggest_spread_entry(
             long_strike  = nearest_at_or_above(brk)
             short_strike = nearest_at_or_below(t1)
             if long_strike >= short_strike:
-                short_strike = nearest_at_or_above(t1)
+                short_strike = next_strike_above(long_strike)
+            if short_strike is None or long_strike >= short_strike:
+                return None
             long_mid  = get_mid(long_strike)
             short_mid = get_mid(short_strike)
             if long_mid is None:
@@ -1795,7 +2110,9 @@ def _suggest_spread_entry(
             long_strike  = nearest_at_or_below(brk)
             short_strike = nearest_at_or_above(t1)
             if long_strike <= short_strike:
-                short_strike = nearest_at_or_below(t1)
+                short_strike = next_strike_below(long_strike)
+            if short_strike is None or long_strike <= short_strike:
+                return None
             long_mid  = get_mid(long_strike)
             short_mid = get_mid(short_strike)
             if long_mid is None:
@@ -2224,6 +2541,17 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         max_points=SWING_CHART_MAX_POINTS,
     )
     implied_iv_pct = _implied_iv_pct_from_info(info)
+    implied_iv_source = "quote_info" if implied_iv_pct is not None else None
+    implied_iv_expiry: Optional[str] = None
+    if implied_iv_pct is None:
+        implied_iv_pct, implied_iv_expiry = _implied_iv_pct_from_chain(
+            t,
+            last,
+            asof_date,
+            force_refresh=force_refresh,
+        )
+        if implied_iv_pct is not None:
+            implied_iv_source = "option_chain_atm"
     iv_rank_opt: Optional[float] = None
     if implied_iv_pct is not None:
         iv_rank_opt = compute_iv_rank(hv_series, implied_iv_pct)
@@ -2499,6 +2827,23 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     else:
         _weekly_range_phase = "EARLY"
 
+    timing_layer = _trend_entry_timing_layer(
+        raw=raw,
+        last=last,
+        ma20=ma20,
+        ma50=ma50,
+        rsi_val=rsi_val,
+        macd_val=macd_val,
+        sig_val=sig_val,
+        hv_20=hv_20,
+        vol_label=vol_label,
+        vol_ratio=vol_ratio,
+        market_context=market_context,
+        bias=bias,
+        bull_score=round(bull, 2),
+        bear_score=round(bear, 2),
+    )
+
     metrics = {
         "session_date":    session_date,
         "bars_used":       len(raw),
@@ -2523,11 +2868,23 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         "confidence":      conf,
         "hv_20":           hv_20,
         "implied_iv_pct":  implied_iv_pct,
+        "implied_iv_source": implied_iv_source,
+        "implied_iv_expiry": implied_iv_expiry,
         "iv_rank_hv_proxy": iv_rank_opt,
         "earnings_calendar_days_until": earnings_within_days,
         "chart_series": chart_series,
         "weekly_range_used_pct": _weekly_range_used_pct,
         "weekly_range_phase":    _weekly_range_phase,
+        "trend_direction": timing_layer["direction"],
+        "trend_score": timing_layer["trend_score"],
+        "entry_quality_score": timing_layer["entry_quality_score"],
+        "bounce_risk": timing_layer["bounce_risk"],
+        "extension_score": timing_layer["extension_score"],
+        "extension_label": timing_layer["extension_label"],
+        "trend_stage": timing_layer["trend_stage"],
+        "preferred_entry_trigger": timing_layer["preferred_entry_trigger"],
+        "trade_timing_verdict": timing_layer["trade_timing_verdict"],
+        "trend_entry_why": timing_layer["why"],
     }
 
     # ── Option liquidity score (activates LOW_OPTION_LIQUIDITY gate) ──
@@ -2552,6 +2909,48 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
         near_resistance=None,
         gap_percent=None,
     )
+
+    timing_trend_score = float(timing_layer.get("trend_score") or 0.0)
+    timing_entry_score = float(timing_layer.get("entry_quality_score") or 0.0)
+    timing_bounce_risk = str(timing_layer.get("bounce_risk") or "")
+    if (
+        timing_trend_score >= 75
+        and (
+            timing_entry_score < 60
+            or timing_bounce_risk in ("High", "Extreme")
+            or timing_layer.get("trend_stage") in ("Extended Decline", "Extended Advance", "Reversal Risk")
+        )
+        and decision["final_action"] in ("STRONG_GO", "GO", "GO_SMALL")
+    ):
+        decision["entry_quality"] = "LATE_ENTRY"
+        decision["final_action"] = "WAIT_PULLBACK" if bias == "long" else "WAIT_FOR_BREAKDOWN"
+        decision["decision_label"] = "DIRECTION_VALID_TIMING_LATE"
+        decision["confirmation_needed"] = list(dict.fromkeys(
+            list(decision.get("confirmation_needed") or [])
+            + list(timing_layer.get("preferred_entry_trigger") or [])
+        ))
+        decision["decision_message"] = (
+            f"{t} direction is valid, but timing is late. "
+            f"Trend score {int(timing_trend_score)}/100; entry quality {int(timing_entry_score)}/100; "
+            f"bounce risk {timing_bounce_risk}. Wait for a better entry trigger."
+        )
+        decision["avoid_reason"] = "Direction is right, but current entry is extended or vulnerable to a bounce."
+        decision["entry_recommendation_state"] = "PULLBACK_PREFERRED"
+        decision["should_enter_now"] = "NO"
+        decision["entry_quality_label"] = "Direction valid, timing late"
+        decision["pullback_probability"] = "HIGH" if timing_bounce_risk in ("High", "Extreme") else "MODERATE"
+        decision["pullback_probability_reason"] = str(timing_layer.get("trade_timing_verdict") or "")
+        triggers = list(timing_layer.get("preferred_entry_trigger") or [])
+        decision["entry_decision"] = {
+            "conservative": triggers[0] if triggers else "Wait for a pullback/retest before entry.",
+            "aggressive": triggers[1] if len(triggers) > 1 else "Enter only on fresh breakdown/breakout with volume.",
+            "best_setup": triggers[0] if triggers else "Wait for cleaner entry timing.",
+        }
+        decision["contextual_alerts"] = list(decision.get("contextual_alerts") or []) + [{
+            "type": "TIMING_LATE",
+            "message": str(timing_layer.get("trade_timing_verdict") or "Direction valid, timing late."),
+            "condition": triggers[0] if triggers else "Wait for a better entry trigger.",
+        }]
 
     # Reconcile: if decision layer forces no-trade (hard gate like option
     # liquidity or imminent earnings), scoring-only "GO"/"STRONG GO" would

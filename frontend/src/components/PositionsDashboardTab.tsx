@@ -766,6 +766,9 @@ function WeeklyPerformanceTape({
   if (rows.length === 0) return <EmptyState st={st} />
   const max = Math.max(...rows.map(row => Math.abs(row.pnl)), 1)
   const net = rows.reduce((sum, row) => sum + row.pnl, 0)
+  const positiveWeeks = rows.filter(row => row.pnl > 0).length
+  const negativeWeeks = rows.filter(row => row.pnl < 0).length
+  const chartHeight = Math.max(230, rows.length * 34)
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -780,33 +783,63 @@ function WeeklyPerformanceTape({
           </div>
         ) : null}
       </div>
-      <div className="space-y-2">
-        {rows.map(row => {
-          const color = row.pnl >= 0 ? st.green : st.red
-          const width = `${Math.max(8, (Math.abs(row.pnl) / max) * 100)}%`
-          return (
-            <div key={row.key} className="grid grid-cols-[64px_1fr_72px] items-center gap-3">
-              <div className="text-[11px] font-bold" style={{ color: st.text }}>{row.label}</div>
-              <div className="relative h-8 rounded-lg" style={{ background: st.bgSoft }}>
-                <div
-                  className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
-                  style={{
-                    width,
-                    background: color,
-                    opacity: 0.82,
-                    left: row.pnl >= 0 ? '50%' : undefined,
-                    right: row.pnl < 0 ? '50%' : undefined,
-                  }}
-                />
-                <div className="absolute left-1/2 top-1 h-6 w-px" style={{ background: st.border }} />
-              </div>
-              <div className="text-right font-mono text-xs font-bold tabular-nums" style={{ color }}>{money(row.pnl)}</div>
-            </div>
-          )
-        })}
+      <div className="grid grid-cols-3 gap-2">
+        <StoryStat st={st} label="Positive Weeks" value={String(positiveWeeks)} tone="good" />
+        <StoryStat st={st} label="Negative Weeks" value={String(negativeWeeks)} tone={negativeWeeks > positiveWeeks ? 'bad' : 'neutral'} />
+        <StoryStat st={st} label="Avg Week" value={money(net / rows.length)} tone={net >= 0 ? 'good' : 'bad'} />
+      </div>
+      <div className="rounded-xl border p-3" style={{ borderColor: st.border, background: st.bgSoft }}>
+        <div style={{ height: chartHeight }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={rows}
+              layout="vertical"
+              margin={{ top: 8, right: 18, left: 10, bottom: 18 }}
+              barCategoryGap={8}
+            >
+              <CartesianGrid stroke={st.border} strokeDasharray="3 3" horizontal={false} />
+              <XAxis
+                type="number"
+                domain={[-max * 1.15, max * 1.15]}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: st.muted, fontSize: 10 }}
+                tickFormatter={compactMoney}
+              />
+              <YAxis
+                type="category"
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                width={58}
+                tick={{ fill: st.text, fontSize: 11, fontWeight: 700 }}
+              />
+              <ReferenceLine x={0} stroke={st.faint} strokeWidth={1.5} />
+              <Tooltip
+                cursor={{ fill: `${st.blue}10` }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const row = payload[0].payload as PeriodReportRow
+                  return (
+                    <div className="rounded-lg border px-3 py-2 text-xs shadow-lg" style={{ background: st.bg, borderColor: st.border, color: st.text }}>
+                      <div className="font-bold">{label}</div>
+                      <div className="font-mono font-bold" style={{ color: row.pnl >= 0 ? st.green : st.red }}>P&L {money(row.pnl, 2)}</div>
+                      <div style={{ color: st.muted }}>{row.count} trades · {row.wins}W/{row.losses}L</div>
+                    </div>
+                  )
+                }}
+              />
+              <Bar dataKey="pnl" radius={[5, 5, 5, 5]} maxBarSize={18}>
+                {rows.map(row => (
+                  <Cell key={row.key} fill={row.pnl >= 0 ? st.green : st.red} opacity={0.86} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
       <div className="text-xs leading-5" style={{ color: st.muted }}>
-        Weekly tape separates consistency from one-off wins. Focus on weeks where losses expand faster than trade count.
+        Weekly chart uses a zero-centered P&L scale, so positive and negative weeks are easy to compare without bars covering labels.
       </div>
     </div>
   )

@@ -6,10 +6,25 @@ All Phase 2 fields default to None unless explicitly set per test.
 """
 import sys
 import os
+import unittest
+
+import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from swing_trade import build_swing_trade_decision, _compute_swing_bias
+from swing_trade import build_swing_trade_decision, _compute_swing_bias, _trend_entry_timing_layer
+
+
+def _daily_frame(closes):
+    rows = []
+    for c in closes:
+        rows.append({
+            "Open": c + 0.75,
+            "High": c + 1.25,
+            "Low": c - 1.25,
+            "Close": c,
+        })
+    return pd.DataFrame(rows)
 
 
 # ─── _compute_swing_bias ─────────────────────────────────────────────
@@ -32,6 +47,62 @@ def test_swing_bias_neutral_tight():
 def test_swing_bias_neutral_mixed():
     # Bull is 6 but bear is 4 — doesn't meet bear <= 3 threshold
     assert _compute_swing_bias(6.0, 4.0) == "NEUTRAL"
+
+
+class TrendEntryTimingLayerTests(unittest.TestCase):
+    def test_trend_score_separate_from_late_bearish_entry(self):
+        """Strong bearish direction should not be penalized by extension; entry timing should be."""
+        raw = _daily_frame([225, 223, 221, 219, 216, 214, 211, 209, 206, 203, 200, 198, 196, 195])
+        layer = _trend_entry_timing_layer(
+            raw=raw,
+            last=195.0,
+            ma20=208.79,
+            ma50=210.0,
+            rsi_val=41.9,
+            macd_val=-1.2,
+            sig_val=-0.4,
+            hv_20=45.3,
+            vol_label="bear_expanding",
+            vol_ratio=1.6,
+            market_context="MARKET_WEAK",
+            bias="short",
+            bull_score=1.0,
+            bear_score=9.0,
+        )
+        self.assertEqual(layer["direction"], "BEARISH")
+        self.assertGreaterEqual(layer["trend_score"], 85)
+        self.assertLess(layer["entry_quality_score"], layer["trend_score"])
+        self.assertEqual(layer["extension_label"], "Very Extended")
+        self.assertEqual(layer["trend_stage"], "Extended Decline")
+        self.assertTrue(
+            "wait for better entry" in layer["trade_timing_verdict"].lower()
+            or "timing is late" in layer["trade_timing_verdict"].lower()
+        )
+
+    def test_trend_entry_timing_ready_when_direction_and_entry_align(self):
+        raw = _daily_frame([224, 222, 220, 218, 216, 214, 212, 211, 209, 208, 207, 206, 205, 204])
+        raw.loc[raw.index[-1], "Open"] = 203.5
+        layer = _trend_entry_timing_layer(
+            raw=raw,
+            last=204.0,
+            ma20=208.0,
+            ma50=211.0,
+            rsi_val=46.0,
+            macd_val=-0.9,
+            sig_val=-0.2,
+            hv_20=28.0,
+            vol_label="bear_expanding",
+            vol_ratio=1.4,
+            market_context="MARKET_WEAK",
+            bias="short",
+            bull_score=1.5,
+            bear_score=8.5,
+        )
+        self.assertEqual(layer["direction"], "BEARISH")
+        self.assertGreaterEqual(layer["trend_score"], 75)
+        self.assertGreaterEqual(layer["entry_quality_score"], 65)
+        self.assertNotIn(layer["bounce_risk"], ("High", "Extreme"))
+        self.assertIn("put debit spread ready", layer["trade_timing_verdict"].lower())
 
 
 # ─── Market ETF special case ─────────────────────────────────────────
