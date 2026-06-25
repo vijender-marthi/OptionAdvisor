@@ -435,7 +435,7 @@ export default function DayTradeIntradayChart({
               {' · '}
               <span style={{ color: '#22c55e' }}>EMA150</span>
               {' · '}
-              <span style={{ color: '#38bdf8' }}>Stoch(5)</span>
+              <span style={{ color: '#38bdf8' }}>Momentum</span>
               {' · '}
             </>
           )}
@@ -466,7 +466,7 @@ export default function DayTradeIntradayChart({
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Stoch(5)</div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted">Momentum</div>
             <div className="mt-0.5 font-mono text-xs font-bold tabular-nums text-sky-700 dark:text-sky-300">
               {latestScalpBar?.stoch5 != null ? latestScalpBar.stoch5.toFixed(1) : '—'}
             </div>
@@ -864,7 +864,7 @@ export default function DayTradeIntradayChart({
                 />
               )}
               <text x={PAD.l + 4} y={scalpTop + 12} fill="var(--chart-axis)" fontSize={10} fontWeight={600}>
-                Stoch(5) · trend confirmation
+                Momentum · trend confirmation
               </text>
               <text x={PAD.l + innerW - 4} y={stochYAt(80) - 3} textAnchor="end" fill="var(--chart-axis)" fontSize={9} opacity={0.7}>80</text>
               <text x={PAD.l + innerW - 4} y={stochYAt(20) + 10} textAnchor="end" fill="var(--chart-axis)" fontSize={9} opacity={0.7}>20</text>

@@ -660,7 +660,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
             )}
             {verdict && <VerdictBadge verdict={verdict} statusColor={statusColor} />}
             <span style={{ fontSize: 11, color: dt.muted }}>
-              {isSwing ? 'Swing · Daily Chart' : data.tab === 'scalp' ? 'Scalp · EMA50 / EMA150 / Stoch(5)' : 'Intraday · 6:30 AM – 1:00 PM PT'}
+              {isSwing ? 'Swing · Daily Chart' : data.tab === 'scalp' ? 'Scalp · EMA trend / Momentum / Volume' : 'Intraday · 6:30 AM – 1:00 PM PT'}
             </span>
             {!isSwing && (
               <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
@@ -1197,7 +1197,7 @@ export default function DayTradeDashboardPage() {
           <DashboardStatCard dt={dt} label="Intraday Symbols" value={String(dayTickers.length)} sub="Session chart + MTF gates" tone={dt.accent} />
           <DashboardStatCard dt={dt} label="Swing Symbols" value={String(swingTickers.length)} sub="Daily trend workspace" tone={dt.violet} />
           <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'table' ? 'Intraday Table' : activeTab === 'scalp' ? 'Scalp' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
-          <DashboardStatCard dt={dt} label="Chart Engine" value={activeTab === 'scalp' ? 'Scalp' : 'Session'} sub={activeTab === 'scalp' ? 'EMA50 · EMA150 · Stoch(5)' : 'VWAP · OR · sigma bands'} tone={dt.green} />
+          <DashboardStatCard dt={dt} label="Chart Engine" value={activeTab === 'scalp' ? 'Scalp' : 'Session'} sub={activeTab === 'scalp' ? 'EMA trend · Momentum · Volume' : 'VWAP · OR · sigma bands'} tone={dt.green} />
         </div>
 
         {/* Tabs */}

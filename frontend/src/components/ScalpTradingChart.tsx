@@ -26,6 +26,9 @@ type ScalpState = {
   risk_reward_t1?: number
   blockers?: Array<{ label?: string; status?: string }>
   logic_note?: string
+  momentum_label?: string
+  price_label?: string
+  status_label?: string
   trigger_requirement?: string
   next_action?: string
 }
@@ -125,6 +128,9 @@ export default function ScalpTradingChart({
   const dir = String(scalp?.direction || '').toUpperCase()
   const action = String(scalp?.action || scalp?.status || 'WAIT').replace(/_/g, ' ')
   const entryTime = scalp?.entry_time ? fmtTime(scalp.entry_time) : ''
+  const momentumLabel = scalp?.momentum_label || 'BUILDING'
+  const priceLabel = scalp?.price_label || 'NOT CONFIRMED'
+  const statusLabel = scalp?.status_label || action
 
   const surface = isDark ? '#05070b' : '#ffffff'
   const panel = isDark ? '#0b1018' : '#f8fafc'
@@ -168,12 +174,12 @@ export default function ScalpTradingChart({
 
       <div className="mb-2 grid grid-cols-2 gap-2 lg:grid-cols-6">
         {[
-          ['Action', action, actionColor],
-          ['Direction', dir || '-', dir === 'LONG' ? '#22c55e' : '#fb7185'],
+          ['Momentum', momentumLabel, momentumLabel === 'STRONG' ? '#22c55e' : momentumLabel === 'WEAK' ? '#fb7185' : '#f59e0b'],
+          ['Price', priceLabel, priceLabel === 'CONFIRMED' ? '#22c55e' : '#f59e0b'],
+          ['Status', statusLabel, statusLabel.includes('BUY') || statusLabel.includes('SELL') ? '#38bdf8' : actionColor],
           ['Entry', entry != null ? `$${fmtPrice(entry)}` : '-', '#22c55e'],
           ['Stop', stop != null ? `$${fmtPrice(stop)}` : '-', '#fb7185'],
-          ['T1 / T2', t1 != null && t2 != null ? `$${fmtPrice(t1)} / $${fmtPrice(t2)}` : '-', '#38bdf8'],
-          ['Extension', scalp?.extension_state || '-', scalp?.extension_state === 'NORMAL' ? '#22c55e' : '#f59e0b'],
+          ['Risk', scalp?.risk_per_share != null ? `$${fmtPrice(scalp.risk_per_share)}` : '-', '#fb7185'],
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-lg border px-2 py-1.5" style={{ borderColor: border, background: panel }}>
             <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: axis }}>{label}</div>
@@ -209,8 +215,8 @@ export default function ScalpTradingChart({
             )
           })}
 
-          {ema50Pts && <polyline fill="none" points={ema50Pts} stroke="#ef4444" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />}
-          {ema150Pts && <polyline fill="none" points={ema150Pts} stroke="#22c55e" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />}
+          {ema50Pts && <polyline fill="none" points={ema50Pts} stroke="#f59e0b" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
+          {ema150Pts && <polyline fill="none" points={ema150Pts} stroke="#a855f7" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
           {lineLevel(entry, 'ENTRY', '#22c55e', false)}
           {lineLevel(stop, 'STOP', '#fb7185')}
           {lineLevel(t1, 'T1', '#38bdf8')}
@@ -223,10 +229,10 @@ export default function ScalpTradingChart({
             <rect x={0} y={-5} width={5} height={10} fill="#22c55e" rx={1} />
             <rect x={8} y={-5} width={5} height={10} fill="#fb7185" rx={1} />
             <text x={19} y={4} fill={axis} fontSize={10} fontWeight={700}>Candles</text>
-            <line x1={70} x2={94} y1={0} y2={0} stroke="#ef4444" strokeWidth={2} strokeLinecap="round" />
-            <text x={100} y={4} fill="#ef4444" fontSize={10} fontWeight={700}>EMA50</text>
-            <line x1={148} x2={172} y1={0} y2={0} stroke="#22c55e" strokeWidth={2} strokeLinecap="round" />
-            <text x={178} y={4} fill="#22c55e" fontSize={10} fontWeight={700}>EMA150</text>
+            <line x1={70} x2={94} y1={0} y2={0} stroke="#f59e0b" strokeWidth={2} strokeLinecap="round" />
+            <text x={100} y={4} fill="#f59e0b" fontSize={10} fontWeight={700}>EMA50</text>
+            <line x1={148} x2={172} y1={0} y2={0} stroke="#a855f7" strokeWidth={2} strokeLinecap="round" />
+            <text x={178} y={4} fill="#a855f7" fontSize={10} fontWeight={700}>EMA150</text>
           </g>
           <text x={PAD.l} y={H - 10} fill={axis} fontSize={10}>{fmtTime(new Date(tMin).toISOString())}</text>
 
@@ -248,7 +254,7 @@ export default function ScalpTradingChart({
           ))}
           {trendPts && <polyline fill="none" points={trendPts} stroke="#f59e0b" strokeWidth={1.4} strokeDasharray="6 4" strokeLinejoin="round" />}
           {stochPts && <polyline fill="none" points={stochPts} stroke="#38bdf8" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />}
-          <text x={PAD.l + 4} y={stochTop + 13} fill={axis} fontSize={10} fontWeight={700}>Stochastic(5) · trend confirmation</text>
+          <text x={PAD.l + 4} y={stochTop + 13} fill={axis} fontSize={10} fontWeight={700}>Momentum · trend confirmation</text>
         </svg>
       </div>
 

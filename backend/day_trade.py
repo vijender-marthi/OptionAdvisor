@@ -4190,13 +4190,13 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             risk = max(entry_price - stop_level, entry_price * 0.002)
             target_1 = entry_price + risk * 1.5
             target_2 = entry_price + risk * 2.5
-            requirement = "EMA50 above EMA150, price holding EMA50, Stoch(5) reclaim, volume at/above 20-bar average."
+            requirement = "EMA50 above EMA150, price holding EMA50, momentum trigger confirmed, volume at/above 20-bar average."
         else:
             stop_level = max(float(session["High"].iloc[lookback_lo:scalp_entry_idx + 1].max()), float(ema50_ser.iloc[scalp_entry_idx])) * 1.001
             risk = max(stop_level - entry_price, entry_price * 0.002)
             target_1 = entry_price - risk * 1.5
             target_2 = entry_price - risk * 2.5
-            requirement = "EMA50 below EMA150, price rejecting EMA50, Stoch(5) rollover, volume at/above 20-bar average."
+            requirement = "EMA50 below EMA150, price rejecting EMA50, momentum trigger confirmed, volume at/above 20-bar average."
         scalp_status = "ENTRY_READY" if scalp_entry_idx >= len(session) - 3 else "TRACK_PULLBACK"
         scalp_next = "Enter on a 1m pullback that holds EMA50; skip if price closes through the stop."
     else:
@@ -4205,12 +4205,12 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             stop_level = float(ema50_ser.iloc[-1]) * 0.998
             target_1 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 1.5
             target_2 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 2.5
-            requirement = "Need EMA50 above EMA150, price above EMA50, Stoch(5) reclaim through 20 or 50, and volume confirmation."
+            requirement = "Need EMA50 above EMA150, price above EMA50, momentum trigger, and volume confirmation."
         else:
             stop_level = float(ema50_ser.iloc[-1]) * 1.002
             target_1 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 1.5
             target_2 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 2.5
-            requirement = "Need EMA50 below EMA150, price below EMA50, Stoch(5) rollover through 80 or 50, and volume confirmation."
+            requirement = "Need EMA50 below EMA150, price below EMA50, momentum rollover, and volume confirmation."
         scalp_status = "WAIT_TRIGGER"
         scalp_next = "Wait for the next clean 1m stochastic trigger with price respecting EMA50."
 
@@ -4242,7 +4242,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     blockers: list[dict[str, Any]] = [
         {"label": "EMA trend aligned", "status": "PASS" if trend_confirmed else "FAIL"},
         {"label": "Price respects EMA50", "status": "PASS" if price_respects_ema50 else "FAIL"},
-        {"label": "Stoch(5) timing", "status": "PASS" if stoch_timing_ok else "PENDING"},
+        {"label": "Momentum timing", "status": "PASS" if stoch_timing_ok else "PENDING"},
         {"label": "Volume confirmed", "status": "PASS" if volume_confirmed else "PENDING"},
         {"label": f"EMA50 extension {ema50_dist_pct:.2f}%", "status": "PASS" if extension_state == "NORMAL" else "WARN"},
     ]
@@ -4270,10 +4270,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         scalp_action = "TRACK"
         scalp_reason = "Setup is valid, but current entry is no longer fresh."
+    momentum_label = "STRONG" if stoch_timing_ok and volume_confirmed else "BUILDING" if stoch_timing_ok or volume_confirmed else "WEAK"
+    price_label = "CONFIRMED" if price_respects_ema50 else "NOT CONFIRMED"
+    status_label = (
+        "BUY PULLBACKS" if scalp_bias == "long" and scalp_action in ("GO", "TRACK")
+        else "SELL BOUNCES" if scalp_bias == "short" and scalp_action in ("GO", "TRACK")
+        else scalp_action.replace("_", " ")
+    )
 
     scalp_trading = {
         "action": scalp_action,
         "reason": scalp_reason,
+        "momentum_label": momentum_label,
+        "price_label": price_label,
+        "status_label": status_label,
         "trade_quality": trade_quality,
         "quality_grade": quality_grade,
         "status": scalp_status,
@@ -4295,7 +4305,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "extension_from_ema50_pct": round(ema50_dist_pct, 2),
         "recommended_dte": "5-10 DTE",
         "blockers": blockers,
-        "logic_note": "Scalp logic uses EMA50, EMA150, Stoch(5), and volume. VWAP, ORH, and ORL are not scalp entry requirements.",
+        "logic_note": "Scalp logic uses EMA trend, momentum timing, and volume. VWAP, ORH, and ORL are not scalp entry requirements.",
         "trigger_requirement": requirement,
         "next_action": scalp_next,
     }

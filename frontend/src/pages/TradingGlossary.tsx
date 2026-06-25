@@ -146,11 +146,11 @@ const SECTIONS: GlossarySection[] = [
     entries: [
       {
         term: 'Scalp Trading Requirements',
-        definition: 'Scalp trades are intraday-only option trades. Required setup: price aligned with the intraday trend, EMA50/EMA150 trend confirmation, Stochastic(5) trigger, volume confirmation, clear entry/stop/T1/T2 levels, and no chasing after an extended candle. If price is far from EMA50/VWAP or volume is fading, wait.',
+        definition: 'Scalp trades are intraday-only option trades. Required setup: price aligned with the intraday trend, EMA50/EMA150 trend confirmation, momentum trigger, volume confirmation, clear entry/stop/T1/T2 levels, and no chasing after an extended candle. If price is far from EMA50 or volume is fading, wait.',
       },
       {
         term: 'Scalp Entry Trigger',
-        definition: 'Long scalp: EMA50 above EMA150, price holding or reclaiming EMA50, Stochastic(5) reclaiming 20 or 50, and volume at/above the recent average. Short scalp: EMA50 below EMA150, price rejecting or losing EMA50, Stochastic(5) rolling below 80 or 50, and volume confirming the move.',
+        definition: 'Long scalp: EMA50 above EMA150, price holding or reclaiming EMA50, momentum turning up, and volume at/above the recent average. Short scalp: EMA50 below EMA150, price rejecting or losing EMA50, momentum rolling over, and volume confirming the move.',
       },
       {
         term: 'Scalp DTE Requirement',
