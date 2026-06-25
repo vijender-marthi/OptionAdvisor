@@ -5,6 +5,7 @@ import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, sav
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
 import DayTradeIntradayChart, { parseChartBars, resampleBars, orMinutesForInterval, type ChartInterval, type ChartEntryPoint } from '../components/DayTradeIntradayChart'
+import ScalpTradingChart from '../components/ScalpTradingChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import { useApp } from '../contexts/AppContext'
 import { ROUTES } from '../routing/routes'
@@ -621,6 +622,9 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
   const displayBars = !isSwing && chartBars ? resampleBars(chartBars, chartInterval) : null
   const displayOrMin = orMinutesForInterval(orMin, chartInterval)
+  const scalpState = !isSwing && data.metrics.scalp_trading && typeof data.metrics.scalp_trading === 'object'
+    ? data.metrics.scalp_trading as Record<string, unknown>
+    : null
   const verdict    = data.unified?.verdict ?? ''
   const statusColor = data.unified?.verdict_presentation?.status_color
   const dimEntries = (() => {
@@ -675,6 +679,8 @@ function ChartModal({ data, isDark, dt, onClose }: {
         <div style={{ flex: 1, minWidth: 0, width: '100%', overflowY: 'auto', padding: '16px 20px 20px' }}>
           {isSwing ? (
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
+          ) : data.tab === 'scalp' && chartBars && chartBars.length > 0 ? (
+            <ScalpTradingChart bars={chartBars} scalp={scalpState} isDark={isDark} />
           ) : displayBars && displayBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
               <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} showScalpStudy={data.tab === 'scalp'} isDark={isDark} />
@@ -712,6 +718,9 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
   const sessionDate = String(metrics?.session_date ?? '')
   const displayChartBars = !isSwing && chartBars ? resampleBars(chartBars, chartInterval) : null
   const displayOrMin = orMinutesForInterval(orMin, chartInterval)
+  const scalpState = !isSwing && metrics?.scalp_trading && typeof metrics.scalp_trading === 'object'
+    ? metrics.scalp_trading as Record<string, unknown>
+    : null
 
   const entryPoints = !isSwing && result && metrics
     ? buildEntryPoints(result as DayTradeScanResult, metrics)
@@ -863,6 +872,24 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
             </div>
           )}
 
+          {tab === 'scalp' && scalpState && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+              {[
+                ['Entry', num(scalpState.entry_price), dt.green],
+                ['Stop', num(scalpState.stop_level), dt.red],
+                ['T1', num(scalpState.target_1), dt.accent],
+                ['T2', num(scalpState.target_2), dt.violet],
+              ].map(([label, value, color]) => (
+                <div key={String(label)} style={{ border: `1px solid ${dt.border}`, borderRadius: 8, padding: '6px 8px', background: dt.bg2 }}>
+                  <div style={{ fontSize: 9, color: dt.muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 800 }}>{String(label)}</div>
+                  <div style={{ marginTop: 2, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12, fontWeight: 800, color: String(color) }}>
+                    {typeof value === 'number' ? `$${value.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Chart */}
           {hasChart ? (
             <div onClick={onExpand} title="Click to expand chart" style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', cursor: 'zoom-in' }}>
@@ -872,6 +899,12 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               </div>
               {isSwing && metrics ? (
                 <SwingTradeMetricCharts metrics={metrics} mode="price" />
+              ) : tab === 'scalp' && chartBars ? (
+                <div onClick={e => e.stopPropagation()}>
+                  <div onClick={onExpand} style={{ cursor: 'zoom-in' }}>
+                    <ScalpTradingChart bars={chartBars} scalp={scalpState} isDark={isDark} />
+                  </div>
+                </div>
               ) : (
                 <div onClick={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: dt.bg2, border: `1px solid ${dt.border}`, borderBottom: 'none', borderRadius: '8px 8px 0 0' }}>

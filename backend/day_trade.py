@@ -4157,6 +4157,84 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             }
         )
 
+    avg_vol20_ser = session["Volume"].astype(float).rolling(20, min_periods=1).mean()
+    scalp_bias = "long" if float(ema50_ser.iloc[-1]) >= float(ema150_ser.iloc[-1]) else "short"
+    scalp_entry_idx: Optional[int] = None
+    for i in range(max(1, len(session) - 45), len(session)):
+        prev_stoch = float(stoch5_ser.iloc[i - 1])
+        curr_stoch = float(stoch5_ser.iloc[i])
+        close_i = float(close_ser.iloc[i])
+        ema50_i = float(ema50_ser.iloc[i])
+        ema150_i = float(ema150_ser.iloc[i])
+        vol_i = float(session["Volume"].iloc[i])
+        avg_vol_i = max(1.0, float(avg_vol20_ser.iloc[i]))
+        if scalp_bias == "long":
+            trend_ok = ema50_i > ema150_i and close_i >= ema50_i
+            stoch_trigger = prev_stoch <= 20.0 and curr_stoch > 20.0
+            continuation_trigger = curr_stoch >= 50.0 and close_i > ema50_i and vol_i >= avg_vol_i
+            if trend_ok and (stoch_trigger or continuation_trigger):
+                scalp_entry_idx = i
+        else:
+            trend_ok = ema50_i < ema150_i and close_i <= ema50_i
+            stoch_trigger = prev_stoch >= 80.0 and curr_stoch < 80.0
+            continuation_trigger = curr_stoch <= 50.0 and close_i < ema50_i and vol_i >= avg_vol_i
+            if trend_ok and (stoch_trigger or continuation_trigger):
+                scalp_entry_idx = i
+
+    if scalp_entry_idx is not None:
+        entry_bar = session.iloc[scalp_entry_idx]
+        entry_price = float(entry_bar["Close"])
+        lookback_lo = max(0, scalp_entry_idx - 5)
+        if scalp_bias == "long":
+            stop_level = min(float(session["Low"].iloc[lookback_lo:scalp_entry_idx + 1].min()), float(ema50_ser.iloc[scalp_entry_idx])) * 0.999
+            risk = max(entry_price - stop_level, entry_price * 0.002)
+            target_1 = entry_price + risk * 1.5
+            target_2 = entry_price + risk * 2.5
+            requirement = "EMA50 above EMA150, price holding EMA50, Stoch(5) reclaim, volume at/above 20-bar average."
+        else:
+            stop_level = max(float(session["High"].iloc[lookback_lo:scalp_entry_idx + 1].max()), float(ema50_ser.iloc[scalp_entry_idx])) * 1.001
+            risk = max(stop_level - entry_price, entry_price * 0.002)
+            target_1 = entry_price - risk * 1.5
+            target_2 = entry_price - risk * 2.5
+            requirement = "EMA50 below EMA150, price rejecting EMA50, Stoch(5) rollover, volume at/above 20-bar average."
+        scalp_status = "ENTRY_READY" if scalp_entry_idx >= len(session) - 3 else "TRACK_PULLBACK"
+        scalp_next = "Enter on a 1m pullback that holds EMA50; skip if price closes through the stop."
+    else:
+        entry_price = float(close_ser.iloc[-1])
+        if scalp_bias == "long":
+            stop_level = float(ema50_ser.iloc[-1]) * 0.998
+            target_1 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 1.5
+            target_2 = entry_price + max(entry_price - stop_level, entry_price * 0.002) * 2.5
+            requirement = "Need EMA50 above EMA150, price above EMA50, Stoch(5) reclaim through 20 or 50, and volume confirmation."
+        else:
+            stop_level = float(ema50_ser.iloc[-1]) * 1.002
+            target_1 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 1.5
+            target_2 = entry_price - max(stop_level - entry_price, entry_price * 0.002) * 2.5
+            requirement = "Need EMA50 below EMA150, price below EMA50, Stoch(5) rollover through 80 or 50, and volume confirmation."
+        scalp_status = "WAIT_TRIGGER"
+        scalp_next = "Wait for the next clean 1m stochastic trigger with price respecting EMA50."
+
+    scalp_entry_time = None
+    if scalp_entry_idx is not None:
+        scalp_entry_time = pd.Timestamp(session.index[scalp_entry_idx]).isoformat()
+
+    scalp_trading = {
+        "status": scalp_status,
+        "direction": scalp_bias,
+        "entry_price": round(entry_price, 4),
+        "entry_time": scalp_entry_time,
+        "stop_level": round(stop_level, 4),
+        "target_1": round(target_1, 4),
+        "target_2": round(target_2, 4),
+        "ema50": round(float(ema50_ser.iloc[-1]), 4),
+        "ema150": round(float(ema150_ser.iloc[-1]), 4),
+        "stoch5": round(float(stoch5_ser.iloc[-1]), 2),
+        "volume_ratio_20": round(float(session["Volume"].iloc[-1]) / max(1.0, float(avg_vol20_ser.iloc[-1])), 2),
+        "trend_confirmed": bool(float(ema50_ser.iloc[-1]) > float(ema150_ser.iloc[-1]) if scalp_bias == "long" else float(ema50_ser.iloc[-1]) < float(ema150_ser.iloc[-1])),
+        "trigger_requirement": requirement,
+        "next_action": scalp_next,
+    }
+
     session_change_pct = _intraday_session_return_pct(session)
     post_m_p = _info_opt_float(info, "postMarketPrice")
     post_m_chg = _info_opt_float(info, "postMarketChangePercent")
@@ -4239,6 +4317,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "rs_vs_qqq_label": _rs_label(t, rs_vs_qqq_pct) if rs_vs_qqq_pct is not None else None,
         "confidence": conf,
         "chart_bars": chart_bars,
+        "scalp_trading": scalp_trading,
         "session_high": round(session_high, 4),
         "session_low": round(session_low, 4),
         # New analysis layers
