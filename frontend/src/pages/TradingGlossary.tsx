@@ -140,6 +140,29 @@ const SECTIONS: GlossarySection[] = [
     ],
   },
   {
+    id: 'scalp-trading',
+    title: 'Scalp Trading',
+    icon: <Activity size={18} />,
+    entries: [
+      {
+        term: 'Scalp Trading Requirements',
+        definition: 'Scalp trades are intraday-only option trades. Required setup: price aligned with the intraday trend, EMA50/EMA150 trend confirmation, Stochastic(5) trigger, volume confirmation, clear entry/stop/T1/T2 levels, and no chasing after an extended candle. If price is far from EMA50/VWAP or volume is fading, wait.',
+      },
+      {
+        term: 'Scalp Entry Trigger',
+        definition: 'Long scalp: EMA50 above EMA150, price holding or reclaiming EMA50, Stochastic(5) reclaiming 20 or 50, and volume at/above the recent average. Short scalp: EMA50 below EMA150, price rejecting or losing EMA50, Stochastic(5) rolling below 80 or 50, and volume confirming the move.',
+      },
+      {
+        term: 'Scalp DTE Requirement',
+        definition: 'Preferred option expiry for scalps is 1–2 DTE. 0DTE is only for advanced, very liquid setups with immediate momentum and hard stops; avoid 0DTE on Friday. On Friday, use 3–4 DTE minimum to avoid same-day expiry and weekend gap risk. If you need more than 3–4 DTE, the trade is no longer a pure scalp.',
+      },
+      {
+        term: 'Scalp Exit Rules',
+        definition: 'Take partial profit at T1, exit or trail at T2, and cut immediately if price closes against EMA50/VWAP or the stop level breaks. Scalp trades should not drift into overnight holds unless they pass a separate overnight checklist.',
+      },
+    ],
+  },
+  {
     id: 'portfolio-terms',
     title: 'Portfolio Terms',
     icon: <Briefcase size={18} />,
@@ -435,7 +458,7 @@ const SECTIONS: GlossarySection[] = [
       },
       {
         term: 'DTE (Days to Expiry)',
-        definition: 'The number of calendar days until an option contract expires. The engine prefers 14–56 DTE. Under 14 DTE: theta risk too high (hard fail). Over 56 DTE: premium decay is slow (warning).',
+        definition: 'The number of calendar days until an option contract expires. DTE depends on trade type: scalp trades usually use 1–2 DTE, Friday scalps use 3–4 DTE minimum, swing trades often use 7–14 DTE, and regular option strategies prefer longer windows such as 14–56 DTE. Shorter DTE means higher gamma/theta risk and requires tighter execution.',
       },
       {
         term: 'PoP (Probability of Profit)',
