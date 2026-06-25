@@ -188,7 +188,15 @@ export default function ScalpTradingChart({
             <polygon points={`${PAD.l + 12},${yAt(entry)} ${PAD.l + 2},${yAt(entry) - 6} ${PAD.l + 2},${yAt(entry) + 6}`} fill="#22c55e" />
           )}
 
-          <text x={PAD.l + 4} y={PAD.t + 13} fill={axis} fontSize={10} fontWeight={700}>Candles · EMA50 red · EMA150 green</text>
+          <g transform={`translate(${PAD.l + 6}, ${PAD.t + 7})`}>
+            <rect x={0} y={-5} width={5} height={10} fill="#22c55e" rx={1} />
+            <rect x={8} y={-5} width={5} height={10} fill="#fb7185" rx={1} />
+            <text x={19} y={4} fill={axis} fontSize={10} fontWeight={700}>Candles</text>
+            <line x1={70} x2={94} y1={0} y2={0} stroke="#ef4444" strokeWidth={2} strokeLinecap="round" />
+            <text x={100} y={4} fill="#ef4444" fontSize={10} fontWeight={700}>EMA50</text>
+            <line x1={148} x2={172} y1={0} y2={0} stroke="#22c55e" strokeWidth={2} strokeLinecap="round" />
+            <text x={178} y={4} fill="#22c55e" fontSize={10} fontWeight={700}>EMA150</text>
+          </g>
           <text x={PAD.l} y={H - 10} fill={axis} fontSize={10}>{fmtTime(new Date(tMin).toISOString())}</text>
 
           <rect x={PAD.l} y={volTop} width={innerW} height={volH} fill={panel} stroke={border} />
