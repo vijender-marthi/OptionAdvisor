@@ -4218,7 +4218,64 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     if scalp_entry_idx is not None:
         scalp_entry_time = pd.Timestamp(session.index[scalp_entry_idx]).isoformat()
 
+    latest_close = float(close_ser.iloc[-1])
+    latest_ema50 = float(ema50_ser.iloc[-1])
+    latest_ema150 = float(ema150_ser.iloc[-1])
+    latest_stoch = float(stoch5_ser.iloc[-1])
+    latest_vol_ratio = float(session["Volume"].iloc[-1]) / max(1.0, float(avg_vol20_ser.iloc[-1]))
+    trend_confirmed = bool(latest_ema50 > latest_ema150 if scalp_bias == "long" else latest_ema50 < latest_ema150)
+    price_respects_ema50 = bool(latest_close >= latest_ema50 if scalp_bias == "long" else latest_close <= latest_ema50)
+    stoch_timing_ok = bool(
+        latest_stoch >= 50.0 if scalp_bias == "long" else latest_stoch <= 50.0
+    )
+    volume_confirmed = latest_vol_ratio >= 1.0
+    ema50_dist_pct = abs(latest_close / latest_ema50 - 1.0) * 100.0 if latest_ema50 > 0 else 0.0
+    if ema50_dist_pct >= 1.0:
+        extension_state = "EXTREME"
+    elif ema50_dist_pct >= 0.55:
+        extension_state = "EXTENDED"
+    else:
+        extension_state = "NORMAL"
+
+    risk_per_share = abs(entry_price - stop_level)
+    rr_t1 = abs(target_1 - entry_price) / risk_per_share if risk_per_share > 0 else 0.0
+    blockers: list[dict[str, Any]] = [
+        {"label": "EMA trend aligned", "status": "PASS" if trend_confirmed else "FAIL"},
+        {"label": "Price respects EMA50", "status": "PASS" if price_respects_ema50 else "FAIL"},
+        {"label": "Stoch(5) timing", "status": "PASS" if stoch_timing_ok else "PENDING"},
+        {"label": "Volume confirmed", "status": "PASS" if volume_confirmed else "PENDING"},
+        {"label": f"EMA50 extension {ema50_dist_pct:.2f}%", "status": "PASS" if extension_state == "NORMAL" else "WARN"},
+    ]
+    trade_quality = 0
+    trade_quality += 25 if trend_confirmed else 0
+    trade_quality += 15 if price_respects_ema50 else 0
+    trade_quality += 20 if stoch_timing_ok else 8
+    trade_quality += 20 if volume_confirmed else 8
+    trade_quality += 20 if extension_state == "NORMAL" else 10 if extension_state == "EXTENDED" else 0
+    trade_quality = max(0, min(100, trade_quality))
+    quality_grade = "A+" if trade_quality >= 90 else "A" if trade_quality >= 80 else "B" if trade_quality >= 70 else "C" if trade_quality >= 55 else "SKIP"
+
+    if extension_state == "EXTREME":
+        scalp_action = "DO_NOT_CHASE"
+        scalp_reason = "Price is too far from EMA50 for a professional scalp entry."
+    elif not trend_confirmed or not price_respects_ema50:
+        scalp_action = "NO_TRADE"
+        scalp_reason = "Scalp trend structure is not aligned."
+    elif not volume_confirmed or not stoch_timing_ok:
+        scalp_action = "WAIT"
+        scalp_reason = "Timing or volume confirmation is not complete."
+    elif scalp_status == "ENTRY_READY":
+        scalp_action = "GO"
+        scalp_reason = "Trend, timing, and volume are aligned without extension."
+    else:
+        scalp_action = "TRACK"
+        scalp_reason = "Setup is valid, but current entry is no longer fresh."
+
     scalp_trading = {
+        "action": scalp_action,
+        "reason": scalp_reason,
+        "trade_quality": trade_quality,
+        "quality_grade": quality_grade,
         "status": scalp_status,
         "direction": scalp_bias,
         "entry_price": round(entry_price, 4),
@@ -4226,11 +4283,19 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "stop_level": round(stop_level, 4),
         "target_1": round(target_1, 4),
         "target_2": round(target_2, 4),
-        "ema50": round(float(ema50_ser.iloc[-1]), 4),
-        "ema150": round(float(ema150_ser.iloc[-1]), 4),
-        "stoch5": round(float(stoch5_ser.iloc[-1]), 2),
-        "volume_ratio_20": round(float(session["Volume"].iloc[-1]) / max(1.0, float(avg_vol20_ser.iloc[-1])), 2),
-        "trend_confirmed": bool(float(ema50_ser.iloc[-1]) > float(ema150_ser.iloc[-1]) if scalp_bias == "long" else float(ema50_ser.iloc[-1]) < float(ema150_ser.iloc[-1])),
+        "risk_per_share": round(risk_per_share, 4),
+        "risk_reward_t1": round(rr_t1, 2),
+        "ema50": round(latest_ema50, 4),
+        "ema150": round(latest_ema150, 4),
+        "stoch5": round(latest_stoch, 2),
+        "volume_ratio_20": round(latest_vol_ratio, 2),
+        "trend_confirmed": trend_confirmed,
+        "volume_confirmed": volume_confirmed,
+        "extension_state": extension_state,
+        "extension_from_ema50_pct": round(ema50_dist_pct, 2),
+        "recommended_dte": "5-10 DTE",
+        "blockers": blockers,
+        "logic_note": "Scalp logic uses EMA50, EMA150, Stoch(5), and volume. VWAP, ORH, and ORL are not scalp entry requirements.",
         "trigger_requirement": requirement,
         "next_action": scalp_next,
     }

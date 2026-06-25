@@ -873,12 +873,19 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
           )}
 
           {tab === 'scalp' && scalpState && (
+            <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8, padding: '7px 9px', border: `1px solid ${dt.border}`, borderRadius: 9, background: dt.bg2 }}>
+              <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: String(scalpState.action).includes('GO') ? dt.green : String(scalpState.action).includes('NO') || String(scalpState.action).includes('CHASE') ? dt.red : dt.amber }}>
+                {String(scalpState.action || scalpState.status || 'WAIT').replace(/_/g, ' ')}
+              </span>
+              <span style={{ fontSize: 11, color: dt.muted }}>Quality {String(scalpState.trade_quality ?? '—')} · DTE {String(scalpState.recommended_dte || '5-10 DTE')}</span>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
               {[
                 ['Entry', num(scalpState.entry_price), dt.green],
                 ['Stop', num(scalpState.stop_level), dt.red],
                 ['T1', num(scalpState.target_1), dt.accent],
-                ['T2', num(scalpState.target_2), dt.violet],
+                ['Risk', num(scalpState.risk_per_share), dt.red],
               ].map(([label, value, color]) => (
                 <div key={String(label)} style={{ border: `1px solid ${dt.border}`, borderRadius: 8, padding: '6px 8px', background: dt.bg2 }}>
                   <div style={{ fontSize: 9, color: dt.muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 800 }}>{String(label)}</div>
@@ -888,6 +895,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
                 </div>
               ))}
             </div>
+            </>
           )}
 
           {/* Chart */}

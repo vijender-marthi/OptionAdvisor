@@ -2,6 +2,10 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DayTradeChartBar } from '../api/client'
 
 type ScalpState = {
+  action?: string
+  reason?: string
+  trade_quality?: number
+  quality_grade?: string
   status?: string
   direction?: string
   entry_price?: number
@@ -14,6 +18,14 @@ type ScalpState = {
   stoch5?: number
   volume_ratio_20?: number
   trend_confirmed?: boolean
+  volume_confirmed?: boolean
+  extension_state?: string
+  extension_from_ema50_pct?: number
+  recommended_dte?: string
+  risk_per_share?: number
+  risk_reward_t1?: number
+  blockers?: Array<{ label?: string; status?: string }>
+  logic_note?: string
   trigger_requirement?: string
   next_action?: string
 }
@@ -111,7 +123,7 @@ export default function ScalpTradingChart({
   const t1 = n(scalp?.target_1)
   const t2 = n(scalp?.target_2)
   const dir = String(scalp?.direction || '').toUpperCase()
-  const status = String(scalp?.status || 'WAIT_TRIGGER').replace(/_/g, ' ')
+  const action = String(scalp?.action || scalp?.status || 'WAIT').replace(/_/g, ' ')
   const entryTime = scalp?.entry_time ? fmtTime(scalp.entry_time) : ''
 
   const surface = isDark ? '#05070b' : '#ffffff'
@@ -119,6 +131,7 @@ export default function ScalpTradingChart({
   const border = isDark ? 'rgba(148,163,184,0.18)' : 'rgba(15,23,42,0.14)'
   const grid = isDark ? 'rgba(148,163,184,0.20)' : 'rgba(100,116,139,0.22)'
   const axis = isDark ? '#94a3b8' : '#64748b'
+  const actionColor = action === 'GO' ? '#22c55e' : action.includes('DO NOT') || action === 'NO TRADE' ? '#fb7185' : action === 'TRACK' ? '#38bdf8' : '#f59e0b'
 
   const lineLevel = (value: number | null, label: string, color: string, dashed = true) => {
     if (value == null) return null
@@ -135,14 +148,32 @@ export default function ScalpTradingChart({
 
   return (
     <div ref={wrapRef} className="scalp-trading-chart w-full min-w-0">
+      <div className="mb-2 rounded-xl border px-3 py-2" style={{ borderColor: border, background: panel }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider" style={{ borderColor: actionColor, color: actionColor, background: `${actionColor}18` }}>
+            {action}
+          </span>
+          <span className="font-mono text-xs font-bold" style={{ color: isDark ? '#e5e7eb' : '#0f172a' }}>
+            Quality {scalp?.trade_quality ?? '-'}{scalp?.quality_grade ? ` · ${scalp.quality_grade}` : ''}
+          </span>
+          <span className="font-mono text-xs font-bold" style={{ color: axis }}>
+            DTE {scalp?.recommended_dte || '5-10 DTE'}
+          </span>
+          <span className="font-mono text-xs font-bold" style={{ color: axis }}>
+            Risk ${scalp?.risk_per_share != null ? fmtPrice(scalp.risk_per_share) : '-'} / share
+          </span>
+        </div>
+        <div className="mt-1 text-xs" style={{ color: axis }}>{scalp?.reason || 'Waiting for scalp decision.'}</div>
+      </div>
+
       <div className="mb-2 grid grid-cols-2 gap-2 lg:grid-cols-6">
         {[
-          ['Status', status, status.includes('ENTRY') ? '#22c55e' : '#f59e0b'],
+          ['Action', action, actionColor],
           ['Direction', dir || '-', dir === 'LONG' ? '#22c55e' : '#fb7185'],
           ['Entry', entry != null ? `$${fmtPrice(entry)}` : '-', '#22c55e'],
           ['Stop', stop != null ? `$${fmtPrice(stop)}` : '-', '#fb7185'],
           ['T1 / T2', t1 != null && t2 != null ? `$${fmtPrice(t1)} / $${fmtPrice(t2)}` : '-', '#38bdf8'],
-          ['Stoch(5)', scalp?.stoch5 != null ? scalp.stoch5.toFixed(1) : '-', '#38bdf8'],
+          ['Extension', scalp?.extension_state || '-', scalp?.extension_state === 'NORMAL' ? '#22c55e' : '#f59e0b'],
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-lg border px-2 py-1.5" style={{ borderColor: border, background: panel }}>
             <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: axis }}>{label}</div>
@@ -227,6 +258,21 @@ export default function ScalpTradingChart({
         </div>
         <div className="mt-1">{scalp?.trigger_requirement || 'Waiting for scalp trigger requirements.'}</div>
         <div className="mt-1">{scalp?.next_action || 'Wait for a clean 1m setup before entering.'}</div>
+        {scalp?.blockers && scalp.blockers.length > 0 && (
+          <div className="mt-2 grid gap-1 sm:grid-cols-2">
+            {scalp.blockers.map((b, i) => {
+              const status = String(b.status || '').toUpperCase()
+              const color = status === 'PASS' ? '#22c55e' : status === 'FAIL' ? '#fb7185' : '#f59e0b'
+              return (
+                <div key={`${b.label}-${i}`} className="flex items-center gap-1.5">
+                  <span style={{ width: 7, height: 7, borderRadius: 999, background: color, display: 'inline-block' }} />
+                  <span>{b.label}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {scalp?.logic_note && <div className="mt-2 text-[11px]" style={{ color: axis }}>{scalp.logic_note}</div>}
       </div>
     </div>
   )

@@ -154,7 +154,7 @@ const SECTIONS: GlossarySection[] = [
       },
       {
         term: 'Scalp DTE Requirement',
-        definition: 'Preferred option expiry for scalps is 1–2 DTE. 0DTE is only for advanced, very liquid setups with immediate momentum and hard stops; avoid 0DTE on Friday. On Friday, use 3–4 DTE minimum to avoid same-day expiry and weekend gap risk. If you need more than 3–4 DTE, the trade is no longer a pure scalp.',
+        definition: 'Preferred option expiry for scalp and intraday options is 5–10 DTE. This gives enough gamma for intraday movement without the worst 0DTE/1DTE decay. Avoid 0DTE unless you are advanced, the chain is very liquid, momentum is immediate, and stops are hard. If historical performance is negative in 0–7 DTE, force 8–14 DTE instead.',
       },
       {
         term: 'Scalp Exit Rules',
@@ -458,7 +458,7 @@ const SECTIONS: GlossarySection[] = [
       },
       {
         term: 'DTE (Days to Expiry)',
-        definition: 'The number of calendar days until an option contract expires. DTE depends on trade type: scalp trades usually use 1–2 DTE, Friday scalps use 3–4 DTE minimum, swing trades often use 7–14 DTE, and regular option strategies prefer longer windows such as 14–56 DTE. Shorter DTE means higher gamma/theta risk and requires tighter execution.',
+        definition: 'The number of calendar days until an option contract expires. DTE depends on trade type: scalp/intraday trades usually use 5–10 DTE, 2–5 day swings use 8–14 DTE, 1–3 week swings use 21–45 DTE, and regular option strategies often use 14–56 DTE. Shorter DTE means higher gamma/theta risk and requires tighter execution.',
       },
       {
         term: 'PoP (Probability of Profit)',
