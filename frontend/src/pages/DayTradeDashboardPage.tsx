@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, Zap, TrendingUp, Maximize2, Gauge, Table2 } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
@@ -237,6 +237,39 @@ function TimeframeCell({
   )
 }
 
+function DashboardStatCard({
+  label,
+  value,
+  sub,
+  tone,
+  dt,
+}: {
+  label: string
+  value: string
+  sub?: string
+  tone?: string
+  dt: Record<string, string>
+}) {
+  return (
+    <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: dt.muted }}>{label}</div>
+      <div style={{ marginTop: 3, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 18, fontWeight: 800, color: tone ?? dt.text, lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ marginTop: 3, fontSize: 11, color: dt.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function vwapTone(price: number | null, vwap: number | null, dt: Record<string, string>) {
+  if (price == null || vwap == null) return dt.muted
+  if (price > vwap) return dt.green
+  if (price < vwap) return dt.red
+  return dt.amber
+}
+
+function formatPrice(v: number | null): string {
+  return v == null ? '—' : v.toFixed(2)
+}
+
 // ─── Swing ticker table ────────────────────────────────────────────────────
 function SwingTickerTable({ tickers, tiles, dt }: {
   tickers: string[]
@@ -401,7 +434,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1480, tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: '7%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} />
+          <col style={{ width: '7%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} /><col style={{ width: '8%' }} />
           <col style={{ width: '11%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} />
           <col style={{ width: '6%' }} /><col style={{ width: '6%' }} />
           <col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} />
@@ -412,6 +445,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
             <th style={th}>Ticker</th>
             <th style={th}>Change</th>
             <th style={th}>Verdict</th>
+            <th style={th} title="Session VWAP from intraday bars">VWAP</th>
             <th style={th} title="15m = setup only">15m Setup</th>
             <th style={th} title="5m = confirmation gate">5m Confirm</th>
             <th style={th} title="1m = execution only">1m Execute</th>
@@ -435,7 +469,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.muted }} colSpan={12}>
+                  <td style={{ ...td, color: dt.muted }} colSpan={13}>
                     <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', verticalAlign: '-2px', marginRight: 6 }} />
                     Scanning…
                   </td>
@@ -446,7 +480,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.red }} colSpan={12}>{tile.error}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={13}>{tile.error}</td>
                 </tr>
               )
             }
@@ -459,6 +493,9 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
 
             const orHigh = num(m.or_high)
             const orLow  = num(m.or_low)
+            const vwap   = num(m.vwap)
+            const vwapPos = String(m.vwap_position || '').toLowerCase()
+            const vwapDistPct = num(m.vwap_dist_pct)
             const pcr    = num(m.put_call_ratio)
             const rvol   = num(m.rvol)
             const pts    = result ? buildEntryPoints(result, m) : []
@@ -491,6 +528,13 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                     )}
                   </td>
                   <td style={td}>{verdict ? <VerdictBadge verdict={verdict} statusColor={gatedVerdict ? undefined : unified?.verdict_presentation?.status_color} /> : '—'}</td>
+                  <td style={td}>
+                    <div style={{ ...mono, color: vwapTone(price, vwap, dt) }}>{formatPrice(vwap)}</div>
+                    <div style={{ fontSize: 10, color: vwapTone(price, vwap, dt), textTransform: 'uppercase', fontWeight: 700 }}>
+                      {vwapPos || (price != null && vwap != null ? (price >= vwap ? 'above' : 'below') : '—')}
+                    </div>
+                    {vwapDistPct != null && <div style={{ fontSize: 10, color: dt.muted }}>{vwapDistPct >= 0 ? '+' : ''}{vwapDistPct.toFixed(2)}%</div>}
+                  </td>
                   <td style={td}>
                     <TimeframeCell
                       title="15m Setup"
@@ -533,7 +577,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                 </tr>
                 {isExpanded && hasChart && (
                   <tr>
-                    <td colSpan={13} style={{ padding: 0, background: dt.bg2 }}>
+                    <td colSpan={14} style={{ padding: 0, background: dt.bg2 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 0' }}>
                         <span style={{ fontSize: 10, color: dt.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Candle</span>
                         {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
@@ -657,6 +701,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
   isDragging: boolean; isDropTarget: boolean
   agreementBadge?: string
 }) {
+  const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
   const { result, unified } = tile
   const isSwing  = tab === 'swing'
   const metrics  = result?.metrics as Record<string, unknown> | undefined
@@ -665,6 +710,8 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
   const orLow    = metrics?.or_low  as number | undefined
   const orMin    = (metrics?.or_minutes as number | undefined) ?? 15
   const sessionDate = String(metrics?.session_date ?? '')
+  const displayChartBars = !isSwing && chartBars ? resampleBars(chartBars, chartInterval) : null
+  const displayOrMin = orMinutesForInterval(orMin, chartInterval)
 
   const entryPoints = !isSwing && result && metrics
     ? buildEntryPoints(result as DayTradeScanResult, metrics)
@@ -819,14 +866,31 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
           {/* Chart */}
           {hasChart ? (
             <div onClick={onExpand} title="Click to expand chart" style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', cursor: 'zoom-in' }}>
-              <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.45)', borderRadius: 6, padding: '3px 7px', pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '3px 7px', pointerEvents: 'none' }}>
                 <Maximize2 size={11} color="#fff" />
-                <span style={{ fontSize: 9, color: '#fff', fontWeight: 600, letterSpacing: '0.04em' }}>EXPAND</span>
+                <span style={{ fontSize: 9, color: '#fff', fontWeight: 700, letterSpacing: '0.04em' }}>EXPAND</span>
               </div>
               {isSwing && metrics ? (
                 <SwingTradeMetricCharts metrics={metrics} mode="price" />
               ) : (
-                <DayTradeIntradayChart bars={chartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={orMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} />
+                <div onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: dt.bg2, border: `1px solid ${dt.border}`, borderBottom: 'none', borderRadius: '8px 8px 0 0' }}>
+                    <span style={{ fontSize: 10, color: dt.muted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Session Chart</span>
+                    {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
+                      <button
+                        key={iv}
+                        type="button"
+                        onClick={() => setChartInterval(iv)}
+                        style={{ padding: '2px 9px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', border: `1px solid ${chartInterval === iv ? dt.green : dt.border}`, background: chartInterval === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent', color: chartInterval === iv ? dt.green : dt.muted }}
+                      >
+                        {iv}
+                      </button>
+                    ))}
+                  </div>
+                  <div onClick={onExpand} style={{ cursor: 'zoom-in' }}>
+                    <DayTradeIntradayChart bars={displayChartBars!} orHigh={orHigh!} orLow={orLow!} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={entryPoints.length > 0 ? entryPoints : undefined} dimEntries={dimEntries} isDark={isDark} />
+                  </div>
+                </div>
               )}
             </div>
           ) : (
@@ -1054,24 +1118,27 @@ export default function DayTradeDashboardPage() {
   const tabAccent = activeTab === 'swing' ? dt.violet : dt.accent
 
   return (
-    <div style={{ minHeight: '100vh', background: dt.bg2, color: dt.text, padding: '20px 16px 40px' }}>
+    <div style={{ minHeight: '100vh', background: isDark ? '#07090d' : '#F3F4F6', color: dt.text, padding: '14px 12px 36px' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
 
         {/* Page header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12, border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 14, padding: '12px 14px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: dt.text, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Gauge size={20} style={{ color: dt.accent, flexShrink: 0 }} />
+              <LayoutDashboard size={20} style={{ color: dt.accent, flexShrink: 0 }} />
               Trade Dashboard
             </h1>
-            <p style={{ margin: '3px 0 0', fontSize: 12, color: dt.muted }}>Monitor up to {MAX_TICKERS} tickers · auto-refreshes every 60s</p>
-            <Link to={ROUTES.tradeCommandCenter} style={{ fontSize: 11, color: dt.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              ← Trade Command Center
-            </Link>
+            <p style={{ margin: '3px 0 0', fontSize: 12, color: dt.muted }}>Trading terminal for intraday execution and swing monitoring · auto-refreshes every 60s</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Link to={ROUTES.tradeCommandCenter} style={{ fontSize: 12, color: dt.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${dt.border}`, borderRadius: 8, padding: '6px 10px' }}>
+              Command Center
+            </Link>
+            <Link to={ROUTES.dayTrade} style={{ fontSize: 12, color: dt.accent, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${dt.accent}55`, borderRadius: 8, padding: '6px 10px' }}>
+              DayTrade Page <ExternalLink size={12} />
+            </Link>
             {lastRefreshed[dataTab] && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: dt.muted }}>
                 <Clock size={11} /> Updated {fmtTime(lastRefreshed[dataTab]!)}
@@ -1084,16 +1151,23 @@ export default function DayTradeDashboardPage() {
           </div>
         </div>
 
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
+          <DashboardStatCard dt={dt} label="Intraday Symbols" value={String(dayTickers.length)} sub="Session chart + MTF gates" tone={dt.accent} />
+          <DashboardStatCard dt={dt} label="Swing Symbols" value={String(swingTickers.length)} sub="Daily trend workspace" tone={dt.violet} />
+          <DashboardStatCard dt={dt} label="Active Workspace" value={activeTab === 'swing' ? 'Swing' : activeTab === 'table' ? 'Intraday Table' : 'Intraday'} sub={`${tickers.length}/${MAX_TICKERS} symbols`} />
+          <DashboardStatCard dt={dt} label="Chart Engine" value="Session" sub="VWAP · OR · sigma bands" tone={dt.green} />
+        </div>
+
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${dt.border}` }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg, padding: 6, overflowX: 'auto' }}>
           {([
             { id: 'table' as Tab, label: 'Intraday Table', icon: <Table2 size={14} />,  accent: dt.accent },
-            { id: 'day'   as Tab, label: 'Intraday',        icon: <Zap size={14} />,     accent: dt.accent },
+            { id: 'day'   as Tab, label: 'Intraday Charts', icon: <CandlestickChart size={14} />, accent: dt.accent },
             { id: 'swing' as Tab, label: 'Swing Trade',     icon: <TrendingUp size={14} />, accent: dt.violet },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
             return (
-              <button key={id} onClick={() => setActiveTab(id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', fontSize: 13, fontWeight: active ? 700 : 500, color: active ? accent : dt.muted, background: 'none', border: 'none', borderBottom: active ? `2px solid ${accent}` : '2px solid transparent', marginBottom: -1, cursor: 'pointer', transition: 'color 0.15s' }}>
+              <button key={id} onClick={() => setActiveTab(id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: active ? 800 : 600, color: active ? accent : dt.muted, background: active ? `${accent}16` : 'transparent', border: `1px solid ${active ? `${accent}55` : 'transparent'}`, borderRadius: 9, cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
                 {icon} {label}
                 <span style={{ fontSize: 10, fontFamily: 'monospace', background: active ? `${accent}20` : 'transparent', color: active ? accent : dt.muted, borderRadius: 10, padding: '1px 6px', fontWeight: 700 }}>
                   {id === 'swing' ? swingTickers.length : dayTickers.length}

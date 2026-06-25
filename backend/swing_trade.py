@@ -1538,6 +1538,7 @@ def build_swing_chart_series(
     ma50: pd.Series,
     rsi: pd.Series,
     hv20: pd.Series,
+    volume: Optional[pd.Series] = None,
     *,
     max_points: int = SWING_CHART_MAX_POINTS,
 ) -> dict[str, Any]:
@@ -1548,6 +1549,7 @@ def build_swing_chart_series(
     """
     cap = max(20, min(int(max_points), 200))
     hv_a = hv20.reindex(close.index)
+    vol_a = volume.reindex(close.index) if volume is not None else None
     n = len(close)
     lo = max(0, n - cap)
 
@@ -1586,6 +1588,7 @@ def build_swing_chart_series(
             "ma50": num_price(ma50.iloc[i]),
             "rsi": num_rsi_hv(rsi.iloc[i]),
             "hv20": num_rsi_hv(hv_a.iloc[i]),
+            "v": num_price(vol_a.iloc[i]) if vol_a is not None else None,
         })
 
     return {"max_points": cap, "count": len(points), "points": points}
@@ -2210,7 +2213,13 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     hv_20 = compute_hv(close, 20)
     hv_series = build_hv_series(raw, 20)
     chart_series = build_swing_chart_series(
-        close, ma20_series, ma50_series, rsi_ser, hv_series, max_points=SWING_CHART_MAX_POINTS,
+        close,
+        ma20_series,
+        ma50_series,
+        rsi_ser,
+        hv_series,
+        raw["Volume"] if "Volume" in raw.columns else None,
+        max_points=SWING_CHART_MAX_POINTS,
     )
     implied_iv_pct = _implied_iv_pct_from_info(info)
     iv_rank_opt: Optional[float] = None

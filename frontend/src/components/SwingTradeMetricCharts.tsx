@@ -12,6 +12,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  Bar,
 } from 'recharts'
 import type { TooltipProps } from 'recharts'
 import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent'
@@ -24,6 +25,7 @@ type Row = {
   ma50: number | null
   rsi: number | null
   hv20: number | null
+  volume: number | null
 }
 
 type Palette = {
@@ -40,6 +42,8 @@ type Palette = {
   lineHv: string
   lineIv: string
   refMuted: string
+  support: string
+  resistance: string
 }
 
 const SWING_CHART_PALETTE_FALLBACK: Palette = {
@@ -56,6 +60,8 @@ const SWING_CHART_PALETTE_FALLBACK: Palette = {
   lineHv: '#a78bfa',
   lineIv: '#f472b6',
   refMuted: 'rgba(148, 163, 184, 0.5)',
+  support: '#34d399',
+  resistance: '#fb7185',
 }
 
 function readPalette(el: HTMLElement): Palette {
@@ -75,6 +81,8 @@ function readPalette(el: HTMLElement): Palette {
     lineHv: g('--sw-chart-line-hv', '#a78bfa'),
     lineIv: g('--sw-chart-line-iv', '#f472b6'),
     refMuted: g('--sw-chart-ref-muted', 'rgba(148, 163, 184, 0.5)'),
+    support: g('--bullish', '#34d399'),
+    resistance: g('--bearish', '#fb7185'),
   }
 }
 
@@ -101,12 +109,23 @@ export function parseChartPayload(raw: unknown): SwingTradeChartPoint[] | null {
       ma50: typeof o.ma50 === 'number' ? o.ma50 : o.ma50 === null ? null : undefined,
       rsi: typeof o.rsi === 'number' ? o.rsi : o.rsi === null ? null : undefined,
       hv20: typeof o.hv20 === 'number' ? o.hv20 : o.hv20 === null ? null : undefined,
+      v: typeof o.v === 'number' ? o.v : o.v === null ? null : undefined,
     })
   }
   return out.length ? out : null
 }
 
-function priceExtent(rows: Row[]): [number, number] {
+type RefLevel = {
+  label: string
+  price: number
+  type: 'support' | 'resistance'
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function priceExtent(rows: Row[], levels: RefLevel[] = []): [number, number] {
   let lo = Infinity
   let hi = -Infinity
   for (const r of rows) {
@@ -120,6 +139,10 @@ function priceExtent(rows: Row[]): [number, number] {
       lo = Math.min(lo, r.ma50)
       hi = Math.max(hi, r.ma50)
     }
+  }
+  for (const level of levels) {
+    lo = Math.min(lo, level.price)
+    hi = Math.max(hi, level.price)
   }
   if (!Number.isFinite(lo)) return [0, 1]
   const pad = Math.max((hi - lo) * 0.04, hi * 0.006, 0.01)
@@ -173,6 +196,7 @@ function ChartTooltip({ active, payload, label, pal, mode, impliedIv }: ChartToo
           <div style={{ color: pal.lineClose }}>Close {row.close.toFixed(2)}</div>
           {row.ma20 != null && <div style={{ color: pal.lineMa20 }}>MA20 {row.ma20.toFixed(2)}</div>}
           {row.ma50 != null && <div style={{ color: pal.lineMa50 }}>MA50 {row.ma50.toFixed(2)}</div>}
+          {row.volume != null && <div style={{ color: pal.label, marginTop: 4 }}>Vol {Math.round(row.volume).toLocaleString()}</div>}
         </>
       )}
       {mode === 'rsi' && (
@@ -223,13 +247,46 @@ export default function SwingTradeMetricCharts({ metrics, mode = 'all' }: Props)
       ma50: p.ma50 ?? null,
       rsi: p.rsi ?? null,
       hv20: p.hv20 ?? null,
+      volume: p.v ?? null,
     }))
   }, [points])
 
-  const [pLo, pHi] = useMemo(() => priceExtent(data), [data])
+  const referenceLevels = useMemo<RefLevel[]>(() => {
+    const latest = data[data.length - 1]
+    const last = asNum(metrics.last_price) ?? latest?.close ?? null
+    const candidates: Array<{ label: string; price: number | null; source: 'trend' | 'exec' }> = [
+      { label: 'MA20', price: asNum(metrics.ma20) ?? latest?.ma20 ?? null, source: 'trend' },
+      { label: 'MA50', price: asNum(metrics.ma50) ?? latest?.ma50 ?? null, source: 'trend' },
+    ]
+    const exec = metrics.exec_levels && typeof metrics.exec_levels === 'object' ? metrics.exec_levels as Record<string, unknown> : null
+    if (exec) {
+      candidates.push(
+        { label: 'Entry', price: asNum(exec.entry), source: 'exec' },
+        { label: 'Stop', price: asNum(exec.stop), source: 'exec' },
+        { label: 'T1', price: asNum(exec.t1), source: 'exec' },
+        { label: 'T2', price: asNum(exec.t2), source: 'exec' },
+        { label: 'Pullback', price: asNum(exec.pullback_low) ?? asNum(exec.pullback_zone_low), source: 'exec' },
+        { label: 'Pullback', price: asNum(exec.pullback_high) ?? asNum(exec.pullback_zone_high), source: 'exec' },
+      )
+    }
+    return candidates.reduce<RefLevel[]>((acc, item) => {
+      if (item.price == null || item.price <= 0 || !Number.isFinite(item.price)) return acc
+      const duplicate = acc.some(existing => Math.abs(existing.price - item.price!) <= Math.max(0.01, item.price! * 0.0003))
+      if (duplicate) return acc
+      acc.push({
+        label: item.label,
+        price: item.price,
+        type: last != null && item.price <= last ? 'support' : 'resistance',
+      })
+      return acc
+    }, [])
+  }, [data, metrics])
+
+  const [pLo, pHi] = useMemo(() => priceExtent(data, referenceLevels), [data, referenceLevels])
   const [vLo, vHi] = useMemo(() => hvExtent(data, impliedIv), [data, impliedIv])
   const volumeRatio = typeof metrics.volume_ratio === 'number' ? metrics.volume_ratio : null
   const volumeLabel = typeof metrics.volume_label === 'string' ? metrics.volume_label : ''
+  const hasVolumeSeries = data.some(r => r.volume != null && r.volume > 0)
 
   if (mode !== 'volume' && data.length === 0) return null
 
@@ -246,8 +303,8 @@ export default function SwingTradeMetricCharts({ metrics, mode = 'all' }: Props)
 
       {(mode === 'all' || mode === 'price') && (
       <div>
-        <div className="text-[10px] font-medium text-gray-500 mb-1">Price · MA20 · MA50</div>
-        <ResponsiveContainer width="100%" height={200}>
+        <div className="text-[10px] font-medium text-gray-500 mb-1">Price · MA20 · MA50 · Volume</div>
+        <ResponsiveContainer width="100%" height={hasVolumeSeries ? 260 : 210}>
           <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={pal.grid} strokeDasharray="3 3" />
             <XAxis
@@ -256,14 +313,51 @@ export default function SwingTradeMetricCharts({ metrics, mode = 'all' }: Props)
               tickFormatter={fmtTickDate}
               minTickGap={28}
             />
-            <YAxis domain={[pLo, pHi]} width={44} tick={{ fill: pal.tick, fontSize: 10 }} />
+            <YAxis yAxisId="price" domain={[pLo, pHi]} width={44} tick={{ fill: pal.tick, fontSize: 10 }} />
+            {hasVolumeSeries && <YAxis yAxisId="volume" orientation="right" hide />}
             <Tooltip content={(props: TooltipProps<ValueType, NameType>) => <ChartTooltip {...props} pal={pal} mode="price" />} />
             <Legend wrapperStyle={{ fontSize: 10, color: pal.axis }} />
-            <Line type="monotone" dataKey="close" name="Close" stroke={pal.lineClose} dot={false} strokeWidth={1.8} />
-            <Line type="monotone" dataKey="ma20" name="MA20" stroke={pal.lineMa20} dot={false} strokeWidth={1.2} connectNulls />
-            <Line type="monotone" dataKey="ma50" name="MA50" stroke={pal.lineMa50} dot={false} strokeWidth={1.2} connectNulls />
+            {hasVolumeSeries && (
+              <Bar yAxisId="volume" dataKey="volume" name="Volume" fill={pal.lineRsi} fillOpacity={0.24} barSize={4} />
+            )}
+            {referenceLevels.slice(0, 8).map(level => (
+              <ReferenceLine
+                key={`${level.label}-${level.price}`}
+                yAxisId="price"
+                y={level.price}
+                stroke={level.type === 'support' ? pal.support : pal.resistance}
+                strokeDasharray="6 4"
+                strokeOpacity={0.72}
+                label={{
+                  value: `${level.label} ${level.type}`,
+                  position: 'insideRight',
+                  fill: level.type === 'support' ? pal.support : pal.resistance,
+                  fontSize: 10,
+                }}
+              />
+            ))}
+            <Line yAxisId="price" type="monotone" dataKey="close" name="Close" stroke={pal.lineClose} dot={false} strokeWidth={1.8} />
+            <Line yAxisId="price" type="monotone" dataKey="ma20" name="MA20" stroke={pal.lineMa20} dot={false} strokeWidth={1.2} connectNulls />
+            <Line yAxisId="price" type="monotone" dataKey="ma50" name="MA50" stroke={pal.lineMa50} dot={false} strokeWidth={1.2} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
+        {referenceLevels.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {referenceLevels.slice(0, 8).map(level => (
+              <span
+                key={`chip-${level.label}-${level.price}`}
+                className="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                style={{
+                  borderColor: level.type === 'support' ? pal.support : pal.resistance,
+                  color: level.type === 'support' ? pal.support : pal.resistance,
+                  background: level.type === 'support' ? 'rgba(52,211,153,0.08)' : 'rgba(251,113,133,0.08)',
+                }}
+              >
+                {level.label} {level.type} ${level.price.toFixed(2)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       )}
 

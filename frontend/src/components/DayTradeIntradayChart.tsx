@@ -141,6 +141,13 @@ export interface ChartEntryPoint {
   triggerTime?: string           // ISO timestamp of trigger bar (overrides bar search for 1m/5m compat)
 }
 
+export interface SupportResistanceLevel {
+  label: string
+  price: number
+  type: 'support' | 'resistance'
+  source?: string
+}
+
 const EC_DARK = [
   '#34d399', // emerald
   '#38bdf8', // sky
@@ -165,6 +172,7 @@ export default function DayTradeIntradayChart({
   entryPoints,
   dimEntries,
   zones,
+  supportResistanceLevels,
   isDark = false,
 }: {
   bars: DayTradeChartBar[]
@@ -176,6 +184,7 @@ export default function DayTradeIntradayChart({
   /** When true, entry lines/chips render dimmed — verdict is WAIT/CONFLICT */
   dimEntries?: boolean
   zones?: ZoneAnnotation[]
+  supportResistanceLevels?: SupportResistanceLevel[]
   isDark?: boolean
 }) {
   const entryColors = isDark ? EC_DARK : EC_LIGHT
@@ -268,23 +277,41 @@ export default function DayTradeIntradayChart({
     const span = Math.max(1, tMax - tMin)
 
     const bandKeys = ['vwap_upper1','vwap_lower1','vwap_upper2','vwap_lower2'] as const
+    const last = bars[n - 1]!
+    const manualLevels = (supportResistanceLevels ?? []).filter(l => Number.isFinite(l.price) && l.price > 0)
+    const defaultLevelCandidates: SupportResistanceLevel[] = [
+      { label: 'VWAP', price: last.vwap, type: last.c >= last.vwap ? 'support' : 'resistance', source: 'Session fair value' },
+      { label: 'ORH', price: orHigh, type: last.c >= orHigh ? 'support' : 'resistance', source: 'Opening range high' },
+      { label: 'ORL', price: orLow, type: last.c >= orLow ? 'support' : 'resistance', source: 'Opening range low' },
+    ]
+    const defaultLevels = defaultLevelCandidates.filter(l => Number.isFinite(l.price) && l.price > 0)
+    const srLevels = [...manualLevels, ...defaultLevels].reduce<SupportResistanceLevel[]>((acc, level) => {
+      const duplicate = acc.some(existing => Math.abs(existing.price - level.price) <= Math.max(0.01, level.price * 0.0002))
+      if (!duplicate) acc.push(level)
+      return acc
+    }, [])
+
     let yMin = Math.min(
       ...bars.map(b => b.l), orLow, ...bars.map(b => b.vwap),
-      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null))
+      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null)),
+      ...srLevels.map(l => l.price)
     )
     let yMax = Math.max(
       ...bars.map(b => b.h), orHigh, ...bars.map(b => b.vwap),
-      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null))
+      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null)),
+      ...srLevels.map(l => l.price)
     )
     const padY = (yMax - yMin) * 0.06 || yMin * 0.002 || 0.01
     yMin -= padY
     yMax += padY
 
     const innerH = 220
+    const volumeGap = 14
+    const volumeH = 72
     /** Wide enough for ~2px per bar minimum; parent can scroll horizontally. */
     const innerW = Math.max(n * 2.2, cw - PAD.l - PAD.r)
     const W = PAD.l + PAD.r + innerW
-    const H = PAD.t + innerH + PAD.b
+    const H = PAD.t + innerH + volumeGap + volumeH + PAD.b
 
     const slot = innerW / n
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
@@ -293,6 +320,9 @@ export default function DayTradeIntradayChart({
     const plotW = innerW - slot * 0.5
     const xAt = (tMs: number) => PAD.l + slot * 0.5 + ((tMs - tMin) / span) * plotW
     const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
+    const volumeTop = PAD.t + innerH + volumeGap
+    const volumeMax = Math.max(1, ...bars.map(b => b.v || 0))
+    const volumeYAt = (v: number) => volumeTop + volumeH - (Math.max(0, v) / volumeMax) * volumeH
 
     const lastOrI = Math.max(0, Math.min(orMinutes, n) - 1)
     const orStartX = xAt(times[0]!)
@@ -315,8 +345,9 @@ export default function DayTradeIntradayChart({
     return {
       W, H, innerW, innerH, xAt, yAt, bodyW, slot,
       yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xTicks, times,
+      volumeTop, volumeH, volumeMax, volumeYAt, srLevels,
     }
-  }, [bars, cw, orHigh, orLow, orMinutes])
+  }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels])
 
   // Don't render until container width is known — avoids the wrong-width flash
   if (cw === 0) {
@@ -332,7 +363,7 @@ export default function DayTradeIntradayChart({
   }
 
   const { W, H, innerW, innerH, xAt, yAt, bodyW, slot, yMin, yMax, yTicks,
-          orStartX, orEndX, tMin, times, xTicks } = layout
+          orStartX, orEndX, tMin, times, xTicks, volumeTop, volumeH, volumeYAt, srLevels } = layout
   const orMid = (orHigh + orLow) / 2
   const latestBandBar = [...bars].reverse().find(b =>
     b.vwap_upper1 != null || b.vwap_lower1 != null || b.vwap_upper2 != null || b.vwap_lower2 != null
@@ -371,6 +402,8 @@ export default function DayTradeIntradayChart({
           {' · '}
           <span className="text-semantic-warning">OR high / low</span>
           {' · '}
+          <span style={{ color: 'var(--chart-line-rsi)' }}>Volume</span>
+          {' · '}
           <span className="text-tertiary">Opening range (first {orMinutes}×1m)</span>
           {' · '}
           <span style={{ color: 'var(--bullish)' }}>▲</span>
@@ -399,6 +432,31 @@ export default function DayTradeIntradayChart({
           </div>
         ))}
       </div>
+
+      {srLevels.length > 0 && (
+        <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+          {srLevels.slice(0, 6).map(level => (
+            <div
+              key={`${level.type}-${level.label}-${level.price}`}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                <span
+                  className="h-0 w-4 border-t"
+                  style={{
+                    borderColor: level.type === 'support' ? 'var(--bullish)' : 'var(--bearish)',
+                    borderStyle: 'solid',
+                  }}
+                />
+                {level.type}
+              </div>
+              <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums ${level.type === 'support' ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                {level.label} ${fmtPrice(level.price)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Entry toggle chips ── */}
       {displayEntryPoints && displayEntryPoints.length > 0 && (
@@ -633,6 +691,59 @@ export default function DayTradeIntradayChart({
 
           <rect x={PAD.l} y={PAD.t} width={innerW} height={innerH}
             fill="none" stroke="var(--chart-grid)" strokeWidth={1} opacity={0.6} />
+
+          {/* Support / resistance overlays */}
+          {srLevels.map((level, idx) => {
+            if (level.price < yMin || level.price > yMax) return null
+            const ly = yAt(level.price)
+            const color = level.type === 'support' ? 'var(--bullish)' : 'var(--bearish)'
+            return (
+              <g key={`sr-${idx}`} clipPath={`url(#${clipId})`} opacity={0.78}>
+                <line
+                  x1={PAD.l} x2={PAD.l + innerW}
+                  y1={ly} y2={ly}
+                  stroke={color}
+                  strokeWidth={1.25}
+                  strokeDasharray="8 5"
+                />
+                <text x={PAD.l + 4} y={Math.max(PAD.t + 10, ly - 4)} fill={color} fontSize={9} fontWeight={700}>
+                  {level.label} {level.type === 'support' ? 'support' : 'resistance'} · ${fmtPrice(level.price)}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Volume pane */}
+          <g>
+            <rect
+              x={PAD.l}
+              y={volumeTop}
+              width={innerW}
+              height={volumeH}
+              fill={isDark ? 'rgba(15,23,42,0.38)' : 'rgba(248,250,252,0.9)'}
+              stroke="var(--chart-grid)"
+              strokeOpacity={0.45}
+            />
+            {bars.map((b, i) => {
+              const cx = xAt(times[i]!)
+              const top = volumeYAt(b.v || 0)
+              const up = b.c >= b.o
+              return (
+                <rect
+                  key={`vol-${b.t}-${i}`}
+                  x={cx - bodyW / 2}
+                  y={top}
+                  width={bodyW}
+                  height={Math.max(1, volumeTop + volumeH - top)}
+                  fill={up ? 'var(--bullish)' : 'var(--bearish)'}
+                  fillOpacity={up ? 0.46 : 0.42}
+                />
+              )
+            })}
+            <text x={PAD.l + 4} y={volumeTop + 12} fill="var(--chart-axis)" fontSize={10} fontWeight={600}>
+              Volume
+            </text>
+          </g>
 
           {/* Session open label + 2-hour grid lines */}
           <text x={PAD.l} y={H - 10} textAnchor="start" fill="var(--chart-axis)" fontSize={10}>

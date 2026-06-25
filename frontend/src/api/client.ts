@@ -420,6 +420,7 @@ export interface SwingTradeChartPoint {
   ma50?: number | null
   rsi?: number | null
   hv20?: number | null
+  v?: number | null
 }
 
 export interface SwingTradeChartSeriesPayload {
