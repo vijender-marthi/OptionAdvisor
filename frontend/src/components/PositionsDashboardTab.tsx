@@ -11,6 +11,20 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import type { PortfolioPosition } from '../types'
 
 interface SectorPnl {
@@ -63,6 +77,15 @@ type ReportRow = {
   avgPnl: number
   winRate: number
 }
+type PeriodReportRow = {
+  key: string
+  label: string
+  pnl: number
+  count: number
+  wins: number
+  losses: number
+  cumulative?: number
+}
 
 const DTE_BUCKETS = [
   { label: '0-7 DTE', lo: 0, hi: 7 },
@@ -87,6 +110,15 @@ function pct(value: number | null | undefined, digits = 0): string {
   return `${value.toFixed(digits)}%`
 }
 
+function compactMoney(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--'
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  if (abs >= 1000000) return `${sign}$${(abs / 1000000).toFixed(1)}M`
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}K`
+  return `${sign}$${abs.toFixed(0)}`
+}
+
 function safeNum(value: unknown, fallback = 0): number {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -108,6 +140,64 @@ function realizedPnl(pos: PortfolioPosition): number {
     if (ref > 0) return (pos.pnlPct / 100) * ref * 100 * Math.max(1, pos.contracts || 1)
   }
   return 0
+}
+
+function parseExitDate(pos: PortfolioPosition): Date | null {
+  if (!pos.exitDate) return null
+  const d = new Date(pos.exitDate)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function weekStart(d: Date): Date {
+  const start = new Date(d)
+  const day = start.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  start.setDate(start.getDate() + diff)
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+function periodRows(
+  positions: PortfolioPosition[],
+  keyFn: (d: Date) => string,
+  labelFn: (d: Date) => string,
+  limit: number,
+): PeriodReportRow[] {
+  const map = new Map<string, { date: Date; positions: PortfolioPosition[] }>()
+  for (const pos of positions) {
+    const date = parseExitDate(pos)
+    if (!date) continue
+    const key = keyFn(date)
+    const existing = map.get(key)
+    if (existing) {
+      existing.positions.push(pos)
+    } else {
+      map.set(key, { date, positions: [pos] })
+    }
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[1].date.getTime() - b[1].date.getTime())
+    .slice(-limit)
+    .reduce<PeriodReportRow[]>((acc, [key, row]) => {
+      const pnl = row.positions.reduce((sum, pos) => sum + realizedPnl(pos), 0)
+      const wins = row.positions.filter(pos => realizedPnl(pos) > 0).length
+      const losses = row.positions.filter(pos => realizedPnl(pos) < 0).length
+      const cumulative = (acc[acc.length - 1]?.cumulative ?? 0) + pnl
+      acc.push({
+        key,
+        label: labelFn(row.date),
+        pnl,
+        count: row.positions.length,
+        wins,
+        losses,
+        cumulative,
+      })
+      return acc
+    }, [])
 }
 
 function capitalAtRisk(pos: PortfolioPosition): number {
@@ -254,6 +344,41 @@ export default function PositionsDashboardTab({
     return [...map.entries()].map(([label, pnl]) => ({ label, pnl }))
   }, [closed, pnlByPeriod])
 
+  const weeklyPerformance = useMemo(
+    () => periodRows(
+      closed,
+      date => weekStart(date).toISOString().slice(0, 10),
+      date => weekStart(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      12,
+    ),
+    [closed],
+  )
+
+  const monthlyPerformance = useMemo(() => {
+    const fromPositions = periodRows(
+      closed,
+      monthKey,
+      date => date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      8,
+    )
+    if (fromPositions.length > 0) return fromPositions
+    return pnlByPeriod.slice(-8).reduce<PeriodReportRow[]>((acc, row) => {
+      acc.push({
+        key: row.label,
+        label: row.label,
+        pnl: row.pnl,
+        count: 0,
+        wins: 0,
+        losses: 0,
+        cumulative: (acc[acc.length - 1]?.cumulative ?? 0) + row.pnl,
+      })
+      return acc
+    }, [])
+  }, [closed, pnlByPeriod])
+
+  const bestMonth = useMemo(() => [...monthlyPerformance].sort((a, b) => b.pnl - a.pnl)[0], [monthlyPerformance])
+  const worstWeek = useMemo(() => [...weeklyPerformance].sort((a, b) => a.pnl - b.pnl)[0], [weeklyPerformance])
+
   const suggestions = useMemo(() => {
     const items: Array<{ title: string; detail: string; tone: Tone; icon: React.ReactNode }> = []
     const bestStrategy = byStrategy[0]
@@ -349,6 +474,15 @@ export default function PositionsDashboardTab({
         <KpiCard st={st} label="Open Positions" value={String(open.length || summary?.total_open_positions || 0)} tone="neutral" icon={<Layers size={15} />} sub={`${summary?.options_positions ?? 0} options · ${summary?.stock_positions ?? 0} stocks`} />
       </section>
 
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <ReportCard st={st} title="Executive P&L Story" icon={<TrendingUp size={16} />}>
+          <MonthlyEquityStory st={st} rows={monthlyPerformance} bestMonth={bestMonth} />
+        </ReportCard>
+        <ReportCard st={st} title="Weekly Performance Tape" icon={<BarChart3 size={16} />}>
+          <WeeklyPerformanceTape st={st} rows={weeklyPerformance} worstWeek={worstWeek} />
+        </ReportCard>
+      </section>
+
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <ReportCard st={st} title="P&L by Option Strategy" icon={<BarChart3 size={16} />}>
           <ReportTable st={st} rows={byStrategy} primaryLabel="Strategy" limit={12} />
@@ -392,7 +526,7 @@ export default function PositionsDashboardTab({
         </ReportCard>
       </section>
 
-      {sectorPnl.length > 0 || risk?.capital_by_ticker?.length ? (
+        {sectorPnl.length > 0 || risk?.capital_by_ticker?.length ? (
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <ReportCard st={st} title="Sector P&L" icon={<Layers size={16} />}>
             <SimpleMetricList
@@ -405,15 +539,7 @@ export default function PositionsDashboardTab({
             />
           </ReportCard>
           <ReportCard st={st} title="Current Capital by Ticker" icon={<DollarSign size={16} />}>
-            <SimpleMetricList
-              st={st}
-              rows={(risk?.capital_by_ticker ?? []).map(row => ({
-                label: row.ticker,
-                value: row.value,
-                detail: 'capital in open positions',
-                neutralValue: true,
-              }))}
-            />
+            <CapitalAllocationBars st={st} rows={risk?.capital_by_ticker ?? []} />
           </ReportCard>
         </section>
       ) : null}
@@ -566,6 +692,242 @@ function SuggestionRow({
         <span className="text-xs font-bold" style={{ color }}>{title}</span>
       </div>
       <p className="text-xs leading-5" style={{ color: st.text }}>{detail}</p>
+    </div>
+  )
+}
+
+function MonthlyEquityStory({
+  st,
+  rows,
+  bestMonth,
+}: {
+  st: Record<string, string>
+  rows: PeriodReportRow[]
+  bestMonth?: PeriodReportRow
+}) {
+  if (rows.length === 0) return <EmptyState st={st} />
+  const total = rows.reduce((sum, row) => sum + row.pnl, 0)
+  const last = rows[rows.length - 1]
+  const positive = rows.filter(row => row.pnl > 0).length
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <StoryStat st={st} label="Net closed P&L" value={money(total)} tone={total >= 0 ? 'good' : 'bad'} />
+        <StoryStat st={st} label="Best month" value={bestMonth ? `${bestMonth.label} ${money(bestMonth.pnl)}` : '--'} tone={(bestMonth?.pnl ?? 0) >= 0 ? 'good' : 'bad'} />
+        <StoryStat st={st} label="Positive months" value={`${positive}/${rows.length}`} tone={positive >= rows.length / 2 ? 'good' : 'warn'} />
+      </div>
+      <div className="h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={rows} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="monthlyPnlFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="5%" stopColor={st.blue} stopOpacity={0.28} />
+                <stop offset="95%" stopColor={st.blue} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={st.border} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: st.muted, fontSize: 10 }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: st.muted, fontSize: 10 }} tickFormatter={compactMoney} width={50} />
+            <ReferenceLine y={0} stroke={st.faint} strokeWidth={1} />
+            <Tooltip cursor={{ stroke: st.blue, strokeOpacity: 0.35 }} content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null
+              const row = payload[0].payload as PeriodReportRow
+              return (
+                <div className="rounded-lg border px-3 py-2 text-xs shadow-lg" style={{ background: st.bg, borderColor: st.border, color: st.text }}>
+                  <div className="font-bold">{label}</div>
+                  <div className="font-mono font-bold" style={{ color: row.pnl >= 0 ? st.green : st.red }}>Month {money(row.pnl, 2)}</div>
+                  <div className="font-mono" style={{ color: st.muted }}>Cumulative {money(row.cumulative ?? row.pnl, 2)}</div>
+                  {row.count > 0 ? <div style={{ color: st.muted }}>{row.count} trades · {row.wins}W/{row.losses}L</div> : null}
+                </div>
+              )
+            }} />
+            <Area type="monotone" dataKey="cumulative" stroke={st.blue} strokeWidth={2.5} fill="url(#monthlyPnlFill)" dot={{ r: 3, strokeWidth: 2, fill: st.bg, stroke: st.blue }} />
+            <Line type="monotone" dataKey="pnl" stroke={st.muted} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="text-xs leading-5" style={{ color: st.muted }}>
+        The blue curve shows whether closed trades are compounding into a smoother equity path. The dotted line marks monthly P&L pressure.
+        {last ? <span className="font-semibold" style={{ color: last.pnl >= 0 ? st.green : st.red }}> Latest: {last.label} {money(last.pnl)}.</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function WeeklyPerformanceTape({
+  st,
+  rows,
+  worstWeek,
+}: {
+  st: Record<string, string>
+  rows: PeriodReportRow[]
+  worstWeek?: PeriodReportRow
+}) {
+  if (rows.length === 0) return <EmptyState st={st} />
+  const max = Math.max(...rows.map(row => Math.abs(row.pnl)), 1)
+  const net = rows.reduce((sum, row) => sum + row.pnl, 0)
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.muted }}>Last {rows.length} weeks</div>
+          <div className="font-mono text-2xl font-black tabular-nums" style={{ color: net >= 0 ? st.green : st.red }}>{money(net)}</div>
+        </div>
+        {worstWeek ? (
+          <div className="rounded-lg border px-3 py-2 text-right" style={{ borderColor: st.border, background: st.bgSoft }}>
+            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.muted }}>Pressure week</div>
+            <div className="font-mono text-sm font-bold" style={{ color: worstWeek.pnl >= 0 ? st.green : st.red }}>{worstWeek.label} {money(worstWeek.pnl)}</div>
+          </div>
+        ) : null}
+      </div>
+      <div className="space-y-2">
+        {rows.map(row => {
+          const color = row.pnl >= 0 ? st.green : st.red
+          const width = `${Math.max(8, (Math.abs(row.pnl) / max) * 100)}%`
+          return (
+            <div key={row.key} className="grid grid-cols-[64px_1fr_72px] items-center gap-3">
+              <div className="text-[11px] font-bold" style={{ color: st.text }}>{row.label}</div>
+              <div className="relative h-8 rounded-lg" style={{ background: st.bgSoft }}>
+                <div
+                  className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
+                  style={{
+                    width,
+                    background: color,
+                    opacity: 0.82,
+                    left: row.pnl >= 0 ? '50%' : undefined,
+                    right: row.pnl < 0 ? '50%' : undefined,
+                  }}
+                />
+                <div className="absolute left-1/2 top-1 h-6 w-px" style={{ background: st.border }} />
+              </div>
+              <div className="text-right font-mono text-xs font-bold tabular-nums" style={{ color }}>{money(row.pnl)}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="text-xs leading-5" style={{ color: st.muted }}>
+        Weekly tape separates consistency from one-off wins. Focus on weeks where losses expand faster than trade count.
+      </div>
+    </div>
+  )
+}
+
+function StoryStat({
+  st,
+  label,
+  value,
+  tone,
+}: {
+  st: Record<string, string>
+  label: string
+  value: string
+  tone: Tone
+}) {
+  return (
+    <div className="rounded-lg border px-3 py-2" style={{ borderColor: st.border, background: st.bgSoft }}>
+      <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.muted }}>{label}</div>
+      <div className="mt-1 truncate font-mono text-sm font-black tabular-nums" style={{ color: toneColor(st, tone) }}>{value}</div>
+    </div>
+  )
+}
+
+function PerformanceBars({
+  st,
+  rows,
+  compact = false,
+}: {
+  st: Record<string, string>
+  rows: PeriodReportRow[]
+  compact?: boolean
+}) {
+  if (rows.length === 0) return <EmptyState st={st} />
+  const total = rows.reduce((sum, row) => sum + row.pnl, 0)
+  const wins = rows.filter(row => row.pnl > 0).length
+  const losses = rows.filter(row => row.pnl < 0).length
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: st.muted }}>
+        <span className="rounded-full border px-2 py-1" style={{ borderColor: st.border, color: total >= 0 ? st.green : st.red }}>
+          Net {money(total)}
+        </span>
+        <span>{wins} positive</span>
+        <span>{losses} negative</span>
+      </div>
+      <div className={compact ? 'h-[210px]' : 'h-[250px]'}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={st.border} strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              dataKey="label"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: st.muted, fontSize: 10 }}
+              interval={compact ? 'preserveStartEnd' : 0}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: st.muted, fontSize: 10 }}
+              tickFormatter={compactMoney}
+              width={48}
+            />
+            <ReferenceLine y={0} stroke={st.faint} strokeWidth={1} />
+            <Tooltip
+              cursor={{ fill: `${st.blue}10` }}
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                const row = payload[0].payload as PeriodReportRow
+                return (
+                  <div className="rounded-lg border px-3 py-2 text-xs shadow-lg" style={{ background: st.bg, borderColor: st.border, color: st.text }}>
+                    <div className="font-bold">{label}</div>
+                    <div className="font-mono font-bold tabular-nums" style={{ color: row.pnl >= 0 ? st.green : st.red }}>{money(row.pnl, 2)}</div>
+                    {row.count > 0 ? <div style={{ color: st.muted }}>{row.count} trades · {row.wins}W/{row.losses}L</div> : null}
+                  </div>
+                )
+              }}
+            />
+            <Bar dataKey="pnl" radius={[5, 5, 0, 0]}>
+              {rows.map(row => (
+                <Cell key={row.key} fill={row.pnl >= 0 ? st.green : st.red} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function CapitalAllocationBars({
+  st,
+  rows,
+}: {
+  st: Record<string, string>
+  rows: Array<{ ticker: string; value: number }>
+}) {
+  const sorted = [...rows].sort((a, b) => b.value - a.value).slice(0, 10)
+  if (sorted.length === 0) return <EmptyState st={st} />
+  const total = sorted.reduce((sum, row) => sum + Math.max(0, safeNum(row.value)), 0)
+  const max = Math.max(...sorted.map(row => Math.max(0, safeNum(row.value))), 1)
+  return (
+    <div className="space-y-2">
+      {sorted.map(row => {
+        const value = Math.max(0, safeNum(row.value))
+        const width = `${Math.max(5, (value / max) * 100)}%`
+        const share = total > 0 ? (value / total) * 100 : 0
+        return (
+          <div key={row.ticker} className="rounded-lg px-2 py-2" style={{ background: st.bgSoft }}>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <span className="font-mono text-xs font-bold" style={{ color: st.text }}>{row.ticker}</span>
+              <span className="font-mono text-xs font-bold tabular-nums" style={{ color: st.text }}>{money(value)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full" style={{ background: st.border }}>
+              <div className="h-full rounded-full" style={{ width, background: st.blue }} />
+            </div>
+            <div className="mt-1 text-[10px]" style={{ color: st.muted }}>{pct(share, 1)} of shown capital</div>
+          </div>
+        )
+      })}
     </div>
   )
 }

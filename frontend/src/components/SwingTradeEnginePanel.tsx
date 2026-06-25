@@ -45,7 +45,7 @@ function resolverBadgeClass(value: string): string {
 }
 
 function actionLabel(finalAction: string): string {
-  const ready = ['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE']
+  const ready = ['READY', 'STRONG_GO', 'GO', 'GO_SMALL', 'TRADE']
   const watch = ['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT']
   const wait = ['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE']
   const avoid = ['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE']
@@ -57,7 +57,7 @@ function actionLabel(finalAction: string): string {
 }
 
 function actionTone(finalAction: string): 'green' | 'blue' | 'orange' | 'red' {
-  const ready = ['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE']
+  const ready = ['READY', 'STRONG_GO', 'GO', 'GO_SMALL', 'TRADE']
   const watch = ['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT']
   const wait = ['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE']
   const avoid = ['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE']
@@ -886,7 +886,7 @@ export default function SwingTradeEnginePanel({
   // Which step is the trader's primary action point right now?
   const focusStep = ((): number => {
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
-    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))                return 5
+    if (['READY', 'STRONG_GO', 'GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))            return 5
     if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].some(v => fd === v)) return 3
     if (['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT'].some(v => fd === v)) return 2
     if (['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE'].some(v => fd === v)) return 1
@@ -894,7 +894,7 @@ export default function SwingTradeEnginePanel({
   })()
   const focusBadgeText = (() => {
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
-    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))                return 'Enter'
+    if (['READY', 'STRONG_GO', 'GO', 'GO_SMALL', 'TRADE'].some(v => fd === v))            return 'Enter'
     if (['WAIT', 'WAIT_PULLBACK', 'WAIT_BREAKOUT', 'WAIT_FOR_BREAKDOWN', 'AVOID_CHASE'].some(v => fd === v)) return 'Wait'
     if (['WATCH', 'WATCH_CALL_OR_DEBIT_SPREAD', 'WATCH_CALL', 'WATCH_PUT'].some(v => fd === v)) return 'Watch'
     if (['AVOID', 'EXIT', 'NO_EDGE', 'AVOID_NAKED_CALLS', 'NO_TRADE'].some(v => fd === v)) return 'Avoid'
@@ -917,7 +917,7 @@ export default function SwingTradeEnginePanel({
   const swingActiveState = ((): number => {
     const fd = String(result.final_action || result.final_decision || '').toUpperCase()
     if (fd === 'EXIT') return 4
-    if (['READY', 'STRONG_GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
+    if (['READY', 'STRONG_GO', 'GO', 'GO_SMALL', 'TRADE'].includes(fd)) return 3
     if (['TRADE_NOW', 'ENTER', 'ENTRY'].includes(fd)) return 2
     return 1
   })()

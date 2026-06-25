@@ -358,10 +358,10 @@ def _resolve_swing_trade(engine_analysis: Mapping[str, Any]) -> ResolvedTradeDec
         setup_quality = "POOR"
 
     action_upper = final_action.upper()
-    if action_upper in {"STRONG_GO", "QUALITY_LONG"}:
+    if action_upper in {"STRONG_GO", "QUALITY_LONG", "GO", "GO_SMALL"}:
         execution = "READY"
         final_decision = "READY"
-    elif action_upper in {"WATCH_CALL_OR_DEBIT_SPREAD", "WATCH_CALL", "WATCH_PUT", "GO_SMALL"}:
+    elif action_upper in {"WATCH_CALL_OR_DEBIT_SPREAD", "WATCH_CALL", "WATCH_PUT"}:
         execution = "WATCH"
         final_decision = "WATCH"
     elif action_upper.startswith("WAIT") or action_upper in {"MARKET_CONFIRMATION_ONLY", "NO_TRADE_WAIT"}:

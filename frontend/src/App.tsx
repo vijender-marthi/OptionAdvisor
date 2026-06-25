@@ -144,7 +144,7 @@ function ShellRoutes() {
       <Route path="/day-trade-watchlist" element={<Navigate to="/signal-feed?source=day" replace />} />
       <Route path="/swing-trade-watchlist" element={<Navigate to="/signal-feed?source=swing" replace />} />
       <Route path="/watchlistx" element={<Navigate to="/signal-feed" replace />} />
-      <Route path="/portfolio" element={<Navigate to="/positions?tab=open" replace />} />
+      <Route path="/portfolio" element={<Navigate to="/positions?tab=dashboard" replace />} />
       <Route path="/dashboard" element={<Navigate to="/trade-command-center" replace />} />
       <Route path="/discovery" element={<Navigate to="/position-trading" replace />} />
       <Route path="/scanner" element={<Navigate to="/position-trading" replace />} />

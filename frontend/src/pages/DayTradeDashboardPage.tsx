@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard, Activity } from 'lucide-react'
+import { RefreshCw, Plus, X, ExternalLink, Clock, GripVertical, TrendingUp, Maximize2, Table2, CandlestickChart, LayoutDashboard, Activity, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { analyzeDayTrade, analyzeSwingTrade, analyzeV2, getDashboardTickers, saveDashboardTickers } from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import type { DayTradeScanResult, SwingTradeScanResult, UnifiedAnalysis } from '../api/client'
@@ -26,6 +26,7 @@ interface TileData {
   unified: UnifiedAnalysis | null
   loading: boolean
   error: string | null
+  requestId?: number
 }
 
 interface ExpandedChart {
@@ -34,6 +35,20 @@ interface ExpandedChart {
   metrics: Record<string, unknown>
   entryPoints?: ChartEntryPoint[]
   unified: UnifiedAnalysis | null
+}
+
+function normalizeTickerList(values: unknown): string[] {
+  if (!Array.isArray(values)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const value of values) {
+    const sym = String(value ?? '').trim().toUpperCase()
+    if (!sym || sym.length > 12 || seen.has(sym)) continue
+    seen.add(sym)
+    out.push(sym)
+    if (out.length >= MAX_TICKERS) break
+  }
+  return out
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -271,6 +286,49 @@ function formatPrice(v: number | null): string {
   return v == null ? '—' : v.toFixed(2)
 }
 
+function latestChartClose(metrics?: Record<string, unknown> | null): number | null {
+  const bars = parseChartBars(metrics?.chart_bars)
+  if (!bars || bars.length === 0) return null
+  const close = bars[bars.length - 1]?.c
+  return typeof close === 'number' && Number.isFinite(close) ? close : null
+}
+
+function dayMetricPrice(metrics?: Record<string, unknown> | null, fallback?: number | null): number | null {
+  return num(metrics?.last_price)
+    ?? num((metrics?.entry_guidance as Record<string, unknown> | undefined)?.current_price)
+    ?? latestChartClose(metrics)
+    ?? (fallback ?? null)
+}
+
+function dayMetricChangePct(metrics?: Record<string, unknown> | null, fallback?: number | null): number | null {
+  return num(metrics?.change_pct)
+    ?? num(metrics?.regular_market_change_pct)
+    ?? num(metrics?.post_market_change_pct)
+    ?? num(metrics?.pre_market_change_pct)
+    ?? num(metrics?.session_change_pct)
+    ?? (fallback ?? null)
+}
+
+function scalpText(value: unknown, fallback = '—'): string {
+  const text = String(value ?? '').trim()
+  return text ? text.replace(/_/g, ' ') : fallback
+}
+
+function scalpTradeName(direction: unknown): string {
+  const d = String(direction || '').toLowerCase()
+  if (d === 'short') return 'LONG PUT'
+  if (d === 'long') return 'LONG CALL'
+  return 'WAIT'
+}
+
+function scalpActionColor(action: string, dt: Record<string, string>): string {
+  const a = action.toUpperCase()
+  if (a === 'GO' || a.includes('READY')) return dt.green
+  if (a.includes('NO') || a.includes('CHASE')) return dt.red
+  if (a.includes('TRACK')) return '#38bdf8'
+  return dt.amber
+}
+
 // ─── Swing ticker table ────────────────────────────────────────────────────
 function SwingTickerTable({ tickers, tiles, dt }: {
   tickers: string[]
@@ -486,8 +544,8 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
               )
             }
 
-            const price  = num(unified?.price)
-            const pct    = num(unified?.change_pct)
+            const price  = dayMetricPrice(m, num(unified?.price))
+            const pct    = dayMetricChangePct(m, num(unified?.change_pct))
             const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
             const up     = (pct ?? 0) >= 0
             const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
@@ -609,6 +667,157 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   )
 }
 
+function ScalpDecisionWorkspace({
+  ticker,
+  price,
+  changePct,
+  metrics,
+  scalp,
+  dt,
+}: {
+  ticker: string
+  price: number | null | undefined
+  changePct: number | null | undefined
+  metrics: Record<string, unknown>
+  scalp: Record<string, unknown>
+  dt: Record<string, string>
+}) {
+  const action = scalpText(scalp.action || scalp.status, 'WAIT').toUpperCase()
+  const direction = String(scalp.direction || '').toLowerCase()
+  const trade = scalpTradeName(direction)
+  const color = scalpActionColor(action, dt)
+  const entry = num(scalp.entry_price)
+  const stop = num(scalp.stop_level)
+  const t1 = num(scalp.target_1)
+  const t2 = num(scalp.target_2)
+  const rr = num(scalp.risk_reward_t1)
+  const risk = num(scalp.risk_per_share)
+  const quality = num(scalp.trade_quality)
+  const volumeConfirmed = Boolean(scalp.volume_confirmed)
+  const trendConfirmed = Boolean(scalp.trend_confirmed)
+  const priceConfirmed = scalpText(scalp.price_label).toUpperCase() === 'CONFIRMED'
+  const momentum = scalpText(scalp.momentum_label, 'BUILDING').toUpperCase()
+  const vwapPosition = String(metrics.vwap_position || '').toLowerCase()
+  const marketPct = num(metrics.qqq_session_change_pct) ?? num(metrics.qqq_change_pct) ?? num(metrics.spy_session_change_pct) ?? num(metrics.spy_change_pct)
+  const marketAligned = marketPct == null ? true : direction === 'short' ? marketPct <= 0 : marketPct >= 0
+  const entryReady = action === 'GO'
+  const missing = [
+    !trendConfirmed ? 'trend alignment' : null,
+    !priceConfirmed ? 'price structure' : null,
+    momentum === 'WEAK' ? 'momentum expansion' : null,
+    !volumeConfirmed ? 'volume confirmation' : null,
+    !entryReady ? 'entry trigger' : null,
+  ].filter(Boolean) as string[]
+  const statusCopy = entryReady
+    ? 'READY TO ENTER'
+    : missing.length ? `WAIT FOR ${missing[0]?.toUpperCase()}` : action
+  const checklist = [
+    ['Trend', trendConfirmed],
+    ['Price Structure', priceConfirmed],
+    ['VWAP Context', vwapPosition ? (direction === 'short' ? vwapPosition.includes('below') : vwapPosition.includes('above')) : true],
+    ['EMA Alignment', trendConfirmed],
+    ['Momentum', momentum === 'STRONG'],
+    ['Volume', volumeConfirmed],
+    ['Market Direction', marketAligned],
+    ['Entry Trigger', entryReady],
+  ]
+  const cards = [
+    ['Trend', direction === 'short' ? 'Bearish' : direction === 'long' ? 'Bullish' : 'Neutral', trendConfirmed ? 'EMA structure supports the scalp direction.' : 'Trend is not aligned yet.', trendConfirmed ? dt.green : dt.amber],
+    ['Momentum', momentum === 'STRONG' ? 'Strong and rising' : momentum === 'WEAK' ? 'Weak' : 'Building', momentum === 'STRONG' ? 'Momentum supports continuation.' : 'Wait for momentum to expand before entering.', momentum === 'STRONG' ? dt.green : dt.amber],
+    ['Entry', entry != null ? entry.toFixed(2) : '—', 'Use this only after checklist gates are complete.', dt.text],
+    ['Stop', stop != null ? stop.toFixed(2) : '—', 'Setup is invalid if price breaks this level.', dt.red],
+    ['Reward', rr != null ? `${rr.toFixed(1)}R` : '—', 'Expected reward to first target.', rr != null && rr >= 1.5 ? dt.green : dt.amber],
+    ['Confidence', quality != null ? `${Math.round(quality)}%` : '—', 'Composite quality from trend, timing, volume, and extension.', quality != null && quality >= 80 ? dt.green : dt.amber],
+  ]
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ border: `1px solid ${dt.border}`, background: dt.bg2, borderRadius: 14, padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 22, fontWeight: 900, color: dt.text }}>{trade}</span>
+              <span style={{ border: `1px solid ${color}`, color, background: `${color}18`, borderRadius: 999, padding: '3px 10px', fontSize: 10, fontWeight: 900, letterSpacing: '0.08em' }}>{statusCopy}</span>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 13, color: dt.text, lineHeight: 1.5 }}>{scalpText(scalp.reason, 'Waiting for a cleaner scalp entry.')}</div>
+            {missing.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, color: dt.muted }}>
+                Missing: <span style={{ color: dt.amber, fontWeight: 800 }}>{missing.join(', ')}</span>. {scalpText(scalp.next_action, 'Wait for a clean 1m setup before entering.')}
+              </div>
+            )}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: dt.muted }}>{ticker}</div>
+            <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 22, fontWeight: 900, color: dt.text }}>{price != null ? `$${price.toFixed(2)}` : '—'}</div>
+            {changePct != null && <div style={{ fontSize: 12, color: changePct >= 0 ? dt.green : dt.red }}>{changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%</div>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(138px, 1fr))', gap: 8 }}>
+        {cards.map(([label, value, sub, tone]) => (
+          <div key={label} style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted }}>{label}</div>
+            <div style={{ marginTop: 3, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 16, fontWeight: 900, color: tone }}>{value}</div>
+            <div style={{ marginTop: 4, fontSize: 11, lineHeight: 1.35, color: dt.muted }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <DecisionPanel dt={dt} title="Trade Structure" rows={[
+          ['Trade', trade],
+          ['Suggested contract', entry != null ? `${Math.round(entry)} ${direction === 'short' ? 'Put' : 'Call'}` : direction === 'short' ? 'Put near 0.55-0.70 delta' : 'Call near 0.55-0.70 delta'],
+          ['Expiration', scalpText(scalp.recommended_dte, '5-10 DTE')],
+          ['Expected hold', '10-30 minutes'],
+          ['Target delta', '0.55-0.70'],
+          ['Risk', risk != null && risk > 1.5 ? 'Medium-high' : 'Medium'],
+        ]} />
+        <DecisionPanel dt={dt} title="Risk vs Reward" rows={[
+          ['Risk', risk != null ? `$${risk.toFixed(2)}/share` : '—'],
+          ['T1 reward', rr != null ? `${rr.toFixed(1)}R` : '—'],
+          ['T2 target', t2 != null ? `$${t2.toFixed(2)}` : '—'],
+          ['Probability', quality != null && quality >= 80 ? 'High' : 'Medium'],
+          ['Expected win rate', quality != null ? `${Math.min(78, Math.max(52, Math.round(quality * 0.78)))}%` : '—'],
+        ]} />
+        <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 8 }}>Scalp Checklist</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+            {checklist.map(([label, ok]) => (
+              <div key={String(label)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: dt.text }}>
+                <span style={{ color: ok ? dt.green : dt.amber, fontWeight: 900 }}>{ok ? '✓' : '□'}</span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <DecisionPanel dt={dt} title="Exit Plan" rows={[
+          ['Entry', entry != null ? `$${entry.toFixed(2)}` : 'Wait'],
+          ['Stop', stop != null ? `$${stop.toFixed(2)}` : '—'],
+          ['T1', t1 != null ? `$${t1.toFixed(2)} - sell 50%'` : '—'],
+          ['After T1', 'Move stop to breakeven'],
+          ['T2', t2 != null ? `$${t2.toFixed(2)} - exit remainder` : '—'],
+        ]} />
+      </div>
+    </div>
+  )
+}
+
+function DecisionPanel({ dt, title, rows }: { dt: Record<string, string>; title: string; rows: Array<[string, string]> }) {
+  return (
+    <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 8 }}>{title}</div>
+      <div style={{ display: 'grid', gap: 7 }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+            <span style={{ fontSize: 12, color: dt.muted }}>{label}</span>
+            <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12, fontWeight: 800, color: dt.text, textAlign: 'right' }}>{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Chart expand modal ────────────────────────────────────────────────────
 function ChartModal({ data, isDark, dt, onClose }: {
   data: ExpandedChart; isDark: boolean; dt: Record<string, string>; onClose: () => void
@@ -620,6 +829,7 @@ function ChartModal({ data, isDark, dt, onClose }: {
   const orMin      = (data.metrics.or_minutes as number | undefined) ?? 15
   const sessionDate = String(data.metrics.session_date ?? '')
   const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
+  const [scalpZoom, setScalpZoom] = useState(1)
   const displayBars = !isSwing && chartBars ? resampleBars(chartBars, chartInterval) : null
   const displayOrMin = orMinutesForInterval(orMin, chartInterval)
   const scalpState = !isSwing && data.metrics.scalp_trading && typeof data.metrics.scalp_trading === 'object'
@@ -631,8 +841,8 @@ function ChartModal({ data, isDark, dt, onClose }: {
     const fd = String(verdict || '').toUpperCase()
     return fd === 'WAIT' || fd === 'CONFLICT' || fd === 'AVOID_CHASE' || fd === 'AVOID' || fd === 'NO_EDGE'
   })()
-  const price      = data.unified?.price
-  const changePct  = data.unified?.change_pct
+  const price      = isSwing ? data.unified?.price : dayMetricPrice(data.metrics, data.unified?.price)
+  const changePct  = isSwing ? data.unified?.change_pct : dayMetricChangePct(data.metrics, data.unified?.change_pct)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -669,6 +879,40 @@ function ChartModal({ data, isDark, dt, onClose }: {
                 ))}
               </div>
             )}
+            {!isSwing && data.tab === 'scalp' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8, padding: 3, border: `1px solid ${dt.border}`, borderRadius: 999, background: isDark ? '#111827' : '#F8FAFC' }}>
+                <button
+                  type="button"
+                  onClick={() => setScalpZoom(z => Math.max(0.75, Math.round((z - 0.25) * 100) / 100))}
+                  title="Zoom out"
+                  aria-label="Zoom out scalp chart"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 999, border: 'none', background: 'transparent', color: dt.muted, cursor: 'pointer' }}
+                >
+                  <ZoomOut size={14} />
+                </button>
+                <span style={{ minWidth: 42, textAlign: 'center', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 11, fontWeight: 800, color: dt.text }}>
+                  {Math.round(scalpZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setScalpZoom(z => Math.min(2.5, Math.round((z + 0.25) * 100) / 100))}
+                  title="Zoom in"
+                  aria-label="Zoom in scalp chart"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 999, border: 'none', background: 'transparent', color: dt.muted, cursor: 'pointer' }}
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScalpZoom(1)}
+                  title="Reset zoom"
+                  aria-label="Reset scalp chart zoom"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 999, border: 'none', background: 'transparent', color: dt.muted, cursor: 'pointer' }}
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </div>
+            )}
           </div>
           <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: '50%', background: isDark ? '#1E2330' : '#F3F4F6', border: 'none', cursor: 'pointer', color: dt.muted, flexShrink: 0 }}>
             <X size={16} />
@@ -680,7 +924,19 @@ function ChartModal({ data, isDark, dt, onClose }: {
           {isSwing ? (
             <SwingTradeMetricCharts metrics={data.metrics} mode="price" />
           ) : data.tab === 'scalp' && chartBars && chartBars.length > 0 ? (
-            <ScalpTradingChart bars={chartBars} scalp={scalpState} isDark={isDark} />
+            <div style={{ display: 'grid', gap: 16 }}>
+              {scalpState ? (
+                <ScalpDecisionWorkspace
+                  ticker={data.ticker}
+                  price={price}
+                  changePct={changePct}
+                  metrics={data.metrics}
+                  scalp={scalpState}
+                  dt={dt}
+                />
+              ) : null}
+              <ScalpTradingChart bars={chartBars} scalp={scalpState} isDark={isDark} zoomScale={scalpZoom} />
+            </div>
           ) : displayBars && displayBars.length > 0 && orHigh != null && orLow != null ? (
             <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
               <DayTradeIntradayChart bars={displayBars} orHigh={orHigh} orLow={orLow} orMinutes={displayOrMin} sessionDate={sessionDate} entryPoints={data.entryPoints && data.entryPoints.length > 0 ? data.entryPoints : undefined} dimEntries={dimEntries} showScalpStudy={data.tab === 'scalp'} isDark={isDark} />
@@ -737,8 +993,8 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
 
   const ticker    = unified?.ticker ?? result?.ticker ?? tile.ticker
   const company   = unified?.company ?? result?.company_name ?? ''
-  const price     = unified?.price
-  const changePct = unified?.change_pct
+  const price     = isSwing ? unified?.price : dayMetricPrice(metrics, unified?.price)
+  const changePct = isSwing ? unified?.change_pct : dayMetricChangePct(metrics, unified?.change_pct)
   const verdict   = unified?.verdict ?? result?.verdict?.replace(' ', '_') ?? ''
   const statusColor = unified?.verdict_presentation?.status_color
   const confidence  = unified?.confidence
@@ -880,7 +1136,7 @@ function TickerTile({ tile, tab, dt, isDark, onRemove, onExpand, dragHandleProps
               </span>
               <span style={{ fontSize: 11, color: dt.muted }}>Quality {String(scalpState.trade_quality ?? '—')} · DTE {String(scalpState.recommended_dte || '5-10 DTE')}</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8, marginBottom: 10 }}>
               {[
                 ['Entry', num(scalpState.entry_price), dt.green],
                 ['Stop', num(scalpState.stop_level), dt.red],
@@ -1007,7 +1263,7 @@ export default function DayTradeDashboardPage() {
   useEffect(() => { try { localStorage.setItem(SK_ACTIVE_TAB, activeTab) } catch { /* quota */ } }, [activeTab])
 
   const loadTickers = (key: string) => {
-    try { return JSON.parse(localStorage.getItem(key) ?? '[]') as string[] } catch { return [] }
+    try { return normalizeTickerList(JSON.parse(localStorage.getItem(key) ?? '[]')) } catch { return [] }
   }
   const [dayTickers,   setDayTickers]   = useState<string[]>(() => loadTickers(SK_DAY_TICKERS))
   const [swingTickers, setSwingTickers] = useState<string[]>(() => loadTickers(SK_SWING_TICKERS))
@@ -1020,8 +1276,8 @@ export default function DayTradeDashboardPage() {
   useEffect(() => {
     getDashboardTickers()
       .then(resp => {
-        setDayTickers(resp.day.slice(0, MAX_TICKERS))
-        setSwingTickers(resp.swing.slice(0, MAX_TICKERS))
+        setDayTickers(normalizeTickerList(resp.day))
+        setSwingTickers(normalizeTickerList(resp.swing))
         setTickersLoadedFromApi(true)
       })
       .catch(() => { /* use localStorage fallback */ })
@@ -1053,18 +1309,30 @@ export default function DayTradeDashboardPage() {
 
   // Scan a single ticker — force_refresh bypasses all caches
   const scanTicker = useCallback(async (sym: string, tab: DataTab, forceRefresh = false) => {
+    sym = sym.trim().toUpperCase()
+    if (!sym) return
+    const requestId = Date.now() + Math.random()
     const setter = tab === 'day' ? setDayTiles : setSwingTiles
-    setter(prev => ({ ...prev, [sym]: { ...(prev[sym] ?? { ticker: sym, result: null, unified: null, error: null }), loading: true, error: null } }))
+    setter(prev => ({ ...prev, [sym]: { ...(prev[sym] ?? { ticker: sym, result: null, unified: null, error: null }), loading: true, error: null, requestId } }))
     try {
       const data = tab === 'swing' ? await analyzeSwingTrade(sym) : await analyzeDayTrade(sym, forceRefresh)
-      setter(prev => ({ ...prev, [sym]: { ...prev[sym]!, result: data, loading: false } }))
+      setter(prev => {
+        if (prev[sym]?.requestId !== requestId) return prev
+        return { ...prev, [sym]: { ...prev[sym]!, result: data, loading: false } }
+      })
       try {
         const v2 = await analyzeV2(sym, tab)
-        setter(prev => ({ ...prev, [sym]: { ...prev[sym]!, unified: v2.data } }))
+        setter(prev => {
+          if (prev[sym]?.requestId !== requestId) return prev
+          return { ...prev, [sym]: { ...prev[sym]!, unified: v2.data } }
+        })
       } catch { /* non-fatal */ }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ?? (e as { message?: string })?.message ?? 'Scan failed'
-      setter(prev => ({ ...prev, [sym]: { ...prev[sym]!, loading: false, error: String(msg) } }))
+      setter(prev => {
+        if (prev[sym]?.requestId !== requestId) return prev
+        return { ...prev, [sym]: { ...prev[sym]!, loading: false, error: String(msg) } }
+      })
     }
   }, [])
 
@@ -1126,7 +1394,9 @@ export default function DayTradeDashboardPage() {
   }, [scanTicker])
 
   const addTicker = (sym: string) => {
-    setTickers(prev => [sym, ...prev])
+    sym = sym.trim().toUpperCase()
+    if (!sym) return
+    setTickers(prev => normalizeTickerList([sym, ...prev]))
     void scanTicker(sym, dataTab, true)
   }
 

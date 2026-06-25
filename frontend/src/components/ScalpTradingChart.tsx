@@ -59,10 +59,12 @@ export default function ScalpTradingChart({
   bars,
   scalp,
   isDark = false,
+  zoomScale = 1,
 }: {
   bars: DayTradeChartBar[]
   scalp?: ScalpState | null
   isDark?: boolean
+  zoomScale?: number
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [cw, setCw] = useState(0)
@@ -76,14 +78,21 @@ export default function ScalpTradingChart({
     return () => ro.disconnect()
   }, [])
 
+  const chartBars = useMemo(() => {
+    if (bars.length <= 2) return bars
+    if (zoomScale > 1.05) return bars
+    const maxBars = cw < 480 ? 90 : cw < 768 ? 130 : cw < 1100 ? 180 : 260
+    return bars.length > maxBars ? bars.slice(-maxBars) : bars
+  }, [bars, cw, zoomScale])
+
   const layout = useMemo(() => {
-    const len = bars.length
+    const len = chartBars.length
     if (len < 2) return null
-    const times = bars.map(b => new Date(b.t).getTime())
+    const times = chartBars.map(b => new Date(b.t).getTime())
     const tMin = times[0]!
     const tMax = times[len - 1]!
     const span = Math.max(1, tMax - tMin)
-    const prices = bars.flatMap(b => [b.h, b.l, b.ema50, b.ema150].filter((x): x is number => typeof x === 'number' && Number.isFinite(x)))
+    const prices = chartBars.flatMap(b => [b.h, b.l, b.ema50, b.ema150].filter((x): x is number => typeof x === 'number' && Number.isFinite(x)))
     const levels = [scalp?.entry_price, scalp?.stop_level, scalp?.target_1, scalp?.target_2].filter((x): x is number => typeof x === 'number' && Number.isFinite(x))
     let lo = Math.min(...prices, ...levels)
     let hi = Math.max(...prices, ...levels)
@@ -96,7 +105,9 @@ export default function ScalpTradingChart({
     const volH = 72
     const stochGap = 12
     const stochH = 86
-    const innerW = Math.max(len * 3.2, cw - PAD.l - PAD.r)
+    const safeZoom = Number.isFinite(zoomScale) ? Math.max(0.75, Math.min(2.5, zoomScale)) : 1
+    const minBarWidth = cw < 480 ? 2.2 : cw < 768 ? 2.7 : 3.2
+    const innerW = Math.max(len * minBarWidth, cw - PAD.l - PAD.r) * safeZoom
     const W = PAD.l + PAD.r + innerW
     const H = PAD.t + priceH + volGap + volH + stochGap + stochH + PAD.b
     const slot = innerW / len
@@ -105,22 +116,22 @@ export default function ScalpTradingChart({
     const xAt = (t: number) => PAD.l + slot * 0.5 + ((t - tMin) / span) * plotW
     const yAt = (p: number) => PAD.t + ((hi - p) / (hi - lo)) * priceH
     const volTop = PAD.t + priceH + volGap
-    const volMax = Math.max(1, ...bars.map(b => b.v || 0))
+    const volMax = Math.max(1, ...chartBars.map(b => b.v || 0))
     const volYAt = (v: number) => volTop + volH - (Math.max(0, v) / volMax) * volH
     const stochTop = volTop + volH + stochGap
     const stochYAt = (v: number) => stochTop + stochH - (Math.max(0, Math.min(100, v)) / 100) * stochH
     const yTicks = Array.from({ length: 5 }, (_, i) => lo + ((hi - lo) * i) / 4)
     return { W, H, times, xAt, yAt, volYAt, stochYAt, yTicks, lo, hi, innerW, priceH, volTop, volH, stochTop, stochH, slot, bodyW, tMin }
-  }, [bars, cw, scalp])
+  }, [chartBars, cw, scalp, zoomScale])
 
   if (cw === 0) return <div ref={wrapRef} style={{ minHeight: 430 }} />
   if (!layout) return <div ref={wrapRef} className="text-xs text-gray-500">Not enough scalp bars to chart.</div>
 
   const { W, H, times, xAt, yAt, volYAt, stochYAt, yTicks, innerW, priceH, volTop, volH, stochTop, stochH, bodyW, tMin } = layout
-  const ema50Pts = bars.map((b, i) => b.ema50 != null ? `${xAt(times[i]!)},${yAt(b.ema50)}` : '').filter(Boolean).join(' ')
-  const ema150Pts = bars.map((b, i) => b.ema150 != null ? `${xAt(times[i]!)},${yAt(b.ema150)}` : '').filter(Boolean).join(' ')
-  const stochPts = bars.map((b, i) => b.stoch5 != null ? `${xAt(times[i]!)},${stochYAt(b.stoch5)}` : '').filter(Boolean).join(' ')
-  const trendPts = bars.map((b, i) => b.trend_confirmation != null ? `${xAt(times[i]!)},${stochYAt(b.trend_confirmation)}` : '').filter(Boolean).join(' ')
+  const ema50Pts = chartBars.map((b, i) => b.ema50 != null ? `${xAt(times[i]!)},${yAt(b.ema50)}` : '').filter(Boolean).join(' ')
+  const ema150Pts = chartBars.map((b, i) => b.ema150 != null ? `${xAt(times[i]!)},${yAt(b.ema150)}` : '').filter(Boolean).join(' ')
+  const stochPts = chartBars.map((b, i) => b.stoch5 != null ? `${xAt(times[i]!)},${stochYAt(b.stoch5)}` : '').filter(Boolean).join(' ')
+  const trendPts = chartBars.map((b, i) => b.trend_confirmation != null ? `${xAt(times[i]!)},${stochYAt(b.trend_confirmation)}` : '').filter(Boolean).join(' ')
   const entry = n(scalp?.entry_price)
   const stop = n(scalp?.stop_level)
   const t1 = n(scalp?.target_1)
@@ -131,6 +142,17 @@ export default function ScalpTradingChart({
   const momentumLabel = scalp?.momentum_label || 'BUILDING'
   const priceLabel = scalp?.price_label || 'NOT CONFIRMED'
   const statusLabel = scalp?.status_label || action
+  const currentIndex = chartBars.length - 1
+  const entryIndex = scalp?.entry_time
+    ? chartBars.reduce((best, bar, idx) => {
+        const target = new Date(scalp.entry_time as string).getTime()
+        const curDiff = Math.abs(new Date(bar.t).getTime() - target)
+        const bestDiff = Math.abs(new Date(chartBars[best]?.t ?? bar.t).getTime() - target)
+        return curDiff < bestDiff ? idx : best
+      }, currentIndex)
+    : currentIndex
+  const currentX = xAt(times[currentIndex]!)
+  const entryX = xAt(times[entryIndex]!)
 
   const surface = isDark ? '#05070b' : '#ffffff'
   const panel = isDark ? '#0b1018' : '#f8fafc'
@@ -148,6 +170,19 @@ export default function ScalpTradingChart({
         <text x={PAD.l + innerW - 4} y={y - 4} textAnchor="end" fill={color} fontSize={10} fontWeight={700}>
           {label} ${fmtPrice(value)}
         </text>
+      </g>
+    )
+  }
+  const zoneRect = (a: number | null, b: number | null, color: string, label: string) => {
+    if (a == null || b == null) return null
+    const y1 = yAt(a)
+    const y2 = yAt(b)
+    const top = Math.min(y1, y2)
+    const h = Math.max(1, Math.abs(y2 - y1))
+    return (
+      <g key={label}>
+        <rect x={PAD.l} y={top} width={innerW} height={h} fill={color} opacity={0.08} />
+        <text x={PAD.l + 8} y={top + 13} fill={color} fontSize={10} fontWeight={800}>{label}</text>
       </g>
     )
   }
@@ -191,6 +226,14 @@ export default function ScalpTradingChart({
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: border, background: surface }}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-none min-w-max" role="img" aria-label="Scalp trading chart with EMA, stochastic, volume, and entry levels">
           <rect x={PAD.l} y={PAD.t} width={innerW} height={priceH} fill={isDark ? 'rgba(15,23,42,0.32)' : 'rgba(248,250,252,0.92)'} stroke={border} />
+          {zoneRect(entry, stop, '#fb7185', 'RISK ZONE')}
+          {zoneRect(entry, t1, '#22c55e', 'REWARD TO T1')}
+          {currentX && (
+            <rect x={currentX - Math.max(5, bodyW * 1.3)} y={PAD.t} width={Math.max(10, bodyW * 2.6)} height={priceH} fill="#38bdf8" opacity={0.08} />
+          )}
+          {entryX && (
+            <rect x={entryX - Math.max(5, bodyW * 1.2)} y={PAD.t} width={Math.max(10, bodyW * 2.4)} height={priceH} fill="#22c55e" opacity={0.10} />
+          )}
           {yTicks.map((yt, i) => (
             <g key={i}>
               <line x1={PAD.l} x2={PAD.l + innerW} y1={yAt(yt)} y2={yAt(yt)} stroke={grid} />
@@ -198,7 +241,7 @@ export default function ScalpTradingChart({
             </g>
           ))}
 
-          {bars.map((b, i) => {
+          {chartBars.map((b, i) => {
             const cx = xAt(times[i]!)
             const up = b.c >= b.o
             const yH = yAt(b.h)
@@ -217,10 +260,23 @@ export default function ScalpTradingChart({
 
           {ema50Pts && <polyline fill="none" points={ema50Pts} stroke="#f59e0b" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
           {ema150Pts && <polyline fill="none" points={ema150Pts} stroke="#a855f7" strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />}
+          {entry != null && t1 != null && (
+            <polyline
+              fill="none"
+              points={`${entryX},${yAt(entry)} ${Math.min(PAD.l + innerW - 36, entryX + innerW * 0.22)},${yAt(t1)}${t2 != null ? ` ${Math.min(PAD.l + innerW - 12, entryX + innerW * 0.42)},${yAt(t2)}` : ''}`}
+              stroke="#22c55e"
+              strokeWidth={1.6}
+              strokeDasharray="5 5"
+              strokeLinecap="round"
+            />
+          )}
           {lineLevel(entry, 'ENTRY', '#22c55e', false)}
           {lineLevel(stop, 'STOP', '#fb7185')}
           {lineLevel(t1, 'T1', '#38bdf8')}
           {lineLevel(t2, 'T2', '#818cf8')}
+          <text x={Math.min(PAD.l + innerW - 8, currentX + 8)} y={PAD.t + 15} fill="#38bdf8" fontSize={10} fontWeight={900} textAnchor="end">CURRENT</text>
+          {entry != null && <text x={Math.min(PAD.l + innerW - 8, entryX + 8)} y={PAD.t + 30} fill="#22c55e" fontSize={10} fontWeight={900} textAnchor="end">TRIGGER</text>}
+          {stop != null && <text x={PAD.l + 8} y={Math.min(PAD.t + priceH - 8, yAt(stop) + 16)} fill="#fb7185" fontSize={10} fontWeight={900}>INVALID BELOW/ABOVE STOP</text>}
           {entry != null && (
             <polygon points={`${PAD.l + 12},${yAt(entry)} ${PAD.l + 2},${yAt(entry) - 6} ${PAD.l + 2},${yAt(entry) + 6}`} fill="#22c55e" />
           )}
@@ -237,7 +293,7 @@ export default function ScalpTradingChart({
           <text x={PAD.l} y={H - 10} fill={axis} fontSize={10}>{fmtTime(new Date(tMin).toISOString())}</text>
 
           <rect x={PAD.l} y={volTop} width={innerW} height={volH} fill={panel} stroke={border} />
-          {bars.map((b, i) => {
+          {chartBars.map((b, i) => {
             const cx = xAt(times[i]!)
             const top = volYAt(b.v || 0)
             const up = b.c >= b.o

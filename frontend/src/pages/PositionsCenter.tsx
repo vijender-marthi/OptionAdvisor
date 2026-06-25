@@ -1728,7 +1728,7 @@ export default function PositionsCenter() {
   const stockAnalyses = (d.stock_analyses ?? {}) as Record<string, StockPositionAnalysis>
   const exitBadgeByTicker = (d.exit_badge_by_ticker ?? {}) as Record<string, string>
   const rawTab = positionsTab as string
-  const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'open'
+  const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'dashboard'
 
   const openPortfolio   = useMemo(() => portfolio.filter(p => p.status === 'open'), [portfolio])
   const closedPortfolio = useMemo(() => portfolio.filter(p => p.status === 'closed'), [portfolio])

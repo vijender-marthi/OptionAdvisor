@@ -78,9 +78,10 @@ def test_quality_long_strong_go():
     assert d["trade_quality_score"] >= 8.0
     assert d["risk_level"]         in ("LOW", "MEDIUM")
 
-def test_quality_long_watch_call_debit_spread():
-    """Good but not stellar quality → WATCH_CALL_OR_DEBIT_SPREAD.
-    bull=6.5 + MARKET_SUPPORTIVE +1.0 = 7.5  →  stays below 8.0 STRONG_GO threshold.
+def test_quality_long_go():
+    """Good but not stellar quality → GO.
+    STRONG_GO is reserved for A+ setups, but clean 6.5-7.9 quality should
+    still produce trade confirmation instead of getting stuck in WATCH.
     """
     d = build_swing_trade_decision(
         "MSFT", bull_score=6.5, bear_score=2.0,
@@ -88,7 +89,7 @@ def test_quality_long_watch_call_debit_spread():
         rsi_val=60.0, dist_ma20_pct=3.0, mom_5d_pct=2.0,
         vol_ratio=1.1, vol_label="mixed",
     )
-    assert d["final_action"]   == "WATCH_CALL_OR_DEBIT_SPREAD"
+    assert d["final_action"]   == "GO"
     assert d["entry_quality"]  == "GOOD_ENTRY"
     assert d["decision_label"] == "QUALITY_LONG"
 
@@ -425,14 +426,14 @@ def test_low_score_no_trade():
 
 # ─── Bearish setups ───────────────────────────────────────────────────
 
-def test_bearish_quality_returns_watch_put():
+def test_bearish_quality_returns_go_or_strong_go():
     d = build_swing_trade_decision(
         "SHORT_CAND", bull_score=1.5, bear_score=8.0,
         market_context="MARKET_WEAK",
         rsi_val=40.0, dist_ma20_pct=-3.0, mom_5d_pct=-3.0,
         vol_ratio=1.8, vol_label="bear_expanding",
     )
-    assert d["final_action"]  in ("WATCH_PUT", "STRONG_GO")
+    assert d["final_action"]  in ("GO", "STRONG_GO")
     assert d["swing_bias"]    in ("BEARISH", "STRONG_BEARISH")
 
 def test_bearish_extended_oversold_triggers_wait():

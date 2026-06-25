@@ -3778,7 +3778,7 @@ def _swing_active_state(final_action: str) -> int:
     fa = str(final_action or "").upper().strip()
     if fa == "EXIT":
         return 4
-    if fa in {"READY", "STRONG_GO", "GO_SMALL", "TRADE"}:
+    if fa in {"READY", "STRONG_GO", "GO", "GO_SMALL", "TRADE"}:
         return 3
     if fa in {"WAIT", "WAIT_PULLBACK", "WAIT_BREAKOUT", "WAIT_FOR_BREAKDOWN", "AVOID_CHASE"}:
         return 2

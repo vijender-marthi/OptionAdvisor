@@ -541,10 +541,11 @@ def serialize_swing_trade(scan) -> dict:
         _ACTION_MAP: dict[str, str] = {
             "STRONG_GO":                 "STRONG_GO",
             "QUALITY_LONG":              "GO",
+            "GO":                        "GO",
             "WATCH_CALL_OR_DEBIT_SPREAD": "WATCH",
             "WATCH_CALL":                "WATCH",
             "WATCH_PUT":                 "WATCH",
-            "GO_SMALL":                  "WATCH",
+            "GO_SMALL":                  "GO",
         }
         if final_action in _ACTION_MAP:
             sw_verdict_val = _ACTION_MAP[final_action]

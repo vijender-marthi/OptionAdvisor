@@ -726,11 +726,13 @@ def build_swing_trade_decision(
         final_action   = "STRONG_GO"
 
     elif trade_quality_score >= 6.5:
+        # Good, tradeable setup. Reserve STRONG_GO for A+ alignment, but do
+        # not leave clean 6.5-7.9 quality setups stuck in WATCH forever.
         # CAUTION_ENTRY when risk is already flagged HIGH (IV, VIX, extension flags),
         # GOOD_ENTRY only when risk is LOW or MEDIUM.
         entry_quality  = "GOOD_ENTRY" if risk_level in ("LOW", "MEDIUM") else "CAUTION_ENTRY"
         decision_label = "QUALITY_LONG"
-        final_action   = "WATCH_CALL_OR_DEBIT_SPREAD" if is_bullish else "WATCH_PUT"
+        final_action   = "GO" if risk_level in ("LOW", "MEDIUM") else "GO_SMALL"
 
     elif trade_quality_score >= 5.0:
         entry_quality  = "NO_CLEAN_ENTRY"
@@ -806,7 +808,7 @@ def build_swing_trade_decision(
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     elif trade_quality_score >= 5.5:
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
-    elif final_action in ("WAIT_PULLBACK", "WAIT_FOR_BREAKDOWN", "WAIT_BREAKOUT", "WATCH_CALL_OR_DEBIT_SPREAD", "WATCH_PUT"):
+    elif final_action in ("WAIT_PULLBACK", "WAIT_FOR_BREAKDOWN", "WAIT_BREAKOUT", "WATCH_CALL_OR_DEBIT_SPREAD", "WATCH_PUT", "GO", "GO_SMALL"):
         suggested_strategy = "CALL_DEBIT_SPREAD" if is_bullish else "PUT_DEBIT_SPREAD"
     else:
         suggested_strategy = "NO_TRADE"

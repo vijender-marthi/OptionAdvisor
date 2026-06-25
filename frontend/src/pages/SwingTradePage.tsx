@@ -1098,7 +1098,7 @@ export default function SwingTradePage() {
 
       {/* MACD histogram — momentum phase, computed from chart_series closes */}
       {result && result.metrics && (result.metrics as Record<string, unknown>).chart_series != null && (
-        <details className="group rounded-xl border border-slate-200 dark:border-gray-800/80 bg-white dark:bg-gray-900/40 overflow-hidden mb-3">
+        <details open className="group rounded-xl border border-slate-200 dark:border-gray-800/80 bg-white dark:bg-gray-900/40 overflow-hidden mb-3">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-gray-800/60 hover:bg-surface-muted/20">
             <BarChart2 size={14} className="text-violet-400" />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-500">
