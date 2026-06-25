@@ -701,6 +701,14 @@ function ScalpDecisionWorkspace({
   const marketPct = num(metrics.qqq_session_change_pct) ?? num(metrics.qqq_change_pct) ?? num(metrics.spy_session_change_pct) ?? num(metrics.spy_change_pct)
   const marketAligned = marketPct == null ? true : direction === 'short' ? marketPct <= 0 : marketPct >= 0
   const entryReady = action === 'GO'
+  const setupChecks = [
+    ['Trend', trendConfirmed],
+    ['Structure', priceConfirmed],
+    ['EMA', trendConfirmed],
+    ['Momentum', momentum === 'STRONG'],
+    ['Volume', volumeConfirmed],
+  ] as Array<[string, boolean]>
+  const setupPct = Math.round((setupChecks.filter(([, ok]) => ok).length / setupChecks.length) * 100)
   const missing = [
     !trendConfirmed ? 'trend alignment' : null,
     !priceConfirmed ? 'price structure' : null,
@@ -729,8 +737,28 @@ function ScalpDecisionWorkspace({
     ['Reward', rr != null ? `${rr.toFixed(1)}R` : '—', 'Expected reward to first target.', rr != null && rr >= 1.5 ? dt.green : dt.amber],
     ['Confidence', quality != null ? `${Math.round(quality)}%` : '—', 'Composite quality from trend, timing, volume, and extension.', quality != null && quality >= 80 ? dt.green : dt.amber],
   ]
+  const momentumState = momentum === 'STRONG' && volumeConfirmed ? 'EXPANDING' : momentum === 'WEAK' ? 'NO MOMENTUM' : volumeConfirmed ? 'BUILDING' : 'FADING'
+  const momentumColor = momentumState === 'EXPANDING' ? dt.green : momentumState === 'BUILDING' ? '#38bdf8' : momentumState === 'FADING' ? dt.amber : dt.red
+  const volumeRatio = num(scalp.volume_ratio_20)
+  const marketLabel = marketPct == null ? 'Neutral' : marketPct < -0.15 ? 'QQQ/SPY Weak' : marketPct > 0.15 ? 'QQQ/SPY Strong' : 'Market flat'
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 14, padding: 12 }}>
+        {[
+          ['Intraday Trend', direction === 'short' ? 'Bearish' : direction === 'long' ? 'Bullish' : 'Neutral'],
+          ['Market', marketLabel],
+          ['Volume', volumeConfirmed ? 'Confirmed' : volumeRatio != null ? `${volumeRatio.toFixed(1)}x, needs more` : 'Pending'],
+          ['Scalp Bias', trade],
+          ['Expected Hold', '15-30 minutes'],
+          ['Setup Quality', quality != null ? `${scalpText(scalp.quality_grade, 'Grade')} · ${Math.round(quality)}%` : scalpText(scalp.quality_grade, 'Pending')],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <div style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted }}>{label}</div>
+            <div style={{ marginTop: 3, fontSize: 13, fontWeight: 800, color: dt.text }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={{ border: `1px solid ${dt.border}`, background: dt.bg2, borderRadius: 14, padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
@@ -739,9 +767,17 @@ function ScalpDecisionWorkspace({
               <span style={{ border: `1px solid ${color}`, color, background: `${color}18`, borderRadius: 999, padding: '3px 10px', fontSize: 10, fontWeight: 900, letterSpacing: '0.08em' }}>{statusCopy}</span>
             </div>
             <div style={{ marginTop: 8, fontSize: 13, color: dt.text, lineHeight: 1.5 }}>{scalpText(scalp.reason, 'Waiting for a cleaner scalp entry.')}</div>
+            <div style={{ marginTop: 10, display: 'grid', gap: 5 }}>
+              {setupChecks.map(([label, ok]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: dt.text }}>
+                  <span style={{ color: ok ? dt.green : dt.amber, fontWeight: 900 }}>{ok ? '✓' : '□'}</span>
+                  <span>{label}{!ok && label === 'Volume' ? ' confirmation pending' : ok ? ' confirmed' : ' pending'}</span>
+                </div>
+              ))}
+            </div>
             {missing.length > 0 && (
               <div style={{ marginTop: 8, fontSize: 12, color: dt.muted }}>
-                Missing: <span style={{ color: dt.amber, fontWeight: 800 }}>{missing.join(', ')}</span>. {scalpText(scalp.next_action, 'Wait for a clean 1m setup before entering.')}
+                Setup is <span style={{ color, fontWeight: 900 }}>{setupPct}% complete</span>. Missing: <span style={{ color: dt.amber, fontWeight: 800 }}>{missing.join(', ')}</span>. {scalpText(scalp.next_action, 'Wait for a clean 1m setup before entering.')}
               </div>
             )}
           </div>
@@ -764,6 +800,56 @@ function ScalpDecisionWorkspace({
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 10 }}>Trade Lifecycle</div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {[
+              ['SETUP', setupPct >= 80, setupChecks],
+              ['ENTER', entryReady, [['Entry trigger', entryReady]]],
+              ['MANAGE', false, [['Move stop after T1', false]]],
+              ['EXIT', false, [['T1/T2 plan ready', t1 != null || t2 != null]]],
+            ].map(([step, active, checks], idx) => (
+              <div key={String(step)} style={{ display: 'grid', gridTemplateColumns: '54px 1fr', gap: 8, alignItems: 'start', opacity: idx > 1 && !entryReady ? 0.62 : 1 }}>
+                <div style={{ border: `1px solid ${active ? color : dt.border}`, color: active ? color : dt.muted, borderRadius: 999, padding: '3px 7px', fontSize: 10, fontWeight: 900, textAlign: 'center' }}>{String(step)}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {(checks as Array<[string, boolean]>).map(([label, ok]) => (
+                    <span key={label} style={{ fontSize: 11, color: ok ? dt.green : dt.muted }}>{ok ? '✓' : '□'} {label}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: dt.muted, marginBottom: 8 }}>Momentum Panel</div>
+          <div style={{ display: 'grid', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: dt.muted, fontSize: 12 }}>Momentum Score</span>
+              <span style={{ color: momentumColor, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 900 }}>{quality != null ? `${Math.round(quality)} / 100` : 'Pending'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: dt.muted, fontSize: 12 }}>Acceleration</span>
+              <span style={{ color: momentumColor, fontWeight: 800 }}>{momentum === 'STRONG' ? 'Increasing' : momentum === 'WEAK' ? 'Weakening' : 'Building'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: dt.muted, fontSize: 12 }}>Volume</span>
+              <span style={{ color: volumeConfirmed ? dt.green : dt.amber, fontWeight: 800 }}>{volumeConfirmed ? 'Confirmed' : 'Pending'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ color: dt.muted, fontSize: 12 }}>Momentum State</span>
+              <span style={{ color: momentumColor, fontWeight: 900 }}>{momentumState}</span>
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.45, color: dt.muted }}>
+              {momentumState === 'EXPANDING'
+                ? 'Momentum is strengthening across the recent candles, increasing continuation probability.'
+                : momentumState === 'FADING'
+                  ? 'Momentum is not complete yet. Wait for volume to confirm before risking capital.'
+                  : momentumState === 'NO MOMENTUM'
+                    ? 'Momentum is weakening. Wait for buyers or sellers to regain control.'
+                    : 'Momentum is building, but the setup still needs the remaining confirmation gates.'}
+            </div>
+          </div>
+        </div>
         <DecisionPanel dt={dt} title="Trade Structure" rows={[
           ['Trade', trade],
           ['Suggested contract', entry != null ? `${Math.round(entry)} ${direction === 'short' ? 'Put' : 'Call'}` : direction === 'short' ? 'Put near 0.55-0.70 delta' : 'Call near 0.55-0.70 delta'],
@@ -775,8 +861,10 @@ function ScalpDecisionWorkspace({
         <DecisionPanel dt={dt} title="Risk vs Reward" rows={[
           ['Risk', risk != null ? `$${risk.toFixed(2)}/share` : '—'],
           ['T1 reward', rr != null ? `${rr.toFixed(1)}R` : '—'],
+          ['T2 reward', risk != null && risk > 0 && entry != null && t2 != null ? `${(Math.abs(t2 - entry) / risk).toFixed(1)}R` : '—'],
           ['T2 target', t2 != null ? `$${t2.toFixed(2)}` : '—'],
           ['Probability', quality != null && quality >= 80 ? 'High' : 'Medium'],
+          ['Estimated hold', '15-30 minutes'],
           ['Expected win rate', quality != null ? `${Math.min(78, Math.max(52, Math.round(quality * 0.78)))}%` : '—'],
         ]} />
         <div style={{ border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 12, padding: 12 }}>
