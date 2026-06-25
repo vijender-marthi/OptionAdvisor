@@ -18,6 +18,17 @@ const MAX_TICKERS      = 8
 
 type Tab = 'day' | 'swing' | 'table' | 'scalp'
 /** Tabs share two data pools — the table tab reads the day pool. */
+
+/** Viewport hook for responsive layout switching. */
+function useViewport() {
+  const [width, setWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1200)
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return { width, isMobile: width < 640, isTablet: width >= 640 && width < 1024 }
+}
 type DataTab = 'day' | 'swing'
 
 interface TileData {
@@ -335,6 +346,7 @@ function SwingTickerTable({ tickers, tiles, dt }: {
   tiles: Record<string, TileData>
   dt: Record<string, string>
 }) {
+  const { isMobile } = useViewport()
   const th: React.CSSProperties = { padding: '9px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: dt.muted, textAlign: 'left', whiteSpace: 'nowrap', borderBottom: `1px solid ${dt.border}` }
   const td: React.CSSProperties = { padding: '10px', fontSize: 12, borderBottom: `1px solid ${dt.border}`, verticalAlign: 'top', whiteSpace: 'nowrap' }
   const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }
@@ -351,6 +363,72 @@ function SwingTickerTable({ tickers, tiles, dt }: {
     return <span style={{ ...mono, color: above ? dt.green : dt.red }}>{v.toFixed(2)}</span>
   }
 
+  // Build row data once for both table and card rendering
+  const rows = tickers.map(sym => {
+    const tile = tiles[sym]
+    const result = (tile?.result ?? null) as SwingTradeScanResult | null
+    const unified = tile?.unified ?? null
+    const m = (result?.metrics ?? {}) as Record<string, unknown>
+    const price  = num(unified?.price) ?? num(m.last_price)
+    const pct    = num(unified?.change_pct)
+    const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
+    const up     = (pct ?? 0) >= 0
+    const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
+    const macd   = num(m.macd)
+    const ma20   = num(m.ma20)
+    const ma50   = num(m.ma50)
+    const verdict = unified?.verdict ?? result?.final_decision ?? result?.verdict?.replace(' ', '_') ?? ''
+    const loading = !tile || (tile.loading && !result)
+    const error = tile?.error && !result
+    return { sym, tile, result, unified, m, price, pct, chgAmt, up, chgColor, macd, ma20, ma50, verdict, loading, error }
+  })
+
+  // Mobile: card layout
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, macd, ma20, ma50, verdict, unified }) => (
+          <div key={sym} style={{ border: `1px solid ${dt.border}`, borderRadius: 10, background: dt.bg, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <div>
+                <div style={{ ...mono, fontWeight: 800, fontSize: 14, color: dt.text }}>{sym}</div>
+                <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? `$${price.toFixed(2)}` : '—'}</div>
+              </div>
+              {verdict ? <VerdictBadge verdict={verdict} statusColor={unified?.verdict_presentation?.status_color} /> : null}
+            </div>
+            {loading ? (
+              <div style={{ fontSize: 12, color: dt.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Scanning…
+              </div>
+            ) : error ? (
+              <div style={{ fontSize: 12, color: dt.red }}>{(tiles[sym]?.error)}</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 11 }}>
+                <div style={{ color: dt.muted }}>Change</div>
+                <div style={{ ...mono, color: chgColor, textAlign: 'right' }}>
+                  {pct == null ? '—' : `${up ? '+' : ''}${pct.toFixed(2)}%`}
+                </div>
+                <div style={{ color: dt.muted }}>MACD</div>
+                <div style={{ textAlign: 'right' }}>{macdPill(macd)}</div>
+                <div style={{ color: dt.muted }}>MA20</div>
+                <div style={{ textAlign: 'right' }}>{maCell(ma20, price)}</div>
+                <div style={{ color: dt.muted }}>MA50</div>
+                <div style={{ textAlign: 'right' }}>{maCell(ma50, price)}</div>
+              </div>
+            )}
+            {!loading && !error && (
+              <a href={`${ROUTES.swingTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.violet, textDecoration: 'none', fontSize: 11, fontWeight: 600, marginTop: 8 }}>
+                Swing Trade <ExternalLink size={12} />
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Desktop: table layout
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
@@ -366,13 +444,8 @@ function SwingTickerTable({ tickers, tiles, dt }: {
           </tr>
         </thead>
         <tbody>
-          {tickers.map(sym => {
-            const tile = tiles[sym]
-            const result = (tile?.result ?? null) as SwingTradeScanResult | null
-            const unified = tile?.unified ?? null
-            const m = (result?.metrics ?? {}) as Record<string, unknown>
-
-            if (!tile || (tile.loading && !result)) {
+          {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, macd, ma20, ma50, verdict, unified }) => {
+            if (loading) {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
@@ -383,26 +456,14 @@ function SwingTickerTable({ tickers, tiles, dt }: {
                 </tr>
               )
             }
-            if (tile.error && !result) {
+            if (error) {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.red }} colSpan={6}>{tile.error}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={6}>{tiles[sym]?.error}</td>
                 </tr>
               )
             }
-
-            const price  = num(unified?.price) ?? num(m.last_price)
-            const pct    = num(unified?.change_pct) ?? (price != null && result ? null : null)
-            const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
-            const up     = (pct ?? 0) >= 0
-            const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
-
-            const macd   = num(m.macd)
-            const ma20   = num(m.ma20)
-            const ma50   = num(m.ma50)
-            const verdict = unified?.verdict ?? result?.final_decision ?? result?.verdict?.replace(' ', '_') ?? ''
-
             return (
               <tr key={sym}>
                 <td style={td}>
@@ -448,6 +509,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   dt: Record<string, string>
   isDark: boolean
 }) {
+  const { isMobile } = useViewport()
   const [expandedSyms, setExpandedSyms] = useState<Set<string>>(new Set())
   const [chartIntervals, setChartIntervals] = useState<Record<string, ChartInterval>>({})
   const toggleExpanded = (sym: string) => {
@@ -489,6 +551,151 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
     )
   }
 
+  // Build row data once
+  const rows = tickers.map(sym => {
+    const tile = tiles[sym]
+    const result = (tile?.result ?? null) as DayTradeScanResult | null
+    const unified = tile?.unified ?? null
+    const m = (result?.metrics ?? {}) as Record<string, unknown>
+    const loading = !tile || (tile.loading && !result)
+    const error = tile?.error && !result
+    const price  = dayMetricPrice(m, num(unified?.price))
+    const pct    = dayMetricChangePct(m, num(unified?.change_pct))
+    const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
+    const up     = (pct ?? 0) >= 0
+    const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
+    const orHigh = num(m.or_high)
+    const orLow  = num(m.or_low)
+    const vwap   = num(m.vwap)
+    const vwapPos = String(m.vwap_position || '').toLowerCase()
+    const vwapDistPct = num(m.vwap_dist_pct)
+    const pcr    = num(m.put_call_ratio)
+    const rvol   = num(m.rvol)
+    const pts    = result ? buildEntryPoints(result, m) : []
+    const timeframeState = (result?.timeframe_state ?? (m.timeframe_state as DayTradeScanResult['timeframe_state'] | undefined) ?? null)
+    const gatedVerdict = String(timeframeState?.final_decision || result?.final_decision || '').toUpperCase()
+    const verdict = gatedVerdict || unified?.verdict || result?.verdict?.replace(' ', '_') || ''
+    const chartBars = parseChartBars(m.chart_bars)
+    const hasChart = !!(chartBars && chartBars.length > 0 && orHigh != null && orLow != null)
+    const setup15 = timeframeState?.setup_15m
+    const confirm5 = timeframeState?.confirmation_5m
+    const exec1 = timeframeState?.execution_1m
+    return { sym, tile, result, unified, m, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, vwap, vwapPos, vwapDistPct, pcr, rvol, pts, timeframeState, gatedVerdict, verdict, chartBars, hasChart, setup15, confirm5, exec1 }
+  })
+
+  // Mobile: card layout
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, vwap, vwapPos, vwapDistPct, pcr, rvol, verdict, gatedVerdict, unified, pts, orHigh, orLow, chartBars, hasChart }) => {
+          const isExpanded = expandedSyms.has(sym)
+          return (
+            <div key={sym} style={{ border: `1px solid ${dt.border}`, borderRadius: 10, background: dt.bg, overflow: 'hidden' }}>
+              {/* Header row */}
+              <div
+                onClick={() => toggleExpanded(sym)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ ...mono, fontWeight: 800, fontSize: 14, color: dt.text }}>{sym}</div>
+                  <div style={{ ...mono, fontSize: 11, color: dt.muted }}>{price != null ? `$${price.toFixed(2)}` : '—'}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {verdict ? <VerdictBadge verdict={verdict} statusColor={gatedVerdict ? undefined : unified?.verdict_presentation?.status_color} /> : null}
+                  {pct != null && (
+                    <span style={{ ...mono, fontSize: 11, color: chgColor }}>{up ? '+' : ''}{pct.toFixed(2)}%</span>
+                  )}
+                </div>
+              </div>
+
+              {loading ? (
+                <div style={{ padding: '8px 12px', fontSize: 12, color: dt.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Scanning…
+                </div>
+              ) : error ? (
+                <div style={{ padding: '8px 12px', fontSize: 12, color: dt.red }}>{tiles[sym]?.error}</div>
+              ) : (
+                <>
+                  {/* Key metrics grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px', padding: '4px 12px 8px', fontSize: 11 }}>
+                    <div style={{ color: dt.muted }}>VWAP</div>
+                    <div style={{ ...mono, color: vwapTone(price, vwap, dt), textAlign: 'right' }}>
+                      {formatPrice(vwap)} <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>{vwapPos || '—'}</span>
+                    </div>
+                    <div style={{ color: dt.muted }}>RVOL</div>
+                    <div style={{ ...mono, color: rvol != null && rvol >= 1.3 ? dt.green : dt.text, textAlign: 'right' }}>
+                      {rvol != null ? `${rvol.toFixed(2)}×` : '—'}
+                    </div>
+                    <div style={{ color: dt.muted }}>P/C</div>
+                    <div style={{ ...mono, color: dt.text, textAlign: 'right' }}>{pcr != null ? pcr.toFixed(2) : '—'}</div>
+                    {vwapDistPct != null && (
+                      <>
+                        <div style={{ color: dt.muted }}>VWAP dist</div>
+                        <div style={{ ...mono, color: dt.muted, textAlign: 'right' }}>{vwapDistPct >= 0 ? '+' : ''}{vwapDistPct.toFixed(2)}%</div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Entry points */}
+                  {pts.length > 0 && (
+                    <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {pts.slice(0, 4).map((p, i) => (
+                        <div key={i} style={{ fontSize: 10.5, lineHeight: 1.4, color: dt.text, background: isDark ? 'rgba(74,124,255,0.06)' : 'rgba(74,124,255,0.08)', borderRadius: 6, padding: '4px 8px' }}>
+                          <span style={{ ...mono, fontWeight: 700, color: p.verdict === 'NO_TRADE' ? dt.red : dt.accent }}>{p.label}</span>{' '}
+                          <span style={{ ...mono }}>${p.price.toFixed(2)}</span>
+                          {p.pending && <span style={{ color: dt.amber, marginLeft: 4 }}>PENDING</span>}
+                          {p.verdict === 'NO_TRADE' && <span style={{ color: dt.red, marginLeft: 4, fontWeight: 700 }}>NO TRADE</span>}
+                          {p.stop != null && p.verdict !== 'NO_TRADE' && <span style={{ color: dt.muted, marginLeft: 6 }}>stop ${p.stop.toFixed(2)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Link */}
+                  <div style={{ padding: '0 12px 8px' }}>
+                    <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
+                      Day Trade <ExternalLink size={12} />
+                    </a>
+                  </div>
+
+                  {/* Expandable chart */}
+                  {isExpanded && hasChart && (
+                    <div style={{ borderTop: `1px solid ${dt.border}`, background: isDark ? '#0c0e13' : '#F8F9FB', padding: '6px 8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        {(['1m', '5m', '15m', '1h'] as ChartInterval[]).map(iv => (
+                          <button key={iv} onClick={() => setChartIntervals(prev => ({ ...prev, [sym]: iv }))} style={{
+                            padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
+                            border: `1px solid ${(chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.border}`,
+                            background: (chartIntervals[sym] ?? '1m') === iv ? (isDark ? '#064e3b' : '#d1fae5') : 'transparent',
+                            color: (chartIntervals[sym] ?? '1m') === iv ? dt.green : dt.muted,
+                          }}>{iv}</button>
+                        ))}
+                      </div>
+                      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 4 }}>
+                        <DayTradeIntradayChart
+                          bars={resampleBars(chartBars!, chartIntervals[sym] ?? '1m')}
+                          orHigh={orHigh!}
+                          orLow={orLow!}
+                          orMinutes={orMinutesForInterval(15, chartIntervals[sym] ?? '1m')}
+                          sessionDate={String((tiles[sym]?.result as DayTradeScanResult | null)?.metrics?.session_date ?? '')}
+                          entryPoints={pts.length > 0 ? pts : undefined}
+                          dimEntries={false}
+                          isDark={isDark}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Desktop: table layout
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1480, tableLayout: 'fixed' }}>
@@ -518,13 +725,10 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
           </tr>
         </thead>
         <tbody>
-          {tickers.map(sym => {
-            const tile = tiles[sym]
-            const result = (tile?.result ?? null) as DayTradeScanResult | null
-            const unified = tile?.unified ?? null
-            const m = (result?.metrics ?? {}) as Record<string, unknown>
+          {rows.map(({ sym, loading, error, price, pct, chgAmt, up, chgColor, orHigh, orLow, vwap, vwapPos, vwapDistPct, pcr, rvol, pts, timeframeState, gatedVerdict, verdict, unified, chartBars, hasChart, setup15, confirm5, exec1 }) => {
+            const isExpanded = expandedSyms.has(sym)
 
-            if (!tile || (tile.loading && !result)) {
+            if (loading) {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
@@ -535,38 +739,14 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                 </tr>
               )
             }
-            if (tile.error && !result) {
+            if (error) {
               return (
                 <tr key={sym}>
                   <td style={{ ...td, ...mono, fontWeight: 700, color: dt.text }}>{sym}</td>
-                  <td style={{ ...td, color: dt.red }} colSpan={13}>{tile.error}</td>
+                  <td style={{ ...td, color: dt.red }} colSpan={13}>{tiles[sym]?.error}</td>
                 </tr>
               )
             }
-
-            const price  = dayMetricPrice(m, num(unified?.price))
-            const pct    = dayMetricChangePct(m, num(unified?.change_pct))
-            const chgAmt = price != null && pct != null ? price - price / (1 + pct / 100) : null
-            const up     = (pct ?? 0) >= 0
-            const chgColor = pct == null ? dt.muted : up ? dt.green : dt.red
-
-            const orHigh = num(m.or_high)
-            const orLow  = num(m.or_low)
-            const vwap   = num(m.vwap)
-            const vwapPos = String(m.vwap_position || '').toLowerCase()
-            const vwapDistPct = num(m.vwap_dist_pct)
-            const pcr    = num(m.put_call_ratio)
-            const rvol   = num(m.rvol)
-            const pts    = result ? buildEntryPoints(result, m) : []
-            const timeframeState = (result?.timeframe_state ?? (m.timeframe_state as DayTradeScanResult['timeframe_state'] | undefined) ?? null)
-            const gatedVerdict = String(timeframeState?.final_decision || result?.final_decision || '').toUpperCase()
-            const verdict = gatedVerdict || unified?.verdict || result?.verdict?.replace(' ', '_') || ''
-            const isExpanded = expandedSyms.has(sym)
-            const chartBars = parseChartBars(m.chart_bars)
-            const hasChart = !!(chartBars && chartBars.length > 0 && orHigh != null && orLow != null)
-            const setup15 = timeframeState?.setup_15m
-            const confirm5 = timeframeState?.confirmation_5m
-            const exec1 = timeframeState?.execution_1m
 
             return (
               <Fragment key={sym}>
@@ -648,8 +828,8 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                           bars={resampleBars(chartBars!, chartIntervals[sym] ?? '1m')}
                           orHigh={orHigh!}
                           orLow={orLow!}
-                          orMinutes={orMinutesForInterval((m.or_minutes as number | undefined) ?? 15, chartIntervals[sym] ?? '1m')}
-                          sessionDate={String(m.session_date ?? '')}
+                          orMinutes={orMinutesForInterval((timeframeState as any)?.or_minutes ?? 15, chartIntervals[sym] ?? '1m')}
+                          sessionDate={String((tiles[sym]?.result as DayTradeScanResult | null)?.metrics?.session_date ?? '')}
                           entryPoints={pts.length > 0 ? pts : undefined}
                           dimEntries={false}
                           isDark={isDark}
@@ -1518,7 +1698,7 @@ export default function DayTradeDashboardPage() {
   const tabAccent = activeTab === 'swing' ? dt.violet : dt.accent
 
   return (
-    <div style={{ minHeight: '100vh', background: isDark ? '#07090d' : '#F3F4F6', color: dt.text, padding: '14px 12px 36px' }}>
+    <div style={{ minHeight: '100vh', background: isDark ? '#07090d' : '#F3F4F6', color: dt.text, padding: '10px 8px 36px' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ maxWidth: 1440, margin: '0 auto' }}>
@@ -1559,7 +1739,7 @@ export default function DayTradeDashboardPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg, padding: 6, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14, border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg, padding: 6 }}>
           {([
             { id: 'table' as Tab, label: 'Intraday Table', icon: <Table2 size={14} />,  accent: dt.accent },
             { id: 'day'   as Tab, label: 'Intraday Charts', icon: <CandlestickChart size={14} />, accent: dt.accent },
