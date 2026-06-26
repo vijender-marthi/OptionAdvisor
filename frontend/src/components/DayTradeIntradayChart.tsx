@@ -175,6 +175,8 @@ export default function DayTradeIntradayChart({
   supportResistanceLevels,
   showScalpStudy = false,
   isDark = false,
+  expanded = false,
+  hideExpandControl = false,
 }: {
   bars: DayTradeChartBar[]
   orHigh: number
@@ -188,6 +190,8 @@ export default function DayTradeIntradayChart({
   supportResistanceLevels?: SupportResistanceLevel[]
   showScalpStudy?: boolean
   isDark?: boolean
+  expanded?: boolean
+  hideExpandControl?: boolean
 }) {
   const entryColors = isDark ? EC_DARK : EC_LIGHT
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -196,6 +200,12 @@ export default function DayTradeIntradayChart({
   const clipId = `daytrade-plot-clip-${uid}`
   // Set of entry indices that are hidden (empty = all visible)
   const [hidden, setHidden] = useState<Set<number>>(new Set())
+  const [expandedOpen, setExpandedOpen] = useState(false)
+  const [view, setView] = useState<{ start: number; end: number }>(() => ({ start: 0, end: Math.max(0, bars.length - 1) }))
+
+  useEffect(() => {
+    setView({ start: 0, end: Math.max(0, bars.length - 1) })
+  }, [bars])
 
   // Zone selection state — auto-selects 'entry' zone on first render
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
@@ -274,8 +284,11 @@ export default function DayTradeIntradayChart({
     if (n < 2) return null
 
     const times = bars.map(b => new Date(b.t).getTime())
-    const tMin = times[0]!
-    const tMax = times[n - 1]!
+    const viewStart = Math.max(0, Math.min(view.start, n - 2))
+    const viewEnd = Math.max(viewStart + 1, Math.min(view.end, n - 1))
+    const visibleBars = bars.slice(viewStart, viewEnd + 1)
+    const tMin = times[viewStart]!
+    const tMax = times[viewEnd]!
     const span = Math.max(1, tMax - tMin)
 
     const bandKeys = ['vwap_upper1','vwap_lower1','vwap_upper2','vwap_lower2'] as const
@@ -294,13 +307,13 @@ export default function DayTradeIntradayChart({
     }, [])
 
     let yMin = Math.min(
-      ...bars.map(b => b.l), orLow, ...bars.map(b => b.vwap),
-      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null)),
+      ...visibleBars.map(b => b.l), orLow, ...visibleBars.map(b => b.vwap),
+      ...bandKeys.flatMap(k => visibleBars.map(b => b[k]).filter((v): v is number => v != null)),
       ...srLevels.map(l => l.price)
     )
     let yMax = Math.max(
-      ...bars.map(b => b.h), orHigh, ...bars.map(b => b.vwap),
-      ...bandKeys.flatMap(k => bars.map(b => b[k]).filter((v): v is number => v != null)),
+      ...visibleBars.map(b => b.h), orHigh, ...visibleBars.map(b => b.vwap),
+      ...bandKeys.flatMap(k => visibleBars.map(b => b[k]).filter((v): v is number => v != null)),
       ...srLevels.map(l => l.price)
     )
     const padY = (yMax - yMin) * 0.06 || yMin * 0.002 || 0.01
@@ -312,12 +325,13 @@ export default function DayTradeIntradayChart({
     const volumeH = 72
     const scalpGap = showScalpStudy ? 12 : 0
     const scalpH = showScalpStudy ? 76 : 0
-    /** Wide enough for ~2px per bar minimum; parent can scroll horizontally. */
-    const innerW = Math.max(n * 2.2, cw - PAD.l - PAD.r)
+    /** Fill available space; zoom changes the visible time window instead of needing horizontal scroll. */
+    const visibleN = Math.max(2, viewEnd - viewStart + 1)
+    const innerW = Math.max(320, cw - PAD.l - PAD.r)
     const W = PAD.l + PAD.r + innerW
     const H = PAD.t + innerH + volumeGap + volumeH + scalpGap + scalpH + PAD.b
 
-    const slot = innerW / n
+    const slot = innerW / visibleN
     const bodyW = Math.max(1, Math.min(8, slot * 0.72))
 
     // Bars span the full plotting area with no right gap.
@@ -325,7 +339,7 @@ export default function DayTradeIntradayChart({
     const xAt = (tMs: number) => PAD.l + slot * 0.5 + ((tMs - tMin) / span) * plotW
     const yAt = (p: number) => PAD.t + ((yMax - p) / (yMax - yMin)) * innerH
     const volumeTop = PAD.t + innerH + volumeGap
-    const volumeMax = Math.max(1, ...bars.map(b => b.v || 0))
+    const volumeMax = Math.max(1, ...visibleBars.map(b => b.v || 0))
     const volumeYAt = (v: number) => volumeTop + volumeH - (Math.max(0, v) / volumeMax) * volumeH
     const scalpTop = volumeTop + volumeH + scalpGap
     const stochYAt = (v: number) => scalpTop + scalpH - (Math.max(0, Math.min(100, v)) / 100) * scalpH
@@ -344,7 +358,7 @@ export default function DayTradeIntradayChart({
     const TWO_HOUR = 2 * 60 * 60 * 1000
     const firstLabel = Math.ceil(tMin / TWO_HOUR) * TWO_HOUR
     const xTicks: { tMs: number; label: string }[] = []
-    for (let tm = firstLabel; tm <= tMin + span; tm += TWO_HOUR) {
+    for (let tm = firstLabel; tm <= tMax; tm += TWO_HOUR) {
       xTicks.push({ tMs: tm, label: fmtEtShort(new Date(tm).toISOString()) })
     }
 
@@ -352,8 +366,9 @@ export default function DayTradeIntradayChart({
       W, H, innerW, innerH, xAt, yAt, bodyW, slot,
       yMin, yMax, yTicks, orStartX, orEndX, tMin, span, xTicks, times,
       volumeTop, volumeH, volumeMax, volumeYAt, scalpTop, scalpH, stochYAt, srLevels,
+      viewStart, viewEnd, visibleN,
     }
-  }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels, showScalpStudy])
+  }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels, showScalpStudy, view])
 
   // Don't render until container width is known — avoids the wrong-width flash
   if (cw === 0) {
@@ -369,7 +384,8 @@ export default function DayTradeIntradayChart({
   }
 
   const { W, H, innerW, innerH, xAt, yAt, bodyW, slot, yMin, yMax, yTicks,
-          orStartX, orEndX, tMin, times, xTicks, volumeTop, volumeH, volumeYAt, scalpTop, scalpH, stochYAt, srLevels } = layout
+          orStartX, orEndX, tMin, times, xTicks, volumeTop, volumeH, volumeYAt, scalpTop, scalpH, stochYAt, srLevels,
+          viewStart, viewEnd, visibleN } = layout
   const orMid = (orHigh + orLow) / 2
   const latestBandBar = [...bars].reverse().find(b =>
     b.vwap_upper1 != null || b.vwap_lower1 != null || b.vwap_upper2 != null || b.vwap_lower2 != null
@@ -415,13 +431,63 @@ export default function DayTradeIntradayChart({
     })
   }
 
+  const resetZoom = () => setView({ start: 0, end: Math.max(0, bars.length - 1) })
+  const zoomBy = (factor: number, anchor = 0.5) => {
+    setView(prev => {
+      const n = bars.length
+      if (n < 3) return prev
+      const start = Math.max(0, Math.min(prev.start, n - 2))
+      const end = Math.max(start + 1, Math.min(prev.end, n - 1))
+      const current = end - start + 1
+      const next = Math.max(8, Math.min(n, Math.round(current * factor)))
+      const center = start + (current - 1) * Math.max(0, Math.min(1, anchor))
+      let ns = Math.round(center - (next - 1) * anchor)
+      ns = Math.max(0, Math.min(ns, n - next))
+      return { start: ns, end: ns + next - 1 }
+    })
+  }
+  const panBy = (deltaBars: number) => {
+    setView(prev => {
+      const n = bars.length
+      const width = prev.end - prev.start + 1
+      if (width >= n) return prev
+      const ns = Math.max(0, Math.min(prev.start + deltaBars, n - width))
+      return { start: ns, end: ns + width - 1 }
+    })
+  }
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (bars.length < 3) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const plotLeft = PAD.l
+    const plotWidth = Math.max(1, rect.width - PAD.l - PAD.r)
+    const anchor = Math.max(0, Math.min(1, (e.clientX - rect.left - plotLeft) / plotWidth))
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      panBy(Math.round((e.deltaX || e.deltaY) / 18))
+      return
+    }
+    zoomBy(e.deltaY < 0 ? 0.84 : 1.18, anchor)
+  }
+  const zoomLabel = visibleN >= bars.length ? 'Full' : `${visibleN}/${bars.length} bars`
+
   return (
     <div ref={wrapRef} className="day-trade-chart w-full min-w-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           Session chart (1m)
         </div>
-        <div className="text-[11px] text-gray-500">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 text-[11px] text-gray-500">
+          {!hideExpandControl && (
+            <button type="button" onClick={() => setExpandedOpen(true)} className="rounded-md border border-slate-200 px-2 py-1 font-semibold text-secondary hover:text-heading dark:border-white/[0.08]">
+              Expand
+            </button>
+          )}
+          <button type="button" onClick={() => zoomBy(0.8)} className="rounded-md border border-slate-200 px-2 py-1 font-mono font-bold text-secondary hover:text-heading dark:border-white/[0.08]">+</button>
+          <button type="button" onClick={() => zoomBy(1.25)} className="rounded-md border border-slate-200 px-2 py-1 font-mono font-bold text-secondary hover:text-heading dark:border-white/[0.08]">-</button>
+          <button type="button" onClick={resetZoom} className="rounded-md border border-slate-200 px-2 py-1 font-semibold text-secondary hover:text-heading dark:border-white/[0.08]">Reset</button>
+          <span className="font-mono text-[10px] text-tertiary">{zoomLabel}</span>
+        </div>
+        <div className="w-full text-[11px] text-gray-500 sm:w-auto">
           {sessionDate ? `${sessionDate} PT` : 'Last RTH'}{' · '}
           <span className="text-semantic-accent">VWAP</span>
           {' · '}
@@ -568,7 +634,12 @@ export default function DayTradeIntradayChart({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-800/80 bg-black/20">
+      <div
+        className="overflow-hidden rounded-xl border border-gray-800/80 bg-black/20"
+        onWheel={handleWheel}
+        style={{ touchAction: 'none' }}
+        title="Trackpad: scroll to zoom, horizontal swipe or Shift+scroll to pan"
+      >
         <svg
           width={W}
           height={H}
@@ -1233,6 +1304,43 @@ export default function DayTradeIntradayChart({
             </tbody>
           </table>
           <div className="mt-1 text-[10px] text-gray-600">Click an entry row or chip above to toggle its line on the chart.</div>
+        </div>
+      )}
+
+      {expandedOpen && !expanded && (
+        <div className="fixed inset-0 z-[80] bg-black/75 p-3 sm:p-6" role="dialog" aria-modal="true">
+          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
+              <div>
+                <div className="text-sm font-bold text-white">Expanded Session Chart</div>
+                <div className="text-[11px] text-slate-400">Trackpad: scroll to zoom, horizontal swipe or Shift+scroll to pan.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpandedOpen(false)}
+                className="rounded-lg border border-white/[0.12] px-3 py-1.5 text-sm font-semibold text-slate-200 hover:bg-white/[0.08]"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4">
+              <DayTradeIntradayChart
+                bars={bars}
+                orHigh={orHigh}
+                orLow={orLow}
+                orMinutes={orMinutes}
+                sessionDate={sessionDate}
+                entryPoints={entryPoints}
+                dimEntries={dimEntries}
+                zones={zones}
+                supportResistanceLevels={supportResistanceLevels}
+                showScalpStudy={showScalpStudy}
+                isDark={true}
+                expanded
+                hideExpandControl
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

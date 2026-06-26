@@ -86,7 +86,10 @@ from storage import (
     get_active_trade,
     exit_active_trade,
     get_ticker_state_last,
+    get_eod_journal_snapshot,
     upsert_ticker_state_last,
+    list_eod_journal_dates,
+    upsert_eod_journal_snapshot,
 )
 from score_normalizer import normalize_day_score, normalize_regular_score, normalize_swing_score
 
@@ -4820,6 +4823,66 @@ class JournalUpdateRequest(_BM):
     engine_signal: Optional[str] = None
     engine_state: Optional[int] = None
     legs: Optional[list[dict]] = None
+
+
+class EodJournalSnapshotRequest(_BM):
+    mode: str = "swing"
+    date: str
+    ticker: str
+    snapshot: dict[str, Any] = {}
+    notes: dict[str, Any] = {}
+    checks: dict[str, Any] = {}
+
+
+@app.post("/api/eod-journal/{email}/snapshot")
+def eod_journal_save_snapshot(
+    email: str,
+    req: EodJournalSnapshotRequest,
+    auth_email: str = Depends(require_access_email),
+):
+    """Persist one EOD journal snapshot for user/date/ticker."""
+    ensure_same_user(auth_email, email)
+    try:
+        row = upsert_eod_journal_snapshot(
+            email,
+            req.mode,
+            req.date,
+            req.ticker,
+            req.snapshot,
+            req.notes,
+            req.checks,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "entry": row}
+
+
+@app.get("/api/eod-journal/{email}/dates")
+def eod_journal_dates(
+    email: str,
+    mode: str = "swing",
+    limit: int = Query(60, ge=1, le=365),
+    auth_email: str = Depends(require_access_email),
+):
+    """List saved EOD journal dates for the current user and mode."""
+    ensure_same_user(auth_email, email)
+    return {"dates": list_eod_journal_dates(email, mode, limit)}
+
+
+@app.get("/api/eod-journal/{email}/snapshot/{mode}/{date_key}/{ticker}")
+def eod_journal_get_snapshot(
+    email: str,
+    mode: str,
+    date_key: str,
+    ticker: str,
+    auth_email: str = Depends(require_access_email),
+):
+    """Return a saved EOD journal snapshot."""
+    ensure_same_user(auth_email, email)
+    row = get_eod_journal_snapshot(email, mode, date_key, ticker)
+    if not row:
+        raise HTTPException(status_code=404, detail="EOD journal snapshot not found")
+    return row
 
 
 def _compute_mtm_pnl(legs: list[dict], S: float, T_years: float) -> float:

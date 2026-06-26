@@ -788,6 +788,56 @@ export const deleteJournalEntry = async (email: string, id: string): Promise<voi
   await api.delete(`/journal/${encodeURIComponent(email)}/${id}`)
 }
 
+// ─── EOD Journal Snapshots ─────────────────────────────────────────────────
+
+export interface EodJournalSnapshotPayload {
+  mode: 'day' | 'swing'
+  date: string
+  ticker: string
+  snapshot: Record<string, unknown>
+  notes?: Record<string, unknown>
+  checks?: Record<string, unknown>
+}
+
+export interface EodJournalSnapshotResponse {
+  mode: 'day' | 'swing'
+  date: string
+  ticker: string
+  snapshot: Record<string, unknown>
+  notes: Record<string, unknown>
+  checks: Record<string, unknown>
+  saved_at_ms: number
+}
+
+export const saveEodJournalSnapshot = async (
+  email: string,
+  payload: EodJournalSnapshotPayload,
+): Promise<{ ok: boolean; entry: EodJournalSnapshotResponse }> => {
+  const { data } = await api.post(`/eod-journal/${encodeURIComponent(email)}/snapshot`, payload)
+  return data
+}
+
+export const getEodJournalDates = async (
+  email: string,
+  mode: 'day' | 'swing',
+  limit = 60,
+): Promise<{ dates: string[] }> => {
+  const { data } = await api.get(`/eod-journal/${encodeURIComponent(email)}/dates`, { params: { mode, limit } })
+  return data
+}
+
+export const getEodJournalSnapshot = async (
+  email: string,
+  mode: 'day' | 'swing',
+  date: string,
+  ticker: string,
+): Promise<EodJournalSnapshotResponse> => {
+  const { data } = await api.get(
+    `/eod-journal/${encodeURIComponent(email)}/snapshot/${mode}/${encodeURIComponent(date)}/${encodeURIComponent(ticker)}`,
+  )
+  return data
+}
+
 // ─── Unified Analysis v2 ─────────────────────────────────────────────────────
 
 export interface UnifiedAnalysis {

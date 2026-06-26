@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BarChart2, Bell, ChevronDown, ChevronLeft, ChevronRight, Flame, Gauge, Loader2, RefreshCw, Search, ShieldAlert, TrendingUp, X, Zap, PlusCircle, Activity, Check } from 'lucide-react'
 import PriceChart from '../components/PriceChart'
 import SwingTradeMetricCharts from '../components/SwingTradeMetricCharts'
 import MacdHistogramChart from '../components/MacdHistogramChart'
@@ -474,7 +474,14 @@ export default function SwingTradePage() {
   }, [result, addManualPosition])
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchCollapsed, setSearchCollapsed] = useState(() => {
+    try { return localStorage.getItem('swing_trade_search_collapsed') === '1' } catch { return false }
+  })
   const [activeTab, setActiveTab] = useState<'overview' | 'strategies'>('overview')
+
+  useEffect(() => {
+    try { localStorage.setItem('swing_trade_search_collapsed', searchCollapsed ? '1' : '0') } catch { /* quota */ }
+  }, [searchCollapsed])
 
   return (
     <div className="swing-trade-page min-h-screen p-4 md:p-6" style={{ background: isDark ? '#0A0C10' : '#F3F4F6', color: st.text }}>
@@ -489,8 +496,20 @@ export default function SwingTradePage() {
           {searchOpen ? 'Hide search' : 'Show search'}
         </button>
 
+        {searchCollapsed && (
+          <button
+            type="button"
+            onClick={() => setSearchCollapsed(false)}
+            className="hidden lg:flex lg:sticky lg:top-6 h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 text-secondary hover:text-heading hover:border-violet-500/50 transition-colors"
+            title="Expand search"
+            aria-label="Expand search panel"
+          >
+            <ChevronRight size={18} />
+          </button>
+        )}
+
         {/* Left: Search panel */}
-        <div className={`${searchOpen ? 'block' : 'hidden'} lg:block w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
+        <div className={`${searchOpen ? 'block' : 'hidden'} ${searchCollapsed ? 'lg:hidden' : 'lg:block'} w-full lg:w-80 shrink-0 lg:sticky lg:top-6 space-y-4`}>
           {/* Header moved to left side */}
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -513,6 +532,16 @@ export default function SwingTradePage() {
               <p className="mt-1 text-[11px] leading-snug" style={{ color: st.muted }}>Daily OHLCV scanner — MA20/MA50, RSI, MACD, momentum, volume trend, and SPY/VIX context for 2–5 day swing setups.</p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSearchCollapsed(true)}
+                className="hidden lg:inline-flex rounded-full px-2 py-1 text-[10px] hover:border-violet-500/50"
+                style={{ border: `1px solid ${st.border}`, color: st.muted, background: 'transparent' }}
+                title="Collapse search"
+                aria-label="Collapse search panel"
+              >
+                <ChevronLeft size={12} />
+              </button>
               <button
                 type="button"
                 onClick={() => void runScan()}

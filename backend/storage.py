@@ -467,6 +467,25 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS eod_journal_snapshots (
+                email TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                session_date TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL DEFAULT '{}',
+                notes_json TEXT NOT NULL DEFAULT '{}',
+                checks_json TEXT NOT NULL DEFAULT '{}',
+                saved_at_ms INTEGER NOT NULL,
+                PRIMARY KEY (email, mode, session_date, ticker)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_eod_journal_email_mode_date "
+            "ON eod_journal_snapshots(email, mode, session_date DESC)"
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS day_trade_watchlist_last (
                 email TEXT NOT NULL,
                 ticker TEXT NOT NULL,
@@ -545,6 +564,118 @@ def init_db() -> None:
         # user_alerts: kept for backwards compatibility; sync_user_alerts_to_alert_center() migrates to alert_center_items
         # trade_ideas: replaced by trade_journal with trade_type column
         conn.execute("DROP TABLE IF EXISTS trade_ideas")
+
+
+def upsert_eod_journal_snapshot(
+    email: str,
+    mode: str,
+    session_date: str,
+    ticker: str,
+    snapshot: dict[str, Any],
+    notes: dict[str, Any] | None = None,
+    checks: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized = normalize_email(email)
+    m = mode.lower().strip()
+    if m not in {"day", "swing"}:
+        m = "swing"
+    d = session_date.strip()[:10]
+    t = ticker.upper().strip()
+    if not d or not t:
+        raise ValueError("session_date and ticker are required")
+    saved_at_ms = int(time.time() * 1000)
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO eod_journal_snapshots (
+                email, mode, session_date, ticker,
+                snapshot_json, notes_json, checks_json, saved_at_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email, mode, session_date, ticker) DO UPDATE SET
+                snapshot_json = excluded.snapshot_json,
+                notes_json = excluded.notes_json,
+                checks_json = excluded.checks_json,
+                saved_at_ms = excluded.saved_at_ms
+            """,
+            (
+                normalized,
+                m,
+                d,
+                t,
+                json.dumps(snapshot or {}),
+                json.dumps(notes or {}),
+                json.dumps(checks or {}),
+                saved_at_ms,
+            ),
+        )
+    return {
+        "email": normalized,
+        "mode": m,
+        "date": d,
+        "ticker": t,
+        "snapshot": snapshot or {},
+        "notes": notes or {},
+        "checks": checks or {},
+        "saved_at_ms": saved_at_ms,
+    }
+
+
+def list_eod_journal_dates(email: str, mode: str, limit: int = 60) -> list[str]:
+    normalized = normalize_email(email)
+    m = mode.lower().strip()
+    lim = max(1, min(int(limit or 60), 365))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT session_date
+            FROM eod_journal_snapshots
+            WHERE email = ? AND mode = ?
+            GROUP BY session_date
+            ORDER BY session_date DESC
+            LIMIT ?
+            """,
+            (normalized, m, lim),
+        ).fetchall()
+    return [str(row["session_date"]) for row in rows]
+
+
+def get_eod_journal_snapshot(email: str, mode: str, session_date: str, ticker: str) -> dict[str, Any] | None:
+    normalized = normalize_email(email)
+    m = mode.lower().strip()
+    d = session_date.strip()[:10]
+    t = ticker.upper().strip()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM eod_journal_snapshots
+            WHERE email = ? AND mode = ? AND session_date = ? AND ticker = ?
+            """,
+            (normalized, m, d, t),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        snapshot = json.loads(row["snapshot_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        snapshot = {}
+    try:
+        notes = json.loads(row["notes_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        notes = {}
+    try:
+        checks = json.loads(row["checks_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        checks = {}
+    return {
+        "email": normalized,
+        "mode": row["mode"],
+        "date": row["session_date"],
+        "ticker": row["ticker"],
+        "snapshot": snapshot,
+        "notes": notes,
+        "checks": checks,
+        "saved_at_ms": int(row["saved_at_ms"] or 0),
+    }
 
 
 def upsert_iv_atm_snapshot(ticker: str, session_date: str, iv_pct: float) -> None:

@@ -6,7 +6,13 @@ import {
   fetchMarketPosition, fetchStockTargets,
   type MyTickerEntry, type SearchTickerResult,
 } from '../api/commandCenter'
-import { analyzeSwingTrade, type SwingTradeScanResult } from '../api/client'
+import {
+  analyzeSwingTrade,
+  getEodJournalDates,
+  getEodJournalSnapshot,
+  saveEodJournalSnapshot,
+  type SwingTradeScanResult,
+} from '../api/client'
 import { fetchSignalFeed } from '../api/commandCenter'
 import {
   buildFibData, detectFibMaConfluence, loadSwingToolSettings,

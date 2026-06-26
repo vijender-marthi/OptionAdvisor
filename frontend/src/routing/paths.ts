@@ -83,6 +83,8 @@ export function locationToPage(pathname: string): Page {
       return 'journal-tool'
     case 'track-mode':
       return 'track-mode'
+    case 'investment-thesis':
+      return 'investment-thesis'
     default:
       return 'trade-command-center'
   }
@@ -164,6 +166,8 @@ export function pageToLocation(p: Page): string {
       return '/journal-tool'
     case 'track-mode':
       return '/track-mode'
+    case 'investment-thesis':
+      return '/investment-thesis'
     default:
       return '/trade-command-center'
   }

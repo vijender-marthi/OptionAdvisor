@@ -41,6 +41,7 @@ const OptionChainPage        = lazy(() => import('./pages/OptionChainPage'))
 const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
 const TrackModePage          = lazy(() => import('./pages/TrackModePage'))
+const InvestmentThesisPage   = lazy(() => import('./pages/InvestmentThesisPage'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -186,6 +187,7 @@ function ShellRoutes() {
               <Route path="/eod-journal" element={<EODJournalPage />} />
               <Route path="/journal-tool" element={<JournalToolPage />} />
               <Route path="/track-mode" element={<TrackModePage />} />
+              <Route path="/investment-thesis" element={<InvestmentThesisPage />} />
             </Route>
           </Route>
         </Route>
@@ -214,6 +216,7 @@ const PAGE_ICONS: Record<string, string> = {
   'backtest': '🧪',
   'settings': '⚙️',
   'help': '❓',
+  'investment-thesis': '⭐',
 }
 
 function DynamicFavicon() {

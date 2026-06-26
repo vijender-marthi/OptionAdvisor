@@ -227,6 +227,7 @@ export type Page =
   | 'eod-journal'
   | 'journal-tool'
   | 'track-mode'
+  | 'investment-thesis'
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
 export type TradeIdeaEngine = 'DAY' | 'SWING'

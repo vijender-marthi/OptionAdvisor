@@ -991,6 +991,147 @@ function deriveActionAlert(
   return { type: 'HOLD', label: 'HOLD', urgency: 'green', reason: holdReason }
 }
 
+function SimplifiedPositionDetails({
+  pos,
+  actionAlert,
+  aiAnalysis,
+  displayPnl,
+  sourceKind,
+}: {
+  pos: PortfolioPosition
+  actionAlert: ActionAlert
+  aiAnalysis?: AiPositionAnalysis | null
+  displayPnl?: { pnl: number; pnl_pct: number } | null
+  sourceKind: 'day' | 'swing' | 'regular'
+}) {
+  const exitRules = deriveExitRules(pos).slice(0, 3)
+  const isClosed = pos.status === 'closed'
+  const outcome = displayPnl?.pnl != null
+    ? displayPnl.pnl > 0 ? 'Winner' : displayPnl.pnl < 0 ? 'Loser' : 'Breakeven'
+    : 'Recorded'
+  const outcomeCls = displayPnl?.pnl != null
+    ? displayPnl.pnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted'
+    : 'text-secondary'
+  const note = isClosed ? (pos.close_notes || pos.notes) : pos.notes
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {isClosed ? 'Trade Summary' : 'Position Snapshot'}
+            </div>
+            {sourceStyleBadge(sourceKind)}
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+            <div>
+              <div className="text-muted">Opened</div>
+              <div className="font-semibold text-secondary">{pos.addedAt ? new Date(pos.addedAt).toLocaleDateString() : '—'}</div>
+            </div>
+            <div>
+              <div className="text-muted">{isClosed ? 'Closed' : 'Expiry'}</div>
+              <div className="font-semibold text-secondary">{isClosed ? (pos.exitDate ? new Date(pos.exitDate).toLocaleDateString() : '—') : (pos.expiry || '—')}</div>
+            </div>
+            <div>
+              <div className="text-muted">Strategy</div>
+              <div className="font-semibold text-secondary">{stratelabel(pos.strategy)}</div>
+            </div>
+            <div>
+              <div className="text-muted">Size</div>
+              <div className="font-semibold text-secondary">{pos.contracts} {pos.strategy === 'Stock' ? 'shares' : 'contracts'}</div>
+            </div>
+            <div>
+              <div className="text-muted">Entry Stock</div>
+              <div className="font-mono font-semibold text-secondary">{fmtUsd(pos.entryPrice)}</div>
+            </div>
+            <div>
+              <div className="text-muted">{isClosed ? 'Exit Price' : 'DTE'}</div>
+              <div className="font-mono font-semibold text-secondary">{isClosed ? fmtUsd(pos.exit_price) : (safeDte(pos.dte, 0) > 0 ? `${safeDte(pos.dte, 99)}` : '—')}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            {isClosed ? 'Exit Record' : 'Action Plan'}
+          </div>
+          {isClosed ? (
+            <div className="space-y-2 text-[11px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted">Outcome</span>
+                <span className={`font-bold ${outcomeCls}`}>{outcome}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted">Realized P&L</span>
+                <span className={`font-mono font-bold ${outcomeCls}`}>{displayPnl ? fmtUsd(displayPnl.pnl) : fmtUsd(pos.realized_pnl)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted">Return</span>
+                <span className={`font-mono font-bold ${outcomeCls}`}>{displayPnl ? fmtPct(displayPnl.pnl_pct) : fmtPct(pos.realized_pnl_percent ?? pos.pnlPct)}</span>
+              </div>
+              <div className="rounded-md bg-slate-50 dark:bg-slate-900/60 px-2 py-1.5">
+                <div className="text-muted">Reason</div>
+                <div className="font-semibold text-secondary">{pos.exit_reason || '—'}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="rounded-md border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-slate-900/60 px-2.5 py-2 text-xs text-secondary">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">{actionAlert.label}</span>
+                  <span className="font-semibold text-primary">Next action</span>
+                </div>
+                <p className="leading-snug">{actionAlert.reason}</p>
+              </div>
+              {exitRules.map((rule, i) => (
+                <div key={i} className="rounded-md bg-slate-50 dark:bg-slate-900/60 px-2.5 py-1.5 text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-secondary">{rule.trigger}</span>
+                    <span className="font-mono font-bold text-violet-500 dark:text-violet-300">{rule.price == null ? 'Time' : fmtUsd(rule.price)}</span>
+                  </div>
+                  <div className="mt-0.5 text-muted">{rule.action}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {pos.legs && pos.legs.length > 0 && (
+        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">Option Legs</div>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {pos.legs.map((leg, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2 rounded-md bg-slate-50 dark:bg-slate-900/60 px-2.5 py-1.5 font-mono text-[11px] text-secondary">
+                <span className={`font-bold ${leg.action === 'BUY' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{leg.action}</span>
+                <span>{leg.option_type}</span>
+                <span>${leg.strike.toFixed(1)}</span>
+                <span className="text-muted">{leg.expiry}</span>
+                {leg.mid_price > 0 && <span className="text-muted">@ ${leg.mid_price.toFixed(2)}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isClosed && aiAnalysis && (
+        <div className="rounded-lg border border-violet-400/25 bg-violet-50 dark:bg-violet-500/10 p-3 text-xs text-violet-800 dark:text-violet-100">
+          <div className="mb-1 flex items-center gap-1.5 font-bold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+            <BrainCircuit size={13} /> Coach
+          </div>
+          <p className="leading-snug">{aiAnalysis.ai_summary}</p>
+          {aiAnalysis.next_best_action && (
+            <p className="mt-1.5 leading-snug"><span className="font-bold">Next:</span> {aiAnalysis.next_best_action}</p>
+          )}
+        </div>
+      )}
+
+      {note && <p className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-sm italic text-secondary">{note}</p>}
+    </div>
+  )
+}
+
 function TradingPositionCard({
   pos,
   expanded,
@@ -1224,7 +1365,16 @@ function TradingPositionCard({
       {/* ── Expanded details ── */}
       {expanded && (
         <div className="border-t border-slate-100 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-800/40 px-3 py-3 space-y-3 rounded-b-xl">
+          <SimplifiedPositionDetails
+            pos={pos}
+            actionAlert={actionAlert}
+            aiAnalysis={aiAnalysis}
+            displayPnl={displayPnl}
+            sourceKind={sourceKind}
+          />
 
+          {Boolean(0) && pnlData && aiAnalysis && displayPnl && pos.exitDate && aiAnalysis.value_capture_pct != null && (
+            <>
           {/* ── SECTION 1: Premium Tracker (always visible when expanded) ── */}
           {pos.status === 'open' && pnlData?.entry_premium_per_share != null && pnlData?.current_mark_per_share != null && (() => {
             const entry  = pnlData.entry_premium_per_share!
@@ -1620,6 +1770,8 @@ function TradingPositionCard({
               </div>
             )}
           </div>
+            </>
+          )}
 
         </div>
       )}
@@ -1981,7 +2133,7 @@ export default function PositionsCenter() {
         </div>
       </header>
 
-      {tab !== 'dashboard' && (
+      {tab === 'all' && (
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         {/* 1. Contract Results */}
         <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">

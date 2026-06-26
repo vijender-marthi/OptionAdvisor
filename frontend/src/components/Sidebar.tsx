@@ -4,7 +4,7 @@ import {
   TrendingUp, Briefcase, LogOut, ChevronLeft, ChevronRight,
   User, FlaskConical, Activity, Bell, Settings, SatelliteDish,
   Moon, Sun, Menu, BookOpen, Zap, LayoutDashboard, Search, Atom,
-  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2, NotebookPen, Radio,
+  HelpCircle, ListTodo, Eye, Bot, Monitor, Wallet, Command, Gauge, Layers, BarChart2, ScanLine, Wrench, Link2, NotebookPen, Radio, Star,
 } from 'lucide-react'
 import type { Page, UserRole } from '../types'
 import { useApp } from '../contexts/AppContext'
@@ -170,6 +170,7 @@ export default function Sidebar() {
       label: 'Portfolio',
       items: [
         { id: 'positions', label: 'Positions Center', icon: <Briefcase size={18} />, badge: openPositions || undefined },
+        { id: 'investment-thesis', label: 'Investment Thesis', icon: <Star size={18} /> },
         { id: 'track-mode', label: 'Track Mode', icon: <Radio size={18} /> },
         { id: 'alert-center', label: 'Alert Center', icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
         { id: 'tools', label: 'Tools', icon: <Wrench size={18} /> },
@@ -218,6 +219,7 @@ export default function Sidebar() {
     { id: 'trade-signals',  label: 'Trade Signals',  icon: <BarChart2 size={18} /> },
     // Portfolio
     { id: 'positions',      label: 'Positions',      icon: <Briefcase size={18} /> },
+    { id: 'investment-thesis', label: 'Investment Thesis', icon: <Star size={18} /> },
     { id: 'track-mode',     label: 'Track Mode',     icon: <Radio size={18} /> },
     { id: 'alert-center',   label: 'Alert Center',   icon: <Bell size={18} />, badge: unreadAlertCount || undefined },
     // Review
