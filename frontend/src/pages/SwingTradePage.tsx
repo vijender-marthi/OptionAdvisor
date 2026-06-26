@@ -249,11 +249,11 @@ export default function SwingTradePage() {
     if (didMountRef.current) return
     didMountRef.current = true
     const urlT = searchParams.get('ticker')?.trim().toUpperCase()
-    const sym = urlT && urlT.length <= 12 ? urlT : ticker.trim().toUpperCase() || 'SPY'
-    if (sym !== ticker.trim().toUpperCase()) {
+    const sym = urlT && urlT.length <= 12 ? urlT : ticker.trim().toUpperCase()
+    if (sym && sym !== ticker.trim().toUpperCase()) {
       setUi(cur => ({ ...cur, ticker: sym }))
     }
-    runScan(sym)
+    if (sym) runScan(sym)
   }, [ticker, result, runScan, setUi])
 
   useEffect(() => {
