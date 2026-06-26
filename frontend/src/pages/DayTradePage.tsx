@@ -481,7 +481,7 @@ export default function DayTradePage() {
     }
   }, [setUi]) // stable — no ticker dependency
 
-  // Reload on mount: use URL ticker, or default to SPY if none
+  // Reload on mount: use URL ticker if present; otherwise wait for user input
   const didMountRef = useRef(false)
   const runScanRef = useRef(runScan)
   useEffect(() => { runScanRef.current = runScan }, [runScan])
@@ -489,11 +489,11 @@ export default function DayTradePage() {
     if (didMountRef.current) return
     didMountRef.current = true
     const urlT = searchParams.get('ticker')?.trim().toUpperCase()
-    const sym = urlT && urlT.length <= 12 ? urlT : ticker.trim().toUpperCase() || 'SPY'
-    if (sym !== ticker.trim().toUpperCase()) {
+    const sym = urlT && urlT.length <= 12 ? urlT : ticker.trim().toUpperCase()
+    if (sym && sym !== ticker.trim().toUpperCase()) {
       setUi(cur => ({ ...cur, ticker: sym }))
     }
-    runScan(sym)
+    if (sym) runScan(sym)
   }, []) // eslint-disable-line
 
   // Re-scan when URL ticker changes (navigation from TCC, or another tab/browser pushes a new URL)

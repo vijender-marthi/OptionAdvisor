@@ -464,8 +464,8 @@ export interface TrackModeListResponse {
 }
 
 export async function fetchTrackMode(): Promise<TrackModeListResponse> {
-  const { data } = await api.get<ApiEnvelope<TrackModeListResponse>>('/track-mode')
-  return data.data ?? { tracked: [], count: 0 }
+  const { data } = await api.get<TrackModeListResponse>('/track-mode')
+  return { tracked: data.tracked ?? [], count: data.count ?? 0 }
 }
 
 export async function addTrackModeTicker(ticker: string, notes = ''): Promise<{ ok: boolean }> {
