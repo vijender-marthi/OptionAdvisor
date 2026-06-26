@@ -368,6 +368,35 @@ export interface DayTradeScanResult {
       message: string
       condition: string
     }>
+    orh_breakout_lifecycle?: {
+      state?: string
+      signal?: string | null
+      signal_label?: string | null
+      action?: string
+      status_message?: string
+      reason?: string
+      invalidates?: string
+      stop_level?: number | null
+      t1?: number | null
+      t2?: number | null
+      risk_reward?: number | null
+      safe?: boolean
+      why_safe_or_unsafe?: string
+      candles_since_failure?: number | null
+      cooldown_active?: boolean
+      confirmed_at?: string | null
+    }
+    signal_explanation?: {
+      signal?: string | null
+      label?: string | null
+      why_triggered?: string
+      why_safe_or_unsafe?: string
+      invalidates?: string
+      stop_level?: number | null
+      target_1?: number | null
+      target_2?: number | null
+      risk_reward?: number | null
+    }
     exit_rules?: Array<{ trigger: string; price: number; action: string; note: string }>
   }
   /** Lightweight options execution context — warning-only, not a strategy builder. */

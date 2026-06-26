@@ -1677,18 +1677,19 @@ export default function DayTradePage() {
           verdict?: string,
           exitPrice?: number,
           exitPrice2?: number,
+          label?: string,
         ) => {
           if (!price || !isFinite(price) || price <= 0) return
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
+          pageEntryPoints.push({ label: label ?? `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
         }
 
-        // E1 — AI coach entry gate (confluence zone trigger)
+        // E1 — Momentum Breakout
         const eg1 = ac?.entry_gate as Record<string, unknown> | undefined
         const eg1Verdict  = eg1?.verdict as string | undefined
         const eg1IsNT     = eg1Verdict === 'NO_TRADE'
         const eg1Trigger  = eg1IsNT
           ? `⚠ EXTENDED — ${(eg1?.extended_reason as string) || 'entry past session T1'}`
-          : ((eg1?.trigger_condition as string) ?? 'Gate trigger')
+          : `Momentum Breakout — ${(eg1?.trigger_condition as string) ?? 'gate trigger'}`
         addEntry(
           eg1?.trigger_price as number | undefined,
           eg1Trigger,
@@ -1698,9 +1699,10 @@ export default function DayTradePage() {
           eg1Verdict,
           eg1IsNT ? undefined : (eg1?.target as number | undefined),
           eg1IsNT ? undefined : (eg1?.target_2 as number | undefined),
+          'E1',
         )
 
-        // E2 — AI coach trade (current price analysis)
+        // AI coach trade (current price analysis) — no generic E-number; ORH owns E2/E2R.
         const tr = ac?.trade as Record<string, unknown> | undefined
         const trVerdict = tr?.verdict as string | undefined
         const trIsNT    = trVerdict === 'NO_TRADE'
@@ -1717,38 +1719,47 @@ export default function DayTradePage() {
           trVerdict,
           trIsNT ? undefined : (tr?.target as number | undefined),
           trIsNT ? undefined : (tr?.target_2 as number | undefined),
+          'AI',
         )
 
-        // E3 — OR breakout level
+        // E2/E2R — ORH breakout lifecycle
         const orEntryPx  = (eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number | undefined
         const orRr       = ac?.or_breakout_rr as Record<string, unknown> | undefined
         const orVerdict  = orRr?.verdict as string | undefined
         const orIsNT     = orVerdict === 'NO_TRADE'
+        const orhLife = (m.orh_breakout_lifecycle ?? eg?.orh_breakout_lifecycle) as Record<string, unknown> | undefined
+        const orhSignal = typeof orhLife?.signal === 'string' ? orhLife.signal : undefined
+        const orhStatus = typeof orhLife?.status_message === 'string' ? orhLife.status_message : undefined
+        const orLabel = !isShort && orhSignal === 'E2R' ? 'E2R' : 'E2'
+        const orName = !isShort && orhSignal === 'E2R'
+          ? 'ORH Re-breakout'
+          : isShort ? 'ORL Breakdown' : 'ORH Breakout'
         // Compute a tight OR breakout stop: just below ORH (long) or above ORL (short) — NOT the far side
         const orBreakoutStop = orEntryPx
           ? (isShort ? orEntryPx * 1.003 : orEntryPx * 0.997)
           : (isShort ? orHigh : orLow)
         addEntry(
           orEntryPx,
-          isShort ? 'OR low breakout' : 'OR high breakout',
+          orhStatus ? `${orName} — ${orhStatus}` : orName,
           orIsNT ? undefined : (orRr?.stop as number | undefined) ?? orBreakoutStop,
           orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
-          false,
+          !isShort && !orhSignal,
           orVerdict,
           orIsNT ? undefined : (orRr?.target as number | undefined),
           orIsNT ? undefined : (orRr?.target_2 as number | undefined),
+          orLabel,
         )
 
-        // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
+        // E3 — Pullback Reset (active if detected); E4 — VWAP Bounce/Re-test.
         const pb = ac?.pullback_entry
         if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
           const pbConf     = pb.confidence
           const pbPat      = (pb.reclaim_pattern ?? 'RECLAIM').replace(/_/g, ' ')
           const pbColor    = pbConf === 'HIGH' ? '#f59e0b' : pbConf === 'MEDIUM_HIGH' ? '#fb923c' : '#94a3b8'
           const pbSizeNote = pbConf === 'HIGH' ? '' : pbConf === 'MEDIUM_HIGH' ? ' · 75% size' : ' · 50% size'
-          const pbTrigger  = `⚡ Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
+          const pbTrigger  = `Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
           pageEntryPoints.push({
-            label:       `E${pageEntryPoints.length + 1}`,
+            label:       'E3',
             price:       pb.entry_price,
             trigger:     pbTrigger,
             stop:        pb.stop,
@@ -1769,13 +1780,14 @@ export default function DayTradePage() {
           const vwapRetestStop = vwapPrice ? (isShort ? vwapPrice * 1.003 : vwapPrice * 0.997) : stopFallback
           addEntry(
             vwapPrice,
-            'VWAP re-test',
+            isShort ? 'VWAP Rejection' : 'VWAP Bounce',
             (vRr?.stop as number | undefined) ?? vwapRetestStop,
             vRr?.risk_reward as number | undefined,
             true,
             vVerdict,
           vRr?.target as number | undefined,
           vRr?.target_2 as number | undefined,
+          'E4',
         )
         }
 

@@ -416,6 +416,290 @@ def build_timeframe_state(
     }
 
 
+def _build_orh_breakout_lifecycle(
+    session: pd.DataFrame,
+    *,
+    or_high: float,
+    or_low: float,
+    vwap_ser: pd.Series,
+    avg_vol: float,
+    bias: Optional[str],
+    rvol: Optional[float],
+    vwap_upper1: float,
+    vwap_upper2: float,
+    session_minutes_elapsed: int,
+    late_trade_mode: bool = False,
+) -> dict[str, Any]:
+    """
+    Deterministic long-side ORH breakout lifecycle.
+
+    This is intentionally state-derived from completed 1m bars instead of a
+    mutable process state so API polling remains idempotent. It models:
+    first ORH touch -> close confirmation -> E2 -> failure/reset -> E2R.
+    """
+    base = {
+        "state": "IDLE",
+        "signal": None,
+        "signal_label": None,
+        "action": "NO_TRADE",
+        "status_message": "Opening range not complete.",
+        "reason": "Opening range not complete.",
+        "invalidates": f"Close back below ORH {_fmt_level(or_high)} or loss of VWAP.",
+        "stop_level": round(or_low, 4) if or_low else None,
+        "t1": None,
+        "t2": None,
+        "risk_reward": None,
+        "safe": False,
+        "why_safe_or_unsafe": "Waiting for opening range structure.",
+        "candles_since_failure": None,
+        "cooldown_active": False,
+    }
+    if session is None or session.empty or len(session) <= OR_MINUTES or not or_high:
+        return base
+
+    if bias and bias != "long":
+        return {
+            **base,
+            "state": "IDLE",
+            "status_message": "NO TRADE — ORH breakout lifecycle applies only to long setups.",
+            "reason": "Current engine bias is not long.",
+            "why_safe_or_unsafe": "Avoid forcing ORH calls when market bias is not supportive.",
+        }
+
+    post = session.iloc[OR_MINUTES:].copy()
+    if post.empty:
+        return base
+
+    closes = post["Close"].astype(float).tolist()
+    highs = post["High"].astype(float).tolist()
+    lows = post["Low"].astype(float).tolist()
+    opens = post["Open"].astype(float).tolist()
+    vols = post["Volume"].astype(float).tolist()
+    vwap_vals = vwap_ser.iloc[OR_MINUTES:].astype(float).tolist() if vwap_ser is not None and len(vwap_ser) >= len(session) else [float("nan")] * len(post)
+    times = list(post.index)
+    vol_threshold = avg_vol * 1.10 if avg_vol and avg_vol > 0 else 0.0
+
+    def _vol_ok(i: int) -> bool:
+        return bool((vol_threshold <= 0 and (rvol or 0) >= 0.8) or vols[i] >= vol_threshold or (rvol or 0) >= 1.0)
+
+    def _extended(i: int) -> bool:
+        close = closes[i]
+        if vwap_upper2 and close >= vwap_upper2:
+            return True
+        if vwap_upper1 and close >= vwap_upper1 and (rvol or 0) < 1.2:
+            return True
+        return False
+
+    def _rr(i: int, stop: float) -> tuple[float | None, float | None, float | None]:
+        entry = closes[i]
+        or_range = max(0.01, or_high - or_low)
+        t1 = or_high + or_range * 0.5
+        t2 = or_high + or_range
+        risk = max(0.01, entry - stop)
+        rr = (t1 - entry) / risk if risk > 0 else None
+        return round(t1, 4), round(t2, 4), round(rr, 2) if rr is not None else None
+
+    first_signal_i: int | None = None
+    failure_i: int | None = None
+    candidate_i: int | None = None
+    state = "IDLE"
+    pending_i: int | None = None
+    had_reset_area = False
+
+    for i in range(len(post)):
+        close = closes[i]
+        high = highs[i]
+        low = lows[i]
+        vwap_i = vwap_vals[i] if i < len(vwap_vals) else float("nan")
+        above_vwap = bool(math.isfinite(vwap_i) and close > vwap_i)
+
+        if state == "IDLE":
+            if high >= or_high and close <= or_high:
+                state = "WATCHING_BREAKOUT"
+                candidate_i = i
+            elif close > or_high and above_vwap:
+                state = "BREAKOUT_CONFIRMED"
+                pending_i = i
+                candidate_i = i
+        elif state == "WATCHING_BREAKOUT":
+            if close > or_high and above_vwap:
+                state = "BREAKOUT_CONFIRMED"
+                pending_i = i
+                candidate_i = i
+            elif close < or_high:
+                candidate_i = i
+        elif state == "BREAKOUT_CONFIRMED":
+            if close < or_high:
+                state = "IDLE"
+                pending_i = None
+                candidate_i = i
+                continue
+            if pending_i is not None and i > pending_i:
+                prior_high = highs[pending_i]
+                hold_close = close > or_high
+                continuation = high > prior_high and _vol_ok(i)
+                pullback_hold = low <= or_high * 1.0015 and close > opens[i] and close > or_high
+                if (hold_close or continuation or pullback_hold) and _vol_ok(i) and not _extended(i):
+                    first_signal_i = i
+                    state = "ACTIVE_TRADE"
+        elif state == "ACTIVE_TRADE":
+            close_below_orh_2 = i >= 1 and closes[i] < or_high and closes[i - 1] < or_high
+            lost_vwap = math.isfinite(vwap_i) and close < vwap_i
+            stop_hit = low <= or_high * 0.997
+            if close_below_orh_2 or lost_vwap or stop_hit:
+                failure_i = i
+                state = "FAILED_BREAKOUT"
+        elif state == "FAILED_BREAKOUT":
+            if close < or_high or (math.isfinite(vwap_i) and abs(close / vwap_i - 1.0) <= 0.003):
+                had_reset_area = True
+            if failure_i is not None and i - failure_i >= 3 and had_reset_area:
+                state = "READY_FOR_REENTRY"
+        elif state == "READY_FOR_REENTRY":
+            late_block = session_minutes_elapsed >= 360 and not late_trade_mode
+            lookback_lows = lows[max(0, i - 5): i] or [low]
+            forms_higher_low = low > min(lookback_lows)
+            reclaimed = close > or_high and above_vwap and forms_higher_low and not late_block
+            if reclaimed:
+                state = "REENTRY_CONFIRMED"
+                pending_i = i
+        elif state == "REENTRY_CONFIRMED":
+            if close < or_high:
+                state = "READY_FOR_REENTRY"
+                pending_i = None
+                continue
+            if pending_i is not None and i > pending_i:
+                prior_high = highs[pending_i]
+                hold_close = close > or_high
+                continuation = high > prior_high and _vol_ok(i)
+                if (hold_close or continuation) and _vol_ok(i) and not _extended(i):
+                    candidate_i = i
+                    state = "ACTIVE_TRADE"
+                    break
+
+    last_i = len(post) - 1
+    current_close = closes[last_i]
+    current_high = highs[last_i]
+    stop = round(or_high * 0.997, 4)
+    t1, t2, rr = _rr(last_i, stop)
+
+    if first_signal_i is not None and failure_i is not None and candidate_i is not None and candidate_i > failure_i:
+        t1, t2, rr = _rr(candidate_i, stop)
+        return {
+            **base,
+            "state": "REENTRY_CONFIRMED",
+            "signal": "E2R",
+            "signal_label": "ORH Re-breakout",
+            "action": "GO_LONG",
+            "status_message": "GO LONG — E2R confirmed after ORH reclaim",
+            "reason": "Prior ORH breakout failed, reset completed, price reclaimed ORH above VWAP, and confirmation candle held/continued.",
+            "invalidates": f"Close below reclaimed ORH {_fmt_level(or_high)} or loss of VWAP.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "safe": bool(rr is None or rr >= 0.8),
+            "why_safe_or_unsafe": "Re-entry is valid because reset completed before the second breakout." if rr is None or rr >= 0.8 else "Re-entry confirmed, but reward to T1 is thin.",
+            "candles_since_failure": candidate_i - failure_i,
+            "cooldown_active": False,
+            "confirmed_at": pd.Timestamp(times[candidate_i]).isoformat() if candidate_i < len(times) else None,
+        }
+
+    if first_signal_i is not None and (failure_i is None or first_signal_i > failure_i):
+        t1, t2, rr = _rr(first_signal_i, stop)
+        return {
+            **base,
+            "state": "ACTIVE_TRADE" if state == "ACTIVE_TRADE" else "BREAKOUT_CONFIRMED",
+            "signal": "E2",
+            "signal_label": "ORH Breakout",
+            "action": "GO_LONG",
+            "status_message": "GO LONG — E2 ORH breakout confirmed",
+            "reason": "Breakout candle closed above ORH and the next candle held/continued with acceptable volume.",
+            "invalidates": f"Close back below ORH {_fmt_level(or_high)} or loss of VWAP.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "safe": bool(rr is None or rr >= 0.8),
+            "why_safe_or_unsafe": "First breakout is confirmed by candle close and follow-through." if rr is None or rr >= 0.8 else "Breakout confirmed, but reward to T1 is thin.",
+            "confirmed_at": pd.Timestamp(times[first_signal_i]).isoformat() if first_signal_i < len(times) else None,
+        }
+
+    if failure_i is not None:
+        since = last_i - failure_i
+        ready = since >= 3 and (current_close < or_high or current_close <= max(or_high, vwap_vals[last_i] if math.isfinite(vwap_vals[last_i]) else or_high) * 1.003)
+        return {
+            **base,
+            "state": "READY_FOR_REENTRY" if ready else "FAILED_BREAKOUT",
+            "action": "WATCH" if ready else "NO_TRADE",
+            "status_message": "WATCH — setup reset complete, waiting for re-breakout" if ready else "NO TRADE — breakout failed, price back below ORH",
+            "reason": "Prior E2 failed and at least 3 candles have passed since failure." if ready else "Price closed back below ORH/VWAP after breakout.",
+            "invalidates": f"Do not re-enter until price reclaims ORH {_fmt_level(or_high)} above VWAP with confirmation.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "safe": False,
+            "why_safe_or_unsafe": "Re-entry is not safe until a fresh ORH reclaim confirms.",
+            "candles_since_failure": since,
+            "cooldown_active": since < 3,
+        }
+
+    if state == "REENTRY_CONFIRMED":
+        return {
+            **base,
+            "state": "REENTRY_CONFIRMED",
+            "action": "WAIT",
+            "status_message": "WAIT — ORH reclaimed, need confirmation for E2R",
+            "reason": "Reclaim candle closed above ORH and VWAP; waiting for hold/continuation candle.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "why_safe_or_unsafe": "A reclaim alone is not enough; confirmation avoids re-entry spam.",
+        }
+
+    if state == "BREAKOUT_CONFIRMED":
+        return {
+            **base,
+            "state": "BREAKOUT_CONFIRMED",
+            "action": "WAIT",
+            "status_message": "WAIT — breakout candle closed above ORH, need hold/continuation",
+            "reason": "First candle closed above ORH and VWAP; next candle must hold ORH or continue through prior high.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "why_safe_or_unsafe": "Still unsafe because only the first close has confirmed.",
+        }
+
+    if state == "WATCHING_BREAKOUT" or current_high >= or_high:
+        return {
+            **base,
+            "state": "WATCHING_BREAKOUT",
+            "action": "WAIT",
+            "status_message": "WAIT — ORH touched, waiting for candle close",
+            "reason": "Price touched or wicked above ORH, but a completed candle close is required.",
+            "stop_level": stop,
+            "t1": t1,
+            "t2": t2,
+            "risk_reward": rr,
+            "why_safe_or_unsafe": "Unsafe to chase first ORH touch or wick.",
+        }
+
+    return {
+        **base,
+        "state": "IDLE",
+        "action": "TRACK",
+        "status_message": "TRACK — waiting for ORH touch or VWAP/OR setup",
+        "reason": "Opening range is complete; no ORH breakout attempt is active.",
+        "stop_level": stop,
+        "t1": t1,
+        "t2": t2,
+        "risk_reward": rr,
+        "why_safe_or_unsafe": "No confirmed entry yet.",
+    }
+
+
 def _rth_session_on_date(df_et: pd.DataFrame, session_date: str) -> pd.DataFrame:
     """RTH bars for a specific calendar date string (YYYY-MM-DD), ET."""
     rth = df_et.between_time("09:30", "16:00")
@@ -1697,6 +1981,9 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
     # Bounce-scenario tier — read from metrics (computed in scoring phase)
     bounce_scenario = str(metrics.get("bounce_scenario") or "")
     vwap_hold = str(metrics.get("vwap_hold_state") or "NOT_TESTED")
+    orh_lifecycle = metrics.get("orh_breakout_lifecycle") if isinstance(metrics.get("orh_breakout_lifecycle"), dict) else {}
+    orh_lifecycle_state = str(orh_lifecycle.get("state") or "")
+    orh_lifecycle_signal = str(orh_lifecycle.get("signal") or "")
 
     if bidir == "long":
         if vwap_pos == "below":
@@ -1715,6 +2002,32 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
                 summary = "Price is testing VWAP \u2014 hold not yet confirmed. One red candle at VWAP is a test, not a failure."
                 action = f"Wait for a green candle close above VWAP with volume \u2265 the prior bar before entering."
                 avoid = "Avoid entering at VWAP \u2014 a rejection here turns the setup bearish quickly."
+        elif orh_lifecycle_state in ("WATCHING_BREAKOUT", "BREAKOUT_CONFIRMED", "FAILED_BREAKOUT", "READY_FOR_REENTRY", "REENTRY_CONFIRMED"):
+            state = (
+                "ENTRY_ACTIVE" if orh_lifecycle_signal in ("E2", "E2R")
+                else "WAIT_FOR_BREAKOUT" if orh_lifecycle_state in ("WATCHING_BREAKOUT", "BREAKOUT_CONFIRMED", "REENTRY_CONFIRMED")
+                else "WAIT_FOR_REENTRY" if orh_lifecycle_state == "READY_FOR_REENTRY"
+                else "BREAKOUT_FAILED"
+            )
+            summary = str(orh_lifecycle.get("status_message") or "ORH breakout lifecycle is pending.")
+            if orh_lifecycle_signal == "E2R":
+                action = "E2R — ORH re-breakout after reset confirmed. Enter only with predefined stop and target."
+                avoid = str(orh_lifecycle.get("invalidates") or "Avoid if price loses ORH/VWAP.")
+            elif orh_lifecycle_signal == "E2":
+                action = "E2 — ORH breakout confirmed. Enter only with predefined stop and target."
+                avoid = str(orh_lifecycle.get("invalidates") or "Avoid if price loses ORH/VWAP.")
+            elif orh_lifecycle_state == "WATCHING_BREAKOUT":
+                action = "Wait for the current candle to close above ORH. Do not enter on a wick or first touch."
+                avoid = "Avoid chasing the first ORH touch."
+            elif orh_lifecycle_state == "BREAKOUT_CONFIRMED":
+                action = "Breakout candle closed above ORH. Wait for the next candle to hold ORH or break the prior high with volume."
+                avoid = "Avoid entering before the confirmation candle completes."
+            elif orh_lifecycle_state == "READY_FOR_REENTRY":
+                action = "Setup reset complete. Watch for a fresh ORH reclaim and confirmation candle for E2R."
+                avoid = "Avoid repeated re-entry attempts until a new higher-low reclaim forms."
+            else:
+                action = "No trade. Breakout failed; wait for reset and re-entry criteria."
+                avoid = str(orh_lifecycle.get("invalidates") or "Do not re-enter until ORH is reclaimed above VWAP.")
         elif or_breakout == "inside" and or_historical != "broke_up":
             # Genuinely hasn't broken out yet \u2014 first breakout still pending.
             state = "WAIT_FOR_BREAKOUT"
@@ -2297,6 +2610,18 @@ def build_day_entry_guidance(metrics: dict, trader_decision: dict, bias: Optiona
             "best_setup": best_setup,
         },
         "contextual_alerts": day_alerts,
+        "orh_breakout_lifecycle": orh_lifecycle if bidir == "long" else {},
+        "signal_explanation": {
+            "signal": orh_lifecycle.get("signal") if bidir == "long" else None,
+            "label": orh_lifecycle.get("signal_label") if bidir == "long" else None,
+            "why_triggered": orh_lifecycle.get("reason") if bidir == "long" else summary,
+            "why_safe_or_unsafe": orh_lifecycle.get("why_safe_or_unsafe") if bidir == "long" else avoid,
+            "invalidates": orh_lifecycle.get("invalidates") if bidir == "long" else avoid,
+            "stop_level": orh_lifecycle.get("stop_level") if bidir == "long" else risk_below,
+            "target_1": orh_lifecycle.get("t1") if bidir == "long" else scalp_target,
+            "target_2": orh_lifecycle.get("t2") if bidir == "long" else scalp_target_2,
+            "risk_reward": orh_lifecycle.get("risk_reward") if bidir == "long" else None,
+        },
     }
 
     # ── Premium conversion layer ──────────────────────────────────────────
@@ -3972,6 +4297,22 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             _trigger_setup, _5m, _levels, bias,
         )
 
+    _orh_lifecycle = _build_orh_breakout_lifecycle(
+        session,
+        or_high=or_high,
+        or_low=or_low,
+        vwap_ser=vwap_ser,
+        avg_vol=avg_vol,
+        bias=bias,
+        rvol=rvol,
+        vwap_upper1=vwap_upper1,
+        vwap_upper2=vwap_upper2,
+        session_minutes_elapsed=session_minutes_elapsed,
+    )
+    if bias == "long" and _trigger_setup == trigger_detector.ORH_BREAKOUT:
+        _trigger_requirement = str(_orh_lifecycle.get("status_message") or _trigger_requirement)
+        _trigger_fired = bool(_orh_lifecycle.get("signal") in ("E2", "E2R"))
+
     _internal_verdict = resolve_verdict(
         "day", raw_score, volume_spike=vol_spike, vix=vix_level, rvol=rvol,
         or_breakout=or_state, price_structure=price_structure,
@@ -4072,6 +4413,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
             f"Bias confirmed but entry trigger not yet fired — {_trigger_requirement or 'awaiting confirmation candle'}. "
             "DO NOT ENTER until the trigger fires."
         )
+
+    if bias == "long" and _trigger_setup == trigger_detector.ORH_BREAKOUT:
+        _orh_state = str(_orh_lifecycle.get("state") or "")
+        _orh_msg = str(_orh_lifecycle.get("status_message") or "")
+        if _orh_msg:
+            body.append(_orh_msg)
+        if _orh_state in ("WATCHING_BREAKOUT", "BREAKOUT_CONFIRMED", "FAILED_BREAKOUT", "READY_FOR_REENTRY", "REENTRY_CONFIRMED"):
+            body.append(str(_orh_lifecycle.get("reason") or "ORH breakout lifecycle is pending confirmation."))
+        if _orh_lifecycle.get("signal") == "E2R":
+            body.append("E2R — ORH re-breakout after reset confirmed. Treat this as a new re-entry setup, not a repeated E2.")
 
     risk_profile = _classify_risks(
         last_price=last,
@@ -4328,6 +4679,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "trigger_setup": _trigger_setup,
         "trigger_fired": _trigger_fired,
         "trigger_requirement": _trigger_requirement,
+        "orh_breakout_lifecycle": _orh_lifecycle,
+        "entry_signal_code": _orh_lifecycle.get("signal"),
+        "entry_signal_label": _orh_lifecycle.get("signal_label"),
         "candles_5m_tail": _5m,  # last ~6 5m OHLC candles — for exit monitoring / replay
         "last_price": round(last, 4),
         "prev_close": round(prev_close, 4) if prev_close > 0 else None,

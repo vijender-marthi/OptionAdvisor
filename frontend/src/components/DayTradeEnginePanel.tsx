@@ -811,19 +811,19 @@ export default function DayTradeEnginePanel({
       if (!Number.isFinite(pt.price) || pt.price <= 0) return
       if (seen.has(pt.price)) return
       seen.add(pt.price)
-      pts.push({ ...pt, label: `E${pts.length + 1}` })
+      pts.push({ ...pt, label: pt.label || `E${pts.length + 1}` })
     }
 
     const direction = isShort ? 'short' : 'long'
     const exitPrice = asFiniteNum(eg?.scalp_target) ?? undefined
 
-    // E1: AI Coach entry gate trigger (most specific)
+    // E1: Momentum Breakout
     const gatePrice = asFiniteNum(ac?.entry_gate?.trigger_price)
     if (gatePrice != null && gatePrice > 0) {
       add({
-        label: '',
+        label: 'E1',
         price: gatePrice,
-        trigger: ac?.entry_gate?.trigger_condition ?? 'Gate trigger',
+        trigger: `Momentum Breakout — ${ac?.entry_gate?.trigger_condition ?? 'gate trigger'}`,
         stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
         direction,
         exitPrice,
@@ -831,9 +831,9 @@ export default function DayTradeEnginePanel({
     } else {
       // No gate price — show placeholder so user knows AI Coach entry exists
       pts.push({
-        label: `E${pts.length + 1}`,
+        label: 'E1',
         price: 0,
-        trigger: ac?.entry_gate?.trigger_condition ?? '',
+        trigger: `Momentum Breakout — ${ac?.entry_gate?.trigger_condition ?? 'pending'}`,
         stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
         direction,
         exitPrice,
@@ -841,10 +841,10 @@ export default function DayTradeEnginePanel({
       })
     }
 
-    // E2: AI Coach trade entry price with R/R
+    // AI Coach trade entry price with R/R. ORH owns E2/E2R.
     const aiPrice = asFiniteNum(ac?.trade?.entry_price)
     add({
-      label: '',
+      label: 'AI',
       price: aiPrice ?? 0,
       trigger: ac?.trade
         ? `AI Coach · ${ac.trade.direction} (R/R ${ac.trade.risk_reward.toFixed(1)}×)`
@@ -855,24 +855,30 @@ export default function DayTradeEnginePanel({
       rr: ac?.trade?.risk_reward,
     })
 
-    // E3: OR breakout level — use entry_guidance first, fall back to OR high/low
+    // E2/E2R: OR breakout lifecycle — use entry_guidance first, fall back to OR high/low
+    const orhLife = (m.orh_breakout_lifecycle ?? eg?.orh_breakout_lifecycle) as Record<string, unknown> | undefined
+    const orhSignal = typeof orhLife?.signal === 'string' ? orhLife.signal : undefined
+    const orhStatus = typeof orhLife?.status_message === 'string' ? orhLife.status_message : undefined
     const breakoutLevel = asFiniteNum(eg?.breakout_level)
       ?? (isShort ? mOrLow : mOrHigh)
     add({
-      label: '',
+      label: !isShort && orhSignal === 'E2R' ? 'E2R' : 'E2',
       price: breakoutLevel ?? 0,
-      trigger: isShort ? 'OR low breakout' : 'OR high breakout',
+      trigger: !isShort && orhSignal === 'E2R'
+        ? `ORH Re-breakout — ${orhStatus ?? 'confirmed after reset'}`
+        : isShort ? 'ORL Breakdown' : `ORH Breakout${orhStatus ? ` — ${orhStatus}` : ''}`,
       stop: isShort ? (mOrHigh ?? undefined) : (mOrLow ?? undefined),
       direction,
       exitPrice,
+      pending: !isShort && !orhSignal,
     })
 
-    // E4: VWAP re-test — use entry_guidance.vwap first, fall back to metrics vwap
+    // E4: VWAP Bounce/Re-test — use entry_guidance.vwap first, fall back to metrics vwap
     const vwapPrice = asFiniteNum(eg?.vwap) ?? mVwap
     add({
-      label: '',
+      label: 'E4',
       price: vwapPrice ?? 0,
-      trigger: 'VWAP re-test',
+      trigger: isShort ? 'VWAP Rejection' : 'VWAP Bounce',
       stop: asFiniteNum(eg?.risk_below) ?? stopFallback,
       direction,
       exitPrice,
@@ -906,6 +912,17 @@ export default function DayTradeEnginePanel({
   const managementPlan   = computeIntradayManagementPlan(result, m)
   const walkthroughSteps = buildDayWalkthrough(result, m)
   const currentPrice = eg?.current_price ?? lastPrice
+  const signalExplanation = (eg?.signal_explanation ?? {}) as Record<string, unknown>
+  const signalLabel = typeof signalExplanation.label === 'string' && signalExplanation.label
+    ? signalExplanation.label
+    : typeof signalExplanation.signal === 'string' ? signalExplanation.signal : ''
+  const signalWhy = typeof signalExplanation.why_triggered === 'string' ? signalExplanation.why_triggered : ''
+  const signalSafety = typeof signalExplanation.why_safe_or_unsafe === 'string' ? signalExplanation.why_safe_or_unsafe : ''
+  const signalInvalidates = typeof signalExplanation.invalidates === 'string' ? signalExplanation.invalidates : ''
+  const signalStop = typeof signalExplanation.stop_level === 'number' ? signalExplanation.stop_level : null
+  const signalT1 = typeof signalExplanation.target_1 === 'number' ? signalExplanation.target_1 : null
+  const signalT2 = typeof signalExplanation.target_2 === 'number' ? signalExplanation.target_2 : null
+  const signalRr = typeof signalExplanation.risk_reward === 'number' ? signalExplanation.risk_reward : null
 
   // 4-state numeric — computed once here so ACTION badge and subtitle can be state-aware
   const _egStateStr = eg?.state || ''
@@ -1074,6 +1091,48 @@ export default function DayTradeEnginePanel({
             </div>
           </div>
           <div className="mt-2 text-[11px] text-gray-300 leading-relaxed">{bestNextStep}</div>
+          {(signalLabel || signalWhy || signalInvalidates) && (
+            <div className="mt-3 rounded-lg border border-slate-700/70 bg-slate-950/45 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">Signal Explanation</div>
+                {signalLabel && (
+                  <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-200">{signalLabel}</span>
+                )}
+              </div>
+              <div className="grid gap-2 text-[11px] text-gray-300 md:grid-cols-3">
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Why</div>
+                  <div className="mt-0.5 leading-snug">{signalWhy || 'Waiting for objective confirmation.'}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Safe / Unsafe</div>
+                  <div className="mt-0.5 leading-snug">{signalSafety || 'Safety depends on confirmation candle, extension, and risk/reward.'}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Invalidates</div>
+                  <div className="mt-0.5 leading-snug">{signalInvalidates || 'Loss of breakout level or VWAP.'}</div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+                <div className="rounded-md bg-black/25 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-gray-500">Stop</div>
+                  <div className="font-mono font-bold text-rose-300">{signalStop != null ? `$${signalStop.toFixed(2)}` : '—'}</div>
+                </div>
+                <div className="rounded-md bg-black/25 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-gray-500">T1</div>
+                  <div className="font-mono font-bold text-emerald-300">{signalT1 != null ? `$${signalT1.toFixed(2)}` : '—'}</div>
+                </div>
+                <div className="rounded-md bg-black/25 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-gray-500">T2</div>
+                  <div className="font-mono font-bold text-orange-300">{signalT2 != null ? `$${signalT2.toFixed(2)}` : '—'}</div>
+                </div>
+                <div className="rounded-md bg-black/25 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-gray-500">R/R</div>
+                  <div className="font-mono font-bold text-sky-300">{signalRr != null ? `${signalRr.toFixed(2)}R` : '—'}</div>
+                </div>
+              </div>
+            </div>
+          )}
           {(() => {
             const fd = String(displayFinalDecision || '').toUpperCase()
             if (fd === 'TRACK_ONLY')

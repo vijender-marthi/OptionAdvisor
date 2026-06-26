@@ -53,39 +53,6 @@ type AgreementFilter = 'all' | 'strong_agreement' | 'partial_agreement' | 'confl
 type TrendFilter = 'all' | 'bullish' | 'neutral' | 'bearish'
 type EngineKey = 'day' | 'swing' | 'regular'
 
-/** Viewport hook for responsive layout switching. */
-function useViewport() {
-  const [width, setWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1200)
-  useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return { width, isMobile: width < 768 }
-}
-
-/** Mini sparkline using the chart_points data (fetched but previously unused). */
-function Sparkline({ data, isDark }: { data: Array<{ date: string; close: number }> | undefined; isDark: boolean }) {
-  if (!data || data.length < 2) return null
-  const values = data.map(d => d.close)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-  const w = 80, h = 24
-  const pts = values.map((v, i) => {
-    const x = (i / (values.length - 1)) * w
-    const y = h - ((v - min) / range) * h
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
-  const isUp = values[values.length - 1] >= values[0]
-  const color = isUp ? (isDark ? '#00E5A0' : '#00A86B') : (isDark ? '#FF4D6D' : '#DC2626')
-  return (
-    <svg width={w} height={h} className="shrink-0" aria-hidden>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 const FAVORITES_KEY = 'oa_signal_feed_favorites_v1'
 const FILTERS_EXPANDED_KEY = 'oa_signal_feed_filters_expanded_v1'
 
@@ -781,7 +748,6 @@ const SignalFeedCard = memo(function SignalFeedCard({
   alertBusy,
   canDay,
   canSwing,
-  isDark,
   onToggleCompact,
   onAnalyze,
   onViewChart,
@@ -798,7 +764,6 @@ const SignalFeedCard = memo(function SignalFeedCard({
   alertBusy: boolean
   canDay: boolean
   canSwing: boolean
-  isDark: boolean
   onAnalyze: () => void
   onViewChart: () => void
   onCreateAlert: () => void
@@ -860,15 +825,10 @@ const SignalFeedCard = memo(function SignalFeedCard({
           </div>
         </div>
 
-        {/* Price hero + sparkline */}
+        {/* Price hero */}
         <div className="shrink-0 text-right">
-          <div className="flex items-center justify-end gap-1.5">
-            <Sparkline data={row.chart_points} isDark={isDark} />
-            <div>
-              <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
-              <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
-            </div>
-          </div>
+          <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
+          <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
           {row.price_change != null && row.price_change !== 0 && (
             <div className={`text-[10px] tabular-nums ${changeTone}`}>{fmtDayChange(row.price_change)}</div>
           )}
@@ -994,9 +954,7 @@ function MobileActionTray({
 
 export default function SignalFeedPage() {
   const routerNavigate = useNavigate()
-  const { requestAnalysis, removeFromAllWatchlists, canAccessPage, theme } = useApp()
-  const isDark = theme !== 'light'
-  const { isMobile } = useViewport()
+  const { requestAnalysis, removeFromAllWatchlists, canAccessPage } = useApp()
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
 
@@ -1559,55 +1517,29 @@ export default function SignalFeedPage() {
             <div className="mt-2 text-sm text-muted">Try a different state, agreement, trend, or sector combination.</div>
           </div>
         ) : (
-          isMobile ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {visibleRows.map(row => (
-                <SignalFeedCard
-                  key={row.id}
-                  row={row}
-                  isCompact={expandedId !== row.id}
-                  isFavorite={favoriteSet.has(row.ticker.toUpperCase())}
-                  isIgnored={ignoredSet.has(row.ticker.toUpperCase())}
-                  alertBusy={Boolean(alertBusy[row.id])}
-                  canDay={canDay}
-                  canSwing={canSwing}
-                  isDark={isDark}
-                  onToggleCompact={toggleExpanded}
-                  onAnalyze={() => handleAnalyze(row.ticker)}
-                  onViewChart={() => handleOpenEngine(row, (row.day?.final_decision ? 'day' : row.swing?.final_decision ? 'swing' : 'regular') as EngineKey)}
-                  onCreateAlert={() => void handleCreateAlert(row)}
-                  onAddToPositions={() => handleAddToPositions(row)}
-                  onFavorite={() => toggleFavorite(row.ticker)}
-                  onIgnore={() => toggleIgnore(row.ticker)}
-                  onMonitor={() => handleMonitor(row)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {tableGroups.map(group => (
-                <SignalFeedTableSection
-                  key={group.engine}
-                  title={group.title}
-                  subtitle={group.subtitle}
-                  engine={group.engine}
-                  sourceFilter={sourceFilter}
-                  rows={visibleRows}
-                  favoriteSet={favoriteSet}
-                  ignoredSet={ignoredSet}
-                  alertBusy={alertBusy}
-                  onOpenEngine={handleOpenEngine}
-                  onAnalyze={handleAnalyze}
-                  onAddToPositions={handleAddToPositions}
-                  onOpenAlerts={handleOpenAlerts}
-                  onCreateAlert={(row) => void handleCreateAlert(row)}
-                  onFavorite={toggleFavorite}
-                  onIgnore={toggleIgnore}
-                  onMonitor={handleMonitor}
-                />
-              ))}
-            </div>
-          )
+          <div className="grid gap-4">
+            {tableGroups.map(group => (
+              <SignalFeedTableSection
+                key={group.engine}
+                title={group.title}
+                subtitle={group.subtitle}
+                engine={group.engine}
+                sourceFilter={sourceFilter}
+                rows={visibleRows}
+                favoriteSet={favoriteSet}
+                ignoredSet={ignoredSet}
+                alertBusy={alertBusy}
+                onOpenEngine={handleOpenEngine}
+                onAnalyze={handleAnalyze}
+                onAddToPositions={handleAddToPositions}
+                onOpenAlerts={handleOpenAlerts}
+                onCreateAlert={(row) => void handleCreateAlert(row)}
+                onFavorite={toggleFavorite}
+                onIgnore={toggleIgnore}
+                onMonitor={handleMonitor}
+              />
+            ))}
+          </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm">
