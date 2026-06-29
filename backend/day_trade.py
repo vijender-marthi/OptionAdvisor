@@ -25,6 +25,7 @@ from day_option_risk import build_day_option_risk_context, build_premium_targets
 from trader_decision import build_trader_decision
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
+from rule_enforcer import direction_state_from_bias, gate_trade_action, option_side_from_strategy
 import trigger_detector
 
 ET = ZoneInfo("America/New_York")
@@ -334,9 +335,13 @@ def build_timeframe_state(
         conf_status = "BLOCKED"
         conf_reason = "5m confirmation is disabled until the 15m setup exists."
         conf_next = "Wait for 15m setup."
+    elif trigger_fired and not volume_spike:
+        conf_status = "PENDING"
+        conf_reason = "5m trigger fired, but volume confirmation is still pending."
+        conf_next = "Wait for volume confirmation. Do not mark this setup confirmed yet."
     elif trigger_fired:
         conf_status = "CONFIRMED"
-        conf_reason = trigger_requirement or "5m confirmation fired."
+        conf_reason = trigger_requirement or "5m confirmation fired with volume."
         conf_next = "Use 1m chart for execution only."
     elif failed_checks:
         conf_status = "FAILED"
@@ -386,6 +391,17 @@ def build_timeframe_state(
     else:
         final_decision = "TRACK_ONLY"
 
+    gate = gate_trade_action(
+        final_action=final_decision,
+        direction_state=direction_state_from_bias(direction),
+        trade_side=option_side_from_strategy(None, direction),
+        volume_required=bool(trigger_fired),
+        volume_confirmed=bool(volume_spike),
+        extension_state=exec_status if exec_status == "DO_NOT_CHASE" else edge_state,
+    )
+    if gate["blocked"]:
+        final_decision = str(gate["final_action"])
+
     return {
         "setup_15m": {
             "status": setup_status,
@@ -413,6 +429,10 @@ def build_timeframe_state(
             "next_action": exec_next,
         },
         "final_decision": final_decision,
+        "bias": gate["bias"],
+        "blocker": gate["blocker"],
+        "final_action": gate["final_action"],
+        "required_next_condition": gate["required_next_condition"],
     }
 
 
@@ -1452,6 +1472,151 @@ def _market_bias(
     if bear_signals >= 2:
         return "BEARISH"
     return "NEUTRAL"
+
+
+def _classify_opening_playbook(
+    *,
+    bias: Bias,
+    or_state: str,
+    or_historical: str,
+    vwap_position: str,
+    momentum_pct: float,
+    vol_spike: bool,
+    rvol: Optional[float],
+    spy_chg: Optional[float],
+    qqq_chg: Optional[float],
+    session_minutes_elapsed: int,
+) -> dict[str, str]:
+    """Classify the open without adding new indicators."""
+    if session_minutes_elapsed < OR_MINUTES:
+        return {
+            "opening_type": "OPENING_RANGE",
+            "playbook": "OR_WAIT",
+            "reason": "Opening range is still forming.",
+        }
+
+    mkt_aligned = False
+    if bias == "long":
+        mkt_aligned = (spy_chg is None or spy_chg >= -0.2) and (qqq_chg is None or qqq_chg >= -0.2)
+    elif bias == "short":
+        mkt_aligned = (spy_chg is None or spy_chg <= 0.2) and (qqq_chg is None or qqq_chg <= 0.2)
+
+    strong_momentum = abs(momentum_pct or 0.0) >= 0.35
+    participation = bool(vol_spike or (rvol is not None and rvol >= 1.2))
+    broke_with_direction = (
+        (bias == "long" and or_state == "above" and or_historical == "broke_up" and vwap_position == "above")
+        or (bias == "short" and or_state == "below" and or_historical == "broke_down" and vwap_position == "below")
+    )
+
+    if broke_with_direction and strong_momentum and participation and mkt_aligned:
+        return {
+            "opening_type": "TREND_DAY",
+            "playbook": "TREND",
+            "reason": "Opening range broke with VWAP alignment, momentum, volume, and market confirmation.",
+        }
+    if broke_with_direction and participation:
+        return {
+            "opening_type": "GAP_AND_GO" if session_minutes_elapsed <= 60 else "TREND_DAY",
+            "playbook": "GAP_AND_GO",
+            "reason": "Directional break is holding away from VWAP; use failed-bounce logic instead of waiting for VWAP touch.",
+        }
+    if or_state == "inside":
+        return {
+            "opening_type": "INSIDE_DAY",
+            "playbook": "OR_VWAP",
+            "reason": "Price remains inside the opening range.",
+        }
+    return {
+        "opening_type": "NORMAL_OPEN",
+        "playbook": "OR_VWAP",
+        "reason": "Normal opening-range/VWAP playbook applies.",
+    }
+
+
+def _resolve_market_state(
+    *,
+    opening_type: str,
+    playbook: str,
+    bias: Bias,
+    soft_edge: bool,
+    or_state: str,
+    vwap_position: str,
+    trigger_fired: bool,
+    should_enter_now: str,
+    is_chasing: bool,
+    edge_state: str,
+    extension_from_vwap_pct: float,
+    latest_close: float,
+    ema20: Optional[float],
+    ema50: Optional[float],
+    vwap: Optional[float],
+    trigger_requirement: str,
+    session_minutes_elapsed: int,
+) -> dict[str, Any]:
+    """Separate market state from execution signal."""
+    direction = direction_state_from_bias(bias)
+    expected_pullback = None
+    if playbook in ("TREND", "GAP_AND_GO"):
+        levels = []
+        if ema20:
+            levels.append(f"EMA20 ${ema20:.2f}")
+        if ema50:
+            levels.append(f"EMA50 ${ema50:.2f}")
+        expected_pullback = " / ".join(levels) or "small 1m/5m consolidation"
+    elif vwap:
+        expected_pullback = f"VWAP zone ${vwap:.2f}"
+
+    if session_minutes_elapsed < OR_MINUTES:
+        state = "OPENING_RANGE"
+        action = "WAIT OR"
+        reason = "Opening range is not complete."
+        next_action = "Wait for ORH/ORL to form."
+    elif not soft_edge or not bias or direction == "NEUTRAL":
+        state = "NO_EDGE"
+        action = "NO EDGE"
+        reason = "Signals are mixed or directional edge is too weak."
+        next_action = "Wait for OR break, VWAP alignment, and directional confirmation."
+    elif is_chasing or edge_state in ("LATE", "EXHAUSTED") or abs(extension_from_vwap_pct) >= 3.0:
+        state = "DO_NOT_CHASE"
+        action = "DO NOT CHASE"
+        reason = (
+            f"Trend is still {direction.replace('_ONLY', '').lower()}, but price is extended "
+            f"{abs(extension_from_vwap_pct):.1f}% from VWAP."
+        )
+        next_action = f"Wait for next pullback toward {expected_pullback or 'value'}."
+    elif should_enter_now == "YES" and trigger_fired:
+        state = "EXECUTE"
+        action = "EXECUTE"
+        reason = "Market edge and 1m execution trigger are both aligned."
+        next_action = "Enter only with predefined stop and targets."
+    elif trigger_fired:
+        state = "READY"
+        action = "READY"
+        reason = "Entry area is valid; waiting for execution candle."
+        next_action = trigger_requirement or "Wait for final execution candle."
+    elif playbook in ("TREND", "GAP_AND_GO") and or_state in ("above", "below") and vwap_position in ("above", "below"):
+        state = "WAIT_PULLBACK"
+        action = "WAIT FIRST PULLBACK" if playbook == "TREND" else "WAIT FAILED BOUNCE"
+        reason = "Trend confirmed. Move already started; waiting for lower-risk entry."
+        next_action = f"Expected pullback: {expected_pullback or 'EMA/consolidation'}."
+    else:
+        state = "WAIT_PULLBACK"
+        action = "WAIT VWAP RETEST"
+        reason = "Opening-range break is valid, but normal playbook requires VWAP retest/reaction."
+        next_action = f"Wait for {expected_pullback or 'VWAP retest'} and reaction candle."
+
+    return {
+        "opening_type": opening_type,
+        "playbook": playbook,
+        "state": state,
+        "action": action,
+        "direction": direction,
+        "reason": reason,
+        "next_action": next_action,
+        "estimated_trigger": expected_pullback or trigger_requirement or "fresh confirmation candle",
+        "extension_from_vwap_pct": round(extension_from_vwap_pct, 2),
+        "reference_price": round(latest_close, 4),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -4474,6 +4639,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     close_ser = session["Close"].astype(float)
     high_ser = session["High"].astype(float)
     low_ser = session["Low"].astype(float)
+    ema20_ser = close_ser.ewm(span=20, adjust=False).mean()
     ema50_ser = close_ser.ewm(span=50, adjust=False).mean()
     ema150_ser = close_ser.ewm(span=150, adjust=False).mean()
     stoch_low5 = low_ser.rolling(5, min_periods=1).min()
@@ -4570,6 +4736,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         scalp_entry_time = pd.Timestamp(session.index[scalp_entry_idx]).isoformat()
 
     latest_close = float(close_ser.iloc[-1])
+    latest_ema20 = float(ema20_ser.iloc[-1])
     latest_ema50 = float(ema50_ser.iloc[-1])
     latest_ema150 = float(ema150_ser.iloc[-1])
     latest_stoch = float(stoch5_ser.iloc[-1])
@@ -4621,6 +4788,17 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         scalp_action = "TRACK"
         scalp_reason = "Setup is valid, but current entry is no longer fresh."
+    scalp_gate = gate_trade_action(
+        final_action=scalp_action,
+        direction_state=direction_state_from_bias(scalp_bias),
+        trade_side=option_side_from_strategy(None, scalp_bias),
+        volume_required=True,
+        volume_confirmed=volume_confirmed,
+        extension_state=extension_state,
+    )
+    if scalp_gate["blocked"]:
+        scalp_action = str(scalp_gate["final_action"])
+        scalp_reason = scalp_gate["required_next_condition"]
     momentum_label = "STRONG" if stoch_timing_ok and volume_confirmed else "BUILDING" if stoch_timing_ok or volume_confirmed else "WEAK"
     price_label = "CONFIRMED" if price_respects_ema50 else "NOT CONFIRMED"
     status_label = (
@@ -4632,6 +4810,10 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     scalp_trading = {
         "action": scalp_action,
         "reason": scalp_reason,
+        "bias": scalp_gate["bias"],
+        "blocker": scalp_gate["blocker"],
+        "final_action": scalp_gate["final_action"],
+        "required_next_condition": scalp_gate["required_next_condition"],
         "momentum_label": momentum_label,
         "price_label": price_label,
         "status_label": status_label,
@@ -4647,6 +4829,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "risk_per_share": round(risk_per_share, 4),
         "risk_reward_t1": round(rr_t1, 2),
         "ema50": round(latest_ema50, 4),
+        "ema20": round(latest_ema20, 4),
         "ema150": round(latest_ema150, 4),
         "stoch5": round(latest_stoch, 2),
         "volume_ratio_20": round(latest_vol_ratio, 2),
@@ -4673,6 +4856,18 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
 
     prev_close = _info_opt_float(info, "previousClose") or 0.0
     oda_change = round((last / prev_close - 1.0) * 100.0, 3) if prev_close > 0 else None
+    opening_context = _classify_opening_playbook(
+        bias=bias,
+        or_state=or_state,
+        or_historical=or_historical,
+        vwap_position=vwap_position,
+        momentum_pct=momentum_pct,
+        vol_spike=vol_spike,
+        rvol=rvol,
+        spy_chg=spy_chg,
+        qqq_chg=qqq_chg,
+        session_minutes_elapsed=session_minutes_elapsed,
+    )
     metrics = {
         "session_date": session_date,
         "bars_used": len(session),
@@ -4694,6 +4889,9 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "regular_market_price": reg_m_p,
         "regular_market_change_pct": reg_m_chg,
         "market_state": market_state,
+        "opening_type": opening_context["opening_type"],
+        "opening_playbook": opening_context["playbook"],
+        "opening_playbook_reason": opening_context["reason"],
         "vwap": round(vwap_last, 4),
         "vwap_upper1": round(vwap_upper1, 4),
         "vwap_lower1": round(vwap_lower1, 4),
@@ -4709,6 +4907,7 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
         "vwap_position": vwap_position,
         "vwap_slope_pct": vwap_slope_pct,
         "vwap_macro_slope_pct": vwap_macro_slope_pct,
+        "ema20": round(latest_ema20, 4),
         "or_high": round(or_high, 4),
         "or_low": round(or_low, 4),
         "or_breakout": or_state,
@@ -4837,6 +5036,34 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     else:
         metrics["entry_rr_ratio"] = None
 
+    market_state_engine = _resolve_market_state(
+        opening_type=opening_context["opening_type"],
+        playbook=opening_context["playbook"],
+        bias=bias,
+        soft_edge=soft_edge,
+        or_state=or_state,
+        vwap_position=vwap_position,
+        trigger_fired=bool(_trigger_fired),
+        should_enter_now=str(entry_guidance.get("should_enter_now") or "").upper(),
+        is_chasing=is_chasing,
+        edge_state=edge_state,
+        extension_from_vwap_pct=float(vwap_dist_pct or 0.0),
+        latest_close=last,
+        ema20=latest_ema20,
+        ema50=latest_ema50,
+        vwap=vwap_last,
+        trigger_requirement=_trigger_requirement,
+        session_minutes_elapsed=session_minutes_elapsed,
+    )
+    metrics["market_state_engine"] = market_state_engine
+    metrics["current_market_state"] = market_state_engine["state"]
+    metrics["current_market_action"] = market_state_engine["action"]
+    metrics["required_next_condition"] = market_state_engine["next_action"]
+    entry_guidance["market_state"] = market_state_engine["state"]
+    entry_guidance["market_state_action"] = market_state_engine["action"]
+    entry_guidance["required_next_condition"] = market_state_engine["next_action"]
+    entry_guidance["estimated_trigger"] = market_state_engine["estimated_trigger"]
+
     # ── Pending confirmations gate (moved here — needs entry_guidance) ──
     # An entry-critical state with unmet confirmation conditions is not GO yet.
     if _internal_verdict in ("GO", "STRONG_GO"):
@@ -4869,12 +5096,38 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     )
     metrics["timeframe_state"] = timeframe_state
     metrics["timeframe_final_decision"] = timeframe_state.get("final_decision")
+    if market_state_engine["state"] in ("OPENING_RANGE", "WAIT_PULLBACK", "DO_NOT_CHASE", "NO_EDGE"):
+        state_final = {
+            "OPENING_RANGE": "OPENING_RANGE",
+            "WAIT_PULLBACK": "WAIT_PULLBACK",
+            "DO_NOT_CHASE": "DO_NOT_CHASE",
+            "NO_EDGE": "NO_EDGE",
+        }[market_state_engine["state"]]
+        if timeframe_state.get("final_decision") in ("NO_TRADE", "TRACK_ONLY", "WAIT", "WAIT_ENTRY"):
+            timeframe_state["final_decision"] = state_final
+            timeframe_state["final_action"] = market_state_engine["action"]
+            timeframe_state["required_next_condition"] = market_state_engine["next_action"]
+            timeframe_state["blocker"] = "" if state_final in ("OPENING_RANGE", "WAIT_PULLBACK") else state_final
+            metrics["timeframe_final_decision"] = state_final
     if timeframe_state.get("final_decision") in ("NO_TRADE", "DO_NOT_CHASE"):
+        _internal_verdict = "AVOID"
+        entry_guidance["should_enter_now"] = "NO"
+    elif timeframe_state.get("final_decision") in ("OPENING_RANGE", "WAIT_PULLBACK", "NO_EDGE"):
+        _internal_verdict = "WATCH" if timeframe_state.get("final_decision") == "WAIT_PULLBACK" else "WAIT"
         entry_guidance["should_enter_now"] = "NO"
     elif timeframe_state.get("final_decision") == "TRACK_ONLY":
+        _internal_verdict = "WATCH"
         entry_guidance["should_enter_now"] = "NO"
     elif timeframe_state.get("final_decision") == "WAIT_ENTRY":
+        _internal_verdict = "WAIT"
         entry_guidance["should_enter_now"] = "CONDITIONAL"
+    elif timeframe_state.get("final_decision") == "WAIT":
+        _internal_verdict = "WAIT"
+        entry_guidance["should_enter_now"] = "NO"
+    entry_guidance["bias"] = timeframe_state.get("bias")
+    entry_guidance["blocker"] = timeframe_state.get("blocker")
+    entry_guidance["final_action"] = timeframe_state.get("final_action")
+    entry_guidance["required_next_condition"] = timeframe_state.get("required_next_condition")
 
     # ── Adaptive R/R — setup-type-aware calculation ───────────────────────
     _adaptive_rr_result: Optional[dict] = None

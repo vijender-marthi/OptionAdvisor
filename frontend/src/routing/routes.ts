@@ -17,12 +17,27 @@ export const ROUTES = {
   myTickers: '/my-tickers',
   dayTradeDashboard: '/day-trade-dashboard',
   tools: '/tools',
-  optionChain: '/option-chain',
+  optionChain: '/trade-worksheet',
   eodJournal: '/eod-journal',
   investmentThesis: '/investment-thesis',
+  tradeWorksheet: '/trade-worksheet',
 } as const
 
 export type EngineType = 'DAY' | 'SWING' | 'REGULAR'
+
+export function getTradeWorksheetRoute(input: { ticker?: string | null; direction?: string | null; strategy?: string | null; source?: string | null } = {}): string {
+  const params = new URLSearchParams()
+  const ticker = input.ticker?.trim().toUpperCase()
+  const direction = input.direction?.trim()
+  const strategy = input.strategy?.trim()
+  const source = input.source?.trim()
+  if (ticker) params.set('ticker', ticker)
+  if (direction) params.set('direction', direction)
+  if (strategy) params.set('strategy', strategy)
+  if (source) params.set('source', source)
+  const query = params.toString()
+  return query ? `${ROUTES.tradeWorksheet}?${query}` : ROUTES.tradeWorksheet
+}
 
 /** Base route for engine type + ticker (?ticker=...). */
 export function getEngineRoute(engineType: string, ticker: string): string {

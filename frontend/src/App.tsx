@@ -37,7 +37,7 @@ const DayTradeDashboardPage = lazy(() => import('./pages/DayTradeDashboardPage')
 const TickerScannerPage      = lazy(() => import('./pages/TickerScannerPage'))
 const ToolsPage              = lazy(() => import('./pages/ToolsPage'))
 const DayTradeSessionPage    = lazy(() => import('./pages/DayTradeSessionPage'))
-const OptionChainPage        = lazy(() => import('./pages/OptionChainPage'))
+const TradeWorksheetPage     = lazy(() => import('./pages/TradeWorksheetPage'))
 const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
 const TrackModePage          = lazy(() => import('./pages/TrackModePage'))
@@ -183,7 +183,8 @@ function ShellRoutes() {
               <Route path="/ticker-scanner" element={<TickerScannerPage />} />
               <Route path="/tools" element={<ToolsPage />} />
               <Route path="/day-trade-session" element={<DayTradeSessionPage />} />
-              <Route path="/option-chain" element={<OptionChainPage />} />
+              <Route path="/trade-worksheet" element={<TradeWorksheetPage />} />
+              <Route path="/option-chain" element={<Navigate to="/trade-worksheet" replace />} />
               <Route path="/eod-journal" element={<EODJournalPage />} />
               <Route path="/journal-tool" element={<JournalToolPage />} />
               <Route path="/track-mode" element={<TrackModePage />} />
@@ -208,6 +209,7 @@ const PAGE_ICONS: Record<string, string> = {
   'trade-signals': '📊',
   'day-trade': '⚡',
   'swing-trade': '📈',
+  'trade-worksheet': '🧾',
   'day-trade-alerts': '🔔',
   'active-trades': '⚡',
   'ai-stocks': '🤖',

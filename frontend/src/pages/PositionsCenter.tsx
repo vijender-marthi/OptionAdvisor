@@ -40,9 +40,7 @@ import PositionsDashboardTab from '../components/PositionsDashboardTab'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'all',    label: 'All Positions' },
-  { id: 'open',   label: 'Open Positions' },
-  { id: 'closed', label: 'Closed Positions' },
+  { id: 'options', label: 'Options' },
   { id: 'stocks', label: 'Stocks' },
 ] as const
 
@@ -51,6 +49,7 @@ type FilterStyle = 'all' | 'day' | 'swing' | 'regular'
 type FilterType = 'all' | 'options' | 'stocks' | 'spreads'
 type FilterRisk = 'all' | 'low' | 'medium' | 'high'
 type SortKey = 'ticker' | 'dte' | 'entryPrice' | 'max_profit' | 'max_loss' | 'pnlPct'
+type PositionCategory = 'all' | 'options' | 'stocks'
 
 const SHARES_PER_OPTION_CONTRACT = 100
 
@@ -991,6 +990,44 @@ function deriveActionAlert(
   return { type: 'HOLD', label: 'HOLD', urgency: 'green', reason: holdReason }
 }
 
+function deriveStockActionAlert(
+  pos: PortfolioPosition,
+  analysis: StockPositionAnalysis | null | undefined,
+): ActionAlert {
+  const decision = String(analysis?.decision ?? '').toUpperCase()
+  const pnlPct = analysis?.pnl_pct ?? 0
+  if (decision === 'STOP_HIT' || decision === 'SELL') {
+    return {
+      type: 'EXIT_NOW',
+      label: decision === 'STOP_HIT' ? 'CUT LOSS' : 'EXIT NOW',
+      urgency: 'red',
+      reason: analysis?.reasoning || `${pos.ticker} has violated the stock exit plan. Close or reduce risk now.`,
+    }
+  }
+  if (decision === 'TRIM' || pnlPct >= 20) {
+    return {
+      type: 'SELL_HALF',
+      label: 'TAKE PROFIT',
+      urgency: 'amber',
+      reason: analysis?.reasoning || `${pos.ticker} is up ${pnlPct.toFixed(1)}%. Trim into strength and protect gains.`,
+    }
+  }
+  if (decision === 'WATCH') {
+    return {
+      type: 'WATCH',
+      label: 'WATCH',
+      urgency: 'amber',
+      reason: analysis?.reasoning || `${pos.ticker} needs monitoring. Keep stop and target levels current.`,
+    }
+  }
+  return {
+    type: 'HOLD',
+    label: 'HOLD',
+    urgency: 'green',
+    reason: analysis?.reasoning || `${pos.ticker} stock thesis is intact. Keep trailing stop and review on earnings or trend loss.`,
+  }
+}
+
 function SimplifiedPositionDetails({
   pos,
   actionAlert,
@@ -1822,6 +1859,10 @@ export default function PositionsCenter() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [plFilter, setPlFilter] = useState<'total' | 'week' | 'day' | null>(null)
   const [closedDateFilter, setClosedDateFilter] = useState<string | null>(null)
+  const [closedSectionsOpen, setClosedSectionsOpen] = useState<Record<'options' | 'stocks', boolean>>({
+    options: false,
+    stocks: false,
+  })
 
   useEffect(() => {
     const s = searchParams.get('style')?.trim().toLowerCase()
@@ -1884,7 +1925,12 @@ export default function PositionsCenter() {
 
   const openPortfolio   = useMemo(() => portfolio.filter(p => p.status === 'open'), [portfolio])
   const closedPortfolio = useMemo(() => portfolio.filter(p => p.status === 'closed'), [portfolio])
-  const stockPortfolio  = useMemo(() => openPortfolio.filter(isStockPos), [openPortfolio])
+  const stockPortfolio  = useMemo(() => portfolio.filter(isStockPos), [portfolio])
+  const optionPortfolio = useMemo(() => portfolio.filter(isOptionPos), [portfolio])
+  const openStockPortfolio = useMemo(() => openPortfolio.filter(isStockPos), [openPortfolio])
+  const closedStockPortfolio = useMemo(() => closedPortfolio.filter(isStockPos), [closedPortfolio])
+  const openOptionPortfolio = useMemo(() => openPortfolio.filter(isOptionPos), [openPortfolio])
+  const closedOptionPortfolio = useMemo(() => closedPortfolio.filter(isOptionPos), [closedPortfolio])
   const derivedOpt   = openPortfolio.filter(p => !isStockPos(p) && (p.legs?.length ?? 0) > 0).length
   const derivedStock = openPortfolio.filter(isStockPos).length
 
@@ -1930,7 +1976,7 @@ export default function PositionsCenter() {
     : regime === 'bearish' ? { label: 'Bearish', cls: getDecisionBadgeClass('AVOID') }
     : { label: 'Mixed', cls: getDecisionBadgeClass('WATCH') }
 
-  const positions = tab === 'stocks' ? [] : tab === 'open' ? openPortfolio : tab === 'closed' ? closedPortfolio : portfolio
+  const positions = tab === 'stocks' ? stockPortfolio : tab === 'options' ? optionPortfolio : portfolio
 
   const filtered = useMemo(() => {
     let list = [...positions]
@@ -1959,7 +2005,7 @@ export default function PositionsCenter() {
       else if (riskFilter === 'high') list = list.filter(p => cap(p) >= 15000)
     }
 
-    if (closedDateFilter && tab === 'closed') {
+    if (closedDateFilter && (tab === 'options' || tab === 'stocks')) {
       list = list.filter(p => {
         if (!p.exitDate) return false
         return new Date(p.exitDate).toISOString().slice(0, 10) === closedDateFilter
@@ -2043,7 +2089,7 @@ export default function PositionsCenter() {
     XLSX.utils.book_append_sheet(wb, ws, 'Positions')
     const colWidths = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, 14) }))
     ws['!cols'] = colWidths
-    const tabLabel = tab === 'open' ? 'Open' : 'Closed'
+    const tabLabel = tab === 'dashboard' ? 'Dashboard' : tab === 'options' ? 'Options' : 'Stocks'
     XLSX.writeFile(wb, `positions-${tabLabel.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }, [filtered, tab])
 
@@ -2133,7 +2179,7 @@ export default function PositionsCenter() {
         </div>
       </header>
 
-      {tab === 'all' && (
+      {tab === 'dashboard' && (
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         {/* 1. Contract Results */}
         <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-3 py-2">
@@ -2206,8 +2252,7 @@ export default function PositionsCenter() {
               >
                 {t.label} <span className="text-[11px] opacity-70">({
                   t.id === 'stocks' ? stockPortfolio.length
-                  : t.id === 'open' ? openPortfolio.length
-                  : t.id === 'closed' ? closedPortfolio.length
+                  : t.id === 'options' ? optionPortfolio.length
                   : portfolio.length
                 })</span>
               </button>
@@ -2244,7 +2289,7 @@ export default function PositionsCenter() {
                 <option value="entryPrice" className="bg-surface-card">Entry</option>
                 <option value="max_profit" className="bg-surface-card">Max profit</option>
                 <option value="max_loss" className="bg-surface-card">Max loss</option>
-                {tab === 'closed' && <option value="pnlPct" className="bg-surface-card">P&L</option>}
+                <option value="pnlPct" className="bg-surface-card">P&L</option>
               </select>
               <button type="button" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')} className="ml-1 text-muted hover:text-secondary">
                 {sortDir === 'asc' ? '↑' : '↓'}
@@ -2289,7 +2334,7 @@ export default function PositionsCenter() {
                   ))}
                 </div>
               </div>
-              {tab === 'closed' && (
+              {(tab === 'options' || tab === 'stocks') && (
                 <div className="space-y-2">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Close Date</div>
                   <div className="flex items-center gap-2">
@@ -2317,49 +2362,48 @@ export default function PositionsCenter() {
           summary={summary as any}
           isDark={isDark}
         />
-      ) : tab === 'stocks' ? (
-        <StocksTabContent
-          positions={openPortfolio}
+      ) : tab === 'options' ? (
+        <PositionCategoryWorkspace
+          category="options"
+          openPositions={openOptionPortfolio}
+          closedPositions={closedOptionPortfolio}
+          perPositionPnl={perPositionPnl}
+          aiAnalyses={aiAnalyses}
           stockAnalyses={stockAnalyses}
-          summary={summary}
+          exitBadgeByTicker={exitBadgeByTicker}
           expandedId={expandedId}
+          closedOpen={closedSectionsOpen.options}
+          loading={loading}
           onToggle={toggleExpanded}
+          onToggleClosed={() => setClosedSectionsOpen(prev => ({ ...prev, options: !prev.options }))}
           onClose={handleClose}
           onManage={handleManage}
-          loading={loading}
+          onAlert={(pos) => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
+          onDelete={handleDeletePosition}
           onAdd={() => setShowAddModal(true)}
         />
-      ) : loading && positions.length === 0 ? (
-        <div className="flex items-center justify-center py-24 text-sm text-muted">
-          <RefreshCw size={16} className="mr-2 animate-spin" /> Loading positions...
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-20 text-center">
-          <div className="text-lg font-semibold text-heading">{positions.length === 0 ? 'No positions yet' : 'No matching positions'}</div>
-          <p className="mt-1 text-sm text-tertiary">
-            {positions.length === 0
-              ? 'Add positions from the Position Trading or ticker analysis pages.'
-              : 'Try adjusting filters or search query.'}
-          </p>
-        </div>
+      ) : tab === 'stocks' ? (
+        <PositionCategoryWorkspace
+          category="stocks"
+          openPositions={openStockPortfolio}
+          closedPositions={closedStockPortfolio}
+          perPositionPnl={perPositionPnl}
+          aiAnalyses={aiAnalyses}
+          stockAnalyses={stockAnalyses}
+          exitBadgeByTicker={exitBadgeByTicker}
+          expandedId={expandedId}
+          closedOpen={closedSectionsOpen.stocks}
+          loading={loading}
+          onToggle={toggleExpanded}
+          onToggleClosed={() => setClosedSectionsOpen(prev => ({ ...prev, stocks: !prev.stocks }))}
+          onClose={handleClose}
+          onManage={handleManage}
+          onAlert={(pos) => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
+          onDelete={handleDeletePosition}
+          onAdd={() => setShowAddModal(true)}
+        />
       ) : (
-        <div className="flex flex-col gap-3">
-          {filtered.map(pos => (
-            <TradingPositionCard
-              key={pos.id}
-              pos={pos}
-              pnlData={perPositionPnl[pos.id] ?? null}
-              aiAnalysis={aiAnalyses[pos.id] ?? null}
-              exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
-              expanded={expandedId === pos.id}
-              onToggle={() => toggleExpanded(pos.id)}
-              onClose={() => handleClose(pos)}
-              onManage={() => handleManage(pos)}
-              onAlert={() => { navigateRouter(ROUTES.alerts); setNotice({ message: `Alert Center opened. Set a price alert for ${pos.ticker} from there.` }) }}
-              onDelete={() => handleDeletePosition(pos)}
-            />
-          ))}
-        </div>
+        null
       )}
 
       <footer className="flex flex-wrap items-start gap-2 border-t border-slate-100 dark:border-white/[0.05] pt-4 text-[11px] text-muted">
@@ -2495,6 +2539,16 @@ function isStockPos(p: PortfolioPosition): boolean {
   const hasLegs = Array.isArray(p.legs) && p.legs.length > 0
   if (hasLegs) return false
   return typeof p.shares === 'number' && p.shares > 0
+}
+
+function isOptionPos(p: PortfolioPosition): boolean {
+  return !isStockPos(p)
+}
+
+function filterByPositionCategory(positions: PortfolioPosition[], category: PositionCategory): PortfolioPosition[] {
+  if (category === 'stocks') return positions.filter(isStockPos)
+  if (category === 'options') return positions.filter(isOptionPos)
+  return positions
 }
 
 function getStockDecisionCls(decision: string): string {
@@ -2874,6 +2928,252 @@ function StocksTabContent({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function actionUrgencyRank(alert: ActionAlert): number {
+  if (alert.type === 'EXIT_NOW') return 0
+  if (alert.type === 'SELL_HALF') return 1
+  if (alert.type === 'WATCH') return 2
+  if (alert.type === 'MANAGE') return 3
+  return 4
+}
+
+function ActionCenter({
+  title,
+  subtitle,
+  items,
+  onFocus,
+}: {
+  title: string
+  subtitle: string
+  items: Array<{ pos: PortfolioPosition; alert: ActionAlert; pnl?: { pnl: number; pnl_pct: number } | null }>
+  onFocus: (id: string) => void
+}) {
+  const ranked = [...items].sort((a, b) => {
+    const ar = actionUrgencyRank(a.alert)
+    const br = actionUrgencyRank(b.alert)
+    if (ar !== br) return ar - br
+    return (b.pnl?.pnl_pct ?? 0) - (a.pnl?.pnl_pct ?? 0)
+  })
+  const urgent = ranked.filter(item => item.alert.type === 'EXIT_NOW').length
+  const profit = ranked.filter(item => item.alert.type === 'SELL_HALF').length
+  const watch = ranked.filter(item => item.alert.type === 'WATCH' || item.alert.type === 'MANAGE').length
+
+  const badgeClass = (urgency: ActionAlert['urgency']) =>
+    urgency === 'red'
+      ? 'border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-300'
+      : urgency === 'amber'
+        ? 'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+        : urgency === 'blue'
+          ? 'border-sky-500/35 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+          : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/[0.07] dark:bg-slate-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Shield size={17} className="text-violet-500" />
+            <h2 className="text-base font-bold text-heading">{title}</h2>
+          </div>
+          <p className="mt-1 text-xs text-tertiary">{subtitle}</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full border border-rose-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-500">{urgent} danger</span>
+          <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500">{profit} profit</span>
+          <span className="rounded-full border border-sky-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-500">{watch} manage</span>
+        </div>
+      </div>
+
+      {ranked.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-tertiary dark:border-white/[0.08]">
+          No open positions in this category.
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+          {ranked.slice(0, 6).map(({ pos, alert, pnl }) => (
+            <button
+              key={pos.id}
+              type="button"
+              onClick={() => onFocus(pos.id)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors hover:border-violet-400/60 ${badgeClass(alert.urgency)}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-black text-heading">{pos.ticker}</span>
+                    <span className="truncate text-[11px] font-semibold text-secondary">{stratelabel(pos.strategy)}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-snug">{alert.reason}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest">{alert.label}</div>
+                  {pnl && <div className={`mt-1 font-mono text-[11px] font-bold ${getProfitLossTextClass(pnl.pnl)}`}>{fmtPct(pnl.pnl_pct)}</div>}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PositionCategoryWorkspace({
+  category,
+  openPositions,
+  closedPositions,
+  perPositionPnl,
+  aiAnalyses,
+  stockAnalyses,
+  exitBadgeByTicker,
+  expandedId,
+  closedOpen,
+  loading,
+  onToggle,
+  onToggleClosed,
+  onClose,
+  onManage,
+  onAlert,
+  onDelete,
+  onAdd,
+}: {
+  category: 'options' | 'stocks'
+  openPositions: PortfolioPosition[]
+  closedPositions: PortfolioPosition[]
+  perPositionPnl: Record<string, {
+    pnl: number
+    pnl_pct: number
+    entry_premium_per_share?: number
+    current_mark_per_share?: number
+    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+  }>
+  aiAnalyses: Record<string, AiPositionAnalysis>
+  stockAnalyses: Record<string, StockPositionAnalysis>
+  exitBadgeByTicker: Record<string, string>
+  expandedId: string | null
+  closedOpen: boolean
+  loading: boolean
+  onToggle: (id: string) => void
+  onToggleClosed: () => void
+  onClose: (pos: PortfolioPosition) => void
+  onManage: (pos: PortfolioPosition) => void
+  onAlert: (pos: PortfolioPosition) => void
+  onDelete: (pos: PortfolioPosition) => void
+  onAdd: () => void
+}) {
+  const isStocks = category === 'stocks'
+  const title = isStocks ? 'Stocks' : 'Options'
+  const actionItems = openPositions.map(pos => ({
+    pos,
+    alert: isStocks
+      ? deriveStockActionAlert(pos, stockAnalyses[pos.id] ?? null)
+      : deriveActionAlert(pos, perPositionPnl[pos.id] ?? null, aiAnalyses[pos.id] ?? null),
+    pnl: perPositionPnl[pos.id] ?? null,
+  }))
+
+  return (
+    <div className="space-y-4">
+      <ActionCenter
+        title={`${title} Action Center`}
+        subtitle={isStocks
+          ? 'Prioritized stock positions that need attention: stops, trims, earnings risk, and trailing-stop updates.'
+          : 'Prioritized option positions that need attention: theta danger, profit-taking, rolls, and loss cuts.'}
+        items={actionItems}
+        onFocus={onToggle}
+      />
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-bold text-heading">Open {title} Positions</h2>
+            <p className="text-xs text-tertiary">{openPositions.length} active {isStocks ? 'stock' : 'option'} position{openPositions.length === 1 ? '' : 's'}</p>
+          </div>
+          <button type="button" onClick={onAdd} className={`${getActionButtonClass('trade')} inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold`}>
+            <Plus size={14} /> Add Position
+          </button>
+        </div>
+
+        {loading && openPositions.length === 0 ? (
+          <div className="flex items-center justify-center py-16 text-sm text-muted">
+            <RefreshCw size={16} className="mr-2 animate-spin" /> Loading positions...
+          </div>
+        ) : openPositions.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-14 text-center dark:border-white/[0.08]">
+            <div className="text-lg font-semibold text-heading">No open {isStocks ? 'stock' : 'option'} positions</div>
+            <p className="mt-1 text-sm text-tertiary">Add a position to track action items and exits here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {openPositions.map(pos => isStocks ? (
+              <StockPositionCard
+                key={pos.id}
+                pos={pos}
+                analysis={stockAnalyses[pos.id] ?? null}
+                expanded={expandedId === pos.id}
+                onToggle={() => onToggle(pos.id)}
+                onClose={() => onClose(pos)}
+                onManage={() => onManage(pos)}
+              />
+            ) : (
+              <TradingPositionCard
+                key={pos.id}
+                pos={pos}
+                pnlData={perPositionPnl[pos.id] ?? null}
+                aiAnalysis={aiAnalyses[pos.id] ?? null}
+                exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
+                expanded={expandedId === pos.id}
+                onToggle={() => onToggle(pos.id)}
+                onClose={() => onClose(pos)}
+                onManage={() => onManage(pos)}
+                onAlert={() => onAlert(pos)}
+                onDelete={() => onDelete(pos)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white dark:border-white/[0.07] dark:bg-slate-900">
+        <button
+          type="button"
+          onClick={onToggleClosed}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        >
+          <div>
+            <h2 className="text-base font-bold text-heading">Closed {title} Positions</h2>
+            <p className="text-xs text-tertiary">{closedPositions.length} closed {isStocks ? 'stock' : 'option'} trade{closedPositions.length === 1 ? '' : 's'}</p>
+          </div>
+          <ChevronDown size={18} className={`text-muted transition-transform ${closedOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {closedOpen && (
+          <div className="space-y-3 border-t border-slate-100 p-3 dark:border-white/[0.06]">
+            {closedPositions.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-tertiary dark:border-white/[0.08]">
+                No closed {isStocks ? 'stock' : 'option'} positions yet.
+              </div>
+            ) : (
+              closedPositions.map(pos => (
+                <TradingPositionCard
+                  key={pos.id}
+                  pos={pos}
+                  pnlData={perPositionPnl[pos.id] ?? null}
+                  aiAnalysis={aiAnalyses[pos.id] ?? null}
+                  exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
+                  expanded={expandedId === pos.id}
+                  onToggle={() => onToggle(pos.id)}
+                  onClose={() => undefined}
+                  onManage={() => onManage(pos)}
+                  onAlert={() => onAlert(pos)}
+                  onDelete={() => onDelete(pos)}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

@@ -333,6 +333,10 @@ export interface DayTradeScanResult {
       next_action: string
     }
     final_decision?: string
+    bias?: string
+    blocker?: string
+    final_action?: string
+    required_next_condition?: string
   }
   /** VWAP-based entry guidance with pending confirmations, breakout levels, and human-readable action text */
   entry_guidance?: {

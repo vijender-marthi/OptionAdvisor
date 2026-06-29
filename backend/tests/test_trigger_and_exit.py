@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from verdict import Verdict
 from verdict_resolver import resolve_verdict
 import trigger_detector as td
-from day_trade import build_timeframe_state
+from day_trade import build_timeframe_state, _classify_opening_playbook, _resolve_market_state
 from exit_signal_engine import ExitSignalEngine, HeldPosition
 
 
@@ -174,6 +174,126 @@ class TestDayTradeTimeframeState(unittest.TestCase):
         )
         self.assertEqual(state["execution_1m"]["status"], "READY")
         self.assertEqual(state["final_decision"], "GO")
+
+    def test_trigger_fired_without_volume_is_not_confirmed(self):
+        state = self._state(
+            trigger_fired=True,
+            volume_spike=False,
+            candles_5m=[_green(100.1, 100.5, lo=100.05), _green(100.5, 101.0, lo=100.4)],
+            entry_guidance={"should_enter_now": "YES", "action": "Execute with stop"},
+        )
+        self.assertEqual(state["confirmation_5m"]["status"], "PENDING")
+        self.assertEqual(state["confirmation_5m"]["volume_confirmed"], False)
+        self.assertNotEqual(state["final_decision"], "GO")
+
+
+class TestDayTradeMarketStateMachine(unittest.TestCase):
+    def test_mrvl_style_trend_day_waits_pullback_not_no_trade(self):
+        opening = _classify_opening_playbook(
+            bias="short",
+            or_state="below",
+            or_historical="broke_down",
+            vwap_position="below",
+            momentum_pct=-0.72,
+            vol_spike=True,
+            rvol=1.8,
+            spy_chg=-0.3,
+            qqq_chg=-0.4,
+            session_minutes_elapsed=42,
+        )
+        state = _resolve_market_state(
+            opening_type=opening["opening_type"],
+            playbook=opening["playbook"],
+            bias="short",
+            soft_edge=True,
+            or_state="below",
+            vwap_position="below",
+            trigger_fired=False,
+            should_enter_now="NO",
+            is_chasing=False,
+            edge_state="DEVELOPING",
+            extension_from_vwap_pct=-1.1,
+            latest_close=95.0,
+            ema20=96.0,
+            ema50=97.0,
+            vwap=98.5,
+            trigger_requirement="Need first failed bounce",
+            session_minutes_elapsed=42,
+        )
+        self.assertEqual(opening["opening_type"], "TREND_DAY")
+        self.assertEqual(state["direction"], "PUT_ONLY")
+        self.assertEqual(state["state"], "WAIT_PULLBACK")
+        self.assertEqual(state["action"], "WAIT FIRST PULLBACK")
+        self.assertNotEqual(state["state"], "NO_TRADE")
+
+    def test_trend_day_extended_is_do_not_chase(self):
+        state = _resolve_market_state(
+            opening_type="TREND_DAY",
+            playbook="TREND",
+            bias="short",
+            soft_edge=True,
+            or_state="below",
+            vwap_position="below",
+            trigger_fired=False,
+            should_enter_now="NO",
+            is_chasing=False,
+            edge_state="DEVELOPING",
+            extension_from_vwap_pct=-4.0,
+            latest_close=94.0,
+            ema20=96.0,
+            ema50=97.0,
+            vwap=98.0,
+            trigger_requirement="Need pullback",
+            session_minutes_elapsed=55,
+        )
+        self.assertEqual(state["state"], "DO_NOT_CHASE")
+        self.assertIn("4.0% from VWAP", state["reason"])
+
+    def test_normal_or_break_waits_vwap_retest(self):
+        state = _resolve_market_state(
+            opening_type="NORMAL_OPEN",
+            playbook="OR_VWAP",
+            bias="long",
+            soft_edge=True,
+            or_state="above",
+            vwap_position="above",
+            trigger_fired=False,
+            should_enter_now="NO",
+            is_chasing=False,
+            edge_state="DEVELOPING",
+            extension_from_vwap_pct=0.8,
+            latest_close=101.0,
+            ema20=100.4,
+            ema50=100.0,
+            vwap=100.2,
+            trigger_requirement="Wait VWAP retest",
+            session_minutes_elapsed=35,
+        )
+        self.assertEqual(state["state"], "WAIT_PULLBACK")
+        self.assertEqual(state["action"], "WAIT VWAP RETEST")
+
+    def test_gap_and_go_waits_failed_bounce_without_vwap_touch(self):
+        state = _resolve_market_state(
+            opening_type="GAP_AND_GO",
+            playbook="GAP_AND_GO",
+            bias="short",
+            soft_edge=True,
+            or_state="below",
+            vwap_position="below",
+            trigger_fired=False,
+            should_enter_now="NO",
+            is_chasing=False,
+            edge_state="DEVELOPING",
+            extension_from_vwap_pct=-1.4,
+            latest_close=95.0,
+            ema20=96.0,
+            ema50=97.0,
+            vwap=98.0,
+            trigger_requirement="Wait failed bounce",
+            session_minutes_elapsed=30,
+        )
+        self.assertEqual(state["state"], "WAIT_PULLBACK")
+        self.assertEqual(state["action"], "WAIT FAILED BOUNCE")
 
 
 # ── Fix 4: exit signal engine ───────────────────────────────────────────────

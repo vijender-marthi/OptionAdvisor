@@ -2831,7 +2831,7 @@ def day_trade_scan(
         timeframe_state = dict((r.metrics or {}).get("timeframe_state") or {})
         timeframe_final = str(timeframe_state.get("final_decision") or (r.metrics or {}).get("timeframe_final_decision") or "").upper()
         final_decision = timeframe_final or str(resolved.verdict or "WAIT").upper()
-        if timeframe_final in {"NO_TRADE", "TRACK_ONLY", "WAIT_ENTRY", "DO_NOT_CHASE", "GO"}:
+        if timeframe_final in {"NO_TRADE", "TRACK_ONLY", "WAIT_ENTRY", "DO_NOT_CHASE", "GO", "OPENING_RANGE", "WAIT_PULLBACK", "NO_EDGE", "EXECUTE", "READY"}:
             # The explicit 15m→5m→1m hierarchy is the authoritative day-trade
             # execution gate. Keep the resolver fields for context, but expose
             # the gated decision as final_decision.
