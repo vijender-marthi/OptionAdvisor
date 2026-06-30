@@ -10,6 +10,7 @@ import {
   Filter,
   Info,
   Layers,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -1859,6 +1860,7 @@ export default function PositionsCenter() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [plFilter, setPlFilter] = useState<'total' | 'week' | 'day' | null>(null)
   const [closedDateFilter, setClosedDateFilter] = useState<string | null>(null)
+  const [expiryFilter, setExpiryFilter] = useState<string | null>(null)
   const [closedSectionsOpen, setClosedSectionsOpen] = useState<Record<'options' | 'stocks', boolean>>({
     options: false,
     stocks: false,
@@ -1983,7 +1985,12 @@ export default function PositionsCenter() {
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
-      list = list.filter(p => p.ticker.toLowerCase().includes(q) || p.strategy.toLowerCase().includes(q))
+      list = list.filter(p =>
+        p.ticker.toLowerCase().includes(q) ||
+        p.strategy.toLowerCase().includes(q) ||
+        (p.expiry ?? '').toLowerCase().includes(q) ||
+        (p.exitDate ? new Date(p.exitDate).toLocaleDateString() : '').includes(q)
+      )
     }
 
     if (tradeStyle !== 'all') {
@@ -2012,6 +2019,10 @@ export default function PositionsCenter() {
       })
     }
 
+    if (expiryFilter) {
+      list = list.filter(p => (p.expiry ?? '').slice(0, 10) === expiryFilter)
+    }
+
     list.sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
       let va: number, vb: number
@@ -2028,7 +2039,7 @@ export default function PositionsCenter() {
     })
 
     return list
-  }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, sortKey, sortDir])
+  }, [positions, searchQuery, tradeStyle, typeFilter, riskFilter, closedDateFilter, expiryFilter, sortKey, sortDir])
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedId(cur => (cur === id ? null : id))
@@ -2042,7 +2053,7 @@ export default function PositionsCenter() {
     await closePosition(id, payload)
     setClosingId(null)
     toggleExpanded(id)
-    setNotice({ message: 'Position closed.' })
+    setNotice({ message: 'Position closed.', tone: 'success' })
   }, [closePosition, toggleExpanded])
 
   const handleManage = useCallback((pos: PortfolioPosition) => {
@@ -2054,7 +2065,7 @@ export default function PositionsCenter() {
     if (!window.confirm(`Delete ${label} permanently? This cannot be undone.`)) return
     removeFromPortfolio(pos.id)
     toggleExpanded(pos.id)
-    setNotice({ message: `${label} deleted.` })
+    setNotice({ message: `${label} deleted.`, tone: 'success' })
   }, [removeFromPortfolio, toggleExpanded])
 
   const handleEdit = useCallback((id: string) => {
@@ -2093,7 +2104,7 @@ export default function PositionsCenter() {
     XLSX.writeFile(wb, `positions-${tabLabel.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }, [filtered, tab])
 
-  const [notice, setNotice] = useState<{ message: string } | null>(null)
+  const [notice, setNotice] = useState<{ message: string; tone?: 'success' | 'error' } | null>(null)
 
   useEffect(() => {
     if (notice) {
@@ -2120,16 +2131,16 @@ export default function PositionsCenter() {
   const handleSaveEdit = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     updatePortfolioPosition(id, data)
     setEditingId(null)
-    setNotice({ message: 'Position updated.' })
+    setNotice({ message: 'Position updated.', tone: 'success' })
   }, [updatePortfolioPosition])
 
   const handleAddPosition = useCallback((data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     addManualPosition(data)
     setShowAddModal(false)
-    setNotice({ message: `Position added: ${data.ticker} ${data.strategy}` })
+    setNotice({ message: `Position added: ${data.ticker} ${data.strategy}`, tone: 'success' })
   }, [addManualPosition])
 
-  const filtersActive = tradeStyle !== 'all' || typeFilter !== 'all' || riskFilter !== 'all' || closedDateFilter !== null
+  const filtersActive = tradeStyle !== 'all' || typeFilter !== 'all' || riskFilter !== 'all' || closedDateFilter !== null || expiryFilter !== null || searchQuery.trim() !== ''
 
   return (
     <div className="oa-cc-page positions-center-page max-w-6xl mx-auto p-4 md:p-6 space-y-5">
@@ -2235,9 +2246,15 @@ export default function PositionsCenter() {
       )}
 
       {notice && (
-        <div className="flex items-center justify-between rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-200">
-          <span>{notice.message}</span>
-          <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-sky-300 hover:text-sky-100"><X size={16} /></button>
+        <div className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-sm font-medium ${
+          notice.tone === 'error'
+            ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+            : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+        }`}>
+          <span className="flex items-center gap-2">
+            {notice.tone === 'error' ? '✕' : '✓'} {notice.message}
+          </span>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 opacity-60 hover:opacity-100"><X size={16} /></button>
         </div>
       )}
 
@@ -2259,7 +2276,23 @@ export default function PositionsCenter() {
             ))}
           </div>
           {tab !== 'dashboard' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Ticker / strategy / expiry / close-date search */}
+            <label className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm min-w-[180px]">
+              <Search size={13} className="shrink-0 text-muted" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Ticker, strategy, expiry…"
+                className="bg-transparent outline-none text-sm text-primary placeholder:text-tertiary w-full"
+              />
+              {searchQuery && (
+                <button type="button" onClick={() => setSearchQuery('')} className="shrink-0 text-muted hover:text-secondary">
+                  <X size={12} />
+                </button>
+              )}
+            </label>
             <label className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800/60 px-3 py-1.5 text-sm">
               <Filter size={14} className="shrink-0 text-secondary" />
                <select value={tradeStyle} onChange={e => setTradeStyle(e.target.value as FilterStyle)} className="bg-transparent outline-none text-sm text-primary font-medium cursor-pointer">
@@ -2347,6 +2380,17 @@ export default function PositionsCenter() {
                   </div>
                 </div>
               )}
+              <div className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Expiry Date</div>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={expiryFilter ?? ''} onChange={e => setExpiryFilter(e.target.value || null)}
+                    className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-primary outline-none focus:border-violet-500" />
+                  {expiryFilter && (
+                    <button type="button" onClick={() => setExpiryFilter(null)}
+                      className="text-[11px] text-violet-500 hover:text-violet-400 font-semibold">Clear</button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -2441,7 +2485,7 @@ export default function PositionsCenter() {
           onSave={(id, patch) => {
             updatePortfolioPosition(id, patch)
             setReviewingClosedId(null)
-            setNotice({ message: 'Close details saved.' })
+            setNotice({ message: 'Close details saved.', tone: 'success' })
           }}
           onClose={() => setReviewingClosedId(null)}
         />
@@ -3376,7 +3420,7 @@ function ClosePositionModal({
   onClose,
 }: {
   pos: PortfolioPosition
-  onConfirm: (id: string, payload: ClosePositionPayload) => void
+  onConfirm: (id: string, payload: ClosePositionPayload) => Promise<void>
   onClose: () => void
 }) {
   const isStock = pos.strategy === 'Stock'
@@ -3392,6 +3436,7 @@ function ClosePositionModal({
   const [overridePnlStr, setOverridePnlStr] = useState('')
   const [overridePnlPctStr, setOverridePnlPctStr] = useState('')
   const [overrideReason, setOverrideReason] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const contractsToClose = Math.min(Math.max(parseInt(contractsToCloseStr) || 1, 1), pos.contracts)
   const isPartialClose = contractsToClose < pos.contracts
@@ -3408,23 +3453,29 @@ function ClosePositionModal({
   const pnlColor =
     displayPnl.pnl > 0 ? 'text-emerald-400' : displayPnl.pnl < 0 ? 'text-rose-400' : 'text-gray-400'
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onConfirm(pos.id, {
-      contractsToClose,
-      exit_price: exitPrice ?? undefined,
-      exit_debit_credit: exitDebitCredit ?? undefined,
-      close_date: closeDate ? new Date(closeDate + 'T12:00:00').toISOString() : undefined,
-      realized_pnl: displayPnl.pnl,
-      realized_pnl_percent: displayPnl.pnlPct,
-      exit_reason: exitReason || undefined,
-      close_notes: closeNotes.trim() || undefined,
-      pnl_overridden: overrideEnabled || undefined,
-      pnl_override_reason: overrideEnabled ? (overrideReason.trim() || undefined) : undefined,
-    })
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      await onConfirm(pos.id, {
+        contractsToClose,
+        exit_price: exitPrice ?? undefined,
+        exit_debit_credit: exitDebitCredit ?? undefined,
+        close_date: closeDate ? new Date(closeDate + 'T12:00:00').toISOString() : undefined,
+        realized_pnl: displayPnl.pnl,
+        realized_pnl_percent: displayPnl.pnlPct,
+        exit_reason: exitReason || undefined,
+        close_notes: closeNotes.trim() || undefined,
+        pnl_overridden: overrideEnabled || undefined,
+        pnl_override_reason: overrideEnabled ? (overrideReason.trim() || undefined) : undefined,
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const canSubmit = true
+  const canSubmit = !isSubmitting
 
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
   const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
@@ -3571,9 +3622,10 @@ function ClosePositionModal({
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
-          <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>
-          <button type="submit" disabled={!canSubmit} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold`}>
-            {isPartialClose ? `Close ${contractsToClose} of ${pos.contracts} ${isStock ? 'Shares' : 'Contracts'}` : 'Close Position'}
+          <button type="button" onClick={isSubmitting ? undefined : onClose} disabled={isSubmitting} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm disabled:opacity-50`}>Cancel</button>
+          <button type="submit" disabled={!canSubmit} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-2 disabled:opacity-60`}>
+            {isSubmitting && <Loader2 size={14} className="animate-spin" />}
+            {isSubmitting ? 'Closing…' : isPartialClose ? `Close ${contractsToClose} of ${pos.contracts} ${isStock ? 'Shares' : 'Contracts'}` : 'Close Position'}
           </button>
         </div>
       </form>
