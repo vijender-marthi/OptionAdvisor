@@ -1350,6 +1350,121 @@ def _classify_risks(
 
 
 # ---------------------------------------------------------------------------
+# Strong Downtrend Exhaustion Monitor
+# ---------------------------------------------------------------------------
+
+def _build_downtrend_exhaustion_monitor(
+    *,
+    session: pd.DataFrame,
+    vwap_lower2_ser: pd.Series,
+    bias: Optional[str],
+    last_price: float,
+    vwap_lower1: float,
+    vwap_lower2: float,
+    atr_used_pct: float,
+    atr14: float,
+    vwap_position: str,
+    or_state: str,
+    or_historical: str,
+    momentum_pct: float,
+) -> dict[str, Any]:
+    """
+    Track exhaustion zones during strong downtrends using existing VWAP sigma
+    bands and ATR consumption. Positive distance means price is still above
+    the lower band; negative means price has traded through it.
+    """
+    def _distance_to_band(band: float) -> tuple[Optional[float], Optional[float]]:
+        if not band or band <= 0 or not last_price or last_price <= 0:
+            return None, None
+        dollars = round(last_price - band, 4)
+        pct = round((last_price - band) / last_price * 100, 2)
+        return dollars, pct
+
+    dist_1, dist_1_pct = _distance_to_band(vwap_lower1)
+    dist_2, dist_2_pct = _distance_to_band(vwap_lower2)
+
+    strong_downtrend = (
+        (bias or "").lower() == "short"
+        and vwap_position == "below"
+        and (momentum_pct or 0.0) <= -0.25
+        and (
+            or_state == "below"
+            or or_historical == "broke_down"
+            or (atr_used_pct or 0.0) >= 35.0
+        )
+    )
+
+    in_minus_1sigma = bool(vwap_lower1 > 0 and last_price <= vwap_lower1 * 1.001)
+    in_minus_2sigma = bool(vwap_lower2 > 0 and last_price <= vwap_lower2 * 1.001)
+    alerts: list[dict[str, str]] = []
+
+    if strong_downtrend and in_minus_1sigma:
+        alerts.append({
+            "code": "APPROACHING_EXHAUSTION",
+            "message": "Approaching exhaustion",
+            "condition": "Price entered the VWAP -1σ first watch zone.",
+        })
+
+    if strong_downtrend and in_minus_2sigma:
+        alerts.append({
+            "code": "HIGH_PROBABILITY_BOUNCE_ZONE",
+            "message": "High probability bounce zone",
+            "condition": "Price entered the VWAP -2σ high-probability exhaustion zone.",
+        })
+
+    first_green_1m_in_minus_2sigma = False
+    try:
+        if strong_downtrend and vwap_lower2 > 0 and len(session) and len(vwap_lower2_ser) >= len(session):
+            open_arr = session["Open"].astype(float).to_numpy()
+            close_arr = session["Close"].astype(float).to_numpy()
+            low_arr = session["Low"].astype(float).to_numpy()
+            lower2_arr = vwap_lower2_ser.iloc[-len(session):].astype(float).to_numpy()
+            green_indices = [
+                i for i in range(len(session))
+                if (
+                    np.isfinite(lower2_arr[i])
+                    and lower2_arr[i] > 0
+                    and (close_arr[i] <= lower2_arr[i] * 1.001 or low_arr[i] <= lower2_arr[i] * 1.001)
+                    and close_arr[i] > open_arr[i]
+                )
+            ]
+            first_green_1m_in_minus_2sigma = bool(green_indices and green_indices[0] == len(session) - 1)
+    except Exception:
+        first_green_1m_in_minus_2sigma = False
+
+    if first_green_1m_in_minus_2sigma:
+        alerts.append({
+            "code": "EXHAUSTION_SIGNAL",
+            "message": "Exhaustion signal",
+            "condition": "First green 1m candle printed inside the VWAP -2σ zone.",
+        })
+
+    if not strong_downtrend:
+        state = "INACTIVE"
+    elif in_minus_2sigma:
+        state = "HIGH_PROBABILITY_BOUNCE_ZONE"
+    elif in_minus_1sigma:
+        state = "APPROACHING_EXHAUSTION"
+    else:
+        state = "WATCH"
+
+    return {
+        "active": strong_downtrend,
+        "state": state,
+        "atr_used_pct": round(float(atr_used_pct or 0.0), 1),
+        "atr14": round(float(atr14), 2) if atr14 and atr14 > 0 else None,
+        "minus_1sigma": round(float(vwap_lower1), 4) if vwap_lower1 and vwap_lower1 > 0 else None,
+        "minus_2sigma": round(float(vwap_lower2), 4) if vwap_lower2 and vwap_lower2 > 0 else None,
+        "distance_to_minus_1sigma": dist_1,
+        "distance_to_minus_1sigma_pct": dist_1_pct,
+        "distance_to_minus_2sigma": dist_2,
+        "distance_to_minus_2sigma_pct": dist_2_pct,
+        "first_green_1m_in_minus_2sigma": first_green_1m_in_minus_2sigma,
+        "alerts": alerts,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Execution Quality Classifier
 # ---------------------------------------------------------------------------
 
@@ -5009,6 +5124,20 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     metrics["daily_range_used_pct"] = _daily_range_used_pct
     metrics["daily_range_phase"]    = _daily_range_phase
     metrics["atr14"]                = round(_atr14, 2) if _atr14 > 0 else None
+    metrics["downtrend_exhaustion"] = _build_downtrend_exhaustion_monitor(
+        session=session,
+        vwap_lower2_ser=vwap_lower2_ser,
+        bias=bias,
+        last_price=last,
+        vwap_lower1=vwap_lower1,
+        vwap_lower2=vwap_lower2,
+        atr_used_pct=_daily_range_used_pct,
+        atr14=_atr14,
+        vwap_position=vwap_position,
+        or_state=or_state,
+        or_historical=or_historical,
+        momentum_pct=momentum_pct,
+    )
 
     trader_decision = build_trader_decision(
         ticker=t,
@@ -5024,6 +5153,16 @@ def run_day_trade_scan(ticker: str, force_refresh: bool = False,
     )
 
     entry_guidance = build_day_entry_guidance(metrics, trader_decision, bias, ticker=t)
+    _downtrend_alerts = (metrics.get("downtrend_exhaustion") or {}).get("alerts") or []
+    if _downtrend_alerts:
+        _contextual_alerts = list(entry_guidance.get("contextual_alerts") or [])
+        for _alert in _downtrend_alerts:
+            _contextual_alerts.append({
+                "type": _alert.get("code") or "DOWNTREND_EXHAUSTION",
+                "message": _alert.get("message") or "Downtrend exhaustion alert",
+                "condition": _alert.get("condition") or "",
+            })
+        entry_guidance["contextual_alerts"] = _contextual_alerts
 
     # ── Entry R/R ratio ───────────────────────────────────────────────
     _eg_scalp   = entry_guidance.get("scalp_target")

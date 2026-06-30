@@ -461,7 +461,7 @@ export default function DayTradePage() {
   const tickerRef = useRef(ticker)
   tickerRef.current = ticker
 
-  const runScan = useCallback(async (overrideTicker?: string) => {
+  const runScan = useCallback(async (overrideTicker?: string, forceRefresh = true) => {
     const sym = (overrideTicker || tickerRef.current).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
@@ -476,7 +476,7 @@ export default function DayTradePage() {
       : { ...cur, loading: true, error: null, result: null }
     )
     try {
-      const data = await analyzeDayTrade(sym)
+      const data = await analyzeDayTrade(sym, forceRefresh)
       setUi(cur => ({
         ...cur,
         loading: false,
@@ -487,7 +487,7 @@ export default function DayTradePage() {
       setOcKey(k => k + 1)
       setScanCount(c => c + 1)
       try {
-        const v2res = await analyzeV2(sym, 'day')
+        const v2res = await analyzeV2(sym, 'day', { forceRefresh })
         setUnified(v2res.data)
       } catch {
         setUnified(deriveUnifiedFromDayResult(data))
@@ -539,10 +539,11 @@ export default function DayTradePage() {
     return () => clearTimeout(t)
   }, [notice])
 
-  // Auto-refresh every 60 seconds when a result is loaded
+  // Auto-refresh every 30 seconds when a result is loaded. Force refresh keeps the
+  // Day Trade page aligned with the latest available 1m Yahoo bars.
   useEffect(() => {
     if (!result) return
-    const id = setInterval(() => void runScan(), 60_000)
+    const id = setInterval(() => void runScan(undefined, true), 30_000)
     return () => clearInterval(id)
   }, [result, runScan])
 

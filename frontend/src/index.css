@@ -224,6 +224,37 @@ html.dark textarea {
 html.dark input::placeholder,
 html.dark textarea::placeholder { color: var(--input-placeholder); }
 
+/* Dark contrast safety net for older pages that still use neutral Tailwind
+   classes without explicit dark: pairs. Explicit dark:* classes keep priority. */
+html.dark [class~="text-gray-700"]:not([class*="dark:text-"]),
+html.dark [class~="text-slate-700"]:not([class*="dark:text-"]) { color: var(--text-secondary); }
+html.dark [class~="text-gray-600"]:not([class*="dark:text-"]),
+html.dark [class~="text-slate-600"]:not([class*="dark:text-"]) { color: var(--text-tertiary); }
+html.dark [class~="text-gray-500"]:not([class*="dark:text-"]),
+html.dark [class~="text-slate-500"]:not([class*="dark:text-"]) { color: var(--text-tertiary); }
+html.dark [class~="text-gray-400"]:not([class*="dark:text-"]),
+html.dark [class~="text-slate-400"]:not([class*="dark:text-"]) { color: var(--text-secondary); }
+html.dark [class~="text-gray-300"]:not([class*="dark:text-"]),
+html.dark [class~="text-slate-300"]:not([class*="dark:text-"]) { color: var(--text-secondary); }
+
+html.dark [class~="bg-white"]:not([class*="dark:bg-"]),
+html.dark [class~="bg-slate-50"]:not([class*="dark:bg-"]),
+html.dark [class~="bg-gray-50"]:not([class*="dark:bg-"]) {
+  background-color: var(--surface-card);
+}
+html.dark [class~="bg-slate-100"]:not([class*="dark:bg-"]),
+html.dark [class~="bg-gray-100"]:not([class*="dark:bg-"]) {
+  background-color: var(--surface-elevated);
+}
+html.dark [class~="border-slate-200"]:not([class*="dark:border-"]),
+html.dark [class~="border-gray-200"]:not([class*="dark:border-"]) {
+  border-color: var(--border-default);
+}
+html.dark [class~="border-slate-100"]:not([class*="dark:border-"]),
+html.dark [class~="border-gray-100"]:not([class*="dark:border-"]) {
+  border-color: var(--border-subtle);
+}
+
 /* ── Light theme class remapping (global — no per-page scope duplication) ── */
 html.light body {
   background-color: var(--surface-canvas);

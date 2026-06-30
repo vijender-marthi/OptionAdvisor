@@ -1370,7 +1370,7 @@ def _analyze_ticker(
 
     # Options chain
     try:
-        opt_dates = _bc_opt_dates(ticker)
+        opt_dates = _bc_opt_dates(ticker, force_refresh=force_refresh)
     except Exception:
         opt_dates = ()
 
@@ -1410,13 +1410,13 @@ def _analyze_ticker(
             )
 
     try:
-        calls_raw, puts_raw = _bc_chain(ticker, target_expiry)
+        calls_raw, puts_raw = _bc_chain(ticker, target_expiry, force_refresh=force_refresh)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch options chain: {str(e)}")
 
     # Info
     try:
-        info = _bc_info(ticker)
+        info = _bc_info(ticker, force_refresh=force_refresh)
         company_name = info.get("longName", ticker)
         sector = info.get("sector", "N/A")
         market_cap = format_market_cap(float(info.get("marketCap", 0) or 0))
@@ -1975,6 +1975,81 @@ def _signal_feed_market_context_label(day_metrics: dict[str, Any], swing_metrics
     return "MARKET_MIXED"
 
 
+def _signal_feed_morning_trend_scan(day_metrics: dict[str, Any], fallback_change_pct: float = 0.0) -> dict[str, Any]:
+    """
+    Morning trend classifier for the 6:45 AM PT scan. Uses existing day-trade
+    session metrics only: session change, RVOL, and consecutive 1m candle
+    direction. A ticker is TRENDING only when all three gates pass.
+    """
+    def _num(value: Any, default: float = 0.0) -> float:
+        try:
+            n = float(value)
+            return n if np.isfinite(n) else default
+        except Exception:
+            return default
+
+    session_change_pct = _num(day_metrics.get("session_change_pct"), fallback_change_pct)
+    volume_vs_average = _num(
+        day_metrics.get("rvol")
+        or day_metrics.get("volume_ratio")
+        or day_metrics.get("relative_volume"),
+        0.0,
+    )
+    chart_bars = day_metrics.get("chart_bars") or []
+    direction = "FLAT"
+    consecutive = 0
+    if isinstance(chart_bars, list) and chart_bars:
+        for raw in reversed(chart_bars):
+            if not isinstance(raw, dict):
+                continue
+            o = _num(raw.get("o") or raw.get("open"), 0.0)
+            c = _num(raw.get("c") or raw.get("close"), 0.0)
+            if o <= 0 or c <= 0 or abs(c - o) < 1e-9:
+                break
+            bar_dir = "UP" if c > o else "DOWN"
+            if direction == "FLAT":
+                direction = bar_dir
+                consecutive = 1
+            elif bar_dir == direction:
+                consecutive += 1
+            else:
+                break
+
+    if direction == "FLAT":
+        direction = "UP" if session_change_pct > 0 else "DOWN" if session_change_pct < 0 else "FLAT"
+
+    direction_aligned = (
+        (session_change_pct > 0 and direction == "UP")
+        or (session_change_pct < 0 and direction == "DOWN")
+    )
+    directional_consistency = direction_aligned and consecutive >= 5
+    trending = (
+        abs(session_change_pct) > 4.0
+        and volume_vs_average > 1.5
+        and directional_consistency
+    )
+    missing: list[str] = []
+    if abs(session_change_pct) <= 4.0:
+        missing.append("session move must exceed +/-4%")
+    if volume_vs_average <= 1.5:
+        missing.append("volume must exceed 1.5x average")
+    if not directional_consistency:
+        missing.append("needs 5+ same-direction 1m candles aligned with the move")
+
+    return {
+        "scan_time": "6:45 AM PT",
+        "status": "TRENDING" if trending else "NOT_TRENDING",
+        "trending": trending,
+        "direction": "BULLISH" if session_change_pct > 0 else "BEARISH" if session_change_pct < 0 else "NEUTRAL",
+        "session_change_pct": round(session_change_pct, 2),
+        "volume_vs_average": round(volume_vs_average, 2),
+        "consecutive_same_direction_candles": int(consecutive),
+        "candle_direction": direction,
+        "directional_consistency": directional_consistency,
+        "missing": missing,
+    }
+
+
 class SignalFeedAlertCreateBody(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
     agreement_state: str = "WATCH"
@@ -2018,6 +2093,7 @@ async def unified_analyze(
     weeks_out: int = 4,
     spread_width: Optional[int] = 5,
     strategy_mode: str = "all",
+    force_refresh: bool = False,
     auth_email: str = Depends(require_access_email),
 ):
     """
@@ -2028,7 +2104,7 @@ async def unified_analyze(
 
     if trade_type == "day":
         try:
-            scan = run_day_trade_scan(ticker)
+            scan = run_day_trade_scan(ticker, force_refresh=force_refresh)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from None
         except RuntimeError as e:
@@ -2037,7 +2113,7 @@ async def unified_analyze(
 
     if trade_type == "swing":
         try:
-            scan = run_swing_trade_scan(ticker)
+            scan = run_swing_trade_scan(ticker, force_refresh=force_refresh)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from None
         except RuntimeError as e:
@@ -2046,7 +2122,7 @@ async def unified_analyze(
 
     # regular — mirror _analyze_ticker logic
     try:
-        hist = _bc_hist(ticker, period="1y", force_refresh=False)
+        hist = _bc_hist(ticker, period="1y", force_refresh=force_refresh)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch data: {str(e)}")
 
@@ -2057,7 +2133,7 @@ async def unified_analyze(
         raise HTTPException(status_code=400, detail=f"Insufficient history for '{ticker}' (need at least 60 days)")
 
     try:
-        opt_dates = _bc_opt_dates(ticker)
+        opt_dates = _bc_opt_dates(ticker, force_refresh=force_refresh)
     except Exception:
         opt_dates = ()
 
@@ -2078,12 +2154,12 @@ async def unified_analyze(
         )
 
     try:
-        calls_raw, puts_raw = _bc_chain(ticker, target_expiry)
+        calls_raw, puts_raw = _bc_chain(ticker, target_expiry, force_refresh=force_refresh)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch options chain: {str(e)}")
 
     try:
-        info = _bc_info(ticker)
+        info = _bc_info(ticker, force_refresh=force_refresh)
         company_name = info.get("longName", ticker)
     except Exception:
         info = {}
@@ -2127,7 +2203,7 @@ async def unified_analyze(
             _front_dte = max(0, (datetime.strptime(target_expiry, "%Y-%m-%d").date() - datetime.now().date()).days)
             _back_exp = _pick_exp_cal_v2(list(opt_dates), _front_dte + 21, _front_dte + 60)
             if _back_exp and _back_exp != target_expiry:
-                _cb, _pb = _bc_chain(ticker, _back_exp)
+                _cb, _pb = _bc_chain(ticker, _back_exp, force_refresh=force_refresh)
                 _cb = _cb[(_cb["strike"] >= price_approx * 0.75) & (_cb["strike"] <= price_approx * 1.30)].copy()
                 _pb = _pb[(_pb["strike"] >= price_approx * 0.75) & (_pb["strike"] <= price_approx * 1.30)].copy()
                 _cb["expiration"] = _back_exp
@@ -2287,6 +2363,12 @@ def get_signal_feed(
     ]
     _prefetched_quotes, _cache_meta = _get_quotes(all_tickers, force_refresh=refresh)
     alert_counts = alert_center_active_counts_by_ticker(email, all_tickers)
+    _existing_day_watch = [
+        str(sym or "").strip().upper()
+        for sym in (state.get("day_trade_watchlist") or [])
+        if str(sym or "").strip()
+    ]
+    _auto_day_watch_additions: list[str] = []
 
     rows: list[dict[str, Any]] = []
     for item in source_items:
@@ -2504,15 +2586,24 @@ def get_signal_feed(
             if swing_scan is not None and getattr(swing_scan, "trade_quality_score", None) is not None
             else swing_payload.get("confidence") or regular_payload.get("confidence") or 0.0
         )
+        morning_scan = _signal_feed_morning_trend_scan(day_metrics, fallback_change_pct=change_pct)
+        if morning_scan.get("trending") and ticker not in _existing_day_watch and ticker not in _auto_day_watch_additions:
+            _auto_day_watch_additions.append(ticker)
         row_metrics = {
             "rsi": round(rsi, 2),
             "relative_strength": round(relative_strength, 2),
-            "volume_ratio": round(float(swing_metrics.get("volume_ratio") or 0.0), 2) if swing_metrics.get("volume_ratio") is not None else None,
+            "volume_ratio": morning_scan.get("volume_vs_average"),
             "iv_rank": round(iv_rank, 2) if iv_rank else None,
             "bull_score": round(dominant_bull, 2) if dominant_bull else None,
             "bear_score": round(dominant_bear, 2) if dominant_bear else None,
             "trend_score": round(trend_score, 2) if trend_score else None,
             "market_context": _signal_feed_market_context_label(day_metrics, swing_metrics),
+            "morning_session_change_pct": morning_scan.get("session_change_pct"),
+            "morning_volume_vs_average": morning_scan.get("volume_vs_average"),
+            "morning_consecutive_candles": morning_scan.get("consecutive_same_direction_candles"),
+            "morning_candle_direction": morning_scan.get("candle_direction"),
+            "morning_directional_consistency": morning_scan.get("directional_consistency"),
+            "morning_trending": morning_scan.get("trending"),
         }
 
         chart_points = []
@@ -2536,6 +2627,8 @@ def get_signal_feed(
             "agreement_state": agreement_state,
             "agreement_badge": agreement_badge,
             "agreement_reason": agreement_reason,
+            "trending_today": bool(morning_scan.get("trending")),
+            "morning_scan": morning_scan,
             "alerts_count": int(alert_counts.get(ticker, 0)),
             "sources": item.get("sources") or [],
             "notes": item.get("notes"),
@@ -2568,6 +2661,17 @@ def get_signal_feed(
             },
         }
         rows.append(row)
+
+    if _auto_day_watch_additions:
+        save_user_state(
+            email,
+            state.get("watchlist") or [],
+            state.get("portfolio") or [],
+            day_trade_watchlist=_existing_day_watch + _auto_day_watch_additions,
+            swing_trade_watchlist=state.get("swing_trade_watchlist") or [],
+            alert_email_enabled=bool(state.get("alert_email_enabled", True)),
+            my_tickers=state.get("my_tickers") or [],
+        )
 
     query = (search or "").strip().upper()
     if query:
@@ -2611,6 +2715,8 @@ def get_signal_feed(
                 "conflict": sum(1 for row in rows if row["agreement_state"] == "CONFLICT"),
                 "manage": sum(1 for row in rows if row["agreement_state"] == "MANAGE"),
                 "alerts": sum(int(row.get("alerts_count") or 0) for row in rows),
+                "trending_today": sum(1 for row in rows if row.get("trending_today")),
+                "auto_added_day_watch": len(_auto_day_watch_additions),
                 "strong_bullish": sum(
                     1
                     for row in rows

@@ -964,6 +964,24 @@ export default function DayTradeEnginePanel({
   const isFriday = new Date().getDay() === 5
   const lastBar = chartBars?.[chartBars.length - 1] ?? null
   const belowOneSigma = lastBar != null && lastBar.vwap_lower1 != null && lastBar.c < lastBar.vwap_lower1
+  const downtrendExhaustion = m.downtrend_exhaustion && typeof m.downtrend_exhaustion === 'object'
+    ? m.downtrend_exhaustion as Record<string, unknown>
+    : null
+  const downtrendExhaustionActive = downtrendExhaustion?.active === true
+  const downtrendExhaustionAlerts = Array.isArray(downtrendExhaustion?.alerts)
+    ? downtrendExhaustion.alerts as Array<Record<string, unknown>>
+    : []
+  const atrUsedPct = asFiniteNum(downtrendExhaustion?.atr_used_pct)
+  const distanceToMinusOnePct = asFiniteNum(downtrendExhaustion?.distance_to_minus_1sigma_pct)
+  const distanceToMinusTwoPct = asFiniteNum(downtrendExhaustion?.distance_to_minus_2sigma_pct)
+  const distanceToMinusOne = asFiniteNum(downtrendExhaustion?.distance_to_minus_1sigma)
+  const distanceToMinusTwo = asFiniteNum(downtrendExhaustion?.distance_to_minus_2sigma)
+  const fmtBandDistance = (pct: number | null, dollars: number | null) => {
+    if (pct == null && dollars == null) return '—'
+    const pctText = pct == null ? null : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
+    const dollarText = dollars == null ? null : `${dollars >= 0 ? '+' : ''}$${Math.abs(dollars).toFixed(2)}`
+    return [pctText, dollarText].filter(Boolean).join(' / ')
+  }
 
   // Which step is the trader's primary action point right now?
   const focusStep = ((): number => {
@@ -1044,7 +1062,7 @@ export default function DayTradeEnginePanel({
       </div>
 
       {/* ── Fundamental guard-rail warnings ── */}
-      {(isFriday || belowOneSigma) && (
+      {(isFriday || belowOneSigma || downtrendExhaustionActive) && (
         <div className="px-4 py-2 space-y-1.5 border-b border-gray-800 bg-black/20">
           {isFriday && (
             <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/8 px-3 py-2 text-[11px]">
@@ -1056,6 +1074,44 @@ export default function DayTradeEnginePanel({
             <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-[11px]">
               <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-amber-600 text-white">−1σ</span>
               <span className="text-amber-300 leading-snug">Price is below VWAP −1σ band. Rule: exit or reduce long exposure when price crosses below −1σ. Do not add to a losing position here.</span>
+            </div>
+          )}
+          {downtrendExhaustionActive && (
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/8 px-3 py-2 text-[11px]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-sky-600 text-white">DOWN</span>
+                  <span className="font-semibold text-sky-200">Strong downtrend exhaustion monitor</span>
+                </div>
+                <span className="font-mono text-[10px] text-sky-300">
+                  ATR used {atrUsedPct == null ? '—' : `${atrUsedPct.toFixed(1)}%`}
+                </span>
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-wider text-sky-400">Current ATR Used</div>
+                  <div className="mt-0.5 font-mono text-sm font-bold text-white">{atrUsedPct == null ? '—' : `${atrUsedPct.toFixed(1)}%`}</div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-wider text-amber-400">Distance to -1σ</div>
+                  <div className="mt-0.5 font-mono text-sm font-bold text-white">{fmtBandDistance(distanceToMinusOnePct, distanceToMinusOne)}</div>
+                  <div className="text-[10px] text-amber-300">First watch zone</div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-wider text-rose-400">Distance to -2σ</div>
+                  <div className="mt-0.5 font-mono text-sm font-bold text-white">{fmtBandDistance(distanceToMinusTwoPct, distanceToMinusTwo)}</div>
+                  <div className="text-[10px] text-rose-300">High probability exhaustion zone</div>
+                </div>
+              </div>
+              {downtrendExhaustionAlerts.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {downtrendExhaustionAlerts.map((alert, idx) => (
+                    <span key={`${String(alert.code || alert.message || 'alert')}-${idx}`} className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-semibold text-sky-100">
+                      {String(alert.message || 'Downtrend exhaustion alert')}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

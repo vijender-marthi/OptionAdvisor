@@ -979,6 +979,7 @@ export const analyzeV2 = (
     weeksOut?: number
     spreadWidth?: number
     strategyMode?: string
+    forceRefresh?: boolean
   }
 ) => api.get<UnifiedAnalysis>(
   `/v2/analyze/${encodeURIComponent(ticker)}`,
@@ -988,6 +989,7 @@ export const analyzeV2 = (
       weeks_out: options?.weeksOut ?? 4,
       spread_width: options?.spreadWidth ?? 5,
       strategy_mode: options?.strategyMode ?? 'all',
+      force_refresh: options?.forceRefresh ?? false,
     }
   }
 )

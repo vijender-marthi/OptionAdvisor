@@ -308,6 +308,25 @@ export interface SignalFeedMetrics {
   bear_score?: number | null
   trend_score?: number | null
   market_context?: string | null
+  morning_session_change_pct?: number | null
+  morning_volume_vs_average?: number | null
+  morning_consecutive_candles?: number | null
+  morning_candle_direction?: string | null
+  morning_directional_consistency?: boolean | null
+  morning_trending?: boolean | null
+}
+
+export interface SignalFeedMorningScan {
+  scan_time: string
+  status: 'TRENDING' | 'NOT_TRENDING' | string
+  trending: boolean
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | string
+  session_change_pct: number
+  volume_vs_average: number
+  consecutive_same_direction_candles: number
+  candle_direction: 'UP' | 'DOWN' | 'FLAT' | string
+  directional_consistency: boolean
+  missing: string[]
 }
 
 export interface SignalFeedRow {
@@ -327,6 +346,8 @@ export interface SignalFeedRow {
   agreement_state: 'READY' | 'WATCH' | 'EXTENDED' | 'AVOID' | 'CONFLICT' | 'MANAGE' | string
   agreement_badge?: 'STRONG_AGREEMENT' | 'PARTIAL_AGREEMENT' | 'CONFLICT' | 'EXTENDED' | 'NO_EDGE' | 'MANAGE' | string
   agreement_reason: string
+  trending_today?: boolean
+  morning_scan?: SignalFeedMorningScan
   alerts_count: number
   metrics?: SignalFeedMetrics
   sources: string[]
@@ -470,6 +491,8 @@ export interface SignalFeedPayload {
     alerts?: number
     strong_bullish?: number
     strong_bearish?: number
+    trending_today?: number
+    auto_added_day_watch?: number
   }
   ai_summary: {
     headline: string
