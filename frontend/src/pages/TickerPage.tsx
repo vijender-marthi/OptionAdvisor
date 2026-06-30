@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { Search, Database, Layers, AlertTriangle, BookOpen } from 'lucide-react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useNavigate as useRouterNavigate } from 'react-router-dom'
+import { Search, Database, Layers, AlertTriangle, BookOpen, ArrowUpRight } from 'lucide-react'
 import { analyzeOptions, analyzeV2 } from '../api/client'
 import type { UnifiedAnalysis } from '../api/client'
 import type { AnalyzeResponse, StrategyMode, TickerCacheEntry } from '../types'
@@ -16,6 +17,7 @@ import { buildChecklist, deriveVerdict } from '../components/PreTradeChecklist'
 import type { Verdict } from '../components/PreTradeChecklist'
 import { MULTI_WEEK_TARGETS } from '../data/stockUniverse'
 import { OA_LAST_OPTION_ANALYSIS_KEY } from '../constants/storageKeys'
+import { getTradeWorksheetRoute } from '../routing/routes'
 
 type Palette = {
   bgPage: string; bgPanel: string; bgCard: string
@@ -487,6 +489,7 @@ export default function TickerPage() {
     fetchAllWeeks, fetchSingleWeek, fetchingAllWeeks, fetchingWeeks,
     theme, navigate,
   } = useApp()
+  const routerNavigate = useRouterNavigate()
 
   const C = theme === 'light' ? C_LIGHT : C_DARK
 
@@ -494,7 +497,8 @@ export default function TickerPage() {
   const [unifiedAnalysis, setUnifiedAnalysis] = useState<UnifiedAnalysis | null>(null)
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
-  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | 'guide' | null>(null)
+  const [activeTab,     setActiveTab]     = useState<'chart' | 'calculator' | null>(null)
+  const [pageTab,       setPageTab]       = useState<'active' | 'strategy'>('active')
   const [fromCache,     setFromCache]     = useState<{ age: number; fresh: boolean } | null>(null)
   const [staleSnapshotInfo, setStaleSnapshotInfo] = useState<{ cachedAt: number; errorDetail: string } | null>(null)
   const [lastWeeks,     setLastWeeks]     = useState(4)
@@ -671,6 +675,13 @@ export default function TickerPage() {
       ? cacheEntry.data
       : cacheEntry.multiWeekData?.[selectedWeeksOut] ?? null
   const displayData = selectedData ?? data
+  const preTradeRoute = useMemo(() => {
+    const rec = displayData?.recommendations?.find(r => r.rank === selectedRank) ?? displayData?.recommendations?.[0]
+    const rawBias = rec?.bias || displayData?.signals?.directional_bias || ''
+    const direction = /bear|put|short/i.test(rawBias) ? 'Bearish' : /bull|call|long/i.test(rawBias) ? 'Bullish' : null
+    const strategy = rec?.strategy || (direction === 'Bearish' ? 'Long Put' : direction === 'Bullish' ? 'Long Call' : null)
+    return getTradeWorksheetRoute({ ticker: displayData?.ticker || inputTicker, direction, strategy, source: 'regular' })
+  }, [displayData, inputTicker, selectedRank])
 
   useEffect(() => {
     const pending = pendingRecFocusRef.current
@@ -699,6 +710,67 @@ export default function TickerPage() {
 
   return (
     <div className="ticker-page min-h-screen p-4 md:p-6" style={{ background: C.bgPage }}>
+      <div className="mx-auto mb-4 flex max-w-6xl flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${C.violet}20`, border: `1px solid ${C.violet}60`, color: C.violet }}>
+              <Layers size={17} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight" style={{ color: C.text }}>Position Trading</h1>
+              <p className="text-xs" style={{ color: C.muted }}>Regular options workflow and strategy playbook.</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex rounded-xl border p-1" style={{ borderColor: C.border, background: C.bgPanel }}>
+          <button
+            type="button"
+            onClick={() => routerNavigate(preTradeRoute)}
+            className="mr-2 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors"
+            style={{ color: C.green, border: `1px solid ${C.green}55`, background: `${C.green}12` }}
+            title="Open Pre-Trade Analysis"
+          >
+            <ArrowUpRight size={14} />
+            Pre-Trade Analysis
+          </button>
+          {[
+            { id: 'active' as const, label: 'Active Regular Trading', icon: <Search size={14} /> },
+            { id: 'strategy' as const, label: 'Strategy Guide', icon: <BookOpen size={14} /> },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setPageTab(tab.id)}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors"
+              style={{
+                background: pageTab === tab.id ? `${C.violet}20` : 'transparent',
+                color: pageTab === tab.id ? C.text : C.muted,
+                border: `1px solid ${pageTab === tab.id ? `${C.violet}55` : 'transparent'}`,
+              }}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {pageTab === 'strategy' ? (
+        <div className="mx-auto max-w-6xl">
+          <div style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black uppercase tracking-widest" style={{ color: C.violet }}>Strategy Guide</div>
+                <h2 className="mt-1 text-2xl font-bold" style={{ color: C.text }}>Best structures for regular position trades</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6" style={{ color: C.muted }}>
+                  Use this guide before selecting a contract. Match direction, IV, earnings risk, and expected hold period before choosing long options, debit spreads, credit spreads, or calendars.
+                </p>
+              </div>
+            </div>
+            <StrategyGuideTab C={C} />
+          </div>
+        </div>
+      ) : (
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* Mobile/tablet search toggle */}
         <button
@@ -1141,7 +1213,7 @@ export default function TickerPage() {
               {activeTab ? (
                 <>
                 <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
-                  {(['chart', 'calculator', 'guide'] as const).map(t => (
+                  {(['chart', 'calculator'] as const).map(t => (
                     <button
                       key={t}
                       onClick={() => setActiveTab(t)}
@@ -1159,20 +1231,18 @@ export default function TickerPage() {
                         transition: 'all 0.15s',
                       }}
                     >
-                      {t === 'chart' ? '📉 Candlestick' : t === 'calculator' ? '📈 P&L Calculator' : '📚 Strategy Guide'}
+                      {t === 'chart' ? '📉 Candlestick' : '📈 P&L Calculator'}
                     </button>
                   ))}
                 </div>
                 <div style={{ padding: '16px 20px' }}>
                   {activeTab === 'chart' ? (
                     <PriceChart history={displayData.price_history} />
-                  ) : activeTab === 'calculator' ? (
+                  ) : (
                     <OptionProfitCalculator
                       recommendations={selectedData?.recommendations ?? []}
                       currentPrice={displayData.signals.current_price}
                     />
-                  ) : (
-                    <StrategyGuideTab C={C} />
                   )}
                 </div>
                 </>
@@ -1188,7 +1258,7 @@ export default function TickerPage() {
                     justifyContent: 'center', gap: 6,
                   }}
                 >
-                  📊 Show Chart, P&amp;L &amp; Strategy Guide
+                  📊 Show Chart &amp; P&amp;L Calculator
                 </button>
               )}
             </div>
@@ -1240,7 +1310,8 @@ export default function TickerPage() {
           @keyframes tdPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
         `}</style>
       </div>
-    </div>
+      </div>
+      )}
     </div>
   )
 }

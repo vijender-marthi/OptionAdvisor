@@ -20,7 +20,7 @@ import TrendDayBanner from '../components/TrendDayBanner'
 import DayTradeStrategiesTab from '../components/DayTradeStrategiesTab'
 import DayTradeChat from '../components/DayTradeChat'
 import { useApp } from '../contexts/AppContext'
-import { ROUTES } from '../routing/routes'
+import { ROUTES, getTradeWorksheetRoute } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
 
 /* ── PCRatioStrip ─────────────────────────────────────────────────────── */
@@ -49,10 +49,10 @@ function dtStatusStyle(status: unknown) {
   if (s === 'SETUP_ACTIVE' || s === 'CONFIRMED' || s === 'READY') {
     return { color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.35)' }
   }
-  if (s === 'PENDING' || s === 'WAIT_ENTRY' || s === 'DO_NOT_CHASE') {
+  if (s === 'PENDING' || s === 'WAIT_ENTRY' || s === 'DO_NOT_CHASE' || s === 'WAIT_PULLBACK' || s === 'OPENING_RANGE') {
     return { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' }
   }
-  if (s === 'NO_SETUP' || s === 'FAILED' || s === 'DISABLED' || s === 'BLOCKED') {
+  if (s === 'NO_SETUP' || s === 'FAILED' || s === 'DISABLED' || s === 'BLOCKED' || s === 'NO_EDGE') {
     return { color: '#fb7185', bg: 'rgba(251,113,133,0.12)', border: 'rgba(251,113,133,0.35)' }
   }
   return { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.25)' }
@@ -61,7 +61,8 @@ function dtStatusStyle(status: unknown) {
 function dtDecisionStyle(decision: unknown) {
   const d = String(decision || '').toUpperCase()
   if (d === 'GO') return dtStatusStyle('READY')
-  if (d === 'TRACK_ONLY' || d === 'WAIT_ENTRY' || d === 'DO_NOT_CHASE') return dtStatusStyle('PENDING')
+  if (d === 'TRACK_ONLY' || d === 'WAIT_ENTRY' || d === 'DO_NOT_CHASE' || d === 'WAIT_PULLBACK' || d === 'OPENING_RANGE') return dtStatusStyle('PENDING')
+  if (d === 'NO_EDGE') return dtStatusStyle('FAILED')
   if (d === 'NO_TRADE') return dtStatusStyle('FAILED')
   return dtStatusStyle(d)
 }
@@ -139,6 +140,21 @@ function DayTradeTimeframeVerdictCards({
         >
           {dtLabel(timeframeState.final_decision || finalDecision)}
         </span>
+      </div>
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Bias', timeframeState.bias],
+          ['Blocker', timeframeState.blocker || 'None'],
+          ['Final Action', timeframeState.final_action || timeframeState.final_decision || finalDecision],
+          ['Required Next', timeframeState.required_next_condition],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: dt.bgDeep, border: `1px solid ${dt.border}`, borderRadius: 9, padding: '8px 10px' }}>
+            <div style={{ fontSize: '0.56rem', fontWeight: 900, color: dt.muted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</div>
+            <div style={{ marginTop: 3, fontSize: '0.7rem', fontWeight: 800, color: label === 'Blocker' && value !== 'None' ? dt.amber : dt.text, lineHeight: 1.35 }}>
+              {dtLabel(value)}
+            </div>
+          </div>
+        ))}
       </div>
       <div className="grid gap-2 lg:grid-cols-3">
         {cards.map(card => {
@@ -418,6 +434,12 @@ export default function DayTradePage() {
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'overview' | 'strategies' | 'chat'>('overview')
   const [myTickerFull, setMyTickerFull] = useState<MyTickerEntry[]>([])
+  const preTradeRoute = useMemo(() => {
+    const sym = result?.ticker || ticker
+    const direction = result?.bias === 'short' ? 'Bearish' : result?.bias === 'long' ? 'Bullish' : null
+    const strategy = direction === 'Bearish' ? 'Long Put' : direction === 'Bullish' ? 'Long Call' : null
+    return getTradeWorksheetRoute({ ticker: sym, direction, strategy, source: 'day' })
+  }, [result?.bias, result?.ticker, ticker])
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [unified, setUnified] = useState<UnifiedAnalysis | null>(null)
   const [ocKey, setOcKey]     = useState(0)
@@ -439,7 +461,7 @@ export default function DayTradePage() {
   const tickerRef = useRef(ticker)
   tickerRef.current = ticker
 
-  const runScan = useCallback(async (overrideTicker?: string) => {
+  const runScan = useCallback(async (overrideTicker?: string, forceRefresh = true) => {
     const sym = (overrideTicker || tickerRef.current).trim().toUpperCase()
     if (!sym || sym.length > 12) {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
@@ -454,7 +476,7 @@ export default function DayTradePage() {
       : { ...cur, loading: true, error: null, result: null }
     )
     try {
-      const data = await analyzeDayTrade(sym)
+      const data = await analyzeDayTrade(sym, forceRefresh)
       setUi(cur => ({
         ...cur,
         loading: false,
@@ -465,7 +487,7 @@ export default function DayTradePage() {
       setOcKey(k => k + 1)
       setScanCount(c => c + 1)
       try {
-        const v2res = await analyzeV2(sym, 'day')
+        const v2res = await analyzeV2(sym, 'day', { forceRefresh })
         setUnified(v2res.data)
       } catch {
         setUnified(deriveUnifiedFromDayResult(data))
@@ -517,10 +539,11 @@ export default function DayTradePage() {
     return () => clearTimeout(t)
   }, [notice])
 
-  // Auto-refresh every 60 seconds when a result is loaded
+  // Auto-refresh every 30 seconds when a result is loaded. Force refresh keeps the
+  // Day Trade page aligned with the latest available 1m Yahoo bars.
   useEffect(() => {
     if (!result) return
-    const id = setInterval(() => void runScan(), 60_000)
+    const id = setInterval(() => void runScan(undefined, true), 30_000)
     return () => clearInterval(id)
   }, [result, runScan])
 
@@ -956,6 +979,15 @@ export default function DayTradePage() {
               >
                 <ChevronLeft size={12} />
               </button>
+              <button
+                type="button"
+                onClick={() => routerNavigate(preTradeRoute)}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
+                title="Open Pre-Trade Analysis"
+              >
+                <ArrowUpRight size={12} />
+                Pre-Trade
+              </button>
               {searchParams.get('from') && (
                 <button
                   type="button"
@@ -1125,6 +1157,14 @@ export default function DayTradePage() {
             >
               <BarChart2 size={13} />
               Position Trading
+            </button>
+            <button
+              type="button"
+              onClick={() => routerNavigate(preTradeRoute)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/50 hover:bg-emerald-900/30 text-emerald-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+            >
+              <ArrowUpRight size={13} />
+              Pre-Trade Analysis
             </button>
             <button
               type="button"
@@ -1677,18 +1717,19 @@ export default function DayTradePage() {
           verdict?: string,
           exitPrice?: number,
           exitPrice2?: number,
+          label?: string,
         ) => {
           if (!price || !isFinite(price) || price <= 0) return
-          pageEntryPoints.push({ label: `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
+          pageEntryPoints.push({ label: label ?? `E${pageEntryPoints.length + 1}`, price, trigger, stop, direction, exitPrice, exitPrice2, rr, pending, verdict })
         }
 
-        // E1 — AI coach entry gate (confluence zone trigger)
+        // E1 — Momentum Breakout
         const eg1 = ac?.entry_gate as Record<string, unknown> | undefined
         const eg1Verdict  = eg1?.verdict as string | undefined
         const eg1IsNT     = eg1Verdict === 'NO_TRADE'
         const eg1Trigger  = eg1IsNT
           ? `⚠ EXTENDED — ${(eg1?.extended_reason as string) || 'entry past session T1'}`
-          : ((eg1?.trigger_condition as string) ?? 'Gate trigger')
+          : `Momentum Breakout — ${(eg1?.trigger_condition as string) ?? 'gate trigger'}`
         addEntry(
           eg1?.trigger_price as number | undefined,
           eg1Trigger,
@@ -1698,9 +1739,10 @@ export default function DayTradePage() {
           eg1Verdict,
           eg1IsNT ? undefined : (eg1?.target as number | undefined),
           eg1IsNT ? undefined : (eg1?.target_2 as number | undefined),
+          'E1',
         )
 
-        // E2 — AI coach trade (current price analysis)
+        // AI coach trade (current price analysis) — no generic E-number; ORH owns E2/E2R.
         const tr = ac?.trade as Record<string, unknown> | undefined
         const trVerdict = tr?.verdict as string | undefined
         const trIsNT    = trVerdict === 'NO_TRADE'
@@ -1717,38 +1759,47 @@ export default function DayTradePage() {
           trVerdict,
           trIsNT ? undefined : (tr?.target as number | undefined),
           trIsNT ? undefined : (tr?.target_2 as number | undefined),
+          'AI',
         )
 
-        // E3 — OR breakout level
+        // E2/E2R — ORH breakout lifecycle
         const orEntryPx  = (eg?.breakout_level ?? (isShort ? orLow : orHigh)) as number | undefined
         const orRr       = ac?.or_breakout_rr as Record<string, unknown> | undefined
         const orVerdict  = orRr?.verdict as string | undefined
         const orIsNT     = orVerdict === 'NO_TRADE'
+        const orhLife = (m.orh_breakout_lifecycle ?? eg?.orh_breakout_lifecycle) as Record<string, unknown> | undefined
+        const orhSignal = typeof orhLife?.signal === 'string' ? orhLife.signal : undefined
+        const orhStatus = typeof orhLife?.status_message === 'string' ? orhLife.status_message : undefined
+        const orLabel = !isShort && orhSignal === 'E2R' ? 'E2R' : 'E2'
+        const orName = !isShort && orhSignal === 'E2R'
+          ? 'ORH Re-breakout'
+          : isShort ? 'ORL Breakdown' : 'ORH Breakout'
         // Compute a tight OR breakout stop: just below ORH (long) or above ORL (short) — NOT the far side
         const orBreakoutStop = orEntryPx
           ? (isShort ? orEntryPx * 1.003 : orEntryPx * 0.997)
           : (isShort ? orHigh : orLow)
         addEntry(
           orEntryPx,
-          isShort ? 'OR low breakout' : 'OR high breakout',
+          orhStatus ? `${orName} — ${orhStatus}` : orName,
           orIsNT ? undefined : (orRr?.stop as number | undefined) ?? orBreakoutStop,
           orIsNT ? 0 : (orRr?.risk_reward as number | undefined),
-          false,
+          !isShort && !orhSignal,
           orVerdict,
           orIsNT ? undefined : (orRr?.target as number | undefined),
           orIsNT ? undefined : (orRr?.target_2 as number | undefined),
+          orLabel,
         )
 
-        // E4 — Pullback Reset (active if detected) or VWAP retest (pending / conditional)
+        // E3 — Pullback Reset (active if detected); E4 — VWAP Bounce/Re-test.
         const pb = ac?.pullback_entry
         if (pb?.detected && pb.entry_price && isFinite(pb.entry_price)) {
           const pbConf     = pb.confidence
           const pbPat      = (pb.reclaim_pattern ?? 'RECLAIM').replace(/_/g, ' ')
           const pbColor    = pbConf === 'HIGH' ? '#f59e0b' : pbConf === 'MEDIUM_HIGH' ? '#fb923c' : '#94a3b8'
           const pbSizeNote = pbConf === 'HIGH' ? '' : pbConf === 'MEDIUM_HIGH' ? ' · 75% size' : ' · 50% size'
-          const pbTrigger  = `⚡ Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
+          const pbTrigger  = `Pullback Reset — ${(pbConf ?? 'detected').replace(/_/g, '-')} (${pbPat})${pbSizeNote}`
           pageEntryPoints.push({
-            label:       `E${pageEntryPoints.length + 1}`,
+            label:       'E3',
             price:       pb.entry_price,
             trigger:     pbTrigger,
             stop:        pb.stop,
@@ -1769,13 +1820,14 @@ export default function DayTradePage() {
           const vwapRetestStop = vwapPrice ? (isShort ? vwapPrice * 1.003 : vwapPrice * 0.997) : stopFallback
           addEntry(
             vwapPrice,
-            'VWAP re-test',
+            isShort ? 'VWAP Rejection' : 'VWAP Bounce',
             (vRr?.stop as number | undefined) ?? vwapRetestStop,
             vRr?.risk_reward as number | undefined,
             true,
             vVerdict,
           vRr?.target as number | undefined,
           vRr?.target_2 as number | undefined,
+          'E4',
         )
         }
 

@@ -153,7 +153,7 @@ export default function Sidebar() {
         { id: 'swing-trade',   label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
         { id: 'ticker', label: 'Position Trading', icon: <Layers size={18} /> },
         { id: 'auto-trade', label: 'Auto Trading', icon: <Wallet size={18} /> },
-        { id: 'option-chain', label: 'Option Chain', icon: <Link2 size={18} /> },
+        { id: 'trade-worksheet', label: 'Pre-Trade Analysis', icon: <Link2 size={18} /> },
       ],
     },
     {
@@ -212,7 +212,7 @@ export default function Sidebar() {
     { id: 'swing-trade',    label: 'Swing Trade',   icon: <TrendingUp size={18} /> },
     { id: 'ticker',         label: 'Regular',       icon: <Layers size={18} /> },
     { id: 'auto-trade',     label: 'Auto Trading',   icon: <Wallet size={18} /> },
-    { id: 'option-chain',  label: 'Option Chain',   icon: <Link2 size={18} /> },
+    { id: 'trade-worksheet',  label: 'Pre-Trade Analysis',   icon: <Link2 size={18} /> },
     // Discover
     { id: 'ai-stocks',      label: 'AI Stocks',      icon: <Bot size={18} /> },
     { id: 'q-radar',        label: 'Quantum Radar',  icon: <Atom size={18} /> },

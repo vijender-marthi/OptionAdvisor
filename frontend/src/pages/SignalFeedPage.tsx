@@ -31,8 +31,6 @@ import {
   getBiasBadgeClass,
   getDecisionBadgeClass,
   getMarketContextBadgeClass,
-  getMetricChipAppearance,
-  getTrendTextClass,
   getRiskTextClass,
 } from '../utils/semanticTrading'
 
@@ -52,39 +50,6 @@ type StateFilter = 'all' | 'ready' | 'watch' | 'wait' | 'avoid' | 'conflict' | '
 type AgreementFilter = 'all' | 'strong_agreement' | 'partial_agreement' | 'conflict' | 'extended' | 'no_edge' | 'manage'
 type TrendFilter = 'all' | 'bullish' | 'neutral' | 'bearish'
 type EngineKey = 'day' | 'swing' | 'regular'
-
-/** Viewport hook for responsive layout switching. */
-function useViewport() {
-  const [width, setWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1200)
-  useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return { width, isMobile: width < 768 }
-}
-
-/** Mini sparkline using the chart_points data (fetched but previously unused). */
-function Sparkline({ data, isDark }: { data: Array<{ date: string; close: number }> | undefined; isDark: boolean }) {
-  if (!data || data.length < 2) return null
-  const values = data.map(d => d.close)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-  const w = 80, h = 24
-  const pts = values.map((v, i) => {
-    const x = (i / (values.length - 1)) * w
-    const y = h - ((v - min) / range) * h
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
-  const isUp = values[values.length - 1] >= values[0]
-  const color = isUp ? (isDark ? '#00E5A0' : '#00A86B') : (isDark ? '#FF4D6D' : '#DC2626')
-  return (
-    <svg width={w} height={h} className="shrink-0" aria-hidden>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  )
-}
 
 const FAVORITES_KEY = 'oa_signal_feed_favorites_v1'
 const FILTERS_EXPANDED_KEY = 'oa_signal_feed_filters_expanded_v1'
@@ -183,7 +148,7 @@ function FilterPillGroup<T extends string>({
 }) {
   return (
     <div className={`min-w-[10rem] flex-1 space-y-2 ${className}`}>
-      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {options.map(option => (
           <button
@@ -307,10 +272,6 @@ function agreementBadgeClass(value: string): string {
   return getAgreementBadgeClass(value)
 }
 
-function trendClass(value: string): string {
-  return getTrendTextClass(value)
-}
-
 function riskClass(value: string): string {
   return getRiskTextClass(value)
 }
@@ -355,12 +316,6 @@ function matchesAgreementFilter(row: SignalFeedRow, agreementFilter: AgreementFi
   return normalizeAgreementBadge(row).toLowerCase() === agreementFilter
 }
 
-function metricValue(metrics: SignalFeedMetrics | undefined, key: keyof SignalFeedMetrics): number | null {
-  const value = metrics?.[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-
 function StatusPill({ value, agreement = false }: { value: string; agreement?: boolean }) {
   return (
     <span
@@ -376,7 +331,7 @@ function StatusPill({ value, agreement = false }: { value: string; agreement?: b
 function SummaryCard({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
     <div className="flex items-baseline gap-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3 py-2">
-      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
       <div className={`text-base font-bold tabular-nums tracking-tight ${tone}`}>{value}</div>
     </div>
   )
@@ -601,6 +556,45 @@ function SignalMetric({ label, value, tone = 'text-secondary' }: { label: string
   )
 }
 
+function morningScan(row: SignalFeedRow) {
+  return row.morning_scan ?? {
+    scan_time: '6:45 AM PT',
+    status: row.metrics?.morning_trending ? 'TRENDING' : 'NOT_TRENDING',
+    trending: Boolean(row.metrics?.morning_trending),
+    direction: row.price_change_pct > 0 ? 'BULLISH' : row.price_change_pct < 0 ? 'BEARISH' : 'NEUTRAL',
+    session_change_pct: row.metrics?.morning_session_change_pct ?? row.price_change_pct,
+    volume_vs_average: row.metrics?.morning_volume_vs_average ?? row.metrics?.volume_ratio ?? 0,
+    consecutive_same_direction_candles: row.metrics?.morning_consecutive_candles ?? 0,
+    candle_direction: row.metrics?.morning_candle_direction ?? 'FLAT',
+    directional_consistency: Boolean(row.metrics?.morning_directional_consistency),
+    missing: [],
+  }
+}
+
+function MorningTrendMetrics({ row, compact = false }: { row: SignalFeedRow; compact?: boolean }) {
+  const scan = morningScan(row)
+  const directionTone = scan.direction === 'BULLISH' ? 'text-semantic-bullish' : scan.direction === 'BEARISH' ? 'text-semantic-bearish' : 'text-tertiary'
+  const volTone = scan.volume_vs_average > 1.5 ? 'text-semantic-bullish' : 'text-semantic-warning'
+  const consistencyTone = scan.directional_consistency ? 'text-semantic-bullish' : 'text-semantic-warning'
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-1 px-3 pb-2">
+        <CompactChip label="Move" value={fmtPct(scan.session_change_pct)} tone={directionTone} chrome="border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50" />
+        <CompactChip label="Vol" value={`${fmtNumber(scan.volume_vs_average, 2)}x`} tone={volTone} chrome="border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50" />
+        <CompactChip label="Candles" value={`${scan.consecutive_same_direction_candles} ${scan.candle_direction}`} tone={consistencyTone} chrome="border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/50" />
+        {scan.trending && <CompactChip label="Flag" value="TRENDING" tone="text-semantic-bullish" chrome="border-emerald-400/40 bg-emerald-50 dark:bg-emerald-500/10" />}
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <SignalMetric label="Session" value={fmtPct(scan.session_change_pct)} tone={directionTone} />
+      <SignalMetric label="Vol / Avg" value={`${fmtNumber(scan.volume_vs_average, 2)}x`} tone={volTone} />
+      <SignalMetric label="Candles" value={`${scan.consecutive_same_direction_candles} ${scan.candle_direction}`} tone={consistencyTone} />
+    </div>
+  )
+}
+
 function SignalFeedTableSection({
   title,
   subtitle,
@@ -674,10 +668,8 @@ function SignalFeedTableSection({
             {rows.map(row => {
               const block = engineDecisionBlock(row, engine)
               const decision = engineDecisionValue(row, engine)
-              const metrics = row.metrics
               const ticker = row.ticker.toUpperCase()
               const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
-              const trendTone = trendClass(row.trend)
               const isFavorite = favoriteSet.has(ticker)
               const isIgnored = ignoredSet.has(ticker)
               const reason = block.reason || block.normalized_reason || row.agreement_reason || row.ai_summary
@@ -735,13 +727,7 @@ function SignalFeedTableSection({
                     </div>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="grid grid-cols-5 gap-2">
-                      <SignalMetric label="Trend" value={row.trend || 'Neutral'} tone={trendTone} />
-                      <SignalMetric label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} />
-                      <SignalMetric label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} />
-                      <SignalMetric label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} />
-                      <SignalMetric label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} />
-                    </div>
+                    <MorningTrendMetrics row={row} />
                   </td>
                   <td className="px-3 py-3">
                     <p className="line-clamp-3 text-xs leading-5 text-secondary">{reason || 'No engine note available.'}</p>
@@ -781,7 +767,6 @@ const SignalFeedCard = memo(function SignalFeedCard({
   alertBusy,
   canDay,
   canSwing,
-  isDark,
   onToggleCompact,
   onAnalyze,
   onViewChart,
@@ -798,7 +783,6 @@ const SignalFeedCard = memo(function SignalFeedCard({
   alertBusy: boolean
   canDay: boolean
   canSwing: boolean
-  isDark: boolean
   onAnalyze: () => void
   onViewChart: () => void
   onCreateAlert: () => void
@@ -808,15 +792,8 @@ const SignalFeedCard = memo(function SignalFeedCard({
   onMonitor: () => void
   onToggleCompact: (id: string) => void
 }) {
-  const metrics = row.metrics
   const agreementBadge = normalizeAgreementBadge(row)
   const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
-  const trendTone = trendClass(row.trend)
-  const rsiAppearance = getMetricChipAppearance('rsi', metricValue(metrics, 'rsi'))
-  const rsAppearance = getMetricChipAppearance('relative_strength', metricValue(metrics, 'relative_strength'))
-  const volumeAppearance = getMetricChipAppearance('volume_ratio', metricValue(metrics, 'volume_ratio'))
-  const ivAppearance = getMetricChipAppearance('iv_rank', metricValue(metrics, 'iv_rank'))
-  const trendAppearance = getMetricChipAppearance('trend', null, row.trend)
   const updatedLabel = row.cache_age_seconds != null && Number.isFinite(row.cache_age_seconds)
     ? `${Math.max(0, Math.round(row.cache_age_seconds))}s ago`
     : 'cached'
@@ -860,15 +837,10 @@ const SignalFeedCard = memo(function SignalFeedCard({
           </div>
         </div>
 
-        {/* Price hero + sparkline */}
+        {/* Price hero */}
         <div className="shrink-0 text-right">
-          <div className="flex items-center justify-end gap-1.5">
-            <Sparkline data={row.chart_points} isDark={isDark} />
-            <div>
-              <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
-              <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
-            </div>
-          </div>
+          <div className="font-mono text-base font-bold tabular-nums leading-tight tracking-tight text-heading">{fmtPrice(row.price)}</div>
+          <div className={`text-[11px] font-semibold tabular-nums ${changeTone}`}>{fmtPct(row.price_change_pct)}</div>
           {row.price_change != null && row.price_change !== 0 && (
             <div className={`text-[10px] tabular-nums ${changeTone}`}>{fmtDayChange(row.price_change)}</div>
           )}
@@ -891,14 +863,8 @@ const SignalFeedCard = memo(function SignalFeedCard({
         <EngineCardsGrid row={row} canDay={canDay} canSwing={canSwing} />
       )}
 
-      {/* Metrics chips */}
-      <div className="flex flex-wrap gap-1 px-3 pb-2">
-        <CompactChip label="RSI" value={fmtNumber(metricValue(metrics, 'rsi'), 1)} tone={rsiAppearance.value} chrome={rsiAppearance.container} />
-        <CompactChip label="RS" value={fmtPct(metricValue(metrics, 'relative_strength'))} tone={rsAppearance.value} chrome={rsAppearance.container} />
-        <CompactChip label="Vol" value={fmtNumber(metricValue(metrics, 'volume_ratio'), 2)} tone={volumeAppearance.value} chrome={volumeAppearance.container} />
-        <CompactChip label="IV" value={fmtNumber(metricValue(metrics, 'iv_rank'), 1)} tone={ivAppearance.value} chrome={ivAppearance.container} />
-        <CompactChip label="Trend" value={row.trend || 'NEUTRAL'} tone={trendTone} chrome={trendAppearance.container} />
-      </div>
+      {/* Morning trend scan */}
+      <MorningTrendMetrics row={row} compact />
 
       {/* AI insight \u2014 shown in compact mode; in full mode it lives in the Chart details panel */}
       {isCompact && (
@@ -994,9 +960,7 @@ function MobileActionTray({
 
 export default function SignalFeedPage() {
   const routerNavigate = useNavigate()
-  const { requestAnalysis, removeFromAllWatchlists, canAccessPage, theme } = useApp()
-  const isDark = theme !== 'light'
-  const { isMobile } = useViewport()
+  const { requestAnalysis, removeFromAllWatchlists, canAccessPage } = useApp()
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
 
@@ -1183,6 +1147,11 @@ export default function SignalFeedPage() {
       return true
     })
   }, [deferredSearch, agreementFilter, ignoredSet, onlyIgnored, rows, sectorFilter, sourceFilter, stateFilter, trendFilter])
+
+  const trendingTodayRows = useMemo(
+    () => visibleRows.filter(row => row.trending_today || row.morning_scan?.trending),
+    [visibleRows],
+  )
 
   const engineCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -1495,6 +1464,46 @@ export default function SignalFeedPage() {
         )}
       </section>
 
+      {trendingTodayRows.length > 0 && (
+        <section className="rounded-xl border border-emerald-500/25 bg-emerald-50/70 px-4 py-3 dark:bg-emerald-500/10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-100">Trending Today</div>
+              <div className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-200/80">
+                6:45 AM scan: move over 4%, volume over 1.5x, and 5+ same-direction 1m candles. Auto-added to Day Trade watch.
+              </div>
+            </div>
+            <span className="rounded-full border border-emerald-500/30 bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-black/20 dark:text-emerald-100">
+              {trendingTodayRows.length} active
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {trendingTodayRows.slice(0, 9).map(row => {
+              const scan = morningScan(row)
+              const biasTone = scan.direction === 'BULLISH' ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+              return (
+                <button
+                  key={`trending-${row.id}`}
+                  type="button"
+                  onClick={() => handleOpenEngine(row, 'day')}
+                  className="rounded-lg border border-emerald-500/20 bg-white/80 px-3 py-2 text-left transition-colors hover:bg-white dark:bg-slate-950/30 dark:hover:bg-slate-900/70"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-sm font-bold text-heading">{row.ticker}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide ${biasTone}`}>{scan.direction}</span>
+                  </div>
+                  <div className="mt-1 grid grid-cols-3 gap-2 text-[10px]">
+                    <span><span className="text-muted">Move</span> <span className="font-mono font-semibold text-secondary">{fmtPct(scan.session_change_pct)}</span></span>
+                    <span><span className="text-muted">Vol</span> <span className="font-mono font-semibold text-secondary">{fmtNumber(scan.volume_vs_average, 2)}x</span></span>
+                    <span><span className="text-muted">Bars</span> <span className="font-mono font-semibold text-secondary">{scan.consecutive_same_direction_candles} {scan.candle_direction}</span></span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ── Market context strip ── */}
       <section className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1559,55 +1568,29 @@ export default function SignalFeedPage() {
             <div className="mt-2 text-sm text-muted">Try a different state, agreement, trend, or sector combination.</div>
           </div>
         ) : (
-          isMobile ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {visibleRows.map(row => (
-                <SignalFeedCard
-                  key={row.id}
-                  row={row}
-                  isCompact={expandedId !== row.id}
-                  isFavorite={favoriteSet.has(row.ticker.toUpperCase())}
-                  isIgnored={ignoredSet.has(row.ticker.toUpperCase())}
-                  alertBusy={Boolean(alertBusy[row.id])}
-                  canDay={canDay}
-                  canSwing={canSwing}
-                  isDark={isDark}
-                  onToggleCompact={toggleExpanded}
-                  onAnalyze={() => handleAnalyze(row.ticker)}
-                  onViewChart={() => handleOpenEngine(row, (row.day?.final_decision ? 'day' : row.swing?.final_decision ? 'swing' : 'regular') as EngineKey)}
-                  onCreateAlert={() => void handleCreateAlert(row)}
-                  onAddToPositions={() => handleAddToPositions(row)}
-                  onFavorite={() => toggleFavorite(row.ticker)}
-                  onIgnore={() => toggleIgnore(row.ticker)}
-                  onMonitor={() => handleMonitor(row)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {tableGroups.map(group => (
-                <SignalFeedTableSection
-                  key={group.engine}
-                  title={group.title}
-                  subtitle={group.subtitle}
-                  engine={group.engine}
-                  sourceFilter={sourceFilter}
-                  rows={visibleRows}
-                  favoriteSet={favoriteSet}
-                  ignoredSet={ignoredSet}
-                  alertBusy={alertBusy}
-                  onOpenEngine={handleOpenEngine}
-                  onAnalyze={handleAnalyze}
-                  onAddToPositions={handleAddToPositions}
-                  onOpenAlerts={handleOpenAlerts}
-                  onCreateAlert={(row) => void handleCreateAlert(row)}
-                  onFavorite={toggleFavorite}
-                  onIgnore={toggleIgnore}
-                  onMonitor={handleMonitor}
-                />
-              ))}
-            </div>
-          )
+          <div className="grid gap-4">
+            {tableGroups.map(group => (
+              <SignalFeedTableSection
+                key={group.engine}
+                title={group.title}
+                subtitle={group.subtitle}
+                engine={group.engine}
+                sourceFilter={sourceFilter}
+                rows={visibleRows}
+                favoriteSet={favoriteSet}
+                ignoredSet={ignoredSet}
+                alertBusy={alertBusy}
+                onOpenEngine={handleOpenEngine}
+                onAnalyze={handleAnalyze}
+                onAddToPositions={handleAddToPositions}
+                onOpenAlerts={handleOpenAlerts}
+                onCreateAlert={(row) => void handleCreateAlert(row)}
+                onFavorite={toggleFavorite}
+                onIgnore={toggleIgnore}
+                onMonitor={handleMonitor}
+              />
+            ))}
+          </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-slate-900 px-4 py-3 text-sm">

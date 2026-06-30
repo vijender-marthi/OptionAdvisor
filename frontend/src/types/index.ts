@@ -228,6 +228,7 @@ export type Page =
   | 'journal-tool'
   | 'track-mode'
   | 'investment-thesis'
+  | 'trade-worksheet'
 
 export type TradeIdeaStatus = 'WATCHING' | 'READY' | 'ENTERED' | 'PASSED' | 'EXPIRED'
 export type TradeIdeaEngine = 'DAY' | 'SWING'

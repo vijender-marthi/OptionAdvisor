@@ -13,7 +13,7 @@ import { ROUTES } from '../routing/routes'
 const SK_DAY_TICKERS   = 'oa_dashboard_tickers_day'
 const SK_SWING_TICKERS = 'oa_dashboard_tickers_swing'
 const SK_ACTIVE_TAB    = 'oa_dashboard_active_tab'
-const AUTO_REFRESH_MS  = 60 * 1000
+const AUTO_REFRESH_MS  = 30 * 1000
 const MAX_TICKERS      = 8
 
 type Tab = 'day' | 'swing' | 'table' | 'scalp'
@@ -1589,7 +1589,7 @@ export default function DayTradeDashboardPage() {
         return { ...prev, [sym]: { ...prev[sym]!, result: data, loading: false } }
       })
       try {
-        const v2 = await analyzeV2(sym, tab)
+        const v2 = await analyzeV2(sym, tab, { forceRefresh })
         setter(prev => {
           if (prev[sym]?.requestId !== requestId) return prev
           return { ...prev, [sym]: { ...prev[sym]!, unified: v2.data } }
@@ -1633,7 +1633,7 @@ export default function DayTradeDashboardPage() {
       .catch(() => {/* non-fatal */})
   }, [])
 
-  // Auto-refresh every 60s — also refresh when tab becomes visible again
+  // Auto-refresh every 30s — also refresh when tab becomes visible again
   useEffect(() => {
     if (!tickers.length) return
     const id = setInterval(() => void scanAll(tickers, dataTab, true), AUTO_REFRESH_MS)

@@ -20,7 +20,7 @@ import { computeExecLevels } from '../components/SwingTradeEnginePanel'
 import OptionsEntryCheck from '../components/OptionsEntryCheck'
 import { useApp } from '../contexts/AppContext'
 import type { OptionLeg } from '../types'
-import { ROUTES } from '../routing/routes'
+import { ROUTES, getTradeWorksheetRoute } from '../routing/routes'
 import { getActionButtonClass } from '../utils/semanticTrading'
 
 function axiosDetail(e: unknown): string {
@@ -172,6 +172,21 @@ export default function SwingTradePage() {
   const [myTickers, setMyTickers] = useState<string[]>([])
   const [savedToJournal, setSavedToJournal] = useState(false)
   const [fibTargets, setFibTargets] = useState<StockTargetData | null>(null)
+  const preTradeRoute = useMemo(() => {
+    const sym = result?.ticker || ticker
+    const direction = result?.bias === 'short' ? 'Bearish' : result?.bias === 'long' ? 'Bullish' : null
+    const rawStrategy = result?.suggested_strategy && result.suggested_strategy !== 'NO_TRADE' ? result.suggested_strategy : null
+    const strategy = rawStrategy?.includes('PUT') || rawStrategy?.includes('Put')
+      ? 'Bear Put Spread'
+      : rawStrategy?.includes('CALL') || rawStrategy?.includes('Call')
+        ? 'Bull Call Spread'
+        : direction === 'Bearish'
+          ? 'Bear Put Spread'
+          : direction === 'Bullish'
+            ? 'Bull Call Spread'
+            : null
+    return getTradeWorksheetRoute({ ticker: sym, direction, strategy, source: 'swing' })
+  }, [result?.bias, result?.suggested_strategy, result?.ticker, ticker])
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -544,6 +559,15 @@ export default function SwingTradePage() {
               </button>
               <button
                 type="button"
+                onClick={() => navigate(preTradeRoute)}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
+                title="Open Pre-Trade Analysis"
+              >
+                <ArrowUpRight size={12} />
+                Pre-Trade
+              </button>
+              <button
+                type="button"
                 onClick={() => void runScan()}
                 disabled={loading}
                 className="rounded-full px-2.5 py-1 text-[10px] font-semibold disabled:opacity-50"
@@ -672,6 +696,14 @@ export default function SwingTradePage() {
               >
                 <BarChart2 size={13} />
                 Position Trading
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(preTradeRoute)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700/50 hover:bg-emerald-900/30 text-emerald-300 px-3 py-2 text-[11px] font-semibold transition-colors"
+              >
+                <ArrowUpRight size={13} />
+                Pre-Trade Analysis
               </button>
               <button
                 type="button"

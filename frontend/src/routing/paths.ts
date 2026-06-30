@@ -85,6 +85,8 @@ export function locationToPage(pathname: string): Page {
       return 'track-mode'
     case 'investment-thesis':
       return 'investment-thesis'
+    case 'trade-worksheet':
+      return 'trade-worksheet'
     default:
       return 'trade-command-center'
   }
@@ -159,7 +161,7 @@ export function pageToLocation(p: Page): string {
     case 'day-trade-session':
       return '/day-trade-session'
     case 'option-chain':
-      return '/option-chain'
+      return '/trade-worksheet'
     case 'eod-journal':
       return '/eod-journal'
     case 'journal-tool':
@@ -168,6 +170,8 @@ export function pageToLocation(p: Page): string {
       return '/track-mode'
     case 'investment-thesis':
       return '/investment-thesis'
+    case 'trade-worksheet':
+      return '/trade-worksheet'
     default:
       return '/trade-command-center'
   }
