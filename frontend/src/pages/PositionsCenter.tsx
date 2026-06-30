@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowUpRight, BarChart3, BookOpen, BrainCircuit, Briefcase, Check, ChevronDown,
@@ -534,9 +534,9 @@ function OvernightHoldEngineCard({ pos, aiAnalysis }: { pos: PortfolioPosition; 
   )
 }
 
-function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function ModalOverlay({ children, onClose, locked = false }: { children: React.ReactNode; onClose: () => void; locked?: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={locked ? undefined : onClose}>
       <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shadow-xl" onClick={e => e.stopPropagation()}>
         {children}
       </div>
@@ -1849,6 +1849,8 @@ export default function PositionsCenter() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [closingId, setClosingId] = useState<string | null>(null)
+  const closingRequestRef = useRef<string | null>(null)
+  const [closingRequestId, setClosingRequestId] = useState<string | null>(null)
   const [reviewingClosedId, setReviewingClosedId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1985,12 +1987,34 @@ export default function PositionsCenter() {
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
-      list = list.filter(p =>
-        p.ticker.toLowerCase().includes(q) ||
-        p.strategy.toLowerCase().includes(q) ||
-        (p.expiry ?? '').toLowerCase().includes(q) ||
-        (p.exitDate ? new Date(p.exitDate).toLocaleDateString() : '').includes(q)
-      )
+      const dateTokens = (value?: string | null) => {
+        if (!value) return []
+        const raw = String(value)
+        const date = new Date(raw)
+        const tokens = [raw, raw.slice(0, 10)]
+        if (!Number.isNaN(date.getTime())) {
+          tokens.push(
+            date.toLocaleDateString(),
+            date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+          )
+        }
+        return tokens
+      }
+      list = list.filter(p => {
+        const fields = [
+          p.ticker,
+          p.strategy,
+          p.source,
+          p.notes,
+          p.exit_reason,
+          p.close_notes,
+          p.account_type,
+          ...dateTokens(p.expiry),
+          ...dateTokens(p.exitDate),
+          ...dateTokens(p.addedAt),
+        ]
+        return fields.some(field => String(field || '').toLowerCase().includes(q))
+      })
     }
 
     if (tradeStyle !== 'all') {
@@ -2050,10 +2074,20 @@ export default function PositionsCenter() {
   }, [])
 
   const handleCloseConfirm = useCallback(async (id: string, payload: ClosePositionPayload) => {
-    await closePosition(id, payload)
-    setClosingId(null)
-    toggleExpanded(id)
-    setNotice({ message: 'Position closed.', tone: 'success' })
+    if (closingRequestRef.current) return
+    closingRequestRef.current = id
+    setClosingRequestId(id)
+    try {
+      await closePosition(id, payload)
+      setClosingId(null)
+      toggleExpanded(id)
+      setNotice({ message: 'Position closed and saved.', tone: 'success' })
+    } catch (e) {
+      setNotice({ message: e instanceof Error ? e.message : 'Close failed. Please retry.', tone: 'error' })
+    } finally {
+      closingRequestRef.current = null
+      setClosingRequestId(null)
+    }
   }, [closePosition, toggleExpanded])
 
   const handleManage = useCallback((pos: PortfolioPosition) => {
@@ -2465,8 +2499,9 @@ export default function PositionsCenter() {
       {closingPos && (
         <ClosePositionModal
           pos={closingPos}
+          submitting={closingRequestId === closingPos.id}
           onConfirm={handleCloseConfirm}
-          onClose={() => setClosingId(null)}
+          onClose={() => { if (!closingRequestRef.current) setClosingId(null) }}
         />
       )}
 
@@ -3416,10 +3451,12 @@ function computeClosePnl(
 
 function ClosePositionModal({
   pos,
+  submitting = false,
   onConfirm,
   onClose,
 }: {
   pos: PortfolioPosition
+  submitting?: boolean
   onConfirm: (id: string, payload: ClosePositionPayload) => Promise<void>
   onClose: () => void
 }) {
@@ -3455,7 +3492,7 @@ function ClosePositionModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (isSubmitting) return
+    if (isSubmitting || submitting) return
     setIsSubmitting(true)
     try {
       await onConfirm(pos.id, {
@@ -3475,20 +3512,21 @@ function ClosePositionModal({
     }
   }
 
-  const canSubmit = !isSubmitting
+  const busy = isSubmitting || submitting
+  const canSubmit = !busy
 
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
   const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
   const readOnlyCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-sm text-secondary outline-none'
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} locked={busy}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/[0.07]">
         <h2 className="text-lg font-bold tracking-tight text-heading">Close Position</h2>
-        <button type="button" onClick={onClose} className="text-muted hover:text-secondary"><X size={18} /></button>
+        <button type="button" onClick={busy ? undefined : onClose} disabled={busy} className="text-muted hover:text-secondary disabled:opacity-40"><X size={18} /></button>
       </div>
       <form onSubmit={handleSubmit}>
-        <div className="px-6 py-5 space-y-5">
+        <fieldset disabled={busy} className="px-6 py-5 space-y-5 disabled:opacity-70">
           {/* Readonly position info */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
@@ -3619,13 +3657,13 @@ function ClosePositionModal({
               </div>
             )}
           </div>
-        </div>
+        </fieldset>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
-          <button type="button" onClick={isSubmitting ? undefined : onClose} disabled={isSubmitting} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm disabled:opacity-50`}>Cancel</button>
+          <button type="button" onClick={busy ? undefined : onClose} disabled={busy} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm disabled:opacity-50`}>Cancel</button>
           <button type="submit" disabled={!canSubmit} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-2 disabled:opacity-60`}>
-            {isSubmitting && <Loader2 size={14} className="animate-spin" />}
-            {isSubmitting ? 'Closing…' : isPartialClose ? `Close ${contractsToClose} of ${pos.contracts} ${isStock ? 'Shares' : 'Contracts'}` : 'Close Position'}
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy ? 'Closing…' : isPartialClose ? `Close ${contractsToClose} of ${pos.contracts} ${isStock ? 'Shares' : 'Contracts'}` : 'Close Position'}
           </button>
         </div>
       </form>

@@ -353,7 +353,12 @@ export default function TradeWorksheetPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await fetchOptionChainLiquidity(clean, expiry)
+      let data: OptionChainLiquidityResponse
+      try {
+        data = await fetchOptionChainLiquidity(clean, expiry)
+      } catch {
+        data = await fetchOptionChainLiquidity(clean, expiry, true)
+      }
       setChain(data)
       const source = form.direction === 'Bearish' || form.strategy.includes('Put') ? data.puts : data.calls
       const nearest = source.reduce<OptionChainRow | null>((best, row) => {
@@ -382,7 +387,7 @@ export default function TradeWorksheetPage() {
       }
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Unable to load option chain data.')
+      setError(detail || `Unable to load option chain data for ${clean}. Try another expiration or refresh again.`)
     } finally {
       setLoading(false)
     }

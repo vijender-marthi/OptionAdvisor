@@ -1839,6 +1839,7 @@ def post_portfolio_add(body: PortfolioAddBody, auth_email: str = Depends(require
     pos = dict(body.position)
     pos.setdefault("id", str(uuid.uuid4()))
     pos.setdefault("status", "open")
+    pos.setdefault("addedAt", datetime.now(timezone.utc).isoformat())
     # Stock-specific field initialisation
     if _is_stock_position(pos):
         entry_px = _float_or(pos.get("entryPrice") or pos.get("entry_price"), 0.0)
@@ -1881,6 +1882,7 @@ def post_portfolio_update(body: PortfolioUpdateBody, auth_email: str = Depends(r
 
 class PortfolioCloseBody(BaseModel):
     id: str = Field(..., min_length=1)
+    contractsToClose: Optional[int] = None
     mistake_tag: Optional[str] = None
     pnl_pct: Optional[float] = None
     exit_price: Optional[float] = None
@@ -1901,38 +1903,82 @@ def post_portfolio_close(body: PortfolioCloseBody, auth_email: str = Depends(req
     port = list(state.get("portfolio") or [])
     found = False
     tag = (body.mistake_tag or "").strip()
-    for p in port:
+    closed_pos: dict = {}
+    for idx, p in enumerate(list(port)):
         if not isinstance(p, dict):
             continue
         if str(p.get("id")) != body.id:
             continue
         if p.get("status") != "open":
             break
-        p["status"] = "closed"
-        p["exitDate"] = body.close_date or datetime.now(timezone.utc).date().isoformat()
+        try:
+            total_contracts = int(round(float(p.get("contracts") or 1)))
+        except Exception:
+            total_contracts = 1
+        total_contracts = max(1, total_contracts)
+        try:
+            contracts_to_close = int(round(float(body.contractsToClose or total_contracts)))
+        except Exception:
+            contracts_to_close = total_contracts
+        contracts_to_close = max(1, min(total_contracts, contracts_to_close))
+        close_fields: dict[str, Any] = {
+            "status": "closed",
+            "exitDate": body.close_date or datetime.now(timezone.utc).date().isoformat(),
+        }
         if body.pnl_pct is not None:
-            p["pnlPct"] = body.pnl_pct
+            close_fields["pnlPct"] = body.pnl_pct
         if body.exit_price is not None:
-            p["exit_price"] = body.exit_price
+            close_fields["exit_price"] = body.exit_price
         if body.exit_debit_credit is not None:
-            p["exit_debit_credit"] = body.exit_debit_credit
+            close_fields["exit_debit_credit"] = body.exit_debit_credit
         if body.realized_pnl is not None:
-            p["realized_pnl"] = body.realized_pnl
+            close_fields["realized_pnl"] = body.realized_pnl
         if body.realized_pnl_percent is not None:
-            p["realized_pnl_percent"] = body.realized_pnl_percent
+            close_fields["realized_pnl_percent"] = body.realized_pnl_percent
+            close_fields["pnlPct"] = body.realized_pnl_percent
         if body.exit_reason is not None:
-            p["exit_reason"] = body.exit_reason
+            close_fields["exit_reason"] = body.exit_reason
         if body.close_notes is not None:
-            p["close_notes"] = body.close_notes
+            close_fields["close_notes"] = body.close_notes
         if body.pnl_overridden is not None:
-            p["pnl_overridden"] = body.pnl_overridden
+            close_fields["pnl_overridden"] = body.pnl_overridden
         if body.pnl_override_reason is not None:
-            p["pnl_override_reason"] = body.pnl_override_reason
+            close_fields["pnl_override_reason"] = body.pnl_override_reason
         notes = str(p.get("notes") or "")
+        closed_notes = notes
         if tag:
-            p["notes"] = (notes + "\n" if notes else "") + f"[mistake_tag] {tag}"
+            closed_notes = (notes + "\n" if notes else "") + f"[mistake_tag] {tag}"
+        if contracts_to_close >= total_contracts:
+            p.update(close_fields)
+            if closed_notes != notes:
+                p["notes"] = closed_notes
+            closed_pos = p
+        else:
+            remaining_contracts = total_contracts - contracts_to_close
+            scale_remaining = remaining_contracts / total_contracts
+            remaining = dict(p)
+            remaining["contracts"] = remaining_contracts
+            remaining["partial_closed"] = True
+            remaining["original_contracts"] = p.get("original_contracts") or total_contracts
+            if p.get("capital_at_risk") is not None:
+                try:
+                    remaining["capital_at_risk"] = round(float(p.get("capital_at_risk") or 0) * scale_remaining, 2)
+                except Exception:
+                    pass
+
+            closed_pos = dict(p)
+            closed_pos["id"] = f"lot-{uuid.uuid4()}"
+            closed_pos["contracts"] = contracts_to_close
+            closed_pos.update(close_fields)
+            partial_note = f"Partial close: {contracts_to_close} of {total_contracts} contracts"
+            closed_pos["notes"] = " · ".join([part for part in [closed_notes.strip(), partial_note] if part]) or partial_note
+            if p.get("capital_at_risk") is not None:
+                try:
+                    closed_pos["capital_at_risk"] = round(float(p.get("capital_at_risk") or 0) * contracts_to_close / total_contracts, 2)
+                except Exception:
+                    pass
+            port[idx:idx + 1] = [remaining, closed_pos]
         found = True
-        closed_pos = p
         break
     if not found:
         raise HTTPException(status_code=404, detail="Open position not found")

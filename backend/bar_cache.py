@@ -313,9 +313,15 @@ def get_option_chain(
         puts  = chain.puts.copy()
     except Exception as exc:
         log.warning("bar_cache.get_option_chain failed %s %s: %s", t, exp, exc)
+        stale = _get_stale(key)
+        if stale is not None:
+            log.warning("bar_cache.get_option_chain serving stale data for %s %s", t, exp)
+            calls, puts = stale  # type: ignore[misc]
+            return calls, puts
         calls, puts = pd.DataFrame(), pd.DataFrame()
 
-    _set(key, (calls, puts))
+    if not calls.empty or not puts.empty:
+        _set(key, (calls, puts))
     return calls, puts
 
 

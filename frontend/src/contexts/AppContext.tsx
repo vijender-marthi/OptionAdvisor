@@ -212,7 +212,7 @@ interface AppContextValue {
   /** Replace editable fields while preserving id, addedAt, status, and close metadata (pnlPct, exitDate). */
   updatePortfolioPosition: (id: string, pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => void
   removeFromPortfolio: (id: string) => void
-  closePosition: (id: string, payload: ClosePositionPayload) => void
+  closePosition: (id: string, payload: ClosePositionPayload) => Promise<void>
   isInPortfolio: (ticker: string, strategy: string, expiry: string) => boolean
 
   // Cache
@@ -325,21 +325,6 @@ function loadStoredDayTradeTickers(max = 10): string[] {
     return out
   } catch {
     return []
-  }
-}
-
-/** Whole contracts for portfolio P&L math (must match PortfolioPage). */
-function portfolioContractCount(raw: unknown): number {
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return 1
-  return Math.max(1, Math.round(n))
-}
-
-function newPortfolioLotId(): string {
-  try {
-    return crypto.randomUUID()
-  } catch {
-    return `pf_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   }
 }
 
@@ -1018,78 +1003,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const closePosition = useCallback(async (id: string, payload: ClosePositionPayload) => {
-    const now = payload.close_date || new Date().toISOString()
-
     try {
-      await closePortfolioPosition({ id, ...payload })
+      const resp = await closePortfolioPosition({ id, ...payload })
+      if (resp.data?.ok && Array.isArray(resp.data.portfolio)) {
+        setPortfolio(resp.data.portfolio as unknown as PortfolioPosition[])
+        return
+      }
+      throw new Error('Close response did not include updated portfolio.')
     } catch (e) {
       console.warn('[portfolio] close API persist failed:', e)
-      return // don't update local state if API fails — position will reappear on reload
+      throw e
     }
-
-    setPortfolio(prev => {
-      const idx = prev.findIndex(p => p.id === id && p.status === 'open')
-      if (idx < 0) return prev
-
-      const pos = prev[idx]!
-      const total = portfolioContractCount(pos.contracts)
-      let nClose = Math.round(Number(payload.contractsToClose))
-      if (!Number.isFinite(nClose) || nClose < 1) nClose = 1
-      if (nClose > total) nClose = total
-
-      const scaleRemaining = total > 0 ? (total - nClose) / total : 0
-
-      const closeFields: Partial<PortfolioPosition> = {
-        status: 'closed' as const,
-        exitDate: now,
-        exit_price: payload.exit_price,
-        exit_debit_credit: payload.exit_debit_credit,
-        realized_pnl: payload.realized_pnl,
-        realized_pnl_percent: payload.realized_pnl_percent,
-        exit_reason: payload.exit_reason,
-        close_notes: payload.close_notes,
-        pnl_overridden: payload.pnl_overridden,
-        pnl_override_reason: payload.pnl_override_reason,
-      }
-
-      if (payload.realized_pnl_percent != null) {
-        closeFields.pnlPct = payload.realized_pnl_percent
-      }
-
-      if (nClose >= total) {
-        return prev.map(p =>
-          p.id === id ? { ...p, ...closeFields } : p,
-        )
-      }
-
-      const closedNote = `Partial close: ${nClose} of ${total} contracts`
-      const closedNotes = [pos.notes?.trim(), closedNote].filter(Boolean).join(' · ') || undefined
-
-      const closedRow: PortfolioPosition = {
-        ...pos,
-        id: newPortfolioLotId(),
-        contracts: nClose,
-        ...closeFields,
-        notes: closedNotes,
-        capital_at_risk:
-          pos.capital_at_risk != null
-            ? Math.round((pos.capital_at_risk * nClose) / total * 100) / 100
-            : undefined,
-      }
-
-      const remaining: PortfolioPosition = {
-        ...pos,
-        contracts: total - nClose,
-        partial_closed: true,
-        original_contracts: pos.original_contracts ?? total,
-        capital_at_risk:
-          pos.capital_at_risk != null
-            ? Math.round(pos.capital_at_risk * scaleRemaining * 100) / 100
-            : undefined,
-      }
-
-      return prev.flatMap((p, i) => (i === idx ? [remaining, closedRow] : [p]))
-    })
   }, [])
 
   const isInPortfolio = useCallback((ticker: string, strategy: string, expiry: string) =>

@@ -438,8 +438,9 @@ export interface OptionChainLiquidityResponse {
 export const fetchOptionChainLiquidity = async (
   ticker: string,
   expiry?: string,
+  forceRefresh = false,
 ): Promise<OptionChainLiquidityResponse> => {
-  const params = expiry ? { expiry } : {}
+  const params = { ...(expiry ? { expiry } : {}), ...(forceRefresh ? { force_refresh: true } : {}) }
   const { data } = await api.get<OptionChainLiquidityResponse>(`/option-chain/${encodeURIComponent(ticker.trim().toUpperCase())}`, { params })
   return data
 }

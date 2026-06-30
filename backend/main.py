@@ -4716,6 +4716,7 @@ def _run_backtest_endpoint(request: BacktestRequest):
 def option_chain_liquidity(
     ticker: str,
     expiry: Optional[str] = Query(default=None),
+    force_refresh: bool = Query(default=False),
     auth_email: str = Depends(require_access_email),
 ):
     """
@@ -4726,14 +4727,16 @@ def option_chain_liquidity(
     if not t:
         raise HTTPException(status_code=400, detail="Ticker required")
 
-    opt_dates = _bc_opt_dates(t)
+    opt_dates = _bc_opt_dates(t, force_refresh=force_refresh)
+    if not opt_dates and not force_refresh:
+        opt_dates = _bc_opt_dates(t, force_refresh=True)
     if not opt_dates:
         raise HTTPException(status_code=404, detail=f"No options data for {t}")
 
     # Current price
     current_price = 0.0
     try:
-        info = _bc_info(t)
+        info = _bc_info(t, force_refresh=force_refresh)
         current_price = float(
             info.get("currentPrice") or info.get("regularMarketPrice") or
             info.get("previousClose") or 0
@@ -4745,10 +4748,34 @@ def option_chain_liquidity(
     exp = (expiry or "").strip()[:10]
     target_expiry = exp if exp in opt_dates else opt_dates[0]
 
-    try:
-        calls_df, puts_df = _bc_chain(t, target_expiry)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch chain: {e}")
+    chain_errors: list[str] = []
+    calls_df = pd.DataFrame()
+    puts_df = pd.DataFrame()
+    candidate_expiries = [target_expiry] + [d for d in opt_dates[:8] if d != target_expiry]
+    for idx, candidate in enumerate(candidate_expiries):
+        try:
+            calls_df, puts_df = _bc_chain(t, candidate, force_refresh=force_refresh or idx > 0)
+            if (calls_df is not None and not calls_df.empty) or (puts_df is not None and not puts_df.empty):
+                target_expiry = candidate
+                break
+        except Exception as e:
+            chain_errors.append(f"{candidate}: {e}")
+    else:
+        if not force_refresh:
+            for candidate in candidate_expiries[:4]:
+                try:
+                    calls_df, puts_df = _bc_chain(t, candidate, force_refresh=True)
+                    if (calls_df is not None and not calls_df.empty) or (puts_df is not None and not puts_df.empty):
+                        target_expiry = candidate
+                        break
+                except Exception as e:
+                    chain_errors.append(f"{candidate}: {e}")
+
+    if (calls_df is None or calls_df.empty) and (puts_df is None or puts_df.empty):
+        detail = f"No option chain rows for {t}"
+        if chain_errors:
+            detail += f" ({'; '.join(chain_errors[:2])})"
+        raise HTTPException(status_code=404, detail=detail)
 
     def _process(df: pd.DataFrame) -> list:
         if df is None or df.empty:

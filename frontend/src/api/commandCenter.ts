@@ -234,6 +234,7 @@ export async function removePortfolioPosition(payload: {
 
 export async function closePortfolioPosition(payload: {
   id: string
+  contractsToClose?: number
   realized_pnl?: number
   realized_pnl_percent?: number
   exit_price?: number
@@ -477,4 +478,3 @@ export async function removeTrackModeTicker(ticker: string): Promise<{ ok: boole
   const { data } = await api.post<{ ok: boolean }>('/track-mode/remove', { ticker })
   return data
 }
-
