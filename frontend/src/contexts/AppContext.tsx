@@ -970,20 +970,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userRef])
 
   const addManualPosition = useCallback((pos: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
+    // Optimistic insert so the card appears instantly
+    const tempId = `manual-${pos.ticker}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const optimistic: PortfolioPosition = {
+      ...pos,
+      id: tempId,
+      addedAt: new Date().toISOString(),
+      status: 'open' as const,
+    }
+    setPortfolio(prev => [optimistic, ...prev])
     addPortfolioPosition({ position: pos as unknown as Record<string, unknown> })
       .then(resp => {
         if (resp.data?.ok && Array.isArray(resp.data.portfolio)) {
+          // Replace optimistic entry with the real DB-assigned record
           setPortfolio(resp.data.portfolio as unknown as PortfolioPosition[])
         }
       })
       .catch(e => {
-        console.warn('[portfolio] add failed, falling back to local state:', e)
-        setPortfolio(prev => [{
-          ...pos,
-          id: `manual-${pos.ticker}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          addedAt: new Date().toISOString(),
-          status: 'open' as const,
-        }, ...prev])
+        console.warn('[portfolio] add persist failed, keeping optimistic entry:', e)
       })
   }, [])
 
