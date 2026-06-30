@@ -268,6 +268,7 @@ ALERT_SCAN_SPREAD_WIDTH = 5
 #   10 minutes outside market hours (pre/post market data changes slowly)
 ANALYZE_CACHE_TTL_MARKET_HOURS   = int(os.getenv("ANALYZE_CACHE_TTL_MARKET_HOURS",   "90"))
 ANALYZE_CACHE_TTL_OFF_HOURS      = int(os.getenv("ANALYZE_CACHE_TTL_OFF_HOURS",      "600"))
+SIGNAL_FEED_CACHE_TTL_SECONDS    = int(os.getenv("SIGNAL_FEED_CACHE_TTL_SECONDS",    "900"))  # 15 minutes
 
 # Separate in-memory cache for user-facing /api/analyze requests
 analyze_user_cache: dict[str, tuple[float, "AnalyzeResponse"]] = {}
@@ -275,6 +276,9 @@ analyze_user_cache_lock = threading.Lock()
 
 analysis_cache_lock = threading.Lock()
 analysis_cache: dict[str, tuple[float, AnalyzeResponse]] = {}
+
+signal_feed_cache_lock = threading.Lock()
+signal_feed_cache: dict[str, tuple[float, tuple[Any, ...], list[dict[str, Any]], dict[str, Any]]] = {}
 
 # Tracks whether we logged the background-link warning (see `_option_advisor_public_base`).
 _background_email_default_link_logged = False
@@ -2050,6 +2054,116 @@ def _signal_feed_morning_trend_scan(day_metrics: dict[str, Any], fallback_change
     }
 
 
+def _signal_feed_source_signature(
+    source_items: list[dict[str, Any]],
+    portfolio_tickers: set[str],
+) -> tuple[Any, ...]:
+    """Stable signature for cache invalidation when the feed universe changes."""
+    item_sig = tuple(
+        sorted(
+            (
+                str(item.get("id") or ""),
+                str(item.get("ticker") or "").strip().upper(),
+                tuple(sorted(str(src or "").strip().lower() for src in (item.get("sources") or []))),
+                str(item.get("added_at") or ""),
+            )
+            for item in source_items
+            if str(item.get("ticker") or "").strip()
+        )
+    )
+    return (item_sig, tuple(sorted(portfolio_tickers)))
+
+
+def _signal_feed_response_from_rows(
+    rows_in: list[dict[str, Any]],
+    *,
+    search: str | None,
+    sort_by: str,
+    sort_dir: str,
+    page: int,
+    page_size: int,
+    cache_meta: dict[str, Any],
+    elapsed_ms: int,
+):
+    rows = [dict(row) for row in rows_in]
+    query = (search or "").strip().upper()
+    if query:
+        rows = [
+            row for row in rows
+            if query in str(row.get("ticker", "")).upper()
+            or query in str(row.get("company_name", "")).upper()
+        ]
+
+    sort_key = sort_by.strip().lower()
+    reverse = sort_dir.strip().lower() != "asc"
+    rows.sort(key=lambda row: _signal_feed_sort_key(row, sort_key), reverse=reverse)
+
+    total = len(rows)
+    page = max(1, int(page))
+    page_size = max(10, min(100, int(page_size)))
+    start = (page - 1) * page_size
+    end = start + page_size
+    paged_rows = rows[start:end]
+
+    return api_envelope(
+        {
+            "summary": {
+                "total": total,
+                "ready": sum(1 for row in rows if row["agreement_state"] == "READY"),
+                "watch": sum(1 for row in rows if row["agreement_state"] == "WATCH"),
+                "extended": sum(1 for row in rows if row["agreement_state"] == "EXTENDED"),
+                "avoid": sum(1 for row in rows if row["agreement_state"] == "AVOID"),
+                "conflict": sum(1 for row in rows if row["agreement_state"] == "CONFLICT"),
+                "manage": sum(1 for row in rows if row["agreement_state"] == "MANAGE"),
+                "alerts": sum(int(row.get("alerts_count") or 0) for row in rows),
+                "trending_today": sum(1 for row in rows if row.get("trending_today")),
+                "auto_added_day_watch": int(cache_meta.get("auto_added_day_watch", 0) or 0),
+                "strong_bullish": sum(
+                    1
+                    for row in rows
+                    if "STRONG_BULLISH" in {
+                        str(row.get("day", {}).get("market_bias") or "").upper(),
+                        str(row.get("swing", {}).get("market_bias") or "").upper(),
+                        str(row.get("regular", {}).get("market_bias") or "").upper(),
+                    }
+                    or str(row.get("trend") or "").upper() == "STRONG_UPTREND"
+                ),
+                "strong_bearish": sum(
+                    1
+                    for row in rows
+                    if "STRONG_BEARISH" in {
+                        str(row.get("day", {}).get("market_bias") or "").upper(),
+                        str(row.get("swing", {}).get("market_bias") or "").upper(),
+                        str(row.get("regular", {}).get("market_bias") or "").upper(),
+                    }
+                    or str(row.get("trend") or "").upper() == "STRONG_DOWNTREND"
+                ),
+            },
+            "ai_summary": _signal_feed_ai_summary(rows),
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": max(1, (total + page_size - 1) // page_size),
+            },
+            "sort": {"sort_by": sort_key, "sort_dir": "desc" if reverse else "asc"},
+            "cache": {
+                "used_cache": bool(cache_meta.get("used_cache", False)),
+                "cache_hits": int(cache_meta.get("cache_hits", 0) or 0),
+                "cache_misses": int(cache_meta.get("cache_misses", 0) or 0),
+                "force_refresh": bool(cache_meta.get("force_refresh", False)),
+                "oldest_cache_age_seconds": float(cache_meta.get("oldest_cache_age_seconds", 0.0) or 0.0),
+                "source": str(cache_meta.get("source", "unknown") or "unknown"),
+                "elapsed_ms": elapsed_ms,
+                "payload_cache_age_seconds": float(cache_meta.get("payload_cache_age_seconds", 0.0) or 0.0),
+                "ttl_seconds": SIGNAL_FEED_CACHE_TTL_SECONDS,
+            },
+            "rows": paged_rows,
+        },
+        stale=False,
+    )
+
+
 class SignalFeedAlertCreateBody(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
     agreement_state: str = "WATCH"
@@ -2336,6 +2450,9 @@ def get_signal_feed(
     _t0 = _time.time()
 
     email = normalize_email(auth_email)
+    with signal_feed_cache_lock:
+        for key in [k for k in signal_feed_cache if k.startswith(f"{email}:")]:
+            signal_feed_cache.pop(key, None)
     state = get_user_state(email)
     if not state.get("my_tickers"):
         _seed_default_my_tickers(email)
@@ -2352,6 +2469,41 @@ def get_signal_feed(
         for item in (state.get("portfolio") or [])
         if isinstance(item, dict) and str(item.get("status", "open")).lower() == "open"
     }
+    source_signature = _signal_feed_source_signature(source_items, portfolio_tickers)
+    cache_key = f"{email}:{source_filter if source_filter in {'day', 'swing', 'regular'} else 'all'}"
+    now = _time.time()
+    if not refresh:
+        with signal_feed_cache_lock:
+            cached = signal_feed_cache.get(cache_key)
+        if cached:
+            cached_at, cached_signature, cached_rows, cached_meta = cached
+            cache_age = now - cached_at
+            if cached_signature == source_signature and cache_age < SIGNAL_FEED_CACHE_TTL_SECONDS:
+                _elapsed_ms = round((_time.time() - _t0) * 1000)
+                meta = {
+                    **cached_meta,
+                    "used_cache": True,
+                    "force_refresh": False,
+                    "payload_cache_age_seconds": round(cache_age, 1),
+                    "source": "signal_feed_payload_cache",
+                }
+                logging.getLogger(__name__).info(
+                    "WATCHLISTX_LOAD_CACHE_HIT ticker_count=%d elapsed_ms=%d age=%.1f ttl=%d",
+                    len(cached_rows),
+                    _elapsed_ms,
+                    cache_age,
+                    SIGNAL_FEED_CACHE_TTL_SECONDS,
+                )
+                return _signal_feed_response_from_rows(
+                    cached_rows,
+                    search=search,
+                    sort_by=sort_by,
+                    sort_dir=sort_dir,
+                    page=page,
+                    page_size=page_size,
+                    cache_meta=meta,
+                    elapsed_ms=_elapsed_ms,
+                )
 
     # Bulk-prefetch quotes into the shared cache before the engine loop.
     # This fills the quote cache so engine calls that read from it find a
@@ -2673,91 +2825,40 @@ def get_signal_feed(
             my_tickers=state.get("my_tickers") or [],
         )
 
-    query = (search or "").strip().upper()
-    if query:
-        rows = [
-            row for row in rows
-            if query in str(row.get("ticker", "")).upper()
-            or query in str(row.get("company_name", "")).upper()
-        ]
-
-    sort_key = sort_by.strip().lower()
-    reverse = sort_dir.strip().lower() != "asc"
-    rows.sort(key=lambda row: _signal_feed_sort_key(row, sort_key), reverse=reverse)
-
-    total = len(rows)
-    page = max(1, int(page))
-    page_size = max(10, min(100, int(page_size)))
-    start = (page - 1) * page_size
-    end = start + page_size
-    paged_rows = rows[start:end]
-
     _elapsed_ms = round((_time.time() - _t0) * 1000)
+    fresh_meta = {
+        "used_cache": False,
+        "cache_hits": _cache_meta.get("cache_hits", 0),
+        "cache_misses": _cache_meta.get("cache_misses", 0),
+        "force_refresh": refresh,
+        "oldest_cache_age_seconds": _cache_meta.get("oldest_cache_age_seconds", 0.0),
+        "source": _cache_meta.get("source", "unknown"),
+        "payload_cache_age_seconds": 0.0,
+        "auto_added_day_watch": len(_auto_day_watch_additions),
+    }
+    with signal_feed_cache_lock:
+        signal_feed_cache[cache_key] = (_time.time(), source_signature, rows, fresh_meta)
     logging.getLogger(__name__).info(
         "WATCHLISTX_LOAD ticker_count=%d cache_hits=%d cache_misses=%d "
-        "yahoo_fetch_count=%d elapsed_ms=%d force_refresh=%s",
+        "yahoo_fetch_count=%d elapsed_ms=%d force_refresh=%s payload_cached=true ttl=%d",
         len(all_tickers),
         _cache_meta.get("cache_hits", 0),
         _cache_meta.get("cache_misses", 0),
         _cache_meta.get("cache_misses", 0),  # each miss = one Yahoo batch call
         _elapsed_ms,
         refresh,
+        SIGNAL_FEED_CACHE_TTL_SECONDS,
     )
 
-    return api_envelope(
-        {
-            "summary": {
-                "total": total,
-                "ready": sum(1 for row in rows if row["agreement_state"] == "READY"),
-                "watch": sum(1 for row in rows if row["agreement_state"] == "WATCH"),
-                "extended": sum(1 for row in rows if row["agreement_state"] == "EXTENDED"),
-                "avoid": sum(1 for row in rows if row["agreement_state"] == "AVOID"),
-                "conflict": sum(1 for row in rows if row["agreement_state"] == "CONFLICT"),
-                "manage": sum(1 for row in rows if row["agreement_state"] == "MANAGE"),
-                "alerts": sum(int(row.get("alerts_count") or 0) for row in rows),
-                "trending_today": sum(1 for row in rows if row.get("trending_today")),
-                "auto_added_day_watch": len(_auto_day_watch_additions),
-                "strong_bullish": sum(
-                    1
-                    for row in rows
-                    if "STRONG_BULLISH" in {
-                        str(row.get("day", {}).get("market_bias") or "").upper(),
-                        str(row.get("swing", {}).get("market_bias") or "").upper(),
-                        str(row.get("regular", {}).get("market_bias") or "").upper(),
-                    }
-                    or str(row.get("trend") or "").upper() == "STRONG_UPTREND"
-                ),
-                "strong_bearish": sum(
-                    1
-                    for row in rows
-                    if "STRONG_BEARISH" in {
-                        str(row.get("day", {}).get("market_bias") or "").upper(),
-                        str(row.get("swing", {}).get("market_bias") or "").upper(),
-                        str(row.get("regular", {}).get("market_bias") or "").upper(),
-                    }
-                    or str(row.get("trend") or "").upper() == "STRONG_DOWNTREND"
-                ),
-            },
-            "ai_summary": _signal_feed_ai_summary(rows),
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total": total,
-                "total_pages": max(1, (total + page_size - 1) // page_size),
-            },
-            "sort": {"sort_by": sort_key, "sort_dir": "desc" if reverse else "asc"},
-            "cache": {
-                "used_cache": _cache_meta.get("used_cache", False),
-                "cache_hits": _cache_meta.get("cache_hits", 0),
-                "cache_misses": _cache_meta.get("cache_misses", 0),
-                "force_refresh": refresh,
-                "oldest_cache_age_seconds": _cache_meta.get("oldest_cache_age_seconds", 0.0),
-                "source": _cache_meta.get("source", "unknown"),
-                "elapsed_ms": _elapsed_ms,
-            },
-            "rows": paged_rows,
-        },
-        stale=False,
+    return _signal_feed_response_from_rows(
+        rows,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+        cache_meta=fresh_meta,
+        elapsed_ms=_elapsed_ms,
     )
 
 
@@ -2838,14 +2939,17 @@ def clear_all_caches(
     with analyze_user_cache_lock:
         auc_cleared = len(analyze_user_cache)
         analyze_user_cache.clear()
+    with signal_feed_cache_lock:
+        sf_cleared = len(signal_feed_cache)
+        signal_feed_cache.clear()
 
     dt_cleared = _clear_day_scan_cache()
     sw_cleared = _clear_swing_scan_cache()
 
-    total = bc_cleared + qc_cleared + ac_cleared + auc_cleared + dt_cleared + sw_cleared
+    total = bc_cleared + qc_cleared + ac_cleared + auc_cleared + sf_cleared + dt_cleared + sw_cleared
     logging.getLogger(__name__).info(
-        "CACHE_CLEAR bar=%d quote=%d analysis=%d analyze_user=%d day_scan=%d swing_scan=%d total=%d",
-        bc_cleared, qc_cleared, ac_cleared, auc_cleared, dt_cleared, sw_cleared, total,
+        "CACHE_CLEAR bar=%d quote=%d analysis=%d analyze_user=%d signal_feed=%d day_scan=%d swing_scan=%d total=%d",
+        bc_cleared, qc_cleared, ac_cleared, auc_cleared, sf_cleared, dt_cleared, sw_cleared, total,
     )
 
     return api_envelope({
@@ -2855,6 +2959,7 @@ def clear_all_caches(
             "quote_cache":        qc_cleared,
             "analysis_cache":     ac_cleared,
             "analyze_user_cache": auc_cleared,
+            "signal_feed_cache":   sf_cleared,
             "day_scan_cache":     dt_cleared,
             "swing_scan_cache":   sw_cleared,
         },

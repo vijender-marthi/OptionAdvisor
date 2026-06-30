@@ -1094,7 +1094,7 @@ export default function SignalFeedPage() {
     [searchParams, setSearchParams],
   )
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     setError(null)
     try {
@@ -1108,6 +1108,7 @@ export default function SignalFeedPage() {
         sort_dir: sortDir,
         page,
         page_size: pageSize,
+        refresh: forceRefresh,
       })
       setEnv(next)
     } catch (err) {
@@ -1117,7 +1118,7 @@ export default function SignalFeedPage() {
     }
   }, [page, pageSize, sortBy, sortDir, sourceFilter])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load(false) }, [load])
 
   const payload = env?.data
   const rows = payload?.rows ?? []
@@ -1293,7 +1294,7 @@ export default function SignalFeedPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => routerNavigate(ROUTES.alerts)} className={`${getActionButtonClass('alert')} gap-2 rounded-full px-3 py-2 text-sm`}><AlertTriangle size={16} /> Alert Center</button>
           <button type="button" onClick={() => routerNavigate(ROUTES.positions)} className={`${getActionButtonClass('trade')} gap-2 rounded-full px-3 py-2 text-sm`}><BriefcaseBusiness size={16} /> Positions</button>
-          <button type="button" onClick={() => void load()} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+          <button type="button" onClick={() => void load(true)} className={`${getActionButtonClass('surface')} gap-2 rounded-full px-3 py-2 text-sm`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh</button>
         </div>
       </header>
 
@@ -1554,7 +1555,7 @@ export default function SignalFeedPage() {
         ) : error ? (
           <div className="rounded-[28px] border border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 px-4 py-14 text-center text-sm text-rose-700 dark:text-rose-300">
             <div>{error}</div>
-            <button type="button" onClick={() => void load()} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
+            <button type="button" onClick={() => void load(true)} className="btn btn-danger mt-4 px-4 py-2 text-sm">Retry</button>
           </div>
         ) : visibleRows.length === 0 && ignoredData.tickers.length > 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
@@ -1605,7 +1606,7 @@ export default function SignalFeedPage() {
       <AddTickerModal
         open={showAddTicker}
         onClose={() => setShowAddTicker(false)}
-        onAdded={() => { setNotice({ tone: 'success', message: 'Ticker added successfully.' }); void load() }}
+        onAdded={() => { setNotice({ tone: 'success', message: 'Ticker added successfully.' }); void load(true) }}
       />
 
       <MobileActionTray

@@ -698,13 +698,13 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
   // Desktop: table layout
   return (
     <div style={{ overflowX: 'auto', border: `1px solid ${dt.border}`, borderRadius: 12, background: dt.bg }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1480, tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1680, tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: '7%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} /><col style={{ width: '8%' }} />
-          <col style={{ width: '11%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} />
-          <col style={{ width: '6%' }} /><col style={{ width: '6%' }} />
-          <col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} />
-          <col style={{ width: '5%' }} />
+          <col style={{ width: 108 }} /><col style={{ width: 116 }} /><col style={{ width: 130 }} /><col style={{ width: 118 }} />
+          <col style={{ width: 170 }} /><col style={{ width: 180 }} /><col style={{ width: 180 }} />
+          <col style={{ width: 78 }} /><col style={{ width: 90 }} />
+          <col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} />
+          <col style={{ width: 120 }} />
         </colgroup>
         <thead>
           <tr>
@@ -809,7 +809,7 @@ function DayTickerTable({ tickers, tiles, dt, isDark }: {
                   <td style={td} onClick={e => e.stopPropagation()}>
                     <a href={`${ROUTES.dayTrade}?ticker=${encodeURIComponent(sym)}`} target="_blank" rel="noopener noreferrer"
                       title="Open in Day Trade page (new window)"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: dt.accent, textDecoration: 'none', fontSize: 11, fontWeight: 700, width: '100%', whiteSpace: 'nowrap' }}>
                       Day Trade <ExternalLink size={12} />
                     </a>
                   </td>
@@ -1698,10 +1698,10 @@ export default function DayTradeDashboardPage() {
   const tabAccent = activeTab === 'swing' ? dt.violet : dt.accent
 
   return (
-    <div style={{ minHeight: '100vh', background: isDark ? '#07090d' : '#F3F4F6', color: dt.text, padding: '10px 8px 36px' }}>
+    <div style={{ minHeight: '100vh', background: isDark ? '#07090d' : '#F3F4F6', color: dt.text, padding: '10px 12px 36px' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1840, margin: '0 auto' }}>
 
         {/* Page header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12, border: `1px solid ${dt.border}`, background: dt.bg, borderRadius: 14, padding: '12px 14px' }}>

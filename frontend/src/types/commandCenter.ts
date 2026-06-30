@@ -378,6 +378,8 @@ export interface SignalFeedCacheMeta {
   oldest_cache_age_seconds: number
   source: string
   elapsed_ms: number
+  payload_cache_age_seconds?: number
+  ttl_seconds?: number
 }
 
 export interface AiPositionAnalysis {
