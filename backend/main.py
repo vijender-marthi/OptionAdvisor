@@ -5259,9 +5259,32 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
     back_dte = _tw_days_to_expiry(_tw_back_expiry(req))
     sim_price = safe_float(req.stockPrice) * (1 + safe_float(req.priceMove) / 100)
     estimated_value = max(0.01, abs_premium + (sim_price - safe_float(req.stockPrice)) * safe_float(greeks["delta"]) + safe_float(req.ivMove) / 100 * safe_float(greeks["vega"]) * 100 + safe_float(greeks["theta"]) * safe_int(req.daysPassed))
-    estimated_profit = (estimated_value - abs_premium) * 100 * max(1, safe_int(req.contracts))
+    estimated_profit = ((abs_premium - estimated_value) if net_premium > 0 else (estimated_value - abs_premium)) * 100 * max(1, safe_int(req.contracts))
     scenario_basis = max(1.0, capital_required or cost or max_risk)
     expected_value = (safe_float(score["probability"]) / 100) * max(1, _tw_payoff(req, safe_float(req.targetPrice))) - (1 - safe_float(score["probability"]) / 100) * scenario_basis
+    def _scenario_mark(price: float, days: int, iv_move: float = 0.0) -> float:
+        return max(
+            0.01,
+            abs_premium
+            + (price - safe_float(req.stockPrice)) * safe_float(greeks["delta"])
+            + iv_move / 100 * safe_float(greeks["vega"]) * 100
+            + safe_float(greeks["theta"]) * days,
+        )
+
+    def _scenario_pnl(mark: float) -> float:
+        return ((abs_premium - mark) if net_premium > 0 else (mark - abs_premium)) * 100 * max(1, safe_int(req.contracts))
+
+    time_days = sorted(set([0, 1, 3, 5, 10, 15, 20, max(0, min(front_dte, safe_int(req.expectedHoldDays))), max(0, front_dte)]))
+    time_buckets = [
+        {
+            "day": day,
+            "flatPnl": round(_scenario_pnl(_scenario_mark(safe_float(req.stockPrice), day)), 2),
+            "targetPnl": round(_scenario_pnl(_scenario_mark(safe_float(req.targetPrice), day)), 2),
+            "scenarioPnl": round(_scenario_pnl(_scenario_mark(sim_price, day, safe_float(req.ivMove))), 2),
+        }
+        for day in time_days
+        if day <= max(front_dte, safe_int(req.expectedHoldDays), safe_int(req.daysPassed), 1)
+    ]
     comparisons = []
     debit = cost
     credit = max(80, abs_premium * 60)
@@ -5343,6 +5366,7 @@ def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email:
                 {"label": "+5%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 1.05), 2)},
                 {"label": "+10%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 1.1), 2)},
             ],
+            "timeBuckets": time_buckets,
         },
         "comparisons": comparisons,
         "bestStrategy": comparisons[0] if comparisons else None,

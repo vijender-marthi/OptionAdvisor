@@ -247,6 +247,7 @@ export default function TradeWorksheetPage() {
   const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0 }
   const score = evaluation?.score ?? { total: 0, trend: 0, optionPricing: 0, time: 0, liquidity: 0, probability: 0, riskReward: 0, volatility: 0, market: 0, label: 'WAIT' }
   const payoff = evaluation?.payoff ?? []
+  const timeBuckets = evaluation?.scenario.timeBuckets ?? []
   const comparisons = evaluation?.comparisons ?? []
   const bestStrategy = evaluation?.bestStrategy ?? comparisons[0] ?? null
   const estimatedValue = evaluation?.scenario.estimatedValue ?? 0
@@ -614,7 +615,7 @@ export default function TradeWorksheetPage() {
       </section>
 
       <section className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Panel title="Visual Payoff Diagram" icon={<LineChartIcon size={18} />} sub="Profit at expiration with breakeven, current price, and target price.">
+        <Panel title="Visual Payoff Diagram" icon={<LineChartIcon size={18} />} sub="Expiration payoff by stock price plus time-decay projection before expiration.">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={payoff}>
@@ -629,6 +630,34 @@ export default function TradeWorksheetPage() {
                 <Area type="monotone" dataKey="pnl" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} />
               </AreaChart>
             </ResponsiveContainer>
+          </div>
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-white/[0.07]">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-widest text-muted">Time Projection</div>
+                <div className="text-xs text-tertiary">Estimated P/L as days pass before expiration.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+                <span className="text-sky-500">Flat price</span>
+                <span className="text-emerald-500">Target</span>
+                <span className="text-violet-500">Simulator</span>
+              </div>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeBuckets}>
+                  <CartesianGrid stroke="var(--border-default)" strokeDasharray="3 3" />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} tickFormatter={v => `${v}d`} />
+                  <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} tickFormatter={v => `$${Number(v).toFixed(0)}`} />
+                  <Tooltip formatter={(v: number) => fmtUsd(v)} labelFormatter={v => `Day ${v}`} />
+                  <ReferenceLine y={0} stroke="var(--text-secondary)" />
+                  <ReferenceLine x={daysPassed} stroke="#f59e0b" label="Selected" />
+                  <Line type="monotone" dataKey="flatPnl" name="Flat price" stroke="#38bdf8" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="targetPnl" name="Target price" stroke="#22c55e" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="scenarioPnl" name="Simulator" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </Panel>
 

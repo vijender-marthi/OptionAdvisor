@@ -36,6 +36,10 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   const isBullish   = rec.bias.toUpperCase().includes('BULLISH')
   const isBearish   = rec.bias.toUpperCase().includes('BEARISH')
   const isNeutral   = !isBullish && !isBearish
+  const strategyName = rec.strategy || 'strategy'
+  const shortPutStrike = rec.legs.find(l => l.action === 'SELL' && l.option_type === 'PUT')?.strike
+  const shortCallStrike = rec.legs.find(l => l.action === 'SELL' && l.option_type === 'CALL')?.strike
+  const strikeText = (strike?: number) => Number.isFinite(strike) ? `$${strike?.toFixed(0)}` : 'the short strike'
 
   // ── 1. IV Environment ────────────────────────────────────────────────────
   // Credit: want rich premium → favor high IV, penalize very low IV
@@ -87,24 +91,24 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
     // Directional credit spread — moderate conviction is sufficient
     if (conf >= 40)
       items.push({ label: 'Bias Confidence', status: 'pass', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — sufficient conviction for a defined-risk credit spread.` })
+        detail: `${conf.toFixed(0)}% confidence — enough directional support for ${strategyName}. For credit spreads, this does not need to be perfect; it only needs to show that price is less likely to challenge your short strike. Example: on a bull put spread, modest bullish/neutral bias is acceptable if the short put is safely below support.` })
     else if (conf >= 25)
       items.push({ label: 'Bias Confidence', status: 'warn', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — weak signal. Favor wider OTM spread to give more cushion.` })
+        detail: `${conf.toFixed(0)}% confidence — the market read is weak. If you still trade, use smaller size, choose a farther OTM short strike, or wait for price to confirm direction. Example: sell a wider bull put only after price holds support.` })
     else
       items.push({ label: 'Bias Confidence', status: 'fail', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — very weak. High uncertainty raises risk of short strike being tested.` })
+        detail: `${conf.toFixed(0)}% confidence — too little directional edge. The trade may still collect premium, but the odds of the short strike being tested are not favorable enough.` })
   } else {
     // Long / debit — need stronger conviction to justify premium cost
     if (conf >= 55)
       items.push({ label: 'Bias Confidence', status: 'pass', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — solid conviction. Long premium is justified by signal strength.` })
+        detail: `${conf.toFixed(0)}% confidence — solid directional conviction. Long premium needs price movement, so the engine wants stronger confirmation before paying debit. Example: a long call should have clear bullish trend and momentum, not only a cheap option price.` })
     else if (conf >= 35)
       items.push({ label: 'Bias Confidence', status: 'warn', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — moderate conviction. Consider smaller size or a debit spread instead.` })
+        detail: `${conf.toFixed(0)}% confidence — moderate conviction. A debit spread may be better than a naked long option because it lowers premium risk while keeping directional exposure.` })
     else
       items.push({ label: 'Bias Confidence', status: 'fail', hard: false, category: 'Directional Bias',
-        detail: `${conf.toFixed(0)}% confidence — weak directional conviction. Long premium has a poor expected return here.` })
+        detail: `${conf.toFixed(0)}% confidence — weak directional conviction. Paying premium here has poor expected value because price may not move enough before theta decay takes over.` })
   }
 
   // ── 3. Trend Alignment ────────────────────────────────────────────────────
@@ -119,48 +123,48 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
         ? 'short call strike' : 'short put strike'
       if (sig.above_ma50)
         items.push({ label: 'Trend Alignment', status: 'pass', hard: false, category: 'Directional Bias',
-          detail: `Price above MA50 — stock is holding above key support. ${stratLabel} has a comfortable cushion.` })
+          detail: `Price is above the 50-day moving average, so the stock is still holding intermediate support. That gives the ${stratLabel} room to work before ${strikeText(shortPutStrike)} is threatened. Example: prefer selling puts below support, not directly at the current price.` })
       else if (sig.ma50_slope > 0)
         items.push({ label: 'Trend Alignment', status: 'warn', hard: false, category: 'Directional Bias',
-          detail: `Price dipped below MA50 but slope is still rising. Monitor closely — ${strikeLabel} is at more risk.` })
+          detail: `Price is below MA50, but the MA50 is still rising. The trend is bending, not fully broken. Monitor closely because the ${strikeLabel} has less cushion.` })
       else
         items.push({ label: 'Trend Alignment', status: 'fail', hard: false, category: 'Directional Bias',
-          detail: `Price below declining MA50 — downtrend increases probability of testing the ${strikeLabel}.` })
+          detail: `Price is below a declining MA50. That means the trend is working against the bullish income trade and increases the chance of testing the ${strikeLabel}.` })
     } else {
       // Long call / bull call spread: need real trend support
       if (sig.above_ma50 && sig.ma50_slope > 0)
         items.push({ label: 'Trend Alignment', status: 'pass', hard: false, category: 'Directional Bias',
-          detail: 'Price above rising MA50 — uptrend structure firmly supports bullish long position.' })
+          detail: 'Price is above a rising MA50. That is clean bullish structure and supports paying for long call or bull call spread exposure. Example: buy pullbacks while price remains above rising support.' })
       else if (sig.above_ma50 || sig.ma50_slope > 0)
         items.push({ label: 'Trend Alignment', status: 'warn', hard: false, category: 'Directional Bias',
-          detail: 'Partial trend support — price or slope is mixed. Long premium needs a clear move to profit.' })
+          detail: 'Trend support is mixed. Long premium needs a clear move to profit, so consider waiting for price to reclaim the MA50 or use a defined-risk debit spread.' })
       else
         items.push({ label: 'Trend Alignment', status: 'fail', hard: false, category: 'Directional Bias',
-          detail: 'Price below declining MA50 — trend works directly against a long call.' })
+          detail: 'Price is below a declining MA50. That trend works directly against a long call and raises the chance that theta decay wins before price moves.' })
     }
   } else if (isBearish) {
     if (isCredit) {
       // Bear Call: stock just needs to stay below the short call.
       if (!sig.above_ma50)
         items.push({ label: 'Trend Alignment', status: 'pass', hard: false, category: 'Directional Bias',
-          detail: 'Price below MA50 — stock is holding below key resistance. Bear call spread has a comfortable cushion.' })
+          detail: `Price is below MA50, so the stock is holding under intermediate resistance. That gives the bear call spread room before ${strikeText(shortCallStrike)} is threatened. Example: sell calls above resistance, not near current price.` })
       else if (sig.ma50_slope < 0)
         items.push({ label: 'Trend Alignment', status: 'warn', hard: false, category: 'Directional Bias',
-          detail: 'Price above MA50 but slope is declining. Monitor — short call is at more risk of being tested.' })
+          detail: 'Price is above MA50, but the MA50 slope is declining. Bearish structure is not fully broken, but the short call has higher test risk.' })
       else
         items.push({ label: 'Trend Alignment', status: 'fail', hard: false, category: 'Directional Bias',
-          detail: 'Price above rising MA50 — uptrend increases probability of testing the short call strike.' })
+          detail: `Price is above a rising MA50. That uptrend works against the bear call spread and increases the chance of testing ${strikeText(shortCallStrike)}.` })
     } else {
       // Long put / bear put spread: need real downtrend
       if (!sig.above_ma50 && sig.ma50_slope < 0)
         items.push({ label: 'Trend Alignment', status: 'pass', hard: false, category: 'Directional Bias',
-          detail: 'Price below declining MA50 — downtrend firmly supports bearish long position.' })
+          detail: 'Price is below a declining MA50. That is clean bearish structure and supports paying for long put or bear put spread exposure. Example: enter after failed bounces into resistance.' })
       else if (!sig.above_ma50 || sig.ma50_slope < 0)
         items.push({ label: 'Trend Alignment', status: 'warn', hard: false, category: 'Directional Bias',
-          detail: 'Partial bearish alignment — price or slope is mixed. Long put needs a real move to cover premium.' })
+          detail: 'Bearish alignment is partial. Price or slope is mixed, so a long put needs faster follow-through to overcome premium decay.' })
       else
         items.push({ label: 'Trend Alignment', status: 'fail', hard: false, category: 'Directional Bias',
-          detail: 'Price above rising MA50 — uptrend works directly against a long put.' })
+          detail: 'Price is above a rising MA50. That trend works directly against a long put and increases bounce risk.' })
     }
   } else {
     // Neutral (Iron Condor / Long Straddle)
@@ -182,24 +186,24 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
       // Bull Put Spread: oversold RSI means stock may keep falling through the put
       if (rsi < 28)
         items.push({ label: 'RSI Level', status: 'fail', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — severely oversold. Elevated risk of continued decline through the short put strike.` })
+          detail: `RSI ${rsi.toFixed(1)} — severely oversold. For a bull put spread, this means sellers may still be in control and price could continue toward ${strikeText(shortPutStrike)}. Example: wait for the first stabilization candle or choose a lower short put.` })
       else if (rsi < 38)
         items.push({ label: 'RSI Level', status: 'warn', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — approaching oversold. Consider wider spread or wait for RSI to stabilize.` })
+          detail: `RSI ${rsi.toFixed(1)} — near oversold. The trade can still work, but the cushion is thinner. Consider a wider OTM spread or wait for RSI to turn up.` })
       else
         items.push({ label: 'RSI Level', status: 'pass', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — not near oversold territory. Bull put spread has a reasonable momentum cushion.` })
+          detail: `RSI ${rsi.toFixed(1)} — not near oversold. Momentum is not pressuring the short put, so the bull put spread has reasonable room to work.` })
     } else if (isBearish) {
       // Bear Call Spread: overbought RSI means stock may keep surging through the call
       if (rsi > 72)
         items.push({ label: 'RSI Level', status: 'fail', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — severely overbought. Elevated risk of continued rally through the short call strike.` })
+          detail: `RSI ${rsi.toFixed(1)} — severely overbought. For a bear call spread, buyers may still push toward ${strikeText(shortCallStrike)}. Example: wait for rejection or sell a higher call spread.` })
       else if (rsi > 62)
         items.push({ label: 'RSI Level', status: 'warn', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — approaching overbought. Consider wider spread or wait for RSI to cool.` })
+          detail: `RSI ${rsi.toFixed(1)} — near overbought. The bear call can still work, but the short call has less cushion. Wait for RSI to cool or move strikes farther OTM.` })
       else
         items.push({ label: 'RSI Level', status: 'pass', hard: false, category: 'Momentum',
-          detail: `RSI ${rsi.toFixed(1)} — not near overbought. Bear call spread has a reasonable momentum cushion.` })
+          detail: `RSI ${rsi.toFixed(1)} — not near overbought. Momentum is not pressuring the short call, so the bear call spread has reasonable room to work.` })
     } else {
       // Iron Condor: any extreme threatens one side of the range
       if (rsi > 70 || rsi < 30)
@@ -242,17 +246,17 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
     if (isBullish) {
       if (hist < -0.5 && sig.macd < sig.macd_signal_line)
         items.push({ label: 'MACD Signal', status: 'warn', hard: false, category: 'Momentum',
-          detail: `MACD strongly bearish (histogram ${hist.toFixed(2)}) — momentum threatens the bull put. Consider waiting for stabilization.` })
+          detail: `MACD is bearish (histogram ${hist.toFixed(2)}). That does not automatically kill a bull put spread, but it warns that downside momentum could test ${strikeText(shortPutStrike)}. Example: wait for MACD histogram to flatten or reduce size.` })
       else
         items.push({ label: 'MACD Signal', status: 'pass', hard: false, category: 'Momentum',
-          detail: `MACD histogram ${hist.toFixed(2)} — no strong bearish momentum threatening the bull put spread.` })
+          detail: `MACD histogram ${hist.toFixed(2)} — no strong downside momentum is currently threatening the bull put spread.` })
     } else if (isBearish) {
       if (hist > 0.5 && sig.macd > sig.macd_signal_line)
         items.push({ label: 'MACD Signal', status: 'warn', hard: false, category: 'Momentum',
-          detail: `MACD strongly bullish (histogram ${hist.toFixed(2)}) — momentum threatens the bear call. Consider waiting for a top.` })
+          detail: `MACD is bullish (histogram ${hist.toFixed(2)}). That warns buyers may push toward ${strikeText(shortCallStrike)}. Example: wait for a failed breakout or sell a higher call spread.` })
       else
         items.push({ label: 'MACD Signal', status: 'pass', hard: false, category: 'Momentum',
-          detail: `MACD histogram ${hist.toFixed(2)} — no strong bullish momentum threatening the bear call spread.` })
+          detail: `MACD histogram ${hist.toFixed(2)} — no strong upside momentum is currently threatening the bear call spread.` })
     } else {
       // Iron Condor: any strong momentum is a threat
       if (Math.abs(hist) > 0.5)
@@ -298,13 +302,13 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   if (isCredit) {
     if (dte >= 21 && dte <= 50)
       items.push({ label: 'DTE Window', status: 'pass', hard: false, category: 'Timing',
-        detail: `${dte} DTE — ideal theta decay zone (21-50) for credit spreads. Time decay is working for you.` })
+        detail: `${dte} DTE — strong window for credit spreads. Theta decay is active, but gamma risk is not yet extreme. Example: sell 30-45 DTE and plan to take profits at 50% of credit.` })
     else if (dte > 50 && dte <= 65)
       items.push({ label: 'DTE Window', status: 'warn', hard: false, category: 'Timing',
         detail: `${dte} DTE — slightly long. Theta decay is slower than optimal; consider a nearer expiry if available.` })
     else if (dte >= 14 && dte < 21)
       items.push({ label: 'DTE Window', status: 'warn', hard: false, category: 'Timing',
-        detail: `${dte} DTE — short window. Gamma risk is rising; manage this position actively and close early.` })
+        detail: `${dte} DTE — short window. Theta is faster, but gamma risk rises quickly. Use smaller size and close early if the short strike is tested.` })
     else if (dte < 14)
       items.push({ label: 'DTE Window', status: 'fail', hard: true, category: 'Timing',
         detail: `${dte} DTE — dangerously short. Gamma risk is extreme; credit spreads under 2 weeks should be avoided.` })
@@ -314,7 +318,7 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
   } else {
     if (dte >= 21 && dte <= 70)
       items.push({ label: 'DTE Window', status: 'pass', hard: false, category: 'Timing',
-        detail: `${dte} DTE — good range (21-70) for long options. Enough time for the move, theta is manageable.` })
+        detail: `${dte} DTE — practical window for long options and debit spreads. There is enough time for the thesis to work while theta decay remains manageable.` })
     else if (dte > 70)
       items.push({ label: 'DTE Window', status: 'warn', hard: false, category: 'Timing',
         detail: `${dte} DTE — more time than needed. More premium at risk; consider a nearer expiry.` })
@@ -331,8 +335,8 @@ export function buildChecklist(rec: Recommendation, sig: Signals): CheckItem[] {
     label: 'Liquidity', status: rec.passes_liquidity_filter ? 'pass' : 'fail',
     hard: !rec.passes_liquidity_filter, category: 'Liquidity',
     detail: rec.passes_liquidity_filter
-      ? 'Bid-ask spreads and open interest meet minimum thresholds. Fills should be clean.'
-      : 'One or more legs have wide spreads or thin OI. Expect slippage on entry and exit.',
+      ? 'Bid/ask spread and open interest meet minimum thresholds. Entry and exit fills should be reasonable with limit orders. Example: if mid is $2.00 and spread is tight, start near mid instead of paying ask.'
+      : 'One or more legs have wide spreads or thin open interest. Expect slippage on both entry and exit. Example: a $0.40 spread on a $1.20 option can erase much of the edge.',
   })
 
   // ── 8. Risk / Reward ──────────────────────────────────────────────────────

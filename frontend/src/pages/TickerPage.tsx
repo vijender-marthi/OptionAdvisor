@@ -290,15 +290,15 @@ function WeekSelector({ entry, selectedWeeksOut, onSelect, onFetch, fetching, lo
 }
 
 type StrategyGuideItem = {
-  title: string
-  bias: string
-  bestWhen: string
+  strategy: string
+  marketView: string
+  bestCase: string
+  whenToUse: string
   iv: string
   earnings: string
   dte: string
-  risk: string
   avoid: string
-  diagram: 'longCall' | 'longPut' | 'debitSpread' | 'creditSpread' | 'calendar'
+  diagram: 'longCall' | 'longPut' | 'debitSpread' | 'creditSpread' | 'calendar' | 'straddle' | 'ironCondor'
   color: string
 }
 
@@ -311,12 +311,16 @@ function StrategyPayoffDiagram({ type, color, C }: { type: StrategyGuideItem['di
     if (type === 'longPut') return 'M18 18 L82 78 L136 78'
     if (type === 'debitSpread') return 'M18 78 L62 78 L104 28 L136 28'
     if (type === 'creditSpread') return 'M18 30 L58 30 L102 78 L136 78'
+    if (type === 'straddle') return 'M18 18 L76 78 L136 18'
+    if (type === 'ironCondor') return 'M18 76 L44 76 L60 34 L96 34 L112 76 L136 76'
     return 'M18 68 C46 34 72 22 92 34 C110 45 122 63 136 68'
   })()
   const label = type === 'longCall' ? 'Long Call'
     : type === 'longPut' ? 'Long Put'
     : type === 'debitSpread' ? 'Debit Spread'
     : type === 'creditSpread' ? 'Credit Spread'
+    : type === 'straddle' ? 'Straddle'
+    : type === 'ironCondor' ? 'Iron Condor'
     : 'Calendar'
   return (
     <svg viewBox="0 0 154 96" role="img" aria-label={`${label} payoff diagram`} style={{ width: '100%', height: 96, display: 'block' }}>
@@ -334,64 +338,88 @@ function StrategyPayoffDiagram({ type, color, C }: { type: StrategyGuideItem['di
 function StrategyGuideTab({ C }: { C: Palette }) {
   const strategies: StrategyGuideItem[] = [
     {
-      title: 'Long Call',
-      bias: 'Bullish directional',
-      bestWhen: 'Price is above MA20/MA50, momentum is rising, and the setup needs unlimited upside participation.',
-      iv: 'Best when IV rank is low to moderate, ideally below 50. Avoid overpaying for inflated premium.',
-      earnings: 'Avoid right before earnings unless intentionally trading event risk. IV crush can erase gains even if direction is correct.',
-      dte: 'Use 21-45 DTE for multi-week regular trades. Use shorter only when catalyst timing is clear.',
-      risk: 'Defined risk: premium paid. Needs strong direction because theta works against you.',
+      strategy: 'Long Call',
+      marketView: 'Bullish',
+      bestCase: 'Strong uptrend with room to run',
+      whenToUse: 'Use when price is above MA20/MA50, momentum is rising, and you want uncapped upside. Example: breakout with low IV and strong volume.',
+      iv: 'Low to moderate IV, ideally below 50.',
+      earnings: 'Avoid before earnings unless the event move is intentional.',
+      dte: '21-45 DTE regular trades.',
       avoid: 'Avoid in high IV, flat trend, weak volume, or when price is already extended far above MA20.',
       diagram: 'longCall',
       color: C.green,
     },
     {
-      title: 'Long Put',
-      bias: 'Bearish directional',
-      bestWhen: 'Price is below MA20/MA50, rallies reject resistance, and market/sector confirms downside pressure.',
-      iv: 'Best when IV rank is below 50. If IV is elevated, prefer a put debit spread.',
-      earnings: 'Avoid buying puts immediately before earnings unless event risk is the thesis.',
-      dte: 'Use 21-45 DTE. Give bearish trades enough time because downside often moves in bursts.',
-      risk: 'Defined risk: premium paid. Needs clean downside follow-through.',
+      strategy: 'Long Put',
+      marketView: 'Bearish',
+      bestCase: 'Clean downtrend or failed bounce',
+      whenToUse: 'Use when price is below MA20/MA50, rallies reject resistance, and market/sector confirms downside pressure.',
+      iv: 'Low to moderate IV, ideally below 50.',
+      earnings: 'Avoid pre-earnings unless trading event risk.',
+      dte: '21-45 DTE; bearish moves often happen in bursts.',
       avoid: 'Avoid after panic candles, at major support, or with RSI deeply oversold.',
       diagram: 'longPut',
       color: C.red,
     },
     {
-      title: 'Call / Put Debit Spread',
-      bias: 'Directional with controlled cost',
-      bestWhen: 'Directional thesis is good, but IV is moderate or the long option is expensive.',
-      iv: 'Works well in moderate IV, roughly 40-70. You buy one option and sell another to reduce cost.',
-      earnings: 'Safer than naked long options into earnings, but still exposed to gap and IV crush.',
-      dte: 'Use 21-45 DTE. Pick spread width that gives realistic target, not fantasy max profit.',
-      risk: 'Defined risk: net debit. Reward is capped, but breakeven is improved.',
+      strategy: 'Call / Put Debit Spread',
+      marketView: 'Bullish or bearish',
+      bestCase: 'Directional move to a realistic target',
+      whenToUse: 'Use when direction is good but the outright option is expensive. Example: buy 190 call and sell 200 call when target is near 200.',
+      iv: 'Moderate IV, roughly 40-70.',
+      earnings: 'Defined risk, but still exposed to gap and IV crush.',
+      dte: '21-45 DTE; match short strike to target.',
       avoid: 'Avoid when bid/ask spreads are wide or max profit depends on an unrealistic move.',
       diagram: 'debitSpread',
       color: C.violet,
     },
     {
-      title: 'Bull Put / Bear Call Credit Spread',
-      bias: 'Directional or range with premium selling',
-      bestWhen: 'IV is elevated, price respects support/resistance, and you want theta working for you.',
-      iv: 'Best when IV rank is elevated, usually 50+. Higher IV improves credit and cushion.',
-      earnings: 'Can work before earnings only with defined risk and small size. Event gaps can exceed expected move.',
-      dte: 'Use 14-45 DTE. Shorter DTE gives faster theta but higher gamma risk.',
-      risk: 'Defined risk: spread width minus credit. Win rate can be higher, but losses must be controlled.',
+      strategy: 'Bull Put / Bear Call Credit Spread',
+      marketView: 'Directional income',
+      bestCase: 'Price respects support or resistance',
+      whenToUse: 'Use when IV is elevated and price is unlikely to breach the short strike. Example: sell bull put below support after a pullback holds.',
+      iv: 'Best when IV rank is 50+.',
+      earnings: 'Only with defined risk, smaller size, and acceptance of gap risk.',
+      dte: '14-45 DTE; 21-45 is smoother.',
       avoid: 'Avoid low credit, poor liquidity, binary events without edge, or selling too close to price.',
       diagram: 'creditSpread',
       color: C.amber,
     },
     {
-      title: 'Calendar Spread',
-      bias: 'Time/volatility structure',
-      bestWhen: 'You expect price to stay near a strike while front-month decay is faster than back-month decay.',
-      iv: 'Best when near-term IV is not wildly overpriced versus back-month IV, unless intentionally trading event skew.',
-      earnings: 'Useful around earnings only for advanced traders who understand term structure and gap risk.',
-      dte: 'Sell near expiry, buy farther expiry. Keep the short strike near the expected pin/target zone.',
-      risk: 'Defined risk: net debit. Sensitive to IV term structure and price moving away from strike.',
+      strategy: 'Calendar Spread',
+      marketView: 'Range / time decay',
+      bestCase: 'Price pins near one strike',
+      whenToUse: 'Use when you expect price to stay near a target strike while the front option decays faster than the back option.',
+      iv: 'Best when back-month IV is reasonable and front-month decay is attractive.',
+      earnings: 'Advanced only around earnings; term structure and gap risk matter.',
+      dte: 'Sell near expiry, buy later expiry.',
       avoid: 'Avoid strong trend days, poor liquidity, or when price is likely to move far away from the short strike.',
       diagram: 'calendar',
       color: C.purple,
+    },
+    {
+      strategy: 'Long Straddle',
+      marketView: 'Big move, direction unknown',
+      bestCase: 'Large move expected either way',
+      whenToUse: 'Use when a catalyst may create a large move but direction is unclear. Example: major earnings, FDA, legal ruling, or macro event.',
+      iv: 'Best before IV becomes too expensive; compare expected move to premium paid.',
+      earnings: 'Common earnings structure, but IV crush is the main risk.',
+      dte: 'Use expiry that covers the catalyst, often 7-30 DTE.',
+      avoid: 'Avoid when IV is already extreme and expected move is smaller than total premium paid.',
+      diagram: 'straddle',
+      color: C.accent,
+    },
+    {
+      strategy: 'Iron Condor',
+      marketView: 'Neutral range',
+      bestCase: 'Price stays between short strikes',
+      whenToUse: 'Use when trend is flat, RSI is mid-range, IV is elevated, and support/resistance define a clear range.',
+      iv: 'Best when IV rank is high enough to collect worthwhile credit.',
+      earnings: 'Avoid earnings unless very small and defined-risk; gaps can jump over wings.',
+      dte: '21-45 DTE is preferred.',
+      avoid: 'Avoid strong trend, breakout setups, low credit, or when one side is too close to current price.',
+      diagram: 'ironCondor',
+      color: C.amber,
     },
   ]
 
@@ -418,30 +446,39 @@ function StrategyGuideTab({ C }: { C: Palette }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-        {strategies.map(strategy => (
-          <div key={strategy.title} style={{ ...cell, padding: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 154px', gap: 12, alignItems: 'start' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <div style={{ color: strategy.color, fontSize: 15, fontWeight: 800 }}>{strategy.title}</div>
-                  <span style={{ color: strategy.color, border: `1px solid ${strategy.color}55`, background: `${strategy.color}14`, borderRadius: 999, padding: '2px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>{strategy.bias}</span>
-                </div>
-                <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5, marginTop: 8 }}>{strategy.bestWhen}</div>
-              </div>
-              <StrategyPayoffDiagram type={strategy.diagram} color={strategy.color} C={C} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, marginTop: 12 }}>
-              <GuideFact C={C} label="IV" value={strategy.iv} />
-              <GuideFact C={C} label="Earnings" value={strategy.earnings} />
-              <GuideFact C={C} label="DTE" value={strategy.dte} />
-              <GuideFact C={C} label="Risk" value={strategy.risk} />
-            </div>
-            <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10, color: C.red, fontSize: 12, lineHeight: 1.45 }}>
-              Avoid: <span style={{ color: C.muted }}>{strategy.avoid}</span>
-            </div>
-          </div>
-        ))}
+      <div style={{ ...cell, padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 1180, borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead>
+              <tr style={{ background: C.bgPanel }}>
+                {['Strategy', 'Best Case', 'When To Use', 'IV / DTE', 'Earnings', 'Avoid', 'Diagram'].map(h => (
+                  <th key={h} style={{ color: C.muted, fontSize: 10, textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '11px 12px', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {strategies.map(strategy => (
+                <tr key={strategy.strategy}>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', width: 170 }}>
+                    <div style={{ color: strategy.color, fontWeight: 900, fontSize: 13 }}>{strategy.strategy}</div>
+                    <div style={{ marginTop: 5, display: 'inline-flex', color: strategy.color, border: `1px solid ${strategy.color}55`, background: `${strategy.color}14`, borderRadius: 999, padding: '2px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>{strategy.marketView}</div>
+                  </td>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', color: C.text, fontSize: 12, lineHeight: 1.45, width: 160 }}>{strategy.bestCase}</td>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', color: C.text, fontSize: 12, lineHeight: 1.45, width: 280 }}>{strategy.whenToUse}</td>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', color: C.text, fontSize: 12, lineHeight: 1.45, width: 190 }}>
+                    <div><span style={{ color: C.muted }}>IV:</span> {strategy.iv}</div>
+                    <div style={{ marginTop: 6 }}><span style={{ color: C.muted }}>DTE:</span> {strategy.dte}</div>
+                  </td>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', color: C.text, fontSize: 12, lineHeight: 1.45, width: 180 }}>{strategy.earnings}</td>
+                  <td style={{ padding: 12, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', color: C.text, fontSize: 12, lineHeight: 1.45, width: 220 }}>{strategy.avoid}</td>
+                  <td style={{ padding: 10, borderBottom: `1px solid ${C.border}`, verticalAlign: 'top', width: 170 }}>
+                    <StrategyPayoffDiagram type={strategy.diagram} color={strategy.color} C={C} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={{ ...cell, display: 'grid', gap: 8 }}>
@@ -455,18 +492,11 @@ function StrategyGuideTab({ C }: { C: Palette }) {
           <GuideRule C={C} label="Bullish + High IV" value="Bull Put Credit Spread" color={C.amber} />
           <GuideRule C={C} label="Bearish + High IV" value="Bear Call Credit Spread" color={C.amber} />
           <GuideRule C={C} label="Range + Time Decay" value="Calendar Spread near expected pin" color={C.purple} />
+          <GuideRule C={C} label="Big Move, Direction Unknown" value="Long Straddle only if expected move exceeds total premium" color={C.accent} />
+          <GuideRule C={C} label="Flat Range + High IV" value="Iron Condor between support and resistance" color={C.amber} />
           <GuideRule C={C} label="Earnings Imminent" value="Defined risk only; smaller size; avoid naked long premium" color={C.red} />
         </div>
       </div>
-    </div>
-  )
-}
-
-function GuideFact({ C, label, value }: { C: Palette; label: string; value: string }) {
-  return (
-    <div style={{ border: `1px solid ${C.border}`, background: C.bgPanel, borderRadius: 9, padding: '8px 10px' }}>
-      <div style={{ color: C.muted, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
-      <div style={{ color: C.text, fontSize: 11.5, lineHeight: 1.45, marginTop: 4 }}>{value}</div>
     </div>
   )
 }

@@ -538,6 +538,7 @@ export interface TradeWorksheetEvaluation {
     expectedReturn: number
     expectedDrawdown: number
     priceBuckets: Array<{ label: string; value: number }>
+    timeBuckets: Array<{ day: number; flatPnl: number; targetPnl: number; scenarioPnl: number }>
   }
   comparisons: Array<{ strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number }>
   bestStrategy: { strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number } | null
