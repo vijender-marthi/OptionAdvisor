@@ -651,6 +651,7 @@ def calculate_position_pnl(
     entry_premium_ps = 0.0
     current_mark_ps = 0.0
     overall_mark_source = "stale"
+    invalid_premiums: list[str] = []
 
     for leg in legs:
         action = str(leg.get("action", "BUY")).upper()
@@ -658,6 +659,19 @@ def calculate_position_pnl(
         leg_iv = leg.get("iv", 0)
         strike = float(leg.get("strike", 0))
         opt_type = str(leg.get("option_type", "CALL")).upper()
+
+        # Guard against a common manual-entry mistake: entering the underlying
+        # stock price as the option premium. A GOOG 355C with premium 358 is not
+        # a valid option premium; calculating P&L from it creates fake huge loss.
+        if (
+            entry_p > 0
+            and underlying_price
+            and underlying_price > 0
+            and strike > 0
+            and entry_p >= underlying_price * 0.50
+            and strike >= underlying_price * 0.50
+        ):
+            invalid_premiums.append(f"{opt_type}:{strike:g} premium {entry_p:g}")
 
         curr_p: Optional[float] = None
         mark_source = "stale"
@@ -704,6 +718,24 @@ def calculate_position_pnl(
         else:
             entry_premium_ps += entry_p
             current_mark_ps += curr_p
+
+    if invalid_premiums:
+        return {
+            "entry_premium_per_share": 0.0,
+            "current_mark_per_share": 0.0,
+            "contracts": contracts,
+            "multiplier": SHARES,
+            "entry_cost_total": 0.0,
+            "current_value_total": 0.0,
+            "pnl": 0.0,
+            "pnl_percent": 0.0,
+            "max_loss_total": 0.0,
+            "max_profit_display": "—",
+            "at_risk_total": 0.0,
+            "mark_source": "invalid_premium",
+            "invalid_reason": "Option premium appears to be the underlying stock price. Edit the position premium before using P&L.",
+            "invalid_legs": invalid_premiums,
+        }
 
     entry_cost_total = entry_premium_ps * SHARES * contracts
     current_value_total = current_mark_ps * SHARES * contracts
@@ -2009,6 +2041,20 @@ def post_portfolio_close(body: PortfolioCloseBody, auth_email: str = Depends(req
                 break
     except Exception:  # noqa: BLE001
         log.warning("journal close-sync failed for %s / %s", email, closed_pos.get("ticker"))
+    # Auto-activate Track Mode after any close so re-entry is deliberate.
+    try:
+        ticker = str(closed_pos.get("ticker") or "").strip().upper()
+        if ticker:
+            exit_ts = datetime.now(timezone.utc).isoformat()
+            notes = (
+                f"REBUILD|exit_at={exit_ts}|cooldown_minutes=30|reentry_size=50|"
+                "checklist=VWAP reclaimed,OR level reclaimed,5m confirmation,volume confirmed,"
+                "market aligned,time window valid|"
+                "time_restrictions=avoid first 5 minutes after exit; avoid last 30 minutes unless A+ setup"
+            )
+            track_mode_add(email, ticker, notes)
+    except Exception:  # noqa: BLE001
+        log.warning("track-mode auto-add failed for %s / %s", email, closed_pos.get("ticker"))
     # Auto-resolve EXIT_SIGNAL alerts for this ticker
     try:
         alert_center_resolve_by_ticker(email, str(closed_pos.get("ticker") or ""))
@@ -2509,3 +2555,89 @@ def post_track_mode_remove(body: TrackModeRemoveBody, auth_email: str = Depends(
     email = normalize_email(auth_email)
     ok = track_mode_remove(email, body.ticker.upper().strip())
     return {"ok": ok, "ticker": body.ticker.upper().strip()}
+
+
+# ─── Cycle Tracker (30-60 day cycle + Fibonacci zones) ──────────────────────
+
+def _cycle_num(value: Any, default: float = 0.0) -> float:
+    try:
+        f = float(value)
+        return f if math.isfinite(f) else default
+    except Exception:
+        return default
+
+
+def _build_cycle_row(ticker: str, lookback_days: int = 60) -> dict[str, Any]:
+    t = ticker.upper().strip()
+    hist = bar_cache.get_history(t, period="6mo", interval="1d", force_refresh=False)
+    if hist is None or hist.empty:
+        raise HTTPException(status_code=404, detail=f"No cycle data for {t}")
+    tail = hist.tail(max(30, min(90, lookback_days))).copy()
+    if tail.empty:
+        raise HTTPException(status_code=404, detail=f"No cycle data for {t}")
+    high_idx = tail["High"].idxmax()
+    low_idx = tail["Low"].idxmin()
+    swing_high = _cycle_num(tail.loc[high_idx, "High"])
+    swing_low = _cycle_num(tail.loc[low_idx, "Low"])
+    close = _cycle_num(tail["Close"].iloc[-1])
+    span = max(0.01, swing_high - swing_low)
+    pct_from_low = (close - swing_low) / span
+    pct_from_high = (swing_high - close) / span
+    if pct_from_low <= 0.20:
+        phase = "Trough"
+    elif pct_from_low <= 0.55:
+        phase = "Recovery"
+    elif pct_from_low >= 0.82:
+        phase = "Near Peak"
+    else:
+        phase = "Pullback" if tail["Close"].iloc[-1] < tail["Close"].iloc[max(0, len(tail) - 6)] else "Recovery"
+    fibs = {
+        "0.236": round(swing_high - span * 0.236, 2),
+        "0.382": round(swing_high - span * 0.382, 2),
+        "0.500": round(swing_high - span * 0.500, 2),
+        "0.618": round(swing_high - span * 0.618, 2),
+        "0.786": round(swing_high - span * 0.786, 2),
+    }
+    nearest_label = min(fibs, key=lambda k: abs(close - fibs[k]))
+    nearest_value = fibs[nearest_label]
+    nearest_dist = (close - nearest_value) / close * 100 if close else 0.0
+    alert = abs(nearest_dist) <= 1.0
+    trend = "Bull Cycle" if tail.index.get_loc(high_idx) > tail.index.get_loc(low_idx) else "Bear Cycle"
+    return {
+        "ticker": t,
+        "current_price": round(close, 2),
+        "lookback_days": lookback_days,
+        "swing_high": round(swing_high, 2),
+        "swing_low": round(swing_low, 2),
+        "swing_high_date": str(high_idx)[:10],
+        "swing_low_date": str(low_idx)[:10],
+        "phase": phase,
+        "cycle_bias": trend,
+        "bull_progress_pct": round(max(0.0, min(1.0, pct_from_low)) * 100, 1),
+        "bear_progress_pct": round(max(0.0, min(1.0, pct_from_high)) * 100, 1),
+        "fib_levels": fibs,
+        "nearest_fib": {"label": nearest_label, "price": nearest_value, "distance_pct": round(nearest_dist, 2)},
+        "alert": alert,
+        "alert_message": f"{t} approaching Fibonacci {nearest_label} zone near ${nearest_value:.2f}" if alert else "",
+        "chart_points": [
+            {"date": str(idx)[:10], "close": round(_cycle_num(row["Close"]), 2)}
+            for idx, row in tail.tail(60).iterrows()
+        ],
+    }
+
+
+@command_center_router.get("/cycle-tracker")
+def get_cycle_tracker(
+    tickers: str = Query("TSLA,AAPL,GOOG,NVDA"),
+    lookback_days: int = Query(60, ge=30, le=90),
+    auth_email: str = Depends(require_access_email),
+):
+    symbols = [s.strip().upper() for s in tickers.split(",") if s.strip()][:12]
+    rows = []
+    errors: dict[str, str] = {}
+    for sym in symbols:
+        try:
+            rows.append(_build_cycle_row(sym, lookback_days=lookback_days))
+        except Exception as exc:
+            errors[sym] = str(exc)
+    return {"rows": rows, "errors": errors, "lookback_days": lookback_days}

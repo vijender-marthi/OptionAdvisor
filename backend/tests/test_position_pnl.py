@@ -92,6 +92,24 @@ class TestCalculatePositionPnl(unittest.TestCase):
         self.assertEqual(r["pnl"], -1000.0)
         self.assertAlmostEqual(r["pnl_percent"], -50.0, delta=0.1)
 
+    def test_long_call_blocks_stock_price_entered_as_premium(self):
+        """Long call premium near underlying price is invalid manual-entry data."""
+        pos = {
+            "ticker": "GOOG", "strategy": "Long Call",
+            "contracts": 2, "max_profit": 3585.05, "max_loss": 358.505,
+            "net_credit": -358.505, "expiry": "2026-07-15",
+            "legs": [{
+                "action": "BUY", "option_type": "CALL", "strike": 355,
+                "mid_price": 358.505, "iv": 0, "expiry": "2026-07-15",
+            }],
+        }
+        marks = {"CALL:355.0": (3.20, 3.80, 3.50)}
+        r = calculate_position_pnl(pos, live_option_marks=marks, underlying_price=358.47)
+        self.assertEqual(r["mark_source"], "invalid_premium")
+        self.assertEqual(r["pnl"], 0.0)
+        self.assertEqual(r["entry_cost_total"], 0.0)
+        self.assertIn("underlying stock price", r["invalid_reason"])
+
     def test_debit_spread(self):
         """Bull Call Spread (debit): net debit 2.49, current spread 2.70, contracts 5."""
         pos = {

@@ -1358,6 +1358,7 @@ def _analyze_ticker(
     spread_width: int | None = None,
     strategy_mode: str = "all",
     chain_expiry: str | None = None,
+    force_refresh: bool = False,
 ) -> AnalyzeResponse:
     ticker = ticker.upper().strip()
 
@@ -2194,6 +2195,7 @@ def analyze(req: AnalyzeRequest):
         spread_width=req.spread_width,
         strategy_mode=req.strategy_mode,
         chain_expiry=ce,
+        force_refresh=False,
     )
     with analyze_user_cache_lock:
         analyze_user_cache[key] = (time.time(), data)
@@ -4818,6 +4820,351 @@ def _run_backtest_endpoint(request: BacktestRequest):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+class TradeWorksheetSelectedRow(BaseModel):
+    strike: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    mid: float | None = None
+    spread: float | None = None
+    spread_pct: float | None = None
+    volume: int | None = None
+    open_interest: int | None = None
+    iv: float | None = None
+    in_the_money: bool | None = None
+    is_atm: bool | None = None
+
+
+class TradeWorksheetEvaluateRequest(BaseModel):
+    ticker: str = ""
+    direction: str = "Bullish"
+    strategy: str = "Long Call"
+    strike: float = 0.0
+    shortStrike: float = 0.0
+    longStrike: float = 0.0
+    shortPutStrike: float = 0.0
+    longPutStrike: float = 0.0
+    shortCallStrike: float = 0.0
+    longCallStrike: float = 0.0
+    expiration: str = ""
+    sellExpiration: str = ""
+    buyExpiration: str = ""
+    premium: float = 0.0
+    contracts: int = 1
+    stockPrice: float = 0.0
+    targetPrice: float = 0.0
+    expectedHoldDays: int = 5
+    buyingPower: float = 0.0
+    ivRank: float = 0.0
+    ivPercentile: float = 0.0
+    historicalVolatility: float = 45.0
+    selectedRow: TradeWorksheetSelectedRow | None = None
+    priceMove: float = 5.0
+    ivMove: float = 0.0
+    daysPassed: int = 3
+
+
+_WORKSHEET_STRATEGIES = {
+    "Long Call", "Long Put", "Bull Call Spread", "Bull Put Spread",
+    "Bear Put Spread", "Bear Call Spread", "Calendar Spread",
+    "Diagonal Spread", "Iron Condor", "Covered Call", "Cash Secured Put", "Shares",
+}
+
+
+def _tw_clamp(n: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, n))
+
+
+def _tw_days_to_expiry(expiration: str) -> int:
+    if not expiration:
+        return 0
+    try:
+        exp_dt = datetime.strptime(expiration[:10], "%Y-%m-%d").date()
+        return max(0, (exp_dt - datetime.now().date()).days)
+    except Exception:
+        return 0
+
+
+def _tw_is_calendar_like(strategy: str) -> bool:
+    return strategy in {"Calendar Spread", "Diagonal Spread"}
+
+
+def _tw_is_credit_spread(strategy: str) -> bool:
+    return strategy in {"Bull Put Spread", "Bear Call Spread"}
+
+
+def _tw_uses_put_chain(direction: str, strategy: str) -> bool:
+    if "Put" in strategy or strategy == "Cash Secured Put":
+        return True
+    if "Call" in strategy or strategy == "Covered Call":
+        return False
+    return direction == "Bearish"
+
+
+def _tw_front_expiry(req: TradeWorksheetEvaluateRequest) -> str:
+    return (req.sellExpiration or req.expiration) if _tw_is_calendar_like(req.strategy) else req.expiration
+
+
+def _tw_back_expiry(req: TradeWorksheetEvaluateRequest) -> str:
+    return (req.buyExpiration or req.expiration) if _tw_is_calendar_like(req.strategy) else req.expiration
+
+
+def _tw_primary_strike(req: TradeWorksheetEvaluateRequest) -> float:
+    strategy = req.strategy
+    if strategy in {"Bull Put Spread", "Bear Call Spread"}:
+        return safe_float(req.shortStrike or req.strike)
+    if strategy in {"Bull Call Spread", "Bear Put Spread"}:
+        return safe_float(req.longStrike or req.strike)
+    if _tw_is_calendar_like(strategy):
+        return safe_float(req.shortStrike or req.strike)
+    if strategy == "Iron Condor":
+        return safe_float(req.shortCallStrike if req.direction == "Bearish" else req.shortPutStrike)
+    return safe_float(req.strike)
+
+
+def _tw_spread_width(req: TradeWorksheetEvaluateRequest) -> float:
+    strategy = req.strategy
+    if strategy in {"Bull Call Spread", "Bear Call Spread"}:
+        return abs(safe_float(req.longStrike or req.strike) - safe_float(req.shortStrike or req.strike))
+    if strategy in {"Bear Put Spread", "Bull Put Spread"}:
+        return abs(safe_float(req.shortStrike or req.strike) - safe_float(req.longStrike or req.strike))
+    if strategy == "Iron Condor":
+        return max(
+            abs(safe_float(req.shortPutStrike) - safe_float(req.longPutStrike)),
+            abs(safe_float(req.longCallStrike) - safe_float(req.shortCallStrike)),
+        )
+    return 0.0
+
+
+def _tw_cost(req: TradeWorksheetEvaluateRequest) -> float:
+    contracts = max(1, safe_int(req.contracts))
+    if req.strategy == "Shares":
+        return safe_float(req.stockPrice) * contracts
+    return max(0.0, safe_float(req.premium)) * 100.0 * contracts
+
+
+def _tw_max_risk(req: TradeWorksheetEvaluateRequest) -> float:
+    contracts = max(1, safe_int(req.contracts))
+    if req.strategy == "Shares":
+        return safe_float(req.stockPrice) * contracts
+    if req.strategy == "Iron Condor" or _tw_is_credit_spread(req.strategy):
+        return max(0.0, _tw_spread_width(req) - safe_float(req.premium)) * 100.0 * contracts
+    if req.strategy == "Cash Secured Put":
+        return max(0.0, safe_float(req.strike) - safe_float(req.premium)) * 100.0 * contracts
+    if req.strategy == "Covered Call":
+        return safe_float(req.stockPrice) * 100.0 * contracts
+    return _tw_cost(req)
+
+
+def _tw_breakeven(req: TradeWorksheetEvaluateRequest) -> float | None:
+    premium = safe_float(req.premium)
+    if req.strategy == "Shares":
+        return safe_float(req.stockPrice)
+    if req.strategy == "Bull Call Spread":
+        return safe_float(req.longStrike) + premium
+    if req.strategy == "Bear Put Spread":
+        return safe_float(req.longStrike) - premium
+    if req.strategy == "Bull Put Spread":
+        return safe_float(req.shortStrike) - premium
+    if req.strategy == "Bear Call Spread":
+        return safe_float(req.shortStrike) + premium
+    if req.strategy == "Iron Condor":
+        return None
+    strike = _tw_primary_strike(req)
+    return strike - premium if _tw_uses_put_chain(req.direction, req.strategy) else strike + premium
+
+
+def _tw_norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + erf(x / sqrt(2.0)))
+
+
+def _tw_greeks(req: TradeWorksheetEvaluateRequest) -> dict[str, float]:
+    s = max(0.01, safe_float(req.stockPrice))
+    k = max(0.01, _tw_primary_strike(req))
+    dte = max(1, _tw_days_to_expiry(_tw_front_expiry(req)))
+    t_years = dte / 365.0
+    row_iv = safe_float(req.selectedRow.iv if req.selectedRow else 0.0)
+    hv = safe_float(req.historicalVolatility or 45.0)
+    iv = max(0.05, (row_iv if 0 < row_iv < 300 else hv) / 100.0)
+    d1 = (log(s / k) + (0.5 * iv * iv) * t_years) / (iv * sqrt(t_years))
+    d2 = d1 - iv * sqrt(t_years)
+    call_delta = _tw_norm_cdf(d1)
+    delta = call_delta - 1 if _tw_uses_put_chain(req.direction, req.strategy) else call_delta
+    gamma = np.exp(-d1 * d1 / 2) / (s * iv * sqrt(2 * np.pi * t_years))
+    vega = s * sqrt(t_years) * np.exp(-d1 * d1 / 2) / sqrt(2 * np.pi) / 100
+    theta = -(s * np.exp(-d1 * d1 / 2) * iv) / (2 * sqrt(2 * np.pi * t_years)) / 365
+    pop = _tw_norm_cdf(-d2) if _tw_uses_put_chain(req.direction, req.strategy) else _tw_norm_cdf(d2)
+    return {
+        "delta": round(float(delta), 4),
+        "gamma": round(float(gamma), 6),
+        "theta": round(float(theta), 4),
+        "vega": round(float(vega), 4),
+        "iv": round(float(iv), 4),
+        "probabilityItm": round(_tw_clamp(float(pop) * 100), 1),
+        "probabilityOtm": round(_tw_clamp((1 - float(pop)) * 100), 1),
+    }
+
+
+def _tw_payoff(req: TradeWorksheetEvaluateRequest, price: float) -> float:
+    c = max(1, safe_int(req.contracts))
+    paid = _tw_cost(req)
+    strategy = req.strategy
+    if strategy == "Shares":
+        return (price - safe_float(req.stockPrice)) * c
+    if strategy == "Bear Put Spread":
+        return min(_tw_spread_width(req), max(0, safe_float(req.longStrike) - price)) * 100 * c - paid
+    if strategy == "Bull Call Spread":
+        return min(_tw_spread_width(req), max(0, price - safe_float(req.longStrike))) * 100 * c - paid
+    if strategy == "Bull Put Spread":
+        return paid - min(_tw_spread_width(req), max(0, safe_float(req.shortStrike) - price)) * 100 * c
+    if strategy == "Bear Call Spread":
+        return paid - min(_tw_spread_width(req), max(0, price - safe_float(req.shortStrike))) * 100 * c
+    if strategy == "Long Put" or (_tw_is_calendar_like(strategy) and _tw_uses_put_chain(req.direction, strategy)):
+        return max(0, _tw_primary_strike(req) - price) * 100 * c - paid
+    if strategy == "Cash Secured Put":
+        return paid - max(0, _tw_primary_strike(req) - price) * 100 * c
+    if strategy == "Covered Call":
+        stock_pnl = (price - safe_float(req.stockPrice)) * 100 * c
+        call_loss = max(0, price - _tw_primary_strike(req)) * 100 * c
+        return stock_pnl + paid - call_loss
+    if strategy == "Iron Condor":
+        put_loss = max(0, safe_float(req.shortPutStrike) - price) * 100 * c
+        call_loss = max(0, price - safe_float(req.shortCallStrike)) * 100 * c
+        return paid - min(_tw_spread_width(req) * 100 * c, max(put_loss, call_loss))
+    return max(0, price - _tw_primary_strike(req)) * 100 * c - paid
+
+
+def _tw_score(req: TradeWorksheetEvaluateRequest, greeks: dict[str, float]) -> dict[str, float]:
+    dte = _tw_days_to_expiry(_tw_front_expiry(req))
+    row = req.selectedRow
+    liquidity = _tw_clamp(100 - safe_float(row.spread_pct if row else 12) * 4 + min(20, safe_float(row.open_interest if row else 0) / 100)) if row else 55
+    time_score = 90 if 8 <= dte <= 45 else 35 if dte < 5 else 75 if dte <= 90 else 60
+    option_pricing = _tw_clamp(100 - safe_float(req.ivRank) * 0.45 - safe_float(row.spread_pct if row else 12) * 2)
+    probability = _tw_clamp(safe_float(greeks["probabilityItm"]) + (20 if abs(safe_float(greeks["delta"])) >= 0.45 else 0))
+    be = _tw_breakeven(req)
+    denom = max(0.01, abs(safe_float(req.stockPrice) - safe_float(be or req.stockPrice)))
+    rr = abs((safe_float(req.targetPrice) - safe_float(req.stockPrice)) / denom)
+    risk_reward = _tw_clamp(rr * 35)
+    volatility = _tw_clamp(100 - max(0, safe_float(req.ivRank) - 40))
+    trend = 70 if req.direction == "Neutral" else 85 if ((safe_float(req.targetPrice) > safe_float(req.stockPrice) and req.direction == "Bullish") or (safe_float(req.targetPrice) < safe_float(req.stockPrice) and req.direction == "Bearish")) else 45
+    market = 78
+    total = round((trend + option_pricing + time_score + liquidity + probability + risk_reward + volatility + market) / 8)
+    return {
+        "total": total,
+        "trend": round(trend),
+        "optionPricing": round(option_pricing),
+        "time": round(time_score),
+        "liquidity": round(liquidity),
+        "probability": round(probability),
+        "riskReward": round(risk_reward),
+        "volatility": round(volatility),
+        "market": round(market),
+    }
+
+
+def _tw_score_label(score: float) -> str:
+    return "STRONG BUY" if score >= 90 else "BUY" if score >= 78 else "ACCEPTABLE" if score >= 65 else "WAIT" if score >= 50 else "DO NOT BUY"
+
+
+@app.post("/api/trade-worksheet/evaluate")
+def trade_worksheet_evaluate(request: TradeWorksheetEvaluateRequest, auth_email: str = Depends(require_access_email)):
+    req = request
+    req.strategy = req.strategy if req.strategy in _WORKSHEET_STRATEGIES else "Long Call"
+    greeks = _tw_greeks(req)
+    score = _tw_score(req, greeks)
+    cost = _tw_cost(req)
+    max_risk = _tw_max_risk(req)
+    be = _tw_breakeven(req)
+    front_dte = _tw_days_to_expiry(_tw_front_expiry(req))
+    back_dte = _tw_days_to_expiry(_tw_back_expiry(req))
+    sim_price = safe_float(req.stockPrice) * (1 + safe_float(req.priceMove) / 100)
+    estimated_value = max(0.01, safe_float(req.premium) + (sim_price - safe_float(req.stockPrice)) * safe_float(greeks["delta"]) + safe_float(req.ivMove) / 100 * safe_float(greeks["vega"]) * 100 + safe_float(greeks["theta"]) * safe_int(req.daysPassed))
+    estimated_profit = (estimated_value - safe_float(req.premium)) * 100 * max(1, safe_int(req.contracts))
+    expected_value = (safe_float(score["probability"]) / 100) * max(1, _tw_payoff(req, safe_float(req.targetPrice))) - (1 - safe_float(score["probability"]) / 100) * cost
+    comparisons = []
+    debit = cost
+    credit = max(80, safe_float(req.premium) * 60)
+    for row in [
+        {"strategy": "Long Put" if req.direction == "Bearish" else "Long Call", "capital": debit, "maxLoss": debit, "maxProfit": None, "pop": score["probability"], "theta": "Negative", "score": score["total"] - (6 if safe_float(req.premium) > 6 else 0)},
+        {"strategy": "Bear Put Spread" if req.direction == "Bearish" else "Bull Call Spread", "capital": max(100, debit * 0.55), "maxLoss": max(100, debit * 0.55), "maxProfit": max(150, debit * 1.2), "pop": score["probability"] + 8, "theta": "Lower drag", "score": score["total"] + 6},
+        {"strategy": "Calendar Spread", "capital": max(120, debit * 0.45), "maxLoss": max(120, debit * 0.45), "maxProfit": None, "pop": score["probability"] + 4, "theta": "Positive near short leg", "score": score["total"] + (5 if safe_float(req.ivRank) >= 50 else -2)},
+        {"strategy": "Bear Call Spread" if req.direction == "Bearish" else "Bull Put Spread", "capital": max(400, debit * 1.4), "maxLoss": max(300, debit), "maxProfit": credit, "pop": score["probability"] + 12, "theta": "Positive", "score": score["total"] + (8 if safe_float(req.ivRank) >= 45 else -4)},
+        {"strategy": "Shares", "capital": safe_float(req.stockPrice) * 100, "maxLoss": safe_float(req.stockPrice) * 100, "maxProfit": None, "pop": 50, "theta": "None", "score": score["total"] - 8},
+    ]:
+        row["score"] = round(_tw_clamp(safe_float(row["score"])))
+        row["pop"] = round(_tw_clamp(safe_float(row["pop"])))
+        comparisons.append(row)
+    comparisons.sort(key=lambda r: r["score"], reverse=True)
+    pros = [
+        "Trend aligns with selected direction" if score["trend"] >= 75 else None,
+        "Liquidity is acceptable for entry and exit" if score["liquidity"] >= 70 else None,
+        "Expiration gives the thesis enough time" if score["time"] >= 75 else None,
+        "Reward/risk is reasonable" if score["riskReward"] >= 65 else None,
+        "Premium is not severely inflated by IV" if safe_float(req.ivRank) <= 55 else None,
+    ]
+    cons = [
+        "Bid/ask spread or open interest is weak" if score["liquidity"] < 70 else None,
+        "Premium is expensive due to elevated IV" if safe_float(req.ivRank) > 60 else None,
+        "Expiration is short; theta and gamma risk are high" if front_dte < 7 else None,
+        "Reward/risk is not attractive enough" if score["riskReward"] < 55 else None,
+        "Target requires a large move" if abs(safe_float(req.targetPrice) / max(1, safe_float(req.stockPrice)) - 1) > 0.12 else None,
+    ]
+    base = max(1, safe_float(req.stockPrice))
+    payoff = [{"price": round(base * (1 + i / 100), 2), "pnl": round(_tw_payoff(req, base * (1 + i / 100)))} for i in range(-30, 31, 2)]
+    return {
+        "summary": {
+            "ticker": req.ticker.upper().strip(),
+            "strategy": req.strategy,
+            "primaryStrike": round(_tw_primary_strike(req), 2),
+            "frontExpiration": _tw_front_expiry(req),
+            "backExpiration": _tw_back_expiry(req),
+            "frontDte": front_dte,
+            "backDte": back_dte,
+            "cost": round(cost, 2),
+            "maxRisk": round(max_risk, 2),
+            "breakeven": None if be is None else round(be, 2),
+            "breakevenLow": round(safe_float(req.shortPutStrike) - safe_float(req.premium), 2) if req.strategy == "Iron Condor" else None,
+            "breakevenHigh": round(safe_float(req.shortCallStrike) + safe_float(req.premium), 2) if req.strategy == "Iron Condor" else None,
+            "capitalRequired": round(cost, 2),
+            "thetaPerDay": round(safe_float(greeks["theta"]) * 100 * max(1, safe_int(req.contracts)), 2),
+            "delta": greeks["delta"],
+            "ivRank": round(safe_float(req.ivRank), 1),
+            "probability": score["probability"],
+            "probabilityItm": greeks["probabilityItm"],
+            "riskLevel": "Medium" if score["total"] >= 82 else "High" if score["total"] >= 65 else "Extreme",
+            "timeStopDays": max(1, min(safe_int(req.expectedHoldDays), front_dte - 2)),
+            "successRequirement": "inside the short strike range" if req.strategy == "Iron Condor" else f"{round(((safe_float(be or req.stockPrice) / max(1, safe_float(req.stockPrice))) - 1) * 100, 1):+g}% toward breakeven",
+        },
+        "greeks": greeks,
+        "score": {**score, "label": _tw_score_label(score["total"])},
+        "payoff": payoff,
+        "scenario": {
+            "estimatedValue": round(estimated_value, 2),
+            "estimatedProfit": round(estimated_profit, 2),
+            "estimatedRoi": round((estimated_profit / cost * 100) if cost > 0 else 0, 1),
+            "expectedValue": round(expected_value, 2),
+            "expectedReturn": round((expected_value / max(1, cost)) * 100, 1),
+            "expectedDrawdown": round(cost * 0.3, 2),
+            "priceBuckets": [
+                {"label": "-10%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 0.9), 2)},
+                {"label": "-5%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 0.95), 2)},
+                {"label": "Flat", "value": round(_tw_payoff(req, safe_float(req.stockPrice)), 2)},
+                {"label": "+5%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 1.05), 2)},
+                {"label": "+10%", "value": round(_tw_payoff(req, safe_float(req.stockPrice) * 1.1), 2)},
+            ],
+        },
+        "comparisons": comparisons,
+        "bestStrategy": comparisons[0] if comparisons else None,
+        "pros": [p for p in pros if p],
+        "cons": [c for c in cons if c],
+        "coach": [
+            "Premium is expensive. Consider a debit spread or wait for IV to cool." if safe_float(req.ivRank) > 60 else "Premium is not unusually expensive relative to IV inputs.",
+            "Expiration is too short for most non-scalp trades. Consider adding another week." if front_dte < 7 else "Expiration gives enough time for the expected hold.",
+            "Current strike is far OTM. One strike ITM may improve probability." if abs(safe_float(greeks["delta"])) < 0.35 else "Delta is reasonable for directional exposure.",
+            f"{comparisons[0]['strategy']} may express this thesis more efficiently than the selected structure." if comparisons and comparisons[0]["strategy"] != req.strategy else "Selected strategy is competitive against alternatives.",
+        ],
+    }
 
 
 @app.get("/api/option-chain/{ticker}")

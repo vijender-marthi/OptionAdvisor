@@ -31,7 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { fetchOptionChainLiquidity, type OptionChainLiquidityResponse, type OptionChainRow } from '../api/client'
+import { evaluateTradeWorksheet, fetchOptionChainLiquidity, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
 type Direction = 'Bullish' | 'Bearish' | 'Neutral'
@@ -39,7 +39,9 @@ type Strategy =
   | 'Long Call'
   | 'Long Put'
   | 'Bull Call Spread'
+  | 'Bull Put Spread'
   | 'Bear Put Spread'
+  | 'Bear Call Spread'
   | 'Calendar Spread'
   | 'Diagonal Spread'
   | 'Iron Condor'
@@ -77,7 +79,9 @@ const strategies: Strategy[] = [
   'Long Call',
   'Long Put',
   'Bull Call Spread',
+  'Bull Put Spread',
   'Bear Put Spread',
+  'Bear Call Spread',
   'Calendar Spread',
   'Diagonal Spread',
   'Iron Condor',
@@ -100,7 +104,11 @@ function isIronCondor(strategy: Strategy) {
 }
 
 function isVerticalSpread(strategy: Strategy) {
-  return strategy === 'Bull Call Spread' || strategy === 'Bear Put Spread'
+  return strategy === 'Bull Call Spread' || strategy === 'Bear Put Spread' || strategy === 'Bull Put Spread' || strategy === 'Bear Call Spread'
+}
+
+function isCreditSpread(strategy: Strategy) {
+  return strategy === 'Bull Put Spread' || strategy === 'Bear Call Spread'
 }
 
 function scoreTone(score: number) {
@@ -130,138 +138,27 @@ function fmtPct(n: number | null | undefined, digits = 1) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`
 }
 
-function daysToExpiry(expiration: string) {
-  if (!expiration) return 0
-  const end = new Date(`${expiration}T16:00:00`)
-  const ms = end.getTime() - Date.now()
-  return Math.max(0, Math.ceil(ms / 86_400_000))
+function usesPutChain(form: Pick<WorksheetForm, 'direction' | 'strategy'>) {
+  if (form.strategy.includes('Put') || form.strategy === 'Cash Secured Put') return true
+  if (form.strategy.includes('Call') || form.strategy === 'Covered Call') return false
+  return form.direction === 'Bearish'
 }
 
-function normCdf(x: number) {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x))
-  const d = 0.3989423 * Math.exp(-x * x / 2)
-  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))))
-  return x > 0 ? 1 - p : p
+function frontExpiration(form: WorksheetForm) {
+  return isCalendarLike(form.strategy) ? form.sellExpiration || form.expiration : form.expiration
 }
 
-function estimateGreeks(form: WorksheetForm, row: OptionChainRow | null) {
-  const s = Math.max(0.01, form.stockPrice)
-  const k = Math.max(0.01, form.strike)
-  const dte = Math.max(1, daysToExpiry(form.expiration))
-  const t = dte / 365
-  const iv = Math.max(0.05, (row?.iv && row.iv < 300 ? row.iv : form.historicalVolatility || 45) / 100)
-  const isPut = form.strategy.includes('Put') || form.direction === 'Bearish'
-  const d1 = (Math.log(s / k) + (0.5 * iv * iv) * t) / (iv * Math.sqrt(t))
-  const d2 = d1 - iv * Math.sqrt(t)
-  const callDelta = normCdf(d1)
-  const delta = isPut ? callDelta - 1 : callDelta
-  const gamma = Math.exp(-d1 * d1 / 2) / (s * iv * Math.sqrt(2 * Math.PI * t))
-  const vega = s * Math.sqrt(t) * Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI) / 100
-  const theta = -(s * Math.exp(-d1 * d1 / 2) * iv) / (2 * Math.sqrt(2 * Math.PI * t)) / 365
-  const pop = isPut ? normCdf(-d2) : normCdf(d2)
-  return {
-    delta,
-    gamma,
-    theta,
-    vega,
-    iv,
-    probabilityItm: clamp(pop * 100),
-    probabilityOtm: clamp((1 - pop) * 100),
-  }
-}
-
-function costBasis(form: WorksheetForm) {
-  if (form.strategy === 'Shares') return form.stockPrice * form.contracts
-  return form.premium * 100 * form.contracts
-}
-
-function breakeven(form: WorksheetForm) {
-  if (form.strategy.includes('Put') || form.direction === 'Bearish') return form.strike - form.premium
-  if (form.strategy === 'Shares') return form.stockPrice
-  return form.strike + form.premium
-}
-
-function payoffAtPrice(form: WorksheetForm, price: number) {
-  const c = form.contracts
-  const paid = costBasis(form)
-  if (form.strategy === 'Shares') return (price - form.stockPrice) * c
-  if (form.strategy === 'Long Put' || form.strategy === 'Bear Put Spread') {
-    const intrinsic = Math.max(0, form.strike - price) * 100 * c
-    return intrinsic - paid
-  }
-  if (form.strategy === 'Cash Secured Put') {
-    const credit = paid
-    const assignmentLoss = Math.max(0, form.strike - price) * 100 * c
-    return credit - assignmentLoss
-  }
-  if (form.strategy === 'Covered Call') {
-    const stockPnl = (price - form.stockPrice) * 100 * c
-    const callLoss = Math.max(0, price - form.strike) * 100 * c
-    return stockPnl + paid - callLoss
-  }
-  const intrinsic = Math.max(0, price - form.strike) * 100 * c
-  return intrinsic - paid
-}
-
-function buildPayoff(form: WorksheetForm) {
-  const base = Math.max(1, form.stockPrice)
-  const points = []
-  for (let i = -30; i <= 30; i += 2) {
-    const price = base * (1 + i / 100)
-    points.push({ price: Number(price.toFixed(2)), pnl: Math.round(payoffAtPrice(form, price)) })
-  }
-  return points
-}
-
-function scoreTrade(form: WorksheetForm, row: OptionChainRow | null, greeks: ReturnType<typeof estimateGreeks>) {
-  const dte = daysToExpiry(form.expiration)
-  const liquidity = row ? clamp(100 - row.spread_pct * 4 + Math.min(20, row.open_interest / 100)) : 55
-  const time = dte >= 8 && dte <= 45 ? 90 : dte < 5 ? 35 : dte <= 90 ? 75 : 60
-  const optionPricing = clamp(100 - form.ivRank * 0.45 - (row?.spread_pct ?? 12) * 2)
-  const probability = clamp(greeks.probabilityItm + (Math.abs(greeks.delta) >= 0.45 ? 20 : 0))
-  const rr = Math.abs((form.targetPrice - form.stockPrice) / Math.max(0.01, form.stockPrice - breakeven(form)))
-  const riskReward = clamp(rr * 35)
-  const volatility = clamp(100 - Math.max(0, form.ivRank - 40))
-  const trend = form.direction === 'Neutral' ? 70 : form.targetPrice > form.stockPrice && form.direction === 'Bullish' ? 85 : form.targetPrice < form.stockPrice && form.direction === 'Bearish' ? 85 : 45
-  const market = 78
-  const total = Math.round((trend + optionPricing + time + liquidity + probability + riskReward + volatility + market) / 8)
-  return {
-    total,
-    trend,
-    optionPricing,
-    time,
-    liquidity,
-    probability,
-    riskReward,
-    volatility,
-    market,
-  }
-}
-
-function scoreLabel(score: number) {
-  if (score >= 90) return 'STRONG BUY'
-  if (score >= 78) return 'BUY'
-  if (score >= 65) return 'ACCEPTABLE'
-  if (score >= 50) return 'WAIT'
-  return 'DO NOT BUY'
+function primaryStrike(form: WorksheetForm) {
+  if (form.strategy === 'Bull Put Spread' || form.strategy === 'Bear Call Spread') return form.shortStrike || form.strike
+  if (isVerticalSpread(form.strategy)) return form.longStrike || form.strike
+  if (isCalendarLike(form.strategy)) return form.shortStrike || form.strike
+  if (isIronCondor(form.strategy)) return form.direction === 'Bearish' ? form.shortCallStrike : form.shortPutStrike
+  return form.strike
 }
 
 function stars(score: number) {
   const n = Math.max(1, Math.min(5, Math.round(score / 20)))
   return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n)
-}
-
-function strategyRows(form: WorksheetForm, score: ReturnType<typeof scoreTrade>) {
-  const debit = costBasis(form)
-  const credit = Math.max(80, form.premium * 60)
-  const rows = [
-    { strategy: form.direction === 'Bearish' ? 'Long Put' : 'Long Call', capital: debit, maxLoss: debit, maxProfit: 'Unlimited', pop: score.probability, theta: 'Negative', score: score.total - (form.premium > 6 ? 6 : 0) },
-    { strategy: form.direction === 'Bearish' ? 'Bear Put Spread' : 'Bull Call Spread', capital: Math.max(100, debit * 0.55), maxLoss: Math.max(100, debit * 0.55), maxProfit: Math.max(150, debit * 1.2), pop: score.probability + 8, theta: 'Lower drag', score: score.total + 6 },
-    { strategy: 'Calendar Spread', capital: Math.max(120, debit * 0.45), maxLoss: Math.max(120, debit * 0.45), maxProfit: 'Defined by IV', pop: score.probability + 4, theta: 'Positive near short leg', score: score.total + (form.ivRank >= 50 ? 5 : -2) },
-    { strategy: form.direction === 'Bearish' ? 'Bear Call Credit Spread' : 'Bull Put Credit Spread', capital: Math.max(400, debit * 1.4), maxLoss: Math.max(300, debit), maxProfit: credit, pop: score.probability + 12, theta: 'Positive', score: score.total + (form.ivRank >= 45 ? 8 : -4) },
-    { strategy: 'Shares', capital: form.stockPrice * 100, maxLoss: form.stockPrice * 100, maxProfit: 'Unlimited', pop: 50, theta: 'None', score: score.total - 8 },
-  ].map(r => ({ ...r, score: Math.round(clamp(r.score)) }))
-  return rows.sort((a, b) => b.score - a.score)
 }
 
 function expirationDaysFromNow(days: number) {
@@ -318,6 +215,8 @@ export default function TradeWorksheetPage() {
   const [priceMove, setPriceMove] = useState(5)
   const [ivMove, setIvMove] = useState(0)
   const [daysPassed, setDaysPassed] = useState(3)
+  const [evaluation, setEvaluation] = useState<TradeWorksheetEvaluation | null>(null)
+  const [evaluationError, setEvaluationError] = useState('')
   const [checklist, setChecklist] = useState<Record<string, boolean>>({})
   const [journal, setJournal] = useState({
     why: '',
@@ -330,24 +229,42 @@ export default function TradeWorksheetPage() {
 
   const rows = useMemo(() => {
     if (!chain) return []
-    const source = form.direction === 'Bearish' || form.strategy.includes('Put') ? chain.puts : chain.calls
+    const source = usesPutChain(form) ? chain.puts : chain.calls
     return source.filter(r => Math.abs(r.strike - form.stockPrice) / Math.max(1, form.stockPrice) <= 0.18)
   }, [chain, form.direction, form.stockPrice, form.strategy])
 
-  const greeks = useMemo(() => estimateGreeks(form, selectedRow), [form, selectedRow])
-  const score = useMemo(() => scoreTrade(form, selectedRow, greeks), [form, greeks, selectedRow])
-  const payoff = useMemo(() => buildPayoff(form), [form])
-  const comparisons = useMemo(() => strategyRows(form, score), [form, score])
-  const bestStrategy = comparisons[0]
-  const simPrice = form.stockPrice * (1 + priceMove / 100)
-  const estimatedValue = Math.max(0.01, form.premium + (simPrice - form.stockPrice) * greeks.delta + ivMove / 100 * greeks.vega * 100 + greeks.theta * daysPassed)
-  const estimatedProfit = (estimatedValue - form.premium) * 100 * form.contracts
-  const estimatedRoi = costBasis(form) > 0 ? estimatedProfit / costBasis(form) * 100 : 0
-  const riskLevel = score.total >= 82 ? 'Medium' : score.total >= 65 ? 'High' : 'Extreme'
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      evaluateTradeWorksheet({ ...form, selectedRow, priceMove, ivMove, daysPassed })
+        .then(data => {
+          setEvaluation(data)
+          setEvaluationError('')
+        })
+        .catch(err => {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+          setEvaluationError(detail || 'Unable to evaluate trade worksheet.')
+        })
+    }, 200)
+    return () => window.clearTimeout(handle)
+  }, [form, selectedRow, priceMove, ivMove, daysPassed])
+
+  const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0 }
+  const score = evaluation?.score ?? { total: 0, trend: 0, optionPricing: 0, time: 0, liquidity: 0, probability: 0, riskReward: 0, volatility: 0, market: 0, label: 'WAIT' }
+  const payoff = evaluation?.payoff ?? []
+  const comparisons = evaluation?.comparisons ?? []
+  const bestStrategy = evaluation?.bestStrategy ?? comparisons[0] ?? null
+  const estimatedValue = evaluation?.scenario.estimatedValue ?? 0
+  const estimatedProfit = evaluation?.scenario.estimatedProfit ?? 0
+  const estimatedRoi = evaluation?.scenario.estimatedRoi ?? 0
+  const riskLevel = evaluation?.summary.riskLevel ?? 'High'
+  const frontDte = evaluation?.summary.frontDte ?? 0
+  const backDte = evaluation?.summary.backDte ?? 0
+  const summaryMaxRisk = evaluation?.summary.maxRisk ?? 0
+  const breakevenPrice = evaluation?.summary.breakeven ?? form.stockPrice
 
   const update = <K extends keyof WorksheetForm>(key: K, value: WorksheetForm[K]) => setForm(prev => ({ ...prev, [key]: value }))
 
-  const loadChain = useCallback(async (ticker = form.ticker, expiry = form.expiration) => {
+  const loadChain = useCallback(async (ticker = form.ticker, expiry = frontExpiration(form)) => {
     const clean = ticker.trim().toUpperCase()
     if (!clean) return
     setLoading(true)
@@ -355,10 +272,11 @@ export default function TradeWorksheetPage() {
     try {
       const data = await fetchOptionChainLiquidity(clean, expiry, true)
       setChain(data)
-      const source = form.direction === 'Bearish' || form.strategy.includes('Put') ? data.puts : data.calls
+      const source = usesPutChain(form) ? data.puts : data.calls
+      const targetStrike = primaryStrike(form)
       const nearest = source.reduce<OptionChainRow | null>((best, row) => {
         if (!best) return row
-        return Math.abs(row.strike - form.strike) < Math.abs(best.strike - form.strike) ? row : best
+        return Math.abs(row.strike - targetStrike) < Math.abs(best.strike - targetStrike) ? row : best
       }, null)
       if (nearest) {
         setSelectedRow(nearest)
@@ -371,7 +289,7 @@ export default function TradeWorksheetPage() {
           buyExpiration: isCalendarLike(prev.strategy) ? prev.buyExpiration : data.selected_expiry,
           strike: nearest.strike,
           shortStrike: nearest.strike,
-          longStrike: prev.longStrike || nearest.strike,
+          longStrike: isVerticalSpread(prev.strategy) ? nearest.strike : prev.longStrike || nearest.strike,
           premium: nearest.mid || prev.premium,
           historicalVolatility: nearest.iv && nearest.iv < 300 ? nearest.iv : prev.historicalVolatility,
         }))
@@ -386,27 +304,29 @@ export default function TradeWorksheetPage() {
     } finally {
       setLoading(false)
     }
-  }, [form.direction, form.expiration, form.strategy, form.strike, form.ticker, setParams])
+  }, [form, setParams])
 
   useEffect(() => {
     if (params.get('ticker')) void loadChain(params.get('ticker') || form.ticker)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const pros = [
-    score.trend >= 75 && 'Trend aligns with selected direction',
-    score.liquidity >= 70 && 'Liquidity is acceptable for entry and exit',
-    score.time >= 75 && 'Expiration gives the thesis enough time',
-    score.riskReward >= 65 && 'Reward/risk is reasonable',
-    form.ivRank <= 55 && 'Premium is not severely inflated by IV',
-  ].filter(Boolean) as string[]
-  const cons = [
-    score.liquidity < 70 && 'Bid/ask spread or open interest is weak',
-    form.ivRank > 60 && 'Premium is expensive due to elevated IV',
-    daysToExpiry(form.expiration) < 7 && 'Expiration is short; theta and gamma risk are high',
-    score.riskReward < 55 && 'Reward/risk is not attractive enough',
-    Math.abs(form.targetPrice / form.stockPrice - 1) > 0.12 && 'Target requires a large move',
-  ].filter(Boolean) as string[]
+  useEffect(() => {
+    if (!chain) return
+    const source = usesPutChain(form) ? chain.puts : chain.calls
+    const targetStrike = primaryStrike(form)
+    const match = source.reduce<OptionChainRow | null>((best, row) => {
+      if (!best) return row
+      return Math.abs(row.strike - targetStrike) < Math.abs(best.strike - targetStrike) ? row : best
+    }, null)
+    if (!match) return
+    if (selectedRow?.strike !== match.strike) {
+      setSelectedRow(match)
+    }
+  }, [chain, form.direction, form.longStrike, form.shortCallStrike, form.shortPutStrike, form.shortStrike, form.stockPrice, form.strategy, form.strike, selectedRow?.strike])
+
+  const pros = evaluation?.pros ?? []
+  const cons = evaluation?.cons ?? []
 
   const checklistItems = [
     'Trend confirmed',
@@ -442,6 +362,7 @@ export default function TradeWorksheetPage() {
       </header>
 
       {error && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{error}</div>}
+      {evaluationError && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">{evaluationError}</div>}
 
       <section className="mb-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/[0.07] dark:bg-slate-900">
@@ -451,12 +372,10 @@ export default function TradeWorksheetPage() {
               <div className="text-5xl font-black tracking-tight text-heading">{score.total}<span className="text-xl text-muted">/100</span></div>
               <div className="mt-1 font-mono text-lg text-amber-500">{stars(score.total)}</div>
             </div>
-            <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wide ${getDecisionBadgeClass(scoreLabel(score.total))}`}>{scoreLabel(score.total)}</span>
+            <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wide ${getDecisionBadgeClass(score.label)}`}>{score.label}</span>
           </div>
           <p className="mt-4 text-sm leading-relaxed text-secondary">
-            {score.total >= 80
-              ? `This is a high-quality ${form.direction.toLowerCase()} worksheet. The selected contract has acceptable time, liquidity, and probability for the thesis.`
-              : `This contract needs caution. Review liquidity, expiration, premium, and alternatives before committing capital.`}
+            Backend evaluation updates as trade inputs, strike, expiration, premium, and selected chain row change.
           </p>
           <div className="mt-4 grid gap-2">
             {[
@@ -501,7 +420,7 @@ export default function TradeWorksheetPage() {
                   <Field label="Buy Strike"><input type="number" step="0.01" value={form.longStrike} onChange={e => update('longStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Sell Expiration"><input type="date" value={form.sellExpiration} onChange={e => update('sellExpiration', e.target.value)} className={inputCls} /></Field>
                   <Field label="Buy Expiration"><input type="date" value={form.buyExpiration} onChange={e => update('buyExpiration', e.target.value)} className={inputCls} /></Field>
-                  <Field label="Net Debit"><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
+                  <Field label={isCreditSpread(form.strategy) ? 'Net Credit' : 'Net Debit'}><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               ) : isIronCondor(form.strategy) ? (
                 <>
@@ -543,7 +462,7 @@ export default function TradeWorksheetPage() {
                 <>
                   <LegBadge side="SELL" label={`Sell front ${form.shortStrike}`} />
                   <LegBadge side="BUY" label={`Buy back ${form.longStrike}`} />
-                  <LegBadge side="DEBIT" label={`Net debit ${fmtUsd(form.premium * 100 * form.contracts)}`} />
+                  <LegBadge side={isCreditSpread(form.strategy) ? 'CREDIT' : 'DEBIT'} label={`${isCreditSpread(form.strategy) ? 'Net credit' : 'Net debit'} ${fmtUsd(form.premium * 100 * form.contracts)}`} />
                 </>
               ) : isVerticalSpread(form.strategy) ? (
                 <>
@@ -564,7 +483,9 @@ export default function TradeWorksheetPage() {
                   ? 'Calendar/diagonal structure: sell the front expiration and buy the later expiration. Use net debit for total spread cost.'
                   : isIronCondor(form.strategy)
                     ? 'Iron condor structure: sell the inner put/call strikes and buy the outer wings for protection. Use net credit received.'
-                    : 'Vertical spread structure: buy one leg and sell the other leg at the same expiration. Use net debit paid.'}
+                    : isCreditSpread(form.strategy)
+                      ? 'Credit spread structure: sell the short strike and buy the protective wing at the same expiration. Use net credit received.'
+                      : 'Vertical spread structure: buy one leg and sell the other leg at the same expiration. Use net debit paid.'}
               </div>
             )}
           </Panel>
@@ -578,11 +499,11 @@ export default function TradeWorksheetPage() {
             )}
             <div className="grid grid-cols-2 gap-2 text-sm">
               <Metric label="Current Stock" value={fmtUsd(form.stockPrice)} />
-              <Metric label="DTE" value={`${daysToExpiry(form.expiration)} days`} tone={daysToExpiry(form.expiration) >= 8 ? 'good' : 'caution'} />
-              <Metric label="Cost" value={fmtUsd(costBasis(form))} />
-              <Metric label="Max Risk" value={fmtUsd(costBasis(form))} tone="bad" />
-              <Metric label="Breakeven" value={fmtUsd(breakeven(form))} />
-              <Metric label="Capital Required" value={fmtUsd(costBasis(form))} />
+              <Metric label={isCalendarLike(form.strategy) ? 'Front / Back DTE' : 'DTE'} value={isCalendarLike(form.strategy) ? `${frontDte} / ${backDte} days` : `${frontDte} days`} tone={frontDte >= 8 ? 'good' : 'caution'} />
+              <Metric label="Cost" value={fmtUsd(evaluation?.summary.cost ?? 0)} />
+              <Metric label="Max Risk" value={fmtUsd(summaryMaxRisk)} tone="bad" />
+              <Metric label={isIronCondor(form.strategy) ? 'Breakeven Zone' : 'Breakeven'} value={isIronCondor(form.strategy) ? `${fmtUsd(form.shortPutStrike - form.premium)} - ${fmtUsd(form.shortCallStrike + form.premium)}` : fmtUsd(breakevenPrice)} />
+              <Metric label="Capital Required" value={fmtUsd(evaluation?.summary.capitalRequired ?? 0)} />
               <Metric label="Theta / Day" value={fmtUsd(greeks.theta * 100 * form.contracts)} tone="bad" />
               <Metric label="Delta" value={greeks.delta.toFixed(2)} />
               <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} />
@@ -626,7 +547,16 @@ export default function TradeWorksheetPage() {
                     return (
                       <tr key={row.strike} onClick={() => {
                         setSelectedRow(row)
-                        setForm(prev => ({ ...prev, strike: row.strike, premium: row.mid || prev.premium, historicalVolatility: row.iv && row.iv < 300 ? row.iv : prev.historicalVolatility }))
+                        setForm(prev => ({
+                          ...prev,
+                          strike: row.strike,
+                          shortStrike: isCalendarLike(prev.strategy) || (isVerticalSpread(prev.strategy) && isCreditSpread(prev.strategy)) ? row.strike : prev.shortStrike,
+                          longStrike: isVerticalSpread(prev.strategy) && !isCreditSpread(prev.strategy) ? row.strike : prev.longStrike,
+                          shortPutStrike: isIronCondor(prev.strategy) && usesPutChain(prev) ? row.strike : prev.shortPutStrike,
+                          shortCallStrike: isIronCondor(prev.strategy) && !usesPutChain(prev) ? row.strike : prev.shortCallStrike,
+                          premium: row.mid || prev.premium,
+                          historicalVolatility: row.iv && row.iv < 300 ? row.iv : prev.historicalVolatility,
+                        }))
                       }} className={`cursor-pointer border-b border-slate-100 text-secondary transition-colors dark:border-white/[0.04] ${rowTone}`}>
                         <td className="py-2 font-mono font-bold text-heading">${row.strike.toFixed(2)}{row.is_atm ? <span className="ml-1 text-[10px] text-emerald-500">ATM</span> : null}</td>
                         <td className="py-2 text-right font-mono font-semibold text-rose-600 dark:text-rose-300">${row.bid.toFixed(2)}</td>
@@ -671,7 +601,7 @@ export default function TradeWorksheetPage() {
                 <Tooltip formatter={(v: number) => fmtUsd(v)} labelFormatter={v => `Stock ${fmtUsd(Number(v))}`} />
                 <ReferenceLine y={0} stroke="var(--text-secondary)" />
                 <ReferenceLine x={form.stockPrice} stroke="#38bdf8" label="Current" />
-                <ReferenceLine x={breakeven(form)} stroke="#f59e0b" label="B/E" />
+                {!isIronCondor(form.strategy) && <ReferenceLine x={breakevenPrice} stroke="#f59e0b" label="B/E" />}
                 <ReferenceLine x={form.targetPrice} stroke="#22c55e" label="Target" />
                 <Area type="monotone" dataKey="pnl" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} />
               </AreaChart>
@@ -732,7 +662,7 @@ export default function TradeWorksheetPage() {
             </table>
           </div>
           <div className="mt-3 rounded-lg border border-violet-400/25 bg-violet-500/10 p-3 text-sm text-violet-800 dark:text-violet-100">
-            Better alternative: <span className="font-bold">{bestStrategy.strategy}</span>. It scores higher because it improves capital efficiency, probability, or theta exposure versus the selected contract.
+            Better alternative: <span className="font-bold">{bestStrategy?.strategy ?? 'Load evaluation'}</span>. Backend scoring compares capital efficiency, probability, and theta exposure versus the selected contract.
           </div>
         </Panel>
 
@@ -741,12 +671,12 @@ export default function TradeWorksheetPage() {
             <PlanItem label="Take Profit 1" value="+40%" />
             <PlanItem label="Take Profit 2" value="+75%" />
             <PlanItem label="Stop Loss" value="-30%" danger />
-            <PlanItem label="Time Stop" value={`${Math.max(1, Math.min(form.expectedHoldDays, daysToExpiry(form.expiration) - 2))} days`} />
+            <PlanItem label="Time Stop" value={`${Math.max(1, Math.min(form.expectedHoldDays, frontDte - 2))} days`} />
             <PlanItem label="IV Exit" value="Exit if IV crush > 15%" danger />
             <PlanItem label="Expiration Exit" value="Close before final 2 DTE" danger />
           </div>
           <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm leading-relaxed text-secondary dark:bg-slate-950/50">
-            Success requirement: {form.ticker} needs to move approximately {fmtPct((breakeven(form) / form.stockPrice - 1) * 100, 1)} toward breakeven within {form.expectedHoldDays} trading days while IV remains stable.
+            Success requirement: {form.ticker} needs to move approximately {isIronCondor(form.strategy) ? 'inside the short strike range' : fmtPct((breakevenPrice / form.stockPrice - 1) * 100, 1)} {isIronCondor(form.strategy) ? '' : 'toward breakeven '}within {form.expectedHoldDays} trading days while IV remains stable.
           </div>
         </Panel>
       </section>
@@ -771,10 +701,9 @@ export default function TradeWorksheetPage() {
         </Panel>
 
         <Panel title="AI Coach" icon={<BrainCircuit size={18} />} sub="Contract-level coaching before order entry.">
-          <CoachLine text={form.ivRank > 60 ? 'Premium is expensive. Consider a debit spread or wait for IV to cool.' : 'Premium is not unusually expensive relative to IV inputs.'} />
-          <CoachLine text={daysToExpiry(form.expiration) < 7 ? 'Expiration is too short for most non-scalp trades. Consider adding another week.' : 'Expiration gives enough time for the expected hold.'} />
-          <CoachLine text={Math.abs(greeks.delta) < 0.35 ? 'Current strike is far OTM. One strike ITM may improve probability.' : 'Delta is reasonable for directional exposure.'} />
-          <CoachLine text={bestStrategy.strategy !== form.strategy ? `${bestStrategy.strategy} may express this thesis more efficiently than the selected structure.` : 'Selected strategy is competitive against alternatives.'} />
+          {(evaluation?.coach?.length ? evaluation.coach : ['Load or edit trade inputs to get backend contract-level coaching.']).map(text => (
+            <CoachLine key={text} text={text} />
+          ))}
         </Panel>
       </section>
 
@@ -784,19 +713,13 @@ export default function TradeWorksheetPage() {
             <Metric label="Probability Profit" value={`${score.probability.toFixed(0)}%`} />
             <Metric label="Probability ITM" value={`${greeks.probabilityItm.toFixed(0)}%`} />
             <Metric label="Probability OTM" value={`${greeks.probabilityOtm.toFixed(0)}%`} />
-            <Metric label="Expected Value" value={fmtUsd((score.probability / 100) * Math.max(1, payoffAtPrice(form, form.targetPrice)) - (1 - score.probability / 100) * costBasis(form))} />
-            <Metric label="Expected Return" value={fmtPct(((score.probability / 100) * Math.max(1, payoffAtPrice(form, form.targetPrice)) - (1 - score.probability / 100) * costBasis(form)) / Math.max(1, costBasis(form)) * 100)} />
-            <Metric label="Expected Drawdown" value={fmtUsd(costBasis(form) * 0.3)} tone="bad" />
+            <Metric label="Expected Value" value={fmtUsd(evaluation?.scenario.expectedValue ?? 0)} />
+            <Metric label="Expected Return" value={fmtPct(evaluation?.scenario.expectedReturn ?? 0)} />
+            <Metric label="Expected Drawdown" value={fmtUsd(evaluation?.scenario.expectedDrawdown ?? 0)} tone="bad" />
           </div>
           <div className="mt-4 h-48">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={[
-                { label: '-10%', value: payoffAtPrice(form, form.stockPrice * 0.9) },
-                { label: '-5%', value: payoffAtPrice(form, form.stockPrice * 0.95) },
-                { label: 'Flat', value: payoffAtPrice(form, form.stockPrice) },
-                { label: '+5%', value: payoffAtPrice(form, form.stockPrice * 1.05) },
-                { label: '+10%', value: payoffAtPrice(form, form.stockPrice * 1.1) },
-              ]}>
+              <LineChart data={evaluation?.scenario.priceBuckets ?? []}>
                 <CartesianGrid stroke="var(--border-default)" strokeDasharray="3 3" />
                 <XAxis dataKey="label" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
                 <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />

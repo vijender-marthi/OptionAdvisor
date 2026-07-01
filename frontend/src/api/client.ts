@@ -447,6 +447,104 @@ export const fetchOptionChainLiquidity = async (
   return data
 }
 
+export interface TradeWorksheetEvaluateRequest {
+  ticker: string
+  direction: string
+  strategy: string
+  strike: number
+  shortStrike: number
+  longStrike: number
+  shortPutStrike: number
+  longPutStrike: number
+  shortCallStrike: number
+  longCallStrike: number
+  expiration: string
+  sellExpiration: string
+  buyExpiration: string
+  premium: number
+  contracts: number
+  stockPrice: number
+  targetPrice: number
+  expectedHoldDays: number
+  buyingPower: number
+  ivRank: number
+  ivPercentile: number
+  historicalVolatility: number
+  selectedRow?: OptionChainRow | null
+  priceMove: number
+  ivMove: number
+  daysPassed: number
+}
+
+export interface TradeWorksheetEvaluation {
+  summary: {
+    ticker: string
+    strategy: string
+    primaryStrike: number
+    frontExpiration: string
+    backExpiration: string
+    frontDte: number
+    backDte: number
+    cost: number
+    maxRisk: number
+    breakeven: number | null
+    breakevenLow: number | null
+    breakevenHigh: number | null
+    capitalRequired: number
+    thetaPerDay: number
+    delta: number
+    ivRank: number
+    probability: number
+    probabilityItm: number
+    riskLevel: string
+    timeStopDays: number
+    successRequirement: string
+  }
+  greeks: {
+    delta: number
+    gamma: number
+    theta: number
+    vega: number
+    iv: number
+    probabilityItm: number
+    probabilityOtm: number
+  }
+  score: {
+    total: number
+    trend: number
+    optionPricing: number
+    time: number
+    liquidity: number
+    probability: number
+    riskReward: number
+    volatility: number
+    market: number
+    label: string
+  }
+  payoff: Array<{ price: number; pnl: number }>
+  scenario: {
+    estimatedValue: number
+    estimatedProfit: number
+    estimatedRoi: number
+    expectedValue: number
+    expectedReturn: number
+    expectedDrawdown: number
+    priceBuckets: Array<{ label: string; value: number }>
+  }
+  comparisons: Array<{ strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number }>
+  bestStrategy: { strategy: string; capital: number; maxLoss: number; maxProfit: number | null; pop: number; theta: string; score: number } | null
+  pros: string[]
+  cons: string[]
+  coach: string[]
+}
+
+export const evaluateTradeWorksheet = async (
+  payload: TradeWorksheetEvaluateRequest,
+): Promise<TradeWorksheetEvaluation> => {
+  const { data } = await api.post<TradeWorksheetEvaluation>('/trade-worksheet/evaluate', payload)
+  return data
+}
+
 export const analyzeDayTrade = async (ticker: string, forceRefresh = false): Promise<DayTradeScanResult> => {
   const { data } = await api.post<DayTradeScanResult>('/day-trade', { ticker: ticker.trim(), force_refresh: forceRefresh })
   return data

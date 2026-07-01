@@ -158,6 +158,22 @@ function computeMetrics(
   return { netCredit, spreadWidth, maxProfit, maxLoss, beLower, beUpper }
 }
 
+function suspiciousOptionPremiumMessage(form: FormState): string | null {
+  if (form.strategy === 'Stock') return null
+  const underlying = parseFloat(form.entryStockPrice) || 0
+  if (underlying <= 0) return null
+  const def = STRATEGY_DEFS[form.strategy]
+  if (!def) return null
+  for (let i = 0; i < def.legs.length; i += 1) {
+    const strike = parseFloat(form.legStrikes[i]) || 0
+    const premium = parseFloat(form.legPremiums[i]) || 0
+    if (strike > underlying * 0.5 && premium >= underlying * 0.5) {
+      return `Premium ${fmtUsd(premium)} looks like the stock price. Enter the option premium per share, not the underlying price.`
+    }
+  }
+  return null
+}
+
 function normalizeExpiryForDateInput(expiry: string): string {
   const s = expiry.trim()
   if (!s) return ''
@@ -678,6 +694,7 @@ function PositionFormFields({
   const metrics = computeMetrics(form.strategy, strikesNum, premiumsNum, parseFloat(form.entryStockPrice) || 0)
   const cc = parseInt(form.contractCount) || 0
   const legsComplete = def ? def.legs.every((_, i) => strikesNum[i] > 0 && premiumsNum[i] > 0) : false
+  const premiumWarning = suspiciousOptionPremiumMessage(form)
 
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
   const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300'
@@ -845,6 +862,11 @@ function PositionFormFields({
                   </div>
                 </div>
               ))}
+              {premiumWarning && (
+                <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-700 dark:text-rose-200">
+                  {premiumWarning}
+                </div>
+              )}
             </div>
           )}
 
@@ -1189,7 +1211,8 @@ function TradingPositionCard({
     pnl_pct: number
     entry_premium_per_share?: number
     current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
+    invalid_reason?: string
   } | null
   aiAnalysis?: AiPositionAnalysis | null
   exitBadge?: string | null
@@ -1200,7 +1223,10 @@ function TradingPositionCard({
   onDelete: () => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const actionAlert = deriveActionAlert(pos, pnlData, aiAnalysis)
+  const hasInvalidPremium = pos.status === 'open' && pnlData?.mark_source === 'invalid_premium'
+  const actionAlert = hasInvalidPremium
+    ? { type: 'WATCH' as const, label: 'FIX DATA', urgency: 'amber' as const, reason: pnlData?.invalid_reason || 'Option premium appears invalid. Edit the saved premium before using P&L or exit guidance.' }
+    : deriveActionAlert(pos, pnlData, aiAnalysis)
   const liveExitLabel = normalizeExitBadgeLabel(exitBadge)
   // Header badge is always driven by actionAlert so it can't contradict the action strip.
   const aiStatus = pos.status !== 'open'
@@ -1261,7 +1287,7 @@ function TradingPositionCard({
     return null
   })() : null
 
-  const displayPnl = (pos.status === 'closed' && closedPnl != null)
+  const displayPnl = hasInvalidPremium ? null : (pos.status === 'closed' && closedPnl != null)
     ? closedPnl
     : pnlData ?? null
 
@@ -1312,9 +1338,14 @@ function TradingPositionCard({
             {safeDte(pos.dte, 0) > 0 && (
               <span className={isExpiringSoon ? 'font-semibold text-amber-400' : ''}>{dteForDisplay} DTE</span>
             )}
-            {pos.status === 'open' && creditTotal > 0 && (
+            {pos.status === 'open' && !hasInvalidPremium && creditTotal > 0 && (
               <span className={isCredit ? 'font-medium text-emerald-400' : 'font-medium text-amber-400'}>
                 {isCredit ? 'Cr' : 'Dr'} {fmtUsd(creditTotal)}
+              </span>
+            )}
+            {hasInvalidPremium && (
+              <span className="font-semibold text-rose-500 dark:text-rose-300">
+                Invalid premium
               </span>
             )}
             {aiAnalysis?.current_price != null && aiAnalysis.current_price > 0 && (
@@ -1327,7 +1358,12 @@ function TradingPositionCard({
 
         {/* Right: P&L hero */}
         <div className="shrink-0 text-right">
-          {displayPnl ? (
+          {hasInvalidPremium ? (
+            <>
+              <div className="font-mono text-sm font-bold text-rose-600 dark:text-rose-300 leading-tight tracking-tight">Fix Premium</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-rose-500">no P&L</div>
+            </>
+          ) : displayPnl ? (
             <>
               <div className={`font-mono text-xl font-bold tabular-nums leading-tight tracking-tight ${pnlColor}`}>
                 {displayPnl.pnl >= 0 ? '+' : ''}{fmtUsd(displayPnl.pnl)}
@@ -1373,6 +1409,12 @@ function TradingPositionCard({
           </div>
         )
       })()}
+
+      {hasInvalidPremium && (
+        <div className="mx-3 mb-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-700 dark:text-rose-200">
+          {pnlData?.invalid_reason || 'Option premium appears invalid. Edit the position and enter the option premium, not the stock price.'}
+        </div>
+      )}
 
       {/* ── Footer: actions ── */}
       <div className="flex items-center gap-1 border-t border-slate-100 dark:border-white/[0.05] px-3 py-1.5">
@@ -1919,7 +1961,8 @@ export default function PositionsCenter() {
     pnl: number; pnl_pct: number
     entry_premium_per_share?: number
     current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
+    invalid_reason?: string
   }>
   const aiAnalyses    = (d.ai_analyses    ?? {}) as Record<string, AiPositionAnalysis>
   const stockAnalyses = (d.stock_analyses ?? {}) as Record<string, StockPositionAnalysis>
@@ -3127,7 +3170,8 @@ function PositionCategoryWorkspace({
     pnl_pct: number
     entry_premium_per_share?: number
     current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale'
+    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
+    invalid_reason?: string
   }>
   aiAnalyses: Record<string, AiPositionAnalysis>
   stockAnalyses: Record<string, StockPositionAnalysis>
@@ -3331,6 +3375,7 @@ function AddPositionModal({
 
     const strikesNum = form.legStrikes.map(s => parseFloat(s) || 0)
     const premiumsNum = form.legPremiums.map(p => parseFloat(p) || 0)
+    if (suspiciousOptionPremiumMessage(form)) return
     const metrics = computeMetrics(form.strategy, strikesNum, premiumsNum, entryPrice)
 
     const legs: OptionLeg[] = def.legs.map((tmpl, i) => {
@@ -3378,7 +3423,8 @@ function AddPositionModal({
     })
   }
 
-  const canSubmit = form.ticker.trim() && (form.strategy === 'Stock'
+  const premiumWarning = suspiciousOptionPremiumMessage(form)
+  const canSubmit = form.ticker.trim() && !premiumWarning && (form.strategy === 'Stock'
     ? form.entryStockPrice && (parseFloat(form.entryStockPrice) || 0) > 0 && (parseInt(form.contractCount) || 0) >= 1
     : form.expiry && (STRATEGY_DEFS[form.strategy]?.isCalendar ? !!form.backExpiry : true)
       && form.entryStockPrice && (parseInt(form.contractCount) || 0) >= 1
@@ -3806,6 +3852,7 @@ function EditPositionModal({
 
     const strikesNum = form.legStrikes.map(s => parseFloat(s) || 0)
     const premiumsNum = form.legPremiums.map(p => parseFloat(p) || 0)
+    if (suspiciousOptionPremiumMessage(form)) return
     // Only recompute metrics if the user actually filled in premiums.
     // If all premiums are 0 (blank), preserve the original values to avoid wiping
     // max_profit / max_loss / spread_width that were set when the position was added.
@@ -3869,6 +3916,7 @@ function EditPositionModal({
   }
 
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 px-3 py-2 text-sm text-primary outline-none focus:border-violet-500 dark:focus:border-violet-400 placeholder:text-tertiary'
+  const premiumWarning = suspiciousOptionPremiumMessage(form)
 
   return (
     <ModalOverlay onClose={onClose}>
@@ -3971,8 +4019,8 @@ function EditPositionModal({
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-white/[0.05]">
           <button type="button" onClick={onClose} className={`${getActionButtonClass('surface')} rounded-lg px-4 py-2 text-sm`}>Cancel</button>
-          <button type="submit" disabled={isDayToMultiDayConversion && !overnightHoldAllowed} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50`}>
-            {isDayToMultiDayConversion && !overnightHoldAllowed ? 'Overnight Hold Blocked' : 'Save Changes'}
+          <button type="submit" disabled={Boolean(premiumWarning) || (isDayToMultiDayConversion && !overnightHoldAllowed)} className={`${getActionButtonClass('trade')} rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50`}>
+            {premiumWarning ? 'Fix Premium First' : isDayToMultiDayConversion && !overnightHoldAllowed ? 'Overnight Hold Blocked' : 'Save Changes'}
           </button>
         </div>
       </form>
