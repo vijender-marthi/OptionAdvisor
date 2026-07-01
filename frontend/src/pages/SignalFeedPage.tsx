@@ -244,6 +244,14 @@ function fmtNumber(value?: number | null, digits = 1): string {
   return value.toFixed(digits)
 }
 
+function metricNumber(row: SignalFeedRow, key: keyof SignalFeedMetrics): number | null {
+  const top = row.metrics?.[key]
+  if (typeof top === 'number' && Number.isFinite(top)) return top
+  const dayMetric = row.day.metrics?.[key as string]
+  if (typeof dayMetric === 'number' && Number.isFinite(dayMetric)) return dayMetric
+  return null
+}
+
 function fmtRelativeTime(value?: string): string {
   if (!value) return '\u2014'
   const ts = Date.parse(value)
@@ -556,6 +564,59 @@ function SignalMetric({ label, value, tone = 'text-secondary' }: { label: string
   )
 }
 
+function DayLevelsBlock({ row, compact = false }: { row: SignalFeedRow; compact?: boolean }) {
+  const orh = metricNumber(row, 'or_high')
+  const orl = metricNumber(row, 'or_low')
+  const vwap = metricNumber(row, 'vwap')
+  const price = typeof row.price === 'number' && Number.isFinite(row.price) ? row.price : null
+  const vwapTone = price != null && vwap != null
+    ? price >= vwap ? 'text-semantic-bullish' : 'text-semantic-bearish'
+    : 'text-secondary'
+  const orhDist = price != null && orh != null && orh > 0 ? ((price - orh) / orh) * 100 : null
+  const orlDist = price != null && orl != null && orl > 0 ? ((price - orl) / orl) * 100 : null
+  const vwapDist = price != null && vwap != null && vwap > 0 ? ((price - vwap) / vwap) * 100 : null
+  const items = [
+    { label: 'ORH', value: fmtPrice(orh), sub: orhDist == null ? '—' : fmtPct(orhDist), tone: orhDist != null && orhDist >= 0 ? 'text-semantic-bullish' : 'text-secondary' },
+    { label: 'ORL', value: fmtPrice(orl), sub: orlDist == null ? '—' : fmtPct(orlDist), tone: orlDist != null && orlDist <= 0 ? 'text-semantic-bearish' : 'text-secondary' },
+    { label: 'VWAP', value: fmtPrice(vwap), sub: vwapDist == null ? '—' : fmtPct(vwapDist), tone: vwapTone },
+  ]
+  return (
+    <div className={compact ? 'grid grid-cols-3 gap-1.5' : 'grid grid-cols-3 gap-2'}>
+      {items.map(item => (
+        <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 dark:border-white/[0.07] dark:bg-slate-800/40">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-muted">{item.label}</div>
+          <div className={`mt-0.5 font-mono text-[11px] font-bold tabular-nums ${item.tone}`}>{item.value}</div>
+          <div className="font-mono text-[9px] text-tertiary tabular-nums">{item.sub}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EngineOverviewStrip({ row }: { row: SignalFeedRow }) {
+  const engines: Array<{ key: EngineKey; label: string; decision: string; block: SignalFeedDecisionBlock }> = [
+    { key: 'day', label: 'Day', decision: row.day_decision, block: row.day },
+    { key: 'swing', label: 'Swing', decision: row.swing_decision, block: row.swing },
+    { key: 'regular', label: 'Regular', decision: row.regular_decision, block: row.regular },
+  ]
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-3">
+      {engines.map(item => (
+        <div key={item.key} className={`rounded-lg border px-2 py-1.5 ${engineCardBorder(item.key)}`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-[10px] font-bold uppercase tracking-wide ${engineLabelClass(item.key)}`}>{item.label}</span>
+            <StatusPill value={item.decision || item.block.final_decision || 'WAIT'} />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <SignalQualityBadge quality={item.block.signal_quality || item.block.setup_quality || ''} />
+            <ExecTimingBadge timing={item.block.execution_timing || item.block.execution_readiness || ''} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function morningScan(row: SignalFeedRow) {
   return row.morning_scan ?? {
     scan_time: '6:45 AM PT',
@@ -652,15 +713,15 @@ function SignalFeedTableSection({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[1120px] w-full border-collapse text-left">
+        <table className="min-w-[1320px] w-full border-collapse text-left">
           <thead className="bg-slate-50 dark:bg-slate-950/40">
             <tr className="text-[10px] font-bold uppercase tracking-wide text-muted">
-              <th className="w-[18%] px-4 py-2">Ticker</th>
-              <th className="w-[10%] px-3 py-2">Price</th>
-              <th className="w-[12%] px-3 py-2">Verdict</th>
-              <th className="w-[18%] px-3 py-2">Setup</th>
-              <th className="w-[19%] px-3 py-2">Metrics</th>
-              <th className="w-[17%] px-3 py-2">Reason</th>
+              <th className="w-[16%] px-4 py-2">Ticker</th>
+              <th className="w-[9%] px-3 py-2">Price</th>
+              <th className="w-[11%] px-3 py-2">Verdict</th>
+              <th className="w-[24%] px-3 py-2">Trading Overview</th>
+              <th className="w-[21%] px-3 py-2">OR / VWAP</th>
+              <th className="w-[13%] px-3 py-2">Reason</th>
               <th className="w-[6%] px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -716,18 +777,17 @@ function SignalFeedTableSection({
                     )}
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      <SignalQualityBadge quality={block.signal_quality || block.setup_quality || ''} />
-                      <ExecTimingBadge timing={block.execution_timing || block.execution_readiness || ''} />
-                      <RiskCatBadge category={block.risk_category || block.risk_state || ''} />
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                    <EngineOverviewStrip row={row} />
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
                       {block.expected_holding_period && <span>Hold <span className="font-semibold text-secondary">{block.expected_holding_period}</span></span>}
                       {block.recommended_contract_duration && <span>DTE <span className="font-semibold text-secondary">{block.recommended_contract_duration}</span></span>}
                     </div>
                   </td>
                   <td className="px-3 py-3">
-                    <MorningTrendMetrics row={row} />
+                    <div className="space-y-2">
+                      <DayLevelsBlock row={row} />
+                      <MorningTrendMetrics row={row} />
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <p className="line-clamp-3 text-xs leading-5 text-secondary">{reason || 'No engine note available.'}</p>

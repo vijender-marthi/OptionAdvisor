@@ -428,6 +428,8 @@ export interface OptionChainRow {
 export interface OptionChainLiquidityResponse {
   ticker: string
   current_price: number
+  price_source?: string
+  price_fetched_at?: string
   expiries: string[]
   selected_expiry: string
   dte: number | null

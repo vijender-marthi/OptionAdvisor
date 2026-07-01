@@ -314,6 +314,9 @@ export interface SignalFeedMetrics {
   morning_candle_direction?: string | null
   morning_directional_consistency?: boolean | null
   morning_trending?: boolean | null
+  or_high?: number | null
+  or_low?: number | null
+  vwap?: number | null
 }
 
 export interface SignalFeedMorningScan {

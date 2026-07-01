@@ -2756,6 +2756,9 @@ def get_signal_feed(
             "morning_candle_direction": morning_scan.get("candle_direction"),
             "morning_directional_consistency": morning_scan.get("directional_consistency"),
             "morning_trending": morning_scan.get("trending"),
+            "or_high": day_metrics.get("or_high"),
+            "or_low": day_metrics.get("or_low"),
+            "vwap": day_metrics.get("vwap"),
         }
 
         chart_points = []
@@ -4840,12 +4843,22 @@ def option_chain_liquidity(
 
     # Current price
     current_price = 0.0
+    price_source = "yahoo_info"
+    try:
+        quotes, _quote_meta = _get_quotes([t], force_refresh=force_refresh)
+        quote = quotes.get(t)
+        if quote and quote.price > 0:
+            current_price = float(quote.price)
+            price_source = quote.source
+    except Exception:
+        pass
     try:
         info = _bc_info(t, force_refresh=force_refresh)
-        current_price = float(
-            info.get("currentPrice") or info.get("regularMarketPrice") or
-            info.get("previousClose") or 0
-        )
+        if current_price <= 0:
+            current_price = float(
+                info.get("currentPrice") or info.get("regularMarketPrice") or
+                info.get("previousClose") or 0
+            )
     except Exception:
         pass
 
@@ -4943,6 +4956,8 @@ def option_chain_liquidity(
     return {
         "ticker":          t,
         "current_price":   round(current_price, 2),
+        "price_source":    price_source,
+        "price_fetched_at": datetime.now(timezone.utc).isoformat(),
         "expiries":        list(opt_dates[:12]),
         "selected_expiry": target_expiry,
         "dte":             dte_val,

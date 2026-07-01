@@ -353,12 +353,7 @@ export default function TradeWorksheetPage() {
     setLoading(true)
     setError('')
     try {
-      let data: OptionChainLiquidityResponse
-      try {
-        data = await fetchOptionChainLiquidity(clean, expiry)
-      } catch {
-        data = await fetchOptionChainLiquidity(clean, expiry, true)
-      }
+      const data = await fetchOptionChainLiquidity(clean, expiry, true)
       setChain(data)
       const source = form.direction === 'Bearish' || form.strategy.includes('Put') ? data.puts : data.calls
       const nearest = source.reduce<OptionChainRow | null>((best, row) => {
@@ -575,6 +570,12 @@ export default function TradeWorksheetPage() {
           </Panel>
 
           <Panel title="Contract Summary" icon={<CircleDollarSign size={18} />} sub="Live chain fields where available; Greeks are estimated until broker data is connected.">
+            {chain?.price_source && (
+              <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-200">
+                Latest underlying price loaded from {chain.price_source.replace(/_/g, ' ')}
+                {chain.price_fetched_at ? ` at ${new Date(chain.price_fetched_at).toLocaleTimeString()}` : ''}.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2 text-sm">
               <Metric label="Current Stock" value={fmtUsd(form.stockPrice)} />
               <Metric label="DTE" value={`${daysToExpiry(form.expiration)} days`} tone={daysToExpiry(form.expiration) >= 8 ? 'good' : 'caution'} />
