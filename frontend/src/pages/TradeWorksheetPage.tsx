@@ -31,8 +31,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { evaluateTradeWorksheet, fetchOptionChainLiquidity, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
+import { evaluateTradeWorksheet, fetchOptionChainLiquidity, saveToJournal, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
+import { useApp } from '../contexts/AppContext'
 
 type Direction = 'Bullish' | 'Bearish' | 'Neutral'
 type Strategy =
@@ -198,6 +199,7 @@ function initialForm(): WorksheetForm {
 
 export default function TradeWorksheetPage() {
   const [params, setParams] = useSearchParams()
+  const { user } = useApp()
   const [form, setForm] = useState<WorksheetForm>(() => {
     const f = initialForm()
     const ticker = params.get('ticker')
@@ -228,6 +230,63 @@ export default function TradeWorksheetPage() {
     confidence: 7,
     emotion: 'Calm' as Emotion,
   })
+  const [savingJournal, setSavingJournal] = useState(false)
+  const [journalSaved, setJournalSaved] = useState(false)
+
+  const handleSaveToJournal = useCallback(async () => {
+    if (!user?.email || !evaluation) return
+    setSavingJournal(true)
+    try {
+      const s = evaluation.summary
+      const sc = evaluation.score
+      const maxProfit = evaluation.payoff.length > 0
+        ? Math.max(...evaluation.payoff.map(p => p.pnl))
+        : 0
+      const legs: object[] = []
+      if (form.strategy === 'Long Call' || form.strategy === 'Long Put' || form.strategy === 'Cash Secured Put' || form.strategy === 'Covered Call') {
+        legs.push({ action: form.strategy.startsWith('Long') ? 'BUY' : 'SELL', option_type: usesPutChain(form) ? 'PUT' : 'CALL', strike: form.strike, expiry: form.expiration })
+      } else if (isVerticalSpread(form.strategy)) {
+        legs.push({ action: 'BUY', option_type: usesPutChain(form) ? 'PUT' : 'CALL', strike: form.longStrike, expiry: form.expiration })
+        legs.push({ action: 'SELL', option_type: usesPutChain(form) ? 'PUT' : 'CALL', strike: form.shortStrike, expiry: form.expiration })
+      } else if (isIronCondor(form.strategy)) {
+        legs.push({ action: 'BUY', option_type: 'PUT', strike: form.longPutStrike, expiry: form.expiration })
+        legs.push({ action: 'SELL', option_type: 'PUT', strike: form.shortPutStrike, expiry: form.expiration })
+        legs.push({ action: 'SELL', option_type: 'CALL', strike: form.shortCallStrike, expiry: form.expiration })
+        legs.push({ action: 'BUY', option_type: 'CALL', strike: form.longCallStrike, expiry: form.expiration })
+      } else if (isCalendarLike(form.strategy)) {
+        legs.push({ action: 'SELL', option_type: 'CALL', strike: form.shortStrike, expiry: form.sellExpiration })
+        legs.push({ action: 'BUY', option_type: 'CALL', strike: form.shortStrike, expiry: form.buyExpiration })
+      }
+      const notes = [journal.why, journal.invalidates, journal.catalyst].filter(Boolean).join('\n---\n')
+        + `\nHold: ${journal.hold || 'N/A'} | Confidence: ${journal.confidence}/10 | Emotion: ${journal.emotion}`
+      await saveToJournal(user.email, {
+        ticker: form.ticker,
+        company_name: form.ticker,
+        strategy: form.strategy,
+        bias: form.direction,
+        legs,
+        expiry: form.expiration,
+        entry_date: new Date().toISOString().slice(0, 10),
+        dte_at_entry: s.frontDte || 0,
+        net_credit: s.netPremiumType === 'credit' ? Math.abs(s.netPremium) : 0,
+        max_profit: maxProfit,
+        max_loss: s.maxRisk || 0,
+        underlying_entry: form.stockPrice,
+        prob_of_profit: (s.probability || 0) / 100,
+        expected_value: evaluation.scenario.expectedValue || 0,
+        total_score: sc.total || 0,
+        notes,
+        trade_type: 'worksheet',
+      })
+      setJournalSaved(true)
+      setTimeout(() => setJournalSaved(false), 4000)
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || 'Failed to save to journal.')
+    } finally {
+      setSavingJournal(false)
+    }
+  }, [user, evaluation, form, journal])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -342,6 +401,18 @@ export default function TradeWorksheetPage() {
     if (params.get('ticker')) void loadChain(params.get('ticker') || form.ticker)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Auto-load chain when ticker changes (debounced 600ms)
+  useEffect(() => {
+    const clean = form.ticker.trim().toUpperCase()
+    if (!clean || clean.length < 1) return
+    if (chain?.ticker === clean) return // already loaded
+    const handle = window.setTimeout(() => {
+      void loadChain(clean)
+    }, 600)
+    return () => window.clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.ticker])
 
   useEffect(() => {
     if (!chain) return
@@ -792,6 +863,26 @@ export default function TradeWorksheetPage() {
               <Field label="Confidence"><input type="number" min={1} max={10} value={journal.confidence} onChange={e => setJournal(prev => ({ ...prev, confidence: Number(e.target.value) }))} className={smallInputCls} /></Field>
               <Field label="Emotion"><select value={journal.emotion} onChange={e => setJournal(prev => ({ ...prev, emotion: e.target.value as Emotion }))} className={smallInputCls}>{(['Calm', 'FOMO', 'Revenge', 'Speculative'] as Emotion[]).map(e => <option key={e}>{e}</option>)}</select></Field>
             </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSaveToJournal()}
+                disabled={savingJournal || !evaluation}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors ${
+                  journalSaved
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40'
+                }`}
+              >
+                {journalSaved ? (
+                  <><CheckCircle2 size={16} /> Saved to Journal</>
+                ) : savingJournal ? (
+                  <><Loader2 size={16} className="animate-spin" /> Saving…</>
+                ) : (
+                  <><BookOpenCheck size={16} /> Save to Journal</>
+                )}
+              </button>
+            </div>
           </div>
         </Panel>
       </section>
@@ -861,7 +952,7 @@ function OptionLegSelector({
   onSelect: (row: OptionChainRow) => void
 }) {
   const rows = (kind === 'put' ? chain.puts : chain.calls)
-    .filter(r => Math.abs(r.strike - stockPrice) / Math.max(1, stockPrice) <= 0.18)
+    .filter(r => Math.abs(r.strike - stockPrice) / Math.max(1, stockPrice) <= 0.20)
     .slice(0, 24)
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-white/[0.07] dark:bg-slate-950/30">
