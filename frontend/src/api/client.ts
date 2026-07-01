@@ -471,6 +471,7 @@ export interface TradeWorksheetEvaluateRequest {
   ivPercentile: number
   historicalVolatility: number
   selectedRow?: OptionChainRow | null
+  selectedLegRows?: Record<string, OptionChainRow | null> | null
   priceMove: number
   ivMove: number
   daysPassed: number
@@ -485,6 +486,8 @@ export interface TradeWorksheetEvaluation {
     backExpiration: string
     frontDte: number
     backDte: number
+    netPremium: number
+    netPremiumType: 'debit' | 'credit' | 'none' | string
     cost: number
     maxRisk: number
     breakeven: number | null
@@ -499,6 +502,11 @@ export interface TradeWorksheetEvaluation {
     riskLevel: string
     timeStopDays: number
     successRequirement: string
+    earningsDate: string | null
+    earningsDaysUntil: number | null
+    earningsBeforeExpiration: boolean
+    earningsRisk: string
+    earningsMessage: string
   }
   greeks: {
     delta: number

@@ -209,7 +209,9 @@ export default function TradeWorksheetPage() {
     return f
   })
   const [chain, setChain] = useState<OptionChainLiquidityResponse | null>(null)
+  const [backChain, setBackChain] = useState<OptionChainLiquidityResponse | null>(null)
   const [selectedRow, setSelectedRow] = useState<OptionChainRow | null>(null)
+  const [selectedLegRows, setSelectedLegRows] = useState<Record<string, OptionChainRow | null>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [priceMove, setPriceMove] = useState(5)
@@ -227,15 +229,9 @@ export default function TradeWorksheetPage() {
     emotion: 'Calm' as Emotion,
   })
 
-  const rows = useMemo(() => {
-    if (!chain) return []
-    const source = usesPutChain(form) ? chain.puts : chain.calls
-    return source.filter(r => Math.abs(r.strike - form.stockPrice) / Math.max(1, form.stockPrice) <= 0.18)
-  }, [chain, form.direction, form.stockPrice, form.strategy])
-
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      evaluateTradeWorksheet({ ...form, selectedRow, priceMove, ivMove, daysPassed })
+      evaluateTradeWorksheet({ ...form, selectedRow, selectedLegRows, priceMove, ivMove, daysPassed })
         .then(data => {
           setEvaluation(data)
           setEvaluationError('')
@@ -246,7 +242,7 @@ export default function TradeWorksheetPage() {
         })
     }, 200)
     return () => window.clearTimeout(handle)
-  }, [form, selectedRow, priceMove, ivMove, daysPassed])
+  }, [form, selectedRow, selectedLegRows, priceMove, ivMove, daysPassed])
 
   const greeks = evaluation?.greeks ?? { delta: 0, gamma: 0, theta: 0, vega: 0, iv: 0, probabilityItm: 0, probabilityOtm: 0 }
   const score = evaluation?.score ?? { total: 0, trend: 0, optionPricing: 0, time: 0, liquidity: 0, probability: 0, riskReward: 0, volatility: 0, market: 0, label: 'WAIT' }
@@ -264,6 +260,18 @@ export default function TradeWorksheetPage() {
 
   const update = <K extends keyof WorksheetForm>(key: K, value: WorksheetForm[K]) => setForm(prev => ({ ...prev, [key]: value }))
 
+  const optionKind = usesPutChain(form) ? 'put' : 'call'
+  const selectLeg = (leg: string, row: OptionChainRow, updates: Partial<WorksheetForm>, updatePremium = false) => {
+    setSelectedRow(row)
+    setSelectedLegRows(prev => ({ ...prev, [leg]: row }))
+    setForm(prev => ({
+      ...prev,
+      ...updates,
+      premium: updatePremium ? row.mid || prev.premium : prev.premium,
+      historicalVolatility: row.iv && row.iv < 300 ? row.iv : prev.historicalVolatility,
+    }))
+  }
+
   const loadChain = useCallback(async (ticker = form.ticker, expiry = frontExpiration(form)) => {
     const clean = ticker.trim().toUpperCase()
     if (!clean) return
@@ -272,6 +280,18 @@ export default function TradeWorksheetPage() {
     try {
       const data = await fetchOptionChainLiquidity(clean, expiry, true)
       setChain(data)
+      let loadedBackChain: OptionChainLiquidityResponse | null = null
+      if (isCalendarLike(form.strategy)) {
+        const backExpiry = form.buyExpiration || expirationDaysFromNow(35)
+        if (backExpiry !== data.selected_expiry) {
+          loadedBackChain = await fetchOptionChainLiquidity(clean, backExpiry, true)
+          setBackChain(loadedBackChain)
+        } else {
+          setBackChain(null)
+        }
+      } else {
+        setBackChain(null)
+      }
       const source = usesPutChain(form) ? data.puts : data.calls
       const targetStrike = primaryStrike(form)
       const nearest = source.reduce<OptionChainRow | null>((best, row) => {
@@ -280,6 +300,7 @@ export default function TradeWorksheetPage() {
       }, null)
       if (nearest) {
         setSelectedRow(nearest)
+        setSelectedLegRows({})
         setForm(prev => ({
           ...prev,
           ticker: data.ticker,
@@ -293,6 +314,16 @@ export default function TradeWorksheetPage() {
           premium: nearest.mid || prev.premium,
           historicalVolatility: nearest.iv && nearest.iv < 300 ? nearest.iv : prev.historicalVolatility,
         }))
+        if (loadedBackChain) {
+          const backSource = usesPutChain(form) ? loadedBackChain.puts : loadedBackChain.calls
+          const backNearest = backSource.reduce<OptionChainRow | null>((best, row) => {
+            if (!best) return row
+            return Math.abs(row.strike - targetStrike) < Math.abs(best.strike - targetStrike) ? row : best
+          }, null)
+          if (backNearest) {
+            setSelectedLegRows({ sell: nearest, buy: backNearest })
+          }
+        }
         setParams(prev => {
           prev.set('ticker', data.ticker)
           return prev
@@ -355,6 +386,11 @@ export default function TradeWorksheetPage() {
         </div>
         <form className="flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); void loadChain() }}>
           <input value={form.ticker} onChange={e => update('ticker', e.target.value.toUpperCase())} className="h-10 w-28 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold uppercase text-primary outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900" />
+          {form.stockPrice > 0 && (
+            <span className="inline-flex h-10 items-center rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-200">
+              Latest {fmtUsd(form.stockPrice)}
+            </span>
+          )}
           <button type="submit" className={`${getActionButtonClass('trade')} h-10 rounded-lg px-4 text-sm`} disabled={loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} Load Chain
           </button>
@@ -400,6 +436,7 @@ export default function TradeWorksheetPage() {
                   value={form.strategy}
                   onChange={e => {
                     const strategy = e.target.value as Strategy
+                    setSelectedLegRows({})
                     setForm(prev => ({
                       ...prev,
                       strategy,
@@ -420,7 +457,7 @@ export default function TradeWorksheetPage() {
                   <Field label="Buy Strike"><input type="number" step="0.01" value={form.longStrike} onChange={e => update('longStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Sell Expiration"><input type="date" value={form.sellExpiration} onChange={e => update('sellExpiration', e.target.value)} className={inputCls} /></Field>
                   <Field label="Buy Expiration"><input type="date" value={form.buyExpiration} onChange={e => update('buyExpiration', e.target.value)} className={inputCls} /></Field>
-                  <Field label={isCreditSpread(form.strategy) ? 'Net Credit' : 'Net Debit'}><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
+                  <Field label="Net Debit Fallback"><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               ) : isIronCondor(form.strategy) ? (
                 <>
@@ -436,7 +473,7 @@ export default function TradeWorksheetPage() {
                   <Field label="Long Strike"><input type="number" step="0.01" value={form.longStrike} onChange={e => update('longStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Short Strike"><input type="number" step="0.01" value={form.shortStrike} onChange={e => update('shortStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Expiration"><input type="date" value={form.expiration} onChange={e => update('expiration', e.target.value)} className={inputCls} /></Field>
-                  <Field label="Net Debit"><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
+                  <Field label={isCreditSpread(form.strategy) ? 'Net Credit Fallback' : 'Net Debit Fallback'}><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               ) : (
                 <>
@@ -456,24 +493,24 @@ export default function TradeWorksheetPage() {
                   <LegBadge side="BUY" label={`Buy ${form.longPutStrike}P`} />
                   <LegBadge side="SELL" label={`Sell ${form.shortCallStrike}C`} />
                   <LegBadge side="BUY" label={`Buy ${form.longCallStrike}C`} />
-                  <LegBadge side="CREDIT" label={`Net credit ${fmtUsd(form.premium * 100 * form.contracts)}`} />
+                  <LegBadge side="CREDIT" label={`Net credit ${fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium) * 100 * form.contracts)}`} />
                 </>
               ) : isCalendarLike(form.strategy) ? (
                 <>
                   <LegBadge side="SELL" label={`Sell front ${form.shortStrike}`} />
                   <LegBadge side="BUY" label={`Buy back ${form.longStrike}`} />
-                  <LegBadge side={isCreditSpread(form.strategy) ? 'CREDIT' : 'DEBIT'} label={`${isCreditSpread(form.strategy) ? 'Net credit' : 'Net debit'} ${fmtUsd(form.premium * 100 * form.contracts)}`} />
+                  <LegBadge side="DEBIT" label={`Net debit ${fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium) * 100 * form.contracts)}`} />
                 </>
               ) : isVerticalSpread(form.strategy) ? (
                 <>
                   <LegBadge side="BUY" label={`Buy ${form.longStrike}`} />
                   <LegBadge side="SELL" label={`Sell ${form.shortStrike}`} />
-                  <LegBadge side="DEBIT" label={`Net debit ${fmtUsd(form.premium * 100 * form.contracts)}`} />
+                  <LegBadge side={isCreditSpread(form.strategy) ? 'CREDIT' : 'DEBIT'} label={`${isCreditSpread(form.strategy) ? 'Net credit' : 'Net debit'} ${fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium) * 100 * form.contracts)}`} />
                 </>
               ) : (
                 <>
                   <LegBadge side="BUY" label={`${form.strategy} ${form.strike}`} />
-                  <LegBadge side="DEBIT" label={`Premium ${fmtUsd(form.premium * 100 * form.contracts)}`} />
+                  <LegBadge side={evaluation?.summary.netPremiumType === 'credit' ? 'CREDIT' : 'DEBIT'} label={`Premium ${fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium) * 100 * form.contracts)}`} />
                 </>
               )}
             </div>
@@ -499,6 +536,7 @@ export default function TradeWorksheetPage() {
             )}
             <div className="grid grid-cols-2 gap-2 text-sm">
               <Metric label="Current Stock" value={fmtUsd(form.stockPrice)} />
+              <Metric label={evaluation?.summary.netPremiumType === 'credit' ? 'Net Credit / Sh' : 'Net Debit / Sh'} value={fmtUsd(Math.abs(evaluation?.summary.netPremium ?? form.premium))} tone={evaluation?.summary.netPremiumType === 'credit' ? 'good' : undefined} />
               <Metric label={isCalendarLike(form.strategy) ? 'Front / Back DTE' : 'DTE'} value={isCalendarLike(form.strategy) ? `${frontDte} / ${backDte} days` : `${frontDte} days`} tone={frontDte >= 8 ? 'good' : 'caution'} />
               <Metric label="Cost" value={fmtUsd(evaluation?.summary.cost ?? 0)} />
               <Metric label="Max Risk" value={fmtUsd(summaryMaxRisk)} tone="bad" />
@@ -508,7 +546,19 @@ export default function TradeWorksheetPage() {
               <Metric label="Delta" value={greeks.delta.toFixed(2)} />
               <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} />
               <Metric label="POP / ITM" value={`${score.probability.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(score.probability, 60, 45)} />
+              <Metric label="Earnings" value={evaluation?.summary.earningsDate ? `${evaluation.summary.earningsDate} (${evaluation.summary.earningsRisk})` : evaluation?.summary.earningsRisk ?? 'Unknown'} tone={evaluation?.summary.earningsRisk === 'High' ? 'bad' : evaluation?.summary.earningsRisk === 'Medium' ? 'caution' : evaluation?.summary.earningsRisk === 'Low' ? 'good' : undefined} />
             </div>
+            {evaluation?.summary.earningsMessage && (
+              <div className={`mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                evaluation.summary.earningsRisk === 'High'
+                  ? 'border-rose-400/25 bg-rose-500/10 text-rose-700 dark:text-rose-200'
+                  : evaluation.summary.earningsRisk === 'Medium'
+                    ? 'border-amber-400/25 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+                    : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+              }`}>
+                {evaluation.summary.earningsMessage}
+              </div>
+            )}
           </Panel>
         </div>
       </section>
@@ -517,61 +567,34 @@ export default function TradeWorksheetPage() {
         <Panel title="Option Contract Selector" icon={<Layers size={18} />} sub="Choose the exact strike/premium inside the pre-trade analysis.">
           {!chain ? (
             <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-muted dark:border-slate-700">Load a ticker to review strikes and liquidity.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-sm">
-                <thead className="text-[10px] uppercase tracking-widest text-muted">
-                  <tr className="border-b border-slate-200 dark:border-white/[0.07]">
-                    <th className="py-2 text-left">Strike</th>
-                    <th className="py-2 text-right text-rose-600 dark:text-rose-300">Sell / Bid</th>
-                    <th className="py-2 text-right text-emerald-600 dark:text-emerald-300">Buy / Ask</th>
-                    <th className="py-2 text-right">Mid</th>
-                    <th className="py-2 text-right">Spread</th>
-                    <th className="py-2 text-right">Volume</th>
-                    <th className="py-2 text-right">OI</th>
-                    <th className="py-2 text-right">IV</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(row => {
-                    const selected = selectedRow?.strike === row.strike
-                    const liquid = row.volume >= 100 || row.open_interest >= 500
-                    const spreadGood = row.spread_pct <= 10
-                    const rowTone = selected
-                      ? 'bg-violet-500/12 ring-1 ring-inset ring-violet-500/30'
-                      : spreadGood && liquid
-                        ? 'bg-emerald-500/[0.05] hover:bg-emerald-500/[0.08]'
-                        : row.spread_pct > 18
-                          ? 'bg-rose-500/[0.05] hover:bg-rose-500/[0.08]'
-                          : 'hover:bg-amber-500/[0.07]'
-                    return (
-                      <tr key={row.strike} onClick={() => {
-                        setSelectedRow(row)
-                        setForm(prev => ({
-                          ...prev,
-                          strike: row.strike,
-                          shortStrike: isCalendarLike(prev.strategy) || (isVerticalSpread(prev.strategy) && isCreditSpread(prev.strategy)) ? row.strike : prev.shortStrike,
-                          longStrike: isVerticalSpread(prev.strategy) && !isCreditSpread(prev.strategy) ? row.strike : prev.longStrike,
-                          shortPutStrike: isIronCondor(prev.strategy) && usesPutChain(prev) ? row.strike : prev.shortPutStrike,
-                          shortCallStrike: isIronCondor(prev.strategy) && !usesPutChain(prev) ? row.strike : prev.shortCallStrike,
-                          premium: row.mid || prev.premium,
-                          historicalVolatility: row.iv && row.iv < 300 ? row.iv : prev.historicalVolatility,
-                        }))
-                      }} className={`cursor-pointer border-b border-slate-100 text-secondary transition-colors dark:border-white/[0.04] ${rowTone}`}>
-                        <td className="py-2 font-mono font-bold text-heading">${row.strike.toFixed(2)}{row.is_atm ? <span className="ml-1 text-[10px] text-emerald-500">ATM</span> : null}</td>
-                        <td className="py-2 text-right font-mono font-semibold text-rose-600 dark:text-rose-300">${row.bid.toFixed(2)}</td>
-                        <td className="py-2 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-300">${row.ask.toFixed(2)}</td>
-                        <td className="py-2 text-right font-mono text-violet-600 dark:text-violet-300">${row.mid.toFixed(2)}</td>
-                        <td className={`py-2 text-right font-mono ${row.spread_pct <= 10 ? 'text-emerald-500' : row.spread_pct <= 18 ? 'text-amber-500' : 'text-rose-500'}`}>{row.spread_pct.toFixed(1)}%</td>
-                        <td className={`py-2 text-right font-mono ${row.volume >= 100 ? 'text-emerald-500' : row.volume > 0 ? 'text-amber-500' : 'text-rose-500'}`}>{row.volume}</td>
-                        <td className={`py-2 text-right font-mono ${row.open_interest >= 500 ? 'text-emerald-500' : row.open_interest >= 100 ? 'text-amber-500' : 'text-rose-500'}`}>{row.open_interest}</td>
-                        <td className={`py-2 text-right font-mono ${row.iv > 200 ? 'text-muted' : row.iv <= 55 ? 'text-emerald-500' : row.iv <= 85 ? 'text-amber-500' : 'text-rose-500'}`}>{row.iv > 200 ? '--' : `${row.iv.toFixed(0)}%`}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+          ) : isIronCondor(form.strategy) ? (
+            <div className="grid gap-4 2xl:grid-cols-2">
+              <OptionLegSelector title="Sell Put" side="SELL" kind="put" chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.shortPut} onSelect={row => selectLeg('shortPut', row, { shortPutStrike: row.strike })} />
+              <OptionLegSelector title="Buy Put Wing" side="BUY" kind="put" chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.longPut} onSelect={row => selectLeg('longPut', row, { longPutStrike: row.strike })} />
+              <OptionLegSelector title="Sell Call" side="SELL" kind="call" chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.shortCall} onSelect={row => selectLeg('shortCall', row, { shortCallStrike: row.strike })} />
+              <OptionLegSelector title="Buy Call Wing" side="BUY" kind="call" chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.longCall} onSelect={row => selectLeg('longCall', row, { longCallStrike: row.strike })} />
             </div>
+          ) : isCalendarLike(form.strategy) ? (
+            <div className="grid gap-4 2xl:grid-cols-2">
+              <OptionLegSelector title={`Sell Front ${optionKind.toUpperCase()}`} side="SELL" kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.sell} onSelect={row => selectLeg('sell', row, { shortStrike: row.strike, strike: row.strike })} />
+              <OptionLegSelector title={`Buy Back ${optionKind.toUpperCase()}`} side="BUY" kind={optionKind} chain={backChain || chain} stockPrice={form.stockPrice} selected={selectedLegRows.buy} onSelect={row => selectLeg('buy', row, { longStrike: row.strike })} />
+            </div>
+          ) : isVerticalSpread(form.strategy) ? (
+            <div className="grid gap-4 2xl:grid-cols-2">
+              {isCreditSpread(form.strategy) ? (
+                <>
+                  <OptionLegSelector title={`Sell Short ${optionKind.toUpperCase()}`} side="SELL" kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.short} onSelect={row => selectLeg('short', row, { shortStrike: row.strike, strike: row.strike })} />
+                  <OptionLegSelector title={`Buy Protection ${optionKind.toUpperCase()}`} side="BUY" kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.long} onSelect={row => selectLeg('long', row, { longStrike: row.strike })} />
+                </>
+              ) : (
+                <>
+                  <OptionLegSelector title={`Buy Long ${optionKind.toUpperCase()}`} side="BUY" kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.long} onSelect={row => selectLeg('long', row, { longStrike: row.strike, strike: row.strike })} />
+                  <OptionLegSelector title={`Sell Against ${optionKind.toUpperCase()}`} side="SELL" kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedLegRows.short} onSelect={row => selectLeg('short', row, { shortStrike: row.strike })} />
+                </>
+              )}
+            </div>
+          ) : (
+            <OptionLegSelector title={`${form.strategy} ${optionKind.toUpperCase()}`} side={form.strategy === 'Covered Call' || form.strategy === 'Cash Secured Put' ? 'SELL' : 'BUY'} kind={optionKind} chain={chain} stockPrice={form.stockPrice} selected={selectedRow} onSelect={row => selectLeg(form.strategy === 'Covered Call' || form.strategy === 'Cash Secured Put' ? 'short' : 'long', row, { strike: row.strike }, true)} />
           )}
         </Panel>
 
@@ -788,6 +811,81 @@ function LegBadge({ side, label }: { side: 'BUY' | 'SELL' | 'DEBIT' | 'CREDIT'; 
       <span>{side}</span>
       <span className="font-mono normal-case tracking-normal">{label}</span>
     </span>
+  )
+}
+
+function OptionLegSelector({
+  title,
+  side,
+  kind,
+  chain,
+  stockPrice,
+  selected,
+  onSelect,
+}: {
+  title: string
+  side: 'BUY' | 'SELL'
+  kind: 'call' | 'put'
+  chain: OptionChainLiquidityResponse
+  stockPrice: number
+  selected?: OptionChainRow | null
+  onSelect: (row: OptionChainRow) => void
+}) {
+  const rows = (kind === 'put' ? chain.puts : chain.calls)
+    .filter(r => Math.abs(r.strike - stockPrice) / Math.max(1, stockPrice) <= 0.18)
+    .slice(0, 24)
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-white/[0.07] dark:bg-slate-950/30">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-black uppercase tracking-widest text-heading">{title}</div>
+          <div className="text-[10px] text-muted">{chain.selected_expiry} · {chain.dte ?? '--'} DTE</div>
+        </div>
+        <LegBadge side={side} label={kind.toUpperCase()} />
+      </div>
+      <div className="max-h-[360px] overflow-auto">
+        <table className="w-full min-w-[620px] text-xs">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-widest text-muted dark:bg-slate-950">
+            <tr className="border-b border-slate-200 dark:border-white/[0.07]">
+              <th className="py-2 text-left">Strike</th>
+              <th className="py-2 text-right text-rose-600 dark:text-rose-300">Bid</th>
+              <th className="py-2 text-right text-emerald-600 dark:text-emerald-300">Ask</th>
+              <th className="py-2 text-right">Mid</th>
+              <th className="py-2 text-right">Spread</th>
+              <th className="py-2 text-right">Vol</th>
+              <th className="py-2 text-right">OI</th>
+              <th className="py-2 text-right">IV</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              const selectedRow = selected?.strike === row.strike
+              const liquid = row.volume >= 100 || row.open_interest >= 500
+              const spreadGood = row.spread_pct <= 10
+              const rowTone = selectedRow
+                ? 'bg-violet-500/12 ring-1 ring-inset ring-violet-500/30'
+                : spreadGood && liquid
+                  ? 'bg-emerald-500/[0.05] hover:bg-emerald-500/[0.08]'
+                  : row.spread_pct > 18
+                    ? 'bg-rose-500/[0.05] hover:bg-rose-500/[0.08]'
+                    : 'hover:bg-amber-500/[0.07]'
+              return (
+                <tr key={`${title}-${row.strike}`} onClick={() => onSelect(row)} className={`cursor-pointer border-b border-slate-100 text-secondary transition-colors dark:border-white/[0.04] ${rowTone}`}>
+                  <td className="py-2 font-mono font-bold text-heading">${row.strike.toFixed(2)}{row.is_atm ? <span className="ml-1 text-[10px] text-emerald-500">ATM</span> : null}</td>
+                  <td className="py-2 text-right font-mono font-semibold text-rose-600 dark:text-rose-300">${row.bid.toFixed(2)}</td>
+                  <td className="py-2 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-300">${row.ask.toFixed(2)}</td>
+                  <td className="py-2 text-right font-mono text-violet-600 dark:text-violet-300">${row.mid.toFixed(2)}</td>
+                  <td className={`py-2 text-right font-mono ${row.spread_pct <= 10 ? 'text-emerald-500' : row.spread_pct <= 18 ? 'text-amber-500' : 'text-rose-500'}`}>{row.spread_pct.toFixed(1)}%</td>
+                  <td className={`py-2 text-right font-mono ${row.volume >= 100 ? 'text-emerald-500' : row.volume > 0 ? 'text-amber-500' : 'text-rose-500'}`}>{row.volume}</td>
+                  <td className={`py-2 text-right font-mono ${row.open_interest >= 500 ? 'text-emerald-500' : row.open_interest >= 100 ? 'text-amber-500' : 'text-rose-500'}`}>{row.open_interest}</td>
+                  <td className={`py-2 text-right font-mono ${row.iv > 200 ? 'text-muted' : row.iv <= 55 ? 'text-emerald-500' : row.iv <= 85 ? 'text-amber-500' : 'text-rose-500'}`}>{row.iv > 200 ? '--' : `${row.iv.toFixed(0)}%`}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
