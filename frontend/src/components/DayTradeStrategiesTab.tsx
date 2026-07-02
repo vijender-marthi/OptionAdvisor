@@ -18,7 +18,7 @@ type DtTokens = {
   green: string; red: string; amber: string; accent: string; violet: string
 }
 
-type SubTab = 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes' | 'gap'
+type SubTab = 'patterns' | 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes' | 'gap'
 
 const TZ_LABEL: Record<string, string> = {
   'America/New_York': 'ET',
@@ -66,7 +66,7 @@ function tzLabel(tz: string): string {
 }
 
 export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
-  const [subTab, setSubTab] = useState<SubTab>('entry')
+  const [subTab, setSubTab] = useState<SubTab>('patterns')
   const [userTz, setUserTz] = useState<string>(() => {
     try { return localStorage.getItem('oa_timezone') || 'America/New_York' }
     catch { return 'America/New_York' }
@@ -82,6 +82,7 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
   }, [])
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'patterns', label: 'Pattern Playbook',    icon: <BarChart2 size={13} /> },
     { id: 'entry',    label: 'Entry Strategies',    icon: <ArrowUp size={13} /> },
     { id: 'gap',      label: 'Gap Scenarios',       icon: <Flame size={13} /> },
     { id: 'exit',     label: 'Exit Rules',          icon: <Target size={13} /> },
@@ -109,6 +110,7 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
         })}
       </div>
 
+      {subTab === 'patterns' && <PatternPlaybook dt={dt} />}
       {subTab === 'entry'    && <EntryStrategies dt={dt} tz={userTz} />}
       {subTab === 'gap'      && <GapScenarios dt={dt} />}
       {subTab === 'exit'     && <ExitRules dt={dt} tz={userTz} />}
@@ -117,6 +119,228 @@ export default function DayTradeStrategiesTab({ dt }: { dt: DtTokens }) {
       {subTab === 'risk'     && <RiskManagement dt={dt} />}
       {subTab === 'mistakes' && <CommonMistakes dt={dt} />}
     </div>
+  )
+}
+
+type PatternTone = 'bull' | 'bear' | 'neutral'
+
+type Pattern = {
+  title: string
+  bias: string
+  tone: PatternTone
+  bestFor: string
+  enter: string
+  wait: string
+  invalid: string
+  risk: string
+  chart: 'orh-break' | 'orl-break' | 'vwap-reject' | 'vwap-reclaim' | 'or-retest' | 'trend-pullback' | 'exhaustion' | 'range-fade'
+  checks: string[]
+}
+
+const DAY_TRADE_PATTERNS: Pattern[] = [
+  {
+    title: 'ORH Breakout',
+    bias: 'Long Call',
+    tone: 'bull',
+    bestFor: 'Fresh strength after the opening range.',
+    enter: '5m candle closes above ORH, then next candle holds ORH or breaks the prior high with volume.',
+    wait: 'ORH touched by wick only, volume is weak, or candle closes back inside the range.',
+    invalid: 'Two closes back below ORH or loss of VWAP after entry.',
+    risk: 'Stop under ORH/retest candle. Take T1 at +0.5 opening-range width.',
+    chart: 'orh-break',
+    checks: ['OR complete', 'Close above ORH', 'Above VWAP', 'Volume confirmed', 'Not near +2σ'],
+  },
+  {
+    title: 'ORL Breakdown',
+    bias: 'Long Put',
+    tone: 'bear',
+    bestFor: 'Opening weakness and trend-down days.',
+    enter: '5m candle closes below ORL, then continuation or failed bounce confirms sellers remain in control.',
+    wait: 'First tick below ORL only, price is already extended into -2σ, or QQQ/SPY are not aligned.',
+    invalid: 'Two closes back above ORL or reclaim of VWAP.',
+    risk: 'Stop over ORL/retest candle. Reduce size if ATR used is high.',
+    chart: 'orl-break',
+    checks: ['OR complete', 'Close below ORL', 'Below VWAP', 'Volume confirmed', 'No exhaustion signal'],
+  },
+  {
+    title: 'VWAP Rejection',
+    bias: 'Long Put',
+    tone: 'bear',
+    bestFor: 'Bearish continuation after a weak bounce.',
+    enter: 'Bounce into VWAP fails, rejection candle closes below VWAP, and next candle follows through.',
+    wait: 'Price is below VWAP but has not retested it, or rejection candle has no volume.',
+    invalid: 'Clean close and hold above VWAP.',
+    risk: 'Stop just above the rejection candle or VWAP plus buffer.',
+    chart: 'vwap-reject',
+    checks: ['Bearish bias', 'VWAP test', 'Rejection close', 'Follow-through', 'Defined stop'],
+  },
+  {
+    title: 'VWAP Reclaim',
+    bias: 'Long Call',
+    tone: 'bull',
+    bestFor: 'Failed selloff turning into an upside reversal.',
+    enter: 'Price reclaims VWAP, closes above it, then holds VWAP on the next candle.',
+    wait: 'One candle spikes above VWAP but closes weak, or price is still under ORMID.',
+    invalid: 'Close back below VWAP with rising sell volume.',
+    risk: 'Stop below VWAP or reclaim candle low.',
+    chart: 'vwap-reclaim',
+    checks: ['Prior weakness', 'VWAP reclaim', 'Hold candle', 'Market aligned', 'Room to ORH'],
+  },
+  {
+    title: 'OR Re-test Hold',
+    bias: 'Long Call / Long Put',
+    tone: 'neutral',
+    bestFor: 'Safer entry after the initial breakout already happened.',
+    enter: 'Breakout level flips into support/resistance and the retest candle closes in trend direction.',
+    wait: 'Retest cuts through the level or volume disappears.',
+    invalid: 'Level fails and price returns inside the opening range.',
+    risk: 'Stop just beyond the retested OR level.',
+    chart: 'or-retest',
+    checks: ['Breakout first', 'Pullback to OR level', 'Level holds', 'Volume stable', 'Continuation candle'],
+  },
+  {
+    title: 'Trend-Day Pullback',
+    bias: 'Long Call / Long Put',
+    tone: 'neutral',
+    bestFor: 'Strong days where VWAP retest may never happen.',
+    enter: 'Direction is confirmed, then first EMA/VWAP-lite pullback or small consolidation breaks in trend direction.',
+    wait: 'Move is extended and no pullback/consolidation has formed.',
+    invalid: 'Trend loses VWAP or forms a strong reversal candle.',
+    risk: 'Use smaller size if entry comes after a large ATR move.',
+    chart: 'trend-pullback',
+    checks: ['Direction engine aligned', 'Trend day state', 'First pullback', '1m trigger', 'No chase'],
+  },
+  {
+    title: 'Exhaustion Bounce Watch',
+    bias: 'Wait / Reduce Shorts',
+    tone: 'neutral',
+    bestFor: 'Avoiding late puts after a large down move.',
+    enter: 'No fresh short. Watch for first green 1m candle in -2σ zone if already short.',
+    wait: 'Price enters -1σ or -2σ but has not printed a reversal candle.',
+    invalid: 'Fresh breakdown below -2σ with volume and no green candle.',
+    risk: 'Do not chase. Trail or reduce existing bearish trades.',
+    chart: 'exhaustion',
+    checks: ['ATR used high', 'Near -1σ/-2σ', 'RSI stretched', 'First green candle', 'Protect profits'],
+  },
+  {
+    title: 'Range Fade',
+    bias: 'Quick scalp only',
+    tone: 'neutral',
+    bestFor: 'No-edge range days where ORH/ORL repeatedly reject.',
+    enter: 'Fade only at OR edge after failed breakout and clear rejection. Do not use if trend day is active.',
+    wait: 'Inside OR without edge. Let price reach an extreme first.',
+    invalid: 'Candle closes outside range with volume.',
+    risk: 'Small size, fast T1 near ORMID/VWAP.',
+    chart: 'range-fade',
+    checks: ['Range day', 'OR edge test', 'Failed breakout', 'Rejection candle', 'Fast target'],
+  },
+]
+
+function PatternPlaybook({ dt }: { dt: DtTokens }) {
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        {DAY_TRADE_PATTERNS.map(pattern => (
+          <PatternCard key={pattern.title} pattern={pattern} dt={dt} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PatternCard({ pattern, dt }: { pattern: Pattern; dt: DtTokens }) {
+  const toneColor = pattern.tone === 'bull' ? dt.green : pattern.tone === 'bear' ? dt.red : dt.accent
+  return (
+    <div className="dt-card" style={{ background: dt.bg, border: `1px solid ${dt.border}`, borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ padding: 14, borderBottom: `1px solid ${dt.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: dt.text }}>{pattern.title}</div>
+            <div style={{ marginTop: 3, fontSize: 11, color: dt.muted }}>{pattern.bestFor}</div>
+          </div>
+          <span style={{ flexShrink: 0, border: `1px solid ${toneColor}55`, background: `${toneColor}18`, color: toneColor, borderRadius: 999, padding: '3px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>
+            {pattern.bias}
+          </span>
+        </div>
+      </div>
+      <div style={{ padding: 12 }}>
+        <PatternDiagram kind={pattern.chart} dt={dt} tone={pattern.tone} />
+        <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+          <DecisionLine label="Enter" value={pattern.enter} color={dt.green} />
+          <DecisionLine label="Wait" value={pattern.wait} color={dt.amber} />
+          <DecisionLine label="Invalid" value={pattern.invalid} color={dt.red} />
+          <DecisionLine label="Risk" value={pattern.risk} color={dt.accent} />
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
+          {pattern.checks.map(check => (
+            <span key={check} style={{ border: `1px solid ${dt.border}`, background: dt.bgDeep, color: dt.muted, borderRadius: 999, padding: '3px 7px', fontSize: 10, fontWeight: 700 }}>
+              {check}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DecisionLine({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '58px 1fr', gap: 8, alignItems: 'start' }}>
+      <span style={{ color, fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+      <span style={{ color: 'inherit', opacity: 0.82, fontSize: 11.5, lineHeight: 1.45 }}>{value}</span>
+    </div>
+  )
+}
+
+function PatternDiagram({ kind, dt, tone }: { kind: Pattern['chart']; dt: DtTokens; tone: PatternTone }) {
+  const green = dt.green
+  const red = dt.red
+  const accent = dt.accent
+  const price = tone === 'bear' ? red : tone === 'bull' ? green : accent
+  const grid = dt.border
+  const candle = (x: number, o: number, c: number, h: number, l: number, color: string) => (
+    <g key={`${x}-${o}-${c}`}>
+      <line x1={x} x2={x} y1={h} y2={l} stroke={color} strokeWidth="1.2" />
+      <rect x={x - 4} y={Math.min(o, c)} width="8" height={Math.max(3, Math.abs(c - o))} rx="1.5" fill={color} opacity="0.9" />
+    </g>
+  )
+  const line = (y: number, label: string, color: string, dash = '5 4') => (
+    <g>
+      <line x1="12" x2="248" y1={y} y2={y} stroke={color} strokeDasharray={dash} strokeWidth="1.2" opacity="0.85" />
+      <text x="246" y={y - 4} textAnchor="end" fill={color} fontSize="9" fontWeight="700">{label}</text>
+    </g>
+  )
+  const candlesByKind: Record<Pattern['chart'], React.ReactNode[]> = {
+    'orh-break': [candle(34,72,62,78,58,green), candle(62,64,51,67,49,green), candle(90,53,39,56,38,green), candle(118,41,35,43,32,green), candle(146,38,30,40,29,green)],
+    'orl-break': [candle(34,52,63,49,68,red), candle(62,62,76,59,78,red), candle(90,75,90,72,92,red), candle(118,87,96,85,99,red), candle(146,95,106,92,108,red)],
+    'vwap-reject': [candle(34,92,80,96,78,red), candle(62,80,70,82,68,red), candle(90,70,58,72,56,red), candle(118,59,68,55,70,green), candle(146,67,78,64,80,red), candle(174,79,94,76,96,red)],
+    'vwap-reclaim': [candle(34,88,96,85,99,red), candle(62,95,102,92,104,red), candle(90,102,91,90,106,green), candle(118,90,80,78,92,green), candle(146,82,72,70,84,green), candle(174,74,64,62,76,green)],
+    'or-retest': [candle(34,80,66,84,64,green), candle(62,66,50,68,48,green), candle(90,51,40,53,38,green), candle(118,41,52,39,58,red), candle(146,52,44,50,55,green), candle(174,45,34,32,47,green)],
+    'trend-pullback': [candle(34,42,55,38,58,red), candle(62,55,70,52,72,red), candle(90,70,84,68,88,red), candle(118,84,76,74,88,green), candle(146,76,88,74,92,red), candle(174,88,101,86,104,red)],
+    exhaustion: [candle(34,42,58,40,60,red), candle(62,58,76,56,78,red), candle(90,76,92,74,95,red), candle(118,92,104,90,108,red), candle(146,104,96,94,110,green), candle(174,96,90,88,100,green)],
+    'range-fade': [candle(34,72,64,75,62,green), candle(62,64,56,67,54,green), candle(90,56,68,54,70,red), candle(118,68,76,66,79,red), candle(146,76,65,63,80,green), candle(174,65,56,54,68,green)],
+  }
+  return (
+    <svg viewBox="0 0 260 126" width="100%" height="126" role="img" aria-label={`${kind} pattern diagram`} style={{ display: 'block', border: `1px solid ${dt.border}`, borderRadius: 10, background: dt.bgDeep }}>
+      {[34, 62, 90, 118, 146, 174, 202].map(x => <line key={x} x1={x} x2={x} y1="16" y2="110" stroke={grid} opacity="0.3" />)}
+      {[32, 62, 92].map(y => <line key={y} x1="12" x2="248" y1={y} y2={y} stroke={grid} opacity="0.3" />)}
+      {kind.includes('or') || kind === 'range-fade' ? line(46, 'ORH', green) : null}
+      {kind.includes('or') || kind === 'range-fade' ? line(88, 'ORL', red) : null}
+      {kind.includes('vwap') || kind === 'trend-pullback' ? line(66, 'VWAP', accent, '3 4') : null}
+      {kind === 'exhaustion' ? line(86, '-1σ', accent, '3 4') : null}
+      {kind === 'exhaustion' ? line(102, '-2σ', red, '3 4') : null}
+      <g>{candlesByKind[kind]}</g>
+      <path
+        d={kind === 'orl-break' || kind === 'trend-pullback' ? 'M35 50 C70 66 92 82 120 88 C145 92 156 84 178 100' : kind === 'exhaustion' ? 'M35 44 C68 61 88 76 118 98 C138 110 154 101 178 90' : 'M35 82 C70 70 90 52 118 42 C142 34 158 44 178 31'}
+        fill="none"
+        stroke={price}
+        strokeWidth="2"
+        strokeLinecap="round"
+        opacity="0.8"
+      />
+      <circle cx="178" cy={kind === 'orl-break' || kind === 'trend-pullback' ? 100 : kind === 'exhaustion' ? 90 : 31} r="4" fill={price} />
+      <text x="14" y="118" fill={dt.muted} fontSize="9" fontWeight="700">Wait for close confirmation. Avoid wick-only entries.</text>
+    </svg>
   )
 }
 

@@ -105,6 +105,34 @@ class TrendEntryTimingLayerTests(unittest.TestCase):
         self.assertIn("put debit spread ready", layer["trade_timing_verdict"].lower())
 
 
+class SwingTradeDecisionRegressionTests(unittest.TestCase):
+    def test_bearish_extended_oversold_triggers_wait_pullback(self):
+        """RSI < 28 on a bearish setup should wait for bounce/reset, not a blind short."""
+        d = build_swing_trade_decision(
+            "FALLING", bull_score=1.0, bear_score=9.0,
+            market_context="MARKET_WEAK",
+            rsi_val=24.0, dist_ma20_pct=-9.0, mom_5d_pct=-9.5,
+            vol_ratio=2.0, vol_label="bear_expanding",
+        )
+        self.assertEqual(d["final_action"], "WAIT_PULLBACK")
+        self.assertEqual(d["entry_quality"], "WAIT_PULLBACK")
+        self.assertTrue(
+            any("failed bounce" in c.lower() or "fresh breakdown" in c.lower() for c in d["confirmation_needed"])
+        )
+
+    def test_bearish_slightly_extended_still_allows_trade_confirmation(self):
+        """Moderate bearish extension should not block an otherwise clean bearish swing setup."""
+        d = build_swing_trade_decision(
+            "SHORT_CLEAN", bull_score=1.5, bear_score=8.5,
+            market_context="MARKET_WEAK",
+            rsi_val=41.0, dist_ma20_pct=-5.0, mom_5d_pct=-4.0,
+            vol_ratio=1.4, vol_label="bear_expanding",
+        )
+        self.assertIn(d["final_action"], ("GO", "STRONG_GO", "GO_SMALL"))
+        self.assertIn(d["entry_quality"], ("GOOD_ENTRY", "CAUTION_ENTRY"))
+        self.assertIn(d["suggested_strategy"], ("LONG_PUT", "PUT_DEBIT_SPREAD", "CALL_CREDIT_SPREAD"))
+
+
 # ─── Market ETF special case ─────────────────────────────────────────
 
 def test_spy_classified_as_market_context_only():
@@ -508,15 +536,28 @@ def test_bearish_quality_returns_go_or_strong_go():
     assert d["swing_bias"]    in ("BEARISH", "STRONG_BEARISH")
 
 def test_bearish_extended_oversold_triggers_wait():
-    """RSI < 28 on a bearish setup → is_extended → WAIT_FOR_BREAKDOWN."""
+    """RSI < 28 on a bearish setup → wait for bounce/reset, not a blind short."""
     d = build_swing_trade_decision(
         "FALLING", bull_score=1.0, bear_score=9.0,
         market_context="MARKET_WEAK",
         rsi_val=24.0, dist_ma20_pct=-9.0, mom_5d_pct=-9.5,
         vol_ratio=2.0, vol_label="bear_expanding",
     )
-    assert d["final_action"] in ("WAIT_FOR_BREAKDOWN", "WAIT_PULLBACK")
+    assert d["final_action"] == "WAIT_PULLBACK"
     assert d["entry_quality"] == "WAIT_PULLBACK"
+    assert any("failed bounce" in c.lower() or "fresh breakdown" in c.lower() for c in d["confirmation_needed"])
+
+def test_bearish_slightly_extended_still_allows_trade_confirmation():
+    """Moderate bearish extension should not block an otherwise clean bearish swing setup."""
+    d = build_swing_trade_decision(
+        "SHORT_CLEAN", bull_score=1.5, bear_score=8.5,
+        market_context="MARKET_WEAK",
+        rsi_val=41.0, dist_ma20_pct=-5.0, mom_5d_pct=-4.0,
+        vol_ratio=1.4, vol_label="bear_expanding",
+    )
+    assert d["final_action"] in ("GO", "STRONG_GO", "GO_SMALL")
+    assert d["entry_quality"] in ("GOOD_ENTRY", "CAUTION_ENTRY")
+    assert d["suggested_strategy"] in ("LONG_PUT", "PUT_DEBIT_SPREAD", "CALL_CREDIT_SPREAD")
 
 
 # ─── Quality score bounds ────────────────────────────────────────────

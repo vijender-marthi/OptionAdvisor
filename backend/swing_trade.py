@@ -708,7 +708,7 @@ def build_swing_trade_decision(
     elif is_extended:
         entry_quality  = "WAIT_PULLBACK"
         decision_label = "BULLISH_BUT_EXTENDED"
-        final_action   = "WAIT_PULLBACK" if is_bullish else "WAIT_FOR_BREAKDOWN"
+        final_action   = "WAIT_PULLBACK"
         if is_bullish and rsi_val > RSI_OB_WARN:
             confirmation_needed.append(f"RSI pullback below 70 (currently {rsi_val:.0f})")
         if is_bullish and mom_5d_pct > EXT_5D_WARN:
@@ -719,6 +719,8 @@ def build_swing_trade_decision(
             )
         if not is_bullish and rsi_val < RSI_OS_WARN:
             confirmation_needed.append(f"RSI bounce above 30 (currently {rsi_val:.0f}) before shorting")
+        if not is_bullish:
+            confirmation_needed.append("Wait for a failed bounce into resistance or a fresh breakdown with volume")
 
     elif trade_quality_score >= 8.0 and risk_level in ("LOW", "MEDIUM"):
         entry_quality  = "GOOD_ENTRY"
@@ -2913,17 +2915,20 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
     timing_trend_score = float(timing_layer.get("trend_score") or 0.0)
     timing_entry_score = float(timing_layer.get("entry_quality_score") or 0.0)
     timing_bounce_risk = str(timing_layer.get("bounce_risk") or "")
+    timing_stage = str(timing_layer.get("trend_stage") or "")
+    timing_is_late = (
+        timing_entry_score < 50
+        or timing_bounce_risk in ("High", "Extreme")
+        or timing_stage in ("Extended Decline", "Extended Advance", "Reversal Risk")
+        or (timing_entry_score < 60 and timing_stage in ("No Trade Zone",))
+    )
     if (
         timing_trend_score >= 75
-        and (
-            timing_entry_score < 60
-            or timing_bounce_risk in ("High", "Extreme")
-            or timing_layer.get("trend_stage") in ("Extended Decline", "Extended Advance", "Reversal Risk")
-        )
+        and timing_is_late
         and decision["final_action"] in ("STRONG_GO", "GO", "GO_SMALL")
     ):
         decision["entry_quality"] = "LATE_ENTRY"
-        decision["final_action"] = "WAIT_PULLBACK" if bias == "long" else "WAIT_FOR_BREAKDOWN"
+        decision["final_action"] = "WAIT_PULLBACK"
         decision["decision_label"] = "DIRECTION_VALID_TIMING_LATE"
         decision["confirmation_needed"] = list(dict.fromkeys(
             list(decision.get("confirmation_needed") or [])

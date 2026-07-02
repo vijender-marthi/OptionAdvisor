@@ -430,6 +430,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { swingTradeWatchlistRef.current = swingTradeWatchlist }, [swingTradeWatchlist])
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
+  const userDataLoadedRef = useRef(userDataLoaded)
+  useEffect(() => { userDataLoadedRef.current = userDataLoaded }, [userDataLoaded])
   const tickerCacheRef = useRef(tickerCache)
   useEffect(() => { tickerCacheRef.current = tickerCache }, [tickerCache])
   const portfolioExpiryFetchRef = useRef<Set<string>>(new Set())
@@ -504,7 +506,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await getUserData(user.email)
         if (cancelled) return
         setWatchlist(data.watchlist)
-        setPortfolio(data.portfolio)
+        const incomingPortfolio = Array.isArray(data.portfolio) ? data.portfolio : []
+        const currentPortfolio = portfolioRef.current
+        if (incomingPortfolio.length === 0 && currentPortfolio.length > 0 && userDataLoadedRef.current) {
+          console.warn('[user-data] empty portfolio response ignored; keeping last non-empty portfolio snapshot')
+        } else {
+          setPortfolio(incomingPortfolio)
+        }
         let dt: string[] = Array.isArray(data.day_trade_watchlist)
           ? data.day_trade_watchlist.map(x => String(x).trim().toUpperCase()).filter(Boolean)
           : []
@@ -532,11 +540,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn('[user-data] load failed:', e)
         if (!cancelled) {
-          setPortfolio([])
-          setWatchlist([])
-          setWatchlistMax(15)
-          setDayTradeWatchlist([])
-          setSwingTradeWatchlist([])
+          if (portfolioRef.current.length === 0) setPortfolio([])
+          if (watchlistRef.current.length === 0) setWatchlist([])
+          if (watchlistRef.current.length === 0) setWatchlistMax(15)
+          if (dayTradeWatchlistRef.current.length === 0) setDayTradeWatchlist([])
+          if (swingTradeWatchlistRef.current.length === 0) setSwingTradeWatchlist([])
           setUserDataLoaded(false)
           setAdvisoryAcceptedAt(null)
           setAdvisoryTermsVersion(null)

@@ -1887,7 +1887,9 @@ export default function PositionsCenter() {
   const canDay   = canAccessPage('day-trade')
   const canSwing = canAccessPage('swing-trade')
   const [env, setEnv] = useState<ApiEnvelope<Record<string, unknown>> | null>(null)
+  const lastGoodEnvRef = useRef<ApiEnvelope<Record<string, unknown>> | null>(null)
   const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState<{ message: string; tone?: 'success' | 'error' } | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [closingId, setClosingId] = useState<string | null>(null)
@@ -1928,9 +1930,14 @@ export default function PositionsCenter() {
     setLoading(true)
     try {
       const e = await fetchPositionsCenter()
+      lastGoodEnvRef.current = e
       setEnv(e)
-    } catch {
-      setEnv(null)
+    } catch (err) {
+      console.warn('[positions-center] refresh failed:', err)
+      if (lastGoodEnvRef.current) {
+        setEnv(lastGoodEnvRef.current)
+      }
+      setNotice({ message: 'Could not refresh positions analytics. Showing last loaded data.', tone: 'error' })
     } finally {
       setLoading(false)
     }
@@ -1969,11 +1976,17 @@ export default function PositionsCenter() {
   const exitBadgeByTicker = (d.exit_badge_by_ticker ?? {}) as Record<string, string>
   const rawTab = positionsTab as string
   const tab: MainTabId = TABS.some(t => t.id === rawTab) ? (rawTab as MainTabId) : 'dashboard'
+  const apiPortfolio = useMemo(() => {
+    const openDetail = Array.isArray(d.open_positions_detail) ? d.open_positions_detail : []
+    const closedDetail = Array.isArray(d.closed_trades_detail) ? d.closed_trades_detail : []
+    return [...openDetail, ...closedDetail] as PortfolioPosition[]
+  }, [env])
+  const displayPortfolio = portfolio.length > 0 ? portfolio : apiPortfolio
 
-  const openPortfolio   = useMemo(() => portfolio.filter(p => p.status === 'open'), [portfolio])
-  const closedPortfolio = useMemo(() => portfolio.filter(p => p.status === 'closed'), [portfolio])
-  const stockPortfolio  = useMemo(() => portfolio.filter(isStockPos), [portfolio])
-  const optionPortfolio = useMemo(() => portfolio.filter(isOptionPos), [portfolio])
+  const openPortfolio   = useMemo(() => displayPortfolio.filter(p => p.status === 'open'), [displayPortfolio])
+  const closedPortfolio = useMemo(() => displayPortfolio.filter(p => p.status === 'closed'), [displayPortfolio])
+  const stockPortfolio  = useMemo(() => displayPortfolio.filter(isStockPos), [displayPortfolio])
+  const optionPortfolio = useMemo(() => displayPortfolio.filter(isOptionPos), [displayPortfolio])
   const openStockPortfolio = useMemo(() => openPortfolio.filter(isStockPos), [openPortfolio])
   const closedStockPortfolio = useMemo(() => closedPortfolio.filter(isStockPos), [closedPortfolio])
   const openOptionPortfolio = useMemo(() => openPortfolio.filter(isOptionPos), [openPortfolio])
@@ -2023,7 +2036,7 @@ export default function PositionsCenter() {
     : regime === 'bearish' ? { label: 'Bearish', cls: getDecisionBadgeClass('AVOID') }
     : { label: 'Mixed', cls: getDecisionBadgeClass('WATCH') }
 
-  const positions = tab === 'stocks' ? stockPortfolio : tab === 'options' ? optionPortfolio : portfolio
+  const positions = tab === 'stocks' ? stockPortfolio : tab === 'options' ? optionPortfolio : displayPortfolio
 
   const filtered = useMemo(() => {
     let list = [...positions]
@@ -2181,8 +2194,6 @@ export default function PositionsCenter() {
     XLSX.writeFile(wb, `positions-${tabLabel.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }, [filtered, tab])
 
-  const [notice, setNotice] = useState<{ message: string; tone?: 'success' | 'error' } | null>(null)
-
   useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(null), 3000)
@@ -2192,18 +2203,18 @@ export default function PositionsCenter() {
 
   const editingPos = useMemo(() => {
     if (!editingId) return null
-    return portfolio.find(p => p.id === editingId) ?? null
-  }, [editingId, portfolio])
+    return displayPortfolio.find(p => p.id === editingId) ?? null
+  }, [displayPortfolio, editingId])
 
   const reviewingClosedPos = useMemo(() => {
     if (!reviewingClosedId) return null
-    return portfolio.find(p => p.id === reviewingClosedId) ?? null
-  }, [reviewingClosedId, portfolio])
+    return displayPortfolio.find(p => p.id === reviewingClosedId) ?? null
+  }, [displayPortfolio, reviewingClosedId])
 
   const closingPos = useMemo(() => {
     if (!closingId) return null
-    return portfolio.find(p => p.id === closingId && p.status === 'open') ?? null
-  }, [closingId, portfolio])
+    return displayPortfolio.find(p => p.id === closingId && p.status === 'open') ?? null
+  }, [closingId, displayPortfolio])
 
   const handleSaveEdit = useCallback((id: string, data: Omit<PortfolioPosition, 'id' | 'addedAt' | 'status'>) => {
     updatePortfolioPosition(id, data)
@@ -2347,7 +2358,7 @@ export default function PositionsCenter() {
                 {t.label} <span className="text-[11px] opacity-70">({
                   t.id === 'stocks' ? stockPortfolio.length
                   : t.id === 'options' ? optionPortfolio.length
-                  : portfolio.length
+                  : displayPortfolio.length
                 })</span>
               </button>
             ))}
@@ -2475,7 +2486,7 @@ export default function PositionsCenter() {
 
       {tab === 'dashboard' ? (
         <PositionsDashboardTab
-          portfolio={portfolio}
+          portfolio={displayPortfolio}
           sectorPnl={(d.sector_pnl ?? []) as any[]}
           pnlByPeriod={(d.pnl_by_period ?? []) as any[]}
           pnlByStrategy={(d.pnl_by_strategy ?? []) as any[]}

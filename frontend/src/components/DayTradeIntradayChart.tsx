@@ -202,6 +202,8 @@ export default function DayTradeIntradayChart({
   const [hidden, setHidden] = useState<Set<number>>(new Set())
   const [expandedOpen, setExpandedOpen] = useState(false)
   const [view, setView] = useState<{ start: number; end: number }>(() => ({ start: 0, end: Math.max(0, bars.length - 1) }))
+  const dragRef = useRef<{ x: number; start: number; end: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
   useEffect(() => {
     setView({ start: 0, end: Math.max(0, bars.length - 1) })
@@ -432,6 +434,13 @@ export default function DayTradeIntradayChart({
   }
 
   const resetZoom = () => setView({ start: 0, end: Math.max(0, bars.length - 1) })
+  const setLatestWindow = (count: number) => {
+    setView(() => {
+      const n = bars.length
+      const width = Math.max(8, Math.min(n, count))
+      return { start: Math.max(0, n - width), end: Math.max(0, n - 1) }
+    })
+  }
   const zoomBy = (factor: number, anchor = 0.5) => {
     setView(prev => {
       const n = bars.length
@@ -455,6 +464,30 @@ export default function DayTradeIntradayChart({
       return { start: ns, end: ns + width - 1 }
     })
   }
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (bars.length < 3) return
+    const target = e.target as HTMLElement
+    if (target.closest('button')) return
+    dragRef.current = { x: e.clientX, start: view.start, end: view.end }
+    setIsDragging(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag || bars.length < 3) return
+    const width = drag.end - drag.start + 1
+    if (width >= bars.length) return
+    const plotW = Math.max(1, (wrapRef.current?.clientWidth ?? 0) - PAD.l - PAD.r)
+    const barsPerPx = width / plotW
+    const deltaBars = Math.round((drag.x - e.clientX) * barsPerPx)
+    const ns = Math.max(0, Math.min(drag.start + deltaBars, bars.length - width))
+    setView({ start: ns, end: ns + width - 1 })
+  }
+  const handlePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragRef.current = null
+    setIsDragging(false)
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* pointer may already be released */ }
+  }
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (bars.length < 3) return
     e.preventDefault()
@@ -469,14 +502,38 @@ export default function DayTradeIntradayChart({
     zoomBy(e.deltaY < 0 ? 0.84 : 1.18, anchor)
   }
   const zoomLabel = visibleN >= bars.length ? 'Full' : `${visibleN}/${bars.length} bars`
+  const candleIntervalLabel = useMemo(() => {
+    if (bars.length < 2) return 'session'
+    const delta = Math.round((new Date(bars[1]!.t).getTime() - new Date(bars[0]!.t).getTime()) / 60000)
+    if (delta >= 55) return '1h candles'
+    if (delta >= 14) return '15m candles'
+    if (delta >= 4) return '5m candles'
+    return '1m candles'
+  }, [bars])
 
   return (
     <div ref={wrapRef} className="day-trade-chart w-full min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Session chart (1m)
+          Session chart · {candleIntervalLabel}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 text-[11px] text-gray-500">
+          {[
+            ['30m', 30],
+            ['1h', 60],
+            ['2h', 120],
+            ['All', bars.length],
+          ].map(([label, count]) => (
+            <button
+              key={String(label)}
+              type="button"
+              onClick={() => Number(count) >= bars.length ? resetZoom() : setLatestWindow(Number(count))}
+              className="rounded-md border border-slate-200 px-2 py-1 font-semibold text-secondary hover:text-heading dark:border-white/[0.08]"
+              title={`Show latest ${label}`}
+            >
+              {label}
+            </button>
+          ))}
           {!hideExpandControl && (
             <button type="button" onClick={() => setExpandedOpen(true)} className="rounded-md border border-slate-200 px-2 py-1 font-semibold text-secondary hover:text-heading dark:border-white/[0.08]">
               Expand
@@ -637,8 +694,12 @@ export default function DayTradeIntradayChart({
       <div
         className="overflow-hidden rounded-xl border border-gray-800/80 bg-black/20"
         onWheel={handleWheel}
-        style={{ touchAction: 'none' }}
-        title="Trackpad: scroll to zoom, horizontal swipe or Shift+scroll to pan"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        style={{ touchAction: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
+        title="Trackpad: scroll to zoom, horizontal swipe or Shift+scroll to pan. Drag chart to pan after zooming."
       >
         <svg
           width={W}

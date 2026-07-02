@@ -1186,7 +1186,7 @@ export default function DayTradePage() {
         <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: `1px solid ${dt.border}` }}>
           {([
             { id: 'overview'    as const, label: 'Overview',    icon: <Activity size={14} />,            accent: dt.accent },
-            { id: 'strategies'  as const, label: 'Strategies',  icon: <BarChart2 size={14} />,           accent: dt.violet },
+            { id: 'strategies'  as const, label: 'Strategy Playbook',  icon: <BarChart2 size={14} />,    accent: dt.violet },
             { id: 'chat'        as const, label: 'Trade Check',  icon: <MessageSquare size={14} />,       accent: dt.green  },
           ]).map(({ id, label, icon, accent }) => {
             const active = activeTab === id
