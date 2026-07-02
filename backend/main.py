@@ -50,7 +50,7 @@ from models import (
 import bar_cache
 from bar_cache import get_history as _bc_hist, get_info as _bc_info
 from bar_cache import get_option_dates as _bc_opt_dates, get_option_chain as _bc_chain
-from analysis import generate_signals
+from analysis import build_hv_series, compute_iv_rank, generate_signals
 from day_trade import run_day_trade_scan, underlying_intraday_snapshot_for_active_trade, clear_scan_cache as _clear_day_scan_cache
 from ai_coach import get_ai_coach
 from swing_trade import run_swing_trade_scan, clear_scan_cache as _clear_swing_scan_cache
@@ -5515,6 +5515,29 @@ def option_chain_liquidity(
     except Exception:
         pass
 
+    calls_rows = _process(calls_df)
+    puts_rows = _process(puts_df)
+    chain_ivs = [r["iv"] for r in calls_rows + puts_rows if safe_float(r.get("iv", 0)) > 0]
+    current_iv = round(float(pd.Series(chain_ivs).median()), 2) if chain_ivs else None
+    historical_volatility = None
+    iv_rank = None
+    iv_percentile = None
+    try:
+        hist = bar_cache.get_history(t, period="1y", interval="1d", auto_adjust=True, force_refresh=force_refresh)
+        if hist is not None and not hist.empty and "Close" in hist:
+            close = hist["Close"].dropna()
+            if len(close) >= 25:
+                hv_series = build_hv_series(close, window=20)
+                hv_clean = hv_series.dropna()
+                if not hv_clean.empty:
+                    historical_volatility = round(float(hv_clean.iloc[-1]), 2)
+                    iv_ref = current_iv if current_iv is not None else historical_volatility
+                    if iv_ref is not None:
+                        iv_rank = round(float(compute_iv_rank(hv_clean, iv_ref)), 2)
+                        iv_percentile = round(float((hv_clean <= iv_ref).mean() * 100.0), 2)
+    except Exception:
+        pass
+
     return {
         "ticker":          t,
         "current_price":   round(current_price, 2),
@@ -5523,8 +5546,12 @@ def option_chain_liquidity(
         "expiries":        list(opt_dates[:12]),
         "selected_expiry": target_expiry,
         "dte":             dte_val,
-        "calls":           _process(calls_df),
-        "puts":            _process(puts_df),
+        "iv_rank":         iv_rank,
+        "iv_percentile":   iv_percentile,
+        "historical_volatility": historical_volatility,
+        "current_iv":      current_iv,
+        "calls":           calls_rows,
+        "puts":            puts_rows,
     }
 
 

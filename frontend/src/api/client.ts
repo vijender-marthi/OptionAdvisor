@@ -433,6 +433,10 @@ export interface OptionChainLiquidityResponse {
   expiries: string[]
   selected_expiry: string
   dte: number | null
+  iv_rank?: number | null
+  iv_percentile?: number | null
+  historical_volatility?: number | null
+  current_iv?: number | null
   calls: OptionChainRow[]
   puts: OptionChainRow[]
 }

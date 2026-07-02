@@ -168,6 +168,50 @@ function parsePrice(s: string): number {
   return m ? parseFloat(m[1].replace(/,/g, '')) : 0
 }
 
+function fmtDateLong(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function compareSavedLevel(saved: StockAnalysis, today?: StockAnalysis | null) {
+  const close = saved.close
+  const bullEntry = parsePrice(saved.scenarios.bull.entry) || null
+  const bullStop = parsePrice(saved.scenarios.bull.stop) || null
+  const bullT1 = parsePrice(saved.scenarios.bull.t1) || null
+  const bullT2 = parsePrice(saved.scenarios.bull.t2) || null
+  const bearEntry = parsePrice(saved.scenarios.bear.entry) || null
+  const bearStop = parsePrice(saved.scenarios.bear.stop) || null
+  const bearT1 = parsePrice(saved.scenarios.bear.t1) || null
+  const bearT2 = parsePrice(saved.scenarios.bear.t2) || null
+  const orMid = saved.vwap ?? close
+  const orHalf = Math.max(Math.abs((bullEntry ?? close) - orMid), Math.abs(orMid - (bearEntry ?? close)), close * 0.008)
+  const orh = orMid + orHalf
+  const orl = orMid - orHalf
+  const todayPrice = today?.close ?? null
+  const vsMid = todayPrice == null ? null : todayPrice - orMid
+  let outcome = 'Load today'
+  let tone: 'good' | 'bad' | 'warn' | 'flat' = 'flat'
+  if (todayPrice != null && bullEntry != null && bearEntry != null) {
+    if (bullT2 != null && todayPrice >= bullT2) { outcome = 'Bull — through T2'; tone = 'good' }
+    else if (bullT1 != null && todayPrice >= bullT1) { outcome = 'Bull — T1 hit'; tone = 'good' }
+    else if (todayPrice >= bullEntry) { outcome = 'Bull trigger'; tone = 'good' }
+    else if (bearT2 != null && todayPrice <= bearT2) { outcome = 'Bear — through T2'; tone = 'bad' }
+    else if (bearT1 != null && todayPrice <= bearT1) { outcome = 'Bear — T1 hit'; tone = 'bad' }
+    else if (todayPrice <= bearEntry) { outcome = 'Bear trigger'; tone = 'bad' }
+    else if (Math.abs(todayPrice - orMid) <= orHalf * 0.25) { outcome = 'Flat / mid'; tone = 'flat' }
+    else { outcome = todayPrice > orMid ? 'Above mid' : 'Below mid'; tone = 'warn' }
+  }
+  return {
+    close, orh, orl, orMid, vwap: saved.vwap ?? orMid,
+    bullEntry, bullStop, bullT1, bullT2,
+    bearEntry, bearStop, bearT1, bearT2,
+    todayPrice, vsMid, outcome, tone,
+    flatProbability: Math.max(0, 100 - saved.scenarios.bull.probability - saved.scenarios.bear.probability),
+  }
+}
+
 function loadExitState(ticker: string, type: string): ExitStrategyState {
   try {
     const saved = localStorage.getItem(EXIT_STRATEGY_KEY + ticker + '_' + type + '_' + todayKey())
@@ -766,6 +810,85 @@ function fmtSwingDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function EodHistoryCompareTable({
+  viewDate,
+  todayDate,
+  savedEntries,
+  todayEntries,
+  isDark,
+}: {
+  viewDate: string
+  todayDate: string
+  savedEntries: Record<string, SnapshotEntry>
+  todayEntries: Record<string, SnapshotEntry>
+  isDark: boolean
+}) {
+  const rows = Object.values(savedEntries)
+    .map(entry => {
+      const saved = entry.analysis
+      const today = todayEntries[saved.ticker]?.analysis ?? null
+      return { saved, cmp: compareSavedLevel(saved, today) }
+    })
+    .sort((a, b) => a.saved.ticker.localeCompare(b.saved.ticker))
+  if (rows.length === 0 || viewDate === todayDate) return null
+  const bdr = eodHairline(isDark)
+  const bg = eodPanelBg(isDark)
+  const tx = eodTxStrong(isDark)
+  const muted = eodTxMuted(isDark)
+  const cell = { padding: '7px 9px', borderBottom: `1px solid ${bdr}`, whiteSpace: 'nowrap' as const }
+  const levelText = (vals: Array<number | null>, prob: number) =>
+    `${vals.map(v => v != null ? v.toFixed(2) : '—').join(' / ')} (${prob}%)`
+  return (
+    <div style={{ marginBottom: 14, border: `1px solid ${bdr}`, borderRadius: 10, background: bg, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 12px', borderBottom: `1px solid ${bdr}`, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: tx }}>Pre-save vs Today — Score your levels</div>
+          <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>{fmtDateLong(viewDate)} saved levels compared with {fmtDateLong(todayDate)} current snapshots.</div>
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: muted }}>{rows.length} tickers</div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead style={{ color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <tr>
+              {['Ticker', 'Bias', 'Close', 'ORH', 'ORL', 'OR Mid', 'VWAP', 'Bull E/S/T1/T2', 'Bear E/S/T1/T2', 'Flat', 'Today Price', 'vs OR Mid', 'Triggered?'].map(h => (
+                <th key={h} style={{ ...cell, textAlign: h === 'Ticker' || h === 'Bias' || h === 'Triggered?' ? 'left' : 'right', fontWeight: 800 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ saved, cmp }) => {
+              const toneColor = cmp.tone === 'good' ? '#3fb950' : cmp.tone === 'bad' ? '#f85149' : cmp.tone === 'warn' ? '#d29922' : muted
+              return (
+                <tr key={saved.ticker} style={{ color: tx }}>
+                  <td style={{ ...cell, fontWeight: 800, fontFamily: 'monospace' }}>{saved.ticker}</td>
+                  <td style={{ ...cell, color: saved.bias === 'bull' ? '#3fb950' : saved.bias === 'bear' ? '#f85149' : '#d29922', textAlign: 'left' }}>{saved.bias}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.close.toFixed(2)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.orh.toFixed(2)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.orl.toFixed(2)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.orMid.toFixed(2)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.vwap.toFixed(2)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: '#3fb950' }}>{levelText([cmp.bullEntry, cmp.bullStop, cmp.bullT1, cmp.bullT2], saved.scenarios.bull.probability)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: '#f85149' }}>{levelText([cmp.bearEntry, cmp.bearStop, cmp.bearT1, cmp.bearT2], saved.scenarios.bear.probability)}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: '#d29922' }}>{cmp.flatProbability}%</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace' }}>{cmp.todayPrice != null ? cmp.todayPrice.toFixed(2) : '—'}</td>
+                  <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: cmp.vsMid != null ? (cmp.vsMid >= 0 ? '#3fb950' : '#f85149') : muted }}>
+                    {cmp.vsMid != null ? `${cmp.vsMid >= 0 ? '+' : ''}${cmp.vsMid.toFixed(2)}` : '—'}
+                  </td>
+                  <td style={{ ...cell, color: toneColor, fontWeight: 800 }}>{cmp.outcome}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: '8px 12px', color: muted, fontSize: 10, lineHeight: 1.5 }}>
+        Morning workflow: open yesterday’s saved date, refresh today’s tickers, then use this table to see whether yesterday’s bull, bear, or flat plan actually triggered.
+      </div>
+    </div>
+  )
+}
+
 // Fib ladder — dotted horizontal lines per level, labelled with % + price (Part 13).
 function FibLadder({ fib, price, colors }: { fib: FibData; price: number; colors: PanelColors }) {
   const vals = FIB_PCTS.map(p => fib.levels[p])
@@ -1310,6 +1433,8 @@ export default function EODJournalPage() {
 
   const panelColors: PanelColors = { isDark, cardBg, cardBg2, bdr, tx, txMuted }
   const gc = (cols: string, mobileCols = '1fr') => ({ gridTemplateColumns: isMobile ? mobileCols : cols })
+  const savedCompareEntries = useMemo(() => loadDaySnapshots(viewDate), [viewDate])
+  const todayCompareEntries = useMemo(() => loadDaySnapshots(todayKey()), [viewDate, analysis?.ticker, analysis?.close])
 
   const iStyle: React.CSSProperties = {
     background: isDark ? '#0d1117' : '#f6f8fa',
@@ -1538,6 +1663,13 @@ export default function EODJournalPage() {
 
         {/* ── Main Content ── */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <EodHistoryCompareTable
+            viewDate={viewDate}
+            todayDate={todayKey()}
+            savedEntries={savedCompareEntries}
+            todayEntries={todayCompareEntries}
+            isDark={isDark}
+          />
 
           {/* Empty state */}
           {!selected && (

@@ -1528,19 +1528,21 @@ def _trend_entry_timing_layer(
     else:
         extension_label = "Very Extended"
 
+    aligned_volume = ("bear" in vol_label and is_bearish) or ("bull" in vol_label and not is_bearish)
+
     entry = 72.0
     if extension > 6:
-        entry -= 30
+        entry -= 24
     elif extension > 4:
-        entry -= 18
+        entry -= 12
     elif extension > 2:
-        entry -= 8
+        entry -= 6
 
     candle_run = _consecutive_directional_candles(raw, bearish=is_bearish)
     if candle_run >= 4:
-        entry -= 14
+        entry -= 8
     elif candle_run >= 3:
-        entry -= 9
+        entry -= 5
 
     prior_raw = raw.iloc[:-1] if len(raw) > 1 else raw
     support_window = prior_raw["Low"].tail(30)
@@ -1550,18 +1552,18 @@ def _trend_entry_timing_layer(
     near_support = is_bearish and prior_support > 0 and abs(last - prior_support) / prior_support * 100 <= 2.0
     near_resistance = (not is_bearish) and prior_resistance > 0 and abs(prior_resistance - last) / prior_resistance * 100 <= 2.0
     if near_support or near_resistance:
-        entry -= 12
+        entry -= 4 if aligned_volume else 10
 
     if is_bearish:
         if rsi_val < 35:
             entry -= 18
         elif rsi_val < 42:
-            entry -= 8
+            entry -= 4
     else:
         if rsi_val > 70:
             entry -= 18
         elif rsi_val > 63:
-            entry -= 8
+            entry -= 4
 
     if hv_20 is not None:
         if hv_20 >= 55:
@@ -1569,7 +1571,6 @@ def _trend_entry_timing_layer(
         elif hv_20 >= 40:
             entry -= 7
 
-    aligned_volume = ("bear" in vol_label and is_bearish) or ("bull" in vol_label and not is_bearish)
     if aligned_volume and vol_ratio >= 1.2:
         entry += 10
     if (is_bearish and market_context == "MARKET_WEAK") or ((not is_bearish) and market_context == "MARKET_SUPPORTIVE"):
@@ -1583,16 +1584,16 @@ def _trend_entry_timing_layer(
 
     risk_points = 0
     if extension > 6: risk_points += 3
-    elif extension > 4: risk_points += 2
+    elif extension > 4: risk_points += 1
     elif extension > 2: risk_points += 1
     if is_bearish:
         if rsi_val < 35: risk_points += 3
-        elif rsi_val < 42: risk_points += 2
+        elif rsi_val < 42: risk_points += 1
     else:
         if rsi_val > 70: risk_points += 3
-        elif rsi_val > 63: risk_points += 2
-    if candle_run >= 3: risk_points += 2
-    if near_support or near_resistance: risk_points += 2
+        elif rsi_val > 63: risk_points += 1
+    if candle_run >= 3: risk_points += 1
+    if near_support or near_resistance: risk_points += 1 if aligned_volume else 2
     if hv_20 is not None and hv_20 >= 40: risk_points += 1
     if risk_points >= 8:
         bounce_risk = "Extreme"

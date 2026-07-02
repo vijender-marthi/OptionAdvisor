@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -31,7 +31,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { evaluateTradeWorksheet, fetchOptionChainLiquidity, saveToJournal, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
+import { evaluateTradeWorksheet, fetchOptionChainLiquidity, getJournal, saveToJournal, type OptionChainLiquidityResponse, type OptionChainRow, type TradeWorksheetEvaluation } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 import { useApp } from '../contexts/AppContext'
 
@@ -50,6 +50,18 @@ type Strategy =
   | 'Cash Secured Put'
   | 'Shares'
 type Emotion = 'Calm' | 'FOMO' | 'Revenge' | 'Speculative'
+
+type JournalEntry = {
+  id?: string
+  ticker?: string
+  strategy?: string
+  bias?: string
+  status?: string
+  entry_date?: string
+  created_at?: string
+  total_score?: number
+  notes?: string
+}
 
 interface WorksheetForm {
   ticker: string
@@ -158,7 +170,7 @@ function primaryStrike(form: WorksheetForm) {
 }
 
 function stars(score: number) {
-  const n = Math.max(1, Math.min(5, Math.round(score / 20)))
+  const n = Math.max(0, Math.min(5, Math.round(score / 20)))
   return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n)
 }
 
@@ -166,6 +178,35 @@ function expirationDaysFromNow(days: number) {
   const d = new Date()
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+function exitPlanForStrategy(strategy: Strategy): Array<{ label: string; value: string; danger?: boolean }> {
+  if (strategy === 'Bull Put Spread' || strategy === 'Bear Call Spread') {
+    return [
+      { label: 'Take Profit 1', value: 'Buy back at 50% max profit' },
+      { label: 'Take Profit 2', value: 'Exit/roll at 70-80% max profit' },
+      { label: 'Stop Loss', value: 'Exit at 2x credit loss or short strike breach', danger: true },
+    ]
+  }
+  if (strategy === 'Iron Condor') {
+    return [
+      { label: 'Take Profit 1', value: 'Close at 40-50% max profit' },
+      { label: 'Take Profit 2', value: 'Close untested side if tested' },
+      { label: 'Stop Loss', value: 'Exit/adjust if short strike is breached', danger: true },
+    ]
+  }
+  if (strategy === 'Calendar Spread' || strategy === 'Diagonal Spread') {
+    return [
+      { label: 'Take Profit 1', value: '+25-35% spread value' },
+      { label: 'Take Profit 2', value: 'Close before front expiry risk' },
+      { label: 'Stop Loss', value: '-25-30% spread value', danger: true },
+    ]
+  }
+  return [
+    { label: 'Take Profit 1', value: '+40%' },
+    { label: 'Take Profit 2', value: '+75%' },
+    { label: 'Stop Loss', value: '-30%', danger: true },
+  ]
 }
 
 function initialForm(): WorksheetForm {
@@ -216,6 +257,7 @@ export default function TradeWorksheetPage() {
   const [selectedLegRows, setSelectedLegRows] = useState<Record<string, OptionChainRow | null>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [journalError, setJournalError] = useState('')
   const [priceMove, setPriceMove] = useState(5)
   const [ivMove, setIvMove] = useState(0)
   const [daysPassed, setDaysPassed] = useState(3)
@@ -232,10 +274,34 @@ export default function TradeWorksheetPage() {
   })
   const [savingJournal, setSavingJournal] = useState(false)
   const [journalSaved, setJournalSaved] = useState(false)
+  const chainRequestSeqRef = useRef(0)
+  const [showAdvancedInputs, setShowAdvancedInputs] = useState(false)
+  const [journalHistory, setJournalHistory] = useState<JournalEntry[]>([])
+  const [journalHistoryLoading, setJournalHistoryLoading] = useState(false)
+
+  const loadJournalHistory = useCallback(async (ticker = form.ticker) => {
+    if (!user?.email) {
+      setJournalHistory([])
+      return
+    }
+    const clean = ticker.trim().toUpperCase()
+    if (!clean) return
+    setJournalHistoryLoading(true)
+    try {
+      const data = await getJournal(user.email)
+      const entries = (data.entries as JournalEntry[]).filter(e => String(e.ticker || '').toUpperCase() === clean)
+      setJournalHistory(entries.slice(0, 8))
+    } catch {
+      setJournalHistory([])
+    } finally {
+      setJournalHistoryLoading(false)
+    }
+  }, [form.ticker, user?.email])
 
   const handleSaveToJournal = useCallback(async () => {
     if (!user?.email || !evaluation) return
     setSavingJournal(true)
+    setJournalError('')
     try {
       const s = evaluation.summary
       const sc = evaluation.score
@@ -279,14 +345,15 @@ export default function TradeWorksheetPage() {
         trade_type: 'worksheet',
       })
       setJournalSaved(true)
+      void loadJournalHistory(form.ticker)
       setTimeout(() => setJournalSaved(false), 4000)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Failed to save to journal.')
+      setJournalError(detail || 'Failed to save to journal.')
     } finally {
       setSavingJournal(false)
     }
-  }, [user, evaluation, form, journal])
+  }, [user, evaluation, form, journal, loadJournalHistory])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -332,19 +399,23 @@ export default function TradeWorksheetPage() {
     }))
   }
 
-  const loadChain = useCallback(async (ticker = form.ticker, expiry = frontExpiration(form)) => {
+  const loadChain = useCallback(async (ticker = form.ticker, expiry = frontExpiration(form), buyExpiry = form.buyExpiration) => {
     const clean = ticker.trim().toUpperCase()
     if (!clean) return
+    const reqId = chainRequestSeqRef.current + 1
+    chainRequestSeqRef.current = reqId
     setLoading(true)
     setError('')
     try {
       const data = await fetchOptionChainLiquidity(clean, expiry, true)
+      if (chainRequestSeqRef.current !== reqId) return
       setChain(data)
       let loadedBackChain: OptionChainLiquidityResponse | null = null
       if (isCalendarLike(form.strategy)) {
-        const backExpiry = form.buyExpiration || expirationDaysFromNow(35)
+        const backExpiry = buyExpiry || expirationDaysFromNow(35)
         if (backExpiry !== data.selected_expiry) {
           loadedBackChain = await fetchOptionChainLiquidity(clean, backExpiry, true)
+          if (chainRequestSeqRef.current !== reqId) return
           setBackChain(loadedBackChain)
         } else {
           setBackChain(null)
@@ -359,6 +430,12 @@ export default function TradeWorksheetPage() {
         return Math.abs(row.strike - targetStrike) < Math.abs(best.strike - targetStrike) ? row : best
       }, null)
       if (nearest) {
+        const nextTargetPrice = data.current_price > 0
+          ? data.current_price * (form.direction === 'Bearish' ? 0.95 : form.direction === 'Bullish' ? 1.05 : 1)
+          : form.targetPrice
+        const nextHv = data.historical_volatility ?? (nearest.iv && nearest.iv < 300 ? nearest.iv : form.historicalVolatility)
+        const nextIvRank = data.iv_rank ?? (data.current_iv != null && nextHv > 0 ? clamp((data.current_iv / nextHv) * 50, 0, 100) : form.ivRank)
+        const nextIvPercentile = data.iv_percentile ?? nextIvRank
         setSelectedRow(nearest)
         setSelectedLegRows({})
         setForm(prev => ({
@@ -372,7 +449,10 @@ export default function TradeWorksheetPage() {
           shortStrike: nearest.strike,
           longStrike: isVerticalSpread(prev.strategy) ? nearest.strike : prev.longStrike || nearest.strike,
           premium: nearest.mid || prev.premium,
-          historicalVolatility: nearest.iv && nearest.iv < 300 ? nearest.iv : prev.historicalVolatility,
+          targetPrice: Number(nextTargetPrice.toFixed(2)),
+          ivRank: Number(nextIvRank.toFixed(2)),
+          ivPercentile: Number(nextIvPercentile.toFixed(2)),
+          historicalVolatility: Number(nextHv.toFixed(2)),
         }))
         if (loadedBackChain) {
           const backSource = usesPutChain(form) ? loadedBackChain.puts : loadedBackChain.calls
@@ -390,29 +470,36 @@ export default function TradeWorksheetPage() {
         }, { replace: true })
       }
     } catch (err) {
+      if (chainRequestSeqRef.current !== reqId) return
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(detail || `Unable to load option chain data for ${clean}. Try another expiration or refresh again.`)
     } finally {
-      setLoading(false)
+      if (chainRequestSeqRef.current === reqId) setLoading(false)
     }
   }, [form, setParams])
 
-  useEffect(() => {
-    if (params.get('ticker')) void loadChain(params.get('ticker') || form.ticker)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Auto-load chain when ticker changes (debounced 600ms)
+  // Auto-load chain when ticker or relevant expirations change (debounced 600ms).
   useEffect(() => {
     const clean = form.ticker.trim().toUpperCase()
     if (!clean || clean.length < 1) return
-    if (chain?.ticker === clean) return // already loaded
+    const front = frontExpiration(form)
+    const back = form.buyExpiration
+    if (
+      chain?.ticker === clean
+      && chain.selected_expiry === front
+      && (!isCalendarLike(form.strategy) || backChain?.selected_expiry === back)
+    ) return
     const handle = window.setTimeout(() => {
-      void loadChain(clean)
+      void loadChain(clean, front, back)
     }, 600)
     return () => window.clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.ticker])
+  }, [form.ticker, form.expiration, form.sellExpiration, form.buyExpiration, form.strategy])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => { void loadJournalHistory(form.ticker) }, 400)
+    return () => window.clearTimeout(handle)
+  }, [form.ticker, loadJournalHistory])
 
   useEffect(() => {
     if (!chain) return
@@ -430,6 +517,8 @@ export default function TradeWorksheetPage() {
 
   const pros = evaluation?.pros ?? []
   const cons = evaluation?.cons ?? []
+  const expiryOptions = chain?.expiries ?? []
+  const backExpiryOptions = backChain?.expiries ?? expiryOptions
 
   const checklistItems = [
     'Trend confirmed',
@@ -457,7 +546,7 @@ export default function TradeWorksheetPage() {
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); void loadChain() }}>
-          <input value={form.ticker} onChange={e => update('ticker', e.target.value.toUpperCase())} className="h-10 w-28 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold uppercase text-primary outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900" />
+          <input aria-label="Ticker symbol" value={form.ticker} onChange={e => update('ticker', e.target.value.toUpperCase())} className="h-10 w-28 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold uppercase text-primary outline-none focus:border-violet-500 dark:border-white/[0.08] dark:bg-slate-900" />
           {form.stockPrice > 0 && (
             <span className="inline-flex h-10 items-center rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-200">
               Latest {fmtUsd(form.stockPrice)}
@@ -470,6 +559,7 @@ export default function TradeWorksheetPage() {
       </header>
 
       {error && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{error}</div>}
+      {journalError && <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-300">{journalError}</div>}
       {evaluationError && <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">{evaluationError}</div>}
 
       <section className="mb-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -527,13 +617,13 @@ export default function TradeWorksheetPage() {
                 <>
                   <Field label="Sell Strike"><input type="number" step="0.01" value={form.shortStrike} onChange={e => update('shortStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Buy Strike"><input type="number" step="0.01" value={form.longStrike} onChange={e => update('longStrike', Number(e.target.value))} className={inputCls} /></Field>
-                  <Field label="Sell Expiration"><input type="date" value={form.sellExpiration} onChange={e => update('sellExpiration', e.target.value)} className={inputCls} /></Field>
-                  <Field label="Buy Expiration"><input type="date" value={form.buyExpiration} onChange={e => update('buyExpiration', e.target.value)} className={inputCls} /></Field>
+                  <Field label="Sell Expiration"><ExpiryInput value={form.sellExpiration} options={expiryOptions} onChange={v => update('sellExpiration', v)} /></Field>
+                  <Field label="Buy Expiration"><ExpiryInput value={form.buyExpiration} options={backExpiryOptions} onChange={v => update('buyExpiration', v)} /></Field>
                   <Field label="Net Debit Fallback"><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               ) : isIronCondor(form.strategy) ? (
                 <>
-                  <Field label="Expiration"><input type="date" value={form.expiration} onChange={e => update('expiration', e.target.value)} className={inputCls} /></Field>
+                  <Field label="Expiration"><ExpiryInput value={form.expiration} options={expiryOptions} onChange={v => update('expiration', v)} /></Field>
                   <Field label="Short Put"><input type="number" step="0.01" value={form.shortPutStrike} onChange={e => update('shortPutStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Long Put"><input type="number" step="0.01" value={form.longPutStrike} onChange={e => update('longPutStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Short Call"><input type="number" step="0.01" value={form.shortCallStrike} onChange={e => update('shortCallStrike', Number(e.target.value))} className={inputCls} /></Field>
@@ -544,13 +634,13 @@ export default function TradeWorksheetPage() {
                 <>
                   <Field label="Long Strike"><input type="number" step="0.01" value={form.longStrike} onChange={e => update('longStrike', Number(e.target.value))} className={inputCls} /></Field>
                   <Field label="Short Strike"><input type="number" step="0.01" value={form.shortStrike} onChange={e => update('shortStrike', Number(e.target.value))} className={inputCls} /></Field>
-                  <Field label="Expiration"><input type="date" value={form.expiration} onChange={e => update('expiration', e.target.value)} className={inputCls} /></Field>
+                  <Field label="Expiration"><ExpiryInput value={form.expiration} options={expiryOptions} onChange={v => update('expiration', v)} /></Field>
                   <Field label={isCreditSpread(form.strategy) ? 'Net Credit Fallback' : 'Net Debit Fallback'}><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               ) : (
                 <>
                   <Field label="Strike"><input type="number" step="0.01" value={form.strike} onChange={e => update('strike', Number(e.target.value))} className={inputCls} /></Field>
-                  <Field label="Expiration"><input type="date" value={form.expiration} onChange={e => update('expiration', e.target.value)} className={inputCls} /></Field>
+                  <Field label="Expiration"><ExpiryInput value={form.expiration} options={expiryOptions} onChange={v => update('expiration', v)} /></Field>
                   <Field label="Premium"><input type="number" step="0.01" value={form.premium} onChange={e => update('premium', Number(e.target.value))} className={inputCls} /></Field>
                 </>
               )}
@@ -558,6 +648,22 @@ export default function TradeWorksheetPage() {
               <Field label="Stock Price"><input type="number" step="0.01" value={form.stockPrice} onChange={e => update('stockPrice', Number(e.target.value))} className={inputCls} /></Field>
               <Field label="Target Price"><input type="number" step="0.01" value={form.targetPrice} onChange={e => update('targetPrice', Number(e.target.value))} className={inputCls} /></Field>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedInputs(v => !v)}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-secondary hover:text-heading dark:border-white/[0.08]"
+            >
+              <ChevronDown size={13} className={showAdvancedInputs ? 'rotate-180 transition-transform' : 'transition-transform'} />
+              Advanced assumptions
+            </button>
+            {showAdvancedInputs && (
+              <div className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-950/40 sm:grid-cols-2">
+                <Field label="Expected Hold Days"><input type="number" min={1} value={form.expectedHoldDays} onChange={e => update('expectedHoldDays', Number(e.target.value))} className={inputCls} /></Field>
+                <Field label="Buying Power"><input type="number" min={0} step="100" value={form.buyingPower} onChange={e => update('buyingPower', Number(e.target.value))} className={inputCls} /></Field>
+                <Field label="IV Rank"><input type="number" min={0} max={100} value={form.ivRank} onChange={e => update('ivRank', Number(e.target.value))} className={inputCls} /></Field>
+                <Field label="IV Percentile"><input type="number" min={0} max={100} value={form.ivPercentile} onChange={e => update('ivPercentile', Number(e.target.value))} className={inputCls} /></Field>
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               {isIronCondor(form.strategy) ? (
                 <>
@@ -618,7 +724,7 @@ export default function TradeWorksheetPage() {
               <Metric label="Delta" value={greeks.delta.toFixed(2)} />
               <Metric label="IV Rank" value={`${form.ivRank.toFixed(0)}%`} tone={form.ivRank <= 45 ? 'good' : form.ivRank <= 65 ? 'caution' : 'bad'} />
               <Metric label="POP / ITM" value={`${score.probability.toFixed(0)}% / ${greeks.probabilityItm.toFixed(0)}%`} tone={qualityTone(score.probability, 60, 45)} />
-              <Metric label="Earnings" value={evaluation?.summary.earningsDate ? `${evaluation.summary.earningsDate} (${evaluation.summary.earningsRisk})` : evaluation?.summary.earningsRisk ?? 'Unknown'} tone={evaluation?.summary.earningsRisk === 'High' ? 'bad' : evaluation?.summary.earningsRisk === 'Medium' ? 'caution' : evaluation?.summary.earningsRisk === 'Low' ? 'good' : undefined} />
+              <Metric label="Earnings" value={evaluation ? (evaluation.summary.earningsDate ? `${evaluation.summary.earningsDate} (${evaluation.summary.earningsRisk})` : evaluation.summary.earningsRisk ?? '—') : '—'} tone={evaluation?.summary.earningsRisk === 'High' ? 'bad' : evaluation?.summary.earningsRisk === 'Medium' ? 'caution' : evaluation?.summary.earningsRisk === 'Low' ? 'good' : undefined} />
             </div>
             {evaluation?.summary.earningsMessage && (
               <div className={`mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
@@ -676,7 +782,8 @@ export default function TradeWorksheetPage() {
             <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase ${riskLevel === 'Medium' ? 'border-amber-400/30 bg-amber-500/10 text-amber-600 dark:text-amber-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-600 dark:text-rose-300'}`}>{riskLevel}</span>
           </div>
           <p className="text-sm leading-relaxed text-secondary">
-            Risk is based on DTE, spread width, IV rank, probability, and required stock move. The largest current concern is {cons[0] || 'standard options decay and execution discipline'}.
+            Risk is based on DTE, spread width, IV rank, probability, and required stock move.
+            {cons.length > 0 ? <> The largest current concern is {cons[0]}.</> : <> No major blocker is currently detected; keep normal options decay and execution discipline in the plan.</>}
           </p>
           <div className="mt-4 grid gap-3">
             <ListBox title="Pros" items={pros.length ? pros : ['No major strength detected yet.']} good />
@@ -691,7 +798,7 @@ export default function TradeWorksheetPage() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={payoff}>
                 <CartesianGrid stroke="var(--border-default)" strokeDasharray="3 3" />
-                <XAxis dataKey="price" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+                <XAxis dataKey="price" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} tickFormatter={v => fmtUsd(Number(v))} />
                 <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
                 <Tooltip formatter={(v: number) => fmtUsd(v)} labelFormatter={v => `Stock ${fmtUsd(Number(v))}`} />
                 <ReferenceLine y={0} stroke="var(--text-secondary)" />
@@ -791,9 +898,7 @@ export default function TradeWorksheetPage() {
 
         <Panel title="Exit Plan" icon={<BookOpenCheck size={18} />} sub="Pre-commit before placing the order.">
           <div className="grid gap-2 sm:grid-cols-2">
-            <PlanItem label="Take Profit 1" value="+40%" />
-            <PlanItem label="Take Profit 2" value="+75%" />
-            <PlanItem label="Stop Loss" value="-30%" danger />
+            {exitPlanForStrategy(form.strategy).map(item => <PlanItem key={item.label} label={item.label} value={item.value} danger={item.danger} />)}
             <PlanItem label="Time Stop" value={`${Math.max(1, Math.min(form.expectedHoldDays, frontDte - 2))} days`} />
             <PlanItem label="IV Exit" value="Exit if IV crush > 15%" danger />
             <PlanItem label="Expiration Exit" value="Close before final 2 DTE" danger />
@@ -867,7 +972,7 @@ export default function TradeWorksheetPage() {
               <button
                 type="button"
                 onClick={() => void handleSaveToJournal()}
-                disabled={savingJournal || !evaluation}
+                disabled={savingJournal || !evaluation || !user?.email}
                 className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors ${
                   journalSaved
                     ? 'bg-emerald-600 text-white'
@@ -882,6 +987,36 @@ export default function TradeWorksheetPage() {
                   <><BookOpenCheck size={16} /> Save to Journal</>
                 )}
               </button>
+            </div>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-slate-950/40">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-widest text-heading">Trade Journal History</div>
+                  <div className="text-[11px] text-tertiary">Recent saved worksheet/trade entries for {form.ticker.toUpperCase()}.</div>
+                </div>
+                {journalHistoryLoading && <Loader2 size={14} className="animate-spin text-violet-500" />}
+              </div>
+              <div className="grid gap-2">
+                {journalHistory.length === 0 && (
+                  <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-muted dark:border-slate-700">
+                    No journal history for this ticker yet.
+                  </div>
+                )}
+                {journalHistory.map(entry => (
+                  <div key={entry.id ?? `${entry.created_at}-${entry.strategy}`} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs dark:border-white/[0.07] dark:bg-slate-900">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-heading">{entry.strategy || 'Trade'}</span>
+                      <span className="font-mono text-[11px] text-tertiary">{entry.entry_date || String(entry.created_at || '').slice(0, 10) || '—'}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-secondary">
+                      {entry.bias && <span>{entry.bias}</span>}
+                      {entry.status && <span>{entry.status}</span>}
+                      {typeof entry.total_score === 'number' && <span className="font-mono">Score {entry.total_score.toFixed(0)}</span>}
+                    </div>
+                    {entry.notes && <div className="mt-1 max-h-10 overflow-hidden text-[11px] leading-relaxed text-tertiary">{entry.notes}</div>}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </Panel>
@@ -916,6 +1051,18 @@ function Panel({ title, icon, sub, children }: { title: string; icon: React.Reac
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted">{label}</div>{children}</label>
+}
+
+function ExpiryInput({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  if (options.length > 0) {
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
+        {!options.includes(value) && value ? <option value={value}>{value}</option> : null}
+        {options.map(exp => <option key={exp} value={exp}>{exp}</option>)}
+      </select>
+    )
+  }
+  return <input type="date" value={value} onChange={e => onChange(e.target.value)} className={inputCls} />
 }
 
 function LegBadge({ side, label }: { side: 'BUY' | 'SELL' | 'DEBIT' | 'CREDIT'; label: string }) {
