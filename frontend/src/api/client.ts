@@ -640,6 +640,48 @@ export const analyzeSwingTrade = async (ticker: string): Promise<SwingTradeScanR
   return data
 }
 
+export interface InvestmentThesisStarter {
+  ticker: string
+  company_name: string
+  current_price: number
+  daily_change_pct: number
+  sector: string
+  industry: string
+  market_cap: string
+  next_earnings: string
+  theme: string
+  ai_exposure: boolean
+  dividend: boolean
+  dividend_yield_pct: number
+  rating: number
+  conviction_score: number
+  target_price: number
+  buy_zone: string
+  thesis_markdown: string
+  summary: string
+  quality: {
+    businessQuality: number
+    management: number
+    moat: number
+    growth: number
+    aiOpportunity: number
+    valuation: number
+    financialHealth: number
+    execution: number
+  }
+  buy_zones: Array<{ label: string; price: string; reason: string; allocation: string }>
+  accumulation_steps: string[]
+  catalysts: Array<{ title: string; description: string; impact: 'Positive' | 'Neutral' | 'Negative' }>
+  risks: Array<{ title: string; severity: 'Low' | 'Medium' | 'High'; probability: 'Low' | 'Medium' | 'High'; notes: string }>
+  trading_signals: { dayTrade: 'Bullish' | 'Neutral' | 'Bearish'; swingTrade: 'Bullish' | 'Neutral' | 'Bearish' }
+  how_to_invest: string
+}
+
+export const generateInvestmentThesisStarter = async (ticker: string): Promise<InvestmentThesisStarter> => {
+  const { data } = await api.get<InvestmentThesisStarter>(`/investment-thesis/starter/${encodeURIComponent(ticker.trim().toUpperCase())}`)
+  return data
+}
+
 /** Backend-computed intraday guidance for a saved day-trade option position (admin-only API). */
 export interface ActiveTradeDecision {
   state: string

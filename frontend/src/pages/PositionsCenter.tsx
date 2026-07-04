@@ -54,6 +54,15 @@ type PositionCategory = 'all' | 'options' | 'stocks'
 
 const SHARES_PER_OPTION_CONTRACT = 100
 
+type PositionPnlData = {
+  pnl: number
+  pnl_pct: number
+  entry_premium_per_share?: number
+  current_mark_per_share?: number
+  mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium' | 'saved_estimate'
+  invalid_reason?: string
+}
+
 interface LegTemplate { action: 'BUY' | 'SELL'; option_type: 'CALL' | 'PUT'; label: string; expirySlot?: 'front' | 'back' }
 interface StrategyDef { bias: string; legs: LegTemplate[]; isCalendar?: boolean }
 
@@ -402,12 +411,66 @@ function computePnlDollar(pos: PortfolioPosition): number | null {
   return (pos.pnlPct / 100) * ref * 100 * pos.contracts
 }
 
+function computeSavedPnlEstimate(pos: PortfolioPosition): PositionPnlData | null {
+  if (pos.pnlPct == null || !Number.isFinite(pos.pnlPct)) return null
+  const contracts = Math.max(1, pos.contracts || 1)
+  if (pos.strategy === 'Stock') {
+    const shares = Math.max(1, pos.shares ?? contracts)
+    const basis = (pos.entryPrice || 0) * shares
+    if (basis <= 0) return null
+    return {
+      pnl: round2((pos.pnlPct / 100) * basis),
+      pnl_pct: round2(pos.pnlPct),
+      entry_premium_per_share: pos.entryPrice,
+      mark_source: 'saved_estimate',
+    }
+  }
+  const ref = costBasisRefPerShare(pos)
+  if (ref <= 0) return null
+  return {
+    pnl: round2((pos.pnlPct / 100) * ref * SHARES_PER_OPTION_CONTRACT * contracts),
+    pnl_pct: round2(pos.pnlPct),
+    entry_premium_per_share: Math.abs(pos.net_credit || ref),
+    mark_source: 'saved_estimate',
+  }
+}
+
 function computeCreditTotal(pos: PortfolioPosition): number {
   return Math.abs(pos.net_credit) * pos.contracts * 100
 }
 
 function creditPerContract(pos: PortfolioPosition): number {
   return Math.abs(pos.net_credit)
+}
+
+function legSignature(pos: PortfolioPosition): string {
+  return (pos.legs ?? [])
+    .map(l => `${l.action}:${l.option_type}:${Number(l.strike || 0).toFixed(2)}:${String(l.expiry || pos.expiry || '').slice(0, 10)}`)
+    .join('|')
+}
+
+function resolvePositionPnl(
+  pos: PortfolioPosition,
+  allPositions: PortfolioPosition[],
+  perPositionPnl: Record<string, PositionPnlData>,
+): PositionPnlData | null {
+  const direct = perPositionPnl[pos.id]
+  if (direct) return direct
+
+  const ticker = pos.ticker?.toUpperCase?.() ?? ''
+  const expiry = String(pos.expiry || '').slice(0, 10)
+  const sig = legSignature(pos)
+  const candidates = allPositions.filter(other => (
+    (other.ticker?.toUpperCase?.() ?? '') === ticker
+    && String(other.expiry || '').slice(0, 10) === expiry
+    && other.strategy === pos.strategy
+    && other.status === pos.status
+  ))
+  const matched = candidates.find(other => other.id !== pos.id && legSignature(other) === sig && perPositionPnl[other.id])
+    ?? candidates.find(other => other.id !== pos.id && perPositionPnl[other.id])
+  if (matched) return perPositionPnl[matched.id]
+
+  return computeSavedPnlEstimate(pos)
 }
 
 function PlBadge({ pnl }: { pnl: number | null | undefined }) {
@@ -1211,7 +1274,7 @@ function TradingPositionCard({
     pnl_pct: number
     entry_premium_per_share?: number
     current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
+    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium' | 'saved_estimate'
     invalid_reason?: string
   } | null
   aiAnalysis?: AiPositionAnalysis | null
@@ -1964,13 +2027,7 @@ export default function PositionsCenter() {
   const d = env?.data ?? ({} as Record<string, unknown>)
   const summary = (d.summary ?? {}) as Record<string, unknown>
   const market = (d.market_snapshot ?? {}) as Record<string, unknown>
-  const perPositionPnl = (d.per_position_pnl ?? {}) as Record<string, {
-    pnl: number; pnl_pct: number
-    entry_premium_per_share?: number
-    current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
-    invalid_reason?: string
-  }>
+  const perPositionPnl = (d.per_position_pnl ?? {}) as Record<string, PositionPnlData>
   const aiAnalyses    = (d.ai_analyses    ?? {}) as Record<string, AiPositionAnalysis>
   const stockAnalyses = (d.stock_analyses ?? {}) as Record<string, StockPositionAnalysis>
   const exitBadgeByTicker = (d.exit_badge_by_ticker ?? {}) as Record<string, string>
@@ -2499,6 +2556,7 @@ export default function PositionsCenter() {
           category="options"
           openPositions={openOptionPortfolio}
           closedPositions={closedOptionPortfolio}
+          allPositions={displayPortfolio}
           perPositionPnl={perPositionPnl}
           aiAnalyses={aiAnalyses}
           stockAnalyses={stockAnalyses}
@@ -2519,6 +2577,7 @@ export default function PositionsCenter() {
           category="stocks"
           openPositions={openStockPortfolio}
           closedPositions={closedStockPortfolio}
+          allPositions={displayPortfolio}
           perPositionPnl={perPositionPnl}
           aiAnalyses={aiAnalyses}
           stockAnalyses={stockAnalyses}
@@ -3159,6 +3218,7 @@ function PositionCategoryWorkspace({
   openPositions,
   closedPositions,
   perPositionPnl,
+  allPositions,
   aiAnalyses,
   stockAnalyses,
   exitBadgeByTicker,
@@ -3176,14 +3236,8 @@ function PositionCategoryWorkspace({
   category: 'options' | 'stocks'
   openPositions: PortfolioPosition[]
   closedPositions: PortfolioPosition[]
-  perPositionPnl: Record<string, {
-    pnl: number
-    pnl_pct: number
-    entry_premium_per_share?: number
-    current_mark_per_share?: number
-    mark_source?: 'live' | 'bs_theoretical' | 'stale' | 'invalid_premium'
-    invalid_reason?: string
-  }>
+  allPositions: PortfolioPosition[]
+  perPositionPnl: Record<string, PositionPnlData>
   aiAnalyses: Record<string, AiPositionAnalysis>
   stockAnalyses: Record<string, StockPositionAnalysis>
   exitBadgeByTicker: Record<string, string>
@@ -3204,8 +3258,8 @@ function PositionCategoryWorkspace({
     pos,
     alert: isStocks
       ? deriveStockActionAlert(pos, stockAnalyses[pos.id] ?? null)
-      : deriveActionAlert(pos, perPositionPnl[pos.id] ?? null, aiAnalyses[pos.id] ?? null),
-    pnl: perPositionPnl[pos.id] ?? null,
+      : deriveActionAlert(pos, resolvePositionPnl(pos, allPositions, perPositionPnl), aiAnalyses[pos.id] ?? null),
+    pnl: resolvePositionPnl(pos, allPositions, perPositionPnl),
   }))
 
   return (
@@ -3255,7 +3309,7 @@ function PositionCategoryWorkspace({
               <TradingPositionCard
                 key={pos.id}
                 pos={pos}
-                pnlData={perPositionPnl[pos.id] ?? null}
+                pnlData={resolvePositionPnl(pos, allPositions, perPositionPnl)}
                 aiAnalysis={aiAnalyses[pos.id] ?? null}
                 exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
                 expanded={expandedId === pos.id}
@@ -3293,7 +3347,7 @@ function PositionCategoryWorkspace({
                 <TradingPositionCard
                   key={pos.id}
                   pos={pos}
-                  pnlData={perPositionPnl[pos.id] ?? null}
+                  pnlData={resolvePositionPnl(pos, allPositions, perPositionPnl)}
                   aiAnalysis={aiAnalyses[pos.id] ?? null}
                   exitBadge={exitBadgeByTicker[pos.ticker?.toUpperCase?.() ?? ''] ?? null}
                   expanded={expandedId === pos.id}

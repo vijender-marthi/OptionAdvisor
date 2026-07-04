@@ -3495,6 +3495,197 @@ def swing_trade_scan(
         raise HTTPException(status_code=502, detail=str(e)) from None
 
 
+def _format_market_cap(value: Any) -> str:
+    try:
+        n = float(value)
+    except Exception:
+        return "Unknown"
+    if n >= 1_000_000_000_000:
+        return f"${n / 1_000_000_000_000:.1f}T"
+    if n >= 1_000_000_000:
+        return f"${n / 1_000_000_000:.1f}B"
+    if n >= 1_000_000:
+        return f"${n / 1_000_000:.1f}M"
+    return f"${n:,.0f}"
+
+
+def _investment_theme(name: str, sector: str, industry: str) -> str:
+    hay = f"{name} {sector} {industry}".lower()
+    if any(k in hay for k in ("semiconductor", "chip", "ai", "accelerator")):
+        return "AI / Semiconductors"
+    if any(k in hay for k in ("software", "cloud", "internet", "platform")):
+        return "Cloud / Software"
+    if any(k in hay for k in ("cyber", "security")):
+        return "Cybersecurity"
+    if any(k in hay for k in ("health", "biotech", "pharma", "medical")):
+        return "Healthcare"
+    if any(k in hay for k in ("energy", "oil", "gas", "solar")):
+        return "Energy"
+    if any(k in hay for k in ("financial", "bank", "insurance", "asset")):
+        return "Financials"
+    return sector or "Long-term compounder"
+
+
+@app.get("/api/investment-thesis/starter/{ticker}")
+def investment_thesis_starter(
+    ticker: str,
+    auth_email: str = Depends(require_access_email),
+):
+    """
+    Backend-generated starter research packet for Investment Thesis.
+    This is not a trading recommendation; it creates a long-term research
+    starting point from existing market/profile data and backend swing metrics.
+    """
+    t = ticker.strip().upper()
+    if not t or len(t) > 12:
+        raise HTTPException(status_code=400, detail="Enter a valid ticker.")
+
+    try:
+        scan = run_swing_trade_scan(t)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to load market data for {t}: {exc}") from None
+
+    try:
+        info = _bc_info(t) or {}
+    except Exception:
+        info = {}
+
+    metrics = scan.metrics or {}
+    price = float(metrics.get("last_price") or 0)
+    if price <= 0:
+        raise HTTPException(status_code=502, detail=f"No current price available for {t}.")
+
+    company_name = str(info.get("longName") or info.get("shortName") or scan.company_name or t)
+    sector = str(info.get("sector") or "Unknown")
+    industry = str(info.get("industry") or "")
+    theme = _investment_theme(company_name, sector, industry)
+    daily_change_pct = float(info.get("regularMarketChangePercent") or 0)
+    dividend_yield = float(info.get("dividendYield") or 0)
+    if dividend_yield and dividend_yield < 1:
+        dividend_yield *= 100
+
+    ma20 = float(metrics.get("ma20") or price)
+    ma50 = float(metrics.get("ma50") or price)
+    rsi = float(metrics.get("rsi") or 50)
+    macd = float(metrics.get("macd") or 0)
+    macd_signal = float(metrics.get("macd_signal") or 0)
+    valuation_score = 5 if abs(float(metrics.get("dist_ma20_pct") or 0)) > 8 else 6
+    growth_score = 8 if theme in {"AI / Semiconductors", "Cloud / Software", "Cybersecurity"} else 7
+    ai_score = 9 if "AI" in theme else 6
+    conviction = int(round((8 + 7 + 7 + growth_score + ai_score + valuation_score + 7 + 7) / 8 * 10))
+    target_price = round(price * (1.18 if valuation_score <= 5 else 1.25), 2)
+    excellent = round(min(price * 0.82, ma20 * 0.92), 2)
+    very_good_low = excellent
+    very_good_high = round(min(price * 0.92, ma20 * 0.98), 2)
+    fair_low = round(min(price * 0.93, ma20 * 0.99), 2)
+    fair_high = round(price * 1.06, 2)
+
+    swing_signal = "Bullish" if scan.bias == "long" else "Bearish" if scan.bias == "short" else "Neutral"
+    macd_note = (
+        "MACD is above Signal; momentum is constructive."
+        if macd > macd_signal else
+        "MACD remains below Signal; wait for momentum repair before adding aggressively."
+    )
+    rsi_note = (
+        "RSI is extended; avoid chasing new long-term allocation immediately."
+        if rsi >= 70 else
+        "RSI is weak; use staged entries only after business evidence and price stabilization."
+        if rsi <= 40 else
+        "RSI is neutral; entry discipline matters more than momentum."
+    )
+    how_to_invest = (
+        "Start with a small research allocation only inside the defined buy zone, then add after quarterly evidence confirms revenue, margins, and guidance. "
+        "Avoid building a full position at once; use staged accumulation and cap exposure at the target allocation."
+    )
+
+    thesis_markdown = f"""# {company_name} ({t}) investment thesis
+
+## Business context
+{company_name} is being evaluated as a long-term idea in the {theme} theme. The current price is ${price:.2f}; MA20 is ${ma20:.2f} and MA50 is ${ma50:.2f}.
+
+## How to invest
+{how_to_invest}
+
+## Current technical context
+- Swing signal context: {swing_signal}
+- RSI: {rsi:.1f}. {rsi_note}
+- MACD: {macd:.2f}, Signal: {macd_signal:.2f}. {macd_note}
+
+## What to verify before adding size
+- Revenue growth and margin trend
+- Competitive position and moat durability
+- Valuation versus expected growth
+- Balance sheet strength
+- Management execution over the next quarterly review
+
+## What would change my mind
+- Growth decelerates without margin improvement
+- Competitive pressure weakens pricing power
+- Valuation requires unrealistic execution
+- Management misses guidance repeatedly
+"""
+
+    return {
+        "ticker": t,
+        "company_name": company_name,
+        "current_price": round(price, 2),
+        "daily_change_pct": round(daily_change_pct, 2),
+        "sector": sector,
+        "industry": industry,
+        "market_cap": _format_market_cap(info.get("marketCap")),
+        "next_earnings": str(metrics.get("earnings_calendar_days_until") or ""),
+        "theme": theme,
+        "ai_exposure": "AI" in theme,
+        "dividend": dividend_yield > 0,
+        "dividend_yield_pct": round(dividend_yield, 2),
+        "rating": 4 if conviction >= 70 else 3,
+        "conviction_score": conviction,
+        "target_price": target_price,
+        "buy_zone": f"${very_good_low:.2f} - ${very_good_high:.2f}",
+        "thesis_markdown": thesis_markdown,
+        "summary": (
+            f"{company_name} is a {theme} research candidate. Starter conviction is {conviction}/100. "
+            f"The preferred approach is staged accumulation near ${very_good_low:.2f}-${very_good_high:.2f}, "
+            f"not an immediate full-size purchase."
+        ),
+        "quality": {
+            "businessQuality": 8,
+            "management": 7,
+            "moat": 7,
+            "growth": growth_score,
+            "aiOpportunity": ai_score,
+            "valuation": valuation_score,
+            "financialHealth": 7,
+            "execution": 7,
+        },
+        "buy_zones": [
+            {"label": "Excellent", "price": f"Below ${excellent:.2f}", "reason": "Best margin of safety versus current trend and target estimate.", "allocation": "Add 30% of planned position"},
+            {"label": "Very Good", "price": f"${very_good_low:.2f} - ${very_good_high:.2f}", "reason": "Preferred starter or add zone for staged accumulation.", "allocation": "Add 20%"},
+            {"label": "Good", "price": f"${fair_low:.2f} - ${fair_high:.2f}", "reason": "Acceptable only if quarterly evidence is improving.", "allocation": "Small add"},
+            {"label": "Expensive", "price": f"Above ${round(price * 1.12, 2):.2f}", "reason": "Do not chase. Wait for pullback or stronger evidence.", "allocation": "No add"},
+        ],
+        "accumulation_steps": [
+            f"Start with 25% of intended size inside ${very_good_low:.2f}-${very_good_high:.2f}.",
+            f"Add another 25% below ${excellent:.2f} if thesis evidence remains intact.",
+            "Increase only after the next quarterly review confirms growth, margins, and guidance.",
+            "Never exceed the max allocation without updating the thesis first.",
+        ],
+        "catalysts": [
+            {"title": "Next earnings review", "description": "Check revenue growth, margins, guidance, AI/product progress, and management execution.", "impact": "Neutral"},
+            {"title": "Valuation reset / pullback", "description": "Watch whether price enters the preferred buy zone with thesis intact.", "impact": "Positive"},
+        ],
+        "risks": [
+            {"title": "Valuation risk", "severity": "Medium", "probability": "Medium", "notes": "Long-term returns depend heavily on entry price discipline."},
+            {"title": "Execution risk", "severity": "Medium", "probability": "Medium", "notes": "Track whether management delivers against growth and margin expectations."},
+            {"title": "Momentum/technical risk", "severity": "Medium", "probability": "Medium", "notes": f"{rsi_note} {macd_note}"},
+        ],
+        "trading_signals": {"dayTrade": "Neutral", "swingTrade": swing_signal},
+        "how_to_invest": how_to_invest,
+    }
+
+
 def _require_admin_intraday_surfaces(auth_email: str) -> None:
     if get_user_state(normalize_email(auth_email)).get("role") != "admin":
         raise HTTPException(

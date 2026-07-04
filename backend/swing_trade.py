@@ -727,9 +727,9 @@ def build_swing_trade_decision(
         decision_label = "QUALITY_LONG"
         final_action   = "STRONG_GO"
 
-    elif trade_quality_score >= 6.5:
+    elif trade_quality_score >= 5.5:
         # Good, tradeable setup. Reserve STRONG_GO for A+ alignment, but do
-        # not leave clean 6.5-7.9 quality setups stuck in WATCH forever.
+        # not leave clean 5.5-7.9 quality setups stuck in WATCH forever.
         # CAUTION_ENTRY when risk is already flagged HIGH (IV, VIX, extension flags),
         # GOOD_ENTRY only when risk is LOW or MEDIUM.
         entry_quality  = "GOOD_ENTRY" if risk_level in ("LOW", "MEDIUM") else "CAUTION_ENTRY"
@@ -2958,11 +2958,14 @@ def run_swing_trade_scan(ticker: str, force_refresh: bool = False) -> SwingTrade
             "condition": triggers[0] if triggers else "Wait for a better entry trigger.",
         }]
 
-    # Reconcile: if decision layer forces no-trade (hard gate like option
-    # liquidity or imminent earnings), scoring-only "GO"/"STRONG GO" would
-    # contradict entry_quality="BAD_ENTRY" — clamp to "WATCH" so downstream
-    # consumers don't act on a conflicting GO signal.
-    if decision["entry_quality"] == "BAD_ENTRY" and decision["final_action"] == "NO_TRADE":
+    # Reconcile: if decision layer forces no-trade or wait (hard gate like option
+    # liquidity, imminent earnings, or no clean entry trigger), scoring-only
+    # "GO"/"STRONG GO" would contradict entry_quality="BAD_ENTRY"/"NO_CLEAN_ENTRY"
+    # — clamp to "WATCH" so downstream consumers don't act on a conflicting GO signal.
+    if (
+        decision["entry_quality"] in ("BAD_ENTRY", "NO_CLEAN_ENTRY")
+        and decision["final_action"] not in ("STRONG_GO", "GO", "GO_SMALL")
+    ):
         if verdict not in ("NO-GO", "WAIT"):
             verdict = "WATCH"
 

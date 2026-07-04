@@ -2,7 +2,6 @@ import { lazy, Suspense, useLayoutEffect, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AppProvider, useApp } from './contexts/AppContext'
-import AppLayout from './layouts/AppLayout'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
@@ -42,6 +41,7 @@ const EODJournalPage         = lazy(() => import('./pages/EODJournalPage'))
 const JournalToolPage        = lazy(() => import('./pages/JournalToolPage'))
 const TrackModePage          = lazy(() => import('./pages/TrackModePage'))
 const InvestmentThesisPage   = lazy(() => import('./pages/InvestmentThesisPage'))
+const AppLayout              = lazy(() => import('./layouts/AppLayout'))
 
 function PositionsRoute() {
   const [params] = useSearchParams()
@@ -155,7 +155,7 @@ function ShellRoutes() {
 
       <Route element={<RequireAuth />}>
         <Route element={<RoleGuard />}>
-          <Route element={<AppLayout />}>
+          <Route element={<Suspense fallback={<RouteFallback />}><AppLayout /></Suspense>}>
             <Route element={<SuspensedOutlet />}>
               <Route path="/trade-command-center" element={<TradeCommandCenterPage />} />
               <Route path="/desk" element={<TradeDeskPage />} />

@@ -57,6 +57,38 @@ function sm(row: SignalFeedRow | null, key: string): unknown {
   return (row.swing.metrics as Record<string, unknown> | undefined)?.[key]
 }
 
+const SCANNER_CACHE_KEY = 'oa_ticker_scanner_cache_v2'
+
+interface ScannerCache {
+  rows: SignalFeedRow[]
+  fetchedAt: string | null
+  cachedAt: number
+}
+
+function readScannerCache(): ScannerCache | null {
+  try {
+    const raw = localStorage.getItem(SCANNER_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ScannerCache>
+    if (!Array.isArray(parsed.rows)) return null
+    return {
+      rows: parsed.rows as SignalFeedRow[],
+      fetchedAt: typeof parsed.fetchedAt === 'string' ? parsed.fetchedAt : null,
+      cachedAt: typeof parsed.cachedAt === 'number' ? parsed.cachedAt : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeScannerCache(rows: SignalFeedRow[], fetchedAt: string | null) {
+  try {
+    localStorage.setItem(SCANNER_CACHE_KEY, JSON.stringify({ rows, fetchedAt, cachedAt: Date.now() }))
+  } catch {
+    /* localStorage quota or private mode */
+  }
+}
+
 // ─── Market Snapshot cards ────────────────────────────────────────────────────
 
 function MarketCard({ label, value, sub, tone }: {
@@ -378,27 +410,38 @@ function EngineTag({ row }: { row: SignalFeedRow }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TickerScannerPage() {
-  const [rows, setRows] = useState<SignalFeedRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [cacheSeed] = useState(() => readScannerCache())
+  const [rows, setRows] = useState<SignalFeedRow[]>(() => cacheSeed?.rows ?? [])
+  const [loading, setLoading] = useState(() => !(cacheSeed?.rows?.length))
+  const [refreshing, setRefreshing] = useState(false)
+  const [showingCache, setShowingCache] = useState(() => Boolean(cacheSeed?.rows?.length))
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(() => cacheSeed?.rows?.[0]?.ticker ?? null)
+  const [fetchedAt, setFetchedAt] = useState<string | null>(() => cacheSeed?.fetchedAt ?? null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (forceRefresh = false) => {
+    const hasRows = rows.length > 0
+    if (hasRows) setRefreshing(true)
+    else setLoading(true)
     setError(null)
     try {
-      const env = await fetchSignalFeed({ sort_by: 'relative_strength', sort_dir: 'desc', page: 1, page_size: 100 })
+      const env = await fetchSignalFeed({ sort_by: 'relative_strength', sort_dir: 'desc', page: 1, page_size: 100, refresh: forceRefresh })
       const fetched = env.data?.rows ?? []
       setRows(fetched)
       setFetchedAt(env.fetched_at ?? null)
-      if (fetched.length > 0 && !selected) setSelected(fetched[0]!.ticker)
+      setShowingCache(Boolean(env.stale))
+      writeScannerCache(fetched, env.fetched_at ?? null)
+      if (fetched.length > 0 && (!selected || !fetched.some(r => r.ticker === selected))) setSelected(fetched[0]!.ticker)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load scanner data')
+      setError(hasRows
+        ? `Live refresh failed. Showing cached scanner data. ${err instanceof Error ? err.message : ''}`.trim()
+        : err instanceof Error ? err.message : 'Failed to load scanner data')
+      if (hasRows) setShowingCache(true)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [selected])
+  }, [rows.length, selected])
 
   useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -441,15 +484,17 @@ export default function TickerScannerPage() {
           </div>
           <p className="text-xs text-gray-500 mt-1 ml-11">
             {rows.length} tickers · sorted by relative strength · {fetchedAt ? `updated ${new Date(fetchedAt).toLocaleTimeString()}` : 'loading…'}
+            {showingCache ? ' · showing cache first' : ''}
+            {refreshing ? ' · refreshing…' : ''}
           </p>
         </div>
         <button
-          onClick={() => void load()}
-          disabled={loading}
+          onClick={() => void load(true)}
+          disabled={loading || refreshing}
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          {loading ? 'Loading…' : 'Refresh'}
+          <RefreshCw size={14} className={loading || refreshing ? 'animate-spin' : ''} />
+          {loading ? 'Loading…' : refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 

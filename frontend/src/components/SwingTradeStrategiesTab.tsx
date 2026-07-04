@@ -16,13 +16,14 @@ type StTokens = {
   green: string; red: string; amber: string; accent: string; violet: string
 }
 
-type SubTab = 'entry' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes'
+type SubTab = 'entry' | 'macd' | 'exit' | 'signals' | 'timing' | 'risk' | 'mistakes'
 
 export default function SwingTradeStrategiesTab({ st }: { st: StTokens }) {
   const [subTab, setSubTab] = useState<SubTab>('entry')
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'entry',    label: 'Entry Strategies',    icon: <ArrowUp size={13} /> },
+    { id: 'macd',     label: 'MACD + Fib Playbook', icon: <Activity size={13} /> },
     { id: 'exit',     label: 'Exit Rules',          icon: <Target size={13} /> },
     { id: 'signals',  label: 'Signals to Watch',    icon: <Eye size={13} /> },
     { id: 'timing',   label: 'Timing & Holds',      icon: <Clock size={13} /> },
@@ -48,6 +49,7 @@ export default function SwingTradeStrategiesTab({ st }: { st: StTokens }) {
       </div>
 
       {subTab === 'entry'    && <EntryStrategies st={st} />}
+      {subTab === 'macd'     && <MacdFibPlaybook st={st} />}
       {subTab === 'exit'     && <ExitRules st={st} />}
       {subTab === 'signals'  && <SignalsToWatch st={st} />}
       {subTab === 'timing'   && <TimingHolds st={st} />}
@@ -191,6 +193,185 @@ function EntryStrategies({ st }: { st: StTokens }) {
         <Row label="8. Score ≥ 5.0" value="WAIT — needs more confirmation" color={st.amber} st={st} />
         <Row label="9. Neutral bias" value="NO_TRADE — no edge" color={st.muted} st={st} />
       </Card>
+    </div>
+  )
+}
+
+// ─── MACD + Fibonacci Playbook ────────────────────────────────────────────────
+
+function MacdFibPlaybook({ st }: { st: StTokens }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: st.muted, marginBottom: 14, lineHeight: 1.55 }}>
+        MACD histogram is the gap between MACD and Signal. A positive histogram can happen even when
+        both lines are below zero. That means selling pressure is easing, not that a call entry is confirmed.
+      </div>
+
+      <Card st={st} title="MACD Histogram Math" icon={<Activity size={15} />} accent={st.accent}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+          <div style={{ border: `1px solid ${st.border}`, borderRadius: 12, padding: 12, background: st.bgDeep }}>
+            <Row label="MACD" value="-4.60" color={st.red} st={st} />
+            <Row label="Signal" value="-4.85" color={st.red} st={st} />
+            <Row label="Histogram gap" value="-4.60 - (-4.85) = +0.25" color={st.green} st={st} />
+            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.55, color: st.muted }}>
+              Both lines are negative, but Signal is more negative than MACD. The gap turns positive because
+              MACD is rising faster than Signal.
+            </div>
+          </div>
+          <MiniMacdDiagram st={st} />
+        </div>
+      </Card>
+
+      <Card st={st} title="MACD Reversal Stages" icon={<Gauge size={15} />} accent={st.violet}>
+        <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
+          <StageBox st={st} stage="Stage 1" title="Histogram turns positive" tone="warn" text="Selling pressure is easing. This is a watch state, not a call entry." />
+          <StageBox st={st} stage="Stage 2" title="Histogram grows 2-3 bars" tone="warn" text="Momentum is improving. Track for confirmation and Fib reclaim." />
+          <StageBox st={st} stage="Stage 3" title="MACD crosses above Signal" tone="good" text="Minimum confirmation for call entry if price structure agrees." />
+          <StageBox st={st} stage="Stage 4" title="Both cross above zero" tone="good" text="True bull momentum signal. Best for stronger swing continuation." />
+        </div>
+        <div style={{ marginTop: 10, border: `1px solid ${st.amber}55`, borderRadius: 10, padding: 10, background: `${st.amber}12`, fontSize: 11.5, color: st.text, lineHeight: 1.55 }}>
+          Example: GOOG at Stage 1 means sellers are losing steam. It is not a buy yet. For call entries,
+          require Stage 3 minimum plus price confirmation.
+        </div>
+      </Card>
+
+      <Card st={st} title="When to Buy Calls vs Puts" icon={<Layers size={15} />} accent={st.green}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', minWidth: 760 }}>
+            <thead>
+              <tr style={{ color: st.muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <th style={{ textAlign: 'left', padding: '0 10px' }}>Trade</th>
+                <th style={{ textAlign: 'left', padding: '0 10px' }}>MACD Requirement</th>
+                <th style={{ textAlign: 'left', padding: '0 10px' }}>Price Requirement</th>
+                <th style={{ textAlign: 'left', padding: '0 10px' }}>Fib Context</th>
+                <th style={{ textAlign: 'left', padding: '0 10px' }}>Best Structure</th>
+              </tr>
+            </thead>
+            <tbody>
+              <StrategyRow st={st} trade="Buy Call" color={st.green} macd="Stage 3 minimum; Stage 4 strongest" price="Reclaim MA20/MA50 or break prior high" fib="Holds 38.2%-61.8% pullback and reverses" structure="Bull Call Spread or Long Call when IV is low" />
+              <StrategyRow st={st} trade="Wait Call" color={st.amber} macd="Stage 1-2 only" price="Still below resistance or MA20" fib="Near 50%-61.8%, but no reversal candle" structure="No entry; set alert for MACD cross" />
+              <StrategyRow st={st} trade="Buy Put" color={st.red} macd="MACD below Signal and histogram falling" price="Rejects MA20/MA50 or breaks support" fib="Fails 38.2%-50% bounce, resumes lower" structure="Bear Put Spread or Long Put when IV is low" />
+              <StrategyRow st={st} trade="Wait Put" color={st.amber} macd="Bearish but deeply stretched" price="Far below MA20 or near support" fib="Already beyond 78.6% extension zone" structure="Wait for failed bounce; avoid chasing" />
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card st={st} title="Fibonacci Swing Map" icon={<BarChart2 size={15} />} accent={st.accent}>
+        <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+          <FibDiagram st={st} mode="bull" />
+          <FibDiagram st={st} mode="bear" />
+        </div>
+        <div style={{ marginTop: 10, display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <Row label="23.6%" value="Shallow pullback; trend is very strong" color={st.green} st={st} />
+          <Row label="38.2%" value="First quality pullback zone" color={st.green} st={st} />
+          <Row label="50.0%" value="Decision zone; needs candle confirmation" color={st.amber} st={st} />
+          <Row label="61.8%" value="Deep pullback; good only with reversal evidence" color={st.amber} st={st} />
+          <Row label="78.6%" value="Trend at risk; avoid unless reclaim is strong" color={st.red} st={st} />
+          <Row label="100%" value="Full retrace; prior trend failed" color={st.red} st={st} />
+        </div>
+      </Card>
+
+      <Card st={st} title="Practical Checklist" icon={<CheckCircle2 size={15} />} accent={st.green}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+          <div>
+            <Pill text="Call setup" color={st.green} bg={`${st.green}15`} />
+            <div style={{ marginTop: 8 }}>
+              <CheckItem text="Histogram positive and expanding for 2-3 bars" ok={true} st={st} />
+              <CheckItem text="MACD crosses above Signal before entry" ok={true} st={st} />
+              <CheckItem text="Price reclaims MA20/MA50 or holds Fib 38.2%-61.8%" ok={true} st={st} />
+              <CheckItem text="Volume confirms the reversal candle" ok={true} st={st} />
+            </div>
+          </div>
+          <div>
+            <Pill text="Put setup" color={st.red} bg={`${st.red}15`} />
+            <div style={{ marginTop: 8 }}>
+              <CheckItem text="Histogram negative and expanding lower" ok={true} st={st} />
+              <CheckItem text="MACD remains below Signal" ok={true} st={st} />
+              <CheckItem text="Price rejects MA20/MA50 or fails Fib bounce" ok={true} st={st} />
+              <CheckItem text="Do not buy puts after an already extended decline" ok={false} st={st} />
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function StageBox({ st, stage, title, text, tone }: { st: StTokens; stage: string; title: string; text: string; tone: 'good' | 'warn' }) {
+  const color = tone === 'good' ? st.green : st.amber
+  return (
+    <div style={{ border: `1px solid ${color}55`, borderRadius: 12, padding: 12, background: `${color}10` }}>
+      <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color }}>{stage}</div>
+      <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800, color: st.text }}>{title}</div>
+      <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.45, color: st.muted }}>{text}</div>
+    </div>
+  )
+}
+
+function StrategyRow({ st, trade, color, macd, price, fib, structure }: { st: StTokens; trade: string; color: string; macd: string; price: string; fib: string; structure: string }) {
+  return (
+    <tr style={{ background: st.bgDeep }}>
+      <td style={{ padding: 10, borderTopLeftRadius: 10, borderBottomLeftRadius: 10, color, fontWeight: 800, fontSize: 12 }}>{trade}</td>
+      <td style={{ padding: 10, color: st.text, fontSize: 11.5 }}>{macd}</td>
+      <td style={{ padding: 10, color: st.text, fontSize: 11.5 }}>{price}</td>
+      <td style={{ padding: 10, color: st.text, fontSize: 11.5 }}>{fib}</td>
+      <td style={{ padding: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, color: st.muted, fontSize: 11.5 }}>{structure}</td>
+    </tr>
+  )
+}
+
+function MiniMacdDiagram({ st }: { st: StTokens }) {
+  const bars = [-14, -9, -3, 6, 10, 14]
+  return (
+    <div style={{ border: `1px solid ${st.border}`, borderRadius: 12, padding: 12, background: st.bgDeep }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: st.text, marginBottom: 10 }}>Histogram turns positive before full reversal</div>
+      <div style={{ height: 86, display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${st.border}`, borderTop: `1px solid ${st.border}` }}>
+        {bars.map((b, i) => (
+          <div key={i} style={{ flex: 1, display: 'flex', alignItems: b >= 0 ? 'flex-end' : 'flex-start', justifyContent: 'center', height: '100%' }}>
+            <div style={{ width: '70%', height: Math.abs(b) * 3, background: b >= 0 ? st.green : st.red, borderRadius: 4 }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: st.muted }}>
+        <span>Sellers strong</span>
+        <span>Pressure easing</span>
+        <span>Stage 1</span>
+      </div>
+    </div>
+  )
+}
+
+function FibDiagram({ st, mode }: { st: StTokens; mode: 'bull' | 'bear' }) {
+  const bullish = mode === 'bull'
+  const color = bullish ? st.green : st.red
+  const title = bullish ? 'Bull cycle pullback' : 'Bear cycle bounce'
+  const action = bullish ? 'Buy calls after support holds' : 'Buy puts after bounce fails'
+  return (
+    <div style={{ border: `1px solid ${st.border}`, borderRadius: 12, padding: 12, background: st.bgDeep }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: st.text }}>{title}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, color }}>{action}</span>
+      </div>
+      <div style={{ position: 'relative', height: 150 }}>
+        {[0, 23.6, 38.2, 50, 61.8, 78.6, 100].map(level => {
+          const top = `${level}%`
+          const label = level === 0 ? (bullish ? 'Swing high' : 'Swing low') : level === 100 ? (bullish ? 'Swing low' : 'Swing high') : `${level}%`
+          return (
+            <div key={level} style={{ position: 'absolute', left: 0, right: 0, top }}>
+              <div style={{ borderTop: `1px ${level === 50 ? 'solid' : 'dashed'} ${level === 38.2 || level === 61.8 ? color : st.border}` }} />
+              <span style={{ position: 'absolute', right: 0, top: -8, background: st.bgDeep, paddingLeft: 6, fontSize: 10, color: level === 38.2 || level === 61.8 ? color : st.muted }}>{label}</span>
+            </div>
+          )
+        })}
+        <svg viewBox="0 0 260 150" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+          {bullish ? (
+            <polyline points="18,130 88,18 150,86 235,34" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          ) : (
+            <polyline points="18,20 88,132 150,64 235,112" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          )}
+        </svg>
+      </div>
     </div>
   )
 }

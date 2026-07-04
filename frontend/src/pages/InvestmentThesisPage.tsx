@@ -17,7 +17,7 @@ import {
   Globe2,
   Layers,
   LineChart as LineChartIcon,
-  Link2,
+  Loader2,
   Plus,
   Save,
   Search,
@@ -39,6 +39,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { generateInvestmentThesisStarter, type InvestmentThesisStarter } from '../api/client'
 import { getActionButtonClass, getDecisionBadgeClass, getProfitLossTextClass } from '../utils/semanticTrading'
 
 type ThesisStatus = 'Watching' | 'Researching' | 'Accumulating' | 'Holding' | 'Exited'
@@ -325,6 +326,77 @@ function makeThesis(ticker: string, name: string, theme: string, sector: string,
   }
 }
 
+function thesisFromStarter(starter: InvestmentThesisStarter): InvestmentThesis {
+  const now = todayIso()
+  const initialConviction = clamp(starter.conviction_score, 0, 100)
+  return {
+    id: uid(),
+    company: {
+      name: starter.company_name,
+      ticker: starter.ticker,
+      logo: starter.ticker.slice(0, 1),
+      currentPrice: starter.current_price,
+      dailyChangePct: starter.daily_change_pct,
+      sector: starter.sector || 'Unknown',
+      marketCap: starter.market_cap || 'Unknown',
+      nextEarnings: starter.next_earnings || '',
+    },
+    status: 'Researching',
+    theme: starter.theme || 'Long-term compounder',
+    aiExposure: starter.ai_exposure,
+    dividend: starter.dividend,
+    rating: starter.rating,
+    buyZone: starter.buy_zone,
+    targetPrice: starter.target_price,
+    thesisMarkdown: starter.thesis_markdown,
+    originalThesis: {
+      createdDate: now,
+      createdBy: 'You',
+      originalNews: 'Backend starter thesis generated from market/profile data.',
+      initialTargetPrice: starter.target_price,
+      initialConviction,
+      originalNotes: starter.how_to_invest,
+    },
+    aiSummary: starter.summary,
+    quality: starter.quality,
+    buyZones: starter.buy_zones.map(z => ({ id: uid(), ...z })),
+    accumulationPlan: {
+      maxAllocationPct: 8,
+      maxInvestment: 20000,
+      targetAllocationPct: 5,
+      steps: starter.accumulation_steps,
+    },
+    catalysts: starter.catalysts.map(c => ({ id: uid(), date: now, status: 'Upcoming', ...c })),
+    risks: starter.risks.map(r => ({ id: uid(), ...r })),
+    newsJournal: [],
+    timeline: [{ id: uid(), date: now, title: 'Started Thesis', description: `Generated starter research page for ${starter.ticker}.` }],
+    quarterlyReviews: [],
+    checklist: {
+      annualReport: false,
+      latestTenQ: false,
+      earningsCall: false,
+      competitors: false,
+      tam: false,
+      risks: true,
+      valuation: true,
+      quarterlyReview: false,
+      yearlyReview: false,
+    },
+    portfolio: {
+      ownedShares: 0,
+      averageCost: 0,
+      targetAllocationPct: 5,
+      currentAllocationPct: 0,
+      dividendYieldPct: starter.dividend_yield_pct,
+    },
+    tradingSignals: starter.trading_signals,
+    convictionHistory: [
+      { date: now, score: initialConviction },
+    ],
+    lastUpdated: now,
+  }
+}
+
 function seedTheses(): InvestmentThesis[] {
   const arm = makeThesis('ARM', 'Arm Holdings', 'AI Infrastructure', 'Semiconductors', 145)
   arm.status = 'Holding'
@@ -436,6 +508,9 @@ export default function InvestmentThesisPage() {
   const [ownedFilter, setOwnedFilter] = useState('all')
   const [sortKey, setSortKey] = useState<'updated' | 'conviction' | 'ticker' | 'allocation'>('updated')
   const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [starterTicker, setStarterTicker] = useState('')
+  const [starterLoading, setStarterLoading] = useState(false)
+  const [starterError, setStarterError] = useState<string | null>(null)
   const selectedId = params.get('id')
   const selected = theses.find(t => t.id === selectedId) ?? null
 
@@ -477,10 +552,31 @@ export default function InvestmentThesisPage() {
     setTheses(prev => prev.map(t => t.id === id ? { ...updater(t), lastUpdated: todayIso() } : t))
   }
 
-  const createThesis = () => {
+  const createBlankThesis = () => {
     const t = makeThesis('NEW', 'New Company', 'Research Theme', 'Sector', 100)
     setTheses(prev => [t, ...prev])
     setParams({ id: t.id })
+  }
+
+  const createThesisFromTicker = async () => {
+    const sym = starterTicker.trim().toUpperCase()
+    if (!sym) {
+      setStarterError('Enter a ticker first.')
+      return
+    }
+    setStarterLoading(true)
+    setStarterError(null)
+    try {
+      const starter = await generateInvestmentThesisStarter(sym)
+      const t = thesisFromStarter(starter)
+      setTheses(prev => [t, ...prev.filter(existing => existing.company.ticker.toUpperCase() !== t.company.ticker.toUpperCase())])
+      setStarterTicker('')
+      setParams({ id: t.id })
+    } catch (e) {
+      setStarterError((e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (e as Error).message || 'Unable to build thesis.')
+    } finally {
+      setStarterLoading(false)
+    }
   }
 
   const deleteThesis = (id: string) => {
@@ -503,6 +599,11 @@ export default function InvestmentThesisPage() {
   const totalOwned = theses.filter(t => t.portfolio.ownedShares > 0).length
   const avgConviction = theses.length ? Math.round(theses.reduce((s, t) => s + convictionScore(t), 0) / theses.length) : 0
   const inBuyZone = theses.filter(t => t.buyZone && t.company.currentPrice <= t.targetPrice).length
+  const highConviction = theses.filter(t => convictionScore(t) >= 80).length
+  const researchQueue = theses
+    .map(t => ({ thesis: t, decision: thesisDecision(t), health: researchHealth(t) }))
+    .sort((a, b) => b.health.priority - a.health.priority)
+    .slice(0, 6)
 
   return (
     <div className="min-h-screen bg-surface-page px-4 py-5 text-primary sm:px-6 lg:px-8">
@@ -516,16 +617,78 @@ export default function InvestmentThesisPage() {
             A permanent research journal for long-term ideas, buy zones, catalysts, risks, quarterly reviews, and thesis drift.
           </p>
         </div>
-        <button type="button" onClick={createThesis} className={`${getActionButtonClass('trade')} h-10 rounded-lg px-4 text-sm`}>
-          <Plus size={16} /> New Investment Thesis
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={starterTicker}
+              onChange={e => setStarterTicker(e.target.value.toUpperCase())}
+              onKeyDown={e => { if (e.key === 'Enter') void createThesisFromTicker() }}
+              placeholder="Enter ticker, e.g. NVDA"
+              aria-label="Ticker for new investment thesis"
+              className={`${inputCls} h-10 min-w-[220px]`}
+            />
+            <button type="button" onClick={() => void createThesisFromTicker()} disabled={starterLoading} className={`${getActionButtonClass('trade')} h-10 rounded-lg px-4 text-sm disabled:cursor-not-allowed disabled:opacity-60`}>
+              {starterLoading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Build Thesis
+            </button>
+            <button type="button" onClick={createBlankThesis} className={`${getActionButtonClass('surface')} h-10 rounded-lg px-4 text-sm`}>
+              Blank
+            </button>
+          </div>
+          {starterError && <div className="text-xs font-medium text-rose-600 dark:text-rose-300">{starterError}</div>}
+        </div>
       </header>
 
       <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard icon={<BookOpen size={18} />} label="Theses" value={String(theses.length)} sub={`${totalOwned} owned positions`} />
         <SummaryCard icon={<BrainCircuit size={18} />} label="Avg Conviction" value={`${avgConviction}/100`} sub="Business quality driven" />
         <SummaryCard icon={<Target size={18} />} label="In Buy Zone" value={String(inBuyZone)} sub="Review before adding" />
-        <SummaryCard icon={<CalendarClock size={18} />} label="Quarterly Discipline" value={`${theses.reduce((s, t) => s + t.quarterlyReviews.length, 0)}`} sub="Saved reviews" />
+        <SummaryCard icon={<Star size={18} />} label="High Conviction" value={String(highConviction)} sub="80+ conviction scores" />
+      </section>
+
+      <section className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/[0.07] dark:bg-slate-900">
+          <SectionTitle icon={<BrainCircuit size={18} />} title="Research Command Center" sub="Shows what needs attention before capital is added." />
+          <div className="grid gap-3 md:grid-cols-3">
+            <ResearchStat
+              label="Review due"
+              value={String(theses.filter(t => researchHealth(t).reviewDue).length)}
+              sub="No recent quarterly review"
+              tone="amber"
+            />
+            <ResearchStat
+              label="Risk elevated"
+              value={String(theses.filter(t => researchHealth(t).highRiskCount > 0).length)}
+              sub="High severity risks logged"
+              tone="rose"
+            />
+            <ResearchStat
+              label="Actionable"
+              value={String(theses.filter(t => ['ACCUMULATE', 'ADD ON WEAKNESS', 'WATCH BUY ZONE'].includes(thesisDecision(t).action)).length)}
+              sub="Decision card favors attention"
+              tone="emerald"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/[0.07] dark:bg-slate-900">
+          <SectionTitle icon={<AlertTriangle size={18} />} title="Research Queue" sub="Highest priority follow-ups." />
+          <div className="space-y-2">
+            {researchQueue.map(({ thesis: t, decision, health }) => (
+              <button key={t.id} type="button" onClick={() => setParams({ id: t.id })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-violet-400/50 dark:border-white/[0.07] dark:bg-slate-950/40">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-heading">{t.company.ticker}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decision.toneClass}`}>{decision.action}</span>
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted">{health.reason}</div>
+                  </div>
+                  <ChevronRight size={15} className="shrink-0 text-muted" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="mb-4 rounded-xl border border-slate-200 bg-white p-3 dark:border-white/[0.07] dark:bg-slate-900">
@@ -612,6 +775,21 @@ function SummaryCard({ icon, label, value, sub }: { icon: React.ReactNode; label
   )
 }
 
+function ResearchStat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: 'emerald' | 'amber' | 'rose' }) {
+  const toneClass = tone === 'emerald'
+    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    : tone === 'rose'
+      ? 'border-rose-400/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+      : 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  return (
+    <div className={`rounded-xl border p-4 ${toneClass}`}>
+      <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">{label}</div>
+      <div className="mt-2 text-3xl font-black">{value}</div>
+      <div className="mt-1 text-xs opacity-80">{sub}</div>
+    </div>
+  )
+}
+
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
@@ -648,6 +826,11 @@ function InvestmentThesisDetail({
   const totalCost = thesis.portfolio.ownedShares * thesis.portfolio.averageCost
   const gain = currentValue - totalCost
   const gainPct = totalCost > 0 ? (gain / totalCost) * 100 : 0
+  const decision = thesisDecision(thesis)
+  const health = researchHealth(thesis)
+  const checklistPct = checklistCompletion(thesis.checklist)
+  const drift = score - thesis.originalThesis.initialConviction
+  const targetUpside = thesis.company.currentPrice > 0 ? ((thesis.targetPrice - thesis.company.currentPrice) / thesis.company.currentPrice) * 100 : 0
   const qualityData = [
     { metric: 'Business', value: thesis.quality.businessQuality },
     { metric: 'Mgmt', value: thesis.quality.management },
@@ -740,6 +923,43 @@ function InvestmentThesisDetail({
             <HeroMetric icon={<Layers size={18} />} label="Portfolio" value={`${thesis.portfolio.currentAllocationPct.toFixed(1)}%`} sub={`${thesis.portfolio.ownedShares} shares owned`} />
           </section>
 
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/[0.07] dark:bg-slate-900">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted">Investment Decision</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wide ${decision.toneClass}`}>{decision.action}</span>
+                    <span className="font-mono text-sm font-bold text-secondary">{score}/100 conviction</span>
+                    <span className="text-sm text-muted">{targetUpside >= 0 ? '+' : ''}{targetUpside.toFixed(1)}% to target</span>
+                  </div>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-secondary">{decision.reason}</p>
+                </div>
+                <div className="grid min-w-[260px] grid-cols-2 gap-2 text-xs">
+                  <ReadOnly label="Next Earnings" value={thesis.company.nextEarnings || '--'} />
+                  <ReadOnly label="Buy Zone" value={thesis.buyZone || '--'} />
+                  <ReadOnly label="Current Alloc." value={`${thesis.portfolio.currentAllocationPct.toFixed(1)}%`} />
+                  <ReadOnly label="Target Alloc." value={`${thesis.portfolio.targetAllocationPct.toFixed(1)}%`} />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <DecisionCheck label="Research complete" value={`${checklistPct}%`} good={checklistPct >= 70} sub="Checklist completion" />
+                <DecisionCheck label="Thesis drift" value={`${drift >= 0 ? '+' : ''}${drift}`} good={drift >= -10} sub="Current vs original conviction" />
+                <DecisionCheck label="Risk register" value={`${health.highRiskCount} high`} good={health.highRiskCount === 0} sub={health.highRiskCount ? 'Review before adding' : 'No high risks logged'} />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/[0.07] dark:bg-slate-900">
+              <SectionTitle icon={<CheckCircle2 size={18} />} title="Next Best Action" sub="Keeps research and allocation separate from trading signals." />
+              <div className="space-y-3">
+                <ActionRow done={!health.reviewDue} label={health.reviewDue ? 'Create quarterly review' : 'Quarterly review current'} />
+                <ActionRow done={health.highRiskCount === 0} label={health.highRiskCount ? 'Reassess high-severity risks' : 'Risk register clean'} />
+                <ActionRow done={checklistPct >= 70} label={checklistPct >= 70 ? 'Checklist mostly complete' : 'Complete core research checklist'} />
+                <ActionRow done={thesis.portfolio.currentAllocationPct <= thesis.accumulationPlan.maxAllocationPct} label="Allocation inside max plan" />
+              </div>
+            </div>
+          </section>
+
           <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/[0.07] dark:bg-slate-900">
             <div className="grid gap-3 md:grid-cols-4">
               <Field label="Status">
@@ -819,6 +1039,11 @@ function InvestmentThesisDetail({
           </section>
 
           <EditableListSection id="buy-zones" title="Buy Zones" icon={<Target size={18} />} items={thesis.buyZones} onAdd={() => onUpdate(t => ({ ...t, buyZones: [...t.buyZones, { id: uid(), label: 'New Zone', price: '', reason: '', allocation: '' }] }))}>
+            <div className="mb-3 grid gap-3 md:grid-cols-3">
+              <ReadOnly label="Current Price" value={fmtUsd(thesis.company.currentPrice)} />
+              <ReadOnly label="Primary Buy Zone" value={thesis.buyZone || '--'} />
+              <ReadOnly label="Target Upside" value={`${targetUpside >= 0 ? '+' : ''}${targetUpside.toFixed(1)}%`} valueClass={targetUpside >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'} />
+            </div>
             {thesis.buyZones.map(zone => (
               <div key={zone.id} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-white/[0.07] dark:bg-white/[0.03] md:grid-cols-[140px_180px_1fr_160px]">
                 <input value={zone.label} onChange={e => patchBuyZone(thesis, onUpdate, zone.id, { label: e.target.value })} className={inputCls} />
@@ -978,6 +1203,30 @@ function HeroMetric({ icon, label, value, sub }: { icon: React.ReactNode; label:
   )
 }
 
+function DecisionCheck({ label, value, good, sub }: { label: string; value: string; good: boolean; sub: string }) {
+  return (
+    <div className={`rounded-xl border p-3 ${good ? 'border-emerald-400/30 bg-emerald-500/10' : 'border-amber-400/30 bg-amber-500/10'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</span>
+        {good ? <CheckCircle2 size={15} className="text-emerald-500" /> : <AlertTriangle size={15} className="text-amber-500" />}
+      </div>
+      <div className="mt-2 font-mono text-lg font-black text-heading">{value}</div>
+      <div className="mt-1 text-xs text-tertiary">{sub}</div>
+    </div>
+  )
+}
+
+function ActionRow({ done, label }: { done: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/[0.07] dark:bg-slate-950/40">
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${done ? 'bg-emerald-500/15 text-emerald-500' : 'bg-amber-500/15 text-amber-500'}`}>
+        {done ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+      </span>
+      <span className="text-sm font-medium text-secondary">{label}</span>
+    </div>
+  )
+}
+
 function SectionTitle({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="mb-4 flex items-start justify-between gap-3">
@@ -1040,6 +1289,92 @@ function qualityLabel(key: string) {
     .replace('Ai ', 'AI ')
     .replace('Tam', 'TAM')
     .replace('Ten Q', '10-Q')
+}
+
+function checklistCompletion(checklist: InvestmentChecklist) {
+  const values = Object.values(checklist)
+  if (!values.length) return 0
+  return Math.round((values.filter(Boolean).length / values.length) * 100)
+}
+
+function daysSince(date: string) {
+  const then = new Date(date).getTime()
+  if (!Number.isFinite(then)) return 999
+  return Math.max(0, Math.floor((Date.now() - then) / 86400000))
+}
+
+function thesisDecision(t: InvestmentThesis) {
+  const score = convictionScore(t)
+  const alloc = t.portfolio.currentAllocationPct
+  const targetAlloc = t.portfolio.targetAllocationPct
+  const maxAlloc = t.accumulationPlan.maxAllocationPct
+  const price = t.company.currentPrice
+  const targetUpside = price > 0 ? ((t.targetPrice - price) / price) * 100 : 0
+  const health = researchHealth(t)
+
+  if (t.status === 'Exited') {
+    return {
+      action: 'ARCHIVED',
+      toneClass: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+      reason: 'This thesis is exited. Keep it for history and only reopen after a fresh business-quality review.',
+    }
+  }
+  if (score < 55) {
+    return {
+      action: 'REASSESS',
+      toneClass: 'border-rose-400/30 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+      reason: 'Conviction is below the minimum long-term threshold. Revisit the thesis, risks, and latest quarterly evidence before adding capital.',
+    }
+  }
+  if (alloc >= maxAlloc) {
+    return {
+      action: 'HOLD SIZE',
+      toneClass: 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      reason: 'The position is at or above the maximum allocation plan. Do not add unless the max allocation rule changes after review.',
+    }
+  }
+  if (health.highRiskCount > 0 || health.reviewDue) {
+    return {
+      action: 'REVIEW FIRST',
+      toneClass: 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      reason: health.reason,
+    }
+  }
+  if (score >= 82 && targetUpside >= 15 && alloc < targetAlloc) {
+    return {
+      action: 'ACCUMULATE',
+      toneClass: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      reason: 'Conviction is high, upside remains attractive, and allocation is still below the target plan.',
+    }
+  }
+  if (score >= 70 && targetUpside >= 8) {
+    return {
+      action: 'ADD ON WEAKNESS',
+      toneClass: 'border-sky-400/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+      reason: 'The thesis remains investable, but the better action is to add near predefined buy zones instead of chasing price.',
+    }
+  }
+  return {
+    action: 'MONITOR',
+    toneClass: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+    reason: 'Keep the thesis active, monitor catalysts and quarterly evidence, and wait for a better valuation or stronger conviction.',
+  }
+}
+
+function researchHealth(t: InvestmentThesis) {
+  const highRiskCount = t.risks.filter(r => r.severity === 'High' || r.probability === 'High').length
+  const lastReviewAge = t.quarterlyReviews.length ? daysSince(t.lastUpdated) : 999
+  const reviewDue = t.quarterlyReviews.length === 0 || lastReviewAge > 90
+  const checklistPct = checklistCompletion(t.checklist)
+  const priority = (reviewDue ? 4 : 0) + highRiskCount * 3 + (checklistPct < 60 ? 2 : 0) + (convictionScore(t) >= 80 ? 1 : 0)
+  const reason = reviewDue
+    ? 'Quarterly review is missing or stale.'
+    : highRiskCount > 0
+      ? `${highRiskCount} high risk item${highRiskCount === 1 ? '' : 's'} need review.`
+      : checklistPct < 60
+        ? 'Core research checklist is incomplete.'
+        : 'Research file is current.'
+  return { highRiskCount, reviewDue, checklistPct, priority, reason }
 }
 
 function generateSummary(t: InvestmentThesis) {

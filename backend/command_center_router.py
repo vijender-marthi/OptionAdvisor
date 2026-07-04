@@ -978,6 +978,7 @@ def _compute_positions_pnl(
                     "entry_premium_per_share": current_result.get("entry_premium_per_share"),
                     "current_mark_per_share": current_result.get("current_mark_per_share"),
                     "mark_source": current_result.get("mark_source", "stale"),
+                    "invalid_reason": current_result.get("invalid_reason"),
                 }
             mtm_total += current_result["pnl"]
             day_total += bs_today["pnl"] - bs_yesterday["pnl"]

@@ -834,6 +834,12 @@ export default function TradeSignalsPage() {
           </div>
         </div>
 
+        {/* Pre-Market Bias */}
+        <PreMarketBiasSection />
+
+        {/* Early Entry */}
+        <EarlyEntrySection />
+
         {/* Controls row */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
@@ -975,15 +981,6 @@ export default function TradeSignalsPage() {
           Verdict key: <span className="text-emerald-700">GO</span> = all conditions aligned (enter now) · <span className="text-amber-700">CAUTION</span> = conditions forming (wait) · <span className="text-red-700">NO GO</span> = hard failure (skip) · corresponds to STRONG GO / WATCH / AVOID on other pages
         </div>
 
-        {/* Pre-Market Bias */}
-        <div className="mt-6">
-          <PreMarketBiasSection />
-        </div>
-
-        {/* Early Entry */}
-        <div className="mt-4">
-          <EarlyEntrySection />
-        </div>
       </div>
     </div>
   )
