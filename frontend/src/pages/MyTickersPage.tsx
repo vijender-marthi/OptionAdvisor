@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, X, Search, AlertTriangle, Check, Undo2, RefreshCw,
   Pencil, ChevronDown, ChevronUp, Calendar, ArrowUpRight, ListTodo,
@@ -76,6 +75,25 @@ function badgeBase(tradeType: string): string {
   return TRADE_TYPE_META[tradeType]?.badgeClass || 'bg-gray-700 text-gray-300'
 }
 
+function fmtPrice(value?: number | null): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : '--'
+}
+
+function fmtChange(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+}
+
+function fmtChangePct(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function changeTone(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'text-gray-500'
+  return value >= 0 ? 'text-emerald-400' : 'text-red-400'
+}
+
 const TABS: { key: TabFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'day', label: 'Day' },
@@ -84,8 +102,6 @@ const TABS: { key: TabFilter; label: string }[] = [
 ]
 
 export default function MyTickersPage() {
-  const navigate = useNavigate()
-
   const [tickers, setTickers] = useState<MyTickerEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -336,25 +352,39 @@ export default function MyTickersPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {filteredTickers.map((ticker, idx) => (
-            <TickerRow
-              key={ticker.symbol}
-              ticker={ticker}
-              highlight={highlightSymbol === ticker.symbol}
-              onRemove={() => handleRemove(ticker)}
-              onEdit={() => handleEdit(ticker)}
-              onMoveUp={idx > 0 ? () => handleMove(ticker.symbol, 'up') : undefined}
-              onMoveDown={idx < filteredTickers.length - 1 ? () => handleMove(ticker.symbol, 'down') : undefined}
-              draggable
-              onDragStart={(e) => handleDragStart(e, idx)}
-              onDragOver={(e) => handleDragOver(e, idx)}
-              onDrop={(e) => handleDrop(e, idx)}
-              onDragEnd={handleDragEnd}
-              isDragGhost={dragIndex === idx}
-              isDropTarget={dragOverIndex === idx}
-            />
-          ))}
+        <div className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/50 shadow-xl shadow-black/10">
+          <div className="overflow-x-auto">
+            <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 border-b border-gray-800 bg-gray-950/55 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 md:grid">
+              <span>Ticker</span>
+              <span className="text-right">Price</span>
+              <span className="text-right">Change</span>
+              <span className="text-right">Change %</span>
+              <span className="text-right">Pre</span>
+              <span className="text-right">AH</span>
+              <span>Links</span>
+              <span className="text-right">Actions</span>
+            </div>
+            <div className="divide-y divide-gray-800">
+              {filteredTickers.map((ticker, idx) => (
+                <TickerRow
+                  key={ticker.symbol}
+                  ticker={ticker}
+                  highlight={highlightSymbol === ticker.symbol}
+                  onRemove={() => handleRemove(ticker)}
+                  onEdit={() => handleEdit(ticker)}
+                  onMoveUp={idx > 0 ? () => handleMove(ticker.symbol, 'up') : undefined}
+                  onMoveDown={idx < filteredTickers.length - 1 ? () => handleMove(ticker.symbol, 'down') : undefined}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onDragEnd={handleDragEnd}
+                  isDragGhost={dragIndex === idx}
+                  isDropTarget={dragOverIndex === idx}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -393,7 +423,6 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
   isDragGhost?: boolean
   isDropTarget?: boolean
 }) {
-  const navigate = useNavigate()
   const avatar = avatarFor(ticker.symbol)
   const types = ticker.trade_types || []
   const ed = ticker.next_earnings_date
@@ -414,101 +443,135 @@ function TickerRow({ ticker, highlight, onRemove, onEdit, onMoveUp, onMoveDown, 
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 rounded-xl border px-4 py-3 transition-all ${highlight ? 'animate-pulse border-green-600/50 bg-green-900/20' : earningsThisWeek ? 'border-yellow-700/50 bg-yellow-900/15' : 'border-gray-800 bg-gray-900/60'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 border-violet-500/50 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      className={`transition-all ${highlight ? 'animate-pulse bg-green-900/20' : earningsThisWeek ? 'bg-yellow-900/15' : 'bg-gray-900/35'} ${isDragGhost ? 'opacity-40 ring-2 ring-violet-500/40' : ''} ${isDropTarget ? 'ring-2 ring-violet-500/60 scale-[1.01]' : ''} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
-      {/* Top row on mobile: avatar + symbol/name + delete */}
-      <div className="flex items-center gap-3 min-w-0 sm:flex-[2]">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-white">{ticker.symbol}</span>
-            <div className="flex flex-col gap-0.5">
-              {onMoveUp && <button type="button" onClick={onMoveUp} className="text-gray-600 hover:text-gray-300 -mb-0.5"><ChevronUp size={10} /></button>}
-              {onMoveDown && <button type="button" onClick={onMoveDown} className="text-gray-600 hover:text-gray-300 -mt-0.5"><ChevronDown size={10} /></button>}
-            </div>
-            <button type="button" onClick={onEdit} className="text-gray-500 hover:text-gray-300"><Pencil size={12} /></button>
+      <div className="p-3 md:hidden">
+        <div className={`rounded-xl border p-3 ${earningsThisWeek ? 'border-yellow-700/50 bg-yellow-950/20' : 'border-gray-800 bg-gray-950/25'}`}>
+          <div className="flex items-start gap-3">
+            <TickerIdentity avatar={avatar} ticker={ticker} earningsThisWeek={earningsThisWeek} ed={ed} edDays={edDays} lastEd={lastEd} onEdit={onEdit} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
+            <button type="button" onClick={onRemove} className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
           </div>
-          {ticker.company_name && <div className="truncate text-xs text-gray-500">{ticker.company_name}</div>}
-          {ed && (
-            <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-yellow-400' : 'text-gray-600'}`}>
-              <Calendar size={10} />
-              <span>Next earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
-            </div>
-          )}
-          {lastEd && (
-            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
-              <Calendar size={10} />
-              <span>Last earnings {lastEd}</span>
-            </div>
-          )}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <MobileMetric label="Price" value={fmtPrice(ticker.last_price)} />
+            <MobileMetric label="Change" value={fmtChange(ticker.price_change)} tone={changeTone(ticker.price_change)} />
+            <MobileMetric label="Change %" value={fmtChangePct(ticker.price_change_pct)} tone={changeTone(ticker.price_change_pct)} />
+            <SessionQuote label="PRE" price={ticker.pre_market_price} change={ticker.pre_market_change} pct={ticker.pre_market_change_pct} />
+            <SessionQuote label="AH" price={ticker.post_market_price} change={ticker.post_market_change} pct={ticker.post_market_change_pct} />
+          </div>
+          <QuickLinks ticker={ticker} types={types} engineLabel={ENGINE_LABEL} className="mt-3" />
         </div>
-        {/* Delete button visible on mobile inline with avatar row */}
-        <button type="button" onClick={onRemove} className="sm:hidden shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
       </div>
 
-      {/* Bottom row on mobile: price + badges */}
-      <div className="flex items-center justify-between gap-3 sm:contents">
-        {/* Price & Change */}
-        <div className="flex flex-col items-start sm:items-end gap-0.5 sm:flex-1 min-w-0">
-          {ticker.last_price != null && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-bold font-mono text-white">${ticker.last_price.toFixed(2)}</span>
-              {ticker.price_change != null && (
-                <span className={`text-xs font-mono font-semibold ${ticker.price_change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {ticker.price_change >= 0 ? '+' : ''}{ticker.price_change.toFixed(2)}
-                </span>
-              )}
-              {ticker.price_change_pct != null && (
-                <span className={`text-xs font-mono font-semibold ${ticker.price_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  ({ticker.price_change_pct >= 0 ? '+' : ''}{ticker.price_change_pct.toFixed(2)}%)
-                </span>
-              )}
-            </div>
-          )}
-          {ticker.pre_market_price != null && (
-            <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">Pre</span>
-              ${ticker.pre_market_price.toFixed(2)}
-              {ticker.pre_market_change_pct != null && (
-                <span className={ticker.pre_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                  {ticker.pre_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.pre_market_change_pct).toFixed(2)}%
-                </span>
-              )}
-            </span>
-          )}
-          {ticker.post_market_price != null && (
-            <span className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-purple-400">AH</span>
-              ${ticker.post_market_price.toFixed(2)}
-              {ticker.post_market_change_pct != null && (
-                <span className={ticker.post_market_change_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                  {ticker.post_market_change_pct >= 0 ? '▲' : '▼'} {Math.abs(ticker.post_market_change_pct).toFixed(2)}%
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-
-        {/* Trade type badges + delete */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex flex-wrap gap-1">
-            {types.map(tt => (
-              <a
-                key={tt}
-                href={getEngineRoute(tt, ticker.symbol)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${ticker.symbol} in ${ENGINE_LABEL[tt] ?? tt}`}
-                className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-medium transition-all hover:brightness-125 hover:scale-105 ${badgeBase(tt)}`}
-              >
-                {TRADE_TYPE_META[tt]?.label || tt}
-                <ArrowUpRight size={9} className="opacity-70" />
-              </a>
-            ))}
-          </div>
-          <button type="button" onClick={onRemove} className="hidden sm:block shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400"><Trash2 size={15} /></button>
+      <div className="hidden min-w-[1040px] grid-cols-[minmax(220px,1.45fr)_112px_106px_106px_132px_132px_minmax(188px,1fr)_96px] items-center gap-3 px-4 py-3 md:grid">
+        <TickerIdentity avatar={avatar} ticker={ticker} earningsThisWeek={earningsThisWeek} ed={ed} edDays={edDays} lastEd={lastEd} onEdit={onEdit} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
+        <TableNumber value={fmtPrice(ticker.last_price)} />
+        <TableNumber value={fmtChange(ticker.price_change)} tone={changeTone(ticker.price_change)} />
+        <TableNumber value={fmtChangePct(ticker.price_change_pct)} tone={changeTone(ticker.price_change_pct)} />
+        <SessionQuote label="PRE" price={ticker.pre_market_price} change={ticker.pre_market_change} pct={ticker.pre_market_change_pct} compact />
+        <SessionQuote label="AH" price={ticker.post_market_price} change={ticker.post_market_change} pct={ticker.post_market_change_pct} compact />
+        <QuickLinks ticker={ticker} types={types} engineLabel={ENGINE_LABEL} />
+        <div className="flex items-center justify-end gap-1">
+          <button type="button" onClick={onEdit} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-gray-300" title={`Edit ${ticker.symbol}`}><Pencil size={14} /></button>
+          <button type="button" onClick={onRemove} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-800 hover:text-red-400" title={`Remove ${ticker.symbol}`}><Trash2 size={15} /></button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function TickerIdentity({ avatar, ticker, earningsThisWeek, ed, edDays, lastEd, onEdit, onMoveUp, onMoveDown }: {
+  avatar: { initials: string; bg: string; text: string }
+  ticker: MyTickerEntry
+  earningsThisWeek: boolean
+  ed?: string
+  edDays?: number | null
+  lastEd?: string
+  onEdit: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatar.bg} ${avatar.text}`}>{avatar.initials}</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-white">{ticker.symbol}</span>
+          <div className="flex flex-col gap-0.5">
+            {onMoveUp && <button type="button" onClick={onMoveUp} className="-mb-0.5 text-gray-600 hover:text-gray-300"><ChevronUp size={10} /></button>}
+            {onMoveDown && <button type="button" onClick={onMoveDown} className="-mt-0.5 text-gray-600 hover:text-gray-300"><ChevronDown size={10} /></button>}
+          </div>
+          <button type="button" onClick={onEdit} className="text-gray-500 hover:text-gray-300 md:hidden"><Pencil size={12} /></button>
+        </div>
+        {ticker.company_name && <div className="truncate text-xs text-gray-500">{ticker.company_name}</div>}
+        {ed && (
+          <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${earningsThisWeek ? 'font-semibold text-yellow-400' : 'text-gray-600'}`}>
+            <Calendar size={10} />
+            <span>Next earnings {ed}{edDays != null ? ` (${edDays}d)` : ''}</span>
+          </div>
+        )}
+        {lastEd && (
+          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
+            <Calendar size={10} />
+            <span>Last earnings {lastEd}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TableNumber({ value, tone = 'text-gray-100' }: { value: string; tone?: string }) {
+  return <div className={`text-right font-mono text-sm font-semibold tabular-nums ${tone}`}>{value}</div>
+}
+
+function MobileMetric({ label, value, tone = 'text-gray-100' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950/45 px-2.5 py-2">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">{label}</div>
+      <div className={`mt-0.5 font-mono text-sm font-semibold tabular-nums ${tone}`}>{value}</div>
+    </div>
+  )
+}
+
+function SessionQuote({ label, price, change, pct, compact = false }: { label: 'PRE' | 'AH'; price?: number | null; change?: number | null; pct?: number | null; compact?: boolean }) {
+  const hasData = price != null || change != null || pct != null
+  const accent = label === 'PRE' ? 'text-violet-400' : 'text-sky-400'
+  if (compact) {
+    return (
+      <div className="text-right">
+        <div className={`text-[9px] font-bold uppercase tracking-wider ${accent}`}>{label}</div>
+        <div className="font-mono text-sm font-semibold tabular-nums text-gray-100">{fmtPrice(price)}</div>
+        <div className={`font-mono text-[11px] font-semibold tabular-nums ${changeTone(pct ?? change)}`}>{hasData ? fmtChangePct(pct) : '--'}</div>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950/45 px-2.5 py-2">
+      <div className={`text-[9px] font-bold uppercase tracking-wider ${accent}`}>{label}</div>
+      <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums text-gray-100">{fmtPrice(price)}</div>
+      <div className={`font-mono text-[11px] font-semibold tabular-nums ${changeTone(pct ?? change)}`}>{hasData ? fmtChangePct(pct) : '--'}</div>
+    </div>
+  )
+}
+
+function QuickLinks({ ticker, types, engineLabel, className = '' }: { ticker: MyTickerEntry; types: string[]; engineLabel: Record<string, string>; className?: string }) {
+  return (
+    <div className={`flex min-w-0 flex-wrap gap-1.5 ${className}`}>
+      {types.length === 0 ? (
+        <span className="text-xs text-gray-600">No linked pages</span>
+      ) : types.map(tt => (
+        <a
+          key={tt}
+          href={getEngineRoute(tt, ticker.symbol)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open ${ticker.symbol} in ${engineLabel[tt] ?? tt}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-all hover:brightness-125 ${badgeBase(tt)}`}
+        >
+          {TRADE_TYPE_META[tt]?.label || tt}
+          <ArrowUpRight size={10} className="opacity-70" />
+        </a>
+      ))}
     </div>
   )
 }
