@@ -447,6 +447,7 @@ export default function DayTradePage() {
   const [sessionState, setSessionState] = useState<'forming' | 'watch' | 'entry' | 'hold' | 'reentry' | 'exhausted'>('watch')
   const [chartInterval, setChartInterval] = useState<ChartInterval>('1m')
   const prevScannedTickerRef = useRef('')
+  const inFlightScanRef = useRef('')
 
   useEffect(() => {
     fetchMyTickers().then(res => {
@@ -467,6 +468,9 @@ export default function DayTradePage() {
       setUi(cur => ({ ...cur, error: 'Enter a valid ticker symbol.' }))
       return
     }
+    const scanKey = `${sym}:${forceRefresh ? 'force' : 'cache'}`
+    if (inFlightScanRef.current === scanKey) return
+    inFlightScanRef.current = scanKey
     // Write ticker to URL so sharing, refresh, and other tabs/browsers pick it up
     setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('ticker', sym); return p }, { replace: true })
     // If a result already exists this is a background refresh — keep the stale
@@ -500,12 +504,15 @@ export default function DayTradePage() {
         refreshing: false,
         error: axiosDetail(e),
       }))
+    } finally {
+      if (inFlightScanRef.current === scanKey) inFlightScanRef.current = ''
     }
   }, [setUi]) // stable — no ticker dependency
 
   // Reload on mount: use URL ticker if present; otherwise wait for user input
   const didMountRef = useRef(false)
   const runScanRef = useRef(runScan)
+  const urlTickerScanRef = useRef('')
   useEffect(() => { runScanRef.current = runScan }, [runScan])
   useEffect(() => {
     if (didMountRef.current) return
@@ -515,19 +522,33 @@ export default function DayTradePage() {
     if (sym && sym !== ticker.trim().toUpperCase()) {
       setUi(cur => ({ ...cur, ticker: sym }))
     }
-    if (sym) runScan(sym)
+    if (sym) {
+      urlTickerScanRef.current = sym
+      void runScan(sym).finally(() => {
+        if (urlTickerScanRef.current === sym) urlTickerScanRef.current = ''
+      })
+    }
   }, []) // eslint-disable-line
 
   // Re-scan when URL ticker changes (navigation from TCC, or another tab/browser pushes a new URL)
   // Guard: only fire when the URL ticker differs from the currently loaded result to avoid
-  // an infinite loop with the setSearchParams call inside runScan.
+  // an infinite loop with the setSearchParams call inside runScan. Also guard while
+  // the first URL scan is still loading so app-wide rerenders don't launch duplicates.
   useEffect(() => {
     const t = searchParams.get('ticker')?.trim().toUpperCase()
     if (!t || t.length > 12 || !didMountRef.current) return
     const loaded = ui.result?.ticker?.toUpperCase()
+    if (t === loaded) {
+      if (urlTickerScanRef.current === t) urlTickerScanRef.current = ''
+      return
+    }
+    if (urlTickerScanRef.current === t) return
     if (t !== loaded) {
+      urlTickerScanRef.current = t
       setUi(cur => ({ ...cur, ticker: t }))
-      runScanRef.current(t)
+      void runScanRef.current(t).finally(() => {
+        if (urlTickerScanRef.current === t) urlTickerScanRef.current = ''
+      })
     }
   // runScan intentionally excluded — use ref to avoid resetting ticker on each keystroke
   // eslint-disable-next-line react-hooks/exhaustive-deps

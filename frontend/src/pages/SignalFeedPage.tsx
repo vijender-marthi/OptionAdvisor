@@ -284,6 +284,17 @@ function riskClass(value: string): string {
   return getRiskTextClass(value)
 }
 
+function compositeScore(row: SignalFeedRow): number {
+  const val = (v: string) => {
+    const u = String(v || '').toUpperCase()
+    if (u === 'READY') return 3
+    if (u === 'WATCH') return 2
+    if (u === 'WAIT') return 1
+    return 0
+  }
+  return val(row.day_decision) + val(row.swing_decision) + val(row.regular_decision)
+}
+
 function normalizeTrendFilter(value: string): TrendFilter {
   const trend = value.toLowerCase()
   if (trend.includes('up') || trend.includes('bull')) return 'bullish'
@@ -1018,6 +1029,51 @@ function MobileActionTray({
 }
 
 
+function TopPickCard({ row, onOpen }: { row: SignalFeedRow; onOpen: () => void }) {
+  const score = compositeScore(row)
+  const changeTone = row.price_change_pct > 0 ? 'text-semantic-bullish' : row.price_change_pct < 0 ? 'text-semantic-bearish' : 'text-tertiary'
+  const dotColor = (d: string) => {
+    const u = String(d || '').toUpperCase()
+    if (u === 'READY') return 'bg-emerald-500'
+    if (u === 'WATCH') return 'bg-sky-400'
+    if (u === 'WAIT') return 'bg-amber-400'
+    return 'bg-slate-300 dark:bg-slate-600'
+  }
+  const engines = [
+    { key: 'D', decision: row.day_decision },
+    { key: 'S', decision: row.swing_decision },
+    { key: 'R', decision: row.regular_decision },
+  ]
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-w-[130px] max-w-[170px] flex-1 flex-col gap-2.5 rounded-xl border border-violet-400/25 bg-white p-3 text-left transition-all hover:border-violet-400/50 hover:shadow-md dark:bg-slate-900"
+    >
+      <div className="flex items-start justify-between gap-1">
+        <div>
+          <div className="font-mono text-sm font-bold text-heading">{row.ticker}</div>
+          <div className={`font-mono text-[11px] font-semibold tabular-nums ${changeTone}`}>
+            {row.price_change_pct >= 0 ? '+' : ''}{row.price_change_pct?.toFixed(2)}%
+          </div>
+        </div>
+        <div className="font-mono text-xs font-bold tabular-nums text-heading">{fmtPrice(row.price)}</div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {engines.map(e => (
+          <div key={e.key} className="flex items-center gap-0.5">
+            <span className={`h-2 w-2 rounded-full ${dotColor(e.decision)}`} />
+            <span className="text-[9px] font-bold text-muted">{e.key}</span>
+          </div>
+        ))}
+        <div className="ml-auto h-1 w-10 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(score / 9) * 100}%` }} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
 export default function SignalFeedPage() {
   const routerNavigate = useNavigate()
   const { requestAnalysis, removeFromAllWatchlists, canAccessPage } = useApp()
@@ -1212,6 +1268,22 @@ export default function SignalFeedPage() {
   const trendingTodayRows = useMemo(
     () => visibleRows.filter(row => row.trending_today || row.morning_scan?.trending),
     [visibleRows],
+  )
+
+  const topPickRows = useMemo(
+    () =>
+      [...visibleRows]
+        .sort((a, b) => compositeScore(b) - compositeScore(a))
+        .filter(row => compositeScore(row) >= 5),
+    [visibleRows],
+  )
+
+  const sortedVisibleRows = useMemo(
+    () =>
+      sourceFilter === 'all'
+        ? [...visibleRows].sort((a, b) => compositeScore(b) - compositeScore(a))
+        : visibleRows,
+    [visibleRows, sourceFilter],
   )
 
   const engineCounts = useMemo(() => {
@@ -1428,6 +1500,18 @@ export default function SignalFeedPage() {
                 onlyIgnored ? 'bg-rose-600 text-white shadow-sm' : 'text-muted hover:text-secondary bg-transparent'
               }`}
             ><EyeOff size={12} className="inline" /> Ignored</button>
+
+            <button type="button"
+              onClick={() => setParam('state', stateFilter === 'ready' ? null : 'ready', true)}
+              className={`ml-1 shrink-0 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                stateFilter === 'ready'
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'border-violet-400/25 text-violet-600 hover:bg-violet-500/10 dark:text-violet-400'
+              }`}
+            >
+              <Sparkles size={11} />
+              Best
+            </button>
           </div>
 
           {/* Sort + direction */}
@@ -1524,6 +1608,31 @@ export default function SignalFeedPage() {
           </div>
         )}
       </section>
+
+      {topPickRows.length >= 2 && (
+        <section className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 dark:bg-violet-500/10">
+          <div className="mb-2.5 flex items-center gap-2">
+            <Sparkles size={14} className="text-violet-500" />
+            <div className="text-sm font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">Top Picks</div>
+            <div className="text-xs text-violet-600/70 dark:text-violet-300/70">Highest multi-engine agreement</div>
+            <div className="ml-auto rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+              {topPickRows.length} ready
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {topPickRows.slice(0, 6).map(row => (
+              <TopPickCard
+                key={row.id}
+                row={row}
+                onOpen={() => {
+                  const url = row.actions?.chart_url || row.actions?.analyze_url
+                  if (url) routerNavigate(url)
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {trendingTodayRows.length > 0 && (
         <section className="rounded-xl border border-emerald-500/25 bg-emerald-50/70 px-4 py-3 dark:bg-emerald-500/10">
@@ -1627,6 +1736,29 @@ export default function SignalFeedPage() {
           <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-white dark:bg-slate-900/30 px-4 py-16 text-center">
             <div className="text-lg font-semibold text-heading">No cards match the current filters</div>
             <div className="mt-2 text-sm text-muted">Try a different state, agreement, trend, or sector combination.</div>
+          </div>
+        ) : sourceFilter === 'all' ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {sortedVisibleRows.map(row => (
+              <SignalFeedCard
+                key={row.id}
+                row={row}
+                isCompact={!compactIds.has(row.id)}
+                isFavorite={favoriteSet.has(row.ticker.toUpperCase())}
+                isIgnored={ignoredSet.has(row.ticker.toUpperCase())}
+                alertBusy={Boolean(alertBusy[row.id])}
+                canDay={canDay}
+                canSwing={canSwing}
+                onToggleCompact={toggleCompact}
+                onAnalyze={() => handleAnalyze(row.ticker)}
+                onViewChart={() => handleTickerDetail(row)}
+                onCreateAlert={() => void handleCreateAlert(row)}
+                onAddToPositions={() => handleAddToPositions(row)}
+                onFavorite={() => toggleFavorite(row.ticker)}
+                onIgnore={() => toggleIgnore(row.ticker)}
+                onMonitor={() => handleMonitor(row)}
+              />
+            ))}
           </div>
         ) : (
           <div className="grid gap-4">
