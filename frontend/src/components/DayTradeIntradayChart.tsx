@@ -372,6 +372,15 @@ export default function DayTradeIntradayChart({
     }
   }, [bars, cw, orHigh, orLow, orMinutes, supportResistanceLevels, showScalpStudy, view])
 
+  const candleIntervalLabel = useMemo(() => {
+    if (bars.length < 2) return 'session'
+    const delta = Math.round((new Date(bars[1]!.t).getTime() - new Date(bars[0]!.t).getTime()) / 60000)
+    if (delta >= 55) return '1h candles'
+    if (delta >= 14) return '15m candles'
+    if (delta >= 4) return '5m candles'
+    return '1m candles'
+  }, [bars])
+
   // Don't render until container width is known — avoids the wrong-width flash
   if (cw === 0) {
     return <div ref={wrapRef} className="day-trade-chart w-full min-w-0" style={{ minHeight: 270 }} />
@@ -502,14 +511,6 @@ export default function DayTradeIntradayChart({
     zoomBy(e.deltaY < 0 ? 0.84 : 1.18, anchor)
   }
   const zoomLabel = visibleN >= bars.length ? 'Full' : `${visibleN}/${bars.length} bars`
-  const candleIntervalLabel = useMemo(() => {
-    if (bars.length < 2) return 'session'
-    const delta = Math.round((new Date(bars[1]!.t).getTime() - new Date(bars[0]!.t).getTime()) / 60000)
-    if (delta >= 55) return '1h candles'
-    if (delta >= 14) return '15m candles'
-    if (delta >= 4) return '5m candles'
-    return '1m candles'
-  }, [bars])
 
   return (
     <div ref={wrapRef} className="day-trade-chart w-full min-w-0">
